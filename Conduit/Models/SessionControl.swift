@@ -193,8 +193,14 @@ final class SessionControlStore: ObservableObject {
     /// Hermes' answer or why the last action didn't go, until the next
     /// action or another chat.
     @Published var notice: String?
+    /// Counts each word applied or cleared: a read started before a newer
+    /// one landed (an event, an action's answer) is dropped.
+    private(set) var revision = 0
+    /// The action on its way; a clear makes its answer stale.
+    private var action = 0
 
     func apply(_ snapshot: SessionControlSnapshot, for sessionID: String) {
+        revision += 1
         if self.sessionID != sessionID {
             self.sessionID = sessionID
             working = nil
@@ -204,15 +210,26 @@ final class SessionControlStore: ObservableObject {
         self.snapshot = snapshot
     }
 
-    func begin(_ action: SessionControlAction) {
+    /// Starts an action; its token says whether its answer is still the
+    /// dock's when it comes.
+    func begin(_ action: SessionControlAction) -> Int {
         working = action.name
         notice = nil
+        self.action += 1
+        return self.action
     }
 
-    func end() { working = nil }
+    func isCurrent(_ token: Int) -> Bool { token == action }
+
+    func end(_ token: Int) {
+        guard isCurrent(token) else { return }
+        working = nil
+    }
 
     /// Another chat opened, or the connection changed.
     func clear() {
+        action += 1
+        revision += 1
         guard sessionID != nil || !snapshot.isEmpty || notice != nil || working != nil else { return }
         sessionID = nil
         snapshot = SessionControlSnapshot()

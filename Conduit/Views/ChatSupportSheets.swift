@@ -318,7 +318,11 @@ struct DelegateAgentsSheet: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await appState.refreshDelegateAgents() }
-        .task { await loadProcesses() }
+        // Another chat's processes never stay on the list.
+        .task(id: appState.backgroundProcessSessionID) {
+            processes = []
+            await loadProcesses()
+        }
     }
 
     private func loadProcesses() async {

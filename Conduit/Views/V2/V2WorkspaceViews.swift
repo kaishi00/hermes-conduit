@@ -298,12 +298,17 @@ struct WorkspaceFolderView: View {
                     // folder chip), for a folder that isn't already its own.
                     if includesChat, let root, root.kind != .chat, appState.canMoveOpenChatFolder {
                         Button {
+                            let picked = rootPath
                             Task {
-                                if let message = await appState.moveOpenChatFolder(to: root.path) {
-                                    failure = message
-                                } else {
+                                switch await appState.moveOpenChatFolder(to: root.path) {
+                                case .moved:
                                     Haptics.selection()
-                                    rootPath = nil
+                                    // Only if the reader hasn't picked another folder meanwhile.
+                                    if rootPath == picked { rootPath = nil }
+                                case .failed(let message):
+                                    failure = message
+                                case .superseded:
+                                    break
                                 }
                             }
                         } label: {

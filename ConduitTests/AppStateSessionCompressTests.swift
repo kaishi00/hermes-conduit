@@ -2467,9 +2467,9 @@ final class AppStateSessionCompressTests: XCTestCase {
         }
         harness.appState.isConnected = true
 
-        let failure = await harness.appState.moveOpenChatFolder(to: "/srv/app")
+        let result = await harness.appState.moveOpenChatFolder(to: "/srv/app")
 
-        XCTAssertNil(failure)
+        XCTAssertEqual(result, .moved)
         XCTAssertEqual(moves.first?.0, "stored-origin", "the move names the durable session, as Move to Project does")
         XCTAssertEqual(moves.first?.1, "/srv/app")
         XCTAssertEqual(harness.appState.chatWorkspaceFolder, "/srv/app", "the Folder shows the new folder as the chat's at once")

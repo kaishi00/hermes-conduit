@@ -21,7 +21,8 @@ struct SessionControlDock: View {
     @State private var confirming: SessionControlAction?
 
     private var shows: Bool {
-        openChatID != nil && appState.sessionControlIsOpenChat(store.sessionID) && !store.snapshot.isEmpty
+        openChatID != nil && appState.sessionControlIsOpenChat(store.sessionID)
+            && (!store.snapshot.isEmpty || store.notice != nil)
     }
 
     var body: some View {
@@ -45,6 +46,8 @@ struct SessionControlDock: View {
         .padding(.horizontal, 12)
         .padding(.bottom, shows ? 6 : 0)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: store.snapshot)
+        // A confirmation asked in one chat never runs in the next.
+        .onChange(of: openChatID) { confirming = nil }
         .onChange(of: store.notice) {
             if let notice = store.notice { UIAccessibility.post(notification: .announcement, argument: notice) }
         }

@@ -206,7 +206,12 @@ struct HermesUpdater {
                 return .failed(detail: latestLine)
             case .unknown:
                 // Not running and no exit code: a dashboard that restarted
-                // forgot the action until its log or receipt says.
+                // forgot the action until its log or receipt says. It gets
+                // the same time to come back as one that answers nothing.
+                if !restarting {
+                    restarting = true
+                    deadline = max(deadline, now().addingTimeInterval(Self.comeBackLimit))
+                }
                 if now() >= deadline { return .notBackYet }
                 progress(.updating(.restarting, detail: latestLine))
             }

@@ -67,6 +67,8 @@ struct HermesUpdateSection: View {
         } message: {
             Text(confirmMessage)
         }
+        // Another dashboard's version never shows under this one.
+        .onChange(of: appState.activeDashboardID) { lastCheck = nil }
         .task(id: appState.activeDashboardID) {
             // Hermes answers from its cache, so opening the page is cheap.
             if appState.activeHermesUpdate == .idle { appState.checkHermesUpdate(force: false) }

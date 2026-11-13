@@ -24,13 +24,17 @@ extension AppState {
     /// opens.
     func applySessionControl(_ snapshot: SessionControlSnapshot, for sessionID: String) {
         guard sessionControlIsOpenChat(sessionID) else { return }
-        sessionControl.apply(snapshot, for: sessionID)
+        // One key per chat: word under another of its ids (runtime or
+        // stored) doesn't release an action still waiting.
+        let key = sessionControl.sessionID.flatMap { sessionControlIsOpenChat($0) ? $0 : nil } ?? sessionID
+        sessionControl.apply(snapshot, for: key)
     }
 
     /// Reads the chat's controls (`session.control.read`). A Hermes without
     /// the verb, or a chat with no live session, leaves the dock as it is.
     func refreshSessionControl(for sessionID: String) async {
         guard let client, !sessionID.isEmpty else { return }
+        let revision = sessionControl.revision
         let snapshot: SessionControlSnapshot
         do {
             if let read = chatResumeLifecycleOperations.readSessionControl {
@@ -41,7 +45,8 @@ extension AppState {
         } catch {
             return
         }
-        guard self.client === client else { return }
+        // Newer word (an event, an action's answer) landed meanwhile.
+        guard self.client === client, sessionControl.revision == revision else { return }
         applySessionControl(snapshot, for: sessionID)
     }
 
@@ -51,7 +56,7 @@ extension AppState {
     func runSessionControl(_ action: SessionControlAction) async {
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
-        sessionControl.begin(action)
+        let token = sessionControl.begin(action)
         do {
             let answer: (snapshot: SessionControlSnapshot?, note: String?)
             if let run = chatResumeLifecycleOperations.runSessionControl {
@@ -59,8 +64,8 @@ extension AppState {
             } else {
                 answer = try await client.runSessionControl(action, sessionId: sessionID)
             }
-            guard self.client === client, sessionControl.sessionID == sessionID else { return }
-            sessionControl.end()
+            guard self.client === client, sessionControl.isCurrent(token) else { return }
+            sessionControl.end(token)
             if let snapshot = answer.snapshot {
                 sessionControl.apply(snapshot, for: sessionID)
             } else {
@@ -68,12 +73,12 @@ extension AppState {
             }
             // What Hermes said about it ("Removed criterion 2"), under the dock.
             if let note = answer.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty,
-               sessionControl.sessionID == sessionID {
+               sessionControl.isCurrent(token), sessionControlIsOpenChat(sessionID) {
                 sessionControl.notice = note
             }
         } catch {
-            guard self.client === client, sessionControl.sessionID == sessionID else { return }
-            sessionControl.end()
+            guard self.client === client, sessionControl.isCurrent(token) else { return }
+            sessionControl.end(token)
             sessionControl.notice = UserFacingError.message(for: error)
         }
     }
