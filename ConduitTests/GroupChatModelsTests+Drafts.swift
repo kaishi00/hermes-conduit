@@ -645,6 +645,8 @@ extension GroupChatModelsTests {
         routes.holdsFirstRead = true
         let appState = draftsAppState(routes)
         draftsConnect(appState)
+        // Group Chats is available first, so the plugin's word reads the drafts.
+        await appState.refreshGroupChatSupport()
         appState.applyNotifierPluginReport(draftsPluginReport)
         let before = Task { @MainActor in await appState.refreshLinkedRoomDrafts() }
         await draftsWait("the held read", until: { routes.holding })

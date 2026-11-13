@@ -569,6 +569,7 @@ extension GroupChatModelsTests {
         let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
         let appState = invitesAppState(routes)
         invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
         appState.applyNotifierPluginReport(invitesPluginReport)
         await invitesWait("the first read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
 
@@ -597,6 +598,7 @@ extension GroupChatModelsTests {
         let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
         let appState = invitesAppState(routes)
         invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
         appState.applyNotifierPluginReport(invitesPluginReport)
         await invitesWait("the first read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
 

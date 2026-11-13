@@ -565,6 +565,40 @@ final class AppStateDecisionFenceTests: XCTestCase {
         )
     }
 
+    func testStaleSessionWideAnswerWhoseSessionWentSaysNoLongerActive() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverError(socket, rpcID: parked.rpcID, code: 4001, message: "session not found")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertEqual(card.error, AppLocalization.string("This approval is no longer active."))
+    }
+
+    // No socket: the session-wide answer never left, which the card path
+    // reads as one it can offer again.
+    func testASessionWideAnswerWithNoSocketIsNotSent() async throws {
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"),
+            profile: "default"
+        )
+        do {
+            _ = try await client.respondToApprovalOutcome(sessionId: "s1", choice: "once")
+            XCTFail("an unconnected client sends nothing")
+        } catch let unsent as HermesClient.AnswerNotSent {
+            guard case HermesError.notConnected = unsent.underlying else {
+                return XCTFail("expected notConnected underneath, got \(unsent.underlying)")
+            }
+        }
+    }
+
     // MARK: - Stale native clarify completions
 
     func testStaleClarifySuccessCannotMutateReplacedClientState() async throws {
