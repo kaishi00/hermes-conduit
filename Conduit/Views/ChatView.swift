@@ -1951,7 +1951,9 @@ struct ContentRefusedMessageContent: View, Equatable {
         }
         .textSelection(.enabled)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(AppLocalization.string("Refused by the model's safety filter: \(words)", table: .chat))
+        .accessibilityLabel(words.isEmpty
+            ? AppLocalization.string("The model's safety filter refused this message. Try asking another way.", table: .chat)
+            : AppLocalization.string("Refused by the model's safety filter: \(words)", table: .chat))
     }
 }
 
