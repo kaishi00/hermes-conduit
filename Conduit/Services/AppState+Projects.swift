@@ -440,7 +440,10 @@ extension AppState {
                 updated.cwd = moved
                 setRuntime(updated)
             }
-            if supportsProjects { await loadProjects(using: client, profile: profile) }
+            if supportsProjects {
+                await loadProjects(using: client, profile: profile)
+                guard profile == activeProfile, self.client === client else { return .superseded }
+            }
             return .moved
         } catch {
             guard profile == activeProfile, self.client === client else { return .superseded }

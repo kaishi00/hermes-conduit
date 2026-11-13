@@ -57,6 +57,10 @@ extension AppState {
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
         let token = sessionControl.begin(action)
+        // Ended on every path, the connection changing included, and only
+        // after the dock reads the new state: an action on the old list
+        // could name the wrong criterion.
+        defer { sessionControl.end(token) }
         do {
             let answer: (snapshot: SessionControlSnapshot?, note: String?)
             if let run = chatResumeLifecycleOperations.runSessionControl {
@@ -64,9 +68,6 @@ extension AppState {
             } else {
                 answer = try await client.runSessionControl(action, sessionId: sessionID)
             }
-            // Ended even when the connection changed meanwhile, so a
-            // reconnect never leaves the dock waiting.
-            sessionControl.end(token)
             // Dropped once the store went to another chat, like the note.
             guard self.client === client, sessionControl.isCurrent(token),
                   sessionControl.sessionID == sessionID else { return }
@@ -81,7 +82,6 @@ extension AppState {
                 sessionControl.notice = note
             }
         } catch {
-            sessionControl.end(token)
             guard self.client === client, sessionControl.isCurrent(token),
                   sessionControl.sessionID == sessionID else { return }
             sessionControl.notice = UserFacingError.message(for: error)
