@@ -90,8 +90,8 @@ enum ConduitKeyboardShortcut: String, CaseIterable, Identifiable {
         return text
     }
 
-    /// ⌘1 to ⌘4: the tabs in the bar's order, which is the user's
-    /// (`V2TabLayout.shown`). A tab they hid has no key.
+    /// ⌘1 to ⌘5: the tabs in the bar's order, which is the user's
+    /// (`V2TabLayoutStore.tabs`). A tab they hid has no key.
     static func tabShortcut(_ tab: V2Tab, in tabs: [V2Tab]) -> KeyboardShortcut? {
         guard let index = tabs.firstIndex(of: tab), index < 9 else { return nil }
         return KeyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
@@ -186,7 +186,7 @@ struct ConduitKeyboardCommands: Commands {
                 .keyboardShortcut(ConduitKeyboardShortcut.settings.shortcut)
         }
         CommandGroup(before: .sidebar) {
-            let tabs = tabLayout.layout.shown
+            let tabs = tabLayout.tabs
             ForEach(tabs) { tab in
                 if let shortcut = ConduitKeyboardShortcut.tabShortcut(tab, in: tabs) {
                     Button(tab.title) { KeyboardCommands.show(tab) }
@@ -219,7 +219,7 @@ struct KeyboardShortcutsSheet: View {
     @ObservedObject private var tabLayout = V2TabLayoutStore.shared
 
     var body: some View {
-        let tabs = tabLayout.layout.shown
+        let tabs = tabLayout.tabs
         NavigationStack {
             List {
                 Section {

@@ -4068,10 +4068,10 @@ private struct AppearanceSettingsDetail: View {
             // The gold button beside V2's tabs: voice, or New chat for
             // people who'd rather not talk. A chat keeps its voice button.
             if usesV2 {
-                // The bar's order, the tabs it leaves out and so the tab
-                // Conduit opens on (issue 2084).
+                // The bar's order, the tabs it leaves out, the pages added
+                // as tabs and so the tab Conduit opens on (issue 2084).
                 ConduitSettingsSection(title: AppLocalization.string("Tabs", table: .settings), symbol: "dock.rectangle", tint: .conduitAccent) {
-                    Text(AppLocalization.string("Choose the order of the tabs and hide the ones you don't use. Conduit opens on the first tab. Applies on iPhone, iPad and Mac.", table: .settings))
+                    Text(AppLocalization.string("Choose the order of the tabs, hide the ones you don't use, and add Pulse or Artifacts as tabs. Conduit opens on the first tab. Applies on iPhone, iPad and Mac.", table: .settings))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Button {
@@ -4081,7 +4081,7 @@ private struct AppearanceSettingsDetail: View {
                         HStack(spacing: 8) {
                             Text(AppLocalization.string("Edit Tabs", table: .settings))
                             Spacer(minLength: 8)
-                            Text(tabLayout.layout.shown.map(\.title).formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale)))
+                            Text(tabLayout.tabs.map(\.title).formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale)))
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
