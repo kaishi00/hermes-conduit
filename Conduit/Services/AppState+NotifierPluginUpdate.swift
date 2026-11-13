@@ -24,6 +24,8 @@ extension AppState {
         if isVoiceCallInProgress { return AppLocalization.string("End the call first: Hermes restarts during the update.", table: .notifications) }
         if activeGatewayRestart.isInProgress { return AppLocalization.string("Wait for the gateway restart to finish.", table: .notifications) }
         if hermesUpdateIsRunning { return AppLocalization.string("Wait for the Hermes update to finish.") }
+        // Restart now's own steps can outlast the restart they ended.
+        if gatewayRestartingNow { return AppLocalization.string("Wait for the gateway restart to finish.", table: .notifications) }
         return nil
     }
 

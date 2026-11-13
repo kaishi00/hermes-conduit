@@ -457,9 +457,11 @@ final class AppState: ObservableObject {
                 // another chat, or the same one opened again, reads its
                 // goal, loop and heartbeat afresh. A new id for the open
                 // chat keeps them.
-                if let held = sessionControl.sessionID, !sessionControlIsOpenChat(held) {
-                    sessionControl.clear()
-                }
+                // Cleared even while empty, so a read the last visit started
+                // can't fill it either.
+                let sameChat = activeChatScrollSessionIdentity.contains(oldValue)
+                    || sessionControl.sessionID.map(sessionControlIsOpenChat) == true
+                if !sameChat { sessionControl.clear() }
                 // The Model and Context sheets act on the chat they came up
                 // over. Another chat taking its place (a notification, an
                 // app link) takes them down; a new id for the same
@@ -602,6 +604,9 @@ final class AppState: ObservableObject {
     /// rewind says so once it is done, after its reopen has replaced the
     /// transcript a note added sooner would be in.
     var slashPromptRefusedDuringRewind = false
+    /// Counts rewinds started: a rewind clears the flags above only while
+    /// no later one has started.
+    var rewindGeneration = 0
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE

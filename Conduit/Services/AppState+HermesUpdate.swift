@@ -29,7 +29,7 @@ extension AppState {
     /// running.
     var canUpdateHermes: Bool {
         dashboardTicketBridge != nil && !activeHermesUpdate.isInProgress && !activeGatewayRestart.isInProgress
-            && !activeNotifierPluginUpdate.isInProgress
+            && !activeNotifierPluginUpdate.isInProgress && !gatewayRestartingNow
     }
 
     private func hermesUpdater(for dashboardID: UUID?) -> HermesUpdater {
@@ -81,6 +81,9 @@ extension AppState {
         hermesUpdateTask?.cancel()
         let dashboardID = activeDashboardID
         hermesUpdateDashboardID = dashboardID
+        // Running from the tap, not from the task's first step: no other
+        // restart starts in between (issue 2373).
+        hermesUpdate = .updating(.starting, detail: nil)
         let updater = hermesUpdater(for: dashboardID)
         hermesUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in

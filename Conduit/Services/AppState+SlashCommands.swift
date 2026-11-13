@@ -552,14 +552,21 @@ extension AppState {
         }
         isRewindingTurns = true
         slashPromptRefusedDuringRewind = false
+        rewindGeneration &+= 1
+        let generation = rewindGeneration
         // Held through the reopen, not only the rewind (issue 2381): a
         // second rewind started meanwhile would reopen the chat over this
         // one's notes, and its own refusal would land in a transcript this
         // reopen replaces. Every other way out ends it here.
         defer {
-            let refusedSlashPrompt = slashPromptRefusedDuringRewind
-            slashPromptRefusedDuringRewind = false
-            isRewindingTurns = false
+            // A rewind started after this one's reopen (during /retry's
+            // send) owns the flags now.
+            let owned = rewindGeneration == generation
+            let refusedSlashPrompt = owned && slashPromptRefusedDuringRewind
+            if owned {
+                slashPromptRefusedDuringRewind = false
+                isRewindingTurns = false
+            }
             // Last, after the reopen and the rewind's own note, and only
             // in the chat it ran in (or the one its reopen opened for it).
             let current = composerSubmissionContext()
@@ -698,7 +705,7 @@ extension AppState {
         guard isCurrentOrAliasedComposerSubmission(context) else { return keepWordsInTheirChat() }
         let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
         // Reopened: the composer is free again, for /retry's send too.
-        isRewindingTurns = false
+        if rewindGeneration == generation { isRewindingTurns = false }
         guard reopened != .superseded else { return keepWordsInTheirChat() }
         let current = composerSubmissionContext()
         // Our own open moved the viewport on, so `context` is stale by
