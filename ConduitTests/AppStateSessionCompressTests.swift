@@ -1997,8 +1997,8 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(sent)
         XCTAssertEqual(sends, 0)
 
-        // A slash command's prompt refused meanwhile goes back to the
-        // composer, and a call's request says why the chat is busy.
+        // A slash command's prompt refused meanwhile says why, leaving the
+        // composer to the rewind's words, and so does a call's request.
         let client = try XCTUnwrap(harness.appState.client)
         await harness.appState.handleSlashResult(
             .object(["type": .string("send"), "message": .string("run the plan")]),
@@ -2009,7 +2009,11 @@ final class AppStateSessionCompressTests: XCTestCase {
             context: harness.appState.composerSubmissionContext()
         )
         XCTAssertEqual(sends, 0)
-        XCTAssertEqual(harness.appState.composerPrefillText, "run the plan")
+        XCTAssertEqual(harness.appState.composerPrefillText, "")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            AppLocalization.string("Still taking a message back. Try again in a moment.")
+        )
         XCTAssertEqual(
             harness.appState.callRefusalMessageForOpenChat(),
             AppLocalization.string("Still taking a message back. Try again in a moment.")
