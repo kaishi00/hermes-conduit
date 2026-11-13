@@ -2422,6 +2422,56 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertNil(harness.appState.sessionControl.working)
     }
 
+    func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
+        var appState: AppState?
+        var clearsMidAction = false
+        let loop = SessionControlSnapshot(loop: .init(prompt: "check CI", status: "active", intervalSeconds: 300, ticksFired: 1, maxTicks: 0, until: "", nextDueAt: 0, pausedReason: nil, deferredByGoal: false), revision: "r2")
+        var eventMidRead = false
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                if eventMidRead {
+                    appState?.handleStreamEvent(.sessionControl(sessionId: "composer-origin", snapshot: loop))
+                }
+                return Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, _, _ in
+                if clearsMidAction { appState?.sessionControl.clear() }
+                return (Self.goalSnapshot, "Paused.")
+            }
+        }
+        appState = harness.appState
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        eventMidRead = true
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.loop?.prompt, "check CI",
+                       "a read started before Hermes' newer update doesn't overwrite it")
+        eventMidRead = false
+
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        clearsMidAction = true
+        await harness.appState.runSessionControl(.goalPause)
+        XCTAssertTrue(harness.appState.sessionControl.snapshot.isEmpty, "an answer after another chat opened doesn't come back")
+        XCTAssertNil(harness.appState.sessionControl.notice)
+        XCTAssertNil(harness.appState.sessionControl.working)
+    }
+
+    func testWorkHereThatOutlivesAProfileSwitchIsNeitherSuccessNorFailure() async throws {
+        var appState: AppState?
+        let harness = controlHarness { operations in
+            operations.moveSessionWorkspace = { _, _, folder in
+                appState?.activeProfile = "coder"
+                return folder
+            }
+        }
+        appState = harness.appState
+        harness.appState.isConnected = true
+
+        let result = await harness.appState.moveOpenChatFolder(to: "/srv/app")
+
+        XCTAssertEqual(result, .superseded, "the menu neither confirms nor clears its folder for another profile's answer")
+    }
+
     func testSettingAGoalReadsTheDockAfterHermesRunsIt() async throws {
         var reads = 0
         let harness = controlHarness { operations in

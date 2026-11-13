@@ -650,7 +650,9 @@ final class CapabilitiesStore {
             hubUpdatesCheck &+= 1
             switch hubSkillUpdates {
             case .found, .checking: hubSkillUpdates = .found([])
-            default: break
+            // A check that failed before the update says nothing now.
+            case .failed: hubSkillUpdates = nil
+            case nil: break
             }
             return true
         } catch {

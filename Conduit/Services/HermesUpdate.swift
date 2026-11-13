@@ -148,8 +148,9 @@ struct HermesUpdater {
             return .checked(check)
         } catch {
             if Task.isCancelled { return .idle }
-            if case .failed(let detail) = Self.outcome(forRequestError: error) { return .checkFailed(detail: detail) }
-            return Self.outcome(forRequestError: error)
+            let outcome = Self.outcome(forRequestError: error)
+            if case .failed(let detail) = outcome { return .checkFailed(detail: detail) }
+            return outcome
         }
     }
 

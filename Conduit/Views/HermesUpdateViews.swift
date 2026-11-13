@@ -195,6 +195,7 @@ struct HermesUpdateSection: View {
         case .updating(let step, _): return stepTitle(step)
         case .updated(let version): return version.map { AppLocalization.string("Hermes updated to \($0)", table: .connection) } ?? AppLocalization.string("Hermes updated", table: .connection)
         case .failed: return AppLocalization.string("Couldn't update Hermes", table: .connection)
+        case .checkFailed: return AppLocalization.string("Couldn't check for updates", table: .connection)
         default: return nil
         }
     }

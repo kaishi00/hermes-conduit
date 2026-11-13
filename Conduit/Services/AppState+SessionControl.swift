@@ -67,7 +67,9 @@ extension AppState {
             // Ended even when the connection changed meanwhile, so a
             // reconnect never leaves the dock waiting.
             sessionControl.end(token)
-            guard self.client === client, sessionControl.isCurrent(token) else { return }
+            // Dropped once the store went to another chat, like the note.
+            guard self.client === client, sessionControl.isCurrent(token),
+                  sessionControl.sessionID == sessionID else { return }
             if let snapshot = answer.snapshot {
                 sessionControl.apply(snapshot, for: sessionID)
             } else {
@@ -80,7 +82,8 @@ extension AppState {
             }
         } catch {
             sessionControl.end(token)
-            guard self.client === client, sessionControl.isCurrent(token) else { return }
+            guard self.client === client, sessionControl.isCurrent(token),
+                  sessionControl.sessionID == sessionID else { return }
             sessionControl.notice = UserFacingError.message(for: error)
         }
     }
