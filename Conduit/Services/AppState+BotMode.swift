@@ -897,13 +897,14 @@ extension AppState {
     private func keepBotMcpServerAdded(
         name: String,
         description: String,
+        enabled: Bool = true,
         oauth: Bool,
         profile: String,
         on owner: DashboardRuntimeOwner?
     ) {
         keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner) { details in
             guard !details.capabilities.mcpServers.contains(where: { $0.name == name }) else { return }
-            details.capabilities.mcpServers.append(BotCapability(name: name, description: description, enabled: true))
+            details.capabilities.mcpServers.append(BotCapability(name: name, description: description, enabled: enabled))
         }
         keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) { setup in
             setup.catalog = setup.catalog.map { listed in
@@ -920,24 +921,27 @@ extension AppState {
     /// (Add Server on the Connectors tab and on Edit Bot's MCP page) to a
     /// profile. Hermes writes it at once, refuses a name already taken and
     /// keeps a bearer token in the profile's .env. Throws what Hermes
-    /// refused, for the sheet to say; returns whether it signs in with
-    /// OAuth, which comes next.
+    /// refused, for the sheet to say, and stops when Conduit moved to
+    /// another Hermes meanwhile, so no test or sign-in follows there;
+    /// returns whether the server is on (a JSON entry may say
+    /// `enabled: false`) and signs in with OAuth, which comes next.
     func addCustomMcpServer(
         profile: String,
         name: String,
         entry: [String: Any],
         bearerToken: String?
-    ) async throws -> Bool {
+    ) async throws -> (enabled: Bool, oauth: Bool) {
         guard let client, isConnected else { throw CapabilitiesStoreError.notConnected }
         let owner = currentDashboardRuntimeOwner()
         let added = try await client.addMcpServer(profile: profile, name: name, config: entry, bearerToken: bearerToken)
         let auth = BotMcpSetup.addedServer(from: added, name: name)?.auth ?? (entry["auth"] as? String)
         let oauth = auth?.lowercased() == "oauth"
-        // Kept only while Conduit is on the Hermes it was added to.
-        if client === self.client, let owner, ownsDashboardRuntime(owner) {
-            keepBotMcpServerAdded(name: name, description: "", oauth: oauth, profile: profile, on: owner)
+        let enabled = entry["enabled"] as? Bool ?? true
+        guard client === self.client, let owner, ownsDashboardRuntime(owner) else {
+            throw CapabilitiesStoreError.declined(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
         }
-        return oauth
+        keepBotMcpServerAdded(name: name, description: "", enabled: enabled, oauth: oauth, profile: profile, on: owner)
+        return (enabled, oauth)
     }
 
     /// Tests a server just added to a bot's profile: connect, list its

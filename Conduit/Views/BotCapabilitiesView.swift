@@ -183,8 +183,9 @@ struct BotMcpServersView: View {
     @State private var mcpNotice: MCPNotice?
     @State private var keysEntry: BotMcpCatalogEntry?
     @State private var addingServer = false
-    /// Whether the server Add MCP Server just wrote signs in with OAuth.
-    @State private var addedSignsIn = false
+    /// Whether the server Add MCP Server just wrote is on and signs in
+    /// with OAuth.
+    @State private var added: (enabled: Bool, oauth: Bool) = (true, false)
     @State private var browser: BotMcpBrowserPage?
     @State private var signInTask: Task<Void, Never>?
 
@@ -380,11 +381,16 @@ struct BotMcpServersView: View {
     private var addServerSheet: some View {
         let profile = mcpProfile ?? ""
         return ConnectorAddSheet(profileName: appState.profileDisplayName(profile)) { name, entry, bearerToken in
-            addedSignsIn = try await appState.addCustomMcpServer(
+            added = try await appState.addCustomMcpServer(
                 profile: profile, name: name, entry: entry, bearerToken: bearerToken
             )
         } onAdded: { name in
-            if addedSignsIn {
+            // One the JSON turned off stays off, and isn't tested.
+            guard added.enabled else {
+                report(.ready, name: name, description: "", enabled: false)
+                return
+            }
+            if added.oauth {
                 report(.needsSignIn, name: name, description: "")
                 return
             }
@@ -399,10 +405,10 @@ struct BotMcpServersView: View {
 
     /// What an add came to: the server on in the list (Hermes turns a new
     /// server on), then its sign-in, or what its test said.
-    private func report(_ outcome: BotMcpInstallOutcome, name: String, description: String) {
+    private func report(_ outcome: BotMcpInstallOutcome, name: String, description: String, enabled: Bool = true) {
         if outcome.wasAdded, !capabilities.mcpServers.contains(where: { $0.name == name }) {
             capabilities.mcpServers.append(
-                BotCapability(name: name, description: description, enabled: true)
+                BotCapability(name: name, description: description, enabled: enabled)
             )
         }
         switch outcome {
