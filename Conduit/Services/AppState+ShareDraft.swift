@@ -238,6 +238,11 @@ extension AppState {
         }
         let action = draft.envelope.action
         var notice = AppLocalization.string("Shared from another app. Review it, then send it.")
+        // The key the composer on screen is loaded with: a resumed chat
+        // runs under a new runtime id, which its stored id doesn't match.
+        // Taken before a send, so a share whose send fails after the user
+        // moved on goes back to its own chat, not the one they opened.
+        let restoreKey = composerDraftKeyOnScreen
         if action.sendsOnPickup {
             content.text = Self.sharedDraftPrompt(action, text: draft.envelope.text)
             // Sent only into the new chat it opened: a chat that couldn't
@@ -264,17 +269,18 @@ extension AppState {
         }
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: dashboardID,
-            // The key the composer on screen is loaded with: a resumed chat
-            // runs under a new runtime id, which its stored id doesn't match.
-            key: composerDraftKeyOnScreen,
+            key: restoreKey,
             draft: content,
             focuses: false,
             pending: nil,
             sharedDraftID: id
         ))
-        composerNotice = notice
-        composerNoticeSystemImage = "square.and.arrow.down"
         reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: openedItsChat)
+        // Its chat's composer says why; another chat's isn't about it.
+        if activeDashboardID == dashboardID, composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
+            composerNotice = notice
+            composerNoticeSystemImage = "square.and.arrow.down"
+        }
         return true
     }
 

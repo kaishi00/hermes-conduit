@@ -167,6 +167,30 @@ extension ShareDraftTests {
     }
 
     @MainActor
+    func testAFailedSendAfterTheUserMovedOnGoesBackToItsOwnChat() async throws {
+        let appState = try makeAppState(active: home, dashboards: [home])
+        var keyAtSend: ComposerDraftKey?
+        appState.sharedDraftSendOverride = { _, _ in
+            keyAtSend = appState.composerDraftKeyOnScreen
+            // The user opens another chat while the share uploads.
+            appState.activeSessionId = "elsewhere"
+            return false
+        }
+        try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"), action: .remember)
+        appState.pickUpSharedDrafts()
+
+        guard await waitForDelivery(appState) else { return }
+
+        let request = try XCTUnwrap(appState.composerRestoreRequests.last)
+        XCTAssertEqual(request.key, keyAtSend, "back in the new chat it was sent from")
+        XCTAssertFalse(appState.composerDraftKeysAreSameChat(request.key, appState.composerDraftKeyOnScreen))
+        XCTAssertNotEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send what you shared, so it's in the composer. Send it when you're ready.", table: .chat),
+                          "the chat on screen isn't told about another chat's share")
+        appState.consumeComposerRestoreRequest(request.id)
+        request.draft.attachments.compactMap { URL(string: $0.uri) }.forEach { try? FileManager.default.removeItem(at: $0) }
+    }
+
+    @MainActor
     func testARememberItWhoseChatCantOpenIsNotSentIntoTheChatOnScreen() async throws {
         let appState = try makeAppState(active: home, dashboards: [home], created: nil)
         appState.activeSessionId = "open-chat"
