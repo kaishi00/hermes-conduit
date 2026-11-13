@@ -929,16 +929,23 @@ extension AppState {
         profile: String,
         name: String,
         entry: [String: Any],
-        bearerToken: String?
+        bearerToken: String?,
+        openedOn opened: DashboardRuntimeOwner? = nil
     ) async throws -> (enabled: Bool, oauth: Bool) {
         guard let client, isConnected else { throw CapabilitiesStoreError.notConnected }
+        // The sheet was opened on another Hermes: nothing goes to this one.
+        if let opened, !ownsDashboardRuntime(opened) {
+            throw CapabilitiesStoreError.declined(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+        }
         let owner = currentDashboardRuntimeOwner()
         let added = try await client.addMcpServer(profile: profile, name: name, config: entry, bearerToken: bearerToken)
         let auth = BotMcpSetup.addedServer(from: added, name: name)?.auth ?? (entry["auth"] as? String)
         let oauth = auth?.lowercased() == "oauth"
         let enabled = entry["enabled"] as? Bool ?? true
+        // Hermes already wrote it on the one the sheet opened on: say so, so
+        // nobody adds it again there.
         guard client === self.client, let owner, ownsDashboardRuntime(owner) else {
-            throw CapabilitiesStoreError.declined(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+            throw CapabilitiesStoreError.declined(AppLocalization.string("Added \(name) on the Hermes this opened on, but Conduit switched to another, so it wasn't tested."))
         }
         keepBotMcpServerAdded(name: name, description: "", enabled: enabled, oauth: oauth, profile: profile, on: owner)
         return (enabled, oauth)

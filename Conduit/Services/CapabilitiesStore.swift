@@ -1045,10 +1045,18 @@ final class CapabilitiesStore {
         // Tested again in the background: the editor closes on the save. A
         // kept list Hermes' answer took the place of has its servers tested
         // now, as the tab's open would have, the saved one with them.
+        // The tests start after this returns: a switch in between sends
+        // none of them to the other profile or dashboard.
         if wasKept, !showsKept.contains(.connectors) {
-            Task { await probeServers() }
+            Task {
+                guard token == generation else { return }
+                await probeServers()
+            }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task { await probe(name) }
+            Task {
+                guard token == generation else { return }
+                await probe(name)
+            }
         }
     }
 
@@ -1073,10 +1081,18 @@ final class CapabilitiesStore {
             servers.removeAll { $0.name == name }
             servers.append(ConnectorServer.saved(name: name, entry: entry, replacing: nil))
         }
+        // The tests start after this returns: a switch in between sends
+        // none of them to the other profile or dashboard.
         if wasKept, !showsKept.contains(.connectors) {
-            Task { await probeServers() }
+            Task {
+                guard token == generation else { return }
+                await probeServers()
+            }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task { await probe(name) }
+            Task {
+                guard token == generation else { return }
+                await probe(name)
+            }
         }
     }
 

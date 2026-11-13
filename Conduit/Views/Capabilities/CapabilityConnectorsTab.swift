@@ -21,7 +21,6 @@ struct CapabilityConnectorsTab: View {
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
     @State private var hostedApps = HostedAppsModel()
-    @State private var adding = false
     /// The profile and dashboard showing when Add MCP Server was pressed:
     /// the sheet writes there or nowhere.
     @State private var addTarget: AddTarget?
@@ -128,8 +127,8 @@ struct CapabilityConnectorsTab: View {
                 Task { await store.installConnector(entry, env: env) }
             }
         }
-        .sheet(isPresented: $adding) {
-            if let addTarget { addSheet(addTarget) }
+        .sheet(item: $addTarget) { target in
+            addSheet(target)
         }
         .navigationDestination(item: $opened) { name in
             ConnectorDetailPage(name: name, store: store)
@@ -150,7 +149,6 @@ struct CapabilityConnectorsTab: View {
             Haptics.selection()
             actionError = nil
             addTarget = AddTarget(owner: appState.currentCapabilitiesOwner, generation: store.generation, profile: store.profile)
-            adding = true
         } label: {
             Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
                 .frame(maxWidth: .infinity)
@@ -161,7 +159,8 @@ struct CapabilityConnectorsTab: View {
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
     }
 
-    private struct AddTarget {
+    private struct AddTarget: Identifiable {
+        let id = UUID()
         let owner: CapabilitySnapshotOwner
         let generation: Int
         let profile: String
