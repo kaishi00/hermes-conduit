@@ -1299,7 +1299,7 @@ struct V2Shell: View {
                             UIAccessibility.post(notification: .screenChanged, argument: nil)
                         }
                     } else {
-                        V2SplitPlaceholder(offersNewChat: offersNewChat)
+                        V2SplitPlaceholder(offersNewChat: offersNewChat, tab: selectedTab)
                     }
                 }
                 .opacity(showsSettings ? 0 : 1)
@@ -1837,12 +1837,19 @@ private struct V2SplitPlaceholder: View {
     @EnvironmentObject private var appState: AppState
     /// Chats offers a new chat here; Bots opens a bot's from its list.
     let offersNewChat: Bool
+    /// The tab showing: a page tab's column wears the page's own symbol.
+    let tab: V2Tab
+
+    private var symbol: String {
+        if offersNewChat { return V2Tab.chats.symbol }
+        return tab.isPage ? tab.symbol : V2Tab.bots.symbol
+    }
 
     var body: some View {
         ZStack {
             V2Backdrop(drifts: false)
             VStack(spacing: 18) {
-                Image(systemName: offersNewChat ? V2Tab.chats.symbol : V2Tab.bots.symbol)
+                Image(systemName: symbol)
                     .font(.system(size: 44, weight: .regular))
                     .foregroundStyle(.conduitTertiary)
                     .accessibilityHidden(true)
