@@ -691,6 +691,16 @@ final class AppState: ObservableObject {
 
     /// Bumped on every write to `sessions`.
     var sessionsRevision = 0
+    /// Each profile's archived calls as last read, which a catalog read
+    /// within their lifetime takes again (issue 2357).
+    var archivedCallsReads: [String: ArchivedCallsRead] = [:]
+    /// The projects as last read: for which profile, through which client,
+    /// and when. A catalog read that changed nothing reads them again only
+    /// past `projectsRereadInterval` (issue 2357).
+    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
+    /// The scope the catalog last committed for: a read that lists the same
+    /// rows for it again skips the work that follows a change (issue 2357).
+    var catalogCommitOwner: SessionCatalogOwner?
     var activeProfileSessionsCache: (key: ActiveProfileSessionsKey, rows: [SessionSummary])?
 
     /// Bumped on every write to `cronSessions`.

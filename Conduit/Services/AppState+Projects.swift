@@ -26,6 +26,20 @@ extension AppState {
         await loadProjects(using: client, profile: activeProfile)
     }
 
+    /// How long the projects read after a catalog read stay current when
+    /// the catalog read changed nothing (issue 2357). A project's chat
+    /// count moves with the list, and the Projects page reads on its own.
+    static let projectsRereadInterval: TimeInterval = SessionCatalogCache.fullHistoryRefreshInterval
+
+    /// Whether a catalog read that listed nothing new reads the projects
+    /// too: never read for this profile and client, read too long ago, or
+    /// still the saved list's.
+    func projectsNeedReading(using client: HermesClient, profile: String, now: Date = Date()) -> Bool {
+        guard let read = projectsRead, read.profile == profile, read.client == ObjectIdentifier(client),
+              !projectsSeededFromSavedList else { return true }
+        return now.timeIntervalSince(read.at) >= Self.projectsRereadInterval || now < read.at
+    }
+
     /// True when Hermes' list came in and is the one shown.
     @discardableResult
     func loadProjects(using client: HermesClient, profile: String) async -> Bool {
@@ -44,11 +58,15 @@ extension AppState {
             guard generation == projectsRequestGeneration,
                   profile == activeProfile,
                   self.client === client else { return false }
-            projects = loaded.sorted {
+            let sorted = loaded.sorted {
                 if $0.isHome != $1.isHome { return $0.isHome }
                 if $0.sessionCount != $1.sessionCount { return $0.sessionCount > $1.sessionCount }
                 return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
             }
+            // The same list again leaves the projects' positions as worked
+            // out, unless they came from the saved list (issue 2357).
+            if sorted != projects || projectsSeededFromSavedList { projects = sorted }
+            projectsRead = (profile, ObjectIdentifier(client), Date())
             supportsProjects = true
             projectsLoadFailed = false
             return true

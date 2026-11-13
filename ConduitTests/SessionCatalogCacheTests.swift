@@ -331,4 +331,19 @@ final class SessionCatalogCacheTests: XCTestCase {
             lineageRootId: nil
         )
     }
+
+    /// The archived calls read for a catalog read serve the next ones
+    /// while fresh and no call was tagged since (issue 2357); the live
+    /// list's total is compared once it's read.
+    func testArchivedCallsServeAgainOnlyWhileFreshAndUntagged() {
+        let readAt = Date(timeIntervalSince1970: 1_700_000_000)
+        let read = ArchivedCallsRead(calls: [], liveTotal: 40, tags: 3, readAt: readAt)
+        XCTAssertTrue(read.servesAgain(tags: 3, now: readAt.addingTimeInterval(60)))
+        XCTAssertFalse(read.servesAgain(tags: 4, now: readAt.addingTimeInterval(60)), "a call tagged since")
+        XCTAssertFalse(read.servesAgain(tags: 3, now: readAt.addingTimeInterval(ArchivedCallsRead.lifetime)), "too old")
+        XCTAssertFalse(read.servesAgain(tags: 3, now: readAt.addingTimeInterval(-1)), "a clock set back")
+        XCTAssertNotEqual(ArchivedCallsRead.key(dashboard: nil, profile: "Work", pages: 1),
+                          ArchivedCallsRead.key(dashboard: nil, profile: "work", pages: 25),
+                          "a full-history read keeps its own")
+    }
 }

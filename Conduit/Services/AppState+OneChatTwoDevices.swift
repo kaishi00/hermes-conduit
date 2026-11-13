@@ -103,7 +103,8 @@ extension AppState {
                 registry: registry,
                 turnRunning: turnRunning,
                 catalogGeneration: chatListCatalogGeneration,
-                followsChanges: followsChanges
+                followsChanges: followsChanges,
+                inactiveFor: isSceneActive ? nil : lastLeftForegroundAt.map { max(0, Date().timeIntervalSince($0)) }
             ),
             conditions: deviceConditions(),
             random: pollJitter()
