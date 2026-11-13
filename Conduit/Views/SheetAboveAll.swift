@@ -107,10 +107,15 @@ final class SheetAboveAllHost {
         // shows it, once.
         let key = "\(kind)|\(id)"
         guard !Self.showing.contains(key), let presenter = Self.topPresenter() else { return }
-        let hosting = UIHostingController(rootView: view.onDisappear {
+        let hosting = UIHostingController(rootView: view.onDisappear { [weak self] in
             // Runs however it closed: by a swipe, its own dismiss, or close().
             Task { @MainActor in
                 Self.showing.remove(key)
+                // Gone, so the same item can show again; a newer one keeps its own.
+                if let self, self.shownID == id {
+                    self.shownID = nil
+                    self.decided = nil
+                }
                 closed()
             }
         })

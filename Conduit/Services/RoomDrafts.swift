@@ -430,7 +430,12 @@ extension AppState {
                 people = read.links.filter { $0.status == "linked" }
             }
             guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return }
+            let openRoom = activeRoomSurface.flatMap { $0.copy == nil ? $0.room : nil }
+            let hadPeople = openRoom.map { hasLinkedPeople($0) } ?? true
             linkedRoomDrafts = LinkedRoomDrafts(dashboardID: client.dashboardID, list: list, people: people ?? [])
+            // The open room turned out to have linked people (guests who all
+            // joined Just me): read who's in it, as opening it would have.
+            if !hadPeople, let openRoom, hasLinkedPeople(openRoom) { await refreshActiveRoomPeople() }
         } catch {
             // The rows stay as they were: a stale row is safer than none.
         }
