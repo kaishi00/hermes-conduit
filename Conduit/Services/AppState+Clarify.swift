@@ -1228,25 +1228,62 @@ extension AppState {
         let dashboardID = activeDashboardID
         let authorName = conversationAgentIdentity.name
         let client = self.client
+        // The card is taken for this answer while the steer goes: Run and
+        // the other choices are off, and a replay of the queue keeps it
+        // (a live submission), as for any answer on its way.
+        let submissionIdentity = current.requestId.map { ApprovalSubmissionIdentity.identified($0) }
+            ?? ApprovalSubmissionIdentity.legacy(current.sessionId)
+        liveApprovalSubmissions.insert(submissionIdentity)
+        setApprovalReserved(messageId: messageId, shown: shown, reserved: true)
         let steered = await steer(words, surfacesFailure: false)
-        if messages.contains(where: { $0.id == messageId }) {
-            await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
-        } else if let client, self.client === client, let requestId = shown.requestId {
-            // Its chat was left meanwhile: the card isn't on screen to
-            // answer, so the rejection goes straight to the request it
-            // named. A card that names none stays waiting, answered when
-            // its chat opens again, as a session-wide answer could reach
-            // another request.
-            _ = try? await client.respondToApprovalOutcome(
-                sessionId: shown.sessionId,
-                requestId: requestId,
-                choice: "deny",
-                profile: presentationProfile(for: shown.sessionId)
-            )
+        liveApprovalSubmissions.remove(submissionIdentity)
+        if let client, self.client === client {
+            if messages.contains(where: { $0.id == messageId && $0.approval?.asksSameAs(shown) == true }) {
+                // Back to pending only to hand it to the answer, with no
+                // wait in between.
+                setApprovalReserved(messageId: messageId, shown: shown, reserved: false)
+                await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
+            } else if let requestId = shown.requestId {
+                // Its chat was left meanwhile: the card isn't on screen to
+                // answer, so the rejection goes straight to the request it
+                // named. A card that names none stays waiting, answered
+                // when its chat opens again, as a session-wide answer could
+                // reach another request.
+                _ = try? await client.respondToApprovalOutcome(
+                    sessionId: shown.sessionId,
+                    requestId: requestId,
+                    choice: "deny",
+                    profile: presentationProfile(for: shown.sessionId)
+                )
+            }
+        } else {
+            // Another connection took over while the steer went: its own
+            // cards are its own to answer. A card still drawn goes back to
+            // waiting.
+            setApprovalReserved(messageId: messageId, shown: shown, reserved: false)
         }
         if !steered {
             putRewoundTextBack(words, key: draftKey, dashboardID: dashboardID, authorName: authorName)
         }
+    }
+
+    /// Takes a card for Tell Hermes instead's rejection (shown as sending
+    /// it), or gives it back to waiting.
+    private func setApprovalReserved(messageId: String, shown: ApprovalActivity, reserved: Bool) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let approval = messages[index].approval,
+              approval.asksSameAs(shown) else { return }
+        if reserved {
+            guard approval.status == .pending || approval.status == .error else { return }
+            messages[index].approval?.status = .submitting
+            messages[index].approval?.choice = "deny"
+            messages[index].approval?.error = nil
+        } else {
+            guard approval.status == .submitting, approval.choice == "deny" else { return }
+            messages[index].approval?.status = .pending
+            messages[index].approval?.choice = nil
+        }
+        cacheMessagePresentation()
     }
 
     func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
