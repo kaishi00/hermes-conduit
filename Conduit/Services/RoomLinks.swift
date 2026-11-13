@@ -79,6 +79,14 @@ struct RoomLink: Identifiable, Equatable {
     let status: String
     let words: [String]
     let createdAt: Date?
+    /// The other side's Conduit plugin version, nil until it says (plugins
+    /// before 0.167.4 never do).
+    var plugin: String? = nil
+    /// Whose plugin to update for this Link to carry everything: `theirs`
+    /// (it takes fewer kinds of envelope than yours sends, or never said) or
+    /// `yours` (it sent one yours doesn't take). Nil when they match, and
+    /// from plugins before 0.167.4.
+    var behind: String? = nil
 }
 
 /// An invite this Hermes made that hasn't been used or run out.
@@ -270,7 +278,8 @@ struct RoomLinksClient {
               let name = object["name"] as? String,
               let status = object["status"] as? String,
               let words = Self.words(object["words"]) else { return nil }
-        return RoomLink(id: id, name: name, status: status, words: words, createdAt: date(object["created_at"]))
+        return RoomLink(id: id, name: name, status: status, words: words, createdAt: date(object["created_at"]),
+                        plugin: object["plugin"] as? String, behind: object["behind"] as? String)
     }
 
     static func invite(_ object: [String: Any]) -> RoomLinkInvite? {

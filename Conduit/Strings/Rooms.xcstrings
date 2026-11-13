@@ -31868,6 +31868,1482 @@
           }
         }
       }
+    },
+    "%@'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin von %@ ist älter als deins, daher erreicht sie manches nicht, was in euren Räumen geteilt wird. Bitte sie, es zu aktualisieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit de %@ es más antiguo que el tuyo, así que parte de lo que se comparte en tus salas no le llegará. Pídele que lo actualice."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit de %@ est plus ancien que le vôtre : une partie de ce que vos salons partagent ne lui parviendra pas. Demandez-lui de le mettre à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit milik %@ lebih lama dari milikmu, jadi sebagian yang dibagikan di ruangmu tidak akan sampai kepadanya. Minta dia memperbaruinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit di %@ è più vecchio del tuo, quindi parte di ciò che si condivide nelle tue stanze non gli arriverà. Chiedigli di aggiornarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Conduit プラグインはあなたのものより古いため、ルームで共有される内容の一部が届きません。更新するよう頼んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님의 Conduit 플러그인이 내 것보다 오래되어 방에서 공유하는 내용 일부가 전달되지 않습니다. 업데이트해 달라고 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit użytkownika %@ jest starsza niż Twoja, więc część tego, co udostępniają Twoje pokoje, do niego nie dotrze. Poproś o jej aktualizację."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit de %@ é mais antigo que o seu, então parte do que suas salas compartilham não vai chegar até essa pessoa. Peça para ela atualizá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit у %@ старше вашего, поэтому часть того, чем делятся ваши комнаты, до него не дойдёт. Попросите его обновить плагин."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı kişinin Conduit eklentisi seninkinden eski, bu yüzden odalarında paylaşılanların bir kısmı ona ulaşmayacak. Güncellemesini iste."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 插件比你的旧，你的房间里分享的部分内容无法送达对方。请让对方更新插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 外掛比你的舊，你的房間裡分享的部分內容無法送達對方。請對方更新外掛。"
+          }
+        }
+      }
+    },
+    "%@'s Conduit plugin is newer than yours, so some of what they share isn't reaching you. Update your Conduit plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin von %@ ist neuer als deins, daher erreicht dich manches nicht, was geteilt wird. Aktualisiere dein Conduit-Plugin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit de %@ es más reciente que el tuyo, así que parte de lo que comparte no te llega. Actualiza tu plugin de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit de %@ est plus récent que le vôtre : une partie de ce qu’il partage ne vous parvient pas. Mettez à jour votre plugin Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit milik %@ lebih baru dari milikmu, jadi sebagian yang dia bagikan tidak sampai kepadamu. Perbarui plugin Conduit-mu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit di %@ è più recente del tuo, quindi parte di ciò che condivide non ti arriva. Aggiorna il tuo plugin Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Conduit プラグインはあなたのものより新しいため、共有される内容の一部があなたに届いていません。Conduit プラグインを更新してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님의 Conduit 플러그인이 내 것보다 최신이라 공유하는 내용 일부가 나에게 전달되지 않습니다. 내 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit użytkownika %@ jest nowsza niż Twoja, więc część tego, co udostępnia, do Ciebie nie dociera. Zaktualizuj swoją wtyczkę Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit de %@ é mais novo que o seu, então parte do que essa pessoa compartilha não está chegando até você. Atualize seu plugin do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit у %@ новее вашего, поэтому часть того, чем он делится, до вас не доходит. Обновите свой плагин Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı kişinin Conduit eklentisi seninkinden yeni, bu yüzden paylaştıklarının bir kısmı sana ulaşmıyor. Conduit eklentini güncelle."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 插件比你的新，对方分享的部分内容没有送达你这里。请更新你的 Conduit 插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 外掛比你的新，對方分享的部分內容沒有送達你這裡。請更新你的 Conduit 外掛。"
+          }
+        }
+      }
+    },
+    "Also here without their bots: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenfalls hier, ohne ihre Bots: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También aquí, sin sus bots: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aussi ici, sans leurs bots : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juga di sini tanpa bot mereka: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qui anche senza i loro bot: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットなしで参加中: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 함께하는 사람: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Też tutaj, bez swoich botów: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Também aqui, sem os bots: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Также здесь без своих ботов: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botları olmadan burada: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "也在这里（未带机器人）：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "也在這裡（未帶機器人）：%@"
+          }
+        }
+      }
+    },
+    "Joins without your bots, to read the room and post in it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tritt ohne deine Bots bei, um den Raum zu lesen und darin zu schreiben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te unes sin tus bots, para leer la sala y escribir en ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rejoindre sans vos bots, pour lire le salon et y écrire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bergabung tanpa bot-mu, untuk membaca ruang dan menulis di dalamnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entra senza i tuoi bot, per leggere la stanza e scriverci."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットを連れずに参加し、ルームを読んで投稿します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 참여해 방을 읽고 글을 씁니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączasz bez swoich botów, aby czytać pokój i w nim pisać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entra sem seus bots, para ler a sala e escrever nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Присоединиться без своих ботов, чтобы читать комнату и писать в ней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botların olmadan katıl; odayı oku ve yaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不带你的机器人加入，阅读房间并在其中发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不帶你的機器人加入，閱讀房間並在其中發言。"
+          }
+        }
+      }
+    },
+    "Just Me" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur ich"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo yo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moi seul"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya saya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo io"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分だけ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나만"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tylko ja"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Só eu"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только я"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sadece ben"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有我"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有我"
+          }
+        }
+      }
+    },
+    "You joined without your bots: you read this room and post in it yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist ohne deine Bots beigetreten: Du liest diesen Raum und schreibst selbst darin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te uniste sin tus bots: lees esta sala y escribes en ella tú mismo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez rejoint sans vos bots : vous lisez ce salon et y écrivez vous-même."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu bergabung tanpa bot-mu: kamu membaca ruang ini dan menulis sendiri di dalamnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sei entrato senza i tuoi bot: leggi questa stanza e ci scrivi tu."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットを連れずに参加しました。このルームを読んで、自分で投稿できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 참여했습니다. 이 방을 읽고 직접 글을 쓸 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączyłeś bez swoich botów: czytasz ten pokój i piszesz w nim sam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você entrou sem seus bots: você lê esta sala e escreve nela você mesmo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы присоединились без своих ботов: вы читаете эту комнату и пишете в ней сами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botların olmadan katıldın: bu odayı okuyup kendin yazıyorsun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你没有带机器人加入：你可以阅读这个房间并亲自发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你沒有帶機器人加入：你可以閱讀這個房間並親自發言。"
+          }
+        }
+      }
+    },
+    "You stop getting this room, and %@ is told. Your copy of it stays until you delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du erhältst diesen Raum nicht mehr, und %@ wird informiert. Deine Kopie bleibt, bis du sie löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejas de recibir esta sala y se avisa a %@. Tu copia se queda hasta que la elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne recevez plus ce salon, et %@ en est informé. Votre copie reste jusqu’à ce que vous la supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu berhenti menerima ruang ini, dan %@ diberi tahu. Salinanmu tetap ada sampai kamu menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ricevi più questa stanza e %@ viene avvisato. La tua copia resta finché non la elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームは届かなくなり、%@ に通知されます。コピーは削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방을 더 이상 받지 않으며 %@ 님에게 알립니다. 사본은 삭제할 때까지 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przestajesz otrzymywać ten pokój, a %@ zostaje powiadomiony. Twoja kopia zostaje, dopóki jej nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você deixa de receber esta sala, e %@ é avisado. Sua cópia fica até você excluí-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта комната больше не будет к вам приходить, и %@ узнает об этом. Ваша копия останется, пока вы её не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu oda artık sana gelmez ve %@ bilgilendirilir. Kopyan sen silene kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将不再收到这个房间，%@ 会收到通知。你的副本会保留到你删除为止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你將不再收到這個房間，%@ 會收到通知。你的副本會保留到你刪除為止。"
+          }
+        }
+      }
+    },
+    "You stop getting this room, and the host is told. Your copy of it stays until you delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du erhältst diesen Raum nicht mehr, und der Gastgeber wird informiert. Deine Kopie bleibt, bis du sie löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejas de recibir esta sala y se avisa al anfitrión. Tu copia se queda hasta que la elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne recevez plus ce salon, et l’hôte en est informé. Votre copie reste jusqu’à ce que vous la supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu berhenti menerima ruang ini, dan tuan rumah diberi tahu. Salinanmu tetap ada sampai kamu menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ricevi più questa stanza e l’host viene avvisato. La tua copia resta finché non la elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームは届かなくなり、ホストに通知されます。コピーは削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방을 더 이상 받지 않으며 호스트에게 알립니다. 사본은 삭제할 때까지 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przestajesz otrzymywać ten pokój, a gospodarz zostaje powiadomiony. Twoja kopia zostaje, dopóki jej nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você deixa de receber esta sala, e o anfitrião é avisado. Sua cópia fica até você excluí-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта комната больше не будет к вам приходить, и хозяин узнает об этом. Ваша копия останется, пока вы её не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu oda artık sana gelmez ve ev sahibi bilgilendirilir. Kopyan sen silene kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将不再收到这个房间，主持人会收到通知。你的副本会保留到你删除为止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你將不再收到這個房間，主持人會收到通知。你的副本會保留到你刪除為止。"
+          }
+        }
+      }
+    },
+    "Block" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blokir"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocca"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブロック"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차단"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zablokuj"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заблокировать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engelle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖"
+          }
+        }
+      }
+    },
+    "Block %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ blockieren"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquer %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blokir %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blocca %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をブロック"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 차단"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zablokuj: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заблокировать: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı kişiyi engelle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖 %@"
+          }
+        }
+      }
+    },
+    "Block %@?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ blockieren?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Bloquear a %@?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquer %@ ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blokir %@?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloccare %@?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をブロックしますか？"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님을 차단할까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zablokować: %@?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear %@?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заблокировать: %@?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ engellensin mi?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要屏蔽 %@ 吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要封鎖 %@ 嗎？"
+          }
+        }
+      }
+    },
+    "Blocking unlinks them: nothing more from them reaches your Hermes, and the rooms you share with them stop." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blockieren hebt die Verknüpfung auf: Von ihnen erreicht nichts mehr deinen Hermes, und eure gemeinsamen Räume enden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear desvincula a esa persona: nada más de ella llega a tu Hermes y las salas que compartís se detienen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquer supprime le lien : plus rien de leur part n'atteint votre Hermes, et les salons que vous partagez s'arrêtent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memblokir memutus tautan mereka: tidak ada lagi dari mereka yang sampai ke Hermes Anda, dan ruang yang Anda bagikan dengan mereka berhenti."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloccare rimuove il collegamento: niente più da parte loro raggiunge il tuo Hermes e le stanze che condividete si fermano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ブロックするとリンクが解除されます。相手からは何もあなたのHermesに届かなくなり、共有しているグループは止まります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차단하면 링크가 해제돼요. 상대방의 어떤 것도 내 Hermes에 더 이상 오지 않고, 함께 쓰던 방은 멈춰요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zablokowanie usuwa połączenie: nic więcej od tej osoby nie dotrze do Twojego Hermesa, a wspólne pokoje się zatrzymają."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bloquear desfaz o vínculo: nada mais dessa pessoa chega ao seu Hermes, e as salas que vocês compartilham param."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Блокировка разрывает связь: от этого человека больше ничего не дойдёт до вашего Hermes, а общие комнаты остановятся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Engellemek bağlantıyı kaldırır: Ondan Hermes'inize artık hiçbir şey ulaşmaz ve paylaştığınız odalar durur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "屏蔽会解除链接：对方的任何内容都不会再到达你的 Hermes，你们共享的群聊也会停止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "封鎖會解除連結：對方的任何內容都不會再傳到你的 Hermes，你們共享的群組也會停止。"
+          }
+        }
+      }
+    },
+    "Could not block %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ konnte nicht blockiert werden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo bloquear a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible de bloquer %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat memblokir %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile bloccare %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@をブロックできませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님을 차단하지 못했어요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się zablokować: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível bloquear %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось заблокировать: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ engellenemedi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法屏蔽 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法封鎖 %@"
+          }
+        }
+      }
+    },
+    "Joined without their bots" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ohne ihre Bots beigetreten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se unió sin sus bots"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A rejoint sans ses bots"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bergabung tanpa bot mereka"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrato senza i suoi bot"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットなしで参加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 참여함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączył(a) bez swoich botów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entrou sem seus bots"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Присоединился без своих ботов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botları olmadan katıldı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未带机器人加入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未帶機器人加入"
+          }
+        }
+      }
+    },
+    "Left" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verlassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salió"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Parti"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keluar"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uscito"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "退出"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나감"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyszedł/wyszła"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saiu"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вышел"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ayrıldı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已离开"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已離開"
+          }
+        }
+      }
+    },
+    "This unlinks %@'s Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit wird der Hermes von %@ auf beiden Seiten von deinem getrennt: Von ihnen erreicht nichts mehr deinen Hermes, und eure gemeinsamen Räume enden. Für eine neue Verknüpfung braucht es eine neue Einladung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto desvincula el Hermes de %@ del tuyo, en ambos lados: nada más de esa persona llega a tu Hermes y las salas que compartís se detienen. Volver a vincularos requiere una invitación nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cela délie le Hermes de %@ du vôtre, des deux côtés : plus rien de sa part n'atteint votre Hermes, et les salons que vous partagez s'arrêtent. Se lier à nouveau demande une nouvelle invitation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ini memutus tautan Hermes %@ dari milik Anda, di kedua sisi: tidak ada lagi dari mereka yang sampai ke Hermes Anda, dan ruang yang Anda bagikan dengan mereka berhenti. Menautkan lagi memerlukan undangan baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo scollega l'Hermes di %@ dal tuo, da entrambe le parti: niente più da parte sua raggiunge il tuo Hermes e le stanze che condividete si fermano. Per ricollegarvi serve un nuovo invito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のHermesとあなたのHermesのリンクを両側で解除します。相手からは何もあなたのHermesに届かなくなり、共有しているグループは止まります。再びリンクするには新しい招待が必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님의 Hermes와 내 Hermes의 링크를 양쪽에서 해제해요. 상대방의 어떤 것도 내 Hermes에 더 이상 오지 않고, 함께 쓰던 방은 멈춰요. 다시 링크하려면 새 초대가 필요해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To rozłącza Hermesa użytkownika %@ z Twoim, po obu stronach: nic więcej od tej osoby nie dotrze do Twojego Hermesa, a wspólne pokoje się zatrzymają. Ponowne połączenie wymaga nowego zaproszenia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Isso desvincula o Hermes de %@ do seu, dos dois lados: nada mais dessa pessoa chega ao seu Hermes, e as salas que vocês compartilham param. Vincular de novo exige um novo convite."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это разрывает связь Hermes пользователя %@ с вашим с обеих сторон: от него больше ничего не дойдёт до вашего Hermes, а общие комнаты остановятся. Чтобы связаться снова, нужно новое приглашение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu, %@ adlı kişinin Hermes'ini sizinkinden iki tarafta da ayırır: Ondan Hermes'inize artık hiçbir şey ulaşmaz ve paylaştığınız odalar durur. Yeniden bağlanmak için yeni bir davet gerekir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这会在双方解除 %@ 的 Hermes 与你的链接：对方的任何内容都不会再到达你的 Hermes，你们共享的群聊也会停止。再次链接需要新的邀请。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這會在雙方解除 %@ 的 Hermes 與你的連結：對方的任何內容都不會再傳到你的 Hermes，你們共享的群組也會停止。再次連結需要新的邀請。"
+          }
+        }
+      }
+    },
+    "%@ then stops answering in %@, which holds it to the tools it had when it started. New rooms use these." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ antwortet dann nicht mehr in %2$@, denn dieser Raum hält ihn an die Werkzeuge, die er beim Start hatte. Neue Räume nutzen diese."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ deja entonces de responder en %2$@, que lo limita a las herramientas que tenía cuando empezó. Las salas nuevas usan estas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ cesse alors de répondre dans %2$@, qui le limite aux outils qu'il avait à son début. Les nouveaux salons utilisent ceux-ci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ lalu berhenti menjawab di %2$@, yang membatasinya pada alat yang dimilikinya saat ruang itu dimulai. Ruang baru memakai alat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ smette allora di rispondere in %2$@, che lo vincola agli strumenti che aveva al suo avvio. Le nuove stanze usano questi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのあと%1$@は%2$@で応答しなくなります。このグループは開始時のツールに固定されるためです。新しいグループではこれらが使われます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그러면 %1$@은(는) %2$@에서 더 이상 답하지 않아요. 이 방은 시작할 때의 도구로 고정되기 때문이에요. 새 방은 이 도구를 써요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ przestanie wtedy odpowiadać w pokoju %2$@, bo trzyma go on przy narzędziach, które miał na jego początku. Nowe pokoje używają tych."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ então deixa de responder em %2$@, que o limita às ferramentas que ele tinha quando começou. As salas novas usam estas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тогда %1$@ перестанет отвечать в комнате %2$@. Она ограничивает его инструментами, которые были у него на момент её начала. Новые комнаты используют эти."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bundan sonra %1$@, %2$@ odasında yanıt vermeyi bırakır. Bu oda onu başladığında sahip olduğu araçlara bağlı tutar. Yeni odalar bunları kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之后，%1$@ 将不再在 %2$@ 中回答，因为这个群聊会将它限定为开始时拥有的工具。新群聊会使用这些工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後，%1$@ 將不再在 %2$@ 中回答，因為這個群組會將它限定在開始時擁有的工具。新群組會使用這些工具。"
+          }
+        }
+      }
+    },
+    "Started, and you're in it without your agents" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gestartet – du bist ohne deine Agenten dabei"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Empezó y estás dentro sin tus agentes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Démarrée, et vous y êtes sans vos agents"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dimulai, dan kamu ada di dalamnya tanpa agenmu"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avviata, e ci sei senza i tuoi agenti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開始しました。エージェントなしで参加しています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시작됨, 에이전트 없이 참여 중"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozpoczęty, jesteś w nim bez swoich agentów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Começou, e você está nela sem seus agentes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Начата, вы в ней без своих агентов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başladı, ajanların olmadan içindesin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已开始，你未带智能体加入"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已開始，你未帶智慧體加入"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

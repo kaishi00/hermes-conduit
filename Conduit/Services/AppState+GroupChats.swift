@@ -736,6 +736,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1127,6 +1128,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1158,7 +1160,7 @@ extension AppState {
             }
             activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: state)
             activeRoomDriverStatus = driver
-            if state.members.contains(where: \.isPeer) {
+            if hasLinkedPeople(state) {
                 Task { await self.readActiveRoomPeople(epoch: epoch) }
             }
             let latest = state.latestSeq ?? 0
@@ -1674,6 +1676,8 @@ extension AppState {
         if people != activeRoomPeople { activeRoomPeople = people }
         let home = (response["home"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if home != activeRoomHomeName { activeRoomHomeName = home }
+        let justMe = RoomPeople.justMe(response)
+        if justMe != activeRoomJustMe { activeRoomJustMe = justMe }
         // How they look comes with who they are (RoomLooks.swift).
         Task { await self.readActiveRoomLooks(epoch: epoch) }
         let attribution = RoomPostAttribution(
@@ -1698,7 +1702,7 @@ extension AppState {
                   activeRoomReplay.events.contains(where: { attribution.poster(of: $0) == .you }) else { return }
             activeRoomPeopleRetries += 1
         } else {
-            guard surface.room.members.contains(where: \.isPeer) else { return }
+            guard hasLinkedPeople(surface.room) else { return }
             if attribution.names(events) {
                 guard activeRoomPeopleReadFailed, activeRoomPeopleRetries < Self.roomCopyNameReadLimit,
                       !attribution.names(activeRoomReplay.events) else { return }
@@ -1722,9 +1726,18 @@ extension AppState {
     /// Who's who in the open room, read now (Group Info, and after taking
     /// one out).
     func refreshActiveRoomPeople() async {
-        guard let surface = activeRoomSurface, surface.copy != nil || surface.room.members.contains(where: \.isPeer)
+        guard let surface = activeRoomSurface, surface.copy != nil || hasLinkedPeople(surface.room)
         else { return }
         await readActiveRoomPeople(epoch: groupRoomEpoch)
+    }
+
+    /// A room this Hermes hosts with linked people in it: other people's
+    /// agents, or a draft's people, who may all have joined with none of
+    /// theirs ("Just me"), so who's who is read from the plugin.
+    func hasLinkedPeople(_ room: GroupRoom) -> Bool {
+        if room.isLinked { return true }
+        guard let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID else { return false }
+        return drafts.list.drafts.contains { $0.id == room.roomID }
     }
 
     /// Posts `text` in the open room someone else hosts, through your
@@ -1882,6 +1895,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomCopyApprovalsReadAt = nil
         activeRoomPeopleRetries = 0

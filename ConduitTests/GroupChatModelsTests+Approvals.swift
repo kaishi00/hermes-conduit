@@ -160,6 +160,9 @@ extension GroupChatModelsTests {
         XCTAssertTrue(AppState.roomCopyReadsApprovals(
             roomMoved: false, working: false, listed: false,
             lastRead: now.addingTimeInterval(-AppState.roomCopyQuietApprovalsInterval), now: now))
+        // Group Chats on screen reads them again too: sooner while one is listed.
+        XCTAssertEqual(AppState.rosterApprovalsInterval(listed: true), .seconds(15))
+        XCTAssertEqual(AppState.rosterApprovalsInterval(listed: false), .seconds(45))
     }
 
     /// A copy tick's approvals read that fails doesn't start the quiet

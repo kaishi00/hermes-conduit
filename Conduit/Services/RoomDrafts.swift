@@ -26,6 +26,9 @@ struct RoomDraft: Identifiable, Equatable {
         let status: String
         /// The names of the agents they joined with.
         let agents: [String]
+        /// In it with none of their agents ("Just me", plugin 0.167.5+);
+        /// one who then left has status `left`.
+        var justMe = false
     }
 
     /// The room's id, which the room keeps once it starts.
@@ -204,8 +207,12 @@ enum RoomDraftText {
     /// How someone answered, or nil for a status a newer plugin adds.
     static func status(of person: RoomDraft.Person) -> String? {
         switch person.status {
+        case "joined" where person.justMe:
+            return AppLocalization.string("Joined without their bots", table: .rooms)
         case "joined":
             return AppLocalization.string("Joined with \(names(person.agents))", table: .rooms)
+        case "left":
+            return AppLocalization.string("Left", table: .rooms)
         case "waiting":
             return AppLocalization.string("Hasn't answered yet", table: .rooms)
         case "declined":
@@ -300,7 +307,9 @@ struct RoomDraftsClient {
         guard let link = object["link"] as? String, !link.isEmpty,
               let name = object["name"] as? String,
               let status = object["status"] as? String else { return nil }
-        return RoomDraft.Person(id: link, name: name, status: status, agents: names(object["agents"]))
+        var person = RoomDraft.Person(id: link, name: name, status: status, agents: names(object["agents"]))
+        person.justMe = object["just_me"] as? Bool == true
+        return person
     }
 
     /// The agents' display names.
@@ -421,7 +430,12 @@ extension AppState {
                 people = read.links.filter { $0.status == "linked" }
             }
             guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return }
+            let openRoom = activeRoomSurface.flatMap { $0.copy == nil ? $0.room : nil }
+            let hadPeople = openRoom.map { hasLinkedPeople($0) } ?? true
             linkedRoomDrafts = LinkedRoomDrafts(dashboardID: client.dashboardID, list: list, people: people ?? [])
+            // The open room turned out to have linked people (guests who all
+            // joined Just me): read who's in it, as opening it would have.
+            if !hadPeople, let openRoom, hasLinkedPeople(openRoom) { await refreshActiveRoomPeople() }
         } catch {
             // The rows stay as they were: a stale row is safer than none.
         }

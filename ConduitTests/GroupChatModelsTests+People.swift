@@ -197,6 +197,24 @@ extension GroupChatModelsTests {
         let paused = RoomLink(id: "lk4", name: "Venti", status: "paused", words: Self.peopleWords, createdAt: nil)
         XCTAssertNil(PeopleSettingsText.status(of: paused))
         XCTAssertEqual(PeopleSettingsText.words(Self.peopleWords), "amber · birch · cedar · delta")
+
+        // Plugins that differ say whose to update; matching ones, older plugins and waiting Links say nothing.
+        let parsed = RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords,
+                                           "plugin": "0.167.4", "behind": "theirs"])
+        XCTAssertEqual(parsed?.plugin, "0.167.4")
+        XCTAssertEqual(parsed.flatMap(PeopleSettingsText.update(for:)), AppLocalization.string(
+            "\("Mona")'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it.",
+            table: .rooms))
+        var newer = mona
+        newer.behind = "yours"
+        XCTAssertEqual(PeopleSettingsText.update(for: newer), AppLocalization.string(
+            "\("Mona")'s Conduit plugin is newer than yours, so some of what they share isn't reaching you. Update your Conduit plugin.",
+            table: .rooms))
+        XCTAssertNil(PeopleSettingsText.update(for: mona))
+        var waitingBehind = waiting
+        waitingBehind.behind = "theirs"
+        XCTAssertNil(PeopleSettingsText.update(for: waitingBehind))
+        XCTAssertNil(RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords])?.behind)
     }
 
     // MARK: - Host setup
@@ -296,8 +314,15 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomSetupRooms.holding(profile: "research", rooms: rooms, copies: copies), ["Book club", "Zoo trip"])
         XCTAssertEqual(RoomSetupRooms.holding(profile: "writer", rooms: rooms, copies: copies), [])
         XCTAssertNil(RoomSetupRooms.holding(profile: "research", rooms: nil, copies: copies), "not read yet")
+        var takenOut = copies[0]
+        takenOut.out = ["m-kuro": .removed]
+        XCTAssertEqual(RoomSetupRooms.holding(profile: "research", rooms: rooms, copies: [takenOut]), ["Zoo trip"],
+                       "taken out of a copy that goes on, it doesn't answer there already")
         XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: ["Book club"]),
-                       AppLocalization.string("\("Kuro") then stops answering in \("Book club"), which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
+                       AppLocalization.string("\("Kuro") then stops answering in \("Book club"), which holds it to the tools it had when it started. New rooms use these.", table: .rooms))
+        let both = ["Book club", "Zoo trip"].formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: ["Book club", "Zoo trip"]),
+                       AppLocalization.string("\("Kuro") then stops answering in \(both), which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
         XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: nil),
                        AppLocalization.string("\("Kuro") then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
     }
@@ -813,6 +838,36 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testBlockListsThePeopleInTheRoomYoureLinkedWith() throws {
+        // A copy: its host. A room hosted here: each person it invited, once, by name.
+        let copy = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-1", link: "lk-mona", from: "Mona")))
+        XCTAssertEqual(RoomBlock.targets(copy: copy, draft: nil), [RoomBlockTarget(id: "lk-mona", name: "Mona")])
+        let draft = RoomDraft(
+            id: "conduit-2", name: "Zoo trip", status: "started", reason: nil, createdAt: nil, expiresAt: nil,
+            agents: ["Furina"],
+            people: [RoomDraft.Person(id: "lk-zed", name: "Zed", status: "joined", agents: ["Scout"]),
+                     RoomDraft.Person(id: "lk-ann", name: "Ann", status: "declined", agents: [])]
+        )
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: draft).map(\.name), ["Ann", "Zed"])
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: nil), [])
+        XCTAssertEqual(RoomBlock.title("Mona"), AppLocalization.string("Block \("Mona")?", table: .rooms))
+    }
+
+    @MainActor
+    func testABlockListedOnAnotherDashboardIsRefused() async {
+        let suite = "GroupChatModelsTests.People.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let target = RoomBlockTarget(id: "lk-mona", name: "Mona", dashboardID: UUID())
+        do {
+            _ = try await appState.block(target)
+            XCTFail("a Block from another dashboard went through")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+    }
+
     func testWhatTheyCanAskSaysWhoAnswersAndThatQuestionsWaitForYou() {
         let asking = LinkAskRules(freeOn: "ask", questions: "ask", profile: "default")
         let caption = LinkAskText.caption(asking, name: "Laifu", profileName: "Furina")
