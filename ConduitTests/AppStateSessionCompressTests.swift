@@ -2048,7 +2048,14 @@ final class AppStateSessionCompressTests: XCTestCase {
     func testASlashPromptRefusedDuringARewindIsNamedAfterTheRewindsReopen() async throws {
         weak var appState: AppState?
         var operations = ChatResumeLifecycleOperations(
-            openSession: { _, _, _ in throw URLError(.networkConnectionLost) },
+            // The reopen succeeds and replaces the transcript.
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "composer-origin",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
             refreshContext: { _, _ in }
         )
         operations.rewindSnapshot = { _, _ in Self.rewindTurns }
