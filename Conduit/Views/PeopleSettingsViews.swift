@@ -488,7 +488,9 @@ struct PeopleSettingsPage: View {
             defer { if changingID == link.id { changingID = nil } }
             do {
                 // False when it was already gone: the list says the same.
-                _ = try await appState.roomLinksClient.unlink(link.id)
+                // Through AppState, so a roster read under way can't bring
+                // them back (issue 2374).
+                _ = try await appState.unlinkLinkedPerson(link.id)
                 guard key == self.key else { return }
                 Haptics.success()
             } catch {

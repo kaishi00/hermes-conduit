@@ -91,6 +91,34 @@ extension GatewayRestartTests {
         XCTAssertEqual(outcome, .unsupported)
     }
 
+    func testNoOtherRestartStartsUnderARunningHermesUpdate() async throws {
+        let suite = "HermesUpdateRestartFamily.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.dashboardTicketBridge = DashboardTicketBridge(baseURL: "https://example.com")
+        XCTAssertTrue(appState.canRestartGateway)
+        XCTAssertNil(appState.notifierPluginUpdateBlocker)
+
+        appState.hermesUpdate = .checking
+        XCTAssertTrue(appState.canRestartGateway, "a check restarts nothing")
+
+        appState.hermesUpdateDashboardID = appState.activeDashboardID
+        appState.hermesUpdate = .updating(.updating, detail: "Pulling…")
+        XCTAssertFalse(appState.canRestartGateway, "Restart Gateway waits for the update's own restart")
+        XCTAssertEqual(appState.notifierPluginUpdateBlocker, "Wait for the Hermes update to finish.")
+        XCTAssertFalse(appState.canUpdateNotifierPlugin)
+        await appState.restartGatewayNow()
+        XCTAssertEqual(appState.gatewayRestartNowFailure?.message, "Wait for the Hermes update to finish.",
+                       "Restart Now says why instead of restarting mid-install")
+
+        appState.hermesUpdate = .idle
+        XCTAssertTrue(appState.canRestartGateway)
+        _ = appState.notifierPluginUpdate.start(on: appState.activeDashboardID)
+        XCTAssertFalse(appState.canRestartGateway, "the plugin update restarts the gateway itself")
+        XCTAssertFalse(appState.canUpdateHermes, "and Hermes isn't updated under it")
+    }
+
     // MARK: - Skill Hub update check
 
     func testHubSkillUpdateRowsKeepTheirName() {
@@ -148,7 +176,7 @@ extension GatewayRestartTests {
     func testDockActionsUseHermesNames() {
         XCTAssertEqual(SessionControlAction.loopStop.name, "loop.stop")
         XCTAssertEqual(SessionControlAction.heartbeatResume.name, "heartbeat.resume")
-        XCTAssertEqual(SessionControlAction.subgoalRemove(index: 2).args?["index"] as? Int, 2)
+        XCTAssertEqual(SessionControlAction.subgoalRemove(index: 2, criterion: "docs updated").args?["index"] as? Int, 2)
         XCTAssertTrue(SessionControlAction.goalClear.ends)
         XCTAssertFalse(SessionControlAction.goalPause.ends)
     }

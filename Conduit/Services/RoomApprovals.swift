@@ -226,8 +226,13 @@ extension AppState {
     /// invites' is.
     /// True when the plugin answered.
     @discardableResult
-    func refreshLinkedRoomApprovals() async -> Bool {
-        await readLinkedRoomApprovals() != nil
+    func refreshLinkedRoomApprovals(since: Date? = nil) async -> Bool {
+        guard canAnswerRoomApprovals, isConnected else { return false }
+        // One at a time (issue 2359): a burst of pushes, the 15 s follow
+        // and Group Chats' reads share it.
+        return await linkedRoomApprovalsReader.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
+            await self?.readLinkedRoomApprovals() != nil
+        }
     }
 
     /// The approvals read now, kept for Group Chats; nil when the read

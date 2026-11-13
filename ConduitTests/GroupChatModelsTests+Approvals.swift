@@ -379,6 +379,88 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the blocked host's grant stays gone")
     }
 
+    /// One read of a Linked Rooms list at a time (issue 2359): a caller
+    /// shares a running read that started after the time it names (the
+    /// return to the app's departure), callers that need a read from after
+    /// their call share one queued behind it, and another key's read starts
+    /// at once.
+    @MainActor
+    func testALinkedRoomsListReadIsSharedOnlyWhenItStartedLateEnough() async throws {
+        let read = LinkedRoomListRead()
+        var calls = 0
+        var held: [CheckedContinuation<Void, Never>] = []
+        let body: @MainActor () async -> Bool = {
+            calls += 1
+            await withCheckedContinuation { held.append($0) }
+            return true
+        }
+        func settle(until count: Int) async {
+            for _ in 0..<1000 where held.count < count { await Task.yield() }
+            for _ in 0..<50 { await Task.yield() }
+        }
+        func release() {
+            held.forEach { $0.resume() }
+            held.removeAll()
+        }
+        let left = Date().addingTimeInterval(-60)
+        let first = Task { @MainActor in await read.read(key: 1, body) }
+        await settle(until: 1)
+        let afterLeaving = Task { @MainActor in await read.read(key: 1, since: left, body) }
+        let push = Task { @MainActor in await read.read(key: 1, body) }
+        let secondPush = Task { @MainActor in await read.read(key: 1, body) }
+        await settle(until: 1)
+        XCTAssertEqual(calls, 1, "the return joins the first read; the pushes wait for one after it")
+
+        release()
+        await settle(until: 1)
+        XCTAssertEqual(calls, 2, "the two pushes share one read, after the first")
+        release()
+        for task in [first, afterLeaving, push, secondPush] {
+            let answered = await task.value
+            XCTAssertTrue(answered)
+        }
+
+        // Another key (a Block, a sign-in) doesn't wait on the read before it.
+        let before = Task { @MainActor in await read.read(key: 1, body) }
+        await settle(until: 1)
+        let otherKey = Task { @MainActor in await read.read(key: 2, body) }
+        await settle(until: 2)
+        XCTAssertEqual(calls, 4)
+        release()
+        _ = await before.value
+        _ = await otherKey.value
+    }
+
+    /// Settings > Multiplayer's Unlink fences the roster reads the way
+    /// Block does: a read from before it is dropped (issue 2374).
+    @MainActor
+    func testARosterReadASettingsUnlinkOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = ApprovalsRoutes(approvals: [approvalsApproval()])
+        let appState = approvalsAppState(routes)
+        approvalsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(approvalsPluginReport)
+        await approvalsWait("the first read", until: { appState.linkedRoomApprovalRows.count == 1 })
+
+        routes.holdsNextRead = true
+        let before = Task { @MainActor in await appState.refreshLinkedRoomApprovals() }
+        await approvalsWait("the held read", until: { routes.holding })
+        routes.approvals = []
+        let reads = routes.approvalsReads
+        let removed = try await appState.unlinkLinkedPerson("lk-mona")
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertEqual(routes.approvalsReads, reads + 1, "Unlink reads the approvals again itself")
+
+        routes.answerHeldRead()
+        let committed = await before.value
+        XCTAssertFalse(committed, "the read from before the Unlink is dropped")
+        XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the unlinked host's grant stays gone")
+    }
+
     /// An "Approval needed" notification opens a listed approval's card
     /// when its decision's session key or its chat is the approval's
     /// session; anything else opens its chat as before.

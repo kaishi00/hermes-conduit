@@ -435,8 +435,8 @@ extension AppState {
     /// Reads the invites. A read that fails keeps what was read last, and
     /// one that a sign-out or another dashboard overtook is dropped, as the
     /// drafts' is.
-    func refreshLinkedRoomInvites() async {
-        _ = await readLinkedRoomInvites()
+    func refreshLinkedRoomInvites(since: Date? = nil) async {
+        _ = await readLinkedRoomInvites(since: since)
     }
 
     /// Every 10 s for 3 minutes after a Link is made, an invite joined or
@@ -511,44 +511,37 @@ extension AppState {
     /// A return within `linkedRoomsForegroundAwayMinimum` (Control
     /// Center pulled down, a notification glanced at) reads nothing: the
     /// pushes and Group Chats' own reads cover so short a time (issue 2359).
-    /// One read runs at a time; a return while it runs joins it.
+    /// A read of a list already running joins it only if it started after
+    /// the app left: one from before could hang past the time away and
+    /// answer with nothing new.
     func refreshLinkedRoomsOnForeground() async {
         if let away = lastLeftForegroundAt, Date().timeIntervalSince(away) < Self.linkedRoomsForegroundAwayMinimum {
             return
         }
-        if let running = linkedRoomsForegroundRead {
-            await running.value
-            return
-        }
-        let read = Task { [weak self] in
-            guard let self else { return }
-            // An approval that came up while away shows without waiting for
-            // Group Chats' next tick (it skips ticks while the app is inactive).
-            await self.refreshLinkedRoomReads(readingPeople: false, approvals: true)
-            self.followLinkedRoomsOnTheirWay()
-        }
-        linkedRoomsForegroundRead = read
-        await read.value
-        linkedRoomsForegroundRead = nil
+        // An approval that came up while away shows without waiting for
+        // Group Chats' next tick (it skips ticks while the app is inactive).
+        await refreshLinkedRoomReads(readingPeople: false, approvals: true, since: lastLeftForegroundAt ?? .distantPast)
+        followLinkedRoomsOnTheirWay()
     }
 
     /// The drafts, invites and (with `approvals`) approvals read together,
     /// not one after another (issue 2359); the rooms after the drafts, when
-    /// one started that isn't listed yet.
-    func refreshLinkedRoomReads(readingPeople: Bool, approvals: Bool) async {
-        async let drafts: Void = refreshDraftsThenStartedRooms(readingPeople: readingPeople)
-        async let invites: Void = refreshLinkedRoomInvites()
-        async let approved: Void = refreshLinkedRoomApprovalsIfAnswerable(approvals)
+    /// one started that isn't listed yet. `since`: a read of a list already
+    /// running that started then or later is shared (LinkedRoomListRead).
+    func refreshLinkedRoomReads(readingPeople: Bool, approvals: Bool, since: Date? = nil) async {
+        async let drafts: Void = refreshDraftsThenStartedRooms(readingPeople: readingPeople, since: since)
+        async let invites: Void = refreshLinkedRoomInvites(since: since)
+        async let approved: Void = refreshLinkedRoomApprovalsIfAnswerable(approvals, since: since)
         _ = await (drafts, invites, approved)
     }
 
-    private func refreshLinkedRoomApprovalsIfAnswerable(_ asked: Bool) async {
+    private func refreshLinkedRoomApprovalsIfAnswerable(_ asked: Bool, since: Date?) async {
         guard asked, groupChatPhase == .available, canAnswerRoomApprovals else { return }
-        _ = await refreshLinkedRoomApprovals()
+        _ = await refreshLinkedRoomApprovals(since: since)
     }
 
-    private func refreshDraftsThenStartedRooms(readingPeople: Bool) async {
-        await refreshLinkedRoomDrafts(readingPeople: readingPeople)
+    private func refreshDraftsThenStartedRooms(readingPeople: Bool, since: Date?) async {
+        await refreshLinkedRoomDrafts(readingPeople: readingPeople, since: since)
         await refreshGroupRoomsForStartedDrafts()
     }
 
@@ -577,7 +570,21 @@ extension AppState {
     nonisolated static let linkedRoomPendingFollowInterval: Duration = .seconds(30)
 
     /// Whether the invites were read now and kept.
-    func readLinkedRoomInvites() async -> Bool {
+    func readLinkedRoomInvites(since: Date? = nil) async -> Bool {
+        guard canInviteLinkedPeople, isConnected else { return false }
+        return await linkedRoomInvitesReader.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
+            await self?.readLinkedRoomInvitesNow() ?? false
+        }
+    }
+
+    /// What a Linked Rooms list read is shared under: one issued under
+    /// another roster generation, sign-in or dashboard isn't joined.
+    func linkedRoomListReadKey(_ extra: AnyHashable? = nil) -> AnyHashable {
+        LinkedRoomListReadKey(epoch: groupRoomEpoch, generation: linkedRosterGeneration,
+                              dashboardID: activeDashboardID, extra: extra)
+    }
+
+    private func readLinkedRoomInvitesNow() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
         let epoch = groupRoomEpoch
         let generation = linkedRosterGeneration
@@ -716,4 +723,63 @@ extension AppState {
         presentedRoomInvite = invite
         return .opened
     }
+}
+
+/// One read of a Linked Rooms list at a time (issue 2359). A caller that
+/// comes while one runs shares it when it started late enough for that
+/// caller (`since`: by default the call itself, so a push or a change
+/// made here is never answered by a read from before it); otherwise it
+/// shares the one read queued to start after it, so a burst of pushes is
+/// two reads, not one each. A read issued under another `key` (the roster
+/// generation, the sign-in, the dashboard) is left to its own fence, and a
+/// new one starts at once.
+@MainActor
+final class LinkedRoomListRead {
+    private struct Run {
+        let id: UUID
+        let key: AnyHashable
+        let startedAt: Date
+        let task: Task<Bool, Never>
+    }
+
+    private var running: Run?
+    private var queued: (id: UUID, key: AnyHashable, task: Task<Bool, Never>)?
+
+    func read(key: AnyHashable, since: Date? = nil, _ body: @escaping @MainActor () async -> Bool) async -> Bool {
+        let since = since ?? Date()
+        guard let running, running.key == key else { return await start(key: key, body) }
+        if running.startedAt > since { return await running.task.value }
+        if let queued, queued.key == key { return await queued.task.value }
+        let prior = running
+        let id = UUID()
+        let task = Task { @MainActor [weak self] () -> Bool in
+            _ = await prior.task.value
+            guard let self else { return false }
+            if self.queued?.id == id { self.queued = nil }
+            // A read started meanwhile (another key's, after a Block or a
+            // sign-in) began after every caller here asked: it's theirs, and
+            // this one never takes its place. The prior read itself may not
+            // have cleared its slot yet: that one is never shared here.
+            if let newer = self.running, newer.id != prior.id { return await newer.task.value }
+            return await self.start(key: key, body)
+        }
+        queued = (id, key, task)
+        return await task.value
+    }
+
+    private func start(key: AnyHashable, _ body: @escaping @MainActor () async -> Bool) async -> Bool {
+        let id = UUID()
+        let task = Task { @MainActor in await body() }
+        running = Run(id: id, key: key, startedAt: Date(), task: task)
+        let result = await task.value
+        if running?.id == id { running = nil }
+        return result
+    }
+}
+
+struct LinkedRoomListReadKey: Hashable {
+    let epoch: Int
+    let generation: Int
+    let dashboardID: UUID?
+    let extra: AnyHashable?
 }

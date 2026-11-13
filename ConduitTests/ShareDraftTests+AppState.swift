@@ -170,8 +170,10 @@ extension ShareDraftTests {
     func testAFailedSendAfterTheUserMovedOnGoesBackToItsOwnChat() async throws {
         let appState = try makeAppState(active: home, dashboards: [home])
         var keyAtSend: ComposerDraftKey?
+        var titleAtSend = ""
         appState.sharedDraftSendOverride = { _, _ in
             keyAtSend = appState.composerDraftKeyOnScreen
+            titleAtSend = appState.displayedChatTitle
             // The user opens another chat while the share uploads.
             appState.activeSessionId = "elsewhere"
             return false
@@ -186,6 +188,14 @@ extension ShareDraftTests {
         XCTAssertFalse(appState.composerDraftKeysAreSameChat(request.key, appState.composerDraftKeyOnScreen))
         XCTAssertNotEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send what you shared, so it's in the composer. Send it when you're ready.", table: .chat),
                           "the chat on screen isn't told about another chat's share")
+        let named = titleAtSend.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? AppLocalization.string("New chat") : titleAtSend
+        XCTAssertEqual(appState.composerNotice,
+                       AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat),
+                       "it says which chat holds the draft")
+        // The test's own catalog read can fail (not connected): only the
+        // share's warnings count here.
+        let shareWarnings = [AppLocalization.string("Conduit couldn't open the chat you picked, so the shared draft is in this one."), "Could not prepare"]
+        XCTAssertFalse(shareWarnings.contains { appState.errorMessage?.contains($0) == true }, "no file warning on the other chat")
         appState.consumeComposerRestoreRequest(request.id)
         request.draft.attachments.compactMap { URL(string: $0.uri) }.forEach { try? FileManager.default.removeItem(at: $0) }
     }

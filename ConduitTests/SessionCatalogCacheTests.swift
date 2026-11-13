@@ -332,6 +332,25 @@ final class SessionCatalogCacheTests: XCTestCase {
         )
     }
 
+    /// Deleting or archiving a chat drops the kept call archives that list
+    /// it and keeps the rest, other profiles' included (issue 2375).
+    @MainActor
+    func testDeletingAChatDropsOnlyTheKeptCallArchivesThatListIt() throws {
+        let suite = "ArchivedCallsDelete.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.archivedCallsReads = [
+            "default": ArchivedCallsRead(calls: [session(id: "call-1", alternateIds: ["stored-call-1"], title: "Call")],
+                                         liveTotal: 4, tags: 1, readAt: Date()),
+            "work": ArchivedCallsRead(calls: [session(id: "call-2", title: "Other call")], liveTotal: 2, tags: 1, readAt: Date())
+        ]
+
+        appState.removeSessionFromLiveCatalog(session(id: "stored-call-1", title: "Call"))
+
+        XCTAssertEqual(Set(appState.archivedCallsReads.keys), ["work"])
+    }
+
     /// The archived calls read for a catalog read serve the next ones
     /// while fresh and no call was tagged since (issue 2357); the live
     /// list's total is compared once it's read.
