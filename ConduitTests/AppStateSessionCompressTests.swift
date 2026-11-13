@@ -2423,7 +2423,7 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
-        var appState: AppState?
+        weak var appState: AppState?
         var clearsMidAction = false
         let loop = SessionControlSnapshot(loop: .init(prompt: "check CI", status: "active", intervalSeconds: 300, ticksFired: 1, maxTicks: 0, until: "", nextDueAt: 0, pausedReason: nil, deferredByGoal: false), revision: "r2")
         var eventMidRead = false
@@ -2456,8 +2456,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertNil(harness.appState.sessionControl.working)
     }
 
+    func testADockActionWithoutASnapshotStaysBusyUntilTheDockReadsHermes() async throws {
+        weak var appState: AppState?
+        var busyDuringRead: Bool?
+        var reads = 0
+        var paused = Self.goalSnapshot
+        paused.goal?.status = "paused"
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                reads += 1
+                if reads > 1 { busyDuringRead = appState?.sessionControl.working != nil }
+                return reads > 1 ? paused : Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, _, _ in (nil, "Paused.") }
+        }
+        appState = harness.appState
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        await harness.appState.runSessionControl(.goalPause)
+
+        XCTAssertEqual(busyDuringRead, true, "the dock takes no second action on the old state while it reads the new one")
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true, "the read's state is what shows")
+        XCTAssertNil(harness.appState.sessionControl.working)
+        XCTAssertEqual(harness.appState.sessionControl.notice, "Paused.")
+    }
+
     func testWorkHereThatOutlivesAProfileSwitchIsNeitherSuccessNorFailure() async throws {
-        var appState: AppState?
+        weak var appState: AppState?
         let harness = controlHarness { operations in
             operations.moveSessionWorkspace = { _, _, folder in
                 appState?.activeProfile = "coder"

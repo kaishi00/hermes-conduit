@@ -3660,7 +3660,7 @@ such state
 - Verbs and event: `Conduit/Services/HermesClient.swift` (sessionControl, runSessionControl, StreamEvent.sessionControl), `Conduit/Services/StreamEventParser.swift` (session.control.update)
 - Actions and reads: `Conduit/Services/AppState+SessionControl.swift`, `Conduit/Services/AppState+Reconciliation.swift` (the read after a resume), `Conduit/Services/AppState+SlashCommands.swift` (sessionControlCommands)
 - Dock: `Conduit/Views/Components/SessionControlDock.swift`, `Conduit/Views/ChatView.swift`
-- Tests: `ConduitTests/AppStateSessionCompressTests.swift` (testTheDockShowsTheOpenChatsControlsAndNotAnotherChats, testADockActionSendsHermesItsNameAndShowsWhatHermesAnswers, testSettingAGoalReadsTheDockAfterHermesRunsIt), `ConduitTests/GatewayRestartTests+HermesUpdate.swift` (testSessionControlUpdateCarriesTheWholeSnapshot, testFinishedLoopsAndClearedGoalsLeaveTheDock, testDockActionsUseHermesNames)
+- Tests: `ConduitTests/AppStateSessionCompressTests.swift` (testTheDockShowsTheOpenChatsControlsAndNotAnotherChats, testADockActionSendsHermesItsNameAndShowsWhatHermesAnswers, testADockAnswerOrReadThatWasOvertakenIsDropped, testADockActionWithoutASnapshotStaysBusyUntilTheDockReadsHermes, testSettingAGoalReadsTheDockAfterHermesRunsIt), `ConduitTests/GatewayRestartTests+HermesUpdate.swift` (testSessionControlUpdateCarriesTheWholeSnapshot, testFinishedLoopsAndClearedGoalsLeaveTheDock, testDockActionsUseHermesNames)
 
 **Rulings**
 - The dock shows only the open chat's controls; an answer or event for another chat is dropped, and a cleared goal or a finished loop or heartbeat leaves it (2026-11-13, #2364).
@@ -3670,7 +3670,7 @@ such state
 **Open gaps**
 - A Hermes without `session.control.read` shows no dock; the commands still run.
 
-**Checked:** 2026-11-13, #2364 (new: the dock, its actions, the event and the reads after a resume and after the commands).
+**Checked:** 2026-11-13, #2366 (tests: an overtaken answer or read is dropped; an action without a snapshot stays busy through its read); 2026-11-13, #2364 (new: the dock, its actions, the event and the reads after a resume and after the commands).
 
 ## Composer at rest and expanded
 
