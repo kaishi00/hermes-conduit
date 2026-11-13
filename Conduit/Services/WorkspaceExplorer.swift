@@ -169,14 +169,21 @@ final class WorkspaceExplorer: ObservableObject {
     func refresh() async {
         guard let scope else { return }
         askPluginIfUnanswered()
-        let folders = [scope.root] + expanded.sorted()
+        var folders = [scope.root] + expanded.sorted()
         // Every open folder is read at once, not one after another (issue
-        // 2355), as `reveal` reads its folders.
+        // 2355), as `reveal` reads its folders. While the plugin was off,
+        // the root goes first: its answer says whether the plugin is back,
+        // and so which listing the other folders read.
+        var first: Set<String> = []
+        if pluginOff != nil {
+            folders.removeFirst()
+            if await load(scope.root) { first.insert(scope.root) }
+        }
         let listed = await withTaskGroup(of: (String, Bool).self) { group -> Set<String> in
             for folder in folders {
                 group.addTask { (folder, await self.load(folder)) }
             }
-            var listed: Set<String> = []
+            var listed = first
             for await (folder, read) in group where read {
                 listed.insert(folder)
             }
