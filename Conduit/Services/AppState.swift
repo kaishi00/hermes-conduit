@@ -592,14 +592,14 @@ final class AppState: ObservableObject {
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published var isOpeningNotificationSession = false
     @Published var isBranchingChat = false
-    /// An Edit and resend, /undo or /retry reading the chat's turns and
-    /// taking them back. Another rewind is refused and the composer and
-    /// sends wait meanwhile: they would change the history its count was
-    /// read from, and `hermes dashboard`'s `/undo N` has no fence to refuse
-    /// a stale count.
+    /// An Edit and resend, /undo or /retry reading the chat's turns, taking
+    /// them back and reopening the chat. Another rewind is refused and the
+    /// composer and sends wait meanwhile: they would change the history its
+    /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
+    /// refuse a stale count), or land in the transcript the reopen replaces.
     @Published var isRewindingTurns = false
-    /// A slash command's prompt refused while a rewind ran: the rewind
-    /// says so once it is done, after its reopen has replaced the
+    /// A slash command's prompt or prefill refused while a rewind ran: the
+    /// rewind says so once it is done, after its reopen has replaced the
     /// transcript a note added sooner would be in.
     var slashPromptRefusedDuringRewind = false
     /// Runtime ids of conversations with a dedicated `session.compress` RPC

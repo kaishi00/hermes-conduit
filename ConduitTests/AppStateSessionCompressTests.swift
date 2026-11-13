@@ -2080,6 +2080,66 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
     }
 
+    /// A rewind holds the chat through its reopen (issue 2381): a second
+    /// rewind can't start and reopen over the first one's notes, and a
+    /// prefill refused meanwhile is named once, after the reopen.
+    func testASecondRewindWaitsForTheFirstsReopen() async throws {
+        var rewinds = 0
+        var reopens = 0
+        var releaseReopen: CheckedContinuation<Void, Never>?
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                reopens += 1
+                if reopens == 1 { await withCheckedContinuation { releaseReopen = $0 } }
+                return SessionResumeResult(
+                    sessionId: "composer-origin",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            rewinds += 1
+            return SessionRewindReceipt(rewoundCount: 1, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        let appState = harness.appState
+
+        let first = Task { @MainActor in await appState.submitComposer(text: "/undo") }
+        for _ in 0..<500 where releaseReopen == nil { await Task.yield() }
+        let release = try XCTUnwrap(releaseReopen, "the first rewind reached its reopen")
+
+        XCTAssertTrue(appState.isRewindingTurns, "the reopen is still the rewind's")
+        XCTAssertFalse(appState.composerIsEnabled)
+        _ = await appState.submitComposer(text: "/undo")
+        XCTAssertEqual(rewinds, 1, "no second rewind starts under the first one's reopen")
+        let client = try XCTUnwrap(appState.client)
+        await appState.handleSlashResult(
+            .object(["type": .string("prefill"), "message": .string("a command's draft")]),
+            depth: 0,
+            aliasArgument: "",
+            client: client,
+            sessionID: origin.id,
+            context: appState.composerSubmissionContext()
+        )
+        XCTAssertTrue(appState.slashPromptRefusedDuringRewind, "a prefill now would be replaced by the rewind's words")
+
+        release.resume()
+        _ = await first.value
+
+        XCTAssertFalse(appState.isRewindingTurns)
+        XCTAssertEqual(appState.composerPrefillText, "latest ask", "the composer holds the words taken back")
+        let refusal = AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        XCTAssertEqual(appState.messages.filter { $0.content == refusal }.count, 1, "named once, after the reopen")
+        XCTAssertEqual(appState.messages.last?.content, refusal)
+    }
+
     func testARefusedSlashPromptsNoteStaysOutOfAChatOpenedDuringTheRewind() async throws {
         weak var appState: AppState?
         var operations = ChatResumeLifecycleOperations(
