@@ -166,11 +166,11 @@ struct PeopleSettingsPage: View {
 
     private var shown: Loaded? { loaded?.key == key ? loaded : nil }
 
-    /// While a Link waits for the other side's Hermes, the page reads the
-    /// list again now and then. Sorted, so the same Links in another order
-    /// don't start the wait over.
+    /// While a Link waits for the other side's Hermes, to confirm it or to
+    /// mark it as your own too, the page reads the list again now and then.
+    /// Sorted, so the same Links in another order don't start the wait over.
     private var waitingIDs: [String] {
-        shown?.list.links.filter { $0.status == "waiting" }.map(\.id).sorted() ?? []
+        shown?.list.links.filter { $0.status == "waiting" || ($0.own && !$0.ownLink) }.map(\.id).sorted() ?? []
     }
 
     var body: some View {
