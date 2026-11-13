@@ -379,6 +379,36 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the blocked host's grant stays gone")
     }
 
+    /// Settings > Multiplayer's Unlink fences the roster reads the way
+    /// Block does: a read from before it is dropped (issue 2374).
+    @MainActor
+    func testARosterReadASettingsUnlinkOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = ApprovalsRoutes(approvals: [approvalsApproval()])
+        let appState = approvalsAppState(routes)
+        approvalsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(approvalsPluginReport)
+        await approvalsWait("the first read", until: { appState.linkedRoomApprovalRows.count == 1 })
+
+        routes.holdsNextRead = true
+        let before = Task { @MainActor in await appState.refreshLinkedRoomApprovals() }
+        await approvalsWait("the held read", until: { routes.holding })
+        routes.approvals = []
+        let reads = routes.approvalsReads
+        let removed = try await appState.unlinkLinkedPerson("lk-mona")
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertEqual(routes.approvalsReads, reads + 1, "Unlink reads the approvals again itself")
+
+        routes.answerHeldRead()
+        let committed = await before.value
+        XCTAssertFalse(committed, "the read from before the Unlink is dropped")
+        XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the unlinked host's grant stays gone")
+    }
+
     /// An "Approval needed" notification opens a listed approval's card
     /// when its decision's session key or its chat is the approval's
     /// session; anything else opens its chat as before.
