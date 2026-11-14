@@ -446,11 +446,11 @@ extension AppState {
             // the turn may still be live, so the marker survives them. A
             // marker left over from another session never survives.
             if turnState == .idle || turnState == .unsupportedGateway {
-                locallyOwnedInFlightTurn = nil
-            } else if let marker = locallyOwnedInFlightTurn,
+                shownChat.locallyOwnedInFlightTurn = nil
+            } else if let marker = shownChat.locallyOwnedInFlightTurn,
                       let active = activeSessionId,
                       !marker.sessionIDs.contains(active) {
-                locallyOwnedInFlightTurn = nil
+                shownChat.locallyOwnedInFlightTurn = nil
             }
             foregroundFreshnessCheckArmed = true
             // A reply already reading aloud keeps playing in the background

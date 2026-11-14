@@ -629,8 +629,13 @@ final class AppState: ObservableObject {
     /// every authoritative terminal signal (`compacted` edges and terminal
     /// `session.compress` results).
     var serverCompactionTerminalGenerations: [String: Int] = [:]
-    @Published var turnState: TurnState = .idle {
-        didSet {
+    /// The chat on screen's turn (`ChatState.turnState`). What follows a
+    /// change outside the chat stays here.
+    var turnState: TurnState {
+        get { shownChat.turnState }
+        set {
+            let oldValue = shownChat.turnState
+            shownChat.turnState = newValue
             guard oldValue != turnState else { return }
             // A message waiting for this chat goes once it takes one.
             schedulePendingComposerSendCheck()
@@ -641,20 +646,12 @@ final class AppState: ObservableObject {
             updateChatOnScreen()
         }
     }
-    /// Whether `turnState` may have missed server-side turn edges. Set at
-    /// lifecycle boundaries where the socket can die or the gateway can change
-    /// state unobserved (scene dips, reconnects, ambiguous submissions);
-    /// cleared only when an authoritative source (the `session.active_list`
-    /// probe, a resume snapshot, or a typed prompt outcome) re-confirms the
-    /// state. A stale idle state must not route the next input as a new-turn
-    /// `prompt.submit` — Hermes would apply its busy policy to it and the
-    /// message would silently join a turn the user never saw start.
-    /// Publishes its flips: the chat list's Working marker reads it.
-    var turnStateIsStale = false {
-        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    /// Whether `turnState` may have missed server-side turn edges
+    /// (`ChatState.turnStateIsStale`).
+    var turnStateIsStale: Bool {
+        get { shownChat.turnStateIsStale }
+        set { shownChat.turnStateIsStale = newValue }
     }
-
-    var turnLifecycleEvidence = TurnLifecycleEvidence(revision: 0, running: false)
     /// Session identities with a locally-observed running turn at the last
     /// scene transition (empty = no continuity evidence). A foreground probe
     /// whose working/waiting row matches one of these ids continues a turn
@@ -672,21 +669,12 @@ final class AppState: ObservableObject {
     /// events keep flowing — so they observe but do not arm the freshness
     /// check.
     var foregroundFreshnessCheckArmed = false
-    /// Whether the visible persisted transcript may be MISSING rows —
-    /// conceptually disjoint from `turnStateIsStale`, which answers "do I
-    /// know whether Hermes is currently busy?". Set when a bounded
-    /// foreground freshness read failed transiently on a real background
-    /// return, and when a resume Hermes refused as too long for the whole
-    /// transcript kept the rows on screen while its history read failed for
-    /// now (issue 2025); a liveness answer (the registry probe) can never
-    /// clear it.
-    /// Cleared only when an authoritative transcript source proves
-    /// convergence: an unchanged bounded verdict, an advancement merge, or a
-    /// resume/reconcile hydration (`applyChatResume`).
-    var transcriptFreshnessIsStale = false
-    var pendingLocalOrderingDebt: PendingLocalOrderingDebt?
-    var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
-    var persistedOrderingFrontier = PersistedOrderingFrontier()
+    /// Whether the visible persisted transcript may be MISSING rows
+    /// (`ChatState.transcriptFreshnessIsStale`).
+    var transcriptFreshnessIsStale: Bool {
+        get { shownChat.transcriptFreshnessIsStale }
+        set { shownChat.transcriptFreshnessIsStale = newValue }
+    }
     @Published var busyInputMode: BusyInputMode = .steer
     @Published var displayPreferences = ProfileDisplayPreferences() {
         // Kept on the device too, so the saved chats draw as Settings says
@@ -2389,34 +2377,17 @@ final class AppState: ObservableObject {
 
     // MARK: - Lifecycle coordination
 
-    var reconciliationToken = UUID()
-    /// Set by the resume admission gate when it rejects a contradictory or
-    /// foreign-owned identity. Automatic-return recovery treats ordinary
-    /// resume failures as retryable; a rejected identity is deterministic,
-    /// so reconnect scheduling skips it instead of looping on the same
-    /// contradiction. Main-actor state, valid for the current reconcile only.
-    var reconciliationWasIdentityRejected = false
-    /// Set only when the currently owned resume RPC definitively reports
-    /// that its requested session no longer exists. Callers use this to
-    /// retire a saved automatic-return target instead of retrying it forever.
-    var reconciliationSessionWasNotFound = false
-    /// Set when the resume RPC refused a Kanban worker's transcript (4132).
-    /// Hermes never reopens one as a chat, so it also counts as not found:
-    /// a saved automatic-return target is retired and a notification isn't
-    /// retried. This flag keeps its own message from being reworded.
-    var reconciliationWasKanbanWorker = false
     /// Catalog rows `session.resume` answered 4007 for during an automatic
     /// resume, per dashboard and profile, for this app run. The catalog can
     /// keep listing a conversation the gateway no longer resumes; without
     /// this, the retry after a failed fresh-chat create would select and
     /// probe the same dead rows again.
     var deadResumeRowIDs: [String: Set<String>] = [:]
-    var reconciliation: Reconciliation?
-    /// Side-agent answers that came in while a reconciliation was open.
-    /// Hermes keeps no copy of them, so unlike the buffered stream they
-    /// can't come back with a later transcript: they show once the boundary
-    /// closes, whether its reconcile committed or was dropped.
-    var heldSideAgentCompletions: [StreamEvent] = []
+    /// The chat on screen's open reconcile (`ChatState.reconciliation`).
+    var reconciliation: Reconciliation? {
+        get { shownChat.reconciliation }
+        set { shownChat.reconciliation = newValue }
+    }
     var activeClientEpoch = UUID()
     var responseHapticConclusionTask: Task<Void, Never>?
     var responseHaptics = ResponseHapticState()

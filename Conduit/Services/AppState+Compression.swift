@@ -434,7 +434,7 @@ extension AppState {
         //
         // Leave `locallyOwnedInFlightTurn` alone: the live turn still owns
         // the transcript, and settlement records its ordering debt.
-        if turnState == .running || locallyOwnedInFlightTurn != nil {
+        if turnState == .running || shownChat.locallyOwnedInFlightTurn != nil {
             transcriptFreshnessIsStale = true
             // Compression rewrote the persisted history server-side even
             // though adoption is deferred: a pre-compression backfill window
@@ -484,7 +484,7 @@ extension AppState {
     func invalidatePersistedHistoryInvariants() {
         persistedTranscriptWindow = nil
         shownChat.durablePersistedRowIDs = []
-        persistedOrderingFrontier = PersistedOrderingFrontier()
+        shownChat.persistedOrderingFrontier = PersistedOrderingFrontier()
     }
 
     /// Adopt the gateway's post-compress transcript for the current
@@ -527,8 +527,8 @@ extension AppState {
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
-        locallyOwnedInFlightTurn = nil
-        pendingLocalOrderingDebt = nil
+        shownChat.locallyOwnedInFlightTurn = nil
+        shownChat.pendingLocalOrderingDebt = nil
         // Compression rewrote the persisted history server-side: window
         // offsets, durable-row provenance, and the ordering frontier from
         // BEFORE the compression describe history that no longer exists.
@@ -587,7 +587,7 @@ extension AppState {
             sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         }
-        persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+        shownChat.persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
         shownChat.durablePersistedRowIDs = transcript.durableRowIDs
         if let page = transcript.page, page.honorsTailContract {
             persistedTranscriptWindow = PersistedTranscriptWindowState(

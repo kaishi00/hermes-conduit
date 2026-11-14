@@ -104,4 +104,61 @@ final class ChatState: ObservableObject {
     var hasScheduledStreamingPublish = false
     var lastStreamingPublishBurst = 0
     var lastStreamingPublishDate: Date?
+
+    // MARK: Turn and reconcile
+
+    /// Written through AppState's `turnState`, which also follows a change
+    /// with the message waiting to send, the backdrop and the chat on screen
+    /// claim.
+    @Published var turnState: TurnState = .idle
+    /// Whether `turnState` may have missed server-side turn edges. Set at
+    /// lifecycle boundaries where the socket can die or the gateway can change
+    /// state unobserved (scene dips, reconnects, ambiguous submissions);
+    /// cleared only when an authoritative source (the `session.active_list`
+    /// probe, a resume snapshot, or a typed prompt outcome) re-confirms the
+    /// state. A stale idle state must not route the next input as a new-turn
+    /// `prompt.submit` — Hermes would apply its busy policy to it and the
+    /// message would silently join a turn the user never saw start.
+    /// Publishes its flips: the chat list's Working marker reads it.
+    var turnStateIsStale = false {
+        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    }
+    var turnLifecycleEvidence = AppState.TurnLifecycleEvidence(revision: 0, running: false)
+    /// Whether the visible persisted transcript may be MISSING rows —
+    /// conceptually disjoint from `turnStateIsStale`, which answers "do I
+    /// know whether Hermes is currently busy?". Set when a bounded
+    /// foreground freshness read failed transiently on a real background
+    /// return, and when a resume Hermes refused as too long for the whole
+    /// transcript kept the rows on screen while its history read failed for
+    /// now (issue 2025); a liveness answer (the registry probe) can never
+    /// clear it.
+    /// Cleared only when an authoritative transcript source proves
+    /// convergence: an unchanged bounded verdict, an advancement merge, or a
+    /// resume/reconcile hydration (`applyChatResume`).
+    var transcriptFreshnessIsStale = false
+    var pendingLocalOrderingDebt: AppState.PendingLocalOrderingDebt?
+    var locallyOwnedInFlightTurn: AppState.LocallyOwnedInFlightTurn?
+    var persistedOrderingFrontier = AppState.PersistedOrderingFrontier()
+    var reconciliationToken = UUID()
+    /// Set by the resume admission gate when it rejects a contradictory or
+    /// foreign-owned identity. Automatic-return recovery treats ordinary
+    /// resume failures as retryable; a rejected identity is deterministic,
+    /// so reconnect scheduling skips it instead of looping on the same
+    /// contradiction. Main-actor state, valid for the current reconcile only.
+    var reconciliationWasIdentityRejected = false
+    /// Set only when the currently owned resume RPC definitively reports
+    /// that its requested session no longer exists. Callers use this to
+    /// retire a saved automatic-return target instead of retrying it forever.
+    var reconciliationSessionWasNotFound = false
+    /// Set when the resume RPC refused a Kanban worker's transcript (4132).
+    /// Hermes never reopens one as a chat, so it also counts as not found:
+    /// a saved automatic-return target is retired and a notification isn't
+    /// retried. This flag keeps its own message from being reworded.
+    var reconciliationWasKanbanWorker = false
+    var reconciliation: AppState.Reconciliation?
+    /// Side-agent answers that came in while a reconciliation was open.
+    /// Hermes keeps no copy of them, so unlike the buffered stream they
+    /// can't come back with a later transcript: they show once the boundary
+    /// closes, whether its reconcile committed or was dropped.
+    var heldSideAgentCompletions: [StreamEvent] = []
 }

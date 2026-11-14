@@ -52,8 +52,8 @@ extension AppState {
             // not needed, because steer performs no further session-scoped
             // writes after this point.
             if isCurrentOrAliasedComposerSubmission(submissionContext) {
-                turnLifecycleEvidence = TurnLifecycleEvidence(
-                    revision: turnLifecycleEvidence.revision &+ 1,
+                shownChat.turnLifecycleEvidence = TurnLifecycleEvidence(
+                    revision: shownChat.turnLifecycleEvidence.revision &+ 1,
                     running: true
                 )
                 // Confirm the steer in the transcript (issue #337): Hermes

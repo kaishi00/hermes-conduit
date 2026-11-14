@@ -1150,11 +1150,11 @@ extension AppState {
             // Read before any await: the flags describe the reconcile above,
             // unless another reconcile (an automatic resume of another chat)
             // began meanwhile and set them for its own chat (#1918).
-            let verdictIsOwn = reconciliationToken == token
+            let verdictIsOwn = shownChat.reconciliationToken == token
             return (
                 .failed,
-                verdictIsOwn && (reconciliationWasIdentityRejected || reconciliationSessionWasNotFound),
-                verdictIsOwn && reconciliationSessionWasNotFound && !reconciliationWasKanbanWorker
+                verdictIsOwn && (shownChat.reconciliationWasIdentityRejected || shownChat.reconciliationSessionWasNotFound),
+                verdictIsOwn && shownChat.reconciliationSessionWasNotFound && !shownChat.reconciliationWasKanbanWorker
             )
         }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
