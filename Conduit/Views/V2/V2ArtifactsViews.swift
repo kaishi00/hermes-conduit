@@ -340,7 +340,10 @@ private struct ArtifactsList: View {
                     }
                     // Saved stands beside All: everything kept, whatever
                     // its kind.
-                    if option == .all, offersSaved || savedOnly {
+                    // Kept rows show it before the plugin has answered
+                    // (offline, just launched); Save itself waits for it.
+                    if option == .all, offersSaved || savedOnly
+                        || savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
                         let count = ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).count
                         chip(Text("Saved") + Text(verbatim: savedKey == nil || count == 0 ? "" : " \(count)"),
                              isOn: savedOnly) {
@@ -521,7 +524,19 @@ private struct ArtifactsList: View {
             if !visual.isEmpty {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
                     ForEach(visual) { item in
-                        tile(item)
+                        // A picture's note under it, as a row shows its own.
+                        VStack(alignment: .leading, spacing: 3) {
+                            tile(item)
+                            if let note = item.note {
+                                Text(verbatim: note)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .frame(maxHeight: .infinity, alignment: .top)
                     }
                 }
                 .padding(.top, 10)
