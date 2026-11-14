@@ -54,7 +54,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        sha: [9d7d223, 158eb49, dd8adf9, c27c830, 7525ff2, 1c0f696, 383a192, b7a9f06]
+        sha: [9d7d223eaabf0f347b5c2a060c610f0937a5e56c, 158eb4986ce39ca1389fdf8b4c30ee58a34215b2, dd8adf90d299d9728603403214a9b30571c8471d, c27c830ed2b988d13f8ec88a11b81c4d264fe17c, 7525ff285ffee4523f66fb1adaf8b494c0ad8bcf, 1c0f6969a77fb988e53442c4d621684b98bd66ae, 383a192748c4e49712e1d610610e942311c74172, b7a9f064f1bd1984b655d5ff9bc6c1a506b2f1ca]
     steps:
       - uses: actions/checkout@v7
         with:
