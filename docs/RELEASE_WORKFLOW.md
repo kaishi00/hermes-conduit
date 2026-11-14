@@ -137,6 +137,28 @@ If Apple rejects the build or QA finds a release-blocking issue after submission
 
 Never modify an already-uploaded tag. Each uploaded candidate gets a distinct build number and tag.
 
+## Builds from a long-lived branch
+
+`all-live` holds the all-live rework (several chats, and later several Hermes
+instances, live at once). Its pull requests target `all-live`, never `main`,
+and it merges back into `main` after each stage Eric has tested (Eric,
+2026-11-13). Until then it has TestFlight builds of its own:
+
+- Archive from the tip of `origin/all-live`, never from a local checkout or a
+  PR branch, after its latest push has a green `CI Gate`.
+- Give it the next free build number, from the same sequence as `main`'s
+  builds: App Store Connect takes each number once per marketing version,
+  whichever branch it came from. Keep `main`'s marketing version.
+- Tag the archived commit `ios/all-live-v<marketing-version>-build-<build-number>`
+  and run `check-weak-imports.py` on the archive, as for any upload.
+- Send it to internal testers only, never the public beta group, with
+  "all-live" and the merged PRs since the last all-live build in What to Test.
+- One build per slice: each stage 1 slice is checked on its build before the
+  next merges into `all-live`.
+
+`main` is merged into `all-live` often (a merge commit, never a rebase), so
+its builds also carry what `main`'s have.
+
 ## Rules of thumb
 
 - `main` is where fixes land first; the release branch is where approved fixes are backported.
