@@ -3257,6 +3257,8 @@ final class OfflineChatCacheTests: XCTestCase {
         state.messages = []
         XCTAssertTrue(state.presentFollowedChatAfterProfileChange("a"), "Switching back shows it")
         XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the switch lands")
+        state.releaseFollowedChatOnScreen()
         XCTAssertTrue(state.backgroundChats.isEmpty, "It's the chat on screen again")
         state.dismissOfflineChatPresentation()
         state.activeSessionId = nil

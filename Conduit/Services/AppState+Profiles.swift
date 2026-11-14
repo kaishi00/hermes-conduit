@@ -323,6 +323,8 @@ extension AppState {
                     generation: transitionGeneration
                 )
             }
+            // The chat it landed on is its own again, not a followed one.
+            releaseFollowedChatOnScreen()
             Task { await loadChatResumeSlashCommands() }
             return true
         } catch {

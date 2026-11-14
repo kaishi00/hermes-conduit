@@ -34,13 +34,27 @@ extension AppState {
     }
 
     /// The chat a profile switch opens on, when it's one a switch left
-    /// mid-reply: its rows and the reply so far show, and it's no longer
-    /// followed. False when it isn't one.
+    /// mid-reply: its rows and the reply so far show. It stays followed
+    /// until the switch lands (releaseFollowedChatOnScreen), so a switch
+    /// that fails or that a newer navigation overtakes leaves it followed.
+    /// False when it isn't one.
     func presentFollowedChatAfterProfileChange(_ sessionID: String) -> Bool {
-        guard let left = takeBackgroundChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
+        let ids = knownSessionIDs(for: sessionID).union([sessionID])
+        guard let left = backgroundChats.first(where: {
+            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+                && !$0.sessionIDs.isDisjoint(with: ids)
+        }) else {
             return false
         }
         return presentBackgroundChat(left, openedAs: sessionID)
+    }
+
+    /// The chat on screen, once a profile switch lands on it, is followed
+    /// no longer: its own transcript has taken over.
+    func releaseFollowedChatOnScreen() {
+        guard let sessionID = activeSessionId else { return }
+        let ids = knownSessionIDs(for: sessionID).union([sessionID])
+        backgroundChats.removeAll { $0.profile == activeProfile && !$0.sessionIDs.isDisjoint(with: ids) }
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
@@ -77,6 +91,10 @@ extension AppState {
             rows: messages,
             streamingText: shownChat.streamingBuffer
         )
+        // Followed anew: a stop recorded before this doesn't hold it back.
+        backgroundChatStops.all = false
+        backgroundChatStops.dashboards.remove(dashboardID)
+        backgroundChatStops.ids.subtract(chat.sessionIDs)
         backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats())
     }
 
@@ -133,6 +151,8 @@ extension AppState {
         // An open holding a taken chat doesn't put it back after this.
         if let sessionIDs {
             backgroundChatStops.ids.formUnion(sessionIDs)
+        } else if let dashboardID {
+            backgroundChatStops.dashboards.insert(dashboardID)
         } else {
             backgroundChatStops.all = true
         }
@@ -150,7 +170,6 @@ extension AppState {
         }) else {
             return nil
         }
-        backgroundChatStops = (false, [])
         return backgroundChats.remove(at: index)
     }
 
@@ -161,6 +180,7 @@ extension AppState {
     func putBackBackgroundChat(_ chat: BackgroundChat) {
         guard chat.isRunning,
               !backgroundChatStops.all,
+              !backgroundChatStops.dashboards.contains(chat.dashboardID),
               backgroundChatStops.ids.isDisjoint(with: chat.sessionIDs),
               chat.dashboardID == activeDashboardID,
               activeSessionId.map { chat.answers(to: $0) } != true,
