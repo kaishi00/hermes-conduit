@@ -1212,6 +1212,15 @@ extension BotModeTests {
         motion.expect(.forward, conversation: "opened")
         XCTAssertEqual(stage.played, ["out forward"], "the welcome stays aside")
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: false, chatRows: true), .forward)
+        // Left while its rows were waited for, it has no slide to come
+        // in with.
+        stage.reset()
+        stage.shownConversation = "opened"
+        stage.conversationJustChanged = true
+        motion.expect(.forward, conversation: "opened")
+        motion.leave(.back)
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: false, chatRows: true))
+        XCTAssertEqual(stage.played, ["out forward", "out back at once"])
 
         // A workstream opened, the screen hearing first: the Bot Chat
         // steps aside, never flushed from inside a view update, and the
@@ -1279,6 +1288,16 @@ extension BotModeTests {
         var other = work
         other.workstream = "w7"
         XCTAssertEqual(BotChatSwap.heard(other, after: work, opened: false).swap, .forward, "another of the bot's workstreams")
+
+        // The pass that changes the chat still carries the last chat's
+        // rows: the new chat's are the first that differ.
+        let botChatRows = [TranscriptRow(id: "m1", kind: .thinking), TranscriptRow(id: "m2", kind: .thinking)]
+        var chatLeft = TranscriptRowsOfChatLeft()
+        XCTAssertFalse(chatLeft.areStill(botChatRows), "no chat was left")
+        chatLeft.chatChanged(showing: botChatRows)
+        XCTAssertTrue(chatLeft.areStill(botChatRows))
+        XCTAssertFalse(chatLeft.areStill([TranscriptRow(id: TranscriptRow.emptyID, kind: .empty)]), "the welcome is the new chat's")
+        XCTAssertFalse(chatLeft.areStill(botChatRows), "rows that changed once are the new chat's from then on")
 
         // Only a chat's own rows count as the chat having come in.
         XCTAssertFalse(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty).isChatRow)

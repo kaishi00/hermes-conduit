@@ -257,8 +257,10 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         applyInsets(insets, animation: insetsAnimation)
         applyEdgeEffect(composerFloats: composerFloats)
         let conversationChanged = appliedConversation != nil && appliedConversation != conversation
+        if conversationChanged { chatLeft.chatChanged(showing: appliedRows) }
         appliedConversation = conversation
         applyRows(rows, redrawingAll: conversationChanged)
+        showsRowsOfChatLeft = chatLeft.areStill(appliedRows)
         rowsWereDrawn(conversationChanged: conversationChanged)
         if renderedScope != pendingScope {
             pendingScope = renderedScope
@@ -268,7 +270,10 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 
     // MARK: - Swap slide (TranscriptSwapMotion)
 
-    var showsChatRows: Bool { appliedRows.contains(where: \.isChatRow) }
+    /// The rows as the chat changed, until the new chat's replace them.
+    private var chatLeft = TranscriptRowsOfChatLeft()
+    private var showsRowsOfChatLeft = false
+    var showsChatRows: Bool { !showsRowsOfChatLeft && appliedRows.contains(where: \.isChatRow) }
     var shownConversation: String? { appliedConversation }
 
     /// Rows were applied. Another chat's slide in when the screen swapped
@@ -278,11 +283,16 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     private func rowsWereDrawn(conversationChanged: Bool) {
         guard let swapMotion, swapMotion.expected != nil else {
             guard conversationChanged else { return }
-            comeBack()
-            // The screen may hear of the open after the rows: until this
-            // pass ends, it can still ask for their slide.
+            // The screen may hear of the open after the transcript: until
+            // this pass ends, it can still ask for the chat's slide. Asked
+            // for nothing, the chat just shows, and rows that left for it
+            // come back.
             conversationJustChanged = true
-            DispatchQueue.main.async { [weak self] in self?.conversationJustChanged = false }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.conversationJustChanged = false
+                if self.swapMotion?.expected == nil { self.comeBack() }
+            }
             return
         }
         if let swap = swapMotion.rowsDrawn(conversationChanged: conversationChanged, chatRows: showsChatRows) {

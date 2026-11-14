@@ -34,7 +34,7 @@ final class TranscriptSwapMotion {
     /// How long the chat's rows may take once the transcript draws the
     /// chat. Past it the chat has none, and what it does show (an empty
     /// chat's welcome) comes back.
-    var rowsPatience: Duration = .milliseconds(600)
+    var rowsPatience: Duration = .milliseconds(800)
     private var waiting: Task<Void, Never>?
 
     /// The chat on screen leaves, ahead of the one being opened: the swipe
@@ -133,7 +133,8 @@ protocol TranscriptSwapStage: AnyObject {
     /// Another chat's rows were drawn in this pass of the main thread.
     var conversationJustChanged: Bool { get }
     /// The rows drawn include the chat's own (a message, a turn under
-    /// way), not only its welcome or a status line.
+    /// way), not only its welcome or a status line, nor still the rows of
+    /// the chat it took over from.
     var showsChatRows: Bool { get }
     /// The rows slid away and wait for `slideIn` or `comeBack`.
     var rowsAreAway: Bool { get }
@@ -147,6 +148,28 @@ protocol TranscriptSwapStage: AnyObject {
     /// Rows that left show again where they were: their chat is still the
     /// open one, or it has nothing else to show.
     func comeBack()
+}
+
+/// The rows a transcript held as its chat changed. The pass that changes
+/// the chat still carries the last chat's rows, and the new one's follow a
+/// pass or more later (a device log, #2458: a workstream's conversation
+/// drawn with its Bot Chat's 60 rows, then the welcome, then its own 21
+/// some 240 ms on), so a slide played on that pass moved the chat being
+/// left. Rows count as the new chat's once they differ from these.
+struct TranscriptRowsOfChatLeft {
+    private var ids: [String]?
+
+    mutating func chatChanged(showing rows: [TranscriptRow]) {
+        ids = rows.map(\.id)
+    }
+
+    /// Whether `rows` are still the ones the chat left showed.
+    mutating func areStill(_ rows: [TranscriptRow]) -> Bool {
+        guard let ids else { return false }
+        if rows.map(\.id) == ids { return true }
+        self.ids = nil
+        return false
+    }
 }
 
 /// The slide's shape, apart from the layer it plays on.

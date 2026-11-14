@@ -586,12 +586,7 @@ struct V2ConversationScreen: View {
     private func chatShown(byOpenChatToo: Bool) -> BotChatSwap.Shown {
         guard appState.activeRoomSurface == nil else { return BotChatSwap.Shown() }
         let drawn = ChatView.drawnOrFallbackScrollSessionKey(in: appState).sessionID
-        // The chat on its way is drawn under the id Hermes lists it by,
-        // and a workstream is named by the id its link asked for: the
-        // open under way holds both.
-        let open = appState.reconciliation
-        let asked = [open?.requestedSessionId, open?.resolvedSessionId, open?.resolvedDurableSessionId].compactMap { $0 }
-        let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn]).union(asked)
+        let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn])
         let work = appState.botWork.workstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
         let bot = appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
             ?? (byOpenChatToo ? appState.activeBotChatProfile : nil)
