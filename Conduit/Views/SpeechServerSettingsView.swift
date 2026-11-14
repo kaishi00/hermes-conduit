@@ -427,7 +427,9 @@ struct SpeechServerSettingsView: View {
 
     private func follow(_ draft: inout String, was: String?, sent: String?, now: String?) {
         let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        if typed == (was ?? "") || typed == sent { draft = now ?? "" }
+        // A name this save sent is compared with what it sent: typed back
+        // to the old value meanwhile, it is a newer edit and stays.
+        if typed == (sent ?? was ?? "") { draft = now ?? "" }
     }
 
     private func refreshStatus(submittedURL: String?, submittedNames: [String: String] = [:], profile: String?) async {
