@@ -111,6 +111,28 @@ struct ArtifactPinsClient {
             .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
     }
 
+    /// A run of saved artifacts drawn the same way: pictures in a grid,
+    /// the rest as rows.
+    struct Run: Identifiable {
+        let isVisual: Bool
+        let items: [ArtifactItem]
+        var id: String { "\(isVisual)|\(items.first?.id ?? "")" }
+    }
+
+    /// `items` as runs, in their order: each run of pictures or of other
+    /// artifacts together, so a grid never moves an item past another.
+    static func runs(_ items: [ArtifactItem]) -> [Run] {
+        var runs: [Run] = []
+        for item in items {
+            if let last = runs.last, last.isVisual == item.isVisual {
+                runs[runs.count - 1] = Run(isVisual: last.isVisual, items: last.items + [item])
+            } else {
+                runs.append(Run(isVisual: item.isVisual, items: [item]))
+            }
+        }
+        return runs
+    }
+
     /// The list's search: the name, the chat's title and the note.
     static func matches(_ item: ArtifactItem, _ words: String) -> Bool {
         [item.name, item.sessionTitle, item.note ?? "", item.otherProfileLabel ?? ""]

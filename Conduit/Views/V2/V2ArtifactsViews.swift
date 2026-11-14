@@ -286,7 +286,11 @@ private struct ArtifactsList: View {
             Text("Note"),
             isPresented: Binding(get: { noting != nil }, set: { if !$0 { noting = nil } })
         ) {
-            TextField(AppLocalization.string("Note"), text: $noteText)
+            TextField(AppLocalization.string("Note"), text: Binding(
+                get: { noteText },
+                // The host keeps 200 characters: the field stops there.
+                set: { noteText = String($0.prefix(ArtifactPinsClient.maxNoteLength)) }
+            ))
             Button("Save") {
                 if let item = noting { Task { await save(item, note: noteText) } }
             }
@@ -344,8 +348,8 @@ private struct ArtifactsList: View {
                     // (offline, just launched); Save itself waits for it.
                     if option == .all, offersSaved || savedOnly
                         || savedKey != nil && appState.notifierPlugin.mayServe(ArtifactPinsClient.capability) {
-                        let count = ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).count
-                        chip(Text("Saved") + Text(verbatim: savedKey == nil || count == 0 ? "" : " \(count)"),
+                        let count = savedIDs.count
+                        chip(Text("Saved") + Text(verbatim: count == 0 ? "" : " \(count)"),
                              isOn: savedOnly) {
                             savedOnly = true
                             filter = .all
@@ -520,34 +524,36 @@ private struct ArtifactsList: View {
                 symbol: "bookmark"
             )
         } else {
-            let visual = items.filter(\.isVisual)
-            if !visual.isEmpty {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
-                    ForEach(visual) { item in
-                        // A picture's note under it, as a row shows its own.
-                        VStack(alignment: .leading, spacing: 3) {
-                            tile(item)
-                            if let note = item.note {
-                                Text(verbatim: note)
-                                    .scaledFont(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(2)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .accessibilityHidden(true)
+            // In the order saved: a run of pictures shares a grid, so a
+            // grid never puts an older picture above a newer file.
+            VStack(alignment: .leading, spacing: 8) {
+                ForEach(ArtifactPinsClient.runs(items)) { run in
+                    if run.isVisual {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 6), count: 3), spacing: 6) {
+                            ForEach(run.items) { item in
+                                // A picture's note under it, as a row shows its own.
+                                VStack(alignment: .leading, spacing: 3) {
+                                    tile(item)
+                                    if let note = item.note {
+                                        Text(verbatim: note)
+                                            .scaledFont(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(2)
+                                            .frame(maxWidth: .infinity, alignment: .leading)
+                                            .accessibilityHidden(true)
+                                    }
+                                }
+                                .frame(maxHeight: .infinity, alignment: .top)
                             }
                         }
-                        .frame(maxHeight: .infinity, alignment: .top)
+                    } else {
+                        ForEach(run.items) { item in
+                            row(item)
+                        }
                     }
                 }
-                .padding(.top, 10)
-                .padding(.bottom, 8)
             }
-            VStack(spacing: 8) {
-                ForEach(items.filter { !$0.isVisual }) { item in
-                    row(item)
-                }
-            }
-            .padding(.top, visual.isEmpty ? 10 : 0)
+            .padding(.top, 10)
         }
     }
 
@@ -1157,6 +1163,7 @@ private struct ArtifactsList: View {
         do {
             try await appState.artifactPinsClient.remove(item, profile: profile)
             guard appState.activeDashboardID == dashboard else { return }
+            Haptics.success()
             appState.screenAnswers(profile: profile).noteWrite(ArtifactPinsClient.listPath(profile: profile))
             await reloadSaved()
         } catch is CancellationError {

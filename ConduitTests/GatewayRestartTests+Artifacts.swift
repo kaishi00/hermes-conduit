@@ -366,8 +366,9 @@ extension GatewayRestartTests {
     /// only theirs. The one saved last comes first, each artifact once,
     /// another profile's under its name, and the search reads notes too.
     func testSavedListsWhatTheListsStoresCover() throws {
-        func saved(_ path: String, session: String, at: Double, note: String? = nil) throws -> ArtifactItem {
-            var row = artifactRow(["path": path, "session_id": session, "pinned_at": at])
+        func saved(_ path: String, session: String, at: Double, note: String? = nil,
+                   kind: String = "image") throws -> ArtifactItem {
+            var row = artifactRow(["path": path, "session_id": session, "pinned_at": at, "kind": kind])
             if let note { row["note"] = note }
             return try XCTUnwrap(ArtifactItem(savedRow: row))
         }
@@ -386,6 +387,10 @@ extension GatewayRestartTests {
                        ["/b.png"])
         XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [nil, atlas]).map(\.path), ["/c.png"],
                        "a store not read adds nothing")
+        let mixed = [try saved("/1.png", session: "s1", at: 5), try saved("/2.pdf", session: "s1", at: 4, kind: "document"),
+                     try saved("/3.png", session: "s1", at: 3), try saved("/4.png", session: "s1", at: 2)]
+        XCTAssertEqual(ArtifactPinsClient.runs(mixed).map { $0.items.map(\.path) },
+                       [["/1.png"], ["/2.pdf"], ["/3.png", "/4.png"]], "drawn in the order saved")
         let chat = [ArtifactSource(profile: "work", sessionIDs: ["s1"])]
         XCTAssertEqual(ArtifactPinsClient.items(sources: chat, saved: [work]).map(\.path), ["/a.png"])
     }
