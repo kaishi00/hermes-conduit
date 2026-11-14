@@ -1016,6 +1016,8 @@ final class NativeOAuthLoginModel: ObservableObject {
     ) async throws -> NativeOAuthLoginResult {
         let client = NativeOAuthAPIClient(baseURL: baseURL, cloudflareAccess: cloudflareAccess)
         let ticket = try await client.mintTicket(accessToken: sessionToken, asSessionToken: true)
+        // A sign-in cancelled while Hermes checked the token keeps nothing.
+        try Task.checkCancellation()
         let tokens = NativeOAuthTokenSet.sessionToken(sessionToken)
         let previousTokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)
         KeychainHelper.saveNativeOAuthTokens(tokens, dashboardID: dashboardID)
@@ -1150,6 +1152,9 @@ struct SessionTokenSignInForm: View {
     @State private var token = ""
     @State private var isWorking = false
     @State private var problem: String?
+    /// The sign-in in flight. Cancelled when the form is cancelled or goes
+    /// away, so an abandoned sign-in neither connects nor reports a failure.
+    @State private var signInTask: Task<Void, Never>?
 
     private var trimmedToken: String { token.trimmingCharacters(in: .whitespacesAndNewlines) }
 
@@ -1184,7 +1189,10 @@ struct SessionTokenSignInForm: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLocalization.string("Cancel")) { onCancel() }
+                    Button(AppLocalization.string("Cancel")) {
+                        signInTask?.cancel()
+                        onCancel()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isWorking {
@@ -1192,7 +1200,7 @@ struct SessionTokenSignInForm: View {
                         ProgressView()
                     } else {
                         Button(AppLocalization.string("Sign In")) {
-                            Task { await signIn() }
+                            signInTask = Task { await signIn() }
                         }
                         .disabled(trimmedToken.isEmpty)
                         .accessibilityIdentifier("session-token.sign-in")
@@ -1200,6 +1208,7 @@ struct SessionTokenSignInForm: View {
                 }
             }
         }
+        .onDisappear { signInTask?.cancel() }
     }
 
     private func signIn() async {
@@ -1219,10 +1228,22 @@ struct SessionTokenSignInForm: View {
                 cloudflareAccess: cloudflareAccess,
                 dashboardID: dashboardID
             )
+            guard !Task.isCancelled else {
+                // Cancelled after the token was kept: put back what it
+                // replaced, as a sign-in that never happened.
+                if let previous = result.previousTokens {
+                    KeychainHelper.saveNativeOAuthTokens(previous, dashboardID: dashboardID)
+                } else {
+                    KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+                }
+                return
+            }
             onSuccess(result)
         } catch DashboardTicketBridgeError.signInRequired {
+            guard !Task.isCancelled else { return }
             problem = AppLocalization.string("Hermes didn’t accept this token. Check it and try again.", table: .connection)
         } catch {
+            guard !Task.isCancelled else { return }
             onError(error)
         }
     }

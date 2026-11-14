@@ -105,7 +105,8 @@ struct DashboardSignInResolver {
     /// Whether the dashboard takes Hermes' session token as a sign-in. Asked
     /// only when its provider list names no password or interactive
     /// provider, which is what a Hermes set up with only that token answers
-    /// (issue 2442). Errors are failures, as above. Only `mode(for:)` asks
+    /// (issue 2442). An error here reads as not offered: the list named no
+    /// sign-in either way. Only `mode(for:)` asks
     /// it, so a resolver built with closures for `signIn(for:)` alone
     /// (Repair's choice) may leave the default; one that calls `mode(for:)`
     /// answers it, as `init(client:)` does.
@@ -157,7 +158,10 @@ struct DashboardSignInResolver {
                 // A Hermes set up with only its session token lists no
                 // provider. The token is entered on the native sign-in's
                 // sheet and used the way a native sign-in's tokens are.
-                guard try await supportsSessionToken() else { throw DashboardSignInError.noSignInMethod }
+                // A status that fails or can't be read leaves the answer
+                // an empty list always had: discovery already reached the
+                // server, so it is not reported as unreachable.
+                guard (try? await supportsSessionToken()) == true else { throw DashboardSignInError.noSignInMethod }
                 return .interactive(.nativeOAuth(provider: NativeOAuthTokenSet.sessionTokenProvider))
             }
         }

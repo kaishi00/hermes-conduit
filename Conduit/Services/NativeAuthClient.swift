@@ -325,10 +325,18 @@ final class NativeAuthClient {
     /// (`HERMES_DASHBOARD_SESSION_TOKEN`, issue 2442): the status body names
     /// the provider in `auth_providers`, which the provider list leaves out.
     /// An older Hermes that names none answers false; a status that can't
-    /// be read is an error, as for `supportsNativeOAuth`.
+    /// be read, or names them as anything but a list of strings, is an
+    /// error, as for `supportsNativeOAuth`.
     func supportsSessionToken() async throws -> Bool {
-        let (json, _) = try await statusBody()
-        return HermesProviderCheck.advertisesSessionToken(json["auth_providers"] as? [String] ?? [])
+        let (json, status) = try await statusBody()
+        guard let rawProviders = json["auth_providers"] else { return false }
+        guard let providers = rawProviders as? [String] else {
+            throw AuthClientError.providerDiscoveryFailed(
+                status: status,
+                detail: AppLocalization.string("Unexpected response", table: .connection)
+            )
+        }
+        return HermesProviderCheck.advertisesSessionToken(providers)
     }
 
     /// The public status body and its HTTP status.

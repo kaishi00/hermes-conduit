@@ -63,6 +63,17 @@ final class DashboardSignInDecisionTests: XCTestCase {
         let listed = try await resolver.mode(for: .providers([password]))
         XCTAssertEqual(listed, .password)
         XCTAssertEqual(asked, 1)
+        // A status that can't be read leaves an empty list what it was.
+        let unread = DashboardSignInResolver(
+            supportsNativeOAuth: { false },
+            supportsSessionToken: { throw CapabilityFixture.serverError }
+        )
+        do {
+            _ = try await unread.mode(for: .providers([]))
+            XCTFail("An empty list with no readable status names no sign-in")
+        } catch {
+            XCTAssertEqual(error as? DashboardSignInError, .noSignInMethod)
+        }
         XCTAssertTrue(HermesProviderCheck.advertisesSessionToken(["basic", "session-token"]))
         XCTAssertFalse(HermesProviderCheck.advertisesSessionToken(["basic"]))
     }
