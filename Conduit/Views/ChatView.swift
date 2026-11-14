@@ -56,6 +56,8 @@ struct ChatView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The V2 shell keeps a tab's screens mounted while another tab shows.
     @Environment(\.v2Shell) private var shell
+    /// The slide between a Bot Chat and its workstream, on V2's screen.
+    @Environment(\.transcriptSwapMotion) private var swapMotion
     /// Load earlier's fetch, cancelled when the view disappears. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
@@ -532,7 +534,8 @@ struct ChatView: View {
                         receivedScopedPreference: true
                     )
                 },
-                pasteTarget: .chat
+                pasteTarget: .chat,
+                swapMotion: swapMotion
             )
             .ignoresSafeArea()
         }

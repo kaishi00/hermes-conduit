@@ -58,8 +58,9 @@ struct V2ComposerTypingKey: PreferenceKey {
 
 /// A Bot Chat and its workstreams show in one pushed screen (the
 /// conversation in the Bots stack), so going between them pushes nothing:
-/// the screen slides the new chat in instead, a workstream from the
-/// trailing edge and Back to its Bot Chat from the leading one.
+/// the screen slides the new chat's transcript in instead, a workstream from
+/// the trailing edge and Back to its Bot Chat from the leading one
+/// (`TranscriptSwapMotion`).
 enum BotChatSwap: Equatable {
     case forward
     case back
@@ -149,10 +150,9 @@ struct V2ConversationScreen: View {
     /// Which Bot Chat or workstream the screen showed last, so going from
     /// one to the other slides (`BotChatSwap`).
     @State private var shownChat = BotChatSwap.Shown()
-    /// The chat sliding in, as a share of the column's width: 1 from the
-    /// trailing edge (a workstream opening), -1 from the leading edge (Back
-    /// to its Bot Chat).
-    @State private var swapShift: CGFloat = 0
+    /// Plays that slide on the transcript's own view, where it doesn't
+    /// wait for the main thread the swap keeps busy.
+    @State private var swapMotion = TranscriptSwapMotion()
     /// This Bot Chat grew out of its portrait on Bots Home.
     @Environment(\.botChatZoomed) private var botChatZoomed
     @Environment(\.dismiss) private var dismiss
@@ -290,8 +290,8 @@ struct V2ConversationScreen: View {
         .onChange(of: appState.activeSessionId) { _, _ in
             sidePanelIDs = appState.activeChatArtifactSessionIDs
             let shown = currentShownChat
-            if !shell.isSplit, !reduceMotion, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
-                slideIn(swap)
+            if slidesBetweenChats, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
+                swapMotion.expect(swap)
             }
             shownChat = shown
             // A workstream opened from the panel shows its own chat, and
@@ -455,10 +455,10 @@ struct V2ConversationScreen: View {
                         BotWorkHeader(work: appState.botWork)
                     }
                 }
-                // A Bot Chat and its workstreams share this screen: one
-                // slides in over the other as a push or a pop would.
-                .offset(x: swapShift * chatColumnWidth)
-                .opacity(1 - Double(abs(swapShift)) * 0.6)
+                // A Bot Chat and its workstreams share this screen: one's
+                // transcript slides in over the other's as a push or a pop
+                // would.
+                .environment(\.transcriptSwapMotion, swapMotion)
                 .overlay(alignment: .bottomTrailing) {
                     // On a Mac, not when all it would do is the call the
                     // header has (issue 1534).
@@ -512,6 +512,9 @@ struct V2ConversationScreen: View {
     private func backToCoordinator() {
         guard let profile = workstreamGoesBack else { return }
         Haptics.light()
+        // The workstream's rows leave under the finger; the Bot Chat's
+        // come in once they're drawn.
+        if slidesBetweenChats { swapMotion.leave(.back) }
         appState.openCoordinator(profile: profile)
     }
 
@@ -548,15 +551,10 @@ struct V2ConversationScreen: View {
         BotChatSwap.Shown(botChat: appState.activeBotChatProfile, workstreamOf: appState.activeWorkstream?.profile)
     }
 
-    /// The new chat starts off to one side, then slides into place.
-    private func slideIn(_ swap: BotChatSwap) {
-        var start = Transaction()
-        start.disablesAnimations = true
-        withTransaction(start) { swapShift = swap == .forward ? 1 : -1 }
-        Task { @MainActor in
-            withAnimation(.smooth(duration: 0.32)) { swapShift = 0 }
-        }
-    }
+    /// A Bot Chat and its workstream slide over one another: not beside
+    /// the list on a wide window, where nothing is pushed, nor with Reduce
+    /// Motion.
+    private var slidesBetweenChats: Bool { !shell.isSplit && !reduceMotion }
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {

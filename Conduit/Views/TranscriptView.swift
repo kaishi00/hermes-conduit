@@ -46,6 +46,9 @@ struct TranscriptView: UIViewControllerRepresentable {
     /// The composer ⌘V in the transcript pastes into, on a Mac (issue
     /// 1692): the chat's or the room's.
     var pasteTarget: ComposerPasteTarget? = nil
+    /// The slide a Bot Chat and its workstream change places with, on a
+    /// screen that shows both (`TranscriptSwapMotion`).
+    var swapMotion: TranscriptSwapMotion? = nil
 
     func makeUIViewController(context: Context) -> TranscriptViewController {
         TranscriptViewController(appState: appState, scroller: scroller)
@@ -55,6 +58,7 @@ struct TranscriptView: UIViewControllerRepresentable {
         controller.rowContent = rowContent
         controller.layoutSettled = layoutSettled
         controller.pasteTarget = pasteTarget
+        controller.swapMotion = swapMotion
         let transaction = context.transaction
         controller.update(
             rows: rows,
@@ -76,7 +80,7 @@ struct TranscriptView: UIViewControllerRepresentable {
 /// (children of this one, so what a row presents, a sheet or a popover,
 /// has a place to present from) and the scroller's attachment to them.
 @MainActor
-final class TranscriptViewController: UIViewController, UICollectionViewDelegate, UIGestureRecognizerDelegate {
+final class TranscriptViewController: UIViewController, UICollectionViewDelegate, UIGestureRecognizerDelegate, TranscriptSwapStage {
     let layout = TranscriptLayout()
     private(set) lazy var collectionView = TranscriptCollectionView(frame: .zero, collectionViewLayout: layout)
     private var dataSource: UICollectionViewDiffableDataSource<Int, String>?
@@ -88,6 +92,15 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     private var rowEnvironment = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
     var rowContent: @MainActor (TranscriptRow) -> AnyView = { _ in AnyView(EmptyView()) }
     var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
+    /// Slides this transcript when its chat is swapped in place.
+    var swapMotion: TranscriptSwapMotion? {
+        didSet {
+            guard swapMotion !== oldValue else { return }
+            if oldValue?.stage === self { oldValue?.stage = nil }
+            swapMotion?.stage = self
+        }
+    }
+    private(set) var conversationJustChanged = false
 
     private var rowsByID: [String: TranscriptRow] = [:]
     private var appliedRows: [TranscriptRow] = []
@@ -242,10 +255,61 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         let conversationChanged = appliedConversation != nil && appliedConversation != conversation
         appliedConversation = conversation
         applyRows(rows, redrawingAll: conversationChanged)
+        if conversationChanged { conversationDidChange() }
         if renderedScope != pendingScope {
             pendingScope = renderedScope
             collectionView.setNeedsLayout()
         }
+    }
+
+    // MARK: - Swap slide (TranscriptSwapMotion)
+
+    /// Another chat's rows are in: they slide in when the screen swapped
+    /// them for the last one's, in the commit that draws them, and any
+    /// other chat just shows.
+    private func conversationDidChange() {
+        if let swap = swapMotion?.conversationChanged() {
+            slideIn(swap)
+            return
+        }
+        comeBack()
+        // The screen may hear of the open after the rows: until this pass
+        // ends, it can still ask for their slide.
+        conversationJustChanged = true
+        DispatchQueue.main.async { [weak self] in self?.conversationJustChanged = false }
+    }
+
+    /// Toward the trailing edge, in points.
+    private func swapDistance(_ widths: CGFloat) -> CGFloat {
+        let trailing: CGFloat = collectionView.effectiveUserInterfaceLayoutDirection == .rightToLeft ? -1 : 1
+        return widths * trailing * collectionView.bounds.width
+    }
+
+    func slideOut(_ swap: BotChatSwap) {
+        guard isViewLoaded, attached else { return }
+        let layer = collectionView.layer
+        let out = TranscriptSwapSlide.out(from: layer, by: swapDistance(TranscriptSwapSlide.leavingShift(swap)))
+        layer.add(out, forKey: TranscriptSwapSlide.key)
+        // Sent to the render server now, so it plays while the open that
+        // follows keeps the main thread.
+        CATransaction.flush()
+    }
+
+    func slideIn(_ swap: BotChatSwap) {
+        guard isViewLoaded else { return }
+        let slide = TranscriptSwapSlide.in(
+            from: swapDistance(TranscriptSwapSlide.arrivingShift(swap)),
+            opacity: TranscriptSwapSlide.arrivingOpacity(swap)
+        )
+        collectionView.layer.add(slide, forKey: TranscriptSwapSlide.key)
+    }
+
+    func comeBack() {
+        guard isViewLoaded else { return }
+        let layer = collectionView.layer
+        // Only rows that left and are held away: a slide in ends on its own.
+        guard let held = layer.animation(forKey: TranscriptSwapSlide.key), !held.isRemovedOnCompletion else { return }
+        layer.add(TranscriptSwapSlide.back(from: layer), forKey: TranscriptSwapSlide.key)
     }
 
     /// The rows, by id: a row that changed draws again in its cell, the

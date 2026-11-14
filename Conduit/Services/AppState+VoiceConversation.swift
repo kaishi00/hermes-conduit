@@ -1501,10 +1501,18 @@ extension AppState {
     }
 
     func loadVoiceProfilePreferences(profile: String, gateway: String? = nil) -> VoiceProfilePreferences {
-        guard let data = defaults.data(forKey: voicePreferencesKey(profile: profile, gateway: gateway)),
-              let preferences = try? JSONDecoder().decode(VoiceProfilePreferences.self, from: data) else {
+        let key = voicePreferencesKey(profile: profile, gateway: gateway)
+        guard let data = defaults.data(forKey: key) else { return VoiceProfilePreferences() }
+        // The stored bytes decode to the same preferences every time, and
+        // they are read on every chat open and each time the voice button
+        // draws: the decode cost a transition 17 to 29 ms on the main
+        // thread. The bytes are still read, so a write from anywhere (a
+        // setter here, another device's, a test's) is seen.
+        if let decoded = decodedVoicePreferences[key], decoded.data == data { return decoded.preferences }
+        guard let preferences = try? JSONDecoder().decode(VoiceProfilePreferences.self, from: data) else {
             return VoiceProfilePreferences()
         }
+        decodedVoicePreferences[key] = (data, preferences)
         return preferences
     }
 

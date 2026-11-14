@@ -1156,6 +1156,63 @@ extension BotModeTests {
         XCTAssertFalse(BotChatSwap.isBackSwipe(CGSize(width: -120, height: 0)), "the other way")
     }
 
+    /// The slide is the transcript's own, asked for by the screen: the
+    /// chat on screen leaves as Back is tapped, and the one opened comes in
+    /// with its rows, whichever of the screen and the transcript hears of
+    /// the open first. A swap that never draws brings the old rows back.
+    @MainActor
+    func testTheSwapSlidesTheTranscriptAsItsRowsAreDrawn() async throws {
+        final class Stage: TranscriptSwapStage {
+            var conversationJustChanged = false
+            var played: [String] = []
+            func slideOut(_ swap: BotChatSwap) { played.append("out \(swap)") }
+            func slideIn(_ swap: BotChatSwap) { played.append("in \(swap)") }
+            func comeBack() { played.append("back") }
+        }
+        let stage = Stage()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+
+        // Back: the workstream leaves at once, the Bot Chat comes in with
+        // its rows.
+        motion.leave(.back)
+        motion.expect(.back)
+        XCTAssertEqual(stage.played, ["out back"])
+        XCTAssertEqual(motion.conversationChanged(), .back)
+        XCTAssertNil(motion.conversationChanged(), "one slide for one swap")
+
+        // A workstream opened: the screen hears after the rows are drawn.
+        stage.played = []
+        stage.conversationJustChanged = true
+        motion.expect(.forward)
+        XCTAssertEqual(stage.played, ["in forward"])
+        XCTAssertNil(motion.conversationChanged())
+
+        // An open that fails draws nothing: the rows that left come back,
+        // and the next chat drawn doesn't slide for it.
+        stage.played = []
+        stage.conversationJustChanged = false
+        motion.patience = .milliseconds(20)
+        motion.leave(.back)
+        motion.expect(.back)
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(stage.played, ["out back", "back"])
+        XCTAssertNil(motion.conversationChanged())
+
+        // A push comes in from the trailing edge over a chat that steps
+        // aside; a pop's chat leaves by that edge.
+        XCTAssertEqual(TranscriptSwapSlide.arrivingShift(.forward), 1)
+        XCTAssertEqual(TranscriptSwapSlide.leavingShift(.back), 1)
+        XCTAssertLessThan(TranscriptSwapSlide.arrivingShift(.back), 0)
+        XCTAssertLessThan(TranscriptSwapSlide.leavingShift(.forward), 0)
+        // Rows that left stay away until the next slide; one coming in
+        // ends where the rows are.
+        let layer = CALayer()
+        XCTAssertFalse(TranscriptSwapSlide.out(from: layer, by: 100).isRemovedOnCompletion)
+        XCTAssertTrue(TranscriptSwapSlide.in(from: 100, opacity: 0.4).isRemovedOnCompletion)
+        XCTAssertTrue(TranscriptSwapSlide.back(from: layer).isRemovedOnCompletion)
+    }
+
     /// A workstream's screen holds back the zoom's own dismissals by their
     /// UIKit names, so a slow swipe can't pop past its Bot Chat to Bots Home.
     func testTheBackSwipeGateKnowsTheZoomsDismissals() {
