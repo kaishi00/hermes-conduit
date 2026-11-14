@@ -1394,7 +1394,10 @@ extension AppState {
         dashboardID: UUID?,
         roster: [BotProfile]? = nil
     ) -> (sessionID: String, identity: ConversationIdentity)? {
-        guard let rows = savedChatListForActiveScope?.list.sessions, !rows.isEmpty else { return nil }
+        // Kept only for its pinned rows means the live list is in.
+        guard let kept = savedChatListForActiveScope, kept.isShowingSavedRows,
+              !kept.list.sessions.isEmpty else { return nil }
+        let rows = kept.list.sessions
         guard let row = latestOrdinaryChat(among: rows, profile: profile, dashboardID: dashboardID, roster: roster),
               let sessionID = ChatScrollIdentityNormalization.sessionID(row.id) else { return nil }
         if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),

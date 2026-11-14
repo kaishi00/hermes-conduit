@@ -6620,7 +6620,10 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness(lifecycleOperations: operations)
         harness.appState.setChatResumeBehavior(.latestActivity)
         let appState = harness.appState
-        keepList = { self.keepChatList([kept, older], in: appState) }
+        keepList = { [weak self, weak appState] in
+            guard let self, let appState else { return }
+            self.keepChatList([kept, older], in: appState)
+        }
         let connecting = Task { @MainActor in
             await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
         }
@@ -6632,6 +6635,12 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(openedSessionIDs, [kept.id], "the list agrees: nothing opens again")
         XCTAssertEqual(shortReads, 0, "no short read")
         XCTAssertEqual(harness.appState.activeSessionId, kept.id)
+        // Once the live list is in, a list kept only for its pinned rows
+        // names no pick.
+        keepChatList([kept, older], in: harness.appState)
+        XCTAssertEqual(harness.appState.latestChatFromKeptList(profile: harness.appState.activeProfile, dashboardID: harness.appState.activeDashboardID)?.sessionID, kept.id)
+        harness.appState.savedChatList?.keptPinnedRows = []
+        XCTAssertNil(harness.appState.latestChatFromKeptList(profile: harness.appState.activeProfile, dashboardID: harness.appState.activeDashboardID))
     }
 
     /// A newer chat started elsewhere since the kept list: the kept pick
@@ -6654,7 +6663,10 @@ final class AppStateChatResumeTests: XCTestCase {
         )
         harness.appState.setChatResumeBehavior(.latestActivity)
         let appState = harness.appState
-        keepList = { self.keepChatList([kept], in: appState) }
+        keepList = { [weak self, weak appState] in
+            guard let self, let appState else { return }
+            self.keepChatList([kept], in: appState)
+        }
         let connecting = Task { @MainActor in
             await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
         }
