@@ -686,7 +686,8 @@ extension AppState {
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
         owedPostConnectBootstrap = nil
-        chatResumeCoordinator.clearResumeState()
+        // The chat you left there waits for your return to that dashboard.
+        chatResumeCoordinator.switchServer(from: previousIdentity, to: identity)
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
         cancelScheduledReconnect()

@@ -457,6 +457,8 @@ extension AppState {
         // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        // So do the chats it kept to resume.
+        chatResumeCoordinator.forgetServer(id.uuidString)
         return registry.dashboards[index]
     }
 
@@ -768,6 +770,9 @@ extension AppState {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        // The chats it kept to resume belong to the signed-out user, as
+        // the active dashboard's do (disconnect clears those).
+        chatResumeCoordinator.forgetServer(id.uuidString)
         ShortcutInboxQueue.forgetDashboard(id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
@@ -835,6 +840,8 @@ extension AppState {
         // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        // So do the chats it kept to resume.
+        chatResumeCoordinator.forgetServer(id.uuidString)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.

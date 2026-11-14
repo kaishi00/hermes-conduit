@@ -375,6 +375,16 @@ final class ChatResumeCoordinator {
         store.clearResumeState()
     }
 
+    /// A dashboard switch: each dashboard keeps its own chats to resume.
+    func switchServer(from previous: String, to identity: String) {
+        cancelViewportRestoration()
+        store.switchServer(from: previous, to: identity)
+    }
+
+    func forgetServer(_ identity: String) {
+        store.forgetServer(identity)
+    }
+
     func removeSessions(profile: String, sessionIDs: [String]) {
         store.removeSessions(profile: profile, sessionIDs: sessionIDs)
         // Explicit deletion revokes restoration authority in memory as well

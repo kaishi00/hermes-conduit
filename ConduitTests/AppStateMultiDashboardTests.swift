@@ -287,6 +287,30 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
     }
 
+    func testEachDashboardKeepsTheChatYouLeftThereAcrossASwitch() {
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let coordinator = appState.chatResumeCoordinator
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a"), for: "default")
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        // A's chat never reaches B, whose profile has the same name.
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-b"), for: "default")
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "on-a")
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "on-b")
+
+        // Removing A takes the chat it kept with it.
+        appState.removeDashboard(a.id)
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+    }
+
     func testDashboardIdentityNeverCollidesWithURLOfAnotherServer() {
         // A dashboard UUID and a URL-shaped identity are disjoint: switching
         // between dashboard-scoped and URL-scoped connections is a server
