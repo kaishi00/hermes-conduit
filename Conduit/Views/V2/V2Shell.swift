@@ -1470,6 +1470,10 @@ struct V2Shell: View {
             return
         }
         if haptic { Haptics.medium() }
+        // A pick from under All leaves it as the switch starts; a call that
+        // rings in during the fade-out puts it back for the question below.
+        let leftAll = appState.isAllProfilesChatsOn
+        if leftAll { appState.setAllProfilesChatsOn(false) }
         isPickingProfile = true
         isFadingOutForPick = true
         profileSwitchToken &+= 1
@@ -1513,8 +1517,10 @@ struct V2Shell: View {
                 return
             }
             // A call that rang in during the fade-out wasn't asked about:
-            // the content comes back and the pick asks first (issue 2390).
+            // the content comes back with All as it was, and the pick asks
+            // first (issue 2390), so Cancel leaves the list unchanged.
             if !callEndAccepted && appState.isVoiceCallInProgress {
+                if leftAll { appState.setAllProfilesChatsOn(true) }
                 isPickingProfile = false
                 fadeContentBackIn()
                 pickProfile(target, haptic: false)

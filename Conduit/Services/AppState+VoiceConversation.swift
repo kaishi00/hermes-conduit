@@ -927,7 +927,8 @@ extension AppState {
         let outcome = await prepareVoiceConversation(
             profile: intent.profile,
             startsFreshConversation: intent.startsFreshConversation,
-            widgetLease: widgetLease
+            widgetLease: widgetLease,
+            yieldsToACall: intent.source == .screenQuestion
         )
         guard widgetLease?.isCurrent != false else { return false }
         switch outcome {
@@ -983,10 +984,15 @@ extension AppState {
     ///
     /// If a Voice conversation is already live, this re-arms it in place
     /// (fresh gateway on the same session) without clearing the transcript.
+    ///
+    /// `yieldsToACall`: a call answered meanwhile (the Watch, CarPlay, a call
+    /// from Hermes) keeps going and the preparation stops as `.deferred`
+    /// (a screenshot's voice, issue 2390).
     func prepareVoiceConversation(
         profile: String?,
         startsFreshConversation: Bool,
-        widgetLease: WidgetLaunchLease? = nil
+        widgetLease: WidgetLaunchLease? = nil,
+        yieldsToACall: Bool = false
     ) async -> VoiceConversationPrepareOutcome {
         // The classic conversation (e.g. CarPlay) takes over from Gemini
         // Live: the two voice modes never run at once.
@@ -1034,6 +1040,7 @@ extension AppState {
         }
         await refreshVoiceCapabilities()
         guard widgetLease?.isCurrent != false else { return .deferred }
+        if yieldsToACall, isVoiceCallInProgress { return .deferred }
         guard canStartVoiceConversation else {
             errorMessage = voiceUnavailableReason
             return .failed(voiceUnavailableReason ?? AppLocalization.string("Voice is unavailable."))

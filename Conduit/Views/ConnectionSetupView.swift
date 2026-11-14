@@ -188,8 +188,7 @@ struct ConnectionSetupView: View {
                 Button("Cancel", role: .cancel) {}
             } message: { owner in
                 if appState.isVoiceCallInProgress {
-                    Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection)
-                         + " " + AppLocalization.string("Switching to \(owner.label) ends the call that's running."))
+                    Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead. Switching to \(owner.label) ends the call that's running.", table: .connection))
                 } else {
                     Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection))
                 }
