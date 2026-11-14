@@ -625,7 +625,7 @@ notifier CHANGELOG.md
 **Open gaps**
 - Whether a ChatGPT account without a voice in its apps is refused it the same way is unverified: .52's account was the only one probed.
 
-**Checked:** 2026-11-14, #PRNUM (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
+**Checked:** 2026-11-14, #2411 (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
 
 ## Starting a call
 
