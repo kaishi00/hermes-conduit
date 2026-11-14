@@ -828,6 +828,22 @@ extension HermesVoiceGatewayTimeoutTests {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(voiced.state, .failed(GPTLiveSession.notStartedMessage(voice: "haetsal", billing: .subscription)))
+
+        // Lost after the host answered but before session.started: the voice is named.
+        let answeredPeer = FakeGPTLivePeer()
+        let answeredCall = GPTLiveSession(client: FakeGPTLiveClient(), voice: "haetsal", makePeer: { answeredPeer })
+        answeredCall.start()
+        await settle()
+        XCTAssertEqual(answeredCall.state, .connecting)
+        answeredPeer.onDisconnected?()
+        XCTAssertEqual(answeredCall.state, .failed(GPTLiveSession.notStartedMessage(voice: "haetsal", billing: .subscription)))
+
+        // Lost before the host answered: the billing is only the default, so no voice is named.
+        let earlyPeer = FakeGPTLivePeer()
+        let early = GPTLiveSession(client: FakeGPTLiveClient(), voice: "marin", makePeer: { earlyPeer })
+        early.start()
+        earlyPeer.onDisconnected?()
+        XCTAssertEqual(early.state, .failed(AppLocalization.string("The GPT-Live connection was lost.", table: .voice)))
     }
 }
 
