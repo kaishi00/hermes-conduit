@@ -6310,7 +6310,8 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         if !listFailsAtOnce { await catalogGate.waitUntilSuspended() }
         for _ in 0..<50 { await Task.yield() }
-        listLanded = true
+        // A failed list never lands: every open until the connect ends counts.
+        listLanded = !listFailsAtOnce
         catalogGate.resume()
         await connecting.value
         return openedBeforeList
