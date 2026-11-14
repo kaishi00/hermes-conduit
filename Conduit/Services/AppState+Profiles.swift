@@ -239,7 +239,7 @@ extension AppState {
             keepLeftBackfilledTranscript()
             // And its reply, while one is still coming (all-live stage 2):
             // followed under the outgoing profile, shown on switching back.
-            followChatLeftForProfileSwitch()
+            followChatLeftForProfileSwitch(turnWasRunning: previousTurnState == .running)
             // Fence any residual deferred cache write scheduled under the
             // outgoing profile before identities and namespaces change over.
             setActiveProfile(target)

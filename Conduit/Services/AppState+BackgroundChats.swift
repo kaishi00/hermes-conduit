@@ -21,15 +21,26 @@ extension AppState {
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
-        followChatOnScreen(answering: ids, openAs: oldID)
+        followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running)
     }
 
     /// A profile switch leaves the chat on screen for the target profile's.
     /// Called before the profile changes, so the chat is followed under the
-    /// profile it belongs to.
-    func followChatLeftForProfileSwitch() {
+    /// profile it belongs to. The switch has already set the turn to
+    /// synchronizing, so it says whether the chat's turn was running.
+    func followChatLeftForProfileSwitch(turnWasRunning: Bool) {
         guard let oldID = activeSessionId else { return }
-        followChatOnScreen(answering: knownSessionIDs(for: oldID).union([oldID]), openAs: oldID)
+        followChatOnScreen(answering: knownSessionIDs(for: oldID).union([oldID]), openAs: oldID, turnRunning: turnWasRunning)
+    }
+
+    /// The chat a profile switch opens on, when it's one a switch left
+    /// mid-reply: its rows and the reply so far show, and it's no longer
+    /// followed. False when it isn't one.
+    func presentFollowedChatAfterProfileChange(_ sessionID: String) -> Bool {
+        guard let left = takeBackgroundChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
+            return false
+        }
+        return presentBackgroundChat(left, openedAs: sessionID)
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
@@ -42,9 +53,9 @@ extension AppState {
         return durableIDs.contains(newDurableID) || ids.contains(newDurableID)
     }
 
-    private func followChatOnScreen(answering ids: Set<String>, openAs oldID: String) {
+    private func followChatOnScreen(answering ids: Set<String>, openAs oldID: String, turnRunning: Bool) {
         guard isConnected,
-              turnState == .running || !shownChat.streamingBuffer.isEmpty,
+              turnRunning || !shownChat.streamingBuffer.isEmpty,
               offlineChatPresentation == nil,
               activeRoomSurface == nil,
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
@@ -119,6 +130,12 @@ extension AppState {
     /// deleted chat, a removed dashboard, a sign-out, Delete saved chats. Its
     /// reply's end then saves nothing.
     func stopFollowingChats(dashboardID: UUID?, sessionIDs: Set<String>? = nil) {
+        // An open holding a taken chat doesn't put it back after this.
+        if let sessionIDs {
+            backgroundChatStops.ids.formUnion(sessionIDs)
+        } else {
+            backgroundChatStops.all = true
+        }
         backgroundChats.removeAll { chat in
             (dashboardID == nil || chat.dashboardID == dashboardID)
                 && sessionIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } != false
@@ -128,18 +145,23 @@ extension AppState {
     /// The followed chat a chat being opened is, taken off the list.
     func takeBackgroundChat(answering ids: Set<String>) -> BackgroundChat? {
         guard let index = backgroundChats.firstIndex(where: {
-            $0.profile == activeProfile && !$0.sessionIDs.isDisjoint(with: ids)
+            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+                && !$0.sessionIDs.isDisjoint(with: ids)
         }) else {
             return nil
         }
+        backgroundChatStops = (false, [])
         return backgroundChats.remove(at: index)
     }
 
     /// An open that took a followed chat and then didn't land (another open
     /// took over, or it failed) puts it back, so the reply goes on being
-    /// followed. Not when the chat is on screen again or followed anew.
+    /// followed. Not when the chat is on screen again or followed anew, or
+    /// when it was deleted (or its copies went) since it was taken.
     func putBackBackgroundChat(_ chat: BackgroundChat) {
         guard chat.isRunning,
+              !backgroundChatStops.all,
+              backgroundChatStops.ids.isDisjoint(with: chat.sessionIDs),
               chat.dashboardID == activeDashboardID,
               activeSessionId.map { chat.answers(to: $0) } != true,
               !backgroundChats.contains(where: { !$0.sessionIDs.isDisjoint(with: chat.sessionIDs) }) else { return }

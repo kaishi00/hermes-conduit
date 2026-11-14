@@ -3213,6 +3213,16 @@ final class OfflineChatCacheTests: XCTestCase {
         store.waitForPendingWrites()
         XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
         XCTAssertTrue(state.messages.isEmpty)
+
+        // Deleted while an open held it: that open doesn't put it back.
+        state.turnState = .running
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.setActiveSessionState(id: "a")
+        let taken = state.takeBackgroundChat(answering: ["b"])
+        XCTAssertNotNil(taken)
+        state.removeSavedCopies(ofDeleted: ["b"], dashboardID: dashboard, profile: state.activeProfile)
+        state.putBackBackgroundChat(taken!)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
     }
 
     /// A profile switch leaves the chat on screen mid-reply: it's followed
@@ -3224,11 +3234,13 @@ final class OfflineChatCacheTests: XCTestCase {
         state.isConnected = true
         state.setActiveSessionState(id: "a")
         state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        // Running, with no reply words yet (just sent, or a tool step).
         state.turnState = .running
-        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
         let home = state.activeProfile
 
-        state.followChatLeftForProfileSwitch()
+        // The switch sets the turn to synchronizing before it follows.
+        state.turnState = .synchronizing
+        state.followChatLeftForProfileSwitch(turnWasRunning: true)
         // As the switch does: the target profile's chat is adopted as is.
         state.activeProfile = "work"
         state.activeSessionId = "b"
@@ -3236,12 +3248,17 @@ final class OfflineChatCacheTests: XCTestCase {
         state.clearStreamingText()
         state.turnState = .idle
         XCTAssertEqual(state.backgroundChats.first?.profile, home)
-        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon a time"))
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
         XCTAssertNil(state.takeBackgroundChat(answering: ["a"]), "Another profile doesn't open it")
 
         state.activeProfile = home
-        XCTAssertNotNil(state.takeBackgroundChat(answering: ["a"]))
+        state.activeSessionId = "a"
+        state.messages = []
+        XCTAssertTrue(state.presentFollowedChatAfterProfileChange("a"), "Switching back shows it")
+        XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time")
+        XCTAssertTrue(state.backgroundChats.isEmpty, "It's the chat on screen again")
+        state.dismissOfflineChatPresentation()
         state.activeSessionId = nil
 
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-old", durableID: "st", profile: home, source: .resume)

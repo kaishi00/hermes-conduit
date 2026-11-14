@@ -249,6 +249,8 @@ extension AppState {
         resetReasoningTurn()
         dismissOfflineChatPresentation()
         guard let sessionID = activeSessionId else { return }
+        // A chat a switch left mid-reply: its rows and the reply so far.
+        if presentFollowedChatAfterProfileChange(sessionID) { return }
         if let bot = botConversationProfile(for: sessionID) {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionID, title: activeSessionTitle)
             return
