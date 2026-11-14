@@ -1564,10 +1564,10 @@ Hermes (a response the server starts unasked is cancelled, not played as a
 filler) · docs/OWN_VOICE_SERVER.md · the notifier's README and changelog ·
 `conduit_settings` (not needed: Hermes doesn't change the speech server
 through it) · Known servers and the Model, Voice and Transcription model
-fields under Your speech server (done, #FOLLOWUP) · the set voice on every
+fields under Your speech server (done, #2464) · the set voice on every
 session: Classic's listen and speak sockets, Local Live on the phone and the
 Watch, driven or not (done, notifier 0.174.0) · Test connection's line for a
-server with a model of its own (done, #FOLLOWUP) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
+server with a model of its own (done, #2464) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
 answer, by design)
 
 **Code**
@@ -1585,16 +1585,16 @@ answer, by design)
 - The switch is the user's: off by default, per profile, and nothing turns it on for them. Settings only says when a server answered a call by itself and names the switch (2026-11-14, #2455).
 - A driven server is told to read each sentence aloud as written, on the session and on every sentence, and a response it starts by itself is cancelled and never heard, whether or not it honours `create_response: false`. The read-back check stays: two sentences in a row answered instead of read end the call with that reason (2026-11-14, #2455).
 - The switch shows only when the plugin reports `drive_turns` (0.173.0 or later) and a server is set (2026-11-14, #2455).
-- A known server is only a way to fill the settings in: picking one writes `url`, `model`, `voice`, `transcription_model` and `drive_turns` on Save, and nothing reads which one was picked, so a server that isn't listed works the same once its fields are filled in. A new service is a new entry in the plugin's presets file, with no app change (2026-11-14, #FOLLOWUP).
-- The set voice goes on every session the plugin passes on, driven or not, and a frame that names a voice keeps it; the set model goes on the address unless the address names one, and the address Settings shows stays as typed (2026-11-14, #FOLLOWUP).
-- Test connection only reports what the server's first event says: a server that names a model and whose turn detection starts responses gets the line naming the switch. Nothing turns the switch on by itself, except the user saving a picked known server that has a model of its own (2026-11-14, #FOLLOWUP).
+- A known server is only a way to fill the settings in: picking one writes `url`, `model`, `voice`, `transcription_model` and `drive_turns` on Save, and nothing reads which one was picked, so a server that isn't listed works the same once its fields are filled in. A new service is a new entry in the plugin's presets file, with no app change (2026-11-14, #2464).
+- The set voice goes on every session the plugin passes on, driven or not, and a frame that names a voice keeps it; the set model goes on the address unless the address names one, and the address Settings shows stays as typed (2026-11-14, #2464).
+- Test connection only reports what the server's first event says: a server that names a model and whose turn detection starts responses gets the line naming the switch. Nothing turns the switch on by itself, except the user saving a picked known server that has a model of its own (2026-11-14, #2464).
 
 **Open gaps**
 - How faithfully a given hosted model reads text back isn't known ahead of the call: it was tested against the relay's own server doubles, not against Qwen's or OpenAI's realtime models, for want of a key. The reporter of issue 2438 is asked to confirm (2026-11-14, #2455).
 - The known servers' model and voice names were taken from the services' documentation on 2026-11-14 and not tried against them, for want of keys.
 - Voice is a text field: Settings doesn't list a known server's voices or models to pick from, though the presets file carries them.
 
-**Checked:** 2026-11-14, #FOLLOWUP (stage 2: known servers, the model, voice and transcription model fields, the voice on every session and what Test connection says, notifier 0.174.0; the Assistant voice step names the switch after a call the server answered by itself); 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
+**Checked:** 2026-11-14, #2464 (stage 2: known servers, the model, voice and transcription model fields, the voice on every session and what Test connection says, notifier 0.174.0; the Assistant voice step names the switch after a call the server answered by itself); 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
 
 ## Talking over Hermes
 
@@ -5662,7 +5662,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-11-14, #FOLLOWUP (the speech server page's Hermes answers switch, saveSpeechServerDrivesTurns from #2455, and its names, saveSpeechServer, are listed and tested in the queue); 2026-11-13, #2387 (Add MCP Server's addMcpServer, from #2386, waits its turn in the queue); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-11-14, #2464 (the speech server page's Hermes answers switch, saveSpeechServerDrivesTurns from #2455, and its names, saveSpeechServer, are listed and tested in the queue); 2026-11-13, #2387 (Add MCP Server's addMcpServer, from #2386, waits its turn in the queue); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
