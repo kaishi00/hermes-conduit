@@ -172,7 +172,10 @@ final class HermesWatchCalls: NSObject {
         let rings = ring != nil && !late && !busy && !settled && WatchVoiceCall.callsWork
         let callerName = Self.callerName(userInfo)
         let profile = HermesRingPush.caller(userInfo).profile
-        if rings, let ring { calls[id] = Call(ring: ring, callerName: callerName, profile: profile) }
+        if rings, let ring {
+            calls[id] = Call(ring: ring, callerName: callerName, profile: profile)
+            setRingtone(HermesRingtoneStore().ringtone(profile: profile), on: provider)
+        }
         WatchCallLog.shared.note("hermesCallPush", ["ring": ring != nil, "late": late, "busy": busy, "settled": settled, "callsWork": WatchVoiceCall.callsWork, "engine": "\(WatchVoiceCall.shared.engine)"])
         // Every VoIP push is reported before this returns, even one that
         // can't ring here (the iPhone rings it).
@@ -257,6 +260,23 @@ final class HermesWatchCalls: NSObject {
         guard let context, let names = context.mainProfileNames else { return }
         UserDefaults.standard.set(names, forKey: mainProfileNamesKey)
         UserDefaults.standard.set(context.activeDashboardID, forKey: activeDashboardKey)
+    }
+
+    /// The ringtones picked on the iPhone, kept for a call that launches
+    /// the app before the iPhone's context is read (issue 2445).
+    nonisolated static func keepRingtones(_ context: WatchPhoneContext?) {
+        HermesRingtoneStore().keep(context)
+    }
+
+    /// The calling bot's ringtone, set as its call is about to be
+    /// reported: the provider rings every call with the sound it holds
+    /// then. A sealed push names no profile, so it rings with every bot's.
+    private func setRingtone(_ ringtone: HermesRingtone, on provider: CXProvider) {
+        let sound = ringtone.ringtoneSound
+        let configuration = provider.configuration
+        guard configuration.ringtoneSound != sound else { return }
+        configuration.ringtoneSound = sound
+        provider.configuration = configuration
     }
 
     // MARK: Answering

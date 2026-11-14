@@ -378,6 +378,7 @@ final class HermesNativeCalls: NSObject {
         }
         if plan == .ring, let target = call.target {
             calls[id] = Call(target: target, callerName: callerName, sentAt: call.sentAt, ring: ring, watchStopped: watchStops, settling: carSettling)
+            setRingtone(HermesRingtoneStore().ringtone(profile: target.profile), on: provider)
         }
         provider.reportNewIncomingCall(with: id, update: update) { error in
             Task { @MainActor in
@@ -386,6 +387,18 @@ final class HermesNativeCalls: NSObject {
                 completion()
             }
         }
+    }
+
+    /// The calling bot's ringtone (issue 2445), set as its call is about to
+    /// be reported: the provider rings every call with the sound it holds
+    /// then. Only a call that rings sets it, so one shown and ended at once
+    /// leaves it alone.
+    private func setRingtone(_ ringtone: HermesRingtone, on provider: CXProvider) {
+        let sound = ringtone.ringtoneSound
+        let configuration = provider.configuration
+        guard configuration.ringtoneSound != sound else { return }
+        configuration.ringtoneSound = sound
+        provider.configuration = configuration
     }
 
     /// Whether the Apple Watch, which the relay rings alongside this
