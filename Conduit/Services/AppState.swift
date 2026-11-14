@@ -988,9 +988,27 @@ final class AppState: ObservableObject {
     /// The restore error the open chat's last failed resume showed, which a
     /// later resume of it that works clears (issue 2025).
     var chatRestoreFailureShown: String?
-    /// A reasoning write is in flight, from the composer chip or the Model
-    /// sheet; both wait for it so picks land in order.
-    @Published var isWritingReasoningEffort = false
+    /// The chat on screen's composer requests (`ChatState`, composer).
+    var composerPrefillText: String {
+        get { shownChat.composerPrefillText }
+        set { shownChat.composerPrefillText = newValue }
+    }
+    var composerPrefillToken: UUID {
+        get { shownChat.composerPrefillToken }
+        set { shownChat.composerPrefillToken = newValue }
+    }
+    var composerPrefillDraftKey: ComposerDraftKey? {
+        get { shownChat.composerPrefillDraftKey }
+        set { shownChat.composerPrefillDraftKey = newValue }
+    }
+    var composerQuoteRequest: ComposerQuoteRequest? {
+        get { shownChat.composerQuoteRequest }
+        set { shownChat.composerQuoteRequest = newValue }
+    }
+    var pendingQuotedReplyJump: QuotedReplyJump? {
+        get { shownChat.pendingQuotedReplyJump }
+        set { shownChat.pendingQuotedReplyJump = newValue }
+    }
     /// A classified sign-in failure awaiting presentation on the login card.
     /// Typed (not a string) so LoginView renders the full presentation —
     /// title, actions, help routing — and delivered as a publisher so the
@@ -1108,25 +1126,23 @@ final class AppState: ObservableObject {
     /// makes them.
     lazy var pulseFoldedBriefs: [String: [String: [String: Double]]] =
         defaults.dictionary(forKey: Self.pulseFoldedBriefsKey) as? [String: [String: [String: Double]]] ?? [:]
-    @Published var composerPrefillText = ""
-    @Published var composerPrefillToken = UUID()
-    /// The draft the prefill is for, until ComposerBar puts it in. A new
-    /// chat's draft load can land in the same update as the prefill, so
-    /// the composer waits until this draft is the one loaded. Set only by
-    /// `prefillComposer`, with the text and then the token.
-    var composerPrefillDraftKey: ComposerDraftKey?
-    /// A quote waiting for the composer (#385). ComposerBar, which owns the
-    /// draft, applies it and then consumes it.
-    @Published var composerQuoteRequest: ComposerQuoteRequest?
-    /// A "Replying to" card's tap (issue 1420): the chat or room on screen
-    /// scrolls to the reply it quoted, then clears it.
-    @Published var pendingQuotedReplyJump: QuotedReplyJump?
+    /// Files dropped on the open chat (`ChatState.composerDropRequest`).
+    var composerDropRequest: AttachmentDropRequest? {
+        get { shownChat.composerDropRequest }
+        set { shownChat.composerDropRequest = newValue }
+    }
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published var roomQuoteRequest: ComposerQuoteRequest?
-    /// Files dropped on the open chat (#1408), waiting for its composer to
-    /// stage them, and the same for the open room's composer.
-    @Published var composerDropRequest: AttachmentDropRequest?
+    /// The open chat's composer focus and dictation asks (`ChatState`).
+    var composerFocusRequest: ComposerFocusRequest? {
+        get { shownChat.composerFocusRequest }
+        set { shownChat.composerFocusRequest = newValue }
+    }
+    var composerDictationRequest: ComposerDictationRequest? {
+        get { shownChat.composerDictationRequest }
+        set { shownChat.composerDictationRequest = newValue }
+    }
     @Published var roomDropRequest: AttachmentDropRequest?
     /// Words added to a room's kept draft from outside its composer (a
     /// dictation Retry). The open room's composer adds them to its field.
@@ -1134,13 +1150,15 @@ final class AppState: ObservableObject {
     /// A bot to add to the room composer's "To" row (its picture tapped, or
     /// its message replied to). The room composer applies and consumes it.
     @Published var roomRecipientRequest: RoomRecipientRequest?
-    /// Asks the composer to take focus (a screenshot chat opened with the
-    /// keyboard). ComposerBar focuses and then consumes it.
-    @Published var composerFocusRequest: ComposerFocusRequest?
-    /// Asks the open chat's composer to start dictating (its big button
-    /// set to Dictation, or Dictate in the button's menu). ComposerBar
-    /// starts and then consumes it.
-    @Published var composerDictationRequest: ComposerDictationRequest?
+    /// Words the composer puts back, and sends still checking (`ChatState`).
+    var composerRestoreRequests: [ComposerRestoreRequest] {
+        get { shownChat.composerRestoreRequests }
+        set { shownChat.composerRestoreRequests = newValue }
+    }
+    var composerSendChecks: [ComposerSendCheck] {
+        get { shownChat.composerSendChecks }
+        set { shownChat.composerSendChecks = newValue }
+    }
 
     // MARK: - Sending while connecting (AppState+PendingSend.swift)
 
@@ -1149,27 +1167,20 @@ final class AppState: ObservableObject {
     /// file beside the dashboard's saved chats brings it back as a draft
     /// if Conduit stops first.
     @Published var pendingComposerSend: PendingComposerSend?
-    /// Words the composer puts back: a waiting message taken back to edit,
-    /// or one its chat never took. ComposerBar applies each, then consumes it.
-    @Published var composerRestoreRequests: [ComposerRestoreRequest] = []
-    /// A composer send still checking Hermes before its message shows: the
-    /// composer says it's sending meanwhile (#1401).
-    @Published var composerSendChecks: [ComposerSendCheck] = []
-    /// Sends whose chat was left while their reply was lost: Hermes may
-    /// have them, so their words come back without an "unsent" notice.
-    var composerSubmissionsOfUnknownDelivery: [ComposerSubmissionContext] = []
-    /// Why a waiting message went back to a draft, until it's dismissed or
-    /// the composer is used.
-    @Published var composerNotice: String? {
-        didSet {
-            // Each notice says what it is; a new one starts as a waiting
-            // message's until its writer says otherwise.
-            if composerNotice != oldValue { composerNoticeSystemImage = Self.composerReturnNoticeSystemImage }
-        }
+    /// Why a waiting message went back to a draft, and its symbol (`ChatState`).
+    var composerNotice: String? {
+        get { shownChat.composerNotice }
+        set { shownChat.composerNotice = newValue }
     }
-    /// The symbol beside the notice: a message that came back, or a draft
-    /// shared from another app (AppState+ShareDraft.swift).
-    @Published var composerNoticeSystemImage = AppState.composerReturnNoticeSystemImage
+    var composerNoticeSystemImage: String {
+        get { shownChat.composerNoticeSystemImage }
+        set { shownChat.composerNoticeSystemImage = newValue }
+    }
+    /// A reasoning write is in flight (`ChatState.isWritingReasoningEffort`).
+    var isWritingReasoningEffort: Bool {
+        get { shownChat.isWritingReasoningEffort }
+        set { shownChat.isWritingReasoningEffort = newValue }
+    }
     static let composerReturnNoticeSystemImage = "arrow.uturn.backward.circle"
     /// The chat Conduit last created, while it's the one open: it takes the
     /// New Chat draft and a message that waited for it.
@@ -3008,12 +3019,11 @@ final class AppState: ObservableObject {
     var composerEditCancellationCount = 0
 #endif
 
-    /// Latch for `noteComposerUserEdit()`: set once an edit has invalidated
-    /// the current generation's automatic-return intent, cleared when the
-    /// next generation begins. Every automatic generation mints its token
-    /// here (a cancelled token is stale, so a new one is always minted), so
-    /// clearing at entry re-arms the composer for each new window.
-    var composerEditClaimedAutomaticWork = false
+    /// The failed send's error under the composer (`ChatState.sendFailureShown`).
+    var sendFailureShown: String? {
+        get { shownChat.sendFailureShown }
+        set { shownChat.sendFailureShown = newValue }
+    }
 
     // MARK: - Group Chats (hosted rooms) (AppState+GroupChats.swift, AppState+ProfileSettings.swift)
 
@@ -3492,13 +3502,6 @@ final class AppState: ObservableObject {
     /// calls overlapping on another text keep their own marks.
     var callSubmissionTexts: [String] = []
 
-    /// The failed send's error under the composer, which leaving its chat
-    /// clears: the composer shows `errorMessage` unlocked too.
-    var sendFailureShown: String?
-    /// Counts the failed sends shown, so a send that went through clears
-    /// only the line it set out under, never a newer one in the same words
-    /// (issue 2115).
-    var sendFailureGeneration: UInt64 = 0
 
     // MARK: - Slash Commands (AppState+SlashCommands.swift)
 

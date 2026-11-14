@@ -253,8 +253,8 @@ extension AppState {
             }
         }
         guard automaticChatResumeWorkMayStillSelectSession else { return }
-        guard !composerEditClaimedAutomaticWork else { return }
-        composerEditClaimedAutomaticWork = true
+        guard !shownChat.composerEditClaimedAutomaticWork else { return }
+        shownChat.composerEditClaimedAutomaticWork = true
 #if DEBUG
         composerEditCancellationCount += 1
 #endif
@@ -286,14 +286,14 @@ extension AppState {
     /// The failed send may have reached Hermes: its reply was lost after
     /// its chat was left. Asked once per failed send.
     func takeComposerSubmissionOfUnknownDelivery(_ context: ComposerSubmissionContext) -> Bool {
-        guard let index = composerSubmissionsOfUnknownDelivery.firstIndex(of: context) else { return false }
-        composerSubmissionsOfUnknownDelivery.remove(at: index)
+        guard let index = shownChat.composerSubmissionsOfUnknownDelivery.firstIndex(of: context) else { return false }
+        shownChat.composerSubmissionsOfUnknownDelivery.remove(at: index)
         return true
     }
 
     /// A dashboard left or signed out of: nobody asks about its sends again.
     func forgetComposerSubmissionsOfUnknownDelivery() {
-        composerSubmissionsOfUnknownDelivery.removeAll()
+        shownChat.composerSubmissionsOfUnknownDelivery.removeAll()
     }
 
     func isCurrentComposerSubmission(_ context: ComposerSubmissionContext) -> Bool {
