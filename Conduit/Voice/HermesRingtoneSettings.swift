@@ -26,19 +26,48 @@ extension HermesRingtone {
 
 /// Plays a tone once when it's picked in Settings, so the user hears what
 /// they chose. Quiet while voice is on: a call's audio isn't talked over.
+/// It takes the audio session as a clip in a chat does, so it plays on the
+/// loudspeaker after a call that ended on the earpiece, and gives way to
+/// dictation or a voice message taking the microphone.
 @MainActor
-final class HermesRingtonePreview {
+final class HermesRingtonePreview: NSObject {
     private var player: AVAudioPlayer?
+    private var lease: VoiceAudioLease?
 
     func play(_ ringtone: HermesRingtone, voiceInUse: Bool) {
         stop()
         guard !voiceInUse, let url = ringtone.bundledURL, let player = try? AVAudioPlayer(contentsOf: url) else { return }
+        // It still plays if the session can't be claimed, under whatever
+        // category is already active.
+        lease = try? VoiceAudioSessionCoordinator.shared.acquire(.standalonePlayback) { [weak self] in
+            self?.stop()
+        }
+        player.delegate = self
         self.player = player
-        player.play()
+        if !player.play() { stop() }
     }
 
     func stop() {
         player?.stop()
+        player?.delegate = nil
         player = nil
+        guard let lease else { return }
+        self.lease = nil
+        VoiceAudioSessionCoordinator.shared.release(lease)
+    }
+
+    private func finished(_ finishedPlayer: AVAudioPlayer) {
+        guard finishedPlayer === player else { return }
+        stop()
+    }
+}
+
+extension HermesRingtonePreview: AVAudioPlayerDelegate {
+    nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        Task { @MainActor [weak self] in self?.finished(player) }
+    }
+
+    nonisolated func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        Task { @MainActor [weak self] in self?.finished(player) }
     }
 }
