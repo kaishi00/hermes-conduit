@@ -1806,7 +1806,8 @@ text filled in, and the user taps Send there.
 
 **Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok, Qwen
 and Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
-call transcript · group rooms · the Watch · CarPlay · an iPad without
+call transcript · the saved chat copy and the Pulse screen (a look's card
+body), which draw the same contact card · group rooms · the Watch · CarPlay · an iPad without
 Messages, and the Mac (the text is copied; the Mac opens no sms: link) · what conduit_show, conduit_contacts and the voice contacts tool
 tell models · Settings > Contacts' caption
 
@@ -1828,7 +1829,7 @@ tell models · Settings > Contacts' caption
 - Line breaks in the text become spaces, as in every card's text.
 - Hermes doesn't hear whether the user sent or cancelled it.
 
-**Checked:** 2026-11-14, #2470 (a text to someone with only an email, issue 2465); 2026-11-04, #1739 (room boards leave contact cards out); 2026-10-23, at #1174.
+**Checked:** 2026-11-14, #2478 (the saved chat copy and Pulse screen named as siblings); 2026-11-14, #2470 (a text to someone with only an email, issue 2465); 2026-11-04, #1739 (room boards leave contact cards out); 2026-10-23, at #1174.
 
 ## Message row actions
 
