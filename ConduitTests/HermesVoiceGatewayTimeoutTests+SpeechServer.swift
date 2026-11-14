@@ -212,6 +212,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(status.url)
         XCTAssertTrue(status.hasKey)
         XCTAssertEqual(status.reason, "voice.example.com is a public address, so the speech server needs wss://.")
+        // A plugin before "Hermes answers" sends no drive_turns: no switch.
+        XCTAssertNil(status.driveTurns)
+        XCTAssertEqual(SpeechServerStatus(response: ["configured": true, "drive_turns": false]).driveTurns, false)
+        XCTAssertEqual(SpeechServerStatus(response: ["configured": true, "drive_turns": true]).driveTurns, true)
 
         let connected = SpeechServerTestResult(response: ["connected": true, "latency_ms": 42, "event": "session.created"])
         XCTAssertEqual(connected.message, "Connected. Your speech server answered in 42 ms.")
@@ -387,6 +391,20 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(unavailable.serverFlags)
         XCTAssertEqual(unavailable.reason, "Set a speech server first.")
         XCTAssertTrue(SpeechServerVoiceStatus.pluginMissing.pluginMissing)
+        // Hermes answers on the server, or the server answered by itself
+        // (issue 2438); neither from a plugin that doesn't say.
+        XCTAssertFalse(status.drivesTurns)
+        XCTAssertFalse(status.answersAlone)
+        let driven = SpeechServerVoiceStatus(response: [
+            "available": true, "speech_server": ["url": "wss://voice.example.com/v1/realtime", "drive_turns": true],
+        ], dashboardBaseURL: nil)
+        XCTAssertTrue(driven.drivesTurns)
+        XCTAssertEqual(driven.speechServerURL, "wss://voice.example.com/v1/realtime")
+        let alone = SpeechServerVoiceStatus(response: [
+            "available": true, "answers_alone": true, "speech_server": ["drive_turns": false],
+        ], dashboardBaseURL: nil)
+        XCTAssertTrue(alone.answersAlone)
+        XCTAssertFalse(alone.drivesTurns)
     }
 
     func testSpeechServerSpeechRequestUsesSpeakMode() throws {
