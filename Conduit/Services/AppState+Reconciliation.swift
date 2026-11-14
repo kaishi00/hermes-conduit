@@ -1436,7 +1436,7 @@ extension AppState {
                     race.finish(.read(newest))
                 } catch {
                     // Stopped because the list landed first: no failure.
-                    if error is CancellationError || Task.isCancelled {
+                    if error is CancellationError || Task.isCancelled || race.continuation == nil {
                         self.noteConnectionStep("Newest chats read stopped: the list landed first", since: startedAt)
                     } else {
                         self.noteConnectionStep("Newest chats", since: startedAt, error: error)

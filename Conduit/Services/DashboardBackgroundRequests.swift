@@ -306,7 +306,7 @@ extension DashboardTicketBridge {
         if waited >= 100 {
             // A read without the page waits on WebKit's cookie store first;
             // a slow one holds every such read, so the console says so.
-            backgroundRequestLogger.notice("WebKit cookies for a read without the page took \(waited) ms\(webKit == nil ? ", timed out" : "", privacy: .public)")
+            backgroundRequestLogger.notice("WebKit cookies for a request without the page took \(waited) ms\(webKit == nil ? ", timed out" : "", privacy: .public)")
         }
         if let webKit {
             cookies += webKit
