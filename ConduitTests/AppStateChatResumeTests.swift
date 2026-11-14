@@ -6048,7 +6048,7 @@ final class AppStateChatResumeTests: XCTestCase {
         // reconnect recovery instead — never a giant WebSocket transcript.
         // The viewport-cancellation handoff under test is unchanged by that
         // outcome. The saved chat's resume went out beside the list read
-        // before the drag (#2420's early resume), so the handoff's own
+        // before the drag (#2421's early resume), so the handoff's own
         // resume is the second.
         XCTAssertEqual(openedSessionIDs, [active.id, active.id])
         XCTAssertEqual(harness.appState.activeSessionId, active.id)
