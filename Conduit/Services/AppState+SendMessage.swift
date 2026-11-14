@@ -422,7 +422,7 @@ extension AppState {
             }
             guard isCurrentComposerSubmission(submissionContext) else {
                 // Its chat was left; the reply may only have been lost.
-                if Self.isAmbiguousPromptDelivery(error) { composerSubmissionsOfUnknownDelivery.append(submissionContext) }
+                if Self.isAmbiguousPromptDelivery(error) { shownChat.composerSubmissionsOfUnknownDelivery.append(submissionContext) }
                 return false
             }
             if sendsIntoEmptyNewChat, HermesClient.isSessionNotFoundError(error) {
@@ -701,7 +701,7 @@ extension AppState {
     }
 
     var sendFailureMark: SendFailureMark? {
-        sendFailureShown.map { SendFailureMark(message: $0, generation: sendFailureGeneration) }
+        sendFailureShown.map { SendFailureMark(message: $0, generation: shownChat.sendFailureGeneration) }
     }
 
     /// A send that went through clears the failed send's line it set out
@@ -713,7 +713,7 @@ extension AppState {
     }
 
     func showSendFailure(_ message: String) {
-        sendFailureGeneration &+= 1
+        shownChat.sendFailureGeneration &+= 1
         errorMessage = message
         sendFailureShown = message
     }

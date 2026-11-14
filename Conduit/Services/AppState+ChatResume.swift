@@ -320,7 +320,7 @@ extension AppState {
     }
 
     func beginAutomaticChatResumeWork() -> ChatResumeAutomaticWorkToken {
-        composerEditClaimedAutomaticWork = false
+        shownChat.composerEditClaimedAutomaticWork = false
         if let activeAutomaticChatResumeWork,
            chatResumeCoordinator.isCurrent(activeAutomaticChatResumeWork) {
             return activeAutomaticChatResumeWork

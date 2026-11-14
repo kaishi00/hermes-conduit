@@ -74,7 +74,7 @@ extension AppState {
             guard surfacesFailure,
                   isCurrentOrAliasedComposerSubmission(submissionContext) else {
                 if surfacesFailure, Self.isAmbiguousPromptDelivery(error) {
-                    composerSubmissionsOfUnknownDelivery.append(submissionContext)
+                    shownChat.composerSubmissionsOfUnknownDelivery.append(submissionContext)
                 }
                 return false
             }
@@ -176,7 +176,7 @@ extension AppState {
         } catch {
             guard isCurrentOrAliasedComposerSubmission(submissionContext) else {
                 // Its chat was left; the redirect may only have lost its reply.
-                if Self.isAmbiguousPromptDelivery(error) { composerSubmissionsOfUnknownDelivery.append(submissionContext) }
+                if Self.isAmbiguousPromptDelivery(error) { shownChat.composerSubmissionsOfUnknownDelivery.append(submissionContext) }
                 return false
             }
             errorMessage = AppLocalization.string("Could not redirect the active response: \(UserFacingError.message(for: error))")
