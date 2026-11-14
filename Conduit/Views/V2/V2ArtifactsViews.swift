@@ -206,6 +206,8 @@ private struct ArtifactsList: View {
     @State private var noting: ArtifactItem?
     @State private var noteText = ""
     @State private var saveFailure: String?
+    /// Whether `saveFailure` is from Remove from Saved.
+    @State private var removeFailed = false
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -299,7 +301,7 @@ private struct ArtifactsList: View {
             Text("A few words that show under it in Saved.")
         }
         .alert(
-            Text("Couldn't Save"),
+            removeFailed ? Text("Couldn't Remove from Saved") : Text("Couldn't Save"),
             isPresented: Binding(get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })
         ) {
             Button("OK", role: .cancel) { saveFailure = nil }
@@ -1120,20 +1122,12 @@ private struct ArtifactsList: View {
         savedFailure = nil
     }
 
-    /// The saved row for `item`, from the profile its store reads.
+    /// The saved row for `item`, as Saved lists it: tagged with the store
+    /// that holds the pin, so Edit Note and Remove act there even when the
+    /// list showed it from another profile.
     private func savedItem(_ item: ArtifactItem) -> ArtifactItem? {
-        guard savedIDs.contains(item.id) else { return nil }
-        let profile = item.otherProfile ?? appState.activeProfile
-        for (index, source) in currentKey.sources.enumerated() where source.profile == profile {
-            if index < savedRows.count, let found = savedRows[index]?.first(where: { $0.id == item.id }) {
-                var found = found
-                found.otherProfile = item.otherProfile
-                found.otherProfileLabel = item.otherProfileLabel
-                found.isBotChat = item.isBotChat
-                return found
-            }
-        }
-        return nil
+        guard savedKey?.sameStores(as: currentSavedKey) == true else { return nil }
+        return ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).first { $0.id == item.id }
     }
 
     /// Saves `item` in the profile its store reads (or changes its note),
@@ -1153,6 +1147,7 @@ private struct ArtifactsList: View {
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.error()
+            removeFailed = false
             saveFailure = UserFacingError.message(for: error)
         }
     }
@@ -1171,6 +1166,7 @@ private struct ArtifactsList: View {
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.error()
+            removeFailed = true
             saveFailure = UserFacingError.message(for: error)
         }
     }

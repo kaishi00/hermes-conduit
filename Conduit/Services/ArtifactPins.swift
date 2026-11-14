@@ -93,20 +93,27 @@ struct ArtifactPinsClient {
     /// What Saved lists for `sources`, from each source's profile's saved
     /// set (`saved[i]` for `sources[i]`, nil for one not read): a store read
     /// for some chats lists only theirs, as the list does. Each artifact
-    /// once, the one saved last first, matching `query`.
+    /// once, the one saved last first, matching `query`. An artifact saved
+    /// in more than one store is its newest row, tagged with the store that
+    /// holds it, so its note, its place and its menu are that pin's.
     static func items(sources: [ArtifactSource], saved: [[ArtifactItem]?], query: String = "") -> [ArtifactItem] {
-        var seen = Set<String>()
-        var items: [ArtifactItem] = []
+        var newest: [String: ArtifactItem] = [:]
+        var order: [String] = []
         for (index, source) in sources.enumerated() {
             guard index < saved.count, let rows = saved[index] else { continue }
             let chats = Set(source.sessionIDs)
             let covered = chats.isEmpty ? rows : rows.filter { chats.contains($0.sessionID) }
-            for item in ArtifactFeed.tagged(covered, from: source) where seen.insert(item.id).inserted {
-                items.append(item)
+            for item in ArtifactFeed.tagged(covered, from: source) {
+                if let current = newest[item.id] {
+                    if (item.savedAt ?? .distantPast) > (current.savedAt ?? .distantPast) { newest[item.id] = item }
+                } else {
+                    newest[item.id] = item
+                    order.append(item.id)
+                }
             }
         }
         let words = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        return items
+        return order.compactMap { newest[$0] }
             .filter { words.isEmpty || matches($0, words) }
             .sorted { ($0.savedAt ?? .distantPast) > ($1.savedAt ?? .distantPast) }
     }
