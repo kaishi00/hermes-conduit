@@ -729,3 +729,33 @@ extension NotificationDashboardOwnershipTests {
             "a workstream is hidden from the list, so reading it can't find its row")
     }
 }
+
+/// A profile or dashboard picked by hand during a call asks first, since the
+/// switch ends the call; with no call it goes at once (issue 2390).
+extension NotificationDashboardOwnershipTests {
+    func testAHandPickedSwitchAsksFirstOnlyDuringACall() {
+        let savedA = SavedDashboard(id: dashboardA, label: "VPS", normalizedURL: "https://vps.tailnet.ts.net")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA]))
+        var pending: CallEndingSwitch?
+        var switches = 0
+
+        appState.switchEndingCall(to: "Mac", pending: &pending) { switches += 1 }
+        XCTAssertEqual(switches, 1, "no call: the switch goes at once")
+        XCTAssertNil(pending)
+
+        appState.showVoiceSheet = true
+        appState.switchEndingCall(to: "Mac", pending: &pending) { switches += 1 }
+        XCTAssertEqual(switches, 1, "a call: nothing switches until the user answers")
+        XCTAssertEqual(pending?.destination, "Mac")
+        pending?.perform()
+        XCTAssertEqual(switches, 2)
+
+        // A minimised call counts too, as every surface does.
+        appState.showVoiceSheet = false
+        pending = nil
+        appState.minimisedLiveVoice = .geminiLive
+        appState.switchEndingCall(to: "Mac", pending: &pending) { switches += 1 }
+        XCTAssertEqual(switches, 2)
+        XCTAssertNotNil(pending)
+    }
+}
