@@ -156,8 +156,11 @@ extension GroupChatModelsTests {
         await appState.refreshActiveRoomPeople()
         XCTAssertEqual(appState.activeRoomOwnHermes, true)
         routes.people = leaveOwnPeople(laifu: "in")
+        routes.peopleDelays = [.milliseconds(400)]
+        let asked = routes.peopleReads.count
         await appState.openGroupRoom(leaveOwnRoom)
-        XCTAssertNotEqual(appState.activeRoomOwnHermes, true, "reset on open, before the new read")
+        await copiesWait("the new read asked", until: { routes.peopleReads.count > asked })
+        XCTAssertNil(appState.activeRoomOwnHermes, "reset on open, while the new read waits")
         await copiesWait("the people read", until: { appState.activeRoomOwnHermes == false })
         appState.closeGroupRoom()
     }
