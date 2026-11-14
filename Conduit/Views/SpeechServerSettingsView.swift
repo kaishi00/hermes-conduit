@@ -203,6 +203,17 @@ struct SpeechServerSettingsView: View {
         }
         .onAppear(perform: showKept)
         .task(id: service.profile) { await load() }
+        // Live > Local's own model switch changes what the Test connection
+        // banner should say: the status follows it.
+        .onChange(of: service.speechServerVoice?.ownModel) { _, _ in
+            guard answered else { return }
+            let profile = draftsProfile
+            Task {
+                let loaded = await service.speechServerStatus()
+                guard draftsProfile == profile, !loaded.readFailed else { return }
+                status = loaded
+            }
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.
         .onChange(of: service.isLoading) { _, loading in

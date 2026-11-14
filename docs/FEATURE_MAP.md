@@ -1566,7 +1566,8 @@ answers Live > Local: "The speech server's own model answers",
 the way Grok Live's model gets them.
 
 **Siblings:** Local Live on the phone's socket · agent mode's fast model (it
-answers as on any read-back server) · the Watch's bridge · Classic's listen
+answers as on any read-back server, unless the server's own model is on,
+which wins and hides the fast model's status line) · the Watch's bridge · Classic's listen
 and speak sockets · CarPlay and calls from Hermes (the phone's call: not
 needed) · the switch under Your speech server · what Local's step 2 and
 Classic's "Your speech server speaks too" say (nothing to set up, or that the

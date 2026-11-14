@@ -3,7 +3,9 @@
 //  Conduit and the Conduit Watch app
 //
 //  One Local Live call through the Hermes host's relay to the user's speech
-//  server. The first frame is the session.update. Once the server confirms
+//  server. The first frame is the session.update, after agent mode's
+//  conduit.agent (so the plugin can put its instructions and tools on a
+//  server whose own model answers). Once the server confirms
 //  it, a readiness check has the server ask for a reply the way every turn
 //  does; the call is ready when that ask reaches this socket as a turn, so
 //  it shows connecting until the whole path works (the server warmed up, its
