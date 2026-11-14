@@ -427,8 +427,12 @@ struct V2ProfileStrip: View {
                 // All goes off now, as before.
                 if allSelected, switching {
                     appState.setAllProfilesChatsOn(false)
+                    shell.pickProfile(profile)
+                } else if allSelected {
+                    shell.pickProfileLeavingAll(profile)
+                } else {
+                    shell.pickProfile(profile)
                 }
-                shell.pickProfile(profile)
             }
         } label: {
             HStack(spacing: 7) {
