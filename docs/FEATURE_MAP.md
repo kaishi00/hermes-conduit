@@ -4703,7 +4703,8 @@ Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings) · the notifier's session route
 (`notifier/dashboard/api/session_route.py`: a pick sticks across Hermes' rebuilds) ·
 Pulse putting its chat on its model (`notifier/pulse_host.py` _use_model, the same
-`config.set model`)
+`config.set model`) · Text (not needed: no Settings caption or README line
+describes how a pick is saved)
 
 **Code**
 - Sheet: `Conduit/Views/ModelPickerView.swift` (currentModelSection, switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
