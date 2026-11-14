@@ -1935,17 +1935,20 @@ refuse during a call and say so: a notification, a chat link, a widget or
 Shortcut launch of a chat, a chat in another profile from All profiles,
 Pulse's Do it and Quiet for today, a room invite (see Notifications) · Ask
 Hermes About Screen naming another profile: the screenshot stays in the
-profile on screen and the call goes on (done here) · not needed: a Siri,
+profile on screen and the call goes on, and one with no question comes up
+for typing rather than starting voice over the call · Repair's "Already a
+Saved Dashboard" alert: during a call its button reads End Call and Switch
+and the message says the call ends · not needed: a Siri,
 Shortcut or Action-button call naming another profile (it starts a new call,
 which replaces the running one in any profile, its own included; a widget's
 new call refuses instead, see Starting a call) · CarPlay's
 agent list (picking an agent there is how a driver changes who they talk
 to, and it ends its own conversation first, as before), a call from Hermes
-opening its own chat (see Notifications), sign-in flows
+opening its own chat (see Notifications), adding a dashboard or signing in (no call can run without a connection to it, and the new sign-in replaces the connection by design)
 
 **Code**
-- App: `Conduit/Views/CallEndingSwitchConfirmation.swift` (switchEndingCall, the dialog), `Conduit/Services/AppState+ScreenQuestion.swift` (a screenshot during a call stays in this profile), `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2Shell.swift` (pickProfile), `Conduit/Views/V2/V2TopBar.swift` (DashboardSwitchMenu), `Conduit/Views/SavedDashboardsView.swift`, `Conduit/Services/AppState+Voice.swift` (isVoiceCallInProgress), `Conduit/Services/AppState+Profiles.swift` (the switch's voice teardown and refusingCallsWith)
-- Tests: `ConduitTests/NotificationDashboardOwnershipTests.swift`
+- App: `Conduit/Views/CallEndingSwitchConfirmation.swift` (switchEndingCall, the dialog), `Conduit/Services/AppState+ScreenQuestion.swift` (a screenshot during a call stays in this profile), `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2Shell.swift` (pickProfile), `Conduit/Views/V2/V2TopBar.swift` (DashboardSwitchMenu), `Conduit/Views/SavedDashboardsView.swift`, `Conduit/Views/ConnectionSetupView.swift` (Repair's address conflict), `Conduit/Services/AppState+Voice.swift` (isVoiceCallInProgress), `Conduit/Services/AppState+Profiles.swift` (the switch's voice teardown and refusingCallsWith)
+- Tests: `ConduitTests/NotificationDashboardOwnershipTests.swift`, `ConduitTests/AppStateScreenQuestionTests.swift`
 
 **Rulings**
 - A profile or dashboard picked by hand during a call asks first ("End the call and switch?", with the destination's name) and switches only on End Call and Switch; Cancel leaves the call and the screen as they were. Every call counts, as for the refusals: on screen or minimised, Classic voice, CarPlay, the Watch and a call from Hermes (issue 2390, #2398).
@@ -1955,7 +1958,7 @@ opening its own chat (see Notifications), sign-in flows
 - A call that carries on across a profile or dashboard switch, and checking another profile mid-call, wait on the all-live rework (stages 2 and 3; issue 2390).
 - Settings shows no call bar: the call keeps running behind it and the bar is back once Settings closes. Whether a Voice setting reaches the running call isn't said on screen (issue 2390, with the device pickers of issue 2389).
 
-**Checked:** 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
+**Checked:** 2026-11-14, PR_NUM (review leftovers from #2398: a call that rings in during the strip's fade-out is asked about; Repair's Switch says it ends the call; a no-question screenshot during a call comes up for typing; the screenshot refusal tested); 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
 
 ## Pulse
 

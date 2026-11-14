@@ -646,7 +646,10 @@ extension AppState {
     /// keyboard when the shortcut asks for it. A turn still running in the
     /// chat gets the keyboard: the screenshot waits for a new turn.
     private func startScreenQuestionInput(_ start: ScreenQuestionStart, on sessionID: String) async {
-        guard start == .voice, turnState == .idle else {
+        // A call running anywhere (the Watch, CarPlay, a call from Hermes)
+        // keeps going: a new voice conversation would replace it, so the
+        // screenshot waits for typing instead (issue 2390).
+        guard start == .voice, turnState == .idle, !isVoiceCallInProgress else {
             requestComposerFocus(on: sessionID)
             return
         }
