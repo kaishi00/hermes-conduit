@@ -34,6 +34,27 @@ final class HermesRingtonePreview: NSObject {
     private var player: AVAudioPlayer?
     private var lease: VoiceAudioLease?
 
+    override init() {
+        super.init()
+        // A call or an alarm pauses the player underneath: the preview is
+        // over then, and its hold on the audio session with it.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleInterruption(_:)),
+            name: .audioSessionInterruption,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc nonisolated private func handleInterruption(_ notification: Notification) {
+        guard AudioSessionInterruption(notification) == .began else { return }
+        Task { @MainActor [weak self] in self?.stop() }
+    }
+
     func play(_ ringtone: HermesRingtone, voiceInUse: Bool) {
         stop()
         guard !voiceInUse, let url = ringtone.bundledURL, let player = try? AVAudioPlayer(contentsOf: url) else { return }
