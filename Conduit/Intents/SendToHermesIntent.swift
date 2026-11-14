@@ -231,6 +231,7 @@ struct ShortcutSender {
     var chats = ShortcutChatStore()
 
     func send(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
+        let drops = DropBudget()
         let text = String(request.text.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.maximumTextLength))
         guard !text.isEmpty else { throw ShortcutSendError.empty }
         guard await backend.connect(deadline) else { throw ShortcutSendError.notConnected }
@@ -242,12 +243,12 @@ struct ShortcutSender {
         var runtimeID: String
         var reused = false
         if let picked = request.chat {
-            var target = try await overDrops(deadline) { try await backend.pickedChat(picked) }
+            var target = try await overDrops(deadline, drops) { try await backend.pickedChat(picked) }
             // Never a new chat in its place: the run says the chat is gone,
             // or that Hermes couldn't be reached, which isn't the same.
             let resumed: String
             do {
-                resumed = try await overDrops(deadline) { try await backend.resumeChat(target) }
+                resumed = try await overDrops(deadline, drops) { try await backend.resumeChat(target) }
             } catch is CancellationError {
                 throw CancellationError()
             } catch HermesError.notConnected, HermesError.connectionClosed, HermesError.timeout {
@@ -264,7 +265,7 @@ struct ShortcutSender {
             runtimeID = resumed
             reused = true
         } else if let name, var saved = chats.chat(named: name, profile: profile),
-                  let resumed = try await resume(saved, deadline: deadline),
+                  let resumed = try await resume(saved, deadline: deadline, drops: drops),
            !resumed.isEmpty {
             saved.runtimeSessionID = resumed
             chat = saved
@@ -272,7 +273,7 @@ struct ShortcutSender {
             reused = true
         } else {
             let title = name ?? Self.cleaned(request.newChatTitle).map { String($0.prefix(80)) } ?? Self.title(for: text)
-            chat = try await overDrops(deadline) { try await backend.createChat(profile, title) }
+            chat = try await overDrops(deadline, drops) { try await backend.createChat(profile, title) }
             runtimeID = chat.runtimeSessionID
         }
         if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
@@ -285,7 +286,7 @@ struct ShortcutSender {
         if reused && request.waitsForAnswer { earlier = await backend.latestReply(chat) }
         let outcome: PromptSubmissionOutcome
         do {
-            outcome = try await overDrops(deadline, unsent: true) { try await backend.submit(chat, runtimeID, text) }
+            outcome = try await overDrops(deadline, drops, unsent: true) { try await backend.submit(chat, runtimeID, text) }
         } catch let error where HermesClient.isSessionNotFoundError(error) {
             // Hermes no longer has that runtime, so nothing was sent, and the
             // reply read before the first try still marks what came before.
@@ -293,7 +294,7 @@ struct ShortcutSender {
             // before, until the chat's own resume: reopen the chat and send
             // once more.
             do {
-                runtimeID = try await overDrops(deadline) { try await backend.reopenChat(chat) }
+                runtimeID = try await overDrops(deadline, drops) { try await backend.reopenChat(chat) }
             } catch is CancellationError {
                 throw CancellationError()
             } catch HermesError.notConnected, HermesError.connectionClosed {
@@ -308,7 +309,7 @@ struct ShortcutSender {
             if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
             guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
             do {
-                outcome = try await overDrops(deadline, unsent: true) { try await backend.submit(chat, runtimeID, text) }
+                outcome = try await overDrops(deadline, drops, unsent: true) { try await backend.submit(chat, runtimeID, text) }
             } catch let error where HermesClient.isSessionNotFoundError(error) {
                 // The reopened runtime is gone too: nothing was sent.
                 throw ShortcutSendError.reopenFailed
@@ -328,9 +329,9 @@ struct ShortcutSender {
     /// chat then takes the name). Cancellation still ends the run, and a
     /// dropped connection is waited out: it says nothing about the chat, so
     /// it never makes a second chat under the name.
-    private func resume(_ chat: VoiceThreadTarget, deadline: Date) async throws -> String? {
+    private func resume(_ chat: VoiceThreadTarget, deadline: Date, drops: DropBudget) async throws -> String? {
         do {
-            return try await overDrops(deadline) { try await backend.resumeChat(chat) }
+            return try await overDrops(deadline, drops) { try await backend.resumeChat(chat) }
         } catch is CancellationError {
             throw CancellationError()
         } catch let error where Self.isDrop(error) {
@@ -342,8 +343,14 @@ struct ShortcutSender {
         }
     }
 
-    /// How many times a run reconnects after its connection dropped under it.
+    /// How many times a run reconnects after its connection dropped under
+    /// it, across all its steps.
     static let maximumReconnects = 2
+
+    /// The reconnects a run has used, shared by its steps.
+    final class DropBudget {
+        var reconnects = 0
+    }
 
     /// The connection dropped under a step: the socket closed, or was found
     /// closed before the request went out.
@@ -368,16 +375,19 @@ struct ShortcutSender {
     /// dead, and the reconnect that follows is the one the run goes on with.
     /// With `unsent` only a drop that kept the request from going out is
     /// tried again (a prompt Hermes may have taken is never sent twice).
-    private func overDrops<T>(_ deadline: Date, unsent: Bool = false, _ step: () async throws -> T) async throws -> T {
-        var reconnects = 0
+    private func overDrops<T>(_ deadline: Date, _ drops: DropBudget, unsent: Bool = false,
+                              _ step: () async throws -> T) async throws -> T {
         while true {
             do {
                 return try await step()
             } catch let error where unsent ? Self.isUnsentDrop(error) : Self.isDrop(error) {
-                guard reconnects < Self.maximumReconnects, backend.now() < deadline else { throw error }
-                reconnects += 1
+                guard drops.reconnects < Self.maximumReconnects, backend.now() < deadline else { throw error }
+                drops.reconnects += 1
                 try Task.checkCancellation()
                 guard await (backend.reconnect ?? backend.connect)(deadline) else { throw ShortcutSendError.notConnected }
+                // The wait may have used up the run: nothing more goes.
+                try Task.checkCancellation()
+                guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
             }
         }
     }

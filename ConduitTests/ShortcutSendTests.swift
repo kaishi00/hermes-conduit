@@ -39,12 +39,15 @@ private final class FakeHermes {
     var submitErrors: [Error] = []
     var reconnects = 0
     var reconnectsLand = true
+    /// Seconds a reconnect takes on the run's clock.
+    var reconnectTakes: Double = 0
 
     func backend() -> ShortcutSendBackend {
         ShortcutSendBackend(
             connect: { _ in self.connects },
             reconnect: { _ in
                 self.reconnects += 1
+                self.now = self.now.addingTimeInterval(self.reconnectTakes)
                 return self.reconnectsLand
             },
             activeProfile: { "default" },
@@ -216,6 +219,39 @@ extension ScreenQuestionTests {
         }
         XCTAssertEqual(flapping.reconnects, ShortcutSender.maximumReconnects)
         XCTAssertTrue(flapping.submitted.isEmpty)
+    }
+
+    /// A reconnect that used up the run sends nothing after it.
+    @MainActor
+    func testAReconnectThatUsesUpTheRunSendsNothing() async throws {
+        let hermes = FakeHermes()
+        hermes.submitErrors = [HermesError.notConnected]
+        hermes.reconnectTakes = 30
+        do {
+            _ = try await sender(hermes, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("the run was out of time")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .outOfTime)
+        }
+        XCTAssertTrue(hermes.submitted.isEmpty)
+    }
+
+    /// The two reconnects are the run's, not each step's.
+    @MainActor
+    func testTheReconnectsAreSharedAcrossTheRunsSteps() async throws {
+        let hermes = FakeHermes()
+        hermes.createErrors = [HermesError.connectionClosed, HermesError.connectionClosed]
+        hermes.submitErrors = [HermesError.notConnected]
+        do {
+            _ = try await sender(hermes, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("the run had no reconnects left")
+        } catch {
+            XCTAssertTrue(ShortcutSender.isDrop(error))
+        }
+        XCTAssertEqual(hermes.reconnects, ShortcutSender.maximumReconnects)
+        XCTAssertTrue(hermes.submitted.isEmpty)
     }
 
     @MainActor

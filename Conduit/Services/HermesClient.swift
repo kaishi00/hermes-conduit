@@ -2326,6 +2326,13 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// Whether a request could go out now: the gate `rpc` checks. False as
+    /// soon as the socket closed, before the receive loop has reported it.
+    var canSend: Bool {
+        guard let socket else { return false }
+        return socket.closeCode == .invalid && isConnected
+    }
+
     func disconnect() {
         closedIntentionally = true
         stopKeepalive()

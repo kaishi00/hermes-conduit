@@ -44,9 +44,11 @@ extension AppState {
     /// Connects again for a run whose step found the connection dropped
     /// (issue 2473). The socket's close reaches handleDisconnect a moment
     /// after the step failed: until then Conduit still reads as connected,
-    /// and waiting on that would hand the step back the dead socket.
+    /// and waiting on that would hand the step back the dead socket. The
+    /// client's own gate is read, since `rpc` refuses a closed socket before
+    /// the receive loop clears the client's connected flag.
     func reconnectForBackgroundRun(deadline: Date) async -> Bool {
-        if isConnected, client?.isConnected != true {
+        if isConnected, client?.canSend != true {
             await awaitConnectionDropped(timeout: .seconds(2))
         }
         return await connectForBackgroundRun(deadline: deadline)
@@ -91,6 +93,9 @@ extension AppState {
                     // current one before calling the bot gone.
                     if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
                     guard let bot = self.shownBotRoster.first(where: isPicked) else {
+                        // A read the connection dropped under says nothing
+                        // about the bot: the run waits out the drop (issue 2473).
+                        if self.client?.canSend != true { throw HermesError.notConnected }
                         throw ShortcutSendError.chatUnavailable
                     }
                     let rows = try await self.botChatLookupRows(client, profile: bot.name)
