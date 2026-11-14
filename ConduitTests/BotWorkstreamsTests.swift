@@ -1013,14 +1013,38 @@ extension BotModeTests {
             ["work"]
         )
 
-        // Forgetting one dashboard's (Sign Out, Remove) leaves the other's.
+        // Forgetting one dashboard's (Sign Out, Remove) leaves the other's,
+        // and its sync ledger forgets them, so the next sign-in takes the
+        // host's copy instead of sending an empty one.
+        let controller = SyncedPreferencesController(defaults: defaults)
+        let entry = SyncedPreferencesLedgerEntry(lastLocal: ["bots.order": "[\"x\"]", "app.accent": "\"gold\""])
+        controller.setLedger(entry, for: "\(furina.id.uuidString)|default")
+        controller.setLedger(entry, for: "\(conduit.id.uuidString)|default")
         appState.forgetDashboardLists(dashboardID: furina.id)
+        XCTAssertEqual(controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""])
+        XCTAssertEqual(controller.ledger(for: "\(conduit.id.uuidString)|default")?.lastLocal, entry.lastLocal)
         XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey(scope: furina.id.uuidString)))
         XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
         appState.forgetDashboardLists(dashboardID: conduit.id)
         XCTAssertTrue(appState.botOrder.isEmpty)
         XCTAssertFalse(appState.isSessionStarred(chat))
         XCTAssertEqual(defaults.dictionary(forKey: HiddenChatProjects.key) as? [String: [String]], [:])
+    }
+
+    /// A phone with no saved dashboard at launch moves the phone-wide copies
+    /// to the first dashboard registered, as its appearance does.
+    @MainActor
+    func testTheFirstDashboardRegisteredTakesThePhoneWideOrders() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["furina", "atlas"], forKey: BotOrder.storageKey)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: SavedDashboardRegistry())
+        let id = try XCTUnwrap(appState.resolveDashboardID(forURL: "https://conduit.example.test", registerIfMissing: true))
+        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.storageKey(scope: id.uuidString)), ["furina", "atlas"])
+        XCTAssertNil(defaults.object(forKey: BotOrder.storageKey))
+        appState.savedDashboardRegistry.activeDashboardID = id
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
     }
 
     /// The phone-wide copies from before go to the dashboard selected at
