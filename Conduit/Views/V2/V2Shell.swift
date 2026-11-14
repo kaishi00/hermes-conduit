@@ -1523,13 +1523,13 @@ struct V2Shell: View {
                 // Only on the dashboard the pick was made on: one picked
                 // meanwhile keeps its own All, and the kept pick stays with
                 // the dashboard it was made on (dropped on any other).
-                if queuedProfilePick.profile == nil {
-                    // All stays as it was until the kept pick goes ahead.
-                    if leftAll, appState.activeDashboardID == pickDashboardID {
-                        appState.setAllProfilesChatsOn(true)
-                    }
-                    queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: leftAll)
+                // The queue is empty here: any tap kept in the fade-out
+                // became `target` above.
+                // All stays as it was until the kept pick goes ahead.
+                if leftAll, appState.activeDashboardID == pickDashboardID {
+                    appState.setAllProfilesChatsOn(true)
                 }
+                queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: leftAll)
                 isPickingProfile = false
                 return
             }
@@ -1537,7 +1537,9 @@ struct V2Shell: View {
             // the content comes back with All as it was, and the pick asks
             // first (issue 2390), so Cancel leaves the list unchanged.
             if !callEndAccepted && appState.isVoiceCallInProgress {
-                if leftAll { appState.setAllProfilesChatsOn(true) }
+                if leftAll, appState.activeDashboardID == pickDashboardID {
+                    appState.setAllProfilesChatsOn(true)
+                }
                 isPickingProfile = false
                 fadeContentBackIn()
                 pickProfile(target, haptic: false, leavesAll: leftAll)
