@@ -1076,12 +1076,19 @@ struct NativeOAuthSignInSheet: View {
     var body: some View {
         switch step {
         case .checking:
-            ProgressView()
-                .task {
-                    // A status that can't be read leaves the browser sign-in.
-                    let client = NativeAuthClient(baseURL: baseURL, cloudflareAccess: cloudflareAccess)
-                    offersSessionToken = (try? await client.supportsSessionToken()) ?? false
-                }
+            NavigationStack {
+                ProgressView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(AppLocalization.string("Cancel")) { dismiss() }
+                        }
+                    }
+            }
+            .task {
+                // A status that can't be read leaves the browser sign-in.
+                let client = NativeAuthClient(baseURL: baseURL, cloudflareAccess: cloudflareAccess)
+                offersSessionToken = (try? await client.supportsSessionToken()) ?? false
+            }
         case .sessionToken:
             SessionTokenSignInForm(
                 baseURL: baseURL,
@@ -1149,7 +1156,7 @@ struct SessionTokenSignInForm: View {
     /// What can't go in a header value, or nil.
     nonisolated static func problem(with token: String) -> String? {
         guard token.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }) else {
-            return AppLocalization.string("A session token can’t contain spaces or line breaks.", table: .connection)
+            return AppLocalization.string("Enter the token exactly as it is set on the Hermes host, with no spaces or line breaks.", table: .connection)
         }
         return nil
     }
@@ -1180,11 +1187,16 @@ struct SessionTokenSignInForm: View {
                     Button(AppLocalization.string("Cancel")) { onCancel() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLocalization.string("Sign In")) {
-                        Task { await signIn() }
+                    if isWorking {
+                        // Hermes is checking the token.
+                        ProgressView()
+                    } else {
+                        Button(AppLocalization.string("Sign In")) {
+                            Task { await signIn() }
+                        }
+                        .disabled(trimmedToken.isEmpty)
+                        .accessibilityIdentifier("session-token.sign-in")
                     }
-                    .disabled(trimmedToken.isEmpty || isWorking)
-                    .accessibilityIdentifier("session-token.sign-in")
                 }
             }
         }

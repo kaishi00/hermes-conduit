@@ -38563,84 +38563,84 @@
         }
       }
     },
-    "A session token can’t contain spaces or line breaks." : {
+    "Enter the token exactly as it is set on the Hermes host, with no spaces or line breaks." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Sitzungstoken darf keine Leerzeichen oder Zeilenumbrüche enthalten."
+            "value" : "Gib das Token genau so ein, wie es auf dem Hermes-Host gesetzt ist, ohne Leerzeichen oder Zeilenumbrüche."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un token de sesión no puede contener espacios ni saltos de línea."
+            "value" : "Introduce el token exactamente como está definido en el host de Hermes, sin espacios ni saltos de línea."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un jeton de session ne peut pas contenir d’espaces ni de sauts de ligne."
+            "value" : "Saisissez le jeton exactement tel qu’il est défini sur l’hôte Hermes, sans espaces ni sauts de ligne."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Token sesi tidak boleh berisi spasi atau baris baru."
+            "value" : "Masukkan token persis seperti yang diatur di host Hermes, tanpa spasi atau baris baru."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un token di sessione non può contenere spazi o interruzioni di riga."
+            "value" : "Inserisci il token esattamente com’è impostato sull’host Hermes, senza spazi o interruzioni di riga."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "セッショントークンにスペースや改行を含めることはできません。"
+            "value" : "Hermes ホストに設定されているとおりに、スペースや改行なしでトークンを入力してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "세션 토큰에는 공백이나 줄바꿈을 넣을 수 없어요."
+            "value" : "Hermes 호스트에 설정된 그대로, 공백이나 줄바꿈 없이 토큰을 입력하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Token sesji nie może zawierać spacji ani znaków nowej linii."
+            "value" : "Wpisz token dokładnie tak, jak jest ustawiony na hoście Hermes, bez spacji i znaków nowej linii."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Um token de sessão não pode conter espaços nem quebras de linha."
+            "value" : "Digite o token exatamente como está definido no host do Hermes, sem espaços nem quebras de linha."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Токен сеанса не может содержать пробелы или переносы строк."
+            "value" : "Введите токен точно так, как он задан на хосте Hermes, без пробелов и переносов строк."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Oturum belirteci boşluk veya satır sonu içeremez."
+            "value" : "Belirteci Hermes ana makinesinde ayarlandığı gibi, boşluk veya satır sonu olmadan girin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "会话令牌不能包含空格或换行。"
+            "value" : "请按 Hermes 主机上设置的内容原样输入令牌，不要包含空格或换行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "工作階段權杖不能包含空格或換行。"
+            "value" : "請依 Hermes 主機上設定的內容原樣輸入權杖，不要包含空格或換行。"
           }
         }
       }

@@ -105,7 +105,10 @@ struct DashboardSignInResolver {
     /// Whether the dashboard takes Hermes' session token as a sign-in. Asked
     /// only when its provider list names no password or interactive
     /// provider, which is what a Hermes set up with only that token answers
-    /// (issue 2442). Errors are failures, as above.
+    /// (issue 2442). Errors are failures, as above. Only `mode(for:)` asks
+    /// it, so a resolver built with closures for `signIn(for:)` alone
+    /// (Repair's choice) may leave the default; one that calls `mode(for:)`
+    /// answers it, as `init(client:)` does.
     let supportsSessionToken: () async throws -> Bool
 
     init(
