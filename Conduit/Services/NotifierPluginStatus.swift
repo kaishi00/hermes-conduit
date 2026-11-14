@@ -357,6 +357,33 @@ struct NotifierPluginStatus: Equatable {
             all[dashboardID.uuidString] = managedBy
             defaults.set(all, forKey: key)
         }
+
+        static let capabilitiesKey = "notifierPluginCapabilities"
+
+        /// What the dashboard's plugin last reported serving, so Settings
+        /// lists its pages from the start of a switch instead of adding
+        /// them, and moving the rows below, once the plugin answers.
+        static func capabilities(for dashboardID: UUID?, in defaults: UserDefaults) -> Set<String> {
+            guard let dashboardID,
+                  let all = defaults.dictionary(forKey: capabilitiesKey) as? [String: [String]] else { return [] }
+            return Set(all[dashboardID.uuidString] ?? [])
+        }
+
+        /// Kept from each answer that says what the plugin serves; one
+        /// without the route forgets it.
+        static func remember(_ state: State, for dashboardID: UUID?, in defaults: UserDefaults) {
+            guard let dashboardID else { return }
+            var all = defaults.dictionary(forKey: capabilitiesKey) as? [String: [String]] ?? [:]
+            let kept: [String]?
+            switch state {
+            case .unknown: return
+            case .predatesCapabilities: kept = nil
+            case .reported(_, let capabilities): kept = capabilities.sorted()
+            }
+            guard all[dashboardID.uuidString] != kept else { return }
+            all[dashboardID.uuidString] = kept
+            defaults.set(all, forKey: capabilitiesKey)
+        }
     }
 
     /// Who manages the plugin after a status read: what the capabilities
