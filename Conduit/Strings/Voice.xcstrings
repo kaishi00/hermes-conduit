@@ -48104,6 +48104,252 @@
           }
         }
       }
+    },
+    "Korean" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koreanisch"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coreana"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coréenne"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korea"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coreana"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "韓国語"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한국어"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koreański"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coreana"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Корейский"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Korece"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "韩语"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "韓語"
+          }
+        }
+      }
+    },
+    "Haetsal and Hanul are ChatGPT's Korean voices. Like the others, they speak the call's language. If your ChatGPT plan doesn't offer a voice, the call won't start." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal und Hanul sind die koreanischen Stimmen von ChatGPT. Wie die anderen sprechen sie die Sprache des Anrufs. Bietet dein ChatGPT-Tarif eine Stimme nicht an, startet der Anruf nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal y Hanul son las voces coreanas de ChatGPT. Como las demás, hablan el idioma de la llamada. Si tu plan de ChatGPT no ofrece una voz, la llamada no empezará."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal et Hanul sont les voix coréennes de ChatGPT. Comme les autres, elles parlent la langue de l'appel. Si votre forfait ChatGPT ne propose pas une voix, l'appel ne démarre pas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal dan Hanul adalah suara Korea ChatGPT. Seperti suara lainnya, keduanya berbicara dalam bahasa panggilan. Jika paket ChatGPT Anda tidak menyediakan suatu suara, panggilan tidak akan dimulai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal e Hanul sono le voci coreane di ChatGPT. Come le altre, parlano la lingua della chiamata. Se il tuo piano ChatGPT non offre una voce, la chiamata non parte."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HaetsalとHanulはChatGPTの韓国語の音声です。ほかの音声と同じく、通話の言語で話します。ChatGPTプランにない音声を選ぶと、通話は始まりません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "햇살(Haetsal)과 한울(Hanul)은 ChatGPT의 한국어 음성이에요. 다른 음성처럼 통화 언어로 말해요. ChatGPT 요금제에서 제공하지 않는 음성이면 통화가 시작되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal i Hanul to koreańskie głosy ChatGPT. Tak jak pozostałe mówią w języku rozmowy. Jeśli Twój plan ChatGPT nie oferuje danego głosu, rozmowa się nie rozpocznie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal e Hanul são as vozes coreanas do ChatGPT. Como as outras, falam o idioma da chamada. Se o seu plano do ChatGPT não oferecer uma voz, a chamada não começa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal и Hanul — корейские голоса ChatGPT. Как и остальные, они говорят на языке звонка. Если ваш план ChatGPT не предлагает голос, звонок не начнётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal ve Hanul, ChatGPT'nin Korece sesleridir. Diğerleri gibi aramanın dilinde konuşurlar. ChatGPT planınız bir sesi sunmuyorsa arama başlamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal（햇살）和 Hanul（한울）是 ChatGPT 的韩语语音。和其他语音一样，它们用通话的语言说话。如果你的 ChatGPT 方案不提供某个语音，通话将无法开始。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Haetsal（햇살）和 Hanul（한울）是 ChatGPT 的韓語語音。和其他語音一樣，它們用通話的語言說話。如果你的 ChatGPT 方案不提供某個語音，通話將無法開始。"
+          }
+        }
+      }
+    },
+    "GPT-Live didn't start the conversation. If your ChatGPT plan doesn't offer the voice %@, pick another in GPT-Live's settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live hat das Gespräch nicht gestartet. Falls dein ChatGPT-Tarif die Stimme %@ nicht anbietet, wähle in den GPT-Live-Einstellungen eine andere."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live no inició la conversación. Si tu plan de ChatGPT no ofrece la voz %@, elige otra en los ajustes de GPT-Live."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live n'a pas démarré la conversation. Si votre forfait ChatGPT ne propose pas la voix %@, choisissez-en une autre dans les réglages de GPT-Live."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live tidak memulai percakapan. Jika paket ChatGPT Anda tidak menyediakan suara %@, pilih suara lain di pengaturan GPT-Live."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live non ha avviato la conversazione. Se il tuo piano ChatGPT non offre la voce %@, scegline un'altra nelle impostazioni di GPT-Live."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Liveが会話を開始しませんでした。ChatGPTプランに音声「%@」がない場合は、GPT-Liveの設定で別の音声を選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live가 대화를 시작하지 않았어요. ChatGPT 요금제에서 %@ 음성을 제공하지 않으면 GPT-Live 설정에서 다른 음성을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live nie rozpoczął rozmowy. Jeśli Twój plan ChatGPT nie oferuje głosu %@, wybierz inny w ustawieniach GPT-Live."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O GPT-Live não iniciou a conversa. Se o seu plano do ChatGPT não oferecer a voz %@, escolha outra nos ajustes do GPT-Live."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live не начал разговор. Если ваш план ChatGPT не предлагает голос %@, выберите другой в настройках GPT-Live."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live konuşmayı başlatmadı. ChatGPT planınız %@ sesini sunmuyorsa GPT-Live ayarlarından başka bir ses seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 没有开始对话。如果你的 ChatGPT 方案不提供语音 %@，请在 GPT-Live 设置中换一个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "GPT-Live 沒有開始對話。如果你的 ChatGPT 方案不提供語音 %@，請在 GPT-Live 設定中換一個。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
