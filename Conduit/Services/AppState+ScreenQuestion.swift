@@ -661,6 +661,12 @@ extension AppState {
                 return
             }
         }
+        // Again after the capability read: a call answered meanwhile keeps
+        // going too.
+        guard !isVoiceCallInProgress else {
+            requestComposerFocus(on: sessionID)
+            return
+        }
         let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .screenQuestion)
         if !(await openVoiceConversation(intent)) {
             requestComposerFocus(on: sessionID)
