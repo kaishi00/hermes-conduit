@@ -89,6 +89,17 @@ extension AppState {
         )
     }
 
+    /// Stops following the chats on `dashboardID` (every dashboard when
+    /// nil) that answer to any of `sessionIDs` (all of them when nil): a
+    /// deleted chat, a removed dashboard, a sign-out, Delete saved chats. Its
+    /// reply's end then saves nothing.
+    func stopFollowingChats(dashboardID: UUID?, sessionIDs: Set<String>? = nil) {
+        backgroundChats.removeAll { chat in
+            (dashboardID == nil || chat.dashboardID == dashboardID)
+                && sessionIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } != false
+        }
+    }
+
     /// The followed chat a chat being opened is, taken off the list.
     func takeBackgroundChat(answering ids: Set<String>) -> BackgroundChat? {
         guard let index = backgroundChats.firstIndex(where: { !$0.sessionIDs.isDisjoint(with: ids) }) else {

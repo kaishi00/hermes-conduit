@@ -25,7 +25,8 @@ struct BackgroundChat: Equatable {
     private(set) var replyText = ""
     private(set) var replyRowID: String?
     private(set) var isRunning = true
-    /// Bumped by each change, for the newest-first order of the list.
+    /// When the chat was left. The list keeps the newest first by when each
+    /// joined it.
     private(set) var leftAt: Date
 
     /// How many left chats are followed at once. A fifth pushes out the
@@ -140,12 +141,14 @@ struct BackgroundChat: Equatable {
         replyRowID = nil
     }
 
+    private static let rowTimestampFormatter = ISO8601DateFormatter()
+
     private static func row(id: String, content: String, author: String) -> ChatMessage {
         ChatMessage(
             id: id,
             role: .assistant,
             content: content,
-            timestamp: ISO8601DateFormatter().string(from: Date()),
+            timestamp: rowTimestampFormatter.string(from: Date()),
             author: author
         )
     }

@@ -3190,6 +3190,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.backgroundChats.isEmpty)
     }
 
+    /// A followed chat Hermes deleted stops being followed, so its reply's
+    /// end doesn't save the deleted chat's copy again.
+    func testADeletedChatLeftMidReplyIsNotSavedAgain() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+
+        state.removeSavedCopies(ofDeleted: ["a"], dashboardID: dashboard, profile: state.activeProfile)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        store.waitForPendingWrites()
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
+        XCTAssertTrue(state.messages.isEmpty)
+    }
+
     /// A chat left while nothing runs isn't followed, and opening a
     /// followed chat another way lets go of it.
     func testOnlyAChatLeftWhileItRepliesIsFollowed() {
