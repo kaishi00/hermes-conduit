@@ -348,6 +348,28 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNil(coordinator.lastSessionID(for: "default"))
     }
 
+    /// A switch from the Profiles sheet closes it once the switched-to
+    /// dashboard is connected, not when the whole switch (its chat list
+    /// included) ends; the row says Connecting… only until then.
+    func testASwitchsSheetClosesOnceItsDashboardIsConnected() {
+        let target = UUID()
+        XCTAssertTrue(ProfilePickerSheet.closesForConnectedSwitch(connected: true, alreadyClosed: false, switchingTo: target, active: target))
+        XCTAssertFalse(ProfilePickerSheet.closesForConnectedSwitch(connected: false, alreadyClosed: false, switchingTo: target, active: target),
+                       "not before the socket is up")
+        XCTAssertFalse(ProfilePickerSheet.closesForConnectedSwitch(connected: true, alreadyClosed: false, switchingTo: target, active: UUID()),
+                       "another dashboard connecting isn't this switch's")
+        XCTAssertFalse(ProfilePickerSheet.closesForConnectedSwitch(connected: true, alreadyClosed: false, switchingTo: nil, active: target),
+                       "no switch from this sheet")
+        XCTAssertFalse(ProfilePickerSheet.closesForConnectedSwitch(connected: true, alreadyClosed: true, switchingTo: target, active: target),
+                       "closes once")
+
+        XCTAssertTrue(SavedDashboardRowLabel.showsConnecting(isConnecting: false, isSwitching: true, isConnected: false))
+        XCTAssertFalse(SavedDashboardRowLabel.showsConnecting(isConnecting: false, isSwitching: true, isConnected: true),
+                       "connected while the switch still reads its chat list")
+        XCTAssertTrue(SavedDashboardRowLabel.showsConnecting(isConnecting: true, isSwitching: false, isConnected: false))
+        XCTAssertFalse(SavedDashboardRowLabel.showsConnecting(isConnecting: false, isSwitching: false, isConnected: true))
+    }
+
     func testDashboardIdentityNeverCollidesWithURLOfAnotherServer() {
         // A dashboard UUID and a URL-shaped identity are disjoint: switching
         // between dashboard-scoped and URL-scoped connections is a server
