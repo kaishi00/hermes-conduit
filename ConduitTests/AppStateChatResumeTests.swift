@@ -9324,18 +9324,26 @@ final class AppStateChatResumeTests: XCTestCase {
     }
 
     /// Jump to latest activity's short read goes only through the sync's own
-    /// dashboard and client: one a switch has replaced since is refused.
+    /// dashboard and client: one a switch has replaced since gets no bridge,
+    /// and the read is refused without being sent.
     func testTheNewestChatsReadIsNotSentThroughAnotherDashboard() async {
         let harness = makeHarness()
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "t")
         let client = HermesClient(connection: connection, profile: "default")
+        let bridge = DashboardTicketBridge(baseURL: "https://one.example")
         harness.appState.client = client
+        harness.appState.dashboardTicketBridge = bridge
         let activeDashboard = harness.appState.activeDashboardID
+        let otherClient = HermesClient(connection: connection, profile: "default")
 
-        for (dashboardID, readClient) in [
-            (UUID() as UUID?, client),
-            (activeDashboard, HermesClient(connection: connection, profile: "default"))
-        ] {
+        XCTAssertTrue(
+            harness.appState.bridgeForSync(dashboardID: activeDashboard, client: client) === bridge,
+            "the sync's own dashboard and client read through its bridge"
+        )
+        XCTAssertNil(harness.appState.bridgeForSync(dashboardID: UUID(), client: client), "another dashboard")
+        XCTAssertNil(harness.appState.bridgeForSync(dashboardID: activeDashboard, client: otherClient), "another client")
+
+        for (dashboardID, readClient) in [(UUID() as UUID?, client), (activeDashboard, otherClient)] {
             do {
                 _ = try await harness.appState.newestChatsBeforeList(
                     profile: "default", dashboardID: dashboardID, using: readClient
