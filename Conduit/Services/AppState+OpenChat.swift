@@ -1054,9 +1054,9 @@ extension AppState {
         // A chat left after Load earlier keeps its older rows for coming
         // back to it (issue 1825); the reconcile below takes them.
         keepLeftBackfilledTranscript()
-        // A chat left mid-reply, followed since (stage 2): taken before the
-        // open names it, which lets go of whatever follows the chat opened.
-        let leftReply = takeBackgroundChat(answering: acceptedSessionIDs.union([sessionId]))
+        // A chat left mid-reply, followed since (stage 2): it shows while
+        // the chat opens, and stays followed until the open lands.
+        let leftReply = followedChat(answering: acceptedSessionIDs.union([sessionId]))
         setActiveSessionState(id: sessionId)
         if closedRoom { roomHandedTo = .openedChat }
         keepDelegateAgents(of: acceptedSessionIDs)
@@ -1132,7 +1132,6 @@ extension AppState {
             dismissOfflineChatPresentation()
         }
         guard widgetLease?.isCurrent != false else {
-            if let leftReply { putBackBackgroundChat(leftReply) }
             // The widget launch expired with nothing newer on screen: settle
             // like a failed open, so the composer doesn't stay synchronizing
             // a transcript this open will never publish.
@@ -1144,7 +1143,6 @@ extension AppState {
             return (.superseded, false, false)
         }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
-            if let leftReply { putBackBackgroundChat(leftReply) }
             return (.superseded, false, false)
         }
         if !reconciled {
@@ -1160,8 +1158,8 @@ extension AppState {
             let verdictIsOwn = shownChat.reconciliationToken == token
             // A followed chat goes on being followed, unless Hermes no
             // longer has it.
-            if let leftReply, !(verdictIsOwn && shownChat.reconciliationSessionWasNotFound) {
-                putBackBackgroundChat(leftReply)
+            if leftReply != nil, verdictIsOwn && shownChat.reconciliationSessionWasNotFound {
+                releaseFollowedChat(answering: acceptedSessionIDs.union([sessionId]))
             }
             return (
                 .failed,
@@ -1169,6 +1167,9 @@ extension AppState {
                 verdictIsOwn && shownChat.reconciliationSessionWasNotFound && !shownChat.reconciliationWasKanbanWorker
             )
         }
+        // Landed: the chat's own transcript has taken over from a followed
+        // copy of it.
+        if leftReply != nil { releaseFollowedChat(answering: acceptedSessionIDs.union([sessionId])) }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false, false)
     }

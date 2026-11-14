@@ -3182,11 +3182,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotEqual(store.load(dashboardID: dashboard, profile: state.activeProfile)?.lastSessionID, "a",
                           "A copy saved in the background doesn't become the chat a cold launch opens")
 
-        let taken = try XCTUnwrap(state.takeBackgroundChat(answering: ["a"]))
+        let followed = try XCTUnwrap(state.followedChat(answering: ["a"]))
         state.setActiveSessionState(id: "a")
         state.messages = []
-        XCTAssertTrue(state.presentBackgroundChat(taken, openedAs: "a"))
+        XCTAssertTrue(state.presentBackgroundChat(followed, openedAs: "a"))
         XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time, the end.")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the open lands")
+        state.releaseFollowedChat(answering: ["a"])
         XCTAssertTrue(state.backgroundChats.isEmpty)
     }
 
@@ -3214,15 +3216,14 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
         XCTAssertTrue(state.messages.isEmpty)
 
-        // Deleted while an open held it: that open doesn't put it back.
+        // Deleted while an open shows it: it's no longer followed either.
         state.turnState = .running
         state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
         state.setActiveSessionState(id: "a")
-        let taken = state.takeBackgroundChat(answering: ["b"])
-        XCTAssertNotNil(taken)
+        XCTAssertNotNil(state.followedChat(answering: ["b"]))
+        state.setActiveSessionState(id: "b")
         state.removeSavedCopies(ofDeleted: ["b"], dashboardID: dashboard, profile: state.activeProfile)
-        state.putBackBackgroundChat(taken!)
-        XCTAssertTrue(state.backgroundChats.isEmpty)
+        XCTAssertNil(state.followedChat(answering: ["b"]))
     }
 
     /// A profile switch leaves the chat on screen mid-reply: it's followed
@@ -3250,7 +3251,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.backgroundChats.first?.profile, home)
         state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon a time"))
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
-        XCTAssertNil(state.takeBackgroundChat(answering: ["a"]), "Another profile doesn't open it")
+        XCTAssertNil(state.followedChat(answering: ["a"]), "Another profile doesn't open it")
 
         state.activeProfile = home
         state.activeSessionId = "a"
@@ -3290,7 +3291,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.backgroundChats.first?.sessionIDs, ["b"])
         state.turnState = .idle
         state.setActiveSessionState(id: "b")
-        XCTAssertTrue(state.backgroundChats.isEmpty, "The chat opened is its own again")
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "b", text: "Hi")),
+                       "The chat opened takes its own events")
     }
 
     /// The reply's events, one by one: an interim note Hermes already

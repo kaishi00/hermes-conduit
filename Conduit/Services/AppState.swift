@@ -498,9 +498,6 @@ final class AppState: ObservableObject {
     /// Chats left while their reply was still coming, following the rest
     /// of it (all-live stage 2, AppState+BackgroundChats.swift).
     var backgroundChats: [BackgroundChat] = []
-    /// What stopFollowingChats let go of, so an open holding a taken chat
-    /// doesn't put a deleted one back. A chat followed anew clears its own.
-    var backgroundChatStops: (all: Bool, dashboards: Set<UUID>, ids: Set<String>) = (false, [], [])
     var shownChatChanges: AnyCancellable?
     /// The chat on screen's own activity (`ChatState`): its title, plan
     /// card, refresh, branch and rewind, its agents, and replies streaming

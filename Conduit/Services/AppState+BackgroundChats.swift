@@ -12,11 +12,11 @@ import Foundation
 extension AppState {
     /// The chat on screen is being left for `newID` (setActiveSessionState).
     /// While its reply is still coming, its rows and the reply so far are
-    /// kept and follow the rest of the reply. A chat being opened stops
-    /// being followed: its own transcript takes over.
+    /// kept and follow the rest of the reply. A chat being opened stays
+    /// followed until its open lands (releaseFollowedChat), so an open that
+    /// fails or is overtaken leaves it followed.
     func followLeftChatIfItsReplyRuns(leaving oldID: String?, for newID: String?) {
         guard let oldID, let newID, oldID != newID else { return }
-        backgroundChats.removeAll { $0.answers(to: newID) }
         let ids = knownSessionIDs(for: oldID).union([oldID])
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
@@ -39,11 +39,7 @@ extension AppState {
     /// that fails or that a newer navigation overtakes leaves it followed.
     /// False when it isn't one.
     func presentFollowedChatAfterProfileChange(_ sessionID: String) -> Bool {
-        let ids = knownSessionIDs(for: sessionID).union([sessionID])
-        guard let left = backgroundChats.first(where: {
-            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
-                && !$0.sessionIDs.isDisjoint(with: ids)
-        }) else {
+        guard let left = followedChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
             return false
         }
         return presentBackgroundChat(left, openedAs: sessionID)
@@ -53,7 +49,20 @@ extension AppState {
     /// no longer: its own transcript has taken over.
     func releaseFollowedChatOnScreen() {
         guard let sessionID = activeSessionId else { return }
-        let ids = knownSessionIDs(for: sessionID).union([sessionID])
+        releaseFollowedChat(answering: knownSessionIDs(for: sessionID).union([sessionID]))
+    }
+
+    /// The followed chat of this dashboard and profile that answers to any
+    /// of `ids`, left on the list: an open shows it while it loads.
+    func followedChat(answering ids: Set<String>) -> BackgroundChat? {
+        backgroundChats.first {
+            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+                && !$0.sessionIDs.isDisjoint(with: ids)
+        }
+    }
+
+    /// The chat an open (or a switch) landed on is followed no longer.
+    func releaseFollowedChat(answering ids: Set<String>) {
         backgroundChats.removeAll { $0.profile == activeProfile && !$0.sessionIDs.isDisjoint(with: ids) }
     }
 
@@ -91,10 +100,6 @@ extension AppState {
             rows: messages,
             streamingText: shownChat.streamingBuffer
         )
-        // Followed anew: a stop recorded before this doesn't hold it back.
-        backgroundChatStops.all = false
-        backgroundChatStops.dashboards.remove(dashboardID)
-        backgroundChatStops.ids.subtract(chat.sessionIDs)
         backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats())
     }
 
@@ -107,12 +112,19 @@ extension AppState {
     /// Applies a stream event of a chat that was left mid-reply. True when
     /// the event was that chat's, so nothing else takes it: not the chat
     /// on screen, and not an open reconcile, which accepts any chat's
-    /// events until it knows its own.
+    /// events until it knows its own. A followed chat that is on screen
+    /// again (its open hasn't landed yet) takes its events too, so it's
+    /// current if the open is overtaken, and the screen still gets them.
     func applyBackgroundChatEvent(_ event: StreamEvent) -> Bool {
         guard !backgroundChats.isEmpty else { return false }
         let id = sessionID(for: event)
-        guard !id.isEmpty, !eventBelongsToActiveSession(id),
+        guard !id.isEmpty,
               let index = backgroundChats.firstIndex(where: { $0.answers(to: id) }) else { return false }
+        if eventBelongsToActiveSession(id) {
+            // The chat on screen saves its own copy.
+            _ = backgroundChats[index].apply(event)
+            return false
+        }
         guard backgroundChats[index].dashboardID == activeDashboardID else {
             backgroundChats.remove(at: index)
             return false
@@ -148,44 +160,10 @@ extension AppState {
     /// deleted chat, a removed dashboard, a sign-out, Delete saved chats. Its
     /// reply's end then saves nothing.
     func stopFollowingChats(dashboardID: UUID?, sessionIDs: Set<String>? = nil) {
-        // An open holding a taken chat doesn't put it back after this.
-        if let sessionIDs {
-            backgroundChatStops.ids.formUnion(sessionIDs)
-        } else if let dashboardID {
-            backgroundChatStops.dashboards.insert(dashboardID)
-        } else {
-            backgroundChatStops.all = true
-        }
         backgroundChats.removeAll { chat in
             (dashboardID == nil || chat.dashboardID == dashboardID)
                 && sessionIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } != false
         }
-    }
-
-    /// The followed chat a chat being opened is, taken off the list.
-    func takeBackgroundChat(answering ids: Set<String>) -> BackgroundChat? {
-        guard let index = backgroundChats.firstIndex(where: {
-            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
-                && !$0.sessionIDs.isDisjoint(with: ids)
-        }) else {
-            return nil
-        }
-        return backgroundChats.remove(at: index)
-    }
-
-    /// An open that took a followed chat and then didn't land (another open
-    /// took over, or it failed) puts it back, so the reply goes on being
-    /// followed. Not when the chat is on screen again or followed anew, or
-    /// when it was deleted (or its copies went) since it was taken.
-    func putBackBackgroundChat(_ chat: BackgroundChat) {
-        guard chat.isRunning,
-              !backgroundChatStops.all,
-              !backgroundChatStops.dashboards.contains(chat.dashboardID),
-              backgroundChatStops.ids.isDisjoint(with: chat.sessionIDs),
-              chat.dashboardID == activeDashboardID,
-              activeSessionId.map { chat.answers(to: $0) } != true,
-              !backgroundChats.contains(where: { !$0.sessionIDs.isDisjoint(with: chat.sessionIDs) }) else { return }
-        backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats())
     }
 
     /// Shows a followed chat's rows while it opens, as a saved copy shows
