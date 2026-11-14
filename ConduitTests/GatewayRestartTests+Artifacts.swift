@@ -385,8 +385,8 @@ extension GatewayRestartTests {
         XCTAssertEqual(items.first { $0.path == "/a.png" }?.otherProfile, nil, "the first store's, once")
         XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "WEDD").map(\.path),
                        ["/b.png"])
-        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [nil, atlas]).map(\.path), ["/c.png"],
-                       "a store not read adds nothing")
+        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [nil, atlas]).map(\.path), ["/a.png", "/c.png"],
+                       "a store not read adds nothing: only Atlas's Bot Chat pins")
         let mixed = [try saved("/1.png", session: "s1", at: 5), try saved("/2.pdf", session: "s1", at: 4, kind: "document"),
                      try saved("/3.png", session: "s1", at: 3), try saved("/4.png", session: "s1", at: 2)]
         XCTAssertEqual(ArtifactPinsClient.runs(mixed).map { $0.items.map(\.path) },
