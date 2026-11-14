@@ -217,6 +217,8 @@ struct SpeechServerSettingsView: View {
                     if errorMessage == nil { errorMessage = loaded.reason }
                     return
                 }
+                // A read that answers takes away an older read's error.
+                if !isSaving { errorMessage = nil }
                 let before = status
                 status = loaded
                 follow(from: before, to: loaded)
