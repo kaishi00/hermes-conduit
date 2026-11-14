@@ -33,7 +33,6 @@ struct SpeechServerSettingsView: View {
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
-    static let driveTurnsKey = "voice.speech_server.drive_turns"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -240,7 +239,7 @@ struct SpeechServerSettingsView: View {
         if status?.available == true { await runTest(profile: profile) }
     }
 
-    /// The switch saves by itself, like Remove key: "true", or the setting
+    /// The switch saves by itself, like Remove key: true, or the setting
     /// removed, which is off.
     private func saveDriveTurns(_ on: Bool) async {
         isSaving = true
@@ -248,7 +247,10 @@ struct SpeechServerSettingsView: View {
         testResult = nil
         errorMessage = nil
         let profile = draftsProfile
-        _ = await save(on ? "true" : "", for: Self.driveTurnsKey, profile: profile)
+        let saved = await service.saveSpeechServerDrivesTurns(on)
+        if !saved, draftsProfile == profile {
+            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
+        }
         await refreshStatus(submittedURL: nil, profile: profile)
     }
 

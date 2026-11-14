@@ -1568,7 +1568,7 @@ answer, by design)
 - The turns: `notifier/dashboard/api/local_live_read_back.py` (_LocalLiveReadBack's drive: on from the start, _send_update, _pump, the unasked response.created and the busy error, _note_who_answered)
 - Status: `notifier/dashboard/api/local_live.py` (_local_live_answered_alone, local_live_status's answers_alone)
 - The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchSession.run's setup)
-- The switch: `Conduit/Views/SpeechServerSettingsView.swift` (driveTurnsKey, saveDriveTurns), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus.driveTurns)
+- The switch: `Conduit/Views/SpeechServerSettingsView.swift` (saveDriveTurns), `Conduit/Voice/HermesVoiceConfigurationService.swift` (saveSpeechServerDrivesTurns, a Boolean in the config), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus.driveTurns)
 - What step 2 says: `Conduit/Views/SpeechServerVoiceSettingsView.swift`, `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerVoiceStatus.drivesTurns, answersAlone), `Conduit/Views/VoiceSettingsView.swift` (assistantVoiceStep)
 - Tests: `notifier/tests/test_local_live.py` (the tests after "The plugin runs the turns"), `notifier/tests/test_watch_local_live.py` (test_a_driven_server_has_the_host_run_the_watchs_turns_from_the_first_update), `ConduitTests/HermesVoiceGatewayTimeoutTests+SpeechServer.swift`
 
