@@ -872,6 +872,7 @@ struct V2Shell: View {
                 // is for a switch started elsewhere (the picker sheet,
                 // CarPlay).
                 guard !switching, !isPickingProfile else { return }
+                let leavesAll = queuedProfilePick.leavesAll
                 guard let next = queuedProfilePick.take(
                     landedOn: appState.activeProfile,
                     dashboardID: appState.activeDashboardID
@@ -881,7 +882,7 @@ struct V2Shell: View {
                     return
                 }
                 // Its haptic came with the tap.
-                pickProfile(next, haptic: false)
+                pickProfile(next, haptic: false, leavesAll: leavesAll)
             }
             .onChange(of: appState.showsPulseScreen, initial: true) { was, shows in
                 // The bar and the ⌘ keys leave Pulse's tab out where this
@@ -1465,8 +1466,9 @@ struct V2Shell: View {
         if !callEndAccepted && appState.isVoiceCallInProgress {
             if haptic { Haptics.medium() }
             appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
-                if leavesAll { appState.setAllProfilesChatsOn(false) }
-                pickProfile(profile, haptic: false, callEndAccepted: true)
+                // All goes off as the accepted switch starts, below, and
+                // comes back if it doesn't land.
+                pickProfile(profile, haptic: false, callEndAccepted: true, leavesAll: leavesAll)
             }
             return
         }
@@ -1475,6 +1477,7 @@ struct V2Shell: View {
         // rings in during the fade-out puts it back for the question below.
         // A pick from another tab (no All chip there) leaves All alone.
         let leftAll = leavesAll && appState.isAllProfilesChatsOn
+        let pickDashboardID = appState.activeDashboardID
         if leftAll { appState.setAllProfilesChatsOn(false) }
         isPickingProfile = true
         isFadingOutForPick = true
@@ -1513,7 +1516,9 @@ struct V2Shell: View {
             // already does.
             if appState.isProfileSwitching {
                 if queuedProfilePick.profile == nil {
-                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID)
+                    // All stays as it was until the kept pick goes ahead.
+                    if leftAll { appState.setAllProfilesChatsOn(true) }
+                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID, leavesAll: leftAll)
                 }
                 isPickingProfile = false
                 return
@@ -1530,6 +1535,15 @@ struct V2Shell: View {
             }
             await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
+            // A switch that didn't land (the connection dropped) leaves All
+            // as it was.
+            // Only on the dashboard the pick was made on: another one picked
+            // meanwhile keeps its own All. A newer tap kept meanwhile left
+            // All for good, so it stays off for that one.
+            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target,
+               queuedProfilePick.profile == nil {
+                appState.setAllProfilesChatsOn(true)
+            }
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
@@ -1603,10 +1617,14 @@ struct V2QueuedProfilePick: Equatable {
     /// The dashboard the tap was made on: a profile name means nothing on
     /// another one.
     private(set) var dashboardID: UUID?
+    /// The pick came from under the All chip and All is still on: it goes
+    /// off when the pick goes ahead.
+    private(set) var leavesAll = false
 
-    mutating func tap(_ profile: String, dashboardID: UUID?) {
+    mutating func tap(_ profile: String, dashboardID: UUID?, leavesAll: Bool = false) {
         self.profile = profile
         self.dashboardID = dashboardID
+        self.leavesAll = leavesAll
     }
 
     /// The profile to switch to now that the switch ended on `landed`, on
@@ -1615,6 +1633,7 @@ struct V2QueuedProfilePick: Equatable {
         defer {
             profile = nil
             self.dashboardID = nil
+            leavesAll = false
         }
         guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
