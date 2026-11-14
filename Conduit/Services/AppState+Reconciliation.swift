@@ -1435,7 +1435,12 @@ extension AppState {
                     self.noteConnectionStep("Newest chats, \(newest.count) rows", since: startedAt)
                     race.finish(.read(newest))
                 } catch {
-                    self.noteConnectionStep("Newest chats", since: startedAt, error: error)
+                    // Stopped because the list landed first: no failure.
+                    if error is CancellationError || Task.isCancelled {
+                        self.noteConnectionStep("Newest chats read stopped: the list landed first", since: startedAt)
+                    } else {
+                        self.noteConnectionStep("Newest chats", since: startedAt, error: error)
+                    }
                     race.finish(.failed)
                 }
             }
