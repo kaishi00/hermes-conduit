@@ -237,8 +237,9 @@ extension AppState {
     /// The Watch app says what to set up when its voice can't start, and
     /// that calls then ring only the iPhone.
     /// Also how a call ringing on the Watch names the main profile, the
-    /// accent the Watch app draws in, and whether the active dashboard's
-    /// notifications are end-to-end encrypted (the Watch's Settings).
+    /// accent the Watch app draws in, whether the active dashboard's
+    /// notifications are end-to-end encrypted (the Watch's Settings), and
+    /// the ringtones picked in Calls from Hermes.
     func shareWatchCallVoices() {
         shareMainProfileNamesWithNotifications()
         let notifications = PushNotificationService.shared
@@ -253,7 +254,9 @@ extension AppState {
             activeDashboardID: activeDashboardID?.uuidString,
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
             notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:))),
-            pluginAsk: PluginUpdateAsk.managedAsk
+            pluginAsk: PluginUpdateAsk.managedAsk,
+            ringtone: HermesRingtoneStore().forAll.rawValue,
+            botRingtones: HermesRingtoneStore().bots
         ))
     }
 
