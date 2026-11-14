@@ -1500,10 +1500,15 @@ struct V2Shell: View {
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             var target = profile
             var targetDashboardID = pickDashboardID
+            // Whether the pick going ahead came from under All: this pick's
+            // own, or a newer tap's when it was made on another dashboard
+            // (this pick's All never touched that one).
+            var targetLeavesAll = leftAll
             // A tap in the fade-out is the latest word: back on the profile
             // already showing means no switch at all, another one replaces
             // this target.
             if queuedProfilePick.profile != nil {
+                let nextLeavesAll = queuedProfilePick.leavesAll
                 guard let next = queuedProfilePick.take(
                     landedOn: appState.activeProfile,
                     dashboardID: appState.activeDashboardID
@@ -1515,6 +1520,7 @@ struct V2Shell: View {
                 target = next
                 // The newer tap was made on the dashboard showing now.
                 targetDashboardID = appState.activeDashboardID
+                if targetDashboardID != pickDashboardID { targetLeavesAll = nextLeavesAll }
             }
             // Another dashboard opened in the fade-out (a notification, a
             // widget): a profile picked on the old one means nothing here,
@@ -1527,16 +1533,16 @@ struct V2Shell: View {
             // A switch started elsewhere (CarPlay) in the fade-out would
             // refuse this one: it waits behind it.
             if appState.isProfileSwitching {
-                // Only on the dashboard the pick was made on: one picked
-                // meanwhile keeps its own All, and the kept pick stays with
-                // the dashboard it was made on (dropped on any other).
-                // The queue is empty here: any tap kept in the fade-out
-                // became `target` above.
+                // Only on the dashboard the pick was made on: another one
+                // keeps its own All. The kept pick stays with the dashboard
+                // it was made on (dropped on any other) and carries its own
+                // All flag. The queue is empty here: any tap kept in the
+                // fade-out became `target` above.
                 // All stays as it was until the kept pick goes ahead.
                 if leftAll, appState.activeDashboardID == pickDashboardID {
                     appState.setAllProfilesChatsOn(true)
                 }
-                queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: leftAll)
+                queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: targetLeavesAll)
                 isPickingProfile = false
                 return
             }
@@ -1549,8 +1555,13 @@ struct V2Shell: View {
                 }
                 isPickingProfile = false
                 fadeContentBackIn()
-                pickProfile(target, haptic: false, leavesAll: leftAll)
+                pickProfile(target, haptic: false, leavesAll: targetLeavesAll)
                 return
+            }
+            // A newer tap from under All on another dashboard leaves All
+            // there as its switch starts.
+            if targetDashboardID != pickDashboardID, targetLeavesAll, appState.isAllProfilesChatsOn {
+                appState.setAllProfilesChatsOn(false)
             }
             await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
