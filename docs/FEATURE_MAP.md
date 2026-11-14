@@ -626,7 +626,7 @@ notifier CHANGELOG.md
 - Whether a ChatGPT account without a voice in its apps is refused it the same way is unverified: .52's account was the only one probed.
 - Codex's GA endpoint (accounts ChatGPT has moved, issue 2236) wasn't probed: whether it takes the same voice IDs, and refuses an unknown one the same way, is unverified.
 
-**Checked:** 2026-11-14, #2411 (from its's reviews: a connection lost before the host answered never names the voice, the watchdog's message tested through a session, the GA endpoint's voices an open gap); 2026-11-14, #2411 (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
+**Checked:** 2026-11-14, #2411 (from its reviews: a connection lost before the host answered never names the voice, the watchdog's message tested through a session, the GA endpoint's voices an open gap); 2026-11-14, #2411 (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
 
 ## Starting a call
 
