@@ -72,12 +72,12 @@ extension AppState {
             to: previous
         ).first(where: \.isFromUser)
         messages[index].reactions = Self.reactions(previous, withUserReaction: picked)
-        lastReactionRequestGeneration += 1
-        let generation = lastReactionRequestGeneration
-        reactionRequestGenerations[messageId] = generation
+        shownChat.lastReactionRequestGeneration += 1
+        let generation = shownChat.lastReactionRequestGeneration
+        shownChat.reactionRequestGenerations[messageId] = generation
         defer {
-            if reactionRequestGenerations[messageId] == generation {
-                reactionRequestGenerations[messageId] = nil
+            if shownChat.reactionRequestGenerations[messageId] == generation {
+                shownChat.reactionRequestGenerations[messageId] = nil
             }
         }
         Haptics.light()
@@ -92,7 +92,7 @@ extension AppState {
                 throw HermesError.notConnected
             }
             guard activeSessionId == sessionId,
-                  reactionRequestGenerations[messageId] == generation,
+                  shownChat.reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // "Newest assistant row" is resolved when Hermes handles the
             // call. The result belongs to this reply when the reply has
@@ -116,7 +116,7 @@ extension AppState {
             messages[current].reactions = result.reactions
         } catch {
             guard activeSessionId == sessionId,
-                  reactionRequestGenerations[messageId] == generation,
+                  shownChat.reactionRequestGenerations[messageId] == generation,
                   let current = messages.firstIndex(where: { $0.id == messageId }) else { return }
             // Put back only the user's own reaction: an agent reaction that
             // arrived during the call stays.
@@ -168,7 +168,7 @@ extension AppState {
     /// predate it: keep the user's pick until the save answers.
     private func paintAgentReactions(_ reactions: [MessageReaction], at index: Int) {
         let message = messages[index]
-        messages[index].reactions = reactionRequestGenerations[message.id] == nil
+        messages[index].reactions = shownChat.reactionRequestGenerations[message.id] == nil
             ? reactions
             : Self.reactions(reactions, withUserReaction: message.reactions.first(where: \.isFromUser))
     }

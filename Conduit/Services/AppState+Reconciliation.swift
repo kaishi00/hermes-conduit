@@ -1953,10 +1953,10 @@ extension AppState {
             // stayed over a chat that came back on the next try).
             if settled {
                 chatErrorBehindRoom = nil
-                if let failed = chatRestoreFailureShown, errorMessage == failed {
+                if let failed = shownChat.chatRestoreFailureShown, errorMessage == failed {
                     errorMessage = nil
                 }
-                chatRestoreFailureShown = nil
+                shownChat.chatRestoreFailureShown = nil
             }
             if settled, reconcileExplicitYolo {
                 // Re-assert only after the ownership guard above (token,
@@ -2033,7 +2033,7 @@ extension AppState {
                 chatSyncErrorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
             // A later restore of the chat that works takes it down again.
-            chatRestoreFailureShown = chatSyncErrorMessage
+            shownChat.chatRestoreFailureShown = chatSyncErrorMessage
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             return false

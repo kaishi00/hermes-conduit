@@ -56,26 +56,26 @@ extension AppState {
         let dashboard = activeDashboardID?.uuidString ?? ""
         let key = "\(dashboard)|\(ref.profile)|\(ref.sessionId)|\(ref.rowId)"
         let pictureKey = "\(key)|\(ref.index)"
-        guard !inlineImageRowsUnavailable.contains(key),
-              !inlineImageRowsUnavailable.contains(pictureKey) else { return nil }
+        guard !shownChat.inlineImageRowsUnavailable.contains(key),
+              !shownChat.inlineImageRowsUnavailable.contains(pictureKey) else { return nil }
         let fetch: Task<InlineImageRowFetch, Never>
-        if let running = inlineImageRowFetches[key] {
+        if let running = shownChat.inlineImageRowFetches[key] {
             fetch = running
         } else {
             fetch = Task { @MainActor [weak self] in
                 guard let self else { return .failed }
                 let result = await self.fetchInlineImageRow(ref)
-                self.inlineImageRowFetches[key] = nil
-                if case .unavailable = result { self.inlineImageRowsUnavailable.insert(key) }
+                self.shownChat.inlineImageRowFetches[key] = nil
+                if case .unavailable = result { self.shownChat.inlineImageRowsUnavailable.insert(key) }
                 return result
             }
-            inlineImageRowFetches[key] = fetch
+            shownChat.inlineImageRowFetches[key] = fetch
         }
         guard case .found(let urls) = await fetch.value else { return nil }
         guard urls.indices.contains(ref.index), let url = urls[ref.index] else {
             // The row holds no copy of this picture (a web link, or fewer
             // pictures than stand-ins), so it is not asked for again.
-            inlineImageRowsUnavailable.insert(pictureKey)
+            shownChat.inlineImageRowsUnavailable.insert(pictureKey)
             return nil
         }
         return url

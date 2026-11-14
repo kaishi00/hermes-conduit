@@ -18,6 +18,11 @@ import Combine
 /// as before. What reacts to a change outside the chat (the chat on screen
 /// claim, a message waiting to send, the viewport) stays in AppState's
 /// forwarding setters. `liveTurn` publishes on its own object, as before.
+///
+/// Only what belongs to the chat itself moves here. What belongs to the
+/// screen showing it (scroll and landing requests, the viewport
+/// transition, which chat is open) and what spans chats (sets and
+/// dictionaries keyed by session) stay in AppState for stage 2 to place.
 @MainActor
 final class ChatState: ObservableObject {
 
@@ -334,4 +339,46 @@ final class ChatState: ObservableObject {
     /// When the last reply settled here, so a follow-up check can say how
     /// long ago without reading timestamps.
     var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
+
+    // MARK: The chat's own activity
+
+    /// The open chat's plan card (AppState+ChatCards). Its own observable:
+    /// the card changing redraws the card alone.
+    let chatCards = ChatCardsModel()
+    @Published var activeSessionTitle = AppLocalization.string("New conversation")
+    @Published var isChatRefreshing = false
+    @Published var isBranchingChat = false
+    /// An Edit and resend, /undo or /retry reading the chat's turns, taking
+    /// them back and reopening the chat. Another rewind is refused and the
+    /// composer and sends wait meanwhile: they would change the history its
+    /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
+    /// refuse a stale count), or land in the transcript the reopen replaces.
+    @Published var isRewindingTurns = false
+    /// A slash command's prompt or prefill refused while a rewind ran: the
+    /// rewind says so once it is done, after its reopen has replaced the
+    /// transcript a note added sooner would be in.
+    var slashPromptRefusedDuringRewind = false
+    /// Counts rewinds started: a rewind clears the flags above only while
+    /// no later one has started.
+    var rewindGeneration = 0
+    @Published var activeAgents = 0
+    @Published var delegateAgents: [DelegateAgentActivity] = []
+    /// When each delegate agent last sent an event. An event that changes
+    /// nothing its card shows renews this without publishing the cards, and
+    /// the roster check counts it as the card's latest news.
+    var delegateAgentSeenAt: [String: Date] = [:]
+    /// The restore error the open chat's last failed resume showed, which a
+    /// later resume of it that works clears (issue 2025).
+    var chatRestoreFailureShown: String?
+    /// Another device is getting the reply of a turn in the open chat; its
+    /// working line says so.
+    @Published var activeChatRepliesElsewhere = false
+    /// Latest in-flight tapback per message id, so an older reply to a
+    /// quick re-tap can't overwrite the newer one. Generations come from one
+    /// counter that only grows, so a settled entry can be dropped without a
+    /// later tap reusing a number an older request still holds.
+    var reactionRequestGenerations: [String: Int] = [:]
+    var lastReactionRequestGeneration = 0
+    var inlineImageRowFetches: [String: Task<AppState.InlineImageRowFetch, Never>] = [:]
+    var inlineImageRowsUnavailable: Set<String> = []
 }

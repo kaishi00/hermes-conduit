@@ -496,14 +496,47 @@ final class AppState: ObservableObject {
     /// AppState's (`shownChatChanges`).
     let shownChat = ChatState()
     var shownChatChanges: AnyCancellable?
+    /// The chat on screen's own activity (`ChatState`): its title, plan
+    /// card, refresh, branch and rewind, its agents, and replies streaming
+    /// to another device.
+    var chatCards: ChatCardsModel { shownChat.chatCards }
+    var activeSessionTitle: String {
+        get { shownChat.activeSessionTitle }
+        set { shownChat.activeSessionTitle = newValue }
+    }
+    var isChatRefreshing: Bool {
+        get { shownChat.isChatRefreshing }
+        set { shownChat.isChatRefreshing = newValue }
+    }
+    var isBranchingChat: Bool {
+        get { shownChat.isBranchingChat }
+        set { shownChat.isBranchingChat = newValue }
+    }
+    var isRewindingTurns: Bool {
+        get { shownChat.isRewindingTurns }
+        set { shownChat.isRewindingTurns = newValue }
+    }
+    var slashPromptRefusedDuringRewind: Bool {
+        get { shownChat.slashPromptRefusedDuringRewind }
+        set { shownChat.slashPromptRefusedDuringRewind = newValue }
+    }
+    var activeAgents: Int {
+        get { shownChat.activeAgents }
+        set { shownChat.activeAgents = newValue }
+    }
+    var delegateAgents: [DelegateAgentActivity] {
+        get { shownChat.delegateAgents }
+        set { shownChat.delegateAgents = newValue }
+    }
+    var activeChatRepliesElsewhere: Bool {
+        get { shownChat.activeChatRepliesElsewhere }
+        set { shownChat.activeChatRepliesElsewhere = newValue }
+    }
     /// Bumped on every write to `messages`.
     var chatTranscriptRevision: UInt64 { shownChat.transcriptRevision }
     /// A message an Artifacts screen asked to show; the chat scrolls to it
     /// once its transcript has the row (AppState+Artifacts).
     @Published var pendingArtifactReveal: ArtifactReveal?
-    /// The open chat's plan card (AppState+ChatCards). Its own observable:
-    /// the card changing redraws the card alone.
-    let chatCards = ChatCardsModel()
     /// Every chat Hermes waits on the user in, every profile's (issue 1705;
     /// AppState+NeedsYou). Its own observable, as `chatCards`.
     let needsYou = NeedsYouStore()
@@ -570,14 +603,12 @@ final class AppState: ObservableObject {
     /// The scope whose list in memory came from Hermes after the saved files
     /// were last wiped, and so may be saved.
     var savableChatListScope: WidgetWorkspaceID?
-    @Published var activeSessionTitle = AppLocalization.string("New conversation")
     /// Persisted-history pagination window of the active conversation
     /// (`ChatState.persistedTranscriptWindow`).
     var persistedTranscriptWindow: PersistedTranscriptWindowState? {
         get { shownChat.persistedTranscriptWindow }
         set { shownChat.persistedTranscriptWindow = newValue }
     }
-    @Published var isChatRefreshing = false
     @Published var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published var chatReturnSurface: ChatReturnSurface = .conversation
     /// One-shot request for MainView to present the sessions drawer as the
@@ -591,20 +622,6 @@ final class AppState: ObservableObject {
     /// Keeps the current transcript visible while a notification destination is
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published var isOpeningNotificationSession = false
-    @Published var isBranchingChat = false
-    /// An Edit and resend, /undo or /retry reading the chat's turns, taking
-    /// them back and reopening the chat. Another rewind is refused and the
-    /// composer and sends wait meanwhile: they would change the history its
-    /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
-    /// refuse a stale count), or land in the transcript the reopen replaces.
-    @Published var isRewindingTurns = false
-    /// A slash command's prompt or prefill refused while a rewind ran: the
-    /// rewind says so once it is done, after its reopen has replaced the
-    /// transcript a note added sooner would be in.
-    var slashPromptRefusedDuringRewind = false
-    /// Counts rewinds started: a rewind clears the flags above only while
-    /// no later one has started.
-    var rewindGeneration = 0
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE
@@ -842,12 +859,6 @@ final class AppState: ObservableObject {
     var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
 
     @Published var runtime = RuntimeState()
-    @Published var activeAgents = 0
-    @Published var delegateAgents: [DelegateAgentActivity] = []
-    /// When each delegate agent last sent an event. An event that changes
-    /// nothing its card shows renews this without publishing the cards, and
-    /// the roster check counts it as the card's latest news.
-    var delegateAgentSeenAt: [String: Date] = [:]
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
@@ -985,9 +996,6 @@ final class AppState: ObservableObject {
     /// and Wrap Up landed on Bots Home). Every close sets it, so it never
     /// outlives the close it describes.
     var roomHandedTo: RoomHandoff = .none
-    /// The restore error the open chat's last failed resume showed, which a
-    /// later resume of it that works clears (issue 2025).
-    var chatRestoreFailureShown: String?
     /// The chat on screen's composer requests (`ChatState`, composer).
     var composerPrefillText: String {
         get { shownChat.composerPrefillText }
@@ -2469,9 +2477,6 @@ final class AppState: ObservableObject {
     /// opened since never wears them either.
     var notificationRouteFailure: NotificationRouteFailure?
     var openChatSyncReadID: UUID?
-    /// Another device is getting the reply of a turn in the open chat; its
-    /// working line says so.
-    @Published var activeChatRepliesElsewhere = false
     /// The clock of those checks; tests move it.
     var chatSyncNow: @MainActor () -> Date = { Date() }
     /// Low Power Mode and Low Data Mode, which stretch every poll
@@ -3293,12 +3298,6 @@ final class AppState: ObservableObject {
     /// Test seam for the `message.react` transport; production leaves it
     /// nil and uses the live client.
     var messageReactionSender: (@MainActor (_ sessionId: String, _ target: MessageReactionTarget, _ emoji: String?) async throws -> MessageReactionResult)?
-    /// Latest in-flight tapback per message id, so an older reply to a
-    /// quick re-tap can't overwrite the newer one. Generations come from one
-    /// counter that only grows, so a settled entry can be dropped without a
-    /// later tap reusing a number an older request still holds.
-    var reactionRequestGenerations: [String: Int] = [:]
-    var lastReactionRequestGeneration = 0
 
     // MARK: - Chat takeover (AppState+NotifierPlugin.swift, AppState+ChatTakeover.swift, AppState+SendMessage.swift, AppState+YoloAndReasoning.swift)
     //
@@ -3508,8 +3507,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Chat support surfaces (AppState+StreamingText.swift, AppState+ChatSupport.swift, AppState+ResponseHaptics.swift, AppState+VoiceConversation.swift, AppState+WatchCalls.swift)
 
-    var inlineImageRowFetches: [String: Task<InlineImageRowFetch, Never>] = [:]
-    var inlineImageRowsUnavailable: Set<String> = []
 
     /// A mode switch from a call screen is under way.
     var isSwitchingVoiceMode = false
