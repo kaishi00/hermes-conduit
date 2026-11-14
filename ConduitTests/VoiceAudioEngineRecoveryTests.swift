@@ -222,6 +222,38 @@ extension VoiceAudioSessionCoordinatorTests {
         XCTAssertEqual(cleared, 1)
     }
 
+    func testAHeldInputGivesTheEarlierOneBackOnlyWhileItsOwnIsPreferred() {
+        var hold = VoicePreferredInputHold<String>()
+        hold.take(previous: "airpods", settingUID: "built-in")
+        hold.take(previous: "built-in", settingUID: "built-in")
+        XCTAssertTrue(hold.isHeld)
+        guard case .restore(let previous) = hold.release(currentUID: "built-in") else {
+            return XCTFail("its own input is still preferred, so the earlier one comes back")
+        }
+        XCTAssertEqual(previous, "airpods", "a second move keeps the first one's earlier input")
+        XCTAssertFalse(hold.isHeld)
+
+        hold.take(previous: nil, settingUID: "built-in")
+        guard case .restore(let automatic) = hold.release(currentUID: "built-in") else {
+            return XCTFail("nothing was picked before: the route chooses again")
+        }
+        XCTAssertNil(automatic)
+
+        hold.take(previous: "airpods", settingUID: "built-in")
+        guard case .keep = hold.release(currentUID: "usb-mic") else {
+            return XCTFail("a microphone picked since is newer and stays")
+        }
+        guard case .keep = hold.release(currentUID: "built-in") else {
+            return XCTFail("a released hold restores nothing")
+        }
+
+        hold.take(previous: "airpods", settingUID: "built-in")
+        hold.forget()
+        guard case .keep = hold.release(currentUID: "built-in") else {
+            return XCTFail("the user picked the built-in microphone themselves: it stays")
+        }
+    }
+
     func testCaptureOnAFailingHeadsetMicrophoneRecordsFromTheBuiltInOne() throws {
         let factory = FakeCaptureEngineFactory()
         factory.startFailures = [formatNotSupported, formatNotSupported]
