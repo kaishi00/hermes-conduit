@@ -3401,6 +3401,16 @@ final class AppState: ObservableObject {
     /// asks.
     var faceIDUnlockedDashboards: [UUID: SHA256.Digest] = [:]
 
+    /// One Face ID or Touch ID unlock opens every saved dashboard for the
+    /// rest of the launch: a switch to another Face ID dashboard doesn't ask
+    /// again. Set by the first successful unlock; a cold launch asks.
+    var faceIDUnlockedThisLaunch = false
+
+    /// Dashboards that ask again despite the launch's unlock: their saved
+    /// password was cleared (sign-out, removal, a switch to browser sign-in)
+    /// since. Their next unlock takes them out.
+    var faceIDRelockedDashboards: Set<UUID> = []
+
     /// Face ID or Touch ID for a saved password. Test seam.
     var unlockWithFaceID: @MainActor () async -> Bool = {
         guard BiometricAuth.isAvailable else { return false }

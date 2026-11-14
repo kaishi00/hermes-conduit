@@ -6754,6 +6754,35 @@ describes this case)
 
 **Checked:** 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-10-24, at #1219.
 
+## Face ID for saved dashboards
+
+A saved password kept behind Face ID or Touch ID unlocks once per launch, for
+every saved dashboard (multi-instance quick win 2): a switch to another Face ID
+dashboard signs in without asking again.
+
+**Siblings:** the launch sign-in · every dashboard switch (the profile picker,
+Saved Dashboards, the top bar's dashboard menu, a widget, a notification or a
+link that switches) · the offline retries (each return from the Face ID sheet)
+· sign-out, removal and a switch to browser sign-in (they relock) · the sign-in
+screen's Use Face ID caption (not needed: "unlocks the saved sign-in when
+Conduit opens" still holds) · the saved dashboards list's Signs in with Face ID
+(not needed: the kind of sign-in is unchanged) · README.md (not needed: lists
+the lock only)
+
+**Code**
+- `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (testOneFaceIDUnlockHoldsWhileTheServerCantBeReached, testOneFaceIDUnlockOpensEverySavedDashboardForTheLaunch)
+
+**Rulings**
+- One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, #2423).
+- A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for it after an unlock covered it (the launch's unlock covers the password a dashboard signs in with first) (#2423).
+- The unlock holds while Conduit runs, also after a long time away, as a connected Conduit never asks again on return.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-14, #2423.
+
 ## Which dashboard a launch signs in to
 
 Ask Which Dashboard at Launch (issue 1908): with it on and two or more

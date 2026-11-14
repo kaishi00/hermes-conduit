@@ -125,14 +125,17 @@ extension AppState {
         let scopedDashboardID = dashboardID ?? activeDashboardID
         rememberDashboardURL(credentials.baseURL)
 
-        // One Face ID unlock holds for the dashboard while Conduit runs: the
-        // offline retries (each return from the Face ID sheet makes the scene
-        // active again) must not ask again, or the sheet loops until the
-        // server answers.
-        let faceIDUnlockHeld = scopedDashboardID.map {
-            faceIDUnlockedDashboards[$0] == Self.faceIDUnlockFingerprint(credentials)
-        } ?? false
+        // One Face ID unlock holds while Conduit runs: the offline retries
+        // (each return from the Face ID sheet makes the scene active again)
+        // must not ask again, or the sheet loops until the server answers,
+        // and neither does a switch to another saved dashboard.
+        let faceIDUnlockHeld = scopedDashboardID.map { faceIDUnlockHolds(for: $0, credentials) } ?? false
         if credentials.requiresFaceID, faceIDUnlockHeld {
+            if let scopedDashboardID, faceIDUnlockedDashboards[scopedDashboardID] == nil {
+                // The launch's unlock now covers this password: a different
+                // one saved for the dashboard later asks again.
+                faceIDUnlockedDashboards[scopedDashboardID] = Self.faceIDUnlockFingerprint(credentials)
+            }
             if let scopedDashboardID {
                 // A retry keeps the copy already on screen.
                 if offlineChatPresentation == nil {
@@ -170,8 +173,10 @@ extension AppState {
             if let switchGeneration, !switchGenerationIsCurrent(switchGeneration) {
                 return
             }
+            faceIDUnlockedThisLaunch = true
             if let scopedDashboardID {
                 faceIDUnlockedDashboards[scopedDashboardID] = Self.faceIDUnlockFingerprint(credentials)
+                faceIDRelockedDashboards.remove(scopedDashboardID)
             }
             // The user just unlocked the saved password for the selected
             // dashboard: the sign-in finishes even if the widget launch
@@ -231,7 +236,25 @@ extension AppState {
     /// held for it: a password saved for it again asks again.
     func clearSavedPassword(dashboardID: UUID) {
         KeychainHelper.clearCredentials(dashboardID: dashboardID)
+        relockFaceID(dashboardID: dashboardID)
+    }
+
+    /// The dashboard's next sign-in with a saved password asks for Face ID
+    /// again, whatever the launch's unlock.
+    func relockFaceID(dashboardID: UUID) {
         faceIDUnlockedDashboards[dashboardID] = nil
+        faceIDRelockedDashboards.insert(dashboardID)
+    }
+
+    /// Whether an unlock this launch covers the dashboard's saved password.
+    /// A dashboard unlocked before holds while its password is the one
+    /// unlocked (a different one saved later asks again); any other holds
+    /// after the launch's first unlock unless it was relocked since.
+    func faceIDUnlockHolds(for dashboardID: UUID, _ credentials: DashboardCredentials) -> Bool {
+        if let fingerprint = faceIDUnlockedDashboards[dashboardID] {
+            return fingerprint == Self.faceIDUnlockFingerprint(credentials)
+        }
+        return faceIDUnlockedThisLaunch && !faceIDRelockedDashboards.contains(dashboardID)
     }
 
     private static func faceIDUnlockFingerprint(_ credentials: DashboardCredentials) -> SHA256.Digest {
