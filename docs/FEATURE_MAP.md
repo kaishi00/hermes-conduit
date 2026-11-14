@@ -6771,14 +6771,14 @@ the lock only)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift` (testOneFaceIDUnlockHoldsWhileTheServerCantBeReached, testOneFaceIDUnlockOpensEverySavedDashboardForTheLaunch)
 
 **Rulings**
-- One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, PR_NUM).
-- A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for one already unlocked (PR_NUM).
+- One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, #2423).
+- A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for one already unlocked (#2423).
 - The unlock holds while Conduit runs, also after a long time away, as a connected Conduit never asks again on return.
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-14, PR_NUM.
+**Checked:** 2026-11-14, #2423.
 
 ## Which dashboard a launch signs in to
 
