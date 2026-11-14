@@ -758,7 +758,7 @@ extension AppState {
 
         case .delegateAgent(let sessionId, var activity):
             activity.sessionId = sessionId
-            delegateAgentSeenAt[activity.id] = activity.updatedAt
+            shownChat.delegateAgentSeenAt[activity.id] = activity.updatedAt
             var updated = delegateAgents
             if let index = updated.firstIndex(where: { $0.id == activity.id }) {
                 let card = updated[index].merged(with: activity)

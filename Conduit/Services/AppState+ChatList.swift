@@ -588,9 +588,9 @@ extension AppState {
     /// picture reads under way, whether the list may be saved) leaves with
     /// its dashboard, whether the dashboard's files are wiped or kept.
     func leaveSavedChats(dashboardID: UUID?) {
-        inlineImageRowsUnavailable.removeAll()
-        inlineImageRowFetches.values.forEach { $0.cancel() }
-        inlineImageRowFetches.removeAll()
+        shownChat.inlineImageRowsUnavailable.removeAll()
+        shownChat.inlineImageRowFetches.values.forEach { $0.cancel() }
+        shownChat.inlineImageRowFetches.removeAll()
         if offlineChatPresentation.map({ dashboardID == nil || $0.dashboardID == dashboardID }) == true {
             offlineChatPresentation = nil
         }
