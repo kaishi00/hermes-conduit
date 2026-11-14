@@ -337,6 +337,22 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(GPTLiveVoice.all.first { $0.name == "cove" }?.label.hasPrefix("Cove · "), true)
     }
 
+    func testGPTLiveOffersChatGPTsKoreanVoicesAndNamesAChosenVoiceWhenACallNeverStarts() {
+        // Issue 2388: Codex's endpoint started calls with these IDs (a made-up one never connected).
+        for name in ["haetsal", "hanul"] {
+            XCTAssertTrue(GPTLiveVoice.all.contains { $0.name == name }, "\(name) is pickable on the ChatGPT plan")
+            XCTAssertFalse(GPTLiveVoice.apiNames.contains(name), "\(name) isn't an API-key voice")
+        }
+        XCTAssertEqual(GPTLiveVoice.all.first { $0.name == "haetsal" }?.label.hasPrefix("Haetsal · "), true)
+        let plain = AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice)
+        XCTAssertEqual(GPTLiveSession.notStartedMessage(voice: nil, billing: .subscription), plain)
+        XCTAssertEqual(GPTLiveSession.notStartedMessage(voice: "", billing: .subscription), plain)
+        XCTAssertEqual(GPTLiveSession.notStartedMessage(voice: "marin", billing: .api), plain, "The API key refuses a voice outright")
+        let named = GPTLiveSession.notStartedMessage(voice: "haetsal", billing: .subscription)
+        XCTAssertNotEqual(named, plain)
+        XCTAssertTrue(named.contains("Haetsal"), "The chosen voice is named")
+    }
+
     func testGPTLiveAPIVoicesIncludeTheOtherLanguageVoices() {
         XCTAssertEqual(Set(GPTLiveVoice.apiNames).count, GPTLiveVoice.apiNames.count)
         for name in ["marin", "cedar", "nuri", "juni", "flitz", "brise", "sillage", "nira", "harema", "shida", "noeul"] {

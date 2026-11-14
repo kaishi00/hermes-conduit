@@ -247,8 +247,19 @@ final class GPTLiveSession {
             guard let self, self.isCurrent(peer), self.state == .connecting else { return }
             gptLiveLogger.error("GPT-Live never reported session.started")
             self.onTrace?("No session.started in time")
-            self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice))
+            self.fail(Self.notStartedMessage(voice: self.voice, billing: self.billing))
         }
+    }
+
+    /// Why a call never started. On the ChatGPT plan a voice the account
+    /// doesn't offer gets its offer answered and then never connects, so a
+    /// chosen voice is named as a likely cause (issue 2388).
+    nonisolated static func notStartedMessage(voice: String?, billing: GPTLiveBilling) -> String {
+        guard billing == .subscription, let voice, !voice.isEmpty else {
+            return AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice)
+        }
+        let name = voice.prefix(1).uppercased() + voice.dropFirst()
+        return AppLocalization.string("GPT-Live didn't start the conversation. If your ChatGPT plan doesn't offer the voice \(name), pick another in GPT-Live's settings.", table: .voice)
     }
 
     /// True for a ChatGPT-plan call on Codex's GA endpoint, which replaces
@@ -399,7 +410,10 @@ final class GPTLiveSession {
         guard state == .ready || state == .connecting else { return }
         gptLiveLogger.notice("GPT-Live connection lost")
         onTrace?("Connection lost")
-        fail(AppLocalization.string("The GPT-Live connection was lost.", table: .voice))
+        // A call that never started is the same failure as the start watchdog's.
+        fail(state == .connecting
+            ? Self.notStartedMessage(voice: voice, billing: billing)
+            : AppLocalization.string("The GPT-Live connection was lost.", table: .voice))
     }
 
     private func fail(_ message: String) {

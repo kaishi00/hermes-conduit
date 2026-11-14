@@ -140,7 +140,7 @@ Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call ins
 
 GPT-Live's settings have a **Billing** choice, per profile:
 
-- **ChatGPT plan** (the default): the call bills the ChatGPT subscription the Hermes server is signed in to (`hermes auth`, OpenAI Codex), with ChatGPT's voices.
+- **ChatGPT plan** (the default): the call bills the ChatGPT subscription the Hermes server is signed in to (`hermes auth`, OpenAI Codex), with ChatGPT's voices. Haetsal and Hanul are ChatGPT's Korean voices; like the others they speak the call's language, not only Korean. A call with a voice your plan doesn't offer doesn't start, and says which voice to change; it never switches to another voice or to the API key.
 - **API key · billed per minute**: the call uses the public GPT-Live API (`gpt-live-1`, the same one Hermes desktop's voice mode uses) on the server's OpenAI API key. OpenAI bills that key per minute of call time, separately from any ChatGPT plan. It has its own voices (marin, cedar, …) and needs the Hermes notifier plugin 0.22 or newer.
 
 The two are kept apart so nobody pays for the one they didn't pick:

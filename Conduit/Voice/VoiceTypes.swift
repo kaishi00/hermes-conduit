@@ -511,7 +511,10 @@ enum GPTLiveAPICallLimit {
 
 /// A GPT-Live voice: the name the host sends to GPT-Live, and how it sounds.
 /// The names are ChatGPT's voices; a voice the account doesn't have is
-/// refused by GPT-Live when the call starts.
+/// refused by GPT-Live when the call starts. Codex's endpoint answers such a
+/// call's offer and then never connects it, so the call fails to start
+/// rather than speaking with another voice (probed on a ChatGPT plan,
+/// issue 2388).
 struct GPTLiveVoice: Equatable, Identifiable {
     let name: String
     let style: String
@@ -530,6 +533,11 @@ struct GPTLiveVoice: Equatable, Identifiable {
             GPTLiveVoice(name: "sol", style: AppLocalization.string("Savvy", table: .voice)),
             GPTLiveVoice(name: "spruce", style: AppLocalization.string("Calm", table: .voice)),
             GPTLiveVoice(name: "vale", style: AppLocalization.string("Bright", table: .voice)),
+            // ChatGPT's Korean voices (issue 2388). They speak the call's
+            // language like the others: the briefing's language rule decides
+            // it, not the voice.
+            GPTLiveVoice(name: "haetsal", style: AppLocalization.string("Korean", table: .voice)),
+            GPTLiveVoice(name: "hanul", style: AppLocalization.string("Korean", table: .voice)),
         ]
     }
 
