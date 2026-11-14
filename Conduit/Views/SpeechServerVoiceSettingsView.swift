@@ -38,7 +38,13 @@ struct SpeechServerVoiceSettingsView: View {
             }
 
             if let status {
-                if status.drivesTurns, status.available {
+                if status.ownModel == true, status.available {
+                    Label(AppLocalization.string("This server's own model answers Live calls, and the Conduit plugin runs every other call's turns on it, so there's nothing to set up on it.", table: .voice), systemImage: "checkmark.circle.fill")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.green)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("voice.speechServerVoice.ownModel")
+                } else if status.drivesTurns, status.available {
                     Label(AppLocalization.string("Hermes answers on this server, so there's nothing to set up on it. The Conduit plugin runs each turn and has the server read the reply aloud.", table: .voice), systemImage: "checkmark.circle.fill")
                         .scaledFont(.caption)
                         .foregroundStyle(.green)

@@ -465,6 +465,11 @@ struct SpeechServerVoiceStatus: Equatable {
     /// plugin runs every turn, so the server never asks for words and has
     /// nothing to be pointed at.
     var drivesTurns = false
+    /// The server's own model answers Live > Local calls
+    /// (voice.speech_server.own_model), with the call's instructions and
+    /// tools; the plugin runs the turns of every other call on it. Nil from
+    /// a plugin before the setting (0.175.0), which has no switch to show.
+    var ownModel: Bool?
     /// The server answered a call with a model of its own, so Hermes got
     /// no turn; "Hermes answers" is what it needs (issue 2438).
     var answersAlone = false
@@ -520,7 +525,10 @@ struct SpeechServerVoiceStatus: Equatable {
         lastRequestAt = (response["last_request_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
         let server = response["speech_server"] as? [String: Any]
         speechServerURL = (server?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-        drivesTurns = server?["drive_turns"] as? Bool ?? false
+        ownModel = server?["own_model"] as? Bool
+        // With its own model answering, the plugin runs every other call's
+        // turns: the server asks for no words then either.
+        drivesTurns = (server?["drive_turns"] as? Bool ?? false) || ownModel == true
         answersAlone = response["answers_alone"] as? Bool ?? false
         pluginMissing = false
         frontModel = (response["front_model"] as? [String: Any]).map(LocalLiveFrontModelStatus.init(response:))

@@ -80,6 +80,20 @@ extension HermesVoiceConfigurationServiceTests {
         server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
         XCTAssertEqual(server?["voice"] as? String, "marin")
         XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+
+        // Stage 3: the own model switch is a Boolean of its own, removed
+        // when off, and leaves the rest alone.
+        let owned = await service.saveSpeechServerOwnModel(true)
+        XCTAssertTrue(owned)
+        server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["own_model"] as? Bool, true)
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+        XCTAssertEqual(server?["voice"] as? String, "marin")
+        let disowned = await service.saveSpeechServerOwnModel(false)
+        XCTAssertTrue(disowned)
+        server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertNil(server?["own_model"])
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
     }
 
     func testAFailedSaveDoesNotHoldUpTheNextOne() async {

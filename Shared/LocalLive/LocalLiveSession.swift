@@ -371,10 +371,12 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         let socket = openSocket(request)
         let agent = agentSetup?()
         do {
-            try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.sessionUpdate))
-            // Before the readiness check, so the plugin answers every
-            // utterance after it with the fast model.
+            // Before the session.update: a speech server whose own model
+            // answers (voice.speech_server.own_model) gets the instructions
+            // and tools on it. And before the readiness check, so the
+            // plugin answers every utterance after it with the fast model.
             if let agent { try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.agentConfigure(agent))) }
+            try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.sessionUpdate))
         } catch {
             // A refused WebSocket upgrade surfaces here, on the first send.
             let close = await socket.serverClose(within: .milliseconds(400))
