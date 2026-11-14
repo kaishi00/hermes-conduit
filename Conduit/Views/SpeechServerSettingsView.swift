@@ -30,6 +30,9 @@ struct SpeechServerSettingsView: View {
     @State private var answered = false
     /// The last read failed: the page's next check (Check again) reads again.
     @State private var readFailed = false
+    /// The switch as tapped, while its save is on the way: it shows the new
+    /// position at once, and what the host says once that is read.
+    @State private var driveTurnsDraft: Bool?
 
     static let urlKey = "voice.speech_server.url"
     static let apiKeyKey = "voice.speech_server.api_key"
@@ -82,8 +85,11 @@ struct SpeechServerSettingsView: View {
                 if let driveTurns = status?.driveTurns, status?.configured == true {
                     VStack(alignment: .leading, spacing: 4) {
                         Toggle(AppLocalization.string("Hermes answers", table: .voice), isOn: Binding(
-                            get: { driveTurns },
-                            set: { on in Task { await saveDriveTurns(on) } }
+                            get: { driveTurnsDraft ?? driveTurns },
+                            set: { on in
+                                driveTurnsDraft = on
+                                Task { await saveDriveTurns(on) }
+                            }
                         ))
                         .disabled(!answered || isSaving)
                         .accessibilityIdentifier("voice.speechServer.driveTurns")
@@ -166,6 +172,7 @@ struct SpeechServerSettingsView: View {
     /// status last read, while the host is asked again.
     private func load() async {
         draftsProfile = service.profile
+        driveTurnsDraft = nil
         status = service.speechServer
         urlDraft = status?.url ?? ""
         keyDraft = ""
@@ -243,7 +250,11 @@ struct SpeechServerSettingsView: View {
     /// removed, which is off.
     private func saveDriveTurns(_ on: Bool) async {
         isSaving = true
-        defer { isSaving = false }
+        // Whatever happened, the switch goes back to what the host has.
+        defer {
+            isSaving = false
+            driveTurnsDraft = nil
+        }
         testResult = nil
         errorMessage = nil
         let profile = draftsProfile
