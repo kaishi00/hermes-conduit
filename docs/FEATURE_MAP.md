@@ -1988,13 +1988,13 @@ opening its own chat (see Notifications), adding a dashboard or signing in (no c
 **Rulings**
 - A profile or dashboard picked by hand during a call asks first ("End the call and switch?", with the destination's name) and switches only on End Call and Switch; Cancel leaves the call and the screen as they were. Every call counts, as for the refusals: on screen or minimised, Classic voice, CarPlay, the Watch and a call from Hermes (issue 2390, #2398).
 - A move Conduit makes for a tap refuses during a call rather than asking, since it can wait or be tapped again (2026-10-26, #1297).
-- Cancel leaves the list too: a pick from under All turns All off only once the switch goes ahead (issue 2406, PR_NUM).
+- Cancel leaves the list too: a pick from under All turns All off only once the switch goes ahead (issue 2406, #2425).
 
 **Open gaps**
 - A call that carries on across a profile or dashboard switch, and checking another profile mid-call, wait on the all-live rework (stages 2 and 3; issue 2390).
 - Settings shows no call bar: the call keeps running behind it and the bar is back once Settings closes. Whether a Voice setting reaches the running call isn't said on screen (issue 2390, with the device pickers of issue 2389).
 
-**Checked:** 2026-11-14, PR_NUM (issue 2406: classic voice for a screenshot stops for a call answered during its second capability read; Cancel on the fade-out re-ask leaves All as it was; Repair's call message is one string; the no-voice guard tested with voice ready); 2026-11-14, #2404 (review leftovers from #2398: a call that rings in during the strip's fade-out is asked about; Repair's Switch says it ends the call; a no-question screenshot during a call comes up for typing; the screenshot refusal tested); 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
+**Checked:** 2026-11-14, #2425 (issue 2406: classic voice for a screenshot stops for a call answered during its second capability read; Cancel on the fade-out re-ask leaves All as it was; Repair's call message is one string; the no-voice guard tested with voice ready); 2026-11-14, #2404 (review leftovers from #2398: a call that rings in during the strip's fade-out is asked about; Repair's Switch says it ends the call; a no-question screenshot during a call comes up for typing; the screenshot refusal tested); 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
 
 ## Pulse
 
@@ -6783,7 +6783,7 @@ the lock only)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-14, PR_NUM (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
+**Checked:** 2026-11-14, #2425 (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
 
 ## Which dashboard a launch signs in to
 
