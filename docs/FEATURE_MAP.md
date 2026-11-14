@@ -7465,13 +7465,14 @@ asks between linked agents (Settings > Multiplayer's What they can ask, a Link's
 ask on the confirmation panel, with Share only when there's an answer; the
 notifier's rules, `conduit_ask_linked` tool and `links` commands) · Settings >
 Multiplayer (host setup, Links, Link with someone, Scan and Paste) · your own
-Hermes on both sides (no setting in the app: RoomLinksClient.setOwn and a
-Link's own marks, for Conduit to mark Links between Hermes it holds; the notifier's link.own, `links own`, PUT
+Hermes on both sides (no setting in the app: RoomLinksClient.setOwn,
+AppState.canMarkOwnLinks and a Link's own marks, for Conduit to mark Links
+between Hermes it holds; the notifier's link.own, `links own`, PUT
 /rooms/links/own and capability room-own-links; a room of only your own Hermes
 run without the owner rules on its home and on the far bot's Hermes, the far
 bot's bridge with no turns a day or sitting out, past-chat search finding it,
 and Group Info with no room choices and its caption, from `/rooms/people`'s
-`own_hermes`) · an invite
+`own_hermes`, GroupRoomTurns.offersChoices: none until that read lands) · an invite
 (`conduit://link/`) opened from another app, a chat or the Camera · the
 sign-in Scan Code sheet, which Scan reuses · the notifier's owner rules for
 room turns (tools, the framing, the reply scrub, past-chat search), with their

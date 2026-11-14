@@ -137,20 +137,44 @@ extension GroupChatModelsTests {
         routes.people = own
         let appState = try await leaveAppState(routes, room: leaveOwnRoom)
         await appState.openGroupRoom(leaveOwnRoom)
-        await copiesWait("the people read", until: { appState.activeRoomOwnHermes })
+        await copiesWait("the people read", until: { appState.activeRoomOwnHermes == true })
         appState.closeGroupRoom()
-        XCTAssertFalse(appState.activeRoomOwnHermes, "forgotten with the room")
+        XCTAssertNil(appState.activeRoomOwnHermes, "forgotten with the room")
 
         // Another person's Hermes in it (or a plugin before 0.169, which doesn't say): choices as before.
         routes.people = leaveOwnPeople(laifu: "in")
         await appState.openGroupRoom(leaveOwnRoom)
         await copiesWait("the people read", until: { appState.activeRoomPeople["m-laifu"]?.owner == "Mona" })
-        XCTAssertFalse(appState.activeRoomOwnHermes)
+        XCTAssertEqual(appState.activeRoomOwnHermes, false)
         routes.people = ["ok": true, "room_id": "conduit-5", "home": NSNull(), "members": [[String: Any]](),
                          "own_hermes": false]
         await appState.refreshActiveRoomPeople()
-        XCTAssertFalse(appState.activeRoomOwnHermes)
+        XCTAssertEqual(appState.activeRoomOwnHermes, false)
+
+        // Opened again straight from an own room, without closing it: the last room's answer doesn't carry over.
+        routes.people = own
+        await appState.refreshActiveRoomPeople()
+        XCTAssertEqual(appState.activeRoomOwnHermes, true)
+        routes.people = leaveOwnPeople(laifu: "in")
+        await appState.openGroupRoom(leaveOwnRoom)
+        XCTAssertNotEqual(appState.activeRoomOwnHermes, true, "reset on open, before the new read")
+        await copiesWait("the people read", until: { appState.activeRoomOwnHermes == false })
         appState.closeGroupRoom()
+    }
+
+    func testGroupInfoOffersRoomChoicesOnlyOnceTheRoomIsKnownNotToBeOnlyYourOwnHermes() {
+        let yours = GroupMember(memberID: "m-furina", profile: "furina", handle: "furina", displayName: "Furina",
+                                target: nil, extra: [:])
+        let theirs = GroupMember(memberID: "m-laifu", profile: nil, handle: "laifu", displayName: "Laifu",
+                                 target: ["kind": .string("peer")], extra: [:])
+        XCTAssertTrue(GroupRoomTurns.offersChoices(canSet: true, members: [yours, theirs], ownHermes: false))
+        XCTAssertFalse(GroupRoomTurns.offersChoices(canSet: true, members: [yours, theirs], ownHermes: true),
+                       "every Hermes is yours")
+        XCTAssertFalse(GroupRoomTurns.offersChoices(canSet: true, members: [yours, theirs], ownHermes: nil),
+                       "not before the people read lands")
+        XCTAssertFalse(GroupRoomTurns.offersChoices(canSet: true, members: [yours], ownHermes: false),
+                       "no one else's agents")
+        XCTAssertFalse(GroupRoomTurns.offersChoices(canSet: false, members: [yours, theirs], ownHermes: false))
     }
 
     func testAMemberThatsOutIsntOfferedToMentionOrAddress() {
