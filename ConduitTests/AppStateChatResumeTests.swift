@@ -6059,6 +6059,215 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(scheduler.scheduledCount, 0)
     }
 
+    /// The chat the user left goes live while the chat list is still on its
+    /// way (Furina's 619-chat list took 3 s on a dashboard switch), and only
+    /// once: the list landing doesn't resume it again.
+    func testSavedChatResumesBeforeTheChatListLands() async {
+        let catalogGate = ControlledSuspension()
+        let active = session("stored-a")
+        var catalogLoadCount = 0
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [active, session("newer")],
+                gate: catalogGate,
+                catalogLoads: { catalogLoadCount += 1 },
+                opened: { openedSessionIDs.append($0) }
+            )
+        )
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: active.id), for: "default")
+        harness.appState.sessions = [active]
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        while openedSessionIDs.isEmpty, !Task.isCancelled { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [active.id], "resumed while the list is out")
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(catalogLoadCount, 1)
+        XCTAssertEqual(openedSessionIDs, [active.id], "the list's pick isn't resumed again")
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+        XCTAssertEqual(harness.appState.sessions.map(\.id), [active.id, "newer"], "the live list still lands")
+        XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
+    /// An untyped (v1) reference can't be told from a bot chat without the
+    /// list's evidence: it waits for the list, as before.
+    func testUnverifiedSavedChatWaitsForTheChatList() async {
+        let active = session("stored-a")
+        let opened = await openedBeforeTheListLands(rows: [active]) { appState, coordinator in
+            coordinator.rememberSession(
+                .dashboard(profile: "default", sessionID: active.id, isUnverified: true),
+                for: "default"
+            )
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
+    }
+
+    /// A chat the last list didn't show (an older one past its newest page,
+    /// or one deleted since) is the live list's to find, as before.
+    func testSavedChatTheListDidNotShowWaitsForTheChatList() async {
+        let opened = await openedBeforeTheListLands(rows: [session("other")]) { appState, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
+    }
+
+    /// Another chat on screen: which one to show is the list's call (an edit
+    /// there while the list is out keeps it).
+    func testSavedChatWaitsWhileAnotherChatIsOnScreen() async {
+        let saved = session("stored-b")
+        let opened = await openedBeforeTheListLands(rows: [saved, session("stored-a")]) { appState, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: saved.id), for: "default")
+            appState.activeSessionId = "stored-a"
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
+    }
+
+    /// A saved row that owns the chat by its stored id (the runtime id is
+    /// the row's own) is the chat's own row, as nesting reads it.
+    func testSavedChatListedByItsStoredIDResumesBeforeTheChatList() async {
+        let row = session("runtime-a", storedID: "stored-a")
+        let opened = await openedBeforeTheListLands(rows: [row]) { appState, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        }
+        XCTAssertEqual(opened, ["stored-a"])
+    }
+
+    /// The chat went live before the list, then the list failed: the chat
+    /// stays live and the list says it failed. No reconnect, which would take
+    /// the live chat down over a list.
+    func testListFailingAfterTheSavedChatResumedKeepsTheChatLive() async {
+        let catalogGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let active = session("stored-a")
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [active],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { openedSessionIDs.append($0) },
+                failList: true
+            )
+        )
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: active.id), for: "default")
+        harness.appState.sessions = [active]
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        while openedSessionIDs.isEmpty, !Task.isCancelled { await Task.yield() }
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs, [active.id])
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+        XCTAssertNotEqual(harness.appState.turnState, .reconnecting)
+        XCTAssertEqual(scheduler.scheduledCount, 0, "a failed list doesn't reconnect a live chat")
+        guard case .failed = harness.appState.sessionCatalogLoadState.phase else {
+            return XCTFail("the list says it failed: \(harness.appState.sessionCatalogLoadState.phase)")
+        }
+    }
+
+    /// Hermes refused the saved chat for good before the list landed (it was
+    /// deleted elsewhere): the list goes on from that answer, retiring it and
+    /// opening the newest chat, without asking for the deleted one again.
+    func testSavedChatRefusedBeforeTheListIsNotAskedForAgain() async {
+        let deleted = session("stored-deleted")
+        let newest = session("stored-newest")
+        var requests: [String] = []
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in [newest] },
+                openSession: { _, sessionID, _ in
+                    requests.append(sessionID)
+                    if sessionID == deleted.id {
+                        throw RpcError(code: 4007, message: "Session not found")
+                    }
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _, _ in .unavailable },
+                refreshContext: { _, _ in }
+            )
+        )
+        installComposerClient(in: harness)
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: deleted.id), for: "default")
+        harness.appState.sessions = [deleted, newest]
+
+        await harness.appState.syncSession(purpose: .automaticReturn, using: nil, automaticWorkToken: nil)
+
+        XCTAssertEqual(requests, [deleted.id, newest.id], "the deleted chat is asked for once")
+        XCTAssertEqual(harness.appState.activeSessionId, newest.id)
+    }
+
+    private func openedBeforeTheListLands(
+        rows: [SessionSummary],
+        configure: (AppState, ChatResumeCoordinator) -> Void
+    ) async -> [String] {
+        let catalogGate = ControlledSuspension()
+        var openedBeforeList: [String] = []
+        var listLanded = false
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: rows,
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { if !listLanded { openedBeforeList.append($0) } }
+            )
+        )
+        harness.appState.sessions = rows
+        configure(harness.appState, harness.coordinator)
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<50 { await Task.yield() }
+        listLanded = true
+        catalogGate.resume()
+        await connecting.value
+        return openedBeforeList
+    }
+
+    private func savedChatFirstOperations(
+        catalog: [SessionSummary],
+        gate: ControlledSuspension,
+        catalogLoads: @escaping @MainActor () -> Void,
+        opened: @escaping @MainActor (String) -> Void,
+        failList: Bool = false
+    ) -> ChatResumeLifecycleOperations {
+        ChatResumeLifecycleOperations(
+            connectClient: { _ in },
+            loadCatalog: { _, _ in
+                catalogLoads()
+                await gate.suspend()
+                if failList { throw ControlledLifecycleError.failed }
+                return catalog
+            },
+            openSession: { _, sessionID, _ in
+                opened(sessionID)
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [ChatMessage(id: "m-\(sessionID)", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            refreshContext: { _, _ in },
+            loadProfiles: {},
+            loadBusyInputMode: { _ in },
+            loadProfileDisplayPreferences: {},
+            loadSlashCommands: {}
+        )
+    }
+
     func testBehaviorChangeDuringReconnectHandsOffToPreserveCurrentSynchronization() async {
         let openGate = ControlledSuspension()
         let scheduler = ControlledReconnectScheduler()
