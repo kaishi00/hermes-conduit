@@ -65,14 +65,16 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
         let username = app.textFields[Identity.username]
         XCTAssertTrue(username.waitForExistence(timeout: 5))
-        focus(username, in: app)
+        tapVisible(username, in: app)
+        username.waitForKeyboardFocus()
         username.typeText("uitest-user")
         // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
         // can leave the password field under the keyboard, out of
         // app.swipeUp()'s reach (see ConnectionSetupUITests).
         dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
-        focus(password, in: app)
+        tapVisible(password, in: app)
+        password.waitForKeyboardFocus()
         password.typeText("uitest-fixture")
         dismissKeyboard(app)
         tapVisible(app.buttons[Identity.next], in: app)
@@ -276,28 +278,6 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             stablePolls = frame == last ? stablePolls + 1 : 0
             last = frame
         }
-    }
-
-    /// Taps a field and waits until it has the keyboard before the test
-    /// types. A simulator's first keyboard after a fresh install can take
-    /// several seconds to come up: typeText then failed with "Neither
-    /// element nor any descendant has keyboard focus" on the first run of a
-    /// Nightly shard (2026-11-14, before and after #2429). Taps again once
-    /// if the first tap was lost.
-    private func focus(_ field: XCUIElement, in app: XCUIApplication, timeout: TimeInterval = 40) {
-        tapVisible(field, in: app)
-        let deadline = Date().addingTimeInterval(timeout)
-        let retapAt = Date().addingTimeInterval(timeout / 2)
-        var tappedAgain = false
-        while Date() < deadline {
-            if (field.value(forKey: "hasKeyboardFocus") as? Bool) == true { return }
-            if !tappedAgain, Date() >= retapAt {
-                tappedAgain = true
-                if field.isHittable { field.tap() }
-            }
-            Thread.sleep(forTimeInterval: 0.25)
-        }
-        XCTFail("\(field.identifier) never got keyboard focus. Tree:\n\(app.debugDescription)")
     }
 
     private func dismissKeyboard(_ app: XCUIApplication) {

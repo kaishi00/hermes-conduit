@@ -64,8 +64,10 @@ final class LoginKeyboardUITests: XCTestCase {
             "Cloudflare Client ID did not appear although the toggle is verifiably ON (value: \(cfToggle.value ?? "nil")). Tree:\n\(app.debugDescription)"
         )
         clientID.tap()
-        // Typing proves the software keyboard is actually up and focused here
-        // (typeText waits for focus, so no fixed sleep for the keyboard).
+        // Typing proves the software keyboard is actually up and focused
+        // here. A fresh simulator's first keyboard can take seconds, so wait
+        // for the focus instead of a fixed sleep.
+        clientID.waitForKeyboardFocus()
         clientID.typeText("access-client-id.example")
 
         // The keyboard toolbar Done affordance must render with the form.
@@ -83,6 +85,7 @@ final class LoginKeyboardUITests: XCTestCase {
             pollHittability(of: secret, timeout: 5),
             "Cloudflare Client Secret must scroll into view when it receives focus"
         )
+        secret.waitForKeyboardFocus(tappingAgain: false)
         secret.typeText("access-client-secret")
 
         // Continue itself must also remain reachable on the compact
@@ -152,6 +155,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// tap placed the cursor.
     private func clearAndType(_ text: String, into field: XCUIElement) {
         field.tap()
+        field.waitForKeyboardFocus()
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 60))
         field.typeText(text)
     }
