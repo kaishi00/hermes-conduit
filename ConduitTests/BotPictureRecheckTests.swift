@@ -95,14 +95,18 @@ final class BotPictureRecheckTests: XCTestCase {
     /// dashboard in between doesn't change that. A pull on its own
     /// dashboard asks for it again.
     func testASwitchBackShowsAFreshPictureWithoutDownloadingIt() async throws {
-        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let scratch = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BotPictureRecheckTests.\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let avatarsRoot = scratch.appendingPathComponent("profile-avatars", isDirectory: true)
+        let store = ProfileAppearanceStore(defaults: defaults, avatarsRoot: avatarsRoot, legacyAvatarDirectories: [avatarsRoot])
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, profileAppearanceStore: store)
         let first = UUID(), second = UUID()
         let png = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).pngData { context in
             UIColor.red.setFill()
             context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
         }
         _ = try appState.profileAppearanceStore.saveMirroredAvatar(png, for: "raiden", dashboardID: second)
-        defer { appState.profileAppearanceStore.removeAvatar(for: "raiden", dashboardID: second) }
         let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
                                 provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false,
                                 appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
