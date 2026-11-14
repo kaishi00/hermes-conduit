@@ -1510,6 +1510,52 @@ final class OfflineChatCacheTests: XCTestCase {
         await waitUntil { unlocks == 3 }
     }
 
+    /// One Face ID unlock opens every saved dashboard for the launch: a
+    /// switch to another Face ID dashboard doesn't ask again. One whose
+    /// saved password was cleared since (sign-out, removal) asks again.
+    func testOneFaceIDUnlockOpensEverySavedDashboardForTheLaunch() async {
+        useInMemoryKeychain()
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        let work = SavedDashboard(id: UUID(), label: "Work", normalizedURL: "http://127.0.0.1:2")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work])
+        )
+        func saved(_ dashboard: SavedDashboard) -> DashboardCredentials {
+            DashboardCredentials(baseURL: dashboard.normalizedURL, username: "hermes", password: "unused", requiresFaceID: true)
+        }
+        var unlocks = 0
+        appState.unlockWithFaceID = {
+            unlocks += 1
+            return true
+        }
+
+        await appState.restoreSavedCredentials(saved(home), dashboardID: home.id)
+        XCTAssertEqual(unlocks, 1)
+
+        await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
+        XCTAssertEqual(unlocks, 1, "The launch's unlock covers the other dashboard")
+
+        appState.clearSavedPassword(dashboardID: work.id)
+        await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
+        XCTAssertEqual(unlocks, 2, "A cleared password asks again")
+        await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
+        XCTAssertEqual(unlocks, 2, "Its new unlock holds")
+
+        // A refused first unlock opens nothing.
+        let fresh = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work])
+        ).0
+        fresh.phoneScreenIsAway = { false }
+        var freshAsks = 0
+        fresh.unlockWithFaceID = {
+            freshAsks += 1
+            return false
+        }
+        await fresh.restoreSavedCredentials(saved(home), dashboardID: home.id)
+        await fresh.restoreSavedCredentials(saved(work), dashboardID: work.id)
+        XCTAssertEqual(freshAsks, 2)
+    }
+
     /// A dashboard switch starts the phone's pins over until Hermes' arrive
     /// with its list. The saved rows keep the pins they showed until then,
     /// and only until then.
