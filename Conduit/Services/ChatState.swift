@@ -379,6 +379,6 @@ final class ChatState: ObservableObject {
     /// later tap reusing a number an older request still holds.
     var reactionRequestGenerations: [String: Int] = [:]
     var lastReactionRequestGeneration = 0
-    var inlineImageRowFetches: [String: Task<InlineImageRowFetch, Never>] = [:]
+    var inlineImageRowFetches: [String: Task<AppState.InlineImageRowFetch, Never>] = [:]
     var inlineImageRowsUnavailable: Set<String> = []
 }
