@@ -41,7 +41,7 @@ extension AppState {
         // In the device console too, so a switch's steps and how long each
         // took can be timed from a log stream.
         let took = startedAt.map { " (\(Int(Date().timeIntervalSince($0) * 1_000)) ms)" } ?? ""
-        let failed = error == nil ? "" : " failed"
+        let failed = error.map { " failed: \(ConnectionTimeline.summary(of: $0))" } ?? ""
         connectionStepLogger.notice("Connection step: \(label, privacy: .public)\(took, privacy: .public)\(failed, privacy: .public)")
     }
 
