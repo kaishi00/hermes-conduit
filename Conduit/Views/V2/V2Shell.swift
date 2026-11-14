@@ -1449,7 +1449,9 @@ struct V2Shell: View {
         // fade-out included) is kept rather than dropped, and the last one
         // goes once it ends.
         if appState.isProfileSwitching || isPickingProfile {
-            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
+            // A pick from under All (an accepted call question among them)
+            // turns All off when it goes.
+            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID, leavesAll: leavesAll)
             if haptic { Haptics.medium() }
             // The profile showing is on its way out: its chats leave now
             // rather than stay tappable until the kept pick goes.
@@ -1515,10 +1517,15 @@ struct V2Shell: View {
             // refuse this one: it waits behind it, unless a later tap
             // already does.
             if appState.isProfileSwitching {
+                // Only on the dashboard the pick was made on: one picked
+                // meanwhile keeps its own All, and the kept pick, made for
+                // the old one, is dropped there.
                 if queuedProfilePick.profile == nil {
                     // All stays as it was until the kept pick goes ahead.
-                    if leftAll { appState.setAllProfilesChatsOn(true) }
-                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID, leavesAll: leftAll)
+                    if leftAll, appState.activeDashboardID == pickDashboardID {
+                        appState.setAllProfilesChatsOn(true)
+                    }
+                    queuedProfilePick.tap(target, dashboardID: pickDashboardID, leavesAll: leftAll)
                 }
                 isPickingProfile = false
                 return
@@ -1547,11 +1554,12 @@ struct V2Shell: View {
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
+            let nextLeavesAll = queuedProfilePick.leavesAll
             if let next = queuedProfilePick.take(
                 landedOn: appState.activeProfile,
                 dashboardID: appState.activeDashboardID
             ) {
-                pickProfile(next, haptic: false)
+                pickProfile(next, haptic: false, leavesAll: nextLeavesAll)
                 // It started its own switch, which brings the content back.
                 guard token == profileSwitchToken else { return }
             }
