@@ -68,7 +68,9 @@ final class TranscriptSwapMotion {
         let patience = patience
         waiting = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: patience) } catch { return }
-            guard let self else { return }
+            // A wait stood down as its sleep ended (the swap drew, or a
+            // newer one started its own) isn't this one's to end.
+            guard let self, !Task.isCancelled else { return }
             waiting = nil
             expected = nil
             stage?.comeBack()

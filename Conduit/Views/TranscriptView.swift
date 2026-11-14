@@ -286,10 +286,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     }
 
     func slideOut(_ swap: BotChatSwap) {
-        guard isViewLoaded, attached else { return }
+        guard isViewLoaded else { return }
         let layer = collectionView.layer
         let out = TranscriptSwapSlide.out(from: layer, by: swapDistance(TranscriptSwapSlide.leavingShift(swap)))
         layer.add(out, forKey: TranscriptSwapSlide.key)
+        // Away, the rows take no taps where they were: only what shows
+        // moved, not the views.
+        collectionView.isUserInteractionEnabled = false
+        collectionView.accessibilityElementsHidden = true
         // Sent to the render server now, so it plays while the open that
         // follows keeps the main thread.
         CATransaction.flush()
@@ -297,6 +301,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 
     func slideIn(_ swap: BotChatSwap) {
         guard isViewLoaded else { return }
+        rowsAreBack()
         let slide = TranscriptSwapSlide.in(
             from: swapDistance(TranscriptSwapSlide.arrivingShift(swap)),
             opacity: TranscriptSwapSlide.arrivingOpacity(swap)
@@ -310,6 +315,13 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         // Only rows that left and are held away: a slide in ends on its own.
         guard let held = layer.animation(forKey: TranscriptSwapSlide.key), !held.isRemovedOnCompletion else { return }
         layer.add(TranscriptSwapSlide.back(from: layer), forKey: TranscriptSwapSlide.key)
+        rowsAreBack()
+    }
+
+    /// The rows show again, so they take taps and VoiceOver again.
+    private func rowsAreBack() {
+        collectionView.isUserInteractionEnabled = true
+        collectionView.accessibilityElementsHidden = false
     }
 
     /// The rows, by id: a row that changed draws again in its cell, the
