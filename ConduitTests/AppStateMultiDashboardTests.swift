@@ -318,20 +318,26 @@ final class AppStateMultiDashboardTests: XCTestCase {
         let coordinator = appState.chatResumeCoordinator
         XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a"), for: "default")
+        // A switch selects the target, then connects to it.
+        appState.selectDashboardTarget(b.id)
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
 
         // Signing out of A, set aside, forgets its chat.
         appState.signOutDashboard(a.id)
+        appState.selectDashboardTarget(a.id)
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
         XCTAssertNil(coordinator.lastSessionID(for: "default"))
 
         // A move of B, set aside, forgets its chat too.
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a-again"), for: "default")
+        appState.selectDashboardTarget(b.id)
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
         coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-b"), for: "default")
+        appState.selectDashboardTarget(a.id)
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
         appState.stageDashboardMove(b.id, toNormalizedURL: "https://moved.example.com")
         appState.settlePendingDashboardMove(b.id)
+        appState.selectDashboardTarget(b.id)
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://moved.example.com", dashboardID: b.id))
         XCTAssertNil(coordinator.lastSessionID(for: "default"))
 
