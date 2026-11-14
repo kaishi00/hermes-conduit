@@ -65,14 +65,17 @@ With only this step, Classic voice listens through your server.
 
 A hosted realtime model (OpenAI Realtime, Alibaba's Qwen realtime, or any
 service that speaks the OpenAI Realtime protocol) answers by itself: it has
-no setting to point at Conduit, so steps 2 and 3 below don't apply to it, and
-left alone it would talk to you with its own model while Hermes never got a
+no setting to point at Conduit, so the server side of steps 2 and 3 below (the
+model address, the key and the launch command) doesn't apply to it, and left
+alone it would talk to you with its own model while Hermes never got a
 turn. For such a server, turn on **Hermes answers** under **Your speech
 server** (plugin 0.173 or later). The plugin then runs every turn: the
 server only listens and reads the replies aloud, and Hermes, or the fast
 model in agent mode, does the answering. This works in Classic, Local Live,
 agent mode and on the Apple Watch, and there is nothing to set up on the
-server.
+server. In Conduit you still choose how it is used: tap **Your speech server
+speaks too** for Classic (step 2), or pick **Local Live** under **Voice mode**
+(step 3).
 
 Enter the service's address with `wss://` and its key in step 1. If the
 service only sends transcripts once a transcription model is named, add it by

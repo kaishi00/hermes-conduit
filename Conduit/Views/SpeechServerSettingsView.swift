@@ -281,6 +281,9 @@ struct SpeechServerSettingsView: View {
     private func refreshStatus(submittedURL: String?, profile: String?) async {
         let loaded = await service.speechServerStatus()
         guard draftsProfile == profile else { return }
+        // A read that failed after a save leaves the old value shown: the
+        // page's next check reads again, as after a failed first read.
+        readFailed = loaded.readFailed
         // What's shown stays; a save's own error says more than the read's.
         guard !loaded.readFailed else {
             if errorMessage == nil { errorMessage = loaded.reason }
