@@ -77,9 +77,17 @@ server. In Conduit you still choose how it is used: tap **Your speech server
 speaks too** for Classic (step 2), or pick **Local Live** under **Voice mode**
 (step 3).
 
-Enter the service's address with `wss://` and its key in step 1. If the
-service only sends transcripts once a transcription model is named, add it by
-hand in `config.yaml` as `transcription_model` beside `drive_turns`.
+Enter the service's address with `wss://` and its key in step 1. With plugin
+0.174 or later, **Known servers** above the address fills the rest in for the
+services Conduit knows by name (OpenAI Realtime, Qwen Audio Realtime): the
+address, or an example of it to finish with your own workspace, the model,
+a voice, a transcription model and the Hermes answers switch. Tap **Save**
+to keep them. For any other service, type what it needs into **Model**
+(added to the address as `?model=` unless the address names one), **Voice**
+and **Transcription model** (some services send no transcripts until one is
+named); all three are optional and stay empty for a server that needs none.
+**Test connection** also says when the server has a model of its own and the
+switch is off.
 
 Your voice goes to that service and it bills you for it. A model asked to
 read text aloud usually does, but not always: if it answers instead of

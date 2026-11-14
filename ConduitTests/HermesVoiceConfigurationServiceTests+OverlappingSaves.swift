@@ -51,6 +51,37 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
     }
 
+    /// Issue 2438, stage 2: a picked server's names and its Hermes answers
+    /// setting land in one write, an emptied name is removed, and what the
+    /// write doesn't name stays.
+    func testASpeechServersNamesAndSwitchSaveInOneWrite() async {
+        let requester = SlowConfigRequester(config: ["voice": ["speech_server": [
+            "url": "wss://api.openai.com/v1/realtime", "api_key": "sk-secret", "voice": "alloy",
+        ]]])
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        let saved = await service.saveSpeechServer(
+            names: ["model": " gpt-realtime ", "voice": "", "transcription_model": "gpt-4o-mini-transcribe"],
+            drivesTurns: true)
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(requester.maximumInFlight, 1)
+        var server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["model"] as? String, "gpt-realtime")
+        XCTAssertNil(server?["voice"])
+        XCTAssertEqual(server?["transcription_model"] as? String, "gpt-4o-mini-transcribe")
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+        XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
+        XCTAssertEqual(server?["url"] as? String, "wss://api.openai.com/v1/realtime")
+
+        // Names alone leave the switch as it is.
+        let renamed = await service.saveSpeechServer(names: ["voice": "marin"], drivesTurns: nil)
+        XCTAssertTrue(renamed)
+        server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["voice"] as? String, "marin")
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+    }
+
     func testAFailedSaveDoesNotHoldUpTheNextOne() async {
         let requester = SlowConfigRequester(config: [:])
         requester.failsPUTsSettingURL = true
