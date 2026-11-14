@@ -6083,7 +6083,9 @@ final class AppStateChatResumeTests: XCTestCase {
             await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
         }
         await catalogGate.waitUntilSuspended()
-        while openedSessionIDs.isEmpty, !Task.isCancelled { await Task.yield() }
+        // Bounded, so a resume that waits for the list again fails here
+        // instead of hanging with the gate still closed.
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
         XCTAssertEqual(openedSessionIDs, [active.id], "resumed while the list is out")
         catalogGate.resume()
         await connecting.value
@@ -6166,7 +6168,9 @@ final class AppStateChatResumeTests: XCTestCase {
             await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
         }
         await catalogGate.waitUntilSuspended()
-        while openedSessionIDs.isEmpty, !Task.isCancelled { await Task.yield() }
+        // Bounded, so a resume that waits for the list again fails here
+        // instead of hanging with the gate still closed.
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
         catalogGate.resume()
         await connecting.value
 
