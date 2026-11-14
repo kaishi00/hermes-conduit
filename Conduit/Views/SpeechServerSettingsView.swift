@@ -211,6 +211,9 @@ struct SpeechServerSettingsView: View {
             Task {
                 let loaded = await service.speechServerStatus()
                 guard draftsProfile == profile else { return }
+                // A save on the way reads the status itself when it lands,
+                // against what it sent: a field typed meanwhile stays.
+                guard !isSaving else { return }
                 // A read that fails is asked again on the page's next check.
                 readFailed = loaded.readFailed
                 guard !loaded.readFailed else {
@@ -218,7 +221,7 @@ struct SpeechServerSettingsView: View {
                     return
                 }
                 // A read that answers takes away an older read's error.
-                if !isSaving { errorMessage = nil }
+                errorMessage = nil
                 let before = status
                 status = loaded
                 follow(from: before, to: loaded)
