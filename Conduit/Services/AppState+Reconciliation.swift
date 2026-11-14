@@ -166,8 +166,19 @@ extension AppState {
                 profile: profile, dashboardID: dashboardID, purpose: purpose, roster: earlyRoster
             )
             // On Jump to latest activity the newest chat is read from a
-            // short page beside the list instead (`latestChatBeforeList`).
-            let readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
+            // short page beside the list instead (`latestChatBeforeList`)…
+            var readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
+            // …unless the list kept from last time already names one: that
+            // opens at once, and the live list opens a newer one if it names
+            // one (below). Coming back to a dashboard almost always lands on
+            // the chat left there, and the short read could take 2 s on a
+            // busy host (Eric, 2026-11-14).
+            if readsNewestFirst, let kept = latestChatFromKeptList(profile: profile, dashboardID: dashboardID, roster: earlyRoster) {
+                savedChat = kept
+                latestPickedBeforeList = kept.sessionID
+                readsNewestFirst = false
+                noteConnectionStep("Newest chat from the list kept from last time")
+            }
             let catalogReadFailed = CatalogReadFailure()
             async let catalogRead = profileCatalogNotingFailure(using: client, failure: catalogReadFailed)
             // The list read goes out first; one that has already failed
@@ -1361,6 +1372,29 @@ extension AppState {
         if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
            !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
         // The identity the list's own pick resumes with.
+        return (sessionID, ConversationIdentity(
+            profile: profile,
+            durableSessionID: row.storedSessionId ?? row.id,
+            runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
+            acceptedSessionIDs: Set([row.id] + row.alternateIds)
+        ))
+    }
+
+    /// Jump to latest activity's pick from the list kept from this
+    /// dashboard's last visit (shown after a switch or a launch until the
+    /// live list lands), when it names one and no other chat is on screen.
+    /// Nil leaves it to the newest chats read: a return to the app, with
+    /// the live list already in, reads the newest chats as before.
+    func latestChatFromKeptList(
+        profile: String,
+        dashboardID: UUID?,
+        roster: [BotProfile]? = nil
+    ) -> (sessionID: String, identity: ConversationIdentity)? {
+        guard let rows = savedChatListForActiveScope?.list.sessions, !rows.isEmpty else { return nil }
+        guard let row = latestOrdinaryChat(among: rows, profile: profile, dashboardID: dashboardID, roster: roster),
+              let sessionID = ChatScrollIdentityNormalization.sessionID(row.id) else { return nil }
+        if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+           !row.nestingIDs.contains(onScreen) { return nil }
         return (sessionID, ConversationIdentity(
             profile: profile,
             durableSessionID: row.storedSessionId ?? row.id,
