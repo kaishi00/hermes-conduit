@@ -53,7 +53,8 @@ struct RichPerson: Equatable, Hashable {
     let address: String?
     /// Hermes' own words about them.
     let note: String?
-    /// A text Hermes wrote for the user to send them, only with a phone.
+    /// A text Hermes wrote for the user to send them, only with a phone or
+    /// an email (Messages sends to an email over iMessage).
     let message: String?
     let photo: RichPlace.Photo?
 
@@ -66,7 +67,7 @@ struct RichPerson: Equatable, Hashable {
         url = RichJSON.webURL(json["url"])
         address = json["address"] as? String
         note = json["note"] as? String
-        message = phone == nil ? nil : (json["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        message = phone == nil && email == nil ? nil : (json["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         if let photo = json["photo"] as? [String: Any], let url = RichJSON.webURL(photo["url"]),
            url.scheme?.lowercased() == "https", let source = photo["source"] as? String {
             self.photo = RichPlace.Photo(url: url, source: source, pageURL: RichJSON.webURL(photo["page_url"]))
@@ -84,12 +85,27 @@ struct RichPerson: Equatable, Hashable {
         return phone.prefix(while: { !$0.isNumber }).contains("+") ? "+" + digits : digits
     }
 
+    /// Where Send text sends their text: their number, or without one their
+    /// email, which Messages sends to over iMessage (#2465).
+    var textRecipient: String? {
+        dialable ?? email
+    }
+
     /// The Email action's link. It is built from parts, so nothing in the
     /// address can add a header or a recipient to the composer.
     static func mailtoURL(_ email: String) -> URL? {
         var link = URLComponents()
         link.scheme = "mailto"
         link.path = email
+        return link.url
+    }
+
+    /// Messages opened to a number or an email, built from parts like the
+    /// Email action's link, so nothing in an address can add a body.
+    static func smsURL(_ recipient: String) -> URL? {
+        var link = URLComponents()
+        link.scheme = "sms"
+        link.path = recipient
         return link.url
     }
 

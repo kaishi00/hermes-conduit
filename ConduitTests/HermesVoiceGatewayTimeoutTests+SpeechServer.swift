@@ -223,6 +223,53 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(refused.message, "The speech server refused the key (HTTP 401)")
     }
 
+    /// Issue 2438, stage 2: the server's names, the known servers and what
+    /// the test says the server is, as plugin 0.174.0 sends them.
+    func testSpeechServerNamesPresetsAndAbilitiesParse() {
+        // A plugin before the names sends none: no fields.
+        XCTAssertFalse(SpeechServerStatus(response: ["configured": true, "drive_turns": false]).namesItsModel)
+        let unset = SpeechServerStatus(response: [
+            "configured": true, "model": NSNull(), "voice": NSNull(), "transcription_model": NSNull(),
+        ])
+        XCTAssertTrue(unset.namesItsModel)
+        XCTAssertNil(unset.model)
+        let named = SpeechServerStatus(response: [
+            "configured": true, "model": "gpt-realtime", "voice": "marin", "transcription_model": "gpt-4o-mini-transcribe",
+        ])
+        XCTAssertEqual(named.model, "gpt-realtime")
+        XCTAssertEqual(named.voice, "marin")
+        XCTAssertEqual(named.transcriptionModel, "gpt-4o-mini-transcribe")
+
+        let presets = SpeechServerPreset.list(response: ["ok": true, "presets": [
+            ["id": "openai-realtime", "name": "OpenAI Realtime", "url": "wss://api.openai.com/v1/realtime",
+             "model": "gpt-realtime", "voice": "marin", "transcription_model": "gpt-4o-mini-transcribe",
+             "needs_key": true, "drive_turns": true] as [String: Any],
+            ["id": "qwen-audio-realtime", "name": "Qwen Audio Realtime",
+             "url_hint": "wss://WORKSPACE.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime",
+             "model": "qwen-audio-3.0-realtime-plus", "needs_key": true, "drive_turns": true] as [String: Any],
+            ["name": "No id"] as [String: Any],
+        ]])
+        XCTAssertEqual(presets.map(\.id), ["openai-realtime", "qwen-audio-realtime"])
+        XCTAssertEqual(presets[0].url, "wss://api.openai.com/v1/realtime")
+        XCTAssertTrue(presets[0].drivesTurns)
+        XCTAssertNil(presets[1].url)
+        XCTAssertEqual(presets[1].urlHint, "wss://WORKSPACE.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime")
+        XCTAssertNil(presets[1].voice)
+        XCTAssertEqual(SpeechServerPreset.list(response: ["ok": true]), [])
+
+        let hosted = SpeechServerTestResult(response: [
+            "connected": true, "latency_ms": 42,
+            "abilities": ["model": "gpt-realtime", "voice": "marin", "answers_alone": true] as [String: Any],
+        ])
+        XCTAssertEqual(hosted.answersAlone, true)
+        XCTAssertEqual(hosted.serverModel, "gpt-realtime")
+        let quiet = SpeechServerTestResult(response: [
+            "connected": true, "abilities": ["model": NSNull(), "voice": NSNull(), "answers_alone": NSNull()] as [String: Any],
+        ])
+        XCTAssertNil(quiet.answersAlone)
+        XCTAssertNil(SpeechServerTestResult(response: ["connected": true]).answersAlone)
+    }
+
     func testSpeechServerRequestUsesTheRelayPathWithTicketAndProfile() throws {
         let request = try HermesVoiceGateway.speechServerRequest(
             baseURL: "https://hermes.example.com",

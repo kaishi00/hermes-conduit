@@ -452,6 +452,46 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         XCTAssertNil(legacy([:]))
     }
 
+    /// The ringtone a pick previews in Settings > Calls from Hermes (issue
+    /// 2445) holds the audio session only while it plays: an interruption
+    /// beginning ends it, one ending alone doesn't.
+    func testARingtonePreviewGivesUpTheSessionWhenInterrupted() async throws {
+        let center = NotificationCenter()
+        let preview = HermesRingtonePreview(coordinator: coordinator, center: center, isPhoneCallInProgress: { false })
+        preview.play(.chime, voiceInUse: false)
+        guard preview.isPlaying else { throw XCTSkip("no audio output to play the tone on") }
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
+        for _ in 0..<5 { await Task.yield() }
+        XCTAssertTrue(preview.isPlaying, "an interruption ending is not one beginning")
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+
+        AudioSessionInterruption.began.post(on: center)
+        for _ in 0..<200 where preview.isPlaying { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertFalse(preview.isPlaying)
+        XCTAssertNil(coordinator.appliedPolicy, "the preview's lease is released")
+
+        preview.stop()
+        XCTAssertEqual(session.deactivationCount, 1, "stopping twice releases once")
+    }
+
+    /// Nothing plays, and the session isn't taken, over voice or over a
+    /// phone call of any app's.
+    func testARingtonePreviewStaysQuietOverACall() {
+        var onCall = true
+        let preview = HermesRingtonePreview(coordinator: coordinator, center: NotificationCenter(), isPhoneCallInProgress: { onCall })
+        preview.play(.chime, voiceInUse: false)
+        XCTAssertFalse(preview.isPlaying)
+        onCall = false
+        preview.play(.chime, voiceInUse: true)
+        XCTAssertFalse(preview.isPlaying)
+        preview.play(.system, voiceInUse: false)
+        XCTAssertFalse(preview.isPlaying, "iOS's own ringtone isn't Conduit's to play")
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertNil(coordinator.appliedPolicy)
+    }
+
     /// What the forwarder posts is what observers read back.
     func testAnInterruptionReadsBackFromItsNotification() {
         let center = NotificationCenter()

@@ -12,6 +12,8 @@ import OSLog
 import UIKit
 import WebKit
 
+private let connectionStepLogger = Logger(subsystem: "com.milim.relay", category: "ConnectionStep")
+
 extension AppState {
     // MARK: - Connection timeline (#417)
 
@@ -36,6 +38,11 @@ extension AppState {
     func noteConnectionStep(_ label: String, since startedAt: Date? = nil, error: Error? = nil) {
         connectionTimeline?.record(label, since: startedAt, error: error)
         HermesCallTrace.shared.note("Connection: \(label)", since: startedAt, error: error)
+        // In the device console too, so a switch's steps and how long each
+        // took can be timed from a log stream.
+        let took = startedAt.map { " (\(Int(Date().timeIntervalSince($0) * 1_000)) ms)" } ?? ""
+        let failed = error.map { " failed: \(ConnectionTimeline.summary(of: $0))" } ?? ""
+        connectionStepLogger.notice("Connection step: \(label, privacy: .public)\(took, privacy: .public)\(failed, privacy: .public)")
     }
 
     /// `readsFor` names the profile the connection will open on, when it

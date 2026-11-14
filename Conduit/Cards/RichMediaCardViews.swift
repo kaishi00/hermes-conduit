@@ -551,8 +551,8 @@ private struct RichPersonRow: View {
                 .ignoresSafeArea()
         }
         .sheet(isPresented: $composesText) {
-            if let dialable = person.dialable, let message = person.message {
-                RichTextComposeSheet(recipient: dialable, body: message) { result in
+            if let recipient = person.textRecipient, let message = person.message {
+                RichTextComposeSheet(recipient: recipient, body: message) { result in
                     guard result == .sent else { return }
                     textSent = true
                     UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Sent"))
@@ -565,14 +565,14 @@ private struct RichPersonRow: View {
     /// Messages filled in with Hermes' text, for the user to send. Without
     /// Messages here (an iPad with iMessage off), the text is copied and
     /// Messages opened for them to paste it.
-    private func sendText(to dialable: String, message: String) {
+    private func sendText(to recipient: String, message: String) {
         if MFMessageComposeViewController.canSendText() {
             composesText = true
         } else {
             UIPasteboard.general.string = message
             textCopied = true
             UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
-            if let url = URL(string: "sms:\(dialable)") { openURL(url) }
+            if let url = RichPerson.smsURL(recipient) { openURL(url) }
         }
     }
 
@@ -606,13 +606,13 @@ private struct RichPersonRow: View {
     private var actions: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
-                if let dialable = person.dialable {
-                    if let message = person.message {
-                        RichPersonAction(title: textSent ? Text("Sent") : textCopied ? Text("Copied") : Text("Send text"),
-                                         symbol: textSent ? "checkmark" : "paperplane.fill", prominent: true) {
-                            sendText(to: dialable, message: message)
-                        }
+                if let recipient = person.textRecipient, let message = person.message {
+                    RichPersonAction(title: textSent ? Text("Sent") : textCopied ? Text("Copied") : Text("Send text"),
+                                     symbol: textSent ? "checkmark" : "paperplane.fill", prominent: true) {
+                        sendText(to: recipient, message: message)
                     }
+                }
+                if let dialable = person.dialable {
                     if let url = URL(string: "tel:\(dialable)") {
                         RichPersonAction(title: Text("Call"), symbol: "phone.fill") { openURL(url) }
                     }
@@ -659,8 +659,8 @@ private struct RichPersonAction: View {
     }
 }
 
-/// The system's Messages composer, filled in with the number and Hermes'
-/// text. Only the user's tap on Send sends it.
+/// The system's Messages composer, filled in with the number (or the email,
+/// for iMessage) and Hermes' text. Only the user's tap on Send sends it.
 private struct RichTextComposeSheet: UIViewControllerRepresentable {
     let recipient: String
     let body: String
