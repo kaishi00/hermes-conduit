@@ -1792,10 +1792,10 @@ puts it on a contact card; Send text opens Messages with the number (or,
 for someone with no phone, their email, as an iMessage recipient) and the
 text filled in, and the user taps Send there.
 
-**Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok and
-Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
+**Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok, Qwen
+and Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
 call transcript · group rooms · the Watch · CarPlay · an iPad without
-Messages · what conduit_show, conduit_contacts and the voice contacts tool
+Messages, and the Mac (the text is copied; the Mac opens no sms: link) · what conduit_show, conduit_contacts and the voice contacts tool
 tell models · Settings > Contacts' caption
 
 **Code**
