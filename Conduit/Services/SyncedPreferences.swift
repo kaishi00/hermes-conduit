@@ -310,14 +310,17 @@ final class SyncedPreferencesController: ObservableObject {
         }
     }
 
-    /// Forgets what the ledgers hold for `keys`, except `exceptDashboard`'s:
+    /// Forgets what the ledgers hold for `keys`, except `exceptDashboard`'s
+    /// (nil: every ledger):
     /// their next sync takes the host's value for each instead of sending
     /// this device's. For values that moved from one phone-wide copy to
     /// one per dashboard, where only that dashboard kept the copy.
-    func forgetLedgerValues(keys: Set<String>, exceptDashboard: String) {
+    func forgetLedgerValues(keys: Set<String>, exceptDashboard: String?) {
         guard let data = defaults.data(forKey: Self.ledgerKey),
               var ledgers = try? JSONDecoder().decode([String: SyncedPreferencesLedgerEntry].self, from: data) else { return }
-        for (scope, var entry) in ledgers where scope.prefix(while: { $0 != "|" }) != exceptDashboard {
+        for (scope, var entry) in ledgers {
+            let dashboard = String(scope.prefix { character in character != "|" })
+            if let exceptDashboard, dashboard == exceptDashboard { continue }
             for key in keys { entry.lastLocal.removeValue(forKey: key) }
             ledgers[scope] = entry
         }

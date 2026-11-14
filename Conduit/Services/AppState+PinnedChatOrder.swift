@@ -279,10 +279,13 @@ extension AppState {
     /// One-time move of the phone-wide stars, orders and hidden projects
     /// into the dashboard selected at launch, the one they were last kept
     /// for. Every other dashboard starts empty, and Sync across devices
-    /// brings it its host's copy: the other dashboards' ledgers forget
-    /// these keys, so the empty copy isn't taken for a change and sent.
+    /// brings it its host's copy: its ledger forgets these keys, so the
+    /// empty copy isn't taken for a change and sent. A dashboard switch on
+    /// an older build may already have wiped the phone-wide copy, so the
+    /// ledgers are reset once even when there's nothing to move, the
+    /// selected dashboard's too then.
     func adoptLegacyDashboardLists(into dashboardID: UUID?) {
-        guard let dashboardID else { return }
+        guard let dashboardID, !defaults.bool(forKey: Self.dashboardListsAdoptedKey) else { return }
         let scope = Self.dashboardPreferenceBucket(dashboardID)
         var moved = false
         for (legacy, scoped) in [
@@ -301,12 +304,15 @@ extension AppState {
             defaults.set(adopted, forKey: HiddenChatProjects.key)
             moved = true
         }
-        guard moved else { return }
         syncedPreferences.forgetLedgerValues(
             keys: Self.dashboardScopedSyncKeys,
-            exceptDashboard: dashboardID.uuidString
+            exceptDashboard: moved ? dashboardID.uuidString : nil
         )
+        defaults.set(true, forKey: Self.dashboardListsAdoptedKey)
     }
+
+    /// Set once the phone-wide lists have moved to a dashboard.
+    static let dashboardListsAdoptedKey = "conduit.dashboardLists.adopted.v1"
 
     /// The synced keys whose values belong to one dashboard.
     static let dashboardScopedSyncKeys: Set<String> = [

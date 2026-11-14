@@ -1061,6 +1061,26 @@ extension BotModeTests {
         )
         appState.savedDashboardRegistry.activeDashboardID = furina.id
         XCTAssertTrue(appState.botOrder.isEmpty)
+
+        // Once only: a later launch leaves the ledgers alone.
+        controller.setLedger(entry, for: "\(furina.id.uuidString)|default")
+        _ = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        XCTAssertEqual(controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, entry.lastLocal)
+
+        // A switch on an older build wiped the phone-wide copy: with nothing
+        // to move, every ledger, the selected dashboard's too, forgets them.
+        defaults.removeObject(forKey: AppState.dashboardListsAdoptedKey)
+        _ = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        XCTAssertEqual(controller.ledger(for: "\(conduit.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""])
+        XCTAssertEqual(controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""])
     }
 
     /// A room being started: bots join once, whatever their case, all or
