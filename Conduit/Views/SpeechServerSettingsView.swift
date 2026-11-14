@@ -79,6 +79,21 @@ struct SpeechServerSettingsView: View {
                         .accessibilityIdentifier("voice.speechServer.key")
                 }
 
+                if let driveTurns = status?.driveTurns, status?.configured == true {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Toggle(AppLocalization.string("Hermes answers", table: .voice), isOn: Binding(
+                            get: { driveTurns },
+                            set: { on in Task { await saveDriveTurns(on) } }
+                        ))
+                        .disabled(!answered || isSaving)
+                        .accessibilityIdentifier("voice.speechServer.driveTurns")
+                        Text(AppLocalization.string("For a server with a model of its own, such as a hosted realtime model: it then only listens and reads Hermes' replies aloud. Leave it off for a server you point at Conduit, such as speech-to-speech.", table: .voice))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+
                 HStack(spacing: 16) {
                     Button("Save") { Task { await saveAll() } }
                         .disabled(!answered || isSaving || !hasChanges)
@@ -222,6 +237,21 @@ struct SpeechServerSettingsView: View {
         await refreshStatus(submittedURL: submitted, profile: profile)
         guard draftsProfile == profile else { return }
         if status?.available == true { await runTest(profile: profile) }
+    }
+
+    /// The switch saves by itself, like Remove key: true, or the setting
+    /// removed, which is off.
+    private func saveDriveTurns(_ on: Bool) async {
+        isSaving = true
+        defer { isSaving = false }
+        testResult = nil
+        errorMessage = nil
+        let profile = draftsProfile
+        let saved = await service.saveSpeechServerDrivesTurns(on)
+        if !saved, draftsProfile == profile {
+            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
+        }
+        await refreshStatus(submittedURL: nil, profile: profile)
     }
 
     private func removeKey() async {

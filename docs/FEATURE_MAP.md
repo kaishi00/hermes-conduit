@@ -1500,8 +1500,9 @@ microphone · voice clips in the chat · audio and video on cards Hermes shows �
 Agent mode (Live > Local): a fast model the user picks answers each thing
 said on the call, and hands work to Hermes as background jobs through the
 call's tools. Which speech servers it reaches: one that asks the plugin's
-model address for replies, and one that only reads text aloud, where the
-plugin's read-back relay runs the turns.
+model address for replies, and one that only reads text aloud, or any
+server with "Hermes answers" on, where the plugin's read-back relay runs the
+turns.
 
 **Siblings:** the model address (`/local-live/v1/chat/completions`) · the
 read-back relay on the phone's socket (notifier 0.153.0) · the Watch's
@@ -1540,7 +1541,48 @@ table marks agent mode)
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-14, #2455 (the read-back relay also runs the turns on a server with "Hermes answers" on, where the fast model answers the same way; see that entry); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+
+## Hermes answers on a speech server with a model of its own
+
+A speech server that answers by itself (a hosted realtime model) as the ears
+and mouth of Classic and Local Live, with Hermes or the fast model answering:
+the "Hermes answers" switch, `voice.speech_server.drive_turns` (issue 2438).
+It is stage 1 of speech servers as data: the next stages add a list of known
+services and the server's own model as a third choice of who answers.
+
+**Siblings:** Local Live on the phone's socket · agent mode's fast model (it
+answers as on any read-back server) · the Watch's bridge · Classic's listen
+and speak sockets · CarPlay and calls from Hermes (the phone's call: not
+needed) · the switch under Your speech server · what Local's step 2 and
+Classic's "Your speech server speaks too" say (nothing to set up, or that the
+server answered by itself) · the Assistant voice setup step · Talking over
+Hermes (a response the server starts unasked is cancelled, not played as a
+filler) · docs/OWN_VOICE_SERVER.md · the notifier's README and changelog ·
+`conduit_settings` (not needed: Hermes doesn't change the speech server
+through it) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
+answer, by design)
+
+**Code**
+- The setting and what a driven server is told: `notifier/dashboard/api/speech_server.py` (speech_server_drives, SpeechServerDrive, SPEECH_SERVER_SAY_INSTRUCTIONS, speech_server_status's drive_turns, _speech_server_relay's drive)
+- The turns: `notifier/dashboard/api/local_live_read_back.py` (_LocalLiveReadBack's drive: on from the start, _send_update, _pump, the unasked response.created and the busy error, _note_who_answered)
+- Status: `notifier/dashboard/api/local_live.py` (_local_live_answered_alone, local_live_status's answers_alone)
+- The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchSession.run's setup)
+- The switch: `Conduit/Views/SpeechServerSettingsView.swift` (saveDriveTurns), `Conduit/Voice/HermesVoiceConfigurationService.swift` (saveSpeechServerDrivesTurns, a Boolean in the config), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus.driveTurns)
+- What step 2 says: `Conduit/Views/SpeechServerVoiceSettingsView.swift`, `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerVoiceStatus.drivesTurns, answersAlone), `Conduit/Views/VoiceSettingsView.swift` (assistantVoiceStep)
+- Tests: `notifier/tests/test_local_live.py` (the tests after "The plugin runs the turns"), `notifier/tests/test_watch_local_live.py` (test_a_driven_server_has_the_host_run_the_watchs_turns_from_the_first_update), `ConduitTests/HermesVoiceGatewayTimeoutTests+SpeechServer.swift`
+
+**Rulings**
+- The end state is a speech server described by data, in two roles (voice for Hermes, or its own brain with Conduit's briefing and tools), with known services as a presets file; Gemini, Qwen, Grok and GPT-Live stay as they are (Eric picked this on 2026-11-14, option B of the design for issue 2438).
+- The switch is the user's: off by default, per profile, and nothing turns it on for them. Settings only says when a server answered a call by itself and names the switch (2026-11-14, #2455).
+- A driven server is told to read each sentence aloud as written, on the session and on every sentence, and a response it starts by itself is cancelled and never heard, whether or not it honours `create_response: false`. The read-back check stays: two sentences in a row answered instead of read end the call with that reason (2026-11-14, #2455).
+- The switch shows only when the plugin reports `drive_turns` (0.173.0 or later) and a server is set (2026-11-14, #2455).
+
+**Open gaps**
+- How faithfully a given hosted model reads text back isn't known ahead of the call: it was tested against the relay's own server doubles, not against Qwen's or OpenAI's realtime models, for want of a key. The reporter of issue 2438 is asked to confirm (2026-11-14, #2455).
+- `transcription_model` is set by hand in config.yaml; Settings has no field for it until servers are data (stage 2).
+
+**Checked:** 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
 
 ## Talking over Hermes
 
@@ -1580,6 +1622,7 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt, CarPlay's Stop and the Watch orb) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
 - A filler a read-back speech server says on its own while Hermes works (ConvFill's "let me look that up") plays on the call as the reply's start: Hermes' sentences wait for it to end, and talking over it, Interrupt, CarPlay's Stop and the Watch orb stop it like the reply, on the phone's socket and the Watch's bridge alike (2026-11-06, notifier #588, carrying ds-002's #582).
+- On a server with "Hermes answers" on (voice.speech_server.drive_turns), a response the server starts by itself is its own model answering, not a filler: it is cancelled and never plays, and Hermes' sentences follow once it has ended (2026-11-14, #2455, notifier 0.173.0).
 - Interrupt drops the rest of a model turn only while that turn is still arriving. Pressed after it ended, while its last audio still plays, it silences that tail and nothing more: the model's next reply (a job update, a text Send to Hermes answer, a turn of its own) is heard and captioned. The same holds for the Watch orb, in direct calls and over the bridge, and for CarPlay's Stop, which runs the phone's Interrupt (2026-11-05, #1795, issue 1790).
 - With Continuous Conversation on, the default, Classic keeps listening through silence instead of pausing the microphone (2026-10-10, #520).
 - Classic's end of speech goes by the room it hears: an utterance whose levels hold within a narrow band for 1.5 s is over, since a voice rises and falls between words and a room holds, and that level becomes the floor. So an answer spoken as the window opens, before the room was learned, or a room that gets louder mid-answer, ends with trailing silence instead of listening until the 60 s cap (2026-11-07, #1944, notifier issue 596).
@@ -1591,7 +1634,7 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 - A cancelled turn whose start Voice never saw: held in a resume's buffer and replayed after the cancel, or still in the hop to the main actor when the chat's Stop noted it. The start is held from Voice, so a Classic conversation still waiting on that very turn (stopped from the chat, not by Voice) ignores its end and stays thinking until the next turn's first event or the user speaks. Telling that wait from one on the next question needs the controller to know which turn it awaits; both windows are narrow (a resume, or a few milliseconds, racing a chat Stop), so this is left for now (2026-11-03, #1696).
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1944 (Classic's turn ends over steady room noise, notifier issue 596; the live modes and the Watch detect speech on their servers, push to talk has no silence timer); 2026-11-06, #1902 (a read-back server's own filler plays and opens the reply, and stops like it, notifier #588); 2026-11-05, #1795 (Interrupt after a turn ended only silences its tail, on the phone, CarPlay and the Watch); 2026-11-03, #1696 (a cancelled turn's words stay away from Voice, by its execution generation, until the next turn's first event, even after the next question was sent; its end reaches Voice as an interruption); 2026-11-03, #1694 (a spoken Stop retires the turn it cancels, as talking over and Interrupt do; a failed cancel is retried before the next turn); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-11-14, #2455 (a driven server's unasked response is cancelled, not played as a filler); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1944 (Classic's turn ends over steady room noise, notifier issue 596; the live modes and the Watch detect speech on their servers, push to talk has no silence timer); 2026-11-06, #1902 (a read-back server's own filler plays and opens the reply, and stops like it, notifier #588); 2026-11-05, #1795 (Interrupt after a turn ended only silences its tail, on the phone, CarPlay and the Watch); 2026-11-03, #1696 (a cancelled turn's words stay away from Voice, by its execution generation, until the next turn's first event, even after the next question was sent; its end reaches Voice as an interruption); 2026-11-03, #1694 (a spoken Stop retires the turn it cancels, as talking over and Interrupt do; a failed cancel is retried before the next turn); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Read replies aloud
 

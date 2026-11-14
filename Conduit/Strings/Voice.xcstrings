@@ -48350,6 +48350,334 @@
           }
         }
       }
+    },
+    "Hermes answers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes antwortet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes responde"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes répond"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yang menjawab"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risponde Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが応答"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 응답"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiada Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes responde"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечает Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yanıtlar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 回答"
+          }
+        }
+      }
+    },
+    "For a server with a model of its own, such as a hosted realtime model: it then only listens and reads Hermes' replies aloud. Leave it off for a server you point at Conduit, such as speech-to-speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für einen Server mit eigenem Modell, etwa ein gehostetes Echtzeitmodell: Er hört dann nur zu und liest die Antworten von Hermes vor. Lass es aus für einen Server, den du auf Conduit richtest, etwa speech-to-speech."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para un servidor con modelo propio, como un modelo en tiempo real alojado: entonces solo escucha y lee en voz alta las respuestas de Hermes. Déjalo desactivado para un servidor que apuntas a Conduit, como speech-to-speech."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour un serveur doté de son propre modèle, comme un modèle temps réel hébergé : il se contente alors d'écouter et de lire à voix haute les réponses de Hermes. Laissez désactivé pour un serveur que vous pointez vers Conduit, comme speech-to-speech."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk server yang punya model sendiri, seperti model realtime yang di-host: server itu lalu hanya mendengarkan dan membacakan balasan Hermes. Biarkan mati untuk server yang kamu arahkan ke Conduit, seperti speech-to-speech."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per un server con un modello proprio, come un modello realtime ospitato: in quel caso ascolta soltanto e legge ad alta voce le risposte di Hermes. Lascialo disattivato per un server che punti a Conduit, come speech-to-speech."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト型のリアルタイムモデルなど、独自のモデルを持つサーバー向けです。オンにすると、サーバーは聞き取りとHermesの返答の読み上げだけを行います。speech-to-speechのようにConduitに向けて設定するサーバーではオフのままにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스팅된 실시간 모델처럼 자체 모델이 있는 서버용입니다. 켜면 서버는 듣기와 Hermes 답변 읽어 주기만 합니다. speech-to-speech처럼 Conduit을 가리키도록 설정하는 서버에서는 꺼 두세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dla serwera z własnym modelem, na przykład hostowanego modelu czasu rzeczywistego: wtedy tylko słucha i czyta na głos odpowiedzi Hermesa. Zostaw wyłączone dla serwera, który kierujesz na Conduit, na przykład speech-to-speech."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para um servidor com modelo próprio, como um modelo em tempo real hospedado: ele passa a apenas ouvir e ler em voz alta as respostas do Hermes. Deixe desativado para um servidor que você aponta para o Conduit, como o speech-to-speech."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для сервера с собственной моделью, например размещённой модели реального времени: тогда он только слушает и читает вслух ответы Hermes. Оставьте выключенным для сервера, который вы направляете на Conduit, например speech-to-speech."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barındırılan bir gerçek zamanlı model gibi kendi modeli olan bir sunucu için: sunucu o zaman yalnızca dinler ve Hermes'in yanıtlarını sesli okur. speech-to-speech gibi Conduit'e yönlendirdiğin bir sunucu için kapalı bırak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用于自带模型的服务器，例如托管的实时模型：开启后它只负责聆听并朗读 Hermes 的回复。对于指向 Conduit 的服务器（例如 speech-to-speech），请保持关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用於自帶模型的伺服器，例如託管的即時模型：開啟後它只負責聆聽並朗讀 Hermes 的回覆。對於指向 Conduit 的伺服器（例如 speech-to-speech），請保持關閉。"
+          }
+        }
+      }
+    },
+    "Hermes answers on this server, so there's nothing to set up on it. The Conduit plugin runs each turn and has the server read the reply aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Server antwortet Hermes, dort ist also nichts einzurichten. Das Conduit-Plugin führt jede Runde aus und lässt den Server die Antwort vorlesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En este servidor responde Hermes, así que no hay nada que configurar en él. El plugin de Conduit lleva cada turno y hace que el servidor lea la respuesta en voz alta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes répond sur ce serveur, il n'y a donc rien à y configurer. Le plugin Conduit gère chaque tour et fait lire la réponse à voix haute par le serveur."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yang menjawab di server ini, jadi tidak ada yang perlu diatur di sana. Plugin Conduit menjalankan setiap giliran dan meminta server membacakan balasannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo server risponde Hermes, quindi non c'è nulla da configurare lì. Il plugin Conduit gestisce ogni turno e fa leggere la risposta ad alta voce al server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーではHermesが応答するため、サーバー側の設定は不要です。Conduitプラグインが各ターンを進め、サーバーに返答を読み上げさせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에서는 Hermes가 응답하므로 서버에서 설정할 것이 없습니다. Conduit 플러그인이 각 턴을 진행하고 서버가 답변을 읽어 주게 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym serwerze odpowiada Hermes, więc nie trzeba na nim niczego ustawiać. Wtyczka Conduit prowadzi każdą turę i każe serwerowi przeczytać odpowiedź na głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes responde neste servidor, então não há nada para configurar nele. O plugin do Conduit conduz cada turno e faz o servidor ler a resposta em voz alta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом сервере отвечает Hermes, поэтому настраивать на нём нечего. Плагин Conduit ведёт каждый ход и даёт серверу прочитать ответ вслух."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucuda Hermes yanıtlar, bu yüzden sunucuda ayarlanacak bir şey yok. Conduit eklentisi her turu yürütür ve yanıtı sunucuya sesli okutur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器上由 Hermes 回答，因此无需在服务器上进行任何设置。Conduit 插件负责每一轮对话，并让服务器朗读回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器上由 Hermes 回答，因此無需在伺服器上進行任何設定。Conduit 外掛負責每一輪對話，並讓伺服器朗讀回覆。"
+          }
+        }
+      }
+    },
+    "Your speech server answered a call by itself, so Hermes never got a turn. Turn on Hermes answers under Your speech server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat in einem Anruf selbst geantwortet, Hermes kam also nie an die Reihe. Schalte unter „Dein Sprachserver“ die Option „Hermes antwortet“ ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz respondió por su cuenta en una llamada, así que Hermes nunca tuvo turno. Activa «Hermes responde» en Tu servidor de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal a répondu de lui-même pendant un appel, Hermes n'a donc jamais eu la parole. Activez « Hermes répond » dans Votre serveur vocal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suaramu menjawab sendiri dalam sebuah panggilan, jadi Hermes tidak pernah mendapat giliran. Nyalakan “Hermes yang menjawab” di Server suaramu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale ha risposto da solo durante una chiamata, quindi Hermes non ha mai avuto il turno. Attiva «Risponde Hermes» in Il tuo server vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが通話中に自分で応答したため、Hermesの番が来ませんでした。「あなたの音声サーバー」で「Hermesが応答」をオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 통화에서 스스로 응답해 Hermes에게 차례가 오지 않았습니다. ‘내 음성 서버’에서 ‘Hermes가 응답’을 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy sam odpowiedział w rozmowie, więc Hermes nie doszedł do głosu. Włącz „Odpowiada Hermes” w sekcji Twój serwer mowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz respondeu sozinho em uma chamada, então o Hermes nunca teve a vez. Ative “Hermes responde” em Seu servidor de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голосовой сервер сам ответил во время звонка, поэтому до Hermes очередь не дошла. Включите «Отвечает Hermes» в разделе «Ваш голосовой сервер»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucun bir aramada kendi başına yanıt verdi, bu yüzden sıra Hermes'e hiç gelmedi. Konuşma sunucun bölümünde “Hermes yanıtlar” seçeneğini aç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器在一次通话中自行作答，Hermes 没有得到发言机会。请在“你的语音服务器”下开启“由 Hermes 回答”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器在一次通話中自行作答，Hermes 沒有得到發言機會。請在「你的語音伺服器」下開啟「由 Hermes 回答」。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

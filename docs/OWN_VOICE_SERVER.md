@@ -22,7 +22,8 @@ network.
   one on your network (an LXC, a GPU box, a Mac).
 - For Local Live, the speech server must be able to reach your Hermes
   dashboard the way your phone does (LAN, Tailscale or a public domain),
-  unless it only reads text aloud: then the plugin runs each turn and the
+  unless it only reads text aloud, or **Hermes answers** is on (see A
+  server with a model of its own): then the plugin runs each turn and the
   server never asks the dashboard.
 
 ## Two ways to use it
@@ -55,9 +56,35 @@ voice:
     url: ws://192.168.1.20:8765/v1/realtime
     # api_key: ...       optional, written only when you set a key
     # api_key_file: ...  optional, added by hand: read the key from a file (plugin 0.47.1+)
+    # drive_turns: true  the Hermes answers switch (plugin 0.173+)
 ```
 
 With only this step, Classic voice listens through your server.
+
+## A server with a model of its own
+
+A hosted realtime model (OpenAI Realtime, Alibaba's Qwen realtime, or any
+service that speaks the OpenAI Realtime protocol) answers by itself: it has
+no setting to point at Conduit, so steps 2 and 3 below don't apply to it, and
+left alone it would talk to you with its own model while Hermes never got a
+turn. For such a server, turn on **Hermes answers** under **Your speech
+server** (plugin 0.173 or later). The plugin then runs every turn: the
+server only listens and reads the replies aloud, and Hermes, or the fast
+model in agent mode, does the answering. This works in Classic, Local Live,
+agent mode and on the Apple Watch, and there is nothing to set up on the
+server.
+
+Enter the service's address with `wss://` and its key in step 1. If the
+service only sends transcripts once a transcription model is named, add it by
+hand in `config.yaml` as `transcription_model` beside `drive_turns`.
+
+Your voice goes to that service and it bills you for it. A model asked to
+read text aloud usually does, but not always: if it answers instead of
+reading two sentences in a row, the call ends and says so.
+
+Leave the switch off for speech-to-speech and other servers you point at
+Conduit. If one of those answers a call by itself, step 2's screen says so
+and names the switch.
 
 ## Step 2: let the server speak the replies too (Classic)
 
@@ -97,7 +124,8 @@ A server that only reads text aloud (it won't answer on its own) never asks
 the model address: the plugin asks Hermes, or the fast model in agent mode,
 for each reply and sends the server the words to read. There the call is
 ready once the plugin's first exchange with Hermes is done, and "Hasn't
-asked yet" in step 2 is expected.
+asked yet" in step 2 is expected. With **Hermes answers** on, any server is
+used this way, and step 2's screen says there is nothing to set up.
 
 Local Live also works on the Apple Watch with plugin 0.48 or later and
 watchOS 11 or later, and in CarPlay.
@@ -128,6 +156,13 @@ from Hermes opens Local Live and the fast model says it.
 - **"Hasn't asked for words yet"**: the server's model address or key is
   wrong, or the server wasn't restarted after you changed them. Copy the
   setup block again.
+- **The server answers by itself and Hermes never does**: it has a model of
+  its own. Turn on **Hermes answers** under **Your speech server** (see A
+  server with a model of its own).
+- **"Your speech server doesn't read text back as it's given"**: with
+  **Hermes answers** on, the server's model answered the sentences instead of
+  reading them. Try another model on that service, or a server that reads
+  text aloud.
 - **Local Live unavailable**: the plugin is older than 0.42 (0.48 on the
   Apple Watch), or Hermes lacks
   the dashboard token-route support the model address's key needs. Update Hermes and the

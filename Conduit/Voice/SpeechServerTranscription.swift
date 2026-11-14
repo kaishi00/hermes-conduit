@@ -434,6 +434,11 @@ struct SpeechServerStatus: Equatable {
     /// The WebSocket URL the host dials, normalized.
     var url: String?
     var hasKey: Bool
+    /// Whether Hermes answers on a server with a model of its own
+    /// (voice.speech_server.drive_turns): the plugin runs every turn and
+    /// the server only listens and reads aloud. Nil from a plugin before
+    /// the setting (0.173.0), which has no switch to show.
+    var driveTurns: Bool?
     var reason: String?
     var pluginMissing: Bool
     /// Hermes didn't answer; `reason` says why. Not what's set: what was
@@ -477,6 +482,7 @@ struct SpeechServerStatus: Equatable {
         available = response["available"] as? Bool ?? false
         url = (response["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         hasKey = response["has_key"] as? Bool ?? false
+        driveTurns = response["drive_turns"] as? Bool
         reason = (response["reason"] as? String ?? response["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         pluginMissing = false
     }

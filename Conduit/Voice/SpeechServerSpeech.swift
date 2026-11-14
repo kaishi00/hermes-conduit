@@ -461,6 +461,13 @@ struct SpeechServerVoiceStatus: Equatable {
     var apiKey: String?
     /// When the server last asked the plugin for words: it is pointed at it.
     var lastRequestAt: Date?
+    /// Hermes answers on this server (voice.speech_server.drive_turns): the
+    /// plugin runs every turn, so the server never asks for words and has
+    /// nothing to be pointed at.
+    var drivesTurns = false
+    /// The server answered a call with a model of its own, so Hermes got
+    /// no turn; "Hermes answers" is what it needs (issue 2438).
+    var answersAlone = false
     /// The speech server's address the Hermes host dials (Speech to text's).
     var speechServerURL: String?
     var pluginMissing: Bool
@@ -511,7 +518,10 @@ struct SpeechServerVoiceStatus: Equatable {
         modelAddress = apiKey == nil ? nil : path.flatMap { Self.modelAddress(baseURL: dashboardBaseURL, path: $0) }
         modelName = (response["model_name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "conduit"
         lastRequestAt = (response["last_request_at"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) }
-        speechServerURL = ((response["speech_server"] as? [String: Any])?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let server = response["speech_server"] as? [String: Any]
+        speechServerURL = (server?["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        drivesTurns = server?["drive_turns"] as? Bool ?? false
+        answersAlone = response["answers_alone"] as? Bool ?? false
         pluginMissing = false
         frontModel = (response["front_model"] as? [String: Any]).map(LocalLiveFrontModelStatus.init(response:))
     }
