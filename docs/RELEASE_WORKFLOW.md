@@ -153,8 +153,9 @@ and it merges back into `main` after each stage Eric has tested (Eric,
   and run `check-weak-imports.py` on the archive, as for any upload.
 - Send it to internal testers only, never the public beta group, with
   "all-live" and the merged PRs since the last all-live build in What to Test.
-- One build per slice: each stage 1 slice is checked on its build before the
-  next merges into `all-live`.
+- Slices merge into `all-live` on a green CI Gate and clean reviews, without
+  a build each. The first all-live build Eric tests carries stage 1 and
+  stage 2 together, once two chats can stream at once (Eric, 2026-11-14).
 
 `main` is merged into `all-live` often (a merge commit, never a rebase), so
 its builds also carry what `main`'s have.
