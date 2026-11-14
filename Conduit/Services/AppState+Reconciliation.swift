@@ -141,11 +141,17 @@ extension AppState {
             // The list read goes out first; one that has already failed
             // leaves the chat to the connection's retry, as before.
             if savedChat != nil { await Task.yield() }
-            // A notification, a new chat or a saved-list pick that came in
-            // during the yield is the destination now.
+            // A notification, a new chat, a saved-list pick or an open of
+            // its own (a link, Siri, CarPlay) that came in during the yield
+            // is the destination now, and so is a switch or a new client.
             if let savedChat, !catalogReadFailed.failed,
                PushNotificationService.shared.pendingTarget == nil,
-               chatPickedFromSavedList == nil, pendingNewChat == nil {
+               chatPickedFromSavedList == nil, pendingNewChat == nil,
+               token == reconciliationToken,
+               automaticChatResumeWorkIsCurrent(automaticWorkToken, syncOperationID: automaticOperationID),
+               chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+               profile == activeProfile, dashboardID == activeDashboardID,
+               self.client === client {
                 chatResumeRestorationRequest = nil
                 chatResumeCoordinator.prepareDirectTarget(
                     sessionID: savedChat.sessionID,
@@ -1201,7 +1207,9 @@ extension AppState {
         guard let reference = chatResumeCoordinator.lastSession(for: profile) else { return waits("no saved chat") }
         guard reference.kind == .dashboard else { return waits("the saved chat is a Bot Chat") }
         guard !reference.isUnverified else { return waits("the saved chat is unverified") }
-        guard let sessionID = ChatScrollIdentityNormalization.sessionID(reference.sessionID) else { return waits("no saved chat") }
+        guard let sessionID = ChatScrollIdentityNormalization.sessionID(reference.sessionID) else {
+            return waits("the saved chat's id isn't a session id")
+        }
         let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
         guard !dead.contains(sessionID) else { return waits("the saved chat is gone") }
         let ownership = botOwnership
