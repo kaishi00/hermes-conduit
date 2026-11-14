@@ -974,6 +974,29 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin")
     }
 
+    /// Classic voice for a screenshot reads the capabilities once more
+    /// before it arms: a call answered by then (here, on the Watch) keeps
+    /// going, and the preparation stops rather than failing or arming.
+    func testClassicVoiceForAScreenshotYieldsToACallAfterItsCapabilityRead() async {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.isWatchVoiceCallActive = true
+
+        let other = await harness.appState.prepareVoiceConversation(profile: nil, startsFreshConversation: false)
+        XCTAssertNotEqual(other, .deferred, "Without the flag the call isn't consulted")
+
+        let screenshot = await harness.appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: false,
+            yieldsToACall: true
+        )
+        XCTAssertEqual(screenshot, .deferred)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+    }
+
     func testNewChatThatCannotStartKeepsTheScreenshot() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         // Connected, but no client: no chat can be started.

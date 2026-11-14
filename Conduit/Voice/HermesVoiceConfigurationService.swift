@@ -483,6 +483,31 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// Has the plugin run every turn on the speech server
+    /// (`voice.speech_server.drive_turns`), written as a Boolean; off
+    /// removes the setting, which is its default.
+    func saveSpeechServerDrivesTurns(_ enabled: Bool) async -> Bool {
+        await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
+            let key = "voice.speech_server.drive_turns"
+            guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
+                errorMessage = AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
+                return false
+            }
+            var voice = config["voice"] as? [String: Any] ?? [:]
+            var server = voice["speech_server"] as? [String: Any] ?? [:]
+            server["drive_turns"] = enabled ? true : nil
+            voice["speech_server"] = server
+            config["voice"] = voice
+            do {
+                try await putConfig(config)
+                return true
+            } catch {
+                errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
+                return false
+            }
+        }
+    }
+
     /// The user's own speech server as the notifier reads it
     /// (`voice.speech_server`). A plugin without the route predates it.
     func speechServerStatus() async -> SpeechServerStatus {

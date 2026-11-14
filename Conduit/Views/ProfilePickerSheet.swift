@@ -219,11 +219,23 @@ extension ProfilePickerSheet {
     }
 
     private func closeOnSwitchedDashboardConnected(_ connected: Bool) {
-        guard connected, !closedForConnectedSwitch,
-              let target = switchingToDashboard,
-              appState.activeDashboardID == target else { return }
+        guard Self.closesForConnectedSwitch(
+            connected: connected,
+            alreadyClosed: closedForConnectedSwitch,
+            switchingTo: switchingToDashboard,
+            active: appState.activeDashboardID
+        ) else { return }
         closedForConnectedSwitch = true
         dismiss()
+    }
+
+    /// Closes once, when the dashboard a switch from this sheet is going to
+    /// is the selected one and its socket is up; a switch that never
+    /// connects (it failed, or another took over) leaves it to the switch's
+    /// end.
+    static func closesForConnectedSwitch(connected: Bool, alreadyClosed: Bool, switchingTo target: UUID?, active: UUID?) -> Bool {
+        guard connected, !alreadyClosed, let target else { return false }
+        return active == target
     }
 }
 

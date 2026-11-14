@@ -469,15 +469,24 @@ extension AppState {
     /// The profile's newest chats, read beside the chat list on Jump to
     /// latest activity so its pick needn't wait for the whole page
     /// (`latestChatBeforeList`). Not cached or published: the list does that.
-    func newestChatsBeforeList(profile: String, using client: HermesClient) async throws -> [SessionSummary] {
+    func newestChatsBeforeList(profile: String, dashboardID: UUID?, using client: HermesClient) async throws -> [SessionSummary] {
         if let loadNewestChats = chatResumeLifecycleOperations.loadNewestChats {
             return try await loadNewestChats(client)
         }
-        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        guard let bridge = bridgeForSync(dashboardID: dashboardID, client: client) else {
+            throw DashboardTicketBridgeError.notReady
+        }
         let response = try await bridge.requestJSON(path: profileSessionsPath(profile, limit: Self.newestChatsReadLimit))
         let batch = response["sessions"] as? [Any] ?? []
         return await dashboardOwnedSessions(batch, profile: profile)
             .filter { sessionBelongsToProfile($0, profile: profile) }
+    }
+
+    /// The sync's own dashboard's bridge, or nil once a switch has put in
+    /// another dashboard or client: that bridge is another host's.
+    func bridgeForSync(dashboardID: UUID?, client: HermesClient) -> DashboardTicketBridge? {
+        guard activeDashboardID == dashboardID, self.client === client else { return nil }
+        return dashboardTicketBridge
     }
 
     func profileSessionsPath(_ profile: String, offset: Int = 0, limit: Int = 200) -> String {

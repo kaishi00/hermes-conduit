@@ -626,6 +626,10 @@ struct VoiceSettingsView: View {
             guard let voice = service.speechServerVoice else {
                 return setupStep(title, detail: waiting, state: .pending)
             }
+            if voice.drivesTurns, voice.available, !voice.pluginMissing {
+                // Hermes answers on it: the server has nothing to be given.
+                return setupStep(title, detail: AppLocalization.string("Your speech server", table: .voice), state: .done)
+            }
             if voice.pluginMissing || !voice.available || voice.modelAddress == nil {
                 return setupStep(title, detail: voice.reason ?? waiting, state: .attention)
             }

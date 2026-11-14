@@ -872,6 +872,7 @@ struct V2Shell: View {
                 // is for a switch started elsewhere (the picker sheet,
                 // CarPlay).
                 guard !switching, !isPickingProfile else { return }
+                let leavesAll = queuedProfilePick.leavesAll
                 guard let next = queuedProfilePick.take(
                     landedOn: appState.activeProfile,
                     dashboardID: appState.activeDashboardID
@@ -881,7 +882,7 @@ struct V2Shell: View {
                     return
                 }
                 // Its haptic came with the tap.
-                pickProfile(next, haptic: false)
+                pickProfile(next, haptic: false, leavesAll: leavesAll)
             }
             .onChange(of: appState.showsPulseScreen, initial: true) { was, shows in
                 // The bar and the ⌘ keys leave Pulse's tab out where this
@@ -1448,7 +1449,9 @@ struct V2Shell: View {
         // fade-out included) is kept rather than dropped, and the last one
         // goes once it ends.
         if appState.isProfileSwitching || isPickingProfile {
-            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID)
+            // A pick from under All (an accepted call question among them)
+            // turns All off when it goes.
+            queuedProfilePick.tap(profile, dashboardID: appState.activeDashboardID, leavesAll: leavesAll)
             if haptic { Haptics.medium() }
             // The profile showing is on its way out: its chats leave now
             // rather than stay tappable until the kept pick goes.
@@ -1465,8 +1468,9 @@ struct V2Shell: View {
         if !callEndAccepted && appState.isVoiceCallInProgress {
             if haptic { Haptics.medium() }
             appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
-                if leavesAll { appState.setAllProfilesChatsOn(false) }
-                pickProfile(profile, haptic: false, callEndAccepted: true)
+                // All goes off as the accepted switch starts, below, and
+                // comes back if it doesn't land.
+                pickProfile(profile, haptic: false, callEndAccepted: true, leavesAll: leavesAll)
             }
             return
         }
@@ -1475,6 +1479,7 @@ struct V2Shell: View {
         // rings in during the fade-out puts it back for the question below.
         // A pick from another tab (no All chip there) leaves All alone.
         let leftAll = leavesAll && appState.isAllProfilesChatsOn
+        let pickDashboardID = appState.activeDashboardID
         if leftAll { appState.setAllProfilesChatsOn(false) }
         isPickingProfile = true
         isFadingOutForPick = true
@@ -1494,10 +1499,16 @@ struct V2Shell: View {
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             var target = profile
+            var targetDashboardID = pickDashboardID
+            // Whether the pick going ahead came from under All: this pick's
+            // own, or a newer tap's when it was made on another dashboard
+            // (this pick's All never touched that one).
+            var targetLeavesAll = leftAll
             // A tap in the fade-out is the latest word: back on the profile
             // already showing means no switch at all, another one replaces
             // this target.
             if queuedProfilePick.profile != nil {
+                let nextLeavesAll = queuedProfilePick.leavesAll
                 guard let next = queuedProfilePick.take(
                     landedOn: appState.activeProfile,
                     dashboardID: appState.activeDashboardID
@@ -1507,14 +1518,31 @@ struct V2Shell: View {
                     return
                 }
                 target = next
+                // The newer tap was made on the dashboard showing now.
+                targetDashboardID = appState.activeDashboardID
+                if targetDashboardID != pickDashboardID { targetLeavesAll = nextLeavesAll }
+            }
+            // Another dashboard opened in the fade-out (a notification, a
+            // widget): a profile picked on the old one means nothing here,
+            // so the pick is dropped, as a kept one is.
+            guard appState.activeDashboardID == targetDashboardID else {
+                isPickingProfile = false
+                fadeContentBackIn()
+                return
             }
             // A switch started elsewhere (CarPlay) in the fade-out would
-            // refuse this one: it waits behind it, unless a later tap
-            // already does.
+            // refuse this one: it waits behind it.
             if appState.isProfileSwitching {
-                if queuedProfilePick.profile == nil {
-                    queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID)
+                // Only on the dashboard the pick was made on: another one
+                // keeps its own All. The kept pick stays with the dashboard
+                // it was made on (dropped on any other) and carries its own
+                // All flag. The queue is empty here: any tap kept in the
+                // fade-out became `target` above.
+                // All stays as it was until the kept pick goes ahead.
+                if leftAll, appState.activeDashboardID == pickDashboardID {
+                    appState.setAllProfilesChatsOn(true)
                 }
+                queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: targetLeavesAll)
                 isPickingProfile = false
                 return
             }
@@ -1522,22 +1550,39 @@ struct V2Shell: View {
             // the content comes back with All as it was, and the pick asks
             // first (issue 2390), so Cancel leaves the list unchanged.
             if !callEndAccepted && appState.isVoiceCallInProgress {
-                if leftAll { appState.setAllProfilesChatsOn(true) }
+                if leftAll, appState.activeDashboardID == pickDashboardID {
+                    appState.setAllProfilesChatsOn(true)
+                }
                 isPickingProfile = false
                 fadeContentBackIn()
-                pickProfile(target, haptic: false, leavesAll: leftAll)
+                pickProfile(target, haptic: false, leavesAll: targetLeavesAll)
                 return
+            }
+            // A newer tap from under All on another dashboard leaves All
+            // there as its switch starts.
+            if targetDashboardID != pickDashboardID, targetLeavesAll, appState.isAllProfilesChatsOn {
+                appState.setAllProfilesChatsOn(false)
             }
             await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
+            // A switch that didn't land (the connection dropped) leaves All
+            // as it was.
+            // Only on the dashboard the pick was made on: another one picked
+            // meanwhile keeps its own All. A newer tap kept meanwhile left
+            // All for good, so it stays off for that one.
+            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target,
+               queuedProfilePick.profile == nil {
+                appState.setAllProfilesChatsOn(true)
+            }
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
+            let nextLeavesAll = queuedProfilePick.leavesAll
             if let next = queuedProfilePick.take(
                 landedOn: appState.activeProfile,
                 dashboardID: appState.activeDashboardID
             ) {
-                pickProfile(next, haptic: false)
+                pickProfile(next, haptic: false, leavesAll: nextLeavesAll)
                 // It started its own switch, which brings the content back.
                 guard token == profileSwitchToken else { return }
             }
@@ -1603,10 +1648,14 @@ struct V2QueuedProfilePick: Equatable {
     /// The dashboard the tap was made on: a profile name means nothing on
     /// another one.
     private(set) var dashboardID: UUID?
+    /// The pick came from under the All chip and All is still on: it goes
+    /// off when the pick goes ahead.
+    private(set) var leavesAll = false
 
-    mutating func tap(_ profile: String, dashboardID: UUID?) {
+    mutating func tap(_ profile: String, dashboardID: UUID?, leavesAll: Bool = false) {
         self.profile = profile
         self.dashboardID = dashboardID
+        self.leavesAll = leavesAll
     }
 
     /// The profile to switch to now that the switch ended on `landed`, on
@@ -1615,6 +1664,7 @@ struct V2QueuedProfilePick: Equatable {
         defer {
             profile = nil
             self.dashboardID = nil
+            leavesAll = false
         }
         guard self.dashboardID == dashboardID else { return nil }
         return profile == landed ? nil : profile
