@@ -139,7 +139,11 @@ extension AppState {
             // The list read goes out first; one that has already failed
             // leaves the chat to the connection's retry, as before.
             if savedChat != nil { await Task.yield() }
-            if let savedChat, !catalogReadFailed.failed {
+            // A notification, a new chat or a saved-list pick that came in
+            // during the yield is the destination now.
+            if let savedChat, !catalogReadFailed.failed,
+               PushNotificationService.shared.pendingTarget == nil,
+               chatPickedFromSavedList == nil, pendingNewChat == nil {
                 chatResumeRestorationRequest = nil
                 chatResumeCoordinator.prepareDirectTarget(
                     sessionID: savedChat.sessionID,
@@ -1200,7 +1204,12 @@ extension AppState {
         // chat the list doesn't show is the live list's to find.
         guard let row = scoped.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }),
               !isUnlistedChat(row),
-              !BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: ownership.botOwnedIDs) else { return nil }
+              // The live list's own filter: no canonical Bot Chat (by the
+              // roster or the reserved title, which needs no roster) and
+              // nothing a bot owns.
+              !BotChatHygiene.ordinaryResumeCandidates(
+                  [row], roster: botRoster, botOwnedSessionIDs: ownership.botOwnedIDs
+              ).isEmpty else { return nil }
         // Another chat on screen: which one to show is the list's call.
         if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
            !row.nestingIDs.contains(onScreen) { return nil }

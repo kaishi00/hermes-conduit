@@ -6119,6 +6119,16 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
     }
 
+    /// A row with the reserved Bot Chat title is never an ordinary resume,
+    /// even before the roster is read (a cold launch).
+    func testSavedChatWithTheBotChatTitleWaitsForTheChatList() async {
+        let row = session("stored-a", title: BotMode.canonicalChatTitle)
+        let opened = await openedBeforeTheListLands(rows: [row]) { _, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: row.id), for: "default")
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
+    }
+
     /// Another chat on screen: which one to show is the list's call (an edit
     /// there while the list is out keeps it).
     func testSavedChatWaitsWhileAnotherChatIsOnScreen() async {
