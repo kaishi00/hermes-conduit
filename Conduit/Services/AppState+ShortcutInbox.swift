@@ -180,6 +180,8 @@ extension AppState {
                    notifierPlugin.state == .unknown {
                     let managedBy = NotifierPluginStatus.managedBy(from: response)
                     NotifierPluginStatus.Remembered.remember(managedBy, for: dashboardID, in: appDefaults)
+                    // What it serves, for Settings home's list.
+                    NotifierPluginStatus.Remembered.remember(state, for: dashboardID, in: appDefaults)
                     let askedBefore = PluginUpdateAsk.managedAsk
                     PluginUpdateAsk.setActive(managedBy: managedBy)
                     // The Watch words its plugin failures from the phone's shared context.
