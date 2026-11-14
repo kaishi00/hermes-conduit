@@ -33,7 +33,7 @@
 //    to show, and drops a day whose low is above its high; a comparison
 //    recommends one option at most; media needs a source and https links,
 //    and an image has no duration or artwork; a contact keeps only a phone and an email
-//    that look like one, and a person's message only with their phone; a
+//    that look like one, and a person's message only with their phone or email; a
 //    table keeps the rows with one cell per column; a checklist keeps one
 //    item per text; a list item's photo needs an https url; a progress goal
 //    is above 0; a diff hunk keeps the lines that start with +, - or a
@@ -376,8 +376,9 @@ struct RichCardSchema {
                 var person = person
                 if let phone = person["phone"] as? String, !isPhone(phone) { person["phone"] = nil }
                 if let email = person["email"] as? String, !isEmail(email) { person["email"] = nil }
-                // A text goes to their number, so there's none without it.
-                if person["phone"] == nil { person["message"] = nil }
+                // A text goes to their number, or to their email over
+                // iMessage, so there's none without either.
+                if person["phone"] == nil && person["email"] == nil { person["message"] = nil }
                 // The phone loads photos over https only.
                 if let photo = person["photo"] as? [String: Any], !isHTTPS(photo["url"]) { person["photo"] = nil }
                 return person
