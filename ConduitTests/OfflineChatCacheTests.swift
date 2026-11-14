@@ -2899,8 +2899,8 @@ final class OfflineChatCacheTests: XCTestCase {
         created.alternateIds = ["runtime-x"]
         appState.sessions = [created]
         appState.activeSessionId = "runtime-x"
-        appState.newChatOpenedSessionID = "runtime-x"
-        appState.newChatOpenedDurableSessionID = "stored-a"
+        appState.shownChat.newChatOpenedSessionID = "runtime-x"
+        appState.shownChat.newChatOpenedDurableSessionID = "stored-a"
         XCTAssertTrue(appState.isOnScreen(pending))
         var other = session("stored-b")
         other.storedSessionId = "stored-b"
@@ -3011,13 +3011,13 @@ final class OfflineChatCacheTests: XCTestCase {
         let pending = try XCTUnwrap(appState.pendingComposerSend)
         let key = appState.composerDraftKeyOnScreen
         appState.pendingComposerSend = nil
-        appState.deliveringPendingComposerSendIDs.insert(pending.id)
+        appState.shownChat.deliveringPendingComposerSendIDs.insert(pending.id)
 
         // A switch back to the dashboard while the send is out leaves it be.
         appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
 
-        appState.deliveringPendingComposerSendIDs.remove(pending.id)
+        appState.shownChat.deliveringPendingComposerSendIDs.remove(pending.id)
         appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
         appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)

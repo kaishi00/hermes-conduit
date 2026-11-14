@@ -261,23 +261,23 @@ extension AppState {
     func clearAuthorityQueueState() {
         authorityQueue.clear()
         sessionControl.clear()
-        queuedSendRows = [:]
-        queuedSendOrder = []
-        ownSendRowIDs = [:]
-        startedAdmissionIDs = []
-        startedAdmissionAnchors = [:]
+        shownChat.queuedSendRows = [:]
+        shownChat.queuedSendOrder = []
+        shownChat.ownSendRowIDs = [:]
+        shownChat.startedAdmissionIDs = []
+        shownChat.startedAdmissionAnchors = [:]
     }
 
     /// Keeps a queued message's bubble for when its turn starts. One whose
     /// turn already started (its start came before this send's reply)
     /// stays in the transcript.
     func holdQueuedSendRow(_ row: ChatMessage, admissionID: String) {
-        guard !startedAdmissionIDs.contains(admissionID) else {
+        guard !shownChat.startedAdmissionIDs.contains(admissionID) else {
             if !messages.contains(where: { $0.id == row.id }) {
                 // Above the rows its turn has already streamed: they follow
                 // the row that was last when it started.
                 let turnStart: Int
-                switch startedAdmissionAnchors[admissionID] {
+                switch shownChat.startedAdmissionAnchors[admissionID] {
                 case .some(.some(let anchorID)):
                     turnStart = messages.firstIndex(where: { $0.id == anchorID }).map { $0 + 1 } ?? messages.endIndex
                 case .some(.none):
@@ -291,18 +291,18 @@ extension AppState {
             }
             return
         }
-        queuedSendRows[admissionID] = row
-        queuedSendOrder.removeAll { $0 == admissionID }
-        queuedSendOrder.append(admissionID)
-        while queuedSendOrder.count > 32 {
-            queuedSendRows.removeValue(forKey: queuedSendOrder.removeFirst())
+        shownChat.queuedSendRows[admissionID] = row
+        shownChat.queuedSendOrder.removeAll { $0 == admissionID }
+        shownChat.queuedSendOrder.append(admissionID)
+        while shownChat.queuedSendOrder.count > 32 {
+            shownChat.queuedSendRows.removeValue(forKey: shownChat.queuedSendOrder.removeFirst())
         }
     }
 
     /// A send the authority admitted as a new turn, with its bubble.
     func noteOwnSend(admissionID: String, rowID: String) {
-        if ownSendRowIDs.count >= 32 { ownSendRowIDs.removeAll() }
-        ownSendRowIDs[admissionID] = rowID
+        if shownChat.ownSendRowIDs.count >= 32 { shownChat.ownSendRowIDs.removeAll() }
+        shownChat.ownSendRowIDs[admissionID] = rowID
     }
 
     /// The user's sends the chat's queue lists as waiting (or cut off by a
@@ -310,8 +310,8 @@ extension AppState {
     func adoptOwnQueuedSends(_ rows: [QueuedPrompt]) {
         var moved = false
         for row in rows where (row.status == .queued && !row.steering) || row.status == .unknown {
-            guard let rowID = ownSendRowIDs.removeValue(forKey: row.admissionID),
-                  !startedAdmissionIDs.contains(row.admissionID),
+            guard let rowID = shownChat.ownSendRowIDs.removeValue(forKey: row.admissionID),
+                  !shownChat.startedAdmissionIDs.contains(row.admissionID),
                   let index = messages.firstIndex(where: { $0.id == rowID }) else { continue }
             holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
             moved = true
@@ -320,8 +320,8 @@ extension AppState {
     }
 
     func takeQueuedSendRow(admissionID: String) -> ChatMessage? {
-        queuedSendOrder.removeAll { $0 == admissionID }
-        return queuedSendRows.removeValue(forKey: admissionID)
+        shownChat.queuedSendOrder.removeAll { $0 == admissionID }
+        return shownChat.queuedSendRows.removeValue(forKey: admissionID)
     }
 
     /// A send the authority queued behind the running turn: its bubble
@@ -329,7 +329,7 @@ extension AppState {
     /// be cancelled, edited or sent now, and comes back when its turn starts.
     func moveQueuedSendToDock(rowID: String, sessionID: String) {
         guard let admissionID = HermesClient.admittedAdmissionID(for: sessionID),
-              !startedAdmissionIDs.contains(admissionID),
+              !shownChat.startedAdmissionIDs.contains(admissionID),
               let index = messages.firstIndex(where: { $0.id == rowID }) else { return }
         holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
         cacheMessagePresentation()
@@ -340,15 +340,15 @@ extension AppState {
     /// waited in the dock takes its place in the transcript, above the
     /// reply. Another client's queued message shows as other turns do.
     func noteQueuedTurnStarted(sessionID: String, admissionID: String) {
-        ownSendRowIDs.removeValue(forKey: admissionID)
-        if startedAdmissionIDs.count >= 64 {
-            startedAdmissionIDs.removeAll()
-            startedAdmissionAnchors.removeAll()
+        shownChat.ownSendRowIDs.removeValue(forKey: admissionID)
+        if shownChat.startedAdmissionIDs.count >= 64 {
+            shownChat.startedAdmissionIDs.removeAll()
+            shownChat.startedAdmissionAnchors.removeAll()
         }
-        startedAdmissionIDs.insert(admissionID)
+        shownChat.startedAdmissionIDs.insert(admissionID)
         guard let row = takeQueuedSendRow(admissionID: admissionID) else {
             if eventBelongsToActiveSession(sessionID) {
-                startedAdmissionAnchors[admissionID] = .some(messages.last?.id)
+                shownChat.startedAdmissionAnchors[admissionID] = .some(messages.last?.id)
             }
             return
         }

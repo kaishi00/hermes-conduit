@@ -149,7 +149,7 @@ extension AppState {
         // by someone sitting still: it holds too.
         if let current = chatOnScreenClaim,
            InteractionIdleState.shared.usedWithin(ChatOnScreen.engagedWindow)
-            || (predictiveFollowUpTurn != nil && predictiveFollowUpTurn?.sessionID == activeSessionId) {
+            || (shownChat.predictiveFollowUpTurn != nil && shownChat.predictiveFollowUpTurn?.sessionID == activeSessionId) {
             sendChatOnScreen(current, holdSeconds: ChatOnScreen.holdSeconds(renewingEvery: interval))
             holding = true
         } else if holding {

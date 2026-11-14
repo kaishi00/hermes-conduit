@@ -805,7 +805,7 @@ extension AppState {
     /// focus: a notification or another chat opened while it was created
     /// is left alone.
     func focusNewChatComposer() {
-        guard newChatFocusesComposer, let created = newChatOpenedSessionID,
+        guard newChatFocusesComposer, let created = shownChat.newChatOpenedSessionID,
               activeSessionId == created else { return }
         requestComposerFocus(on: created)
     }
@@ -819,9 +819,9 @@ extension AppState {
     /// found". Conduit puts a fresh chat in its place instead of that dead
     /// end (replaceLostEmptyNewChat).
     func openChatIsEmptyNewChat(_ sessionIDs: Set<String>) -> Bool {
-        guard let created = newChatOpenedSessionID, activeSessionId == created,
+        guard let created = shownChat.newChatOpenedSessionID, activeSessionId == created,
               sessionIDs.contains(created)
-                || newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
+                || shownChat.newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
         else { return false }
         // A slash command's answer (/btw's too) is the user's and lives only
         // here, so it counts as something in the chat; other notices don't.
@@ -847,7 +847,7 @@ extension AppState {
         // New Chat's chat is listed at once; one a sync opened because there
         // was nothing to resume waits for Hermes, and so does its stand-in.
         let listsBeforeHermes = openNewChatAwaitingListing != nil
-        let lost = lostSessionIDs.union([newChatOpenedSessionID, newChatOpenedDurableSessionID].compactMap { $0 })
+        let lost = lostSessionIDs.union([shownChat.newChatOpenedSessionID, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
         lifecycleLog.notice("Empty new chat gone on Hermes (session not found) → a fresh one in its place")
         let created = await createAndReconcileSession(
             using: client,
@@ -863,12 +863,12 @@ extension AppState {
         guard let created else { return false }
         // A fresh chat lost in its turn still answers for the first one's
         // draft; an unrelated replacement starts over.
-        let earlierLost = lostChatReplacement.flatMap { previous in
+        let earlierLost = shownChat.lostChatReplacement.flatMap { previous in
             previous.fresh.isDisjoint(with: lost) ? nil : previous.lost
         } ?? []
-        lostChatReplacement = (
+        shownChat.lostChatReplacement = (
             lost: earlierLost.union(lost),
-            fresh: Set([created, newChatOpenedDurableSessionID].compactMap { $0 })
+            fresh: Set([created, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
         )
         handOverWhatWaitsOnLostChat(lost, to: created)
         sessions.removeAll { row in
@@ -905,8 +905,8 @@ extension AppState {
         // A message typed while it reconnected goes into the fresh chat.
         if var pending = pendingComposerSend, !pending.isNewChat,
            !pending.chatSessionIDs.isDisjoint(with: lost) {
-            pending.sessionIDs = Set([fresh, newChatOpenedDurableSessionID].compactMap { $0 })
-            pending.draftSessionID = newChatOpenedDurableSessionID ?? fresh
+            pending.sessionIDs = Set([fresh, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
+            pending.draftSessionID = shownChat.newChatOpenedDurableSessionID ?? fresh
             pendingComposerSend = pending
             // Its saved copy follows, so a relaunch brings it back here.
             _ = recordPendingComposerSendFile(pending)

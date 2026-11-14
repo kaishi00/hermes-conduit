@@ -2322,8 +2322,8 @@ extension AppState {
             runtime.provider = ""
             runtime.serviceTier = ""
             keepDelegateAgents(of: [])
-            newChatOpenedSessionID = runtimeSessionID
-            newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
+            shownChat.newChatOpenedSessionID = runtimeSessionID
+            shownChat.newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
             messages = []
             dismissOfflineChatPresentation()
             persistedTranscriptWindow = nil
