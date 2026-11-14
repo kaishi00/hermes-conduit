@@ -57,7 +57,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Start, check and cancel Hermes jobs by voice; results come back into the call
 - Show a call what you're looking at: take a photo mid-call and it joins the call's chat for Hermes; Gemini Live and Qwen Live see it themselves, and the other modes pass your questions about it to Hermes
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
-- Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
+- Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch, with a ringtone you pick for every bot or for each one
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives
 - Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
 - Your chats in Spotlight and Siri: search a chat or Bot Chat by title from the Home Screen, say "Open Trip planning in Conduit" or "Ask Furina in Conduit", and pick a chat in the Send to Hermes action (only titles of the pinned and recent chats the widget offers are indexed, on the phone)

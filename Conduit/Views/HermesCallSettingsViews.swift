@@ -198,6 +198,11 @@ struct HermesCallSettingsSection: View {
     @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
     @State private var addsContact = false
+    /// This iPhone's ringtones (issue 2445): every bot's, and this bot's
+    /// own when it has one.
+    @State private var ringtoneForAll: HermesRingtone
+    @State private var ringtoneOwn: HermesRingtone?
+    @State private var ringtonePreview = HermesRingtonePreview()
     @State private var saveTask: Task<Void, Never>?
     /// Whose settings the draft holds, and how they're saved: a switch of
     /// profile or server can hand this view another's model before it
@@ -215,6 +220,9 @@ struct HermesCallSettingsSection: View {
         _rulesText = State(initialValue: settings.rules ?? "")
         _draftOwner = State(initialValue: model.owner)
         _draftSave = State(initialValue: model.save)
+        let ringtones = HermesRingtoneStore()
+        _ringtoneForAll = State(initialValue: ringtones.forAll)
+        _ringtoneOwn = State(initialValue: ringtones.own(profile: model.profile))
     }
 
     /// Whether the model shown is the draft's own.
@@ -293,6 +301,62 @@ struct HermesCallSettingsSection: View {
         }
     }
 
+    /// A pick plays once, so the user hears it without placing a call.
+    private func previewRingtone(_ ringtone: HermesRingtone) {
+        let appState = AppStateRuntimeRegistry.shared.existing
+        // A call from Hermes ringing or answered counts too, before its
+        // voice has started.
+        ringtonePreview.play(ringtone, voiceInUse: appState.map { $0.isVoiceInUse || $0.isCallHoldingAudio || $0.isWatchVoiceCallActive } ?? false)
+    }
+
+    /// This bot's own ringtone: none of its own, or any of the tones.
+    private var ownRingtoneChoices: [(id: HermesRingtone?, title: String)] {
+        var choices: [(id: HermesRingtone?, title: String)] = [(id: nil, title: AppLocalization.string("Same as other bots", table: .voice))]
+        for ringtone in HermesRingtone.allCases {
+            choices.append((id: ringtone, title: ringtone.title))
+        }
+        return choices
+    }
+
+    /// The ringtone for every bot, and this bot's own (issue 2445). Kept on
+    /// this iPhone, which shares it with the Watch: CallKit rings with a
+    /// sound from the app's own bundle.
+    @ViewBuilder
+    private var ringtoneRows: some View {
+        ConduitMenuPicker(
+            value: ringtoneForAll,
+            choices: HermesRingtone.allCases.map { (id: $0, title: $0.title) },
+            onSelect: { ringtone in
+                ringtoneForAll = ringtone
+                HermesRingtoneStore().forAll = ringtone
+                AppStateRuntimeRegistry.shared.existing?.shareWatchCallVoices()
+                previewRingtone(ringtone)
+            }
+        ) {
+            Text(AppLocalization.string("Ringtone", table: .voice)).foregroundStyle(.secondary)
+        }
+        .accessibilityIdentifier("hermesCalls.ringtone")
+        // A call that names no profile has no bot to give its own.
+        if HermesRingtoneStore.bot(model.profile) != nil {
+            ConduitMenuPicker(
+                value: ringtoneOwn,
+                choices: ownRingtoneChoices,
+                onSelect: { ringtone in
+                    ringtoneOwn = ringtone
+                    HermesRingtoneStore().setOwn(ringtone, profile: model.profile)
+                    AppStateRuntimeRegistry.shared.existing?.shareWatchCallVoices()
+                    previewRingtone(ringtone ?? ringtoneForAll)
+                }
+            ) {
+                Text(AppLocalization.string("Ringtone for \(model.botName)", table: .voice)).foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("hermesCalls.ringtoneOwn")
+        }
+        Text(AppLocalization.string("Each bot can ring with its own tone. iOS shares only its default ringtone with apps, so the others are Conduit's own.", table: .voice))
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+    }
+
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Calls from Hermes"), symbol: "phone.arrow.down.left", tint: .green) {
             if let status = model.status {
@@ -308,7 +372,12 @@ struct HermesCallSettingsSection: View {
                 }
                 if draft.enabled {
                     if HermesNativeCalls.offersRinging {
-                        Toggle("Ring like a phone call", isOn: $ringsLikeCall)
+                        // Animated, so the ringtone and contact rows it
+                        // reveals slide in rather than pop.
+                        Toggle("Ring like a phone call", isOn: Binding(
+                            get: { ringsLikeCall },
+                            set: { rings in withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { ringsLikeCall = rings } }
+                        ))
                             .onChange(of: ringsLikeCall) { _, _ in HermesNativeCalls.shared.ringingSettingChanged() }
                         Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
                             .scaledFont(.caption)
@@ -320,6 +389,7 @@ struct HermesCallSettingsSection: View {
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
                         }
                         if ringsLikeCall {
+                            ringtoneRows
                             focusContactRow
                         }
                     }
@@ -418,7 +488,10 @@ struct HermesCallSettingsSection: View {
         .onChange(of: rulesFocused) { _, focused in
             if !focused { commitRules() }
         }
-        .onDisappear { commitRules() }
+        .onDisappear {
+            commitRules()
+            ringtonePreview.stop()
+        }
         .keyboardDoneButton { rulesFocused = false }
     }
 

@@ -86,6 +86,12 @@ struct WatchPhoneContext: Codable, Equatable {
     /// iPhone): that this host's plugin doesn't have it, and who keeps it
     /// up to date. Nil when the host doesn't, or from an older iPhone app.
     var pluginAsk: String? = nil
+    /// The ringtone calls from Hermes ring with (HermesRingtone raw value),
+    /// and each bot's own by the bot (HermesRingtoneStore.bot), which a
+    /// call ringing on the Watch takes (issue 2445). Nil from an older
+    /// iPhone app.
+    var ringtone: String? = nil
+    var botRingtones: [String: String]? = nil
 
     /// What the Watch's Settings show for the notifications it mirrors.
     enum NotificationsEncryption: String {
