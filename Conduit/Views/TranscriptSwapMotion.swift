@@ -21,50 +21,77 @@ import UIKit
 final class TranscriptSwapMotion {
     /// What plays the slide: the open chat's transcript.
     weak var stage: TranscriptSwapStage?
-    /// The slide the chat about to be drawn comes in with.
+    /// The slide the chat being opened comes in with.
     private(set) var expected: BotChatSwap?
+    /// The chat being opened is the one the transcript draws, and only
+    /// its rows are still to come (Hermes hasn't sent them, and it has no
+    /// saved ones).
+    private(set) var chatIsOnStage = false
     /// How long a swap that was asked for may take to draw. Past it the
     /// open failed or was stood down: a transcript that left comes back,
     /// and a later change of chat doesn't slide for this one.
     var patience: Duration = .seconds(3)
+    /// How long the chat's rows may take once the transcript draws the
+    /// chat. Past it the chat has none, and what it does show (an empty
+    /// chat's welcome) comes back.
+    var rowsPatience: Duration = .milliseconds(600)
     private var waiting: Task<Void, Never>?
 
     /// The chat on screen leaves, ahead of the one being opened: the swipe
     /// or the tap is answered at once, while the open runs.
     func leave(_ swap: BotChatSwap) {
-        stage?.slideOut(swap)
-        wait()
+        stage?.slideOut(swap, atOnce: true)
+        wait(patience)
     }
 
     /// The chat being opened comes in as `swap` once its rows are drawn.
     /// The screen hears of the open and the transcript of its rows in no
-    /// set order, so rows drawn a moment ago slide in now.
+    /// set order, so rows drawn a moment ago slide in now. Until they're
+    /// drawn, what the transcript shows steps aside: the chat being left,
+    /// or the opened chat's welcome while it has no rows yet.
     func expect(_ swap: BotChatSwap) {
-        if let stage, stage.conversationJustChanged {
+        guard let stage else {
+            expected = swap
+            chatIsOnStage = false
+            wait(patience)
+            return
+        }
+        let onStage = stage.conversationJustChanged
+        if onStage, stage.showsChatRows {
             settle()
             stage.slideIn(swap)
-        } else {
-            expected = swap
-            wait()
+            return
         }
+        expected = swap
+        chatIsOnStage = onStage
+        if !stage.rowsAreAway { stage.slideOut(swap, atOnce: false) }
+        wait(onStage ? rowsPatience : patience)
     }
 
-    /// The transcript drew another chat's rows: the slide they come in
-    /// with, if one was expected.
-    func conversationChanged() -> BotChatSwap? {
-        defer { settle() }
-        return expected
+    /// The transcript drew rows, another chat's when `conversationChanged`:
+    /// the slide they come in with, once they are the expected chat's own
+    /// rows (`chatRows`), not its welcome or a status line.
+    func rowsDrawn(conversationChanged: Bool, chatRows: Bool) -> BotChatSwap? {
+        guard let swap = expected else { return nil }
+        if conversationChanged { chatIsOnStage = true }
+        guard chatIsOnStage else { return nil }
+        if chatRows {
+            settle()
+            return swap
+        }
+        if conversationChanged { wait(rowsPatience) }
+        return nil
     }
 
     private func settle() {
         expected = nil
+        chatIsOnStage = false
         waiting?.cancel()
         waiting = nil
     }
 
-    private func wait() {
+    private func wait(_ patience: Duration) {
         waiting?.cancel()
-        let patience = patience
         waiting = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: patience) } catch { return }
             // A wait stood down as its sleep ended (the swap drew, or a
@@ -72,6 +99,7 @@ final class TranscriptSwapMotion {
             guard let self, !Task.isCancelled else { return }
             waiting = nil
             expected = nil
+            chatIsOnStage = false
             stage?.comeBack()
         }
     }
@@ -82,13 +110,20 @@ final class TranscriptSwapMotion {
 protocol TranscriptSwapStage: AnyObject {
     /// Another chat's rows were drawn in this pass of the main thread.
     var conversationJustChanged: Bool { get }
+    /// The rows drawn include the chat's own (a message, a turn under
+    /// way), not only its welcome or a status line.
+    var showsChatRows: Bool { get }
+    /// The rows slid away and wait for `slideIn` or `comeBack`.
+    var rowsAreAway: Bool { get }
     /// The rows on screen leave, and stay away until `slideIn` or
-    /// `comeBack`.
-    func slideOut(_ swap: BotChatSwap)
+    /// `comeBack`. `atOnce` sends the slide to the render server before
+    /// returning, for a tap whose open keeps the main thread next; never
+    /// from inside a view update.
+    func slideOut(_ swap: BotChatSwap, atOnce: Bool)
     /// The rows now drawn come in from their side.
     func slideIn(_ swap: BotChatSwap)
     /// Rows that left show again where they were: their chat is still the
-    /// open one.
+    /// open one, or it has nothing else to show.
     func comeBack()
 }
 
@@ -125,8 +160,11 @@ enum TranscriptSwapSlide {
         fade.toValue = 0
         let group = CAAnimationGroup()
         group.animations = [move, fade]
-        group.duration = 0.2
-        group.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        // Quick off the mark and slow to finish: it answers the finger at
+        // once and is still moving when the open's rows come in, a few
+        // hundred milliseconds later on a long chat.
+        group.duration = 0.35
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         // Away until the new rows come in, or these come back.
         group.fillMode = .forwards
         group.isRemovedOnCompletion = false

@@ -47,6 +47,15 @@ struct TranscriptRow: Identifiable, Equatable {
     let id: String
     let kind: Kind
 
+    /// One of the chat's own rows (a message, a turn under way, a send
+    /// waiting), not its welcome, a status line or Load earlier.
+    var isChatRow: Bool {
+        switch kind {
+        case .loadEarlier, .savedCopyStatus, .empty: return false
+        case .message, .thinking, .streaming, .working, .awaitingAgents, .pendingSend, .room: return true
+        }
+    }
+
     static let loadEarlierID = "transcript-load-earlier"
     static let savedCopyStatusID = "transcript-saved-copy"
     static let emptyID = "transcript-empty"

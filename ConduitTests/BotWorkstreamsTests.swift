@@ -1162,14 +1162,7 @@ extension BotModeTests {
     /// the open first. A swap that never draws brings the old rows back.
     @MainActor
     func testTheSwapSlidesTheTranscriptAsItsRowsAreDrawn() async throws {
-        final class Stage: TranscriptSwapStage {
-            var conversationJustChanged = false
-            var played: [String] = []
-            func slideOut(_ swap: BotChatSwap) { played.append("out \(swap)") }
-            func slideIn(_ swap: BotChatSwap) { played.append("in \(swap)") }
-            func comeBack() { played.append("back") }
-        }
-        let stage = Stage()
+        let stage = SwapStageRecorder()
         let motion = TranscriptSwapMotion()
         motion.stage = stage
 
@@ -1177,27 +1170,53 @@ extension BotModeTests {
         // its rows.
         motion.leave(.back)
         motion.expect(.back)
-        XCTAssertEqual(stage.played, ["out back"])
-        XCTAssertEqual(motion.conversationChanged(), .back)
-        XCTAssertNil(motion.conversationChanged(), "one slide for one swap")
+        XCTAssertEqual(stage.played, ["out back at once"], "already away, it doesn't leave twice")
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: false, chatRows: true), "the workstream's own rows drawn again")
+        XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .back)
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: true), "one slide for one swap")
 
         // A workstream opened: the screen hears after the rows are drawn.
-        stage.played = []
+        stage.reset()
         stage.conversationJustChanged = true
+        stage.showsChatRows = true
         motion.expect(.forward)
         XCTAssertEqual(stage.played, ["in forward"])
-        XCTAssertNil(motion.conversationChanged())
+        XCTAssertNil(motion.expected)
+
+        // A workstream opened, the screen hearing first: the Bot Chat
+        // steps aside, never flushed from inside a view update, and the
+        // workstream comes in with its rows.
+        stage.reset()
+        motion.expect(.forward)
+        XCTAssertEqual(stage.played, ["out forward"])
+        XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .forward)
+
+        // A chat with no saved rows draws its welcome first: it waits out
+        // of sight, and the chat slides in when Hermes' rows land.
+        stage.reset()
+        motion.expect(.forward)
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: false))
+        XCTAssertTrue(motion.chatIsOnStage)
+        XCTAssertEqual(motion.rowsDrawn(conversationChanged: false, chatRows: true), .forward)
+
+        // A chat with nothing in it: its welcome comes back after a moment.
+        stage.reset()
+        motion.rowsPatience = .milliseconds(20)
+        motion.expect(.forward)
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: false))
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(stage.played, ["out forward", "back"])
+        XCTAssertNil(motion.expected)
 
         // An open that fails draws nothing: the rows that left come back,
         // and the next chat drawn doesn't slide for it.
-        stage.played = []
-        stage.conversationJustChanged = false
+        stage.reset()
         motion.patience = .milliseconds(20)
         motion.leave(.back)
         motion.expect(.back)
         try await Task.sleep(for: .milliseconds(200))
-        XCTAssertEqual(stage.played, ["out back", "back"])
-        XCTAssertNil(motion.conversationChanged())
+        XCTAssertEqual(stage.played, ["out back at once", "back"])
+        XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: true))
 
         // A push comes in from the trailing edge over a chat that steps
         // aside; a pop's chat leaves by that edge.
@@ -1211,6 +1230,10 @@ extension BotModeTests {
         XCTAssertFalse(TranscriptSwapSlide.out(from: layer, by: 100).isRemovedOnCompletion)
         XCTAssertTrue(TranscriptSwapSlide.in(from: 100, opacity: 0.4).isRemovedOnCompletion)
         XCTAssertTrue(TranscriptSwapSlide.back(from: layer).isRemovedOnCompletion)
+        // Only a chat's own rows count as the chat having come in.
+        XCTAssertFalse(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty).isChatRow)
+        XCTAssertFalse(TranscriptRow(id: TranscriptRow.savedCopyStatusID, kind: .savedCopyStatus(isOpening: true)).isChatRow)
+        XCTAssertTrue(TranscriptRow(id: TranscriptRow.streamingID, kind: .streaming(isActive: true)).isChatRow)
     }
 
     /// Rows that slid away show nothing where they were, so they take no
@@ -1229,6 +1252,7 @@ extension BotModeTests {
         let motion = TranscriptSwapMotion()
         controller.swapMotion = motion
         XCTAssertTrue(motion.stage === controller)
+        XCTAssertFalse(controller.showsChatRows, "nothing drawn yet")
 
         motion.leave(.back)
         XCTAssertTrue(controller.rowsAreAway)
@@ -1260,14 +1284,7 @@ extension BotModeTests {
     /// nothing: the newer swap keeps its slide and the rows stay away.
     @MainActor
     func testAStoodDownWaitDoesntEndTheSwapAfterIt() async throws {
-        final class Stage: TranscriptSwapStage {
-            var conversationJustChanged = false
-            var played: [String] = []
-            func slideOut(_ swap: BotChatSwap) { played.append("out") }
-            func slideIn(_ swap: BotChatSwap) { played.append("in") }
-            func comeBack() { played.append("back") }
-        }
-        let stage = Stage()
+        let stage = SwapStageRecorder()
         let motion = TranscriptSwapMotion()
         motion.stage = stage
         motion.patience = .milliseconds(20)
@@ -1278,9 +1295,9 @@ extension BotModeTests {
         motion.patience = .seconds(30)
         motion.expect(.back)
         try await Task.sleep(for: .milliseconds(150))
-        XCTAssertEqual(stage.played, ["out"], "the old wait brought nothing back")
+        XCTAssertEqual(stage.played, ["out back at once"], "the old wait brought nothing back")
         XCTAssertEqual(motion.expected, .back)
-        XCTAssertEqual(motion.conversationChanged(), .back)
+        XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .back)
     }
 
     /// A workstream's screen holds back the zoom's own dismissals by their
@@ -2015,5 +2032,36 @@ extension BotModeTests {
         let doneAsking = try XCTUnwrap(BotWorkItem(row: done))
         XCTAssertTrue(doneAsking.isActive)
         XCTAssertTrue(doneAsking.needsYou)
+    }
+}
+
+/// A transcript that only notes what `TranscriptSwapMotion` asks of it.
+@MainActor
+private final class SwapStageRecorder: TranscriptSwapStage {
+    var conversationJustChanged = false
+    var showsChatRows = false
+    var rowsAreAway = false
+    var played: [String] = []
+
+    func slideOut(_ swap: BotChatSwap, atOnce: Bool) {
+        rowsAreAway = true
+        played.append("out \(swap)" + (atOnce ? " at once" : ""))
+    }
+
+    func slideIn(_ swap: BotChatSwap) {
+        rowsAreAway = false
+        played.append("in \(swap)")
+    }
+
+    func comeBack() {
+        rowsAreAway = false
+        played.append("back")
+    }
+
+    func reset() {
+        conversationJustChanged = false
+        showsChatRows = false
+        rowsAreAway = false
+        played = []
     }
 }

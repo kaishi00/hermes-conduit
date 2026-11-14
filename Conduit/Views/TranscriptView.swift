@@ -259,7 +259,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         let conversationChanged = appliedConversation != nil && appliedConversation != conversation
         appliedConversation = conversation
         applyRows(rows, redrawingAll: conversationChanged)
-        if conversationChanged { conversationDidChange() }
+        rowsWereDrawn(conversationChanged: conversationChanged)
         if renderedScope != pendingScope {
             pendingScope = renderedScope
             collectionView.setNeedsLayout()
@@ -268,19 +268,25 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 
     // MARK: - Swap slide (TranscriptSwapMotion)
 
-    /// Another chat's rows are in: they slide in when the screen swapped
-    /// them for the last one's, in the commit that draws them, and any
-    /// other chat just shows.
-    private func conversationDidChange() {
-        if let swap = swapMotion?.conversationChanged() {
-            slideIn(swap)
+    var showsChatRows: Bool { appliedRows.contains(where: \.isChatRow) }
+
+    /// Rows were applied. Another chat's slide in when the screen swapped
+    /// them for the last one's, in the commit that draws them: its own
+    /// rows, so a chat still waiting for them (its welcome showing) slides
+    /// in when they land. Any other chat just shows.
+    private func rowsWereDrawn(conversationChanged: Bool) {
+        guard let swapMotion, swapMotion.expected != nil else {
+            guard conversationChanged else { return }
+            comeBack()
+            // The screen may hear of the open after the rows: until this
+            // pass ends, it can still ask for their slide.
+            conversationJustChanged = true
+            DispatchQueue.main.async { [weak self] in self?.conversationJustChanged = false }
             return
         }
-        comeBack()
-        // The screen may hear of the open after the rows: until this pass
-        // ends, it can still ask for their slide.
-        conversationJustChanged = true
-        DispatchQueue.main.async { [weak self] in self?.conversationJustChanged = false }
+        if let swap = swapMotion.rowsDrawn(conversationChanged: conversationChanged, chatRows: showsChatRows) {
+            slideIn(swap)
+        }
     }
 
     /// Toward the trailing edge, in points.
@@ -289,7 +295,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         return widths * trailing * collectionView.bounds.width
     }
 
-    func slideOut(_ swap: BotChatSwap) {
+    func slideOut(_ swap: BotChatSwap, atOnce: Bool) {
         guard isViewLoaded else { return }
         let layer = collectionView.layer
         let out = TranscriptSwapSlide.out(from: layer, by: swapDistance(TranscriptSwapSlide.leavingShift(swap)))
@@ -301,7 +307,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         collectionView.accessibilityElementsHidden = true
         // Sent to the render server now, so it plays while the open that
         // follows keeps the main thread.
-        CATransaction.flush()
+        if atOnce { CATransaction.flush() }
     }
 
     func slideIn(_ swap: BotChatSwap) {
