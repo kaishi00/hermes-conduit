@@ -1958,7 +1958,7 @@ opening its own chat (see Notifications), adding a dashboard or signing in (no c
 - A call that carries on across a profile or dashboard switch, and checking another profile mid-call, wait on the all-live rework (stages 2 and 3; issue 2390).
 - Settings shows no call bar: the call keeps running behind it and the bar is back once Settings closes. Whether a Voice setting reaches the running call isn't said on screen (issue 2390, with the device pickers of issue 2389).
 
-**Checked:** 2026-11-14, PR_NUM (review leftovers from #2398: a call that rings in during the strip's fade-out is asked about; Repair's Switch says it ends the call; a no-question screenshot during a call comes up for typing; the screenshot refusal tested); 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
+**Checked:** 2026-11-14, #2404 (review leftovers from #2398: a call that rings in during the strip's fade-out is asked about; Repair's Switch says it ends the call; a no-question screenshot during a call comes up for typing; the screenshot refusal tested); 2026-11-13, #2398 (new entry: the hand-picked switches ask first; a screenshot naming another profile during a call stays in this one; the other refusals unchanged).
 
 ## Pulse
 
