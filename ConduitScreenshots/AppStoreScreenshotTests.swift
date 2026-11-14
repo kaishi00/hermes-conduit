@@ -251,7 +251,12 @@ final class AppStoreScreenshotTests: XCTestCase {
     /// can take several seconds to come up, and typing before it fails with
     /// "Neither element nor any descendant has keyboard focus". Taps again
     /// once, halfway through, if the first tap was lost.
-    private func waitForKeyboardFocus(_ field: XCUIElement, timeout: TimeInterval = 40) {
+    private func waitForKeyboardFocus(
+        _ field: XCUIElement,
+        timeout: TimeInterval = 40,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
         let deadline = Date().addingTimeInterval(timeout)
         let retapAt = Date().addingTimeInterval(timeout / 2)
         var tappedAgain = false
@@ -263,7 +268,8 @@ final class AppStoreScreenshotTests: XCTestCase {
             }
             Thread.sleep(forTimeInterval: 0.25)
         }
-        XCTFail("\(field.identifier) never got keyboard focus")
+        let name = field.identifier.isEmpty ? field.label : field.identifier
+        XCTFail("\(name.isEmpty ? "The field" : name) never got keyboard focus", file: file, line: line)
     }
 
     private func signInIfNeeded() {
