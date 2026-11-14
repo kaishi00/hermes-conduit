@@ -6761,14 +6761,18 @@ dashboard signs in without asking again.
 **Siblings:** the launch sign-in · every dashboard switch (the profile picker,
 Saved Dashboards, the top bar's dashboard menu, a widget, a notification or a
 link that switches) · the offline retries (each return from the Face ID sheet)
-· sign-out, removal and a switch to browser sign-in (they relock) · the sign-in
+· every way a saved password is cleared, which relocks: sign-out, removal, a
+switch to browser sign-in, Repair or setup moving to browser or OAuth sign-in,
+an edited address moving the dashboard, a sign-in saved without its password
+· a sign-in Hermes asks for again (the password stays saved, so the launch's
+unlock covers its retry, as it did before for a dashboard already unlocked) · the sign-in
 screen's Use Face ID caption (not needed: "unlocks the saved sign-in when
 Conduit opens" still holds) · the saved dashboards list's Signs in with Face ID
 (not needed: the kind of sign-in is unchanged) · README.md (not needed: lists
 the lock only)
 
 **Code**
-- `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect)
+- `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect, through clearSavedPassword)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift` (testOneFaceIDUnlockHoldsWhileTheServerCantBeReached, testOneFaceIDUnlockOpensEverySavedDashboardForTheLaunch)
 
 **Rulings**
@@ -6779,7 +6783,7 @@ the lock only)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-14, #2423.
+**Checked:** 2026-11-14, PR_NUM (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
 
 ## Which dashboard a launch signs in to
 

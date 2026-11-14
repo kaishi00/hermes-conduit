@@ -972,8 +972,6 @@ extension AppState {
         needsYou.reset(dashboardID: nil)
         // So does a Restart now that failed.
         gatewayRestartNowFailure = nil
-        // The next sign-in to it asks for Face ID again.
-        if let activeDashboardID { relockFaceID(dashboardID: activeDashboardID) }
         // Its turns' Lock Screen progress has nothing left to follow.
         liveTurnActivitiesEndDashboard(activeDashboardID?.uuidString, false)
         // Drafts shared for this dashboard belong to the signed-out user,
