@@ -254,7 +254,9 @@ struct SpeechServerSettingsView: View {
         pickedPreset = preset
         if let url = preset.url {
             urlDraft = url
-        } else if savedURL.isEmpty || urlDraft == pickedURL {
+        } else if let pickedURL, urlDraft == pickedURL {
+            // Only an address the last pick filled in gives way to the
+            // example; one the user typed stays.
             urlDraft = ""
         }
         pickedURL = preset.url
@@ -363,17 +365,19 @@ struct SpeechServerSettingsView: View {
         }
         let names = changedNames
         let drivesTurns = presetDrivesTurns
+        var sentNames: [String: String] = [:]
         if !names.isEmpty || drivesTurns != nil {
             let saved = await service.saveSpeechServer(names: names, drivesTurns: drivesTurns)
             guard draftsProfile == profile else { return }
             if saved {
+                sentNames = names
                 pickedPreset = nil
                 pickedURL = nil
             } else {
                 errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
             }
         }
-        await refreshStatus(submittedURL: submitted, profile: profile)
+        await refreshStatus(submittedURL: submitted, submittedNames: sentNames, profile: profile)
         guard draftsProfile == profile else { return }
         if status?.available == true { await runTest(profile: profile) }
     }
@@ -421,7 +425,12 @@ struct SpeechServerSettingsView: View {
         return saved
     }
 
-    private func refreshStatus(submittedURL: String?, profile: String?) async {
+    private func follow(_ draft: inout String, was: String?, sent: String?, now: String?) {
+        let typed = draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        if typed == (was ?? "") || typed == sent { draft = now ?? "" }
+    }
+
+    private func refreshStatus(submittedURL: String?, submittedNames: [String: String] = [:], profile: String?) async {
         let loaded = await service.speechServerStatus()
         guard draftsProfile == profile else { return }
         // A read that failed after a save leaves the old value shown: the
@@ -432,10 +441,15 @@ struct SpeechServerSettingsView: View {
             if errorMessage == nil { errorMessage = loaded.reason }
             return
         }
-        // The names follow the host unless the user is still typing others.
-        let typing = !changedNames.isEmpty
+        // Each name follows the host unless the user has typed another
+        // since: one that still reads as it was saved, or as this save
+        // sent it, takes what the host has now.
+        let before = status
         status = loaded
-        if !typing { showNames(loaded) }
+        follow(&modelDraft, was: before?.model, sent: submittedNames["model"], now: loaded.model)
+        follow(&voiceDraft, was: before?.voice, sent: submittedNames["voice"], now: loaded.voice)
+        follow(&transcriptionModelDraft, was: before?.transcriptionModel,
+               sent: submittedNames["transcription_model"], now: loaded.transcriptionModel)
         // Show what the host will dial (http becomes ws, a bare host gets
         // the realtime path) once it accepted the address, unless the user
         // has typed something else since.
