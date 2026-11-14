@@ -127,6 +127,11 @@ struct LocalLiveOwnModelToggle: View {
                         .accessibilityIdentifier("voice.localLive.ownModel.saveError")
                 }
             }
+            // Another profile's page starts without this one's error.
+            .onChange(of: service.profile) { _, _ in
+                errorMessage = nil
+                readFailed = false
+            }
             .onChange(of: service.isLoading) { _, loading in
                 guard !loading, readFailed else { return }
                 Task {
@@ -254,11 +259,12 @@ struct LocalLiveFrontModelSettingsView: View {
             Label(errorMessage, systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.orange)
+        } else if service.speechServerVoice?.ownModel == true {
+            // The switch above says who answers: the server's own model, so
+            // nothing about the fast model applies.
+            EmptyView()
         } else if let status {
-            if status.available, service.speechServerVoice?.ownModel == true {
-                // The switch above says who answers: the server's own model.
-                EmptyView()
-            } else if status.available {
+            if status.available {
                 Label(AppLocalization.string("Calls answer with \(status.model ?? "") and hand the work to Hermes.", table: .voice), systemImage: "checkmark.circle.fill")
                     .scaledFont(.footnote)
                     .foregroundStyle(.green)
