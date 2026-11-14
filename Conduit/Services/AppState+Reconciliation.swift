@@ -180,13 +180,15 @@ extension AppState {
                 }
             }
             if readsNewestFirst {
-                do {
-                    let newest = try await newestChatsBeforeList(profile: profile, using: client)
+                switch await newestChatsUnlessTheListLands(profile: profile, using: client, list: catalogReadFailed) {
+                case .read(let newest):
                     savedChat = latestChatBeforeList(
                         among: newest, profile: profile, dashboardID: dashboardID, roster: earlyRoster
                     )
-                } catch {
+                case .failed:
                     earlyResumeLogger.notice("Chat resume waits for the chat list: the newest chats read failed")
+                case .listLanded:
+                    earlyResumeLogger.notice("Chat resume waits for the chat list: it landed before the newest chats")
                 }
                 if savedChat != nil { latestPickedBeforeList = savedChat?.sessionID }
             }
@@ -1389,12 +1391,49 @@ extension AppState {
         failure: CatalogReadFailure
     ) async throws -> ProfileCatalogLoad {
         failure.began = true
+        defer {
+            failure.finished = true
+            failure.onFinish?()
+            failure.onFinish = nil
+        }
         do {
             return try await profileCatalog(using: client, deferringOlderPages: true)
         } catch {
             failure.failed = true
             throw error
         }
+    }
+
+    enum NewestChatsRead {
+        case read([SessionSummary])
+        case failed
+        case listLanded
+    }
+
+    /// Jump to latest activity's short read, unless the whole list lands
+    /// first (both through the page, just after a browser sign-in, say):
+    /// then the list picks at once rather than waiting on the short read.
+    func newestChatsUnlessTheListLands(
+        profile: String,
+        using client: HermesClient,
+        list: CatalogReadFailure
+    ) async -> NewestChatsRead {
+        if list.finished { return .listLanded }
+        let race = NewestChatsRace()
+        let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<NewestChatsRead, Never>) in
+            race.continuation = continuation
+            list.onFinish = { race.finish(.listLanded) }
+            race.read = Task { @MainActor in
+                do {
+                    race.finish(.read(try await self.newestChatsBeforeList(profile: profile, using: client)))
+                } catch {
+                    race.finish(.failed)
+                }
+            }
+        }
+        list.onFinish = nil
+        race.read?.cancel()
+        return outcome
     }
 
     func selectChatResumeTarget(
@@ -4035,4 +4074,21 @@ final class CatalogReadFailure {
     var failed = false
     /// The read has started: a list that fails at once has said so by then.
     var began = false
+    /// The read has ended, answered or failed, and who's waiting on that
+    /// (Jump to latest activity's short read, racing it).
+    var finished = false
+    var onFinish: (@MainActor () -> Void)?
+}
+
+/// Whichever of the short read and the list ends first answers; the other
+/// finds the answer taken.
+@MainActor
+final class NewestChatsRace {
+    var continuation: CheckedContinuation<AppState.NewestChatsRead, Never>?
+    var read: Task<Void, Never>?
+
+    func finish(_ outcome: AppState.NewestChatsRead) {
+        continuation?.resume(returning: outcome)
+        continuation = nil
+    }
 }

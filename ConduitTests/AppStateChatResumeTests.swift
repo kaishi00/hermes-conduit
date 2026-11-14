@@ -6539,6 +6539,42 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty, "nothing opened before the list: \(opened)")
     }
 
+    /// A list that lands before the short read picks at once: the short
+    /// read doesn't hold it (both through the page just after a browser
+    /// sign-in, say).
+    func testLatestActivityOpensTheListsPickWhenTheListLandsBeforeTheNewestChats() async {
+        let newer = session("newer")
+        let older = session("older")
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        let newestGate = ControlledSuspension()
+        var operations = savedChatFirstOperations(
+            catalog: [newer, older],
+            gate: catalogGate,
+            catalogLoads: {},
+            opened: { openedSessionIDs.append($0) }
+        )
+        operations.loadNewestChats = { _ in
+            await newestGate.suspend()
+            return [older]
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        await newestGate.waitUntilSuspended()
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs, [newer.id], "the list's pick, with the short read still out")
+        XCTAssertEqual(harness.appState.activeSessionId, newer.id)
+        newestGate.resume()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [newer.id], "the short read's late answer opens nothing")
+    }
+
     /// A chat already on screen is the list's to keep or replace.
     func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
         let newer = session("newer")
