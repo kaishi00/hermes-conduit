@@ -77,6 +77,18 @@ final class BotPictureRecheckTests: XCTestCase {
         ), "fetched after the pull")
     }
 
+    /// A pull asks again for its own dashboard's pictures only: another
+    /// dashboard's phone copies stay fresh for its next switch back.
+    func testAPullOnOneDashboardLeavesAnothersPicturesFresh() async {
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let first = UUID(), second = UUID()
+        appState.savedDashboardRegistry.activeDashboardID = first
+        await appState.reloadBotRoster()
+        XCTAssertNotNil(appState.botPicturesPulledAt[first])
+        appState.savedDashboardRegistry.activeDashboardID = second
+        XCTAssertNil(appState.botPicturesPulledAt[second], "the other dashboard's pull says nothing here")
+    }
+
     func testAPictureWithNoCopyOnThePhoneIsNeverFresh() {
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         XCTAssertFalse(appState.hasFreshBotPicture("furina"))

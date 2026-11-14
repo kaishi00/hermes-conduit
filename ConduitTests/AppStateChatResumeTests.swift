@@ -6127,17 +6127,85 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(openedBeforeList.isEmpty, "a row that borrows the id is the list's call: \(openedBeforeList)")
     }
 
+    /// A saved row that owns the chat by its stored id (the runtime id is
+    /// the row's own) is the chat's own row, as nesting reads it: it goes
+    /// live before the list.
+    func testSavedChatListedByItsStoredIDResumesBeforeTheChatList() async {
+        let catalogGate = ControlledSuspension()
+        var openedBeforeList: [String] = []
+        var listLanded = false
+        let row = session("runtime-a", storedID: "stored-a")
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [row],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { if !listLanded { openedBeforeList.append($0) } }
+            )
+        )
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: "stored-a"), for: "default")
+        harness.appState.sessions = [row]
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        while openedBeforeList.isEmpty, !Task.isCancelled { await Task.yield() }
+        listLanded = true
+        catalogGate.resume()
+        await connecting.value
+        XCTAssertEqual(openedBeforeList, ["stored-a"])
+    }
+
+    /// The chat went live before the list, then the list failed: the chat
+    /// stays live and the list says it failed. No reconnect, which would
+    /// take the live chat down over a list.
+    func testListFailingAfterTheSavedChatResumedKeepsTheChatLive() async {
+        let catalogGate = ControlledSuspension()
+        let scheduler = ControlledReconnectScheduler()
+        let active = session("stored-a")
+        var openedSessionIDs: [String] = []
+        let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [active],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { openedSessionIDs.append($0) },
+                failList: true
+            )
+        )
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: active.id), for: "default")
+        harness.appState.sessions = [active]
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        while openedSessionIDs.isEmpty, !Task.isCancelled { await Task.yield() }
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs, [active.id])
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+        XCTAssertNotEqual(harness.appState.turnState, .reconnecting)
+        XCTAssertEqual(scheduler.scheduledCount, 0, "a failed list doesn't reconnect a live chat")
+        guard case .failed = harness.appState.sessionCatalogLoadState.phase else {
+            return XCTFail("the list says it failed: \(harness.appState.sessionCatalogLoadState.phase)")
+        }
+    }
+
     private func savedChatFirstOperations(
         catalog: [SessionSummary],
         gate: ControlledSuspension,
         catalogLoads: @escaping @MainActor () -> Void,
-        opened: @escaping @MainActor (String) -> Void
+        opened: @escaping @MainActor (String) -> Void,
+        failList: Bool = false
     ) -> ChatResumeLifecycleOperations {
         ChatResumeLifecycleOperations(
             connectClient: { _ in },
             loadCatalog: { _, _ in
                 catalogLoads()
                 await gate.suspend()
+                if failList { throw ControlledLifecycleError.failed }
                 return catalog
             },
             openSession: { _, sessionID, _ in

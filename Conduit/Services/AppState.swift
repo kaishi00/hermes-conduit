@@ -770,6 +770,9 @@ final class AppState: ObservableObject {
     @Published var botAvatarGeneration = 0
     /// When `reloadBotRoster` last asked for every picture again.
     var botAvatarsReloadedAt: Date?
+    /// The same, by dashboard: a pull asks again only for that
+    /// dashboard's pictures, so another's phone copies stay fresh.
+    var botPicturesPulledAt: [UUID: Date] = [:]
     var botAvatarFetchedGeneration: [String: Int] = [:]
     /// When each bot's picture last came from Hermes, by dashboard and
     /// name. Kept across switches (unlike the generation above), so a

@@ -1167,7 +1167,7 @@ extension AppState {
         guard ownership.referenceIfBot(reference, aliases: aliases) == nil,
               aliases.union([sessionID]).isDisjoint(with: ownership.botOwnedIDs) else { return nil }
         let scoped = rows.filter { sessionBelongsToProfile($0, profile: profile) }
-        guard scoped.contains(where: { $0.id == sessionID || $0.alternateIds.contains(sessionID) }) else {
+        guard scoped.contains(where: { $0.nestingIDs.contains(sessionID) }) else {
             return (sessionID, ConversationIdentity(
                 profile: profile,
                 durableSessionID: sessionID,
@@ -1175,14 +1175,16 @@ extension AppState {
                 acceptedSessionIDs: [sessionID]
             ))
         }
-        guard let row = scoped.first(where: { $0.id == sessionID }),
+        // The row owns the id as its own or its stored one, as nesting
+        // reads it; a row that only lists it as an alias borrows it.
+        guard let row = scoped.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }),
               !isUnlistedChat(row),
               !BotChatHygiene.isBotOwnedRow(row, botOwnedSessionIDs: ownership.botOwnedIDs) else { return nil }
         return (sessionID, ConversationIdentity(
             profile: profile,
             durableSessionID: row.storedSessionId ?? row.id,
             runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
-            acceptedSessionIDs: Set([row.id] + row.alternateIds)
+            acceptedSessionIDs: Set(row.nestingIDs)
         ))
     }
 

@@ -652,7 +652,9 @@ extension AppState {
     /// avatar version, and another client (Desktop) may have changed one.
     func reloadBotRoster() async {
         botAvatarGeneration &+= 1
-        botAvatarsReloadedAt = Date()
+        let now = Date()
+        botAvatarsReloadedAt = now
+        if let dashboardID = activeDashboardID { botPicturesPulledAt[dashboardID] = now }
         await refreshBotRoster()
     }
 
@@ -829,11 +831,12 @@ extension AppState {
 
     /// Whether the phone holds this dashboard's copy of the bot's picture,
     /// fetched within `botPictureRecheckInterval` and since the last pull
-    /// on the Bots list (which asks for every picture again).
+    /// on this dashboard's Bots list (which asks for every picture again;
+    /// a pull on another dashboard leaves these alone).
     func hasFreshBotPicture(_ name: String, now: Date = Date()) -> Bool {
         guard let dashboardID = activeDashboardID,
               let fetchedAt = botPictureFetchedAt[Self.botPictureKey(name, dashboardID: dashboardID)],
-              Self.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: botAvatarsReloadedAt, now: now),
+              Self.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: botPicturesPulledAt[dashboardID], now: now),
               profileAvatarURLs[name] != nil,
               profileAppearanceStore.isMirrored(name, dashboardID: dashboardID) else { return false }
         return true
