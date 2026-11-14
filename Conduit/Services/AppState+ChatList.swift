@@ -221,7 +221,7 @@ extension AppState {
         offlineChatCache.readTranscript(durableID, dashboardID: dashboardID, profile: profile) { [weak self] saved in
             guard let self, let saved,
                   self.chatViewportTransitionIsCurrent(generation: transition),
-                  self.reconciliationToken == reconcileToken,
+                  self.shownChat.reconciliationToken == reconcileToken,
                   self.reconciliation?.token == reconcileToken,
                   self.activeSessionId == sessionID,
                   self.activeDashboardID == dashboardID,

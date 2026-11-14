@@ -1279,7 +1279,7 @@ extension AppState {
     private func awaitTransportForVoiceRequest(timeout: Duration) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                let states = self.$isConnected.combineLatest(self.$isConnecting, self.$turnState).values
+                let states = self.$isConnected.combineLatest(self.$isConnecting, self.shownChat.$turnState).values
                 for await (connected, connecting, turn) in states {
                     if connected, turn != .reconnecting, turn != .synchronizing { return }
                     // Signed out, or sign-in needed: no reconnect is coming.

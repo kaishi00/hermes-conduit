@@ -243,8 +243,8 @@ extension AppState {
         guard turnState != .unsupportedGateway else { return }
         // Every call is authoritative live evidence, even a re-affirmation:
         // the ambiguity-recovery guard compares revisions, not values.
-        turnLifecycleEvidence = TurnLifecycleEvidence(
-            revision: turnLifecycleEvidence.revision &+ 1,
+        shownChat.turnLifecycleEvidence = TurnLifecycleEvidence(
+            revision: shownChat.turnLifecycleEvidence.revision &+ 1,
             running: running
         )
         if running {
@@ -255,7 +255,7 @@ extension AppState {
             // Hermes persisted its user row at turn start, so the next
             // locally-owned turn must anchor AFTER it.
             recordLocalOrderingDebtForSettledTurn()
-            locallyOwnedInFlightTurn = nil
+            shownChat.locallyOwnedInFlightTurn = nil
             shownChat.runningTurnNoteIDs = []
         }
         // Every message and reasoning delta re-affirms `.running`. Writing
@@ -276,7 +276,7 @@ extension AppState {
     /// degrades to a spurious-but-safe authoritative reconcile, never to a
     /// silent overshoot.
     private func recordLocalOrderingDebtForSettledTurn() {
-        guard let marker = locallyOwnedInFlightTurn else { return }
+        guard let marker = shownChat.locallyOwnedInFlightTurn else { return }
         if !marker.persistedBoundaryObserved {
             recordLocalOrderingDebt(
                 sessionIDs: marker.sessionIDs,
@@ -304,13 +304,13 @@ extension AppState {
         allowTrailingRowsWithoutNewUserBoundary: Bool = false
     ) {
         guard !baseline.isUnknown else { return }
-        if pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
-            pendingLocalOrderingDebt?.expectedUserTurnCount += expectedUserTurnIncrement
+        if shownChat.pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
+            shownChat.pendingLocalOrderingDebt?.expectedUserTurnCount += expectedUserTurnIncrement
             if allowTrailingRowsWithoutNewUserBoundary {
-                pendingLocalOrderingDebt?.allowTrailingRowsWithoutNewUserBoundary = true
+                shownChat.pendingLocalOrderingDebt?.allowTrailingRowsWithoutNewUserBoundary = true
             }
         } else {
-            pendingLocalOrderingDebt = PendingLocalOrderingDebt(
+            shownChat.pendingLocalOrderingDebt = PendingLocalOrderingDebt(
                 sessionIDs: sessionIDs,
                 expectedUserTurnCount: expectedUserTurnIncrement,
                 allowTrailingRowsWithoutNewUserBoundary: allowTrailingRowsWithoutNewUserBoundary

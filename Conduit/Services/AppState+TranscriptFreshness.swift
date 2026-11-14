@@ -85,9 +85,9 @@ extension AppState {
     /// open.
     func resetTranscriptLifecycleEvidence() {
         transcriptFreshnessIsStale = false
-        locallyOwnedInFlightTurn = nil
-        persistedOrderingFrontier = PersistedOrderingFrontier()
-        pendingLocalOrderingDebt = nil
+        shownChat.locallyOwnedInFlightTurn = nil
+        shownChat.persistedOrderingFrontier = PersistedOrderingFrontier()
+        shownChat.pendingLocalOrderingDebt = nil
     }
 
     /// Outcome of the bounded persisted-tail freshness comparison against the
@@ -486,12 +486,12 @@ extension AppState {
             // Re-anchor the ordering frontier on this read's own validated
             // observation (see PersistedOrderingFrontier for the
             // non-monotonicity rationale).
-            persistedOrderingFrontier = observedOrderingFrontier
+            shownChat.persistedOrderingFrontier = observedOrderingFrontier
             if let observedNewUserBoundaries, observedNewUserBoundaries > 0 {
                 // The read positively observed the locally-owned turn's
                 // persisted boundary. If the turn is still running this does
                 // NOT prove its final durable tail.
-                locallyOwnedInFlightTurn?.persistedBoundaryObserved = true
+                shownChat.locallyOwnedInFlightTurn?.persistedBoundaryObserved = true
             }
             adoptForegroundLiveness(
                 livenessIsRunning,
@@ -566,7 +566,7 @@ extension AppState {
         forRequested sessionID: String
     ) -> LocallyOwnedTurnTailEvidence? {
         guard turnState.isRunning,
-              let marker = locallyOwnedInFlightTurn,
+              let marker = shownChat.locallyOwnedInFlightTurn,
               marker.sessionIDs.contains(sessionID),
               !shownChat.durablePersistedRowIDs.contains(marker.optimisticUserRowID),
               let userIndex = messages.lastIndex(where: {
@@ -657,8 +657,8 @@ extension AppState {
         // accepted page re-establishes the persisted ordering frontier, and
         // that page covers any outstanding local ordering debt.
         transcriptFreshnessIsStale = false
-        persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
-        pendingLocalOrderingDebt = nil
+        shownChat.persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+        shownChat.pendingLocalOrderingDebt = nil
         // The merge just made the newest persisted page local: adopt its
         // durable ids as the frontier (same per-hydration replacement
         // semantics as reconcile) so the next freshness check anchors
@@ -705,7 +705,7 @@ extension AppState {
     /// only mutate state while its reconciliation token still owns the
     /// boundary (a newer transition rotates the token and cancels the task).
     func foregroundRefreshOwnsReconciliation(_ token: UUID) -> Bool {
-        token == reconciliationToken && !Task.isCancelled
+        token == shownChat.reconciliationToken && !Task.isCancelled
     }
 }
 
@@ -861,11 +861,11 @@ extension AppState {
             // Debt reconciliation FIRST: ordering metadata is counted
             // against the frontier the settled turns were recorded against,
             // and both concerns consume this one read.
-            if let debt = pendingLocalOrderingDebt {
+            if let debt = shownChat.pendingLocalOrderingDebt {
                 switch localOrderingDebtOutcome(transcript, debt: debt) {
                 case .satisfied:
-                    pendingLocalOrderingDebt = nil
-                    persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+                    shownChat.pendingLocalOrderingDebt = nil
+                    shownChat.persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
                 case .exceeded, .notCaughtUp, .unprovable:
                     lifecycleLog.notice(
                         "submitComposer: pre-send ordering debt not reconcilable → authoritative reconcile session=\(sessionId, privacy: .private(mask: .hash))"
@@ -899,7 +899,7 @@ extension AppState {
                     transcriptFreshnessIsStale = false
                     // Re-anchor the ordering frontier on the read's validated
                     // observation (non-monotonic by design).
-                    persistedOrderingFrontier = observedOrderingFrontier
+                    shownChat.persistedOrderingFrontier = observedOrderingFrontier
                     return .proceed
                 case let .advanced(transcript, newRows):
                     applyPersistedForegroundAdvancement(
@@ -963,7 +963,7 @@ extension AppState {
         debt: PendingLocalOrderingDebt
     ) -> LocalOrderingDebtOutcome {
         let heldIDs = Set(messages.map { $0.id })
-        switch persistedOrderingFrontier.baseline {
+        switch shownChat.persistedOrderingFrontier.baseline {
         case .unknown:
             return .unprovable
         case .positivelyEmpty:
@@ -1034,7 +1034,7 @@ extension AppState {
         if turnState.isRunning {
             return .routeToBusySubmission
         }
-        if transcriptFreshnessIsStale || pendingLocalOrderingDebt != nil {
+        if transcriptFreshnessIsStale || shownChat.pendingLocalOrderingDebt != nil {
             // Either recovery was superseded (a newer boundary owns the
             // conversation) or it genuinely failed to converge; both must
             // not send into an unresolved ordering — freshness and local

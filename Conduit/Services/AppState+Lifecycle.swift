@@ -854,7 +854,7 @@ extension AppState {
         reconciliationToken token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
-        guard token == reconciliationToken else { return }
+        guard token == shownChat.reconciliationToken else { return }
         // Probe baseline (older observation).
         setRunning(true)
         turnStateIsStale = false
@@ -874,7 +874,7 @@ extension AppState {
         _ token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
-        guard token == reconciliationToken else { return }
+        guard token == shownChat.reconciliationToken else { return }
         let bufferedEntries = reconciliation?.bufferedEntries ?? []
         bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)

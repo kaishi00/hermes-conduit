@@ -285,7 +285,7 @@ extension AppState {
         invalidatePersistedHistoryInvariants()
         // A live turn owns the transcript: never replace it underneath the
         // turn. Freshness-stale routes the post-turn authoritative path here.
-        if turnState == .running || locallyOwnedInFlightTurn != nil {
+        if turnState == .running || shownChat.locallyOwnedInFlightTurn != nil {
             transcriptFreshnessIsStale = true
             // Fence: a reconcile that fetched pre-compaction rows must not
             // commit them underneath the live turn after this rewrite.
@@ -322,7 +322,7 @@ extension AppState {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
-            heldSideAgentCompletions.append(event)
+            shownChat.heldSideAgentCompletions.append(event)
             return true
         }
         if reconciliation.bufferedGenerations.count != reconciliation.bufferedEvents.count {

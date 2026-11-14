@@ -960,7 +960,7 @@ extension AppState {
         )
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
-        if widgetLease?.isCurrent == false, token == reconciliationToken,
+        if widgetLease?.isCurrent == false, token == shownChat.reconciliationToken,
            activeSessionId == previousSessionID, turnState == .synchronizing {
             turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
         }

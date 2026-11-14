@@ -599,7 +599,7 @@ extension AppState {
         // retry before appending a new-turn prompt into a possibly-reordered
         // transcript.
         if turnState == .idle,
-           transcriptFreshnessIsStale || pendingLocalOrderingDebt != nil {
+           transcriptFreshnessIsStale || shownChat.pendingLocalOrderingDebt != nil {
             switch await checkingBeforeSend(submissionContext, {
                 await confirmTranscriptFreshnessBeforeSend(using: submissionContext)
             }) {

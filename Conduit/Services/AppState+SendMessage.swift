@@ -41,7 +41,7 @@ extension AppState {
         ) else {
             // The create's own failure is what the composer shows; the
             // words come back as for any failed send.
-            if token == reconciliationToken, turnState == .synchronizing { turnState = .idle }
+            if token == shownChat.reconciliationToken, turnState == .synchronizing { turnState = .idle }
             await recoverComposerSubmission(using: context)
             return false
         }
@@ -96,7 +96,7 @@ extension AppState {
         // ordering FRONTIER, which may already run past the visible durable
         // tail (a prior freshness read can have positively observed the
         // previous turn's durable twins without adopting them visibly).
-        let preSubmitOrderingBaseline = persistedOrderingFrontier.baseline
+        let preSubmitOrderingBaseline = shownChat.persistedOrderingFrontier.baseline
         // The identity under probe must be captured BEFORE any await — never
         // re-derived from the mutable active session afterwards.
         let submissionSessionIDs = acceptedIdentitySessionIDs(forRequested: sessionId)
@@ -244,7 +244,7 @@ extension AppState {
         }
         // Taken before the send waits: a lifecycle edge that lands while
         // it's in flight is newer than anything the receipt says.
-        let preSendRevision = turnLifecycleEvidence.revision
+        let preSendRevision = shownChat.turnLifecycleEvidence.revision
         do {
             let outcome: PromptSubmissionOutcome
             if queued, let sendQueuedPrompt = chatResumeLifecycleOperations.sendQueuedPrompt {
@@ -281,8 +281,8 @@ extension AppState {
                     // state was stale. Adopt the authoritative busy state so
                     // the composer keeps offering the configured busy action
                     // and the next submission is routed correctly.
-                    turnLifecycleEvidence = TurnLifecycleEvidence(
-                        revision: turnLifecycleEvidence.revision &+ 1,
+                    shownChat.turnLifecycleEvidence = TurnLifecycleEvidence(
+                        revision: shownChat.turnLifecycleEvidence.revision &+ 1,
                         running: true
                     )
                     turnState = .running
@@ -294,7 +294,7 @@ extension AppState {
                 // went (a turn that started meanwhile) wins.
                 func idleIfHeldByLostTurn() {
                     guard client.chatIsHeldByLostTurn(sessionId),
-                          turnLifecycleEvidence.revision == preSendRevision,
+                          shownChat.turnLifecycleEvidence.revision == preSendRevision,
                           isCurrentComposerSubmission(submissionContext) else { return }
                     turnState = .idle
                 }
@@ -307,7 +307,7 @@ extension AppState {
                         if authorityQueue.sessionID.map({ $0 == sessionId || knownSessionIDs(for: sessionId).contains($0) }) == true {
                             adoptOwnQueuedSends(authorityQueue.rows)
                             if messages.contains(where: { $0.id == userMessage.id }) == false {
-                                locallyOwnedInFlightTurn = nil
+                                shownChat.locallyOwnedInFlightTurn = nil
                                 idleIfHeldByLostTurn()
                                 break
                             }
@@ -317,7 +317,7 @@ extension AppState {
                         if !authorityQueue.lost.isEmpty, !startedAdmissionIDs.contains(admission),
                            let queueChat = authorityQueue.sessionID,
                            queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
-                            locallyOwnedInFlightTurn = nil
+                            shownChat.locallyOwnedInFlightTurn = nil
                             moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
                             idleIfHeldByLostTurn()
                             break
@@ -327,7 +327,7 @@ extension AppState {
                     // the optimistic user row so a later foreground freshness
                     // check can prove same-turn continuity WITHOUT demanding a
                     // durable id for a row the gateway has not persisted yet.
-                    locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                    shownChat.locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                         sessionIDs: submissionSessionIDs,
                         optimisticUserRowID: userMessage.id,
                         preSubmitOrderingBaseline: preSubmitOrderingBaseline
@@ -352,7 +352,7 @@ extension AppState {
                     // Therefore the typed outcome proves no exact boundary
                     // count. Require one later bounded observation: no new user
                     // row clears it; any user row is adopted authoritatively.
-                    locallyOwnedInFlightTurn = nil
+                    shownChat.locallyOwnedInFlightTurn = nil
                     recordLocalOrderingDebt(
                         sessionIDs: submissionSessionIDs,
                         baseline: preSubmitOrderingBaseline,
@@ -376,7 +376,7 @@ extension AppState {
                     // frontier and clears the obligation, while any canonical
                     // user boundary proves a later/new turn exists and forces
                     // an authoritative reconcile before the send.
-                    locallyOwnedInFlightTurn = nil
+                    shownChat.locallyOwnedInFlightTurn = nil
                     recordLocalOrderingDebt(
                         sessionIDs: submissionSessionIDs,
                         baseline: preSubmitOrderingBaseline,
@@ -391,7 +391,7 @@ extension AppState {
                     // outcome proves no exact boundary count, so observe once
                     // before the next ordinary local turn and reconcile if a
                     // promoted steer produced a user boundary.
-                    locallyOwnedInFlightTurn = nil
+                    shownChat.locallyOwnedInFlightTurn = nil
                     markOptimisticRowAsSteer(userMessage.id)
                     recordLocalOrderingDebt(
                         sessionIDs: submissionSessionIDs,
@@ -472,14 +472,14 @@ extension AppState {
                 // running half). Only the lifecycle stamps below are
                 // revision-guarded; the acceptance decisions stay
                 // authoritative either way.
-                let recoveryMayStampLifecycle = turnLifecycleEvidence.revision == recoveryEvidence.revision
+                let recoveryMayStampLifecycle = shownChat.turnLifecycleEvidence.revision == recoveryEvidence.revision
                 // Whether the NEWEST authoritative lifecycle edge still
                 // reports the turn as running (a newest-edge bit, not
                 // per-turn tracking — see TurnLifecycleEvidence). Only
                 // decisive when the revision changed (newer evidence owns
                 // the lifecycle state): a newer busy edge keeps the accepted
                 // turn's local ownership live, a newer settled edge ends it.
-                let newestEdgeReportsRunning = turnLifecycleEvidence.running
+                let newestEdgeReportsRunning = shownChat.turnLifecycleEvidence.running
                 // Every write below is submission-owned: the guard is
                 // re-checked inside each branch so a handoff during the
                 // recovery awaits cannot leak state into the new session.
@@ -509,7 +509,7 @@ extension AppState {
                             // may have re-hydrated the transcript in between:
                             // validation at use plus the anchor lookup at use
                             // neutralize any staleness.
-                            locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                            shownChat.locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                                 sessionIDs: submissionSessionIDs,
                                 optimisticUserRowID: userMessage.id,
                                 preSubmitOrderingBaseline: preSubmitOrderingBaseline
@@ -540,7 +540,7 @@ extension AppState {
                         // newer busy edge keeps that ownership live; a newer
                         // settled edge ends it.
                         if recoveryMayStampLifecycle || newestEdgeReportsRunning {
-                            locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
+                            shownChat.locallyOwnedInFlightTurn = LocallyOwnedInFlightTurn(
                                 sessionIDs: submissionSessionIDs,
                                 optimisticUserRowID: userMessage.id,
                                 preSubmitOrderingBaseline: preSubmitOrderingBaseline
@@ -589,7 +589,7 @@ extension AppState {
                             sessionIDs: submissionSessionIDs,
                             baseline: preSubmitOrderingBaseline
                         )
-                        locallyOwnedInFlightTurn = nil
+                        shownChat.locallyOwnedInFlightTurn = nil
                     }
                     return true
                 case .notAccepted:
@@ -874,7 +874,7 @@ extension AppState {
         }
         guard isCurrentOrAliasedComposerSubmission(submissionContext),
               let probeClient else {
-            return (.unresolved, reconnected, turnLifecycleEvidence)
+            return (.unresolved, reconnected, shownChat.turnLifecycleEvidence)
         }
         // The evidence baseline for the caller's guards, captured at the
         // registry observation: the probe result already includes every edge
@@ -882,7 +882,7 @@ extension AppState {
         // strictly newer evidence. Capturing BEFORE the probe (not after) is
         // deliberate: an edge processed DURING the probe await may postdate
         // the registry snapshot server-side, so it must keep winning.
-        let lifecycleEvidence = turnLifecycleEvidence
+        let lifecycleEvidence = shownChat.turnLifecycleEvidence
         // The session authority names every message it holds by the id it
         // was sent with: one its queue lists was taken, whatever the
         // registry or the transcript can show yet.
