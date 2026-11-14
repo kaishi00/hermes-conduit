@@ -2860,10 +2860,8 @@ final class AppState: ObservableObject {
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             pinnedSessionIDsByProfile = stored
         }
-        sessionStars = SessionStars(defaults: defaults)
-        pinnedChatOrder = PinnedChatOrder(defaults: defaults)
-        botOrder = BotOrder(defaults: defaults)
-        groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey, kind: .rooms)
+        adoptLegacyDashboardLists(into: initialDashboardID)
+        loadDashboardLists(dashboardID: initialDashboardID)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
         if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
            let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {

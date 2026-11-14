@@ -170,19 +170,24 @@ extension AppState {
     }
 
     /// The active profile's projects left out of Chats (Filter ▸ Projects):
-    /// project ids are the profile's own, as is the host's copy.
+    /// project ids are the profile's own, as is the host's copy, and this
+    /// phone keeps them per dashboard, so another host's never come here.
     private var hiddenChatProjectsSlot: SyncedPreferenceSlot {
         let defaults = syncedPreferences.defaults
+        let dashboard = Self.dashboardPreferenceBucket(activeDashboardID)
         let profile = activeProfile
         return SyncedPreferenceSlot(
             key: "app.hidden_chat_projects",
             read: {
-                let ids = HiddenChatProjects.ids(in: defaults.object(forKey: HiddenChatProjects.key), profile: profile)
+                let ids = HiddenChatProjects.ids(
+                    in: defaults.object(forKey: HiddenChatProjects.key), dashboard: dashboard, profile: profile
+                )
                 return ids.isEmpty ? nil : ids.sorted()
             },
             write: { value in
                 let stored = HiddenChatProjects.setting(
                     Set(value as? [String] ?? []),
+                    dashboard: dashboard,
                     profile: profile,
                     in: defaults.object(forKey: HiddenChatProjects.key)
                 )

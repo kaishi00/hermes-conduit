@@ -364,14 +364,23 @@ struct V2ChatsView: View, Equatable {
     private var hiddenProjects: Set<String> {
         let projects = filterProjects
         guard filtersProjects, !projects.isEmpty else { return [] }
-        let stored = HiddenChatProjects.ids(in: updates.defaults.object(forKey: HiddenChatProjects.key), profile: appState.activeProfile)
+        let stored = HiddenChatProjects.ids(
+            in: updates.defaults.object(forKey: HiddenChatProjects.key),
+            dashboard: AppState.dashboardPreferenceBucket(appState.activeDashboardID),
+            profile: appState.activeProfile
+        )
         guard !stored.isEmpty else { return [] }
         return stored.intersection(Set(projects.map(\.id)).union([HiddenChatProjects.noProject]))
     }
 
     private func setHiddenProjects(_ ids: Set<String>) {
         updates.set(
-            HiddenChatProjects.setting(ids, profile: appState.activeProfile, in: updates.defaults.object(forKey: HiddenChatProjects.key)),
+            HiddenChatProjects.setting(
+                ids,
+                dashboard: AppState.dashboardPreferenceBucket(appState.activeDashboardID),
+                profile: appState.activeProfile,
+                in: updates.defaults.object(forKey: HiddenChatProjects.key)
+            ),
             forKey: HiddenChatProjects.key
         )
     }

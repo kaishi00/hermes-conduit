@@ -710,7 +710,7 @@ extension AppState {
         stars.set(session, starred: starred, profile: profile)
         guard stars != sessionStars else { return }
         sessionStars = stars
-        stars.save(to: defaults)
+        stars.save(to: defaults, scope: dashboardListsScope)
     }
 
     // MARK: - Read state (#454)

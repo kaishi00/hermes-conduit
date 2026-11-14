@@ -156,22 +156,48 @@ enum ProjectChatsInChats: String, CaseIterable, Identifiable {
 }
 
 /// The projects whose chats Chats leaves out (Filter ▸ Projects), kept per
-/// profile since each profile has its own projects. Chats in no project
-/// (Home's) are one more choice. Saved as profile → project ids.
+/// dashboard and profile since each profile has its own projects (and two
+/// hosts' "default" profiles aren't the same one). Chats in no project
+/// (Home's) are one more choice. Saved as "dashboard|profile" → project
+/// ids; `dashboard` is the dashboard's bucket
+/// (AppState.dashboardPreferenceBucket).
 enum HiddenChatProjects {
     static let key = "conduit.v2.hiddenChatProjects"
     /// Stands for the chats in no project.
     static let noProject = "~no-project"
 
-    static func ids(in stored: Any?, profile: String) -> Set<String> {
-        Set((stored as? [String: [String]])?[profile] ?? [])
+    /// The entry's name: nil `dashboard` is the profile alone, as saved
+    /// before choices were kept per dashboard.
+    static func owner(dashboard: String?, profile: String) -> String {
+        dashboard.map { "\($0)|\(profile)" } ?? profile
+    }
+
+    static func ids(in stored: Any?, dashboard: String? = nil, profile: String) -> Set<String> {
+        Set((stored as? [String: [String]])?[owner(dashboard: dashboard, profile: profile)] ?? [])
     }
 
     /// `stored` with `profile`'s choice replaced; an empty one is dropped.
-    static func setting(_ ids: Set<String>, profile: String, in stored: Any?) -> [String: [String]] {
+    static func setting(_ ids: Set<String>, dashboard: String? = nil, profile: String, in stored: Any?) -> [String: [String]] {
         var all = stored as? [String: [String]] ?? [:]
-        all[profile] = ids.isEmpty ? nil : ids.sorted()
+        all[owner(dashboard: dashboard, profile: profile)] = ids.isEmpty ? nil : ids.sorted()
         return all
+    }
+
+    /// `stored` with the choices saved before they were kept per dashboard
+    /// moved to `dashboard`'s, the one they were made on; nil when there
+    /// are none. A profile name holds no "|".
+    static func adoptingUnscoped(_ stored: Any?, into dashboard: String) -> [String: [String]]? {
+        guard let all = stored as? [String: [String]], all.keys.contains(where: { !$0.contains("|") }) else { return nil }
+        var adopted: [String: [String]] = [:]
+        for (name, ids) in all {
+            if name.contains("|") {
+                adopted[name] = ids
+            } else {
+                let scoped = owner(dashboard: dashboard, profile: name)
+                adopted[scoped] = adopted[scoped] ?? all[scoped] ?? ids
+            }
+        }
+        return adopted
     }
 
     /// Whether a row in `projectID` (nil: in no project) is left out. A

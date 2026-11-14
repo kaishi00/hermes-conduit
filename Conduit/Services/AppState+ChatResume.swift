@@ -723,15 +723,16 @@ extension AppState {
         pinnedSessionIDsByProfile = [:]
         pinnedSessionIDs = []
         resetHostPins()
-        sessionStars = SessionStars()
-        defaults.removeObject(forKey: SessionStars.storageKey)
-        pinnedChatOrder = PinnedChatOrder()
-        defaults.removeObject(forKey: PinnedChatOrder.storageKey)
-        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
-        botOrder = BotOrder()
-        defaults.removeObject(forKey: BotOrder.storageKey)
-        groupRoomOrder = BotOrder.rooms
-        defaults.removeObject(forKey: BotOrder.roomStorageKey)
+        // Stars and the saved orders are kept per dashboard: the selected
+        // one's come back (wiping them here emptied Bots Home's order on
+        // every switch, and Sync across devices then sent the empty copy
+        // to the host). A server outside the saved dashboards shares one
+        // bucket, so a new one of those starts empty as before.
+        if dashboardID == nil {
+            forgetDashboardLists(dashboardID: nil)
+        } else {
+            loadDashboardLists(dashboardID: activeDashboardID)
+        }
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
