@@ -118,6 +118,12 @@ struct SpeechServerVoiceSettingsView: View {
         .onChange(of: service.speechServer?.driveTurns) { _, _ in
             Task { await read() }
         }
+        // So does Live > Local's own model switch, whose save reads the
+        // status again.
+        .onChange(of: service.speechServerVoice?.ownModel) { _, _ in
+            guard let refreshed = service.speechServerVoice, !refreshed.readFailed else { return }
+            show(refreshed)
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.
         .onChange(of: service.isLoading) { _, loading in
