@@ -57,11 +57,10 @@ extension AppState {
     }
 
     /// Starts each other profile's read; `finishOtherProfilesLiveStatusReads`
-    /// keeps what they answer. None on a legacy dashboard, whose registry
-    /// for the profile in use already lists every profile's chats (each
-    /// named read would answer the same rows).
+    /// keeps what they answer. On a legacy dashboard too: its named reads
+    /// repeat the profile in use's rows, but they settle a Lock Screen
+    /// card from another profile, whose link names that profile.
     func startOtherProfilesLiveStatusReads(_ client: HermesClient) -> [(profile: String, read: Task<[LiveSessionStatus], Error>)] {
-        if liveSessionStatusProfile == activeProfile, !liveSessionStatusIndex.isProfileScoped { return [] }
         let probe = chatResumeLifecycleOperations.probeProfileActiveSessions
         return liveStatusOtherProfiles.map { profile in
             (profile: profile, read: Task { @MainActor in
@@ -83,6 +82,8 @@ extension AppState {
             do {
                 answered.append((profile, try await read.value))
             } catch {
+                // A connection replaced meanwhile: not this one's to log.
+                guard self.client === client else { continue }
                 // Once per connection and profile: a gateway that doesn't
                 // serve it fails every round.
                 if liveStatusReadFailureClient !== client {

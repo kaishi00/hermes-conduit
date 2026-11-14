@@ -5279,15 +5279,6 @@ final class AppStateChatResumeTests: XCTestCase {
         probe.asked = []
         await appState.refreshLiveSessionStatuses()
         XCTAssertEqual(probe.asked, [])
-
-        // A legacy dashboard: the profile in use's registry lists every
-        // profile's chats, so none is read by name.
-        probe.own = [LiveSessionStatus(runtimeSessionId: "rt-mine", storedSessionId: "mine", status: "working")]
-        await appState.refreshLiveSessionStatuses()
-        let again = appState.askLiveStatus("project", profiles: ["work"])
-        await appState.refreshLiveSessionStatuses()
-        XCTAssertEqual(probe.asked, [])
-        appState.endLiveStatusAsk("project", token: again)
     }
 
     func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
