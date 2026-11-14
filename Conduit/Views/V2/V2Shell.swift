@@ -1538,8 +1538,10 @@ struct V2Shell: View {
             // A switch that didn't land (the connection dropped) leaves All
             // as it was.
             // Only on the dashboard the pick was made on: another one picked
-            // meanwhile keeps its own All.
-            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target {
+            // meanwhile keeps its own All. A newer tap kept meanwhile left
+            // All for good, so it stays off for that one.
+            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target,
+               queuedProfilePick.profile == nil {
                 appState.setAllProfilesChatsOn(true)
             }
             isPickingProfile = false
