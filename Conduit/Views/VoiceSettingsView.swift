@@ -1982,6 +1982,9 @@ private struct WakePhraseSettingsSection: View {
                         model.save(phrases, value)
                     }
                 ))
+                Text(verbatim: AppLocalization.string("Off: the phrase continues the chat you were in last, as the chat's voice button does, and the call starts knowing what was said there. On: each phrase starts a new conversation.", table: .voice))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
                 Toggle("Listen on CarPlay", isOn: Binding(
                     get: { listensOnCarPlay },
                     set: { value in

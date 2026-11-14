@@ -1836,16 +1836,17 @@ extension AppState {
     }
 
     /// The saved call voice started in a chat continues: the open chat's,
-    /// when it is one and can be resumed. Only the chat's own voice buttons
-    /// resume; Siri, the widget and the other launches start their own.
-    static func savedCallToResume(source: PendingVoiceIntent.Source, openCallID: String?, canResume: Bool) -> String? {
-        guard source == .composer, canResume, let openCallID, !openCallID.isEmpty else { return nil }
+    /// when it is one and can be resumed. Only the chat's own voice buttons,
+    /// and a wake phrase set to continue (`resumesOpenChatCall`), resume;
+    /// Siri, the widget and the other launches start their own.
+    static func savedCallToResume(resumesOpenCall: Bool, openCallID: String?, canResume: Bool) -> String? {
+        guard resumesOpenCall, canResume, let openCallID, !openCallID.isEmpty else { return nil }
         return openCallID
     }
 
     /// The saved call the open chat's voice buttons resume, when they do.
     var openChatCallToResume: String? {
-        Self.savedCallToResume(source: .composer, openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall)
+        Self.savedCallToResume(resumesOpenCall: true, openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall)
     }
 
     /// Continues a saved call with a new live call on the selected engine.
