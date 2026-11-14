@@ -1516,9 +1516,16 @@ struct V2Shell: View {
                 // The newer tap was made on the dashboard showing now.
                 targetDashboardID = appState.activeDashboardID
             }
+            // Another dashboard opened in the fade-out (a notification, a
+            // widget): a profile picked on the old one means nothing here,
+            // so the pick is dropped, as a kept one is.
+            guard appState.activeDashboardID == targetDashboardID else {
+                isPickingProfile = false
+                fadeContentBackIn()
+                return
+            }
             // A switch started elsewhere (CarPlay) in the fade-out would
-            // refuse this one: it waits behind it, unless a later tap
-            // already does.
+            // refuse this one: it waits behind it.
             if appState.isProfileSwitching {
                 // Only on the dashboard the pick was made on: one picked
                 // meanwhile keeps its own All, and the kept pick stays with
