@@ -6138,6 +6138,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
     }
 
+<<<<<<< HEAD
     /// An open of its own (a link, Siri, CarPlay) that begins as the list
     /// read starts takes the reconciliation: the saved chat doesn't go out
     /// over it.
@@ -6152,6 +6153,8 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
     }
 
+=======
+>>>>>>> origin/main
     /// A list read that has already failed leaves the chat to the
     /// connection's retry, as before.
     func testListFailingAtOnceKeepsTheSavedChatBack() async {
