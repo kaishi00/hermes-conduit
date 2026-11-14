@@ -47,6 +47,26 @@ final class DashboardSignInDecisionTests: XCTestCase {
         return (mode, probe.calls)
     }
 
+    /// A Hermes set up with only its session token lists no provider and
+    /// names the provider on its status body (issue 2442).
+    func testAnEmptyProviderListWithTheSessionTokenProviderSignsInWithTheToken() async throws {
+        var asked = 0
+        let resolver = DashboardSignInResolver(
+            supportsNativeOAuth: { XCTFail("Nothing native to ask about"); return false },
+            supportsSessionToken: { asked += 1; return true }
+        )
+        let mode = try await resolver.mode(for: .providers([]))
+        XCTAssertEqual(mode, .interactive(.nativeOAuth(provider: NativeOAuthTokenSet.sessionTokenProvider)))
+        XCTAssertEqual(asked, 1)
+
+        // A dashboard with a password or a browser sign-in is never asked.
+        let listed = try await resolver.mode(for: .providers([password]))
+        XCTAssertEqual(listed, .password)
+        XCTAssertEqual(asked, 1)
+        XCTAssertTrue(HermesProviderCheck.advertisesSessionToken(["basic", "session-token"]))
+        XCTAssertFalse(HermesProviderCheck.advertisesSessionToken(["basic"]))
+    }
+
     func testPasswordOnlyIsPasswordWithoutACapabilityRequest() async throws {
         let (mode, calls) = try await mode(.providers([password]))
         XCTAssertEqual(mode, .password)

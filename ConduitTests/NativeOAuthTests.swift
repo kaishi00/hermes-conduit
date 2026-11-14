@@ -341,6 +341,49 @@ final class NativeOAuthTests: XCTestCase {
         )
     }
 
+    /// Hermes' session token goes in Hermes' own header, so an
+    /// `Authorization` header stays free for a proxy (issue 2442).
+    func testASessionTokenGoesInHermesOwnHeaderNotAuthorization() async throws {
+        var seen: [URLRequest] = []
+        NativeOAuthURLProtocolStub.handler = { request in
+            seen.append(request)
+            return (200, ["ticket": "ticket-1"])
+        }
+        let client = makeClient()
+        let ticket = try await client.mintTicket(accessToken: "deployment-token", asSessionToken: true)
+        XCTAssertEqual(ticket, "ticket-1")
+        XCTAssertEqual(seen.last?.value(forHTTPHeaderField: "X-Hermes-Session-Token"), "deployment-token")
+        XCTAssertNil(seen.last?.value(forHTTPHeaderField: "Authorization"))
+
+        _ = try await client.mintTicket(accessToken: "native-access")
+        XCTAssertEqual(seen.last?.value(forHTTPHeaderField: "Authorization"), "Bearer native-access")
+        XCTAssertNil(seen.last?.value(forHTTPHeaderField: "X-Hermes-Session-Token"))
+    }
+
+    @MainActor
+    func testASessionTokenSignInNeverRefreshesAndKeepsAProxysAuthorization() {
+        let session = NativeOAuthTokenSet.sessionToken("deployment-token")
+        XCTAssertTrue(session.isSessionToken)
+        XCTAssertFalse(session.needsRefresh())
+        XCTAssertTrue(session.refreshToken.isEmpty)
+        var request = URLRequest(url: URL(string: "https://hermes.example/api/status")!)
+        request.setValue("Basic cHJveHk6cHJveHk=", forHTTPHeaderField: "Authorization")
+        session.authorize(&request)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Basic cHJveHk6cHJveHk=")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "X-Hermes-Session-Token"), "deployment-token")
+        XCTAssertEqual(session.sentAccessToken(in: request), "deployment-token")
+
+        let native = tokens()
+        XCTAssertFalse(native.isSessionToken)
+        native.authorize(&request)
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer old-access")
+        XCTAssertEqual(native.sentAccessToken(in: request), "old-access")
+        XCTAssertNil(native.sentAccessToken(in: URLRequest(url: URL(string: "https://hermes.example")!)))
+
+        XCTAssertNil(SessionTokenSignInForm.problem(with: "deployment-token"))
+        XCTAssertNotNil(SessionTokenSignInForm.problem(with: "two words"))
+    }
+
     @MainActor
     func testBridgeAuthModeReflectsDashboardScopedTokens() {
         let dashboardID = UUID()

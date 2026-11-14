@@ -191,6 +191,12 @@ enum HermesProviderCheck {
     static func advertisesNativeSignIn(_ flows: [String]) -> Bool {
         flows.contains("native_pkce")
     }
+
+    /// Whether the status body's `auth_providers` name Hermes' session-token
+    /// provider.
+    static func advertisesSessionToken(_ providers: [String]) -> Bool {
+        providers.contains(NativeOAuthTokenSet.sessionTokenProvider)
+    }
 }
 
 /// URLSession-based Hermes dashboard authentication. Automatic URLSession
@@ -304,6 +310,29 @@ final class NativeAuthClient {
     /// remain errors: silently treating them as "unsupported" would route a
     /// Google provider back into the prohibited embedded WebView.
     func supportsNativeOAuth() async throws -> Bool {
+        let (json, status) = try await statusBody()
+        guard let rawFlows = json["auth_flows"] else { return false }
+        guard let flows = rawFlows as? [String] else {
+            throw AuthClientError.providerDiscoveryFailed(
+                status: status,
+                detail: AppLocalization.string("Unexpected response", table: .connection)
+            )
+        }
+        return HermesProviderCheck.advertisesNativeSignIn(flows)
+    }
+
+    /// Whether Hermes takes its session token as a sign-in
+    /// (`HERMES_DASHBOARD_SESSION_TOKEN`, issue 2442): the status body names
+    /// the provider in `auth_providers`, which the provider list leaves out.
+    /// An older Hermes that names none answers false; a status that can't
+    /// be read is an error, as for `supportsNativeOAuth`.
+    func supportsSessionToken() async throws -> Bool {
+        let (json, _) = try await statusBody()
+        return HermesProviderCheck.advertisesSessionToken(json["auth_providers"] as? [String] ?? [])
+    }
+
+    /// The public status body and its HTTP status.
+    private func statusBody() async throws -> ([String: Any], Int) {
         let request = try request(path: "/api/status")
         let result = try await perform(request)
         guard let http = result.response as? HTTPURLResponse else {
@@ -324,14 +353,7 @@ final class NativeAuthClient {
                 detail: AppLocalization.string("Unexpected response", table: .connection)
             )
         }
-        guard let rawFlows = json["auth_flows"] else { return false }
-        guard let flows = rawFlows as? [String] else {
-            throw AuthClientError.providerDiscoveryFailed(
-                status: http.statusCode,
-                detail: AppLocalization.string("Unexpected response", table: .connection)
-            )
-        }
-        return HermesProviderCheck.advertisesNativeSignIn(flows)
+        return (json, http.statusCode)
     }
 
     func login(username: String, password: String) async throws -> [HTTPCookie] {

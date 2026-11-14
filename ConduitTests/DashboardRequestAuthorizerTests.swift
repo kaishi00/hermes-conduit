@@ -171,6 +171,24 @@ final class DashboardRequestAuthorizerTests: XCTestCase {
         XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Bearer access-selected")
     }
 
+    /// A session-token sign-in's upgrade keeps a proxy's Authorization extra
+    /// header and carries the token in Hermes' own header (issue 2442).
+    func testASessionTokenUpgradeKeepsAProxysAuthorizationHeader() async throws {
+        let authorizer = nativeAuthorizer(
+            "https://dashboard.example.test",
+            tokens: NativeOAuthTokenSet.sessionToken("deployment-token")
+        )
+        var request = URLRequest(url: url("wss://dashboard.example.test/api/ws?ticket=t"))
+        request.setValue("Basic cHJveHk6cHJveHk=", forHTTPHeaderField: "Authorization")
+        let authorized = try await authorizer.authorizeUpgrade(request)
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "Authorization"), "Basic cHJveHk6cHJveHk=")
+        XCTAssertEqual(authorized.value(forHTTPHeaderField: "X-Hermes-Session-Token"), "deployment-token")
+        XCTAssertNil(authorized.value(forHTTPHeaderField: "Cookie"))
+
+        let other = try await authorizer.authorizeUpgrade(URLRequest(url: url("wss://voice-provider.example.test/live")))
+        XCTAssertNil(other.value(forHTTPHeaderField: "X-Hermes-Session-Token"))
+    }
+
     func testNativeUpgradeToAnotherAddressCarriesNoBearer() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }

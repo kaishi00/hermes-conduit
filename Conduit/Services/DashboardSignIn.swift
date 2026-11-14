@@ -102,13 +102,25 @@ struct DashboardSignInResolver {
     /// must not quietly send a native-capable provider to the embedded
     /// browser or to password sign-in.
     let supportsNativeOAuth: () async throws -> Bool
+    /// Whether the dashboard takes Hermes' session token as a sign-in. Asked
+    /// only when its provider list names no password or interactive
+    /// provider, which is what a Hermes set up with only that token answers
+    /// (issue 2442). Errors are failures, as above.
+    let supportsSessionToken: () async throws -> Bool
 
-    init(supportsNativeOAuth: @escaping () async throws -> Bool) {
+    init(
+        supportsNativeOAuth: @escaping () async throws -> Bool,
+        supportsSessionToken: @escaping () async throws -> Bool = { false }
+    ) {
         self.supportsNativeOAuth = supportsNativeOAuth
+        self.supportsSessionToken = supportsSessionToken
     }
 
     init(client: any DashboardSignInTransport) {
-        self.init(supportsNativeOAuth: { try await client.supportsNativeOAuth() })
+        self.init(
+            supportsNativeOAuth: { try await client.supportsNativeOAuth() },
+            supportsSessionToken: { try await client.supportsSessionToken() }
+        )
     }
 
     /// Discovery plus the decision, for callers that do not stage the two.
@@ -139,7 +151,11 @@ struct DashboardSignInResolver {
             case (false, let offer?):
                 return .interactive(try await signIn(for: offer))
             case (false, nil):
-                throw DashboardSignInError.noSignInMethod
+                // A Hermes set up with only its session token lists no
+                // provider. The token is entered on the native sign-in's
+                // sheet and used the way a native sign-in's tokens are.
+                guard try await supportsSessionToken() else { throw DashboardSignInError.noSignInMethod }
+                return .interactive(.nativeOAuth(provider: NativeOAuthTokenSet.sessionTokenProvider))
             }
         }
     }
@@ -186,7 +202,13 @@ struct DashboardSignInResolver {
 protocol DashboardSignInTransport {
     func authProviderDiscovery() async throws -> AuthProviderDiscoveryResult
     func supportsNativeOAuth() async throws -> Bool
+    func supportsSessionToken() async throws -> Bool
     func connect(username: String, password: String) async throws -> NativeAuthConnection
+}
+
+extension DashboardSignInTransport {
+    /// Only a real dashboard is asked; a scripted transport offers none.
+    func supportsSessionToken() async throws -> Bool { false }
 }
 
 extension NativeAuthClient: DashboardSignInTransport {}

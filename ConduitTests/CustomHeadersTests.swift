@@ -24,9 +24,19 @@ final class CustomHeadersTests: XCTestCase {
 
     func testOnlyAnAuthorizationHeaderCarriesANote() {
         let note = CustomHeaderPolicy.note(for: CustomHeader(name: " authorization ", value: "Basic dXNlcjpwYXNz"))
-        XCTAssertEqual(note?.contains("P-Access-Token-Id"), true)
+        XCTAssertEqual(note?.contains("HERMES_DASHBOARD_SESSION_TOKEN"), true)
         XCTAssertNil(CustomHeaderPolicy.note(for: CustomHeader(name: "P-Access-Token", value: "secret")))
         XCTAssertNil(CustomHeaderPolicy.note(for: CustomHeader(name: "Proxy-Authorization", value: "Basic dXNlcjpwYXNz")))
+    }
+
+    func testAServerSendsAuthorizationOnlyWithAValidAuthorizationHeader() {
+        let store = makeStore()
+        XCTAssertFalse(store.sendsAuthorization(toServerURL: "https://hermes.example"))
+        store.setHeaders([CustomHeader(name: "X-Proxy-Key", value: "v")], forServerURL: "https://hermes.example")
+        XCTAssertFalse(store.sendsAuthorization(toServerURL: "https://hermes.example"))
+        store.setHeaders([CustomHeader(name: "authorization", value: "Basic cHJveHk6cHJveHk=")], forServerURL: "https://hermes.example")
+        XCTAssertTrue(store.sendsAuthorization(toServerURL: "https://hermes.example/team"))
+        XCTAssertFalse(store.sendsAuthorization(toServerURL: "https://other.example"))
     }
 
     func testInvalidNamesAreRejected() {

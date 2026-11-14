@@ -76,13 +76,14 @@ enum CustomHeaderPolicy {
     }
 
     /// What to know about a header that saves but isn't always sent, or nil.
-    /// `Authorization` is the one: a request that carries Conduit's own
-    /// bearer (Hermes' native sign-in, the plugin's notification and Watch
-    /// calls) keeps it, so a proxy's `Authorization: Basic` is left off
-    /// those and the proxy refuses them (issue 2442).
+    /// `Authorization` is the one: Hermes takes a native (system browser)
+    /// sign-in's tokens only as `Authorization: Bearer`, so those requests
+    /// keep Conduit's own and a proxy's `Authorization: Basic` is left off
+    /// them. A password or browser-view sign-in (cookies) and a session
+    /// token sign-in (Hermes' own header) send it (issue 2442).
     static func note(for header: CustomHeader) -> String? {
         guard header.trimmedName.lowercased() == "authorization" else { return nil }
-        return AppLocalization.string("Conduit sends its own Authorization header when it signs in to Hermes directly, and for notifications and the Watch. Those requests leave this one out, so a proxy that needs it will refuse them. If your proxy has its own token headers, use those instead (Pangolin: P-Access-Token-Id and P-Access-Token).", table: .connection)
+        return AppLocalization.string("A sign-in through the system browser uses the Authorization header itself, so this one is left off its requests. Behind a proxy that needs this header, sign in with a password, or set HERMES_DASHBOARD_SESSION_TOKEN on the Hermes host and Conduit asks for that token instead.", table: .connection)
     }
 
     /// The headers that may go on the wire: valid ones, names trimmed, the
@@ -154,6 +155,14 @@ final class CustomHeaderStore: @unchecked Sendable {
     func headers(forServerURL serverURL: String) -> [CustomHeader] {
         guard let origin = CustomHeaderPolicy.origin(forServerURL: serverURL) else { return [] }
         return withHeaders { $0[origin] ?? [] }
+    }
+
+    /// Whether this server's requests carry an `Authorization` extra header:
+    /// a proxy in front of it checks that header, so Conduit signs in to
+    /// Hermes without it where Hermes allows (issue 2442).
+    func sendsAuthorization(toServerURL serverURL: String) -> Bool {
+        CustomHeaderPolicy.sendable(headers(forServerURL: serverURL))
+            .contains { $0.name.lowercased() == "authorization" }
     }
 
     func headers(for url: URL) -> [CustomHeader] {
