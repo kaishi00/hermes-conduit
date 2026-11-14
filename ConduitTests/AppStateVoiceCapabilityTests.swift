@@ -456,6 +456,16 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         XCTAssertTrue(inChat(.hermesCall, fresh: false))
         XCTAssertFalse(inChat(.siri, fresh: false), "Siri keeps standing alone; only the wake phrase has the setting")
         XCTAssertFalse(inChat(.newCall, fresh: true))
+
+        // What openVoiceConversation asks: a phrase bound to another profile
+        // switches to it and stands alone, never joining this profile's chat.
+        let wake = PendingVoiceIntent(profile: "fam", startsFreshConversation: false, source: .wakePhrase)
+        XCTAssertTrue(wake.liveCallStartsInOpenChat(targetProfile: "fam", activeProfile: "fam"))
+        XCTAssertTrue(wake.resumesOpenChatCall(targetProfile: "fam", activeProfile: "fam"))
+        XCTAssertFalse(wake.liveCallStartsInOpenChat(targetProfile: "work", activeProfile: "fam"),
+                       "another profile's phrase doesn't join the open chat")
+        XCTAssertFalse(wake.resumesOpenChatCall(targetProfile: "work", activeProfile: "fam"),
+                       "nor resume the open chat's saved call")
     }
 
     func testTheQuickHintCountsEachAttachedCallOnce() {

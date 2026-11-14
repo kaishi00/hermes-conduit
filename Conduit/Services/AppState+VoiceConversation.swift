@@ -876,12 +876,12 @@ extension AppState {
         let targetProfile = requestedProfile.isEmpty ? activeProfile : requestedProfile
         // Live Voice started from a chat's mic, for a screenshot chat, or by
         // a wake phrase set to continue, works in that chat.
-        let thread = intent.liveCallStartsInOpenChat && targetProfile == activeProfile ? liveVoiceThreadForOpenChat() : nil
+        let thread = intent.liveCallStartsInOpenChat(targetProfile: targetProfile, activeProfile: activeProfile) ? liveVoiceThreadForOpenChat() : nil
         var liveEngine = configuredLiveVoiceEngine(profile: targetProfile)
         // Voice from a saved call's row picks that call up: the same row,
         // not another one beside it.
-        if liveEngine != nil, targetProfile == activeProfile,
-           let callID = Self.savedCallToResume(resumesOpenCall: intent.resumesOpenChatCall, openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall) {
+        if liveEngine != nil,
+           let callID = Self.savedCallToResume(resumesOpenCall: intent.resumesOpenChatCall(targetProfile: targetProfile, activeProfile: activeProfile), openCallID: activeVoiceCallSessionID, canResume: canResumeVoiceCall) {
             return await resumeVoiceCall(sessionID: callID)
         }
         // A call from Hermes opens with its news, which Local Live has no
