@@ -103,8 +103,6 @@ struct LocalLiveOwnModelToggle: View {
     @State private var errorMessage: String?
     /// The read after a save failed: the page's next check asks again.
     @State private var readFailed = false
-    /// Bumped on a profile switch, so a save that started before it stops.
-    @State private var generation = 0
 
     var body: some View {
         if let ownModel = service.speechServerVoice?.ownModel {
@@ -129,14 +127,6 @@ struct LocalLiveOwnModelToggle: View {
                         .accessibilityIdentifier("voice.localLive.ownModel.saveError")
                 }
             }
-            // Another profile's page starts without this one's error.
-            .onChange(of: service.profile) { _, _ in
-                generation += 1
-                draft = nil
-                isSaving = false
-                errorMessage = nil
-                readFailed = false
-            }
             .onChange(of: service.isLoading) { _, loading in
                 guard !loading, readFailed else { return }
                 Task {
@@ -151,26 +141,22 @@ struct LocalLiveOwnModelToggle: View {
     }
 
     private func save(_ on: Bool) async {
-        let started = generation
         isSaving = true
         defer {
-            // Whatever happened, the switch goes back to what the host has,
-            // unless a profile switch already started this one over.
-            if generation == started {
-                isSaving = false
-                draft = nil
-            }
+            // Whatever happened, the switch goes back to what the host has.
+            // (A profile switch resets Settings' stack, so this view and its
+            // service never outlive the profile they were opened for.)
+            isSaving = false
+            draft = nil
         }
         errorMessage = nil
         let saved = await service.saveSpeechServerOwnModel(on)
-        guard generation == started else { return }
         if !saved {
             errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         // A save that landed with a read that failed says why, rather than
         // the switch going back to the old value without a word.
         let status = await service.speechServerVoiceStatus()
-        guard generation == started else { return }
         readFailed = status.readFailed
         if status.readFailed, saved {
             errorMessage = status.reason
