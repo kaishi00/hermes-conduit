@@ -128,6 +128,31 @@ extension GroupChatModelsTests {
         appState.closeGroupRoom()
     }
 
+    @MainActor
+    func testARoomOfOnlyYourOwnHermesIsReadFromThePeopleAndForgottenWithTheRoom() async throws {
+        // Multi-instance plan, Rooms 1: Group Info offers no room choices where every Hermes is yours.
+        let routes = CopiesRoutes(copies: [])
+        var own = leaveOwnPeople(laifu: "in")
+        own["own_hermes"] = true
+        routes.people = own
+        let appState = try await leaveAppState(routes, room: leaveOwnRoom)
+        await appState.openGroupRoom(leaveOwnRoom)
+        await copiesWait("the people read", until: { appState.activeRoomOwnHermes })
+        appState.closeGroupRoom()
+        XCTAssertFalse(appState.activeRoomOwnHermes, "forgotten with the room")
+
+        // Another person's Hermes in it (or a plugin before 0.169, which doesn't say): choices as before.
+        routes.people = leaveOwnPeople(laifu: "in")
+        await appState.openGroupRoom(leaveOwnRoom)
+        await copiesWait("the people read", until: { appState.activeRoomPeople["m-laifu"]?.owner == "Mona" })
+        XCTAssertFalse(appState.activeRoomOwnHermes)
+        routes.people = ["ok": true, "room_id": "conduit-5", "home": NSNull(), "members": [[String: Any]](),
+                         "own_hermes": false]
+        await appState.refreshActiveRoomPeople()
+        XCTAssertFalse(appState.activeRoomOwnHermes)
+        appState.closeGroupRoom()
+    }
+
     func testAMemberThatsOutIsntOfferedToMentionOrAddress() {
         var kuro = GroupMember(memberID: "m-kuro", profile: nil, handle: "kuro", displayName: "Kuro",
                                target: ["kind": .string("peer")], extra: [:])
