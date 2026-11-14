@@ -320,25 +320,9 @@ final class AppState: ObservableObject {
             updateSessionReferenceTitles()
         }
     }
-    @Published var projects: [ProjectSummary] = [] {
-        didSet {
-            projectPositionsBySessionID = nil
-            projectsSeededFromSavedList = false
-        }
-    }
-    /// The project pages came from the saved Chats list, not from Hermes:
-    /// they leave with it, and say nothing yet about whether this Hermes
-    /// takes new projects. Any later write to `projects` replaces them.
-    var projectsSeededFromSavedList = false
-    /// For each conversation id a project previews, the position of the
-    /// first project that lists it. Built once per `projects` change for
-    /// `knownProjectID(for:)`, which the chat list asks for every row on
-    /// every render.
-    var projectPositionsBySessionID: [String: Int]?
     /// The catalog's rows under every id they answer to, built once per
     /// `sessions` change for `catalogRow(answeringTo:)`.
     var catalogRowsByAnyID: [String: SessionSummary]?
-    @Published var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
     /// reconnect, or a gateway upgraded in place) probes the RPC again.
@@ -352,11 +336,28 @@ final class AppState: ObservableObject {
     weak var projectEditingUnsupportedClient: HermesClient? {
         willSet { objectWillChange.send() }
     }
-    @Published var projectsLoading = false
-    /// The last projects load failed for a reason other than the host not
-    /// having projects (a dropped or timed-out request), so an empty list
-    /// isn't "no projects".
-    @Published var projectsLoadFailed = false
+    /// The bot on screen's projects, and whether its Hermes has them
+    /// (`BotState`).
+    var projects: [ProjectSummary] {
+        get { shownBot.projects }
+        set { shownBot.projects = newValue }
+    }
+    var projectsSeededFromSavedList: Bool {
+        get { shownBot.projectsSeededFromSavedList }
+        set { shownBot.projectsSeededFromSavedList = newValue }
+    }
+    var supportsProjects: Bool {
+        get { shownBot.supportsProjects }
+        set { shownBot.supportsProjects = newValue }
+    }
+    var projectsLoading: Bool {
+        get { shownBot.projectsLoading }
+        set { shownBot.projectsLoading = newValue }
+    }
+    var projectsLoadFailed: Bool {
+        get { shownBot.projectsLoadFailed }
+        set { shownBot.projectsLoadFailed = newValue }
+    }
     @Published var archivedSessions: [SessionSummary] = []
     @Published var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
@@ -730,10 +731,6 @@ final class AppState: ObservableObject {
     /// Each profile's archived calls as last read, which a catalog read
     /// within their lifetime takes again (issue 2357).
     var archivedCallsReads: [String: ArchivedCallsRead] = [:]
-    /// The projects as last read: for which profile, through which client,
-    /// and when. A catalog read that changed nothing reads them again only
-    /// past `projectsRereadInterval` (issue 2357).
-    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
     /// The scope the catalog last committed for: a read that lists the same
     /// rows for it again skips the work that follows a change (issue 2357).
     var catalogCommitOwner: SessionCatalogOwner?
@@ -2533,7 +2530,6 @@ final class AppState: ObservableObject {
     /// beside the open chat wouldn't show it (issue 1454). The lists keep
     /// it while it is the open chat and the catalog doesn't list it.
     @Published var newChatAwaitingListing: NewChatAwaitingListing?
-    var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
     var pendingApprovalsRequestGeneration: UInt64 = 0

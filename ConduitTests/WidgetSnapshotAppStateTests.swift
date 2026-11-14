@@ -174,7 +174,7 @@ final class WidgetSnapshotAppStateTests: XCTestCase {
         let client = HermesClient(connection: HermesConnection(baseUrl: dashboardA.normalizedURL, ticket: "t"), profile: "default")
         let readAt = Date(timeIntervalSince1970: 1_700_000_000)
         XCTAssertTrue(same.projectsNeedReading(using: client, profile: "default", now: readAt), "never read")
-        same.projectsRead = ("default", ObjectIdentifier(client), readAt)
+        same.shownBot.projectsRead = ("default", ObjectIdentifier(client), readAt)
         XCTAssertFalse(same.projectsNeedReading(using: client, profile: "default", now: readAt.addingTimeInterval(60)))
         XCTAssertTrue(same.projectsNeedReading(using: client, profile: "default",
                                                now: readAt.addingTimeInterval(AppState.projectsRereadInterval)), "due again")

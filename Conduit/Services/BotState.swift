@@ -2,8 +2,8 @@ import Foundation
 import Combine
 
 /// One bot's own state (a Hermes profile on the dashboard): its scheduled
-/// jobs and its skills, toolsets and tools first, then its chat list,
-/// projects, pins and settings, a slice at a time (the plan: "Combining
+/// jobs, its skills, toolsets and tools, and its projects first, then its
+/// chat list, pins and settings, a slice at a time (the plan: "Combining
 /// Hermes instances in Conduit", stage 1, the cut list's bot rows). As with
 /// `ChatState`, there is one, `AppState.shownBot`, for the bot on screen,
 /// never replaced: a profile switch refills it as AppState's own properties
@@ -78,4 +78,33 @@ final class BotState: ObservableObject {
     /// Skill and toolset switches, written in the order flipped.
     let capabilityToggleWrites = CapabilityToggleWrites()
     @Published var mcpServers: [CapabilityMcpServer] = []
+
+    // MARK: Projects
+
+    @Published var projects: [ProjectSummary] = [] {
+        didSet {
+            projectPositionsBySessionID = nil
+            projectsSeededFromSavedList = false
+        }
+    }
+    /// The project pages came from the saved Chats list, not from Hermes:
+    /// they leave with it, and say nothing yet about whether this Hermes
+    /// takes new projects. Any later write to `projects` replaces them.
+    var projectsSeededFromSavedList = false
+    /// For each conversation id a project previews, the position of the
+    /// first project that lists it. Built once per `projects` change for
+    /// `knownProjectID(for:)`, which the chat list asks for every row on
+    /// every render.
+    var projectPositionsBySessionID: [String: Int]?
+    @Published var supportsProjects = false
+    @Published var projectsLoading = false
+    /// The last projects load failed for a reason other than the host not
+    /// having projects (a dropped or timed-out request), so an empty list
+    /// isn't "no projects".
+    @Published var projectsLoadFailed = false
+    /// The projects as last read: for which profile, through which client,
+    /// and when. A catalog read that changed nothing reads them again only
+    /// past `projectsRereadInterval` (issue 2357).
+    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
+    var projectsRequestGeneration = 0
 }
