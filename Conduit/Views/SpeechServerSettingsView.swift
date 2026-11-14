@@ -210,8 +210,16 @@ struct SpeechServerSettingsView: View {
             let profile = draftsProfile
             Task {
                 let loaded = await service.speechServerStatus()
-                guard draftsProfile == profile, !loaded.readFailed else { return }
+                guard draftsProfile == profile else { return }
+                // A read that fails is asked again on the page's next check.
+                readFailed = loaded.readFailed
+                guard !loaded.readFailed else {
+                    if errorMessage == nil { errorMessage = loaded.reason }
+                    return
+                }
+                let before = status
                 status = loaded
+                follow(from: before, to: loaded)
             }
         }
         // After a read that failed, the page's next check (its Check again
@@ -323,11 +331,15 @@ struct SpeechServerSettingsView: View {
             errorMessage = loaded.reason
             return
         }
+        let before = status
         status = loaded
-        // A read that answers a page already answered leaves what's typed.
+        // A read that answers a page already answered leaves what's typed,
+        // and moves a field nobody touched to the host's newer value.
         if !answered {
             urlDraft = loaded.url ?? ""
             showNames(loaded)
+        } else {
+            follow(from: before, to: loaded)
         }
         answered = true
         if loaded.namesItsModel, presets.isEmpty {
@@ -442,6 +454,14 @@ struct SpeechServerSettingsView: View {
             errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         return saved
+    }
+
+    /// Every field still showing the old status takes the new one.
+    private func follow(from before: SpeechServerStatus?, to now: SpeechServerStatus) {
+        follow(&urlDraft, was: before?.url, sent: nil, now: now.url)
+        follow(&modelDraft, was: before?.model, sent: nil, now: now.model)
+        follow(&voiceDraft, was: before?.voice, sent: nil, now: now.voice)
+        follow(&transcriptionModelDraft, was: before?.transcriptionModel, sent: nil, now: now.transcriptionModel)
     }
 
     private func follow(_ draft: inout String, was: String?, sent: String?, now: String?) {
