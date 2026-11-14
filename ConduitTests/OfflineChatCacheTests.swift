@@ -3231,6 +3231,12 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.presentBackgroundChat(followed, openedAs: "a"))
         XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time, the end.")
         XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the open lands")
+        // An open that lands after a switch to another dashboard releases
+        // only that dashboard's chats.
+        state.savedDashboardRegistry.activeDashboardID = UUID()
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertEqual(state.backgroundChats.count, 1, "Another dashboard's open leaves this one's chat followed")
+        state.savedDashboardRegistry.activeDashboardID = dashboard
         state.releaseFollowedChat(answering: ["a"])
         XCTAssertTrue(state.backgroundChats.isEmpty)
     }
