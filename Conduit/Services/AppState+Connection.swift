@@ -565,29 +565,32 @@ extension AppState {
             // Bot Mode evidence must exist before the sync below decides which
             // conversation this workspace was in — loaded CONCURRENTLY with
             // the profile list so the decision never pays two round trips.
-            async let profilesLoad: Void = loadChatResumeProfiles()
-            async let rosterLoad: Void = loadChatResumeBotRoster()
-            _ = await (profilesLoad, rosterLoad)
-            // One continuation guard covers both loads: it re-reads the
-            // continuation AFTER the suspension, so a superseded transport is
-            // caught here without a second, identical evaluation.
-            guard let continuation = transportContinuation(
-                purpose: continuationPurpose,
-                automaticWorkToken: continuationAutomaticWorkToken,
-                automaticReconnectOperationID: transportOperationID
-            ) else { return }
-            continuationPurpose = continuation.purpose
-            continuationAutomaticWorkToken = continuation.automaticWorkToken
-            handedOffAutomaticIntent = handedOffAutomaticIntent
-                || continuation.handedOffAutomaticIntent
-            followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
-            guard let continuation = await synchronizeTransportContinuation(
-                purpose: continuationPurpose,
-                automaticWorkToken: continuationAutomaticWorkToken,
-                automaticReconnectOperationID: transportOperationID,
-                client: client,
-                profile: profile
-            ) else { return }
+            // Beside the sync, not ahead of it: the saved chat's resume goes
+            // out on the bots on hand or kept from this dashboard's last
+            // read, and the list's own pick waits for these (a slow host
+            // answers the profile list in over a second).
+            let botEvidence = Task { @MainActor [weak self] in
+                guard let self else { return }
+                async let profilesLoad: Void = self.loadChatResumeProfiles()
+                async let rosterLoad: Void = self.loadChatResumeBotRoster()
+                _ = await (profilesLoad, rosterLoad)
+            }
+            let synced = await withTaskCancellationHandler {
+                await synchronizeTransportContinuation(
+                    purpose: continuationPurpose,
+                    automaticWorkToken: continuationAutomaticWorkToken,
+                    automaticReconnectOperationID: transportOperationID,
+                    client: client,
+                    profile: profile,
+                    botEvidence: { await botEvidence.value }
+                )
+            } onCancel: {
+                botEvidence.cancel()
+            }
+            // A sync that stopped early still leaves the loads to finish
+            // before the reads below.
+            await botEvidence.value
+            guard let continuation = synced else { return }
             continuationPurpose = continuation.purpose
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent

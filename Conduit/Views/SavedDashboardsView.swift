@@ -254,7 +254,9 @@ struct SavedDashboardRowLabel: View {
 
     private var statusText: String {
         if row.isActive {
-            if isSwitching || appState.isConnecting { return AppLocalization.string("Connecting…") }
+            // Connected once the socket is up: the switch itself still
+            // reads the chat list after that.
+            if appState.isConnecting || (isSwitching && !appState.isConnected) { return AppLocalization.string("Connecting…") }
             return appState.isConnected
                 ? AppLocalization.string("Connected")
                 : AppLocalization.string("Disconnected")
@@ -279,7 +281,7 @@ struct SavedDashboardRowLabel: View {
 
     private var statusColor: Color {
         if row.isActive {
-            if isSwitching || appState.isConnecting { return .orange }
+            if appState.isConnecting || (isSwitching && !appState.isConnected) { return .orange }
             return appState.isConnected ? .green : .red
         }
         return row.hasReusableAuth ? .secondary : .orange
