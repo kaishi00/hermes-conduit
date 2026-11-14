@@ -54,7 +54,7 @@ extension AppState {
     }
 
     /// Whether the host's notifier plugin keeps saved artifacts (plugin
-    /// 0.176+, issue 2467).
+    /// 0.177+, issue 2467).
     var supportsArtifactPins: Bool {
         notifierPlugin.reports(ArtifactPinsClient.capability)
     }

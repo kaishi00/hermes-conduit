@@ -3,7 +3,7 @@ import Foundation
 /// Saved artifacts (issue 2467): the files, pages and links the user kept
 /// from the Artifacts list, so one that mattered doesn't scroll back under
 /// everything since, or go with its chat. The host's notifier plugin keeps
-/// them per profile (plugin 0.176+, capability `artifact-pins`), shared by
+/// them per profile (plugin 0.177+, capability `artifact-pins`), shared by
 /// every device signed in to it, with a copy of each file that opens once
 /// the original, its chat or its session is gone, and a short note.
 struct ArtifactPinsClient {
