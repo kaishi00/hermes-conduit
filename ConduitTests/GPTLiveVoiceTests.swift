@@ -818,6 +818,16 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         guard case .failed = silent.state else { return XCTFail("Expected failed, got \(silent.state)") }
         XCTAssertTrue(silentPeer.closed)
+
+        // Issue 2388: a ChatGPT-plan call with a chosen voice that never starts names that voice.
+        let voicedPeer = FakeGPTLivePeer()
+        let voiced = GPTLiveSession(client: FakeGPTLiveClient(), voice: "haetsal", makePeer: { voicedPeer },
+                                    startTimeout: .milliseconds(10), reconnectGrace: .seconds(60))
+        voiced.start()
+        for _ in 0..<50 where voiced.state == .connecting {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(voiced.state, .failed(GPTLiveSession.notStartedMessage(voice: "haetsal", billing: .subscription)))
     }
 }
 

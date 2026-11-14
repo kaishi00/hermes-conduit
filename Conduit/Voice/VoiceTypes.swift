@@ -550,7 +550,10 @@ struct GPTLiveVoice: Equatable, Identifiable {
     ]
 
     /// The name as shown in the picker ("Cove · Composed").
-    var label: String { "\(name.prefix(1).uppercased())\(name.dropFirst()) · \(style)" }
+    var label: String { "\(Self.displayName(name)) · \(style)" }
+
+    /// A voice's name as the picker shows it ("cove" → "Cove").
+    static func displayName(_ name: String) -> String { name.prefix(1).uppercased() + name.dropFirst() }
 }
 
 /// What a Gemini Live session actually searches with.
