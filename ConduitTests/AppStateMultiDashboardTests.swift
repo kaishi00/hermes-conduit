@@ -311,6 +311,37 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNil(coordinator.lastSessionID(for: "default"))
     }
 
+    func testSigningOutOrMovingADashboardForgetsTheChatItKept() {
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let coordinator = appState.chatResumeCoordinator
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a"), for: "default")
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+
+        // Signing out of A, set aside, forgets its chat.
+        appState.signOutDashboard(a.id)
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+
+        // A move of B, set aside, forgets its chat too.
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a-again"), for: "default")
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-b"), for: "default")
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        appState.stageDashboardMove(b.id, toNormalizedURL: "https://moved.example.com")
+        appState.settlePendingDashboardMove(b.id)
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://moved.example.com", dashboardID: b.id))
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+
+        // And a move of the selected dashboard drops its live set.
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-moved"), for: "default")
+        appState.stageDashboardMove(b.id, toNormalizedURL: "https://moved-again.example.com")
+        appState.settlePendingDashboardMove(b.id)
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+    }
+
     func testDashboardIdentityNeverCollidesWithURLOfAnotherServer() {
         // A dashboard UUID and a URL-shaped identity are disjoint: switching
         // between dashboard-scoped and URL-scoped connections is a server

@@ -152,10 +152,13 @@ extension AppState {
             if savedChat != nil {
                 await Task.yield()
                 for _ in 0..<20 where !catalogReadFailed.began { await Task.yield() }
+                if !catalogReadFailed.began {
+                    earlyResumeLogger.notice("Chat resume goes out before the list read has started")
+                }
             }
             if readsNewestFirst {
                 do {
-                    let newest = try await newestChatsBeforeList(using: client)
+                    let newest = try await newestChatsBeforeList(profile: profile, using: client)
                     savedChat = latestChatBeforeList(among: newest, profile: profile, dashboardID: dashboardID)
                 } catch {
                     earlyResumeLogger.notice("Chat resume waits for the chat list: the newest chats read failed")
