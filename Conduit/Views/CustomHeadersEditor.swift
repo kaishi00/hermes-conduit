@@ -80,7 +80,7 @@ struct CustomHeadersEditorSheet: View {
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.name")
                             .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) name", table: .connection))
-                            .accessibilityHint(problem(for: row) ?? CustomHeaderPolicy.note(for: row) ?? "")
+                            .accessibilityHint(problem(for: row) ?? "")
                         HStack {
                             Group {
                                 if revealedValues.contains(row.id) {
@@ -94,7 +94,7 @@ struct CustomHeadersEditorSheet: View {
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.value")
                             .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) value", table: .connection))
-                            .accessibilityHint(problem(for: row) ?? CustomHeaderPolicy.note(for: row) ?? "")
+                            .accessibilityHint(problem(for: row) ?? "")
                             Button {
                                 if revealedValues.contains(row.id) {
                                     revealedValues.remove(row.id)
