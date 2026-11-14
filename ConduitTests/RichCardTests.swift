@@ -166,16 +166,26 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichPerson(json: ["name": "Ada Lovelace"])?.match(in: [byName])?.id, "2")
     }
 
-    func testAContactsTextToSendNeedsTheirPhone() throws {
+    func testAContactsTextToSendNeedsTheirPhoneOrEmail() throws {
         let raw: [[String: Any]] = [["type": "contact", "people": [
             ["name": "Mei", "detail": "Wife", "phone": "+86 139 6261 8677", "message": "Landed safe"],
             ["name": "Bo", "email": "bo@example.com", "message": "Running late"],
             ["name": "Cy", "phone": "+1 415 555 0100", "message": ""],
         ]]]
         let people = try XCTUnwrap(RichCard.cards(raw: raw).first).people
-        XCTAssertEqual(people.map(\.message), ["Landed safe", nil, nil], "a text needs a number to go to")
+        XCTAssertEqual(people.map(\.message), ["Landed safe", "Running late", nil],
+                       "a text needs a number, or an email for iMessage, to go to")
         XCTAssertEqual(people[0].dialable, "+8613962618677")
+        XCTAssertEqual(people.map(\.textRecipient), ["+8613962618677", "bo@example.com", "+14155550100"])
+        let both = try XCTUnwrap(RichPerson(json: ["name": "Ed", "phone": "+1 415 555 0101", "email": "ed@example.com"]))
+        XCTAssertEqual(both.textRecipient, "+14155550101", "a number goes first")
         XCTAssertNil(RichPerson(json: ["name": "Di", "message": "Hi"])?.message)
+        // Whatever the schema lets through, an address never adds a body to Messages.
+        let crafted = try XCTUnwrap(RichPerson.smsURL("bo@example.com?body=Hi&x#more"))
+        XCTAssertEqual(crafted.scheme, "sms")
+        XCTAssertNil(crafted.query)
+        XCTAssertNil(crafted.fragment)
+        XCTAssertEqual(RichPerson.smsURL("bo@example.com")?.absoluteString, "sms:bo@example.com")
     }
 
     func testAnEmailActionOnlyAddressesTheEmail() throws {
