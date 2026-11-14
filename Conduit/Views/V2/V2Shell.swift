@@ -1499,6 +1499,7 @@ struct V2Shell: View {
             // Out of sight, content moves to the side it arrives from.
             withTransaction(Transaction(animation: nil)) { contentShift = distance }
             var target = profile
+            var targetDashboardID = pickDashboardID
             // A tap in the fade-out is the latest word: back on the profile
             // already showing means no switch at all, another one replaces
             // this target.
@@ -1512,20 +1513,22 @@ struct V2Shell: View {
                     return
                 }
                 target = next
+                // The newer tap was made on the dashboard showing now.
+                targetDashboardID = appState.activeDashboardID
             }
             // A switch started elsewhere (CarPlay) in the fade-out would
             // refuse this one: it waits behind it, unless a later tap
             // already does.
             if appState.isProfileSwitching {
                 // Only on the dashboard the pick was made on: one picked
-                // meanwhile keeps its own All, and the kept pick, made for
-                // the old one, is dropped there.
+                // meanwhile keeps its own All, and the kept pick stays with
+                // the dashboard it was made on (dropped on any other).
                 if queuedProfilePick.profile == nil {
                     // All stays as it was until the kept pick goes ahead.
                     if leftAll, appState.activeDashboardID == pickDashboardID {
                         appState.setAllProfilesChatsOn(true)
                     }
-                    queuedProfilePick.tap(target, dashboardID: pickDashboardID, leavesAll: leftAll)
+                    queuedProfilePick.tap(target, dashboardID: targetDashboardID, leavesAll: leftAll)
                 }
                 isPickingProfile = false
                 return
