@@ -189,7 +189,7 @@ extension AppState {
         order.set(ids, profile: profile)
         guard order != pinnedChatOrder else { return }
         pinnedChatOrder = order
-        order.save(to: defaults)
+        order.save(to: defaults, scope: dashboardListsScope)
     }
 
     /// Saves the bots' order (BotOrder), set here or from Sync across
@@ -197,7 +197,7 @@ extension AppState {
     func setBotOrder(_ order: BotOrder) {
         guard order != botOrder else { return }
         botOrder = order
-        order.save(to: defaults)
+        order.save(to: defaults, key: BotOrder.storageKey(scope: dashboardListsScope))
         publishWidgetSnapshot()
     }
 
@@ -207,7 +207,7 @@ extension AppState {
         let order = order.kind == .rooms ? order : BotOrder(names: order.names, kind: .rooms)
         guard order != groupRoomOrder else { return }
         groupRoomOrder = order
-        order.save(to: defaults, key: BotOrder.roomStorageKey)
+        order.save(to: defaults, key: BotOrder.roomStorageKey(scope: dashboardListsScope))
     }
 
     /// Saves where All's mixed Pinned section holds each profile's chats
@@ -217,7 +217,7 @@ extension AppState {
         order.setMixed(keys)
         guard order != pinnedChatOrder else { return }
         pinnedChatOrder = order
-        order.save(to: defaults)
+        order.save(to: defaults, scope: dashboardListsScope)
     }
 
     /// An unpinned chat leaves the order, so pinning it again puts it on top.
@@ -226,6 +226,96 @@ extension AppState {
         order.drop(ids, profile: profile)
         guard order != pinnedChatOrder else { return }
         pinnedChatOrder = order
-        order.save(to: defaults)
+        order.save(to: defaults, scope: dashboardListsScope)
     }
+}
+
+extension AppState {
+    // MARK: - Lists kept per dashboard
+
+    /// The bucket the active dashboard's stars, Pinned order and Bots
+    /// Home's orders are kept under. They name that host's chats, bots and
+    /// rooms, which another host doesn't have (or has under the same
+    /// strings for other things), so each dashboard keeps its own and a
+    /// switch reads the selected one's. Before, one phone-wide copy was
+    /// wiped at every switch, and Sync across devices then took the empty
+    /// copy to the host, which reshuffled Bots Home.
+    var dashboardListsScope: String { Self.dashboardPreferenceBucket(activeDashboardID) }
+
+    /// The selected dashboard's stars and saved orders: at launch and on
+    /// every switch.
+    func loadDashboardLists(dashboardID: UUID?) {
+        let scope = Self.dashboardPreferenceBucket(dashboardID)
+        sessionStars = SessionStars(defaults: defaults, scope: scope)
+        pinnedChatOrder = PinnedChatOrder(defaults: defaults, scope: scope)
+        botOrder = BotOrder(defaults: defaults, key: BotOrder.storageKey(scope: scope))
+        groupRoomOrder = BotOrder(defaults: defaults, key: BotOrder.roomStorageKey(scope: scope), kind: .rooms)
+    }
+
+    /// Drops a dashboard's stars, saved orders and hidden projects (Sign
+    /// Out, Remove, or a connection to a server outside the saved
+    /// dashboards), and empties the ones in use when it's the selected one.
+    func forgetDashboardLists(dashboardID: UUID?) {
+        let scope = Self.dashboardPreferenceBucket(dashboardID)
+        for key in [
+            SessionStars.storageKey(scope: scope),
+            PinnedChatOrder.storageKey(scope: scope),
+            PinnedChatOrder.mixedStorageKey(scope: scope),
+            BotOrder.storageKey(scope: scope),
+            BotOrder.roomStorageKey(scope: scope),
+        ] {
+            defaults.removeObject(forKey: key)
+        }
+        if var hidden = defaults.dictionary(forKey: HiddenChatProjects.key) as? [String: [String]] {
+            let prefix = HiddenChatProjects.owner(dashboard: scope, profile: "")
+            let before = hidden.count
+            hidden = hidden.filter { !$0.key.hasPrefix(prefix) }
+            if hidden.count != before { defaults.set(hidden, forKey: HiddenChatProjects.key) }
+        }
+        guard scope == dashboardListsScope else { return }
+        loadDashboardLists(dashboardID: dashboardID)
+    }
+
+    /// One-time move of the phone-wide stars, orders and hidden projects
+    /// into the dashboard selected at launch, the one they were last kept
+    /// for. Every other dashboard starts empty, and Sync across devices
+    /// brings it its host's copy: its ledger forgets these keys, so the
+    /// empty copy isn't taken for a change and sent. A dashboard switch on
+    /// an older build may already have wiped the phone-wide copy, so the
+    /// ledgers are reset once even when there's nothing to move, the
+    /// selected dashboard's too then.
+    func adoptLegacyDashboardLists(into dashboardID: UUID?) {
+        guard let dashboardID, !defaults.bool(forKey: Self.dashboardListsAdoptedKey) else { return }
+        let scope = Self.dashboardPreferenceBucket(dashboardID)
+        var moved = false
+        for (legacy, scoped) in [
+            (SessionStars.storageKey, SessionStars.storageKey(scope: scope)),
+            (PinnedChatOrder.storageKey, PinnedChatOrder.storageKey(scope: scope)),
+            (PinnedChatOrder.mixedStorageKey, PinnedChatOrder.mixedStorageKey(scope: scope)),
+            (BotOrder.storageKey, BotOrder.storageKey(scope: scope)),
+            (BotOrder.roomStorageKey, BotOrder.roomStorageKey(scope: scope)),
+        ] {
+            guard let value = defaults.object(forKey: legacy) else { continue }
+            if defaults.object(forKey: scoped) == nil { defaults.set(value, forKey: scoped) }
+            defaults.removeObject(forKey: legacy)
+            moved = true
+        }
+        if let adopted = HiddenChatProjects.adoptingUnscoped(defaults.object(forKey: HiddenChatProjects.key), into: scope) {
+            defaults.set(adopted, forKey: HiddenChatProjects.key)
+            moved = true
+        }
+        syncedPreferences.forgetLedgerValues(
+            keys: Self.dashboardScopedSyncKeys,
+            exceptDashboard: moved ? dashboardID.uuidString : nil
+        )
+        defaults.set(true, forKey: Self.dashboardListsAdoptedKey)
+    }
+
+    /// Set once the phone-wide lists have moved to a dashboard.
+    static let dashboardListsAdoptedKey = "conduit.dashboardLists.adopted.v1"
+
+    /// The synced keys whose values belong to one dashboard.
+    static let dashboardScopedSyncKeys: Set<String> = [
+        "bots.order", "groups.order", "chats.pinned_order", "app.hidden_chat_projects",
+    ]
 }

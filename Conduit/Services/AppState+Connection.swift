@@ -1118,15 +1118,8 @@ extension AppState {
         activeSessionTitlesByProfile = [:]
         pinnedSessionIDsByProfile = [:]
         resetHostPins()
-        sessionStars = SessionStars()
-        defaults.removeObject(forKey: SessionStars.storageKey)
-        pinnedChatOrder = PinnedChatOrder()
-        defaults.removeObject(forKey: PinnedChatOrder.storageKey)
-        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
-        botOrder = BotOrder()
-        defaults.removeObject(forKey: BotOrder.storageKey)
-        groupRoomOrder = BotOrder.rooms
-        defaults.removeObject(forKey: BotOrder.roomStorageKey)
+        // The stars and saved orders of the dashboard signed out of.
+        forgetDashboardLists(dashboardID: signingOutDashboardID)
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()

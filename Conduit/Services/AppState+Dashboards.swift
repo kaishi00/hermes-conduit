@@ -40,6 +40,7 @@ extension AppState {
         modelVisibility = scopedModelVisibility(dashboardID: dashboardID)
         modelQuickPicks = storedModelQuickPicks()[Self.dashboardPreferenceBucket(dashboardID)] ?? ModelQuickPicks()
         restoreDisplayPreferences()
+        loadDashboardLists(dashboardID: dashboardID)
     }
 
     private static let displayPreferencesByProfileKey = "profileDisplayPreferencesByDashboard"
@@ -189,6 +190,7 @@ extension AppState {
         }
         forgetPulseHome(of: id)
         forgetPulseFoldedBriefs(of: id)
+        forgetDashboardLists(dashboardID: id)
     }
 
     // MARK: Relay gateways each dashboard's host reported
@@ -775,6 +777,8 @@ extension AppState {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        // Its stars and saved orders, as the active dashboard's Sign Out.
+        forgetDashboardLists(dashboardID: id)
         // The chats it kept to resume belong to the signed-out user, as
         // the active dashboard's do (disconnect clears those).
         chatResumeCoordinator.forgetServer(id.uuidString)

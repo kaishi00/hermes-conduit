@@ -3,8 +3,8 @@
 //  Conduit
 //
 //  The order of the Pinned section (issue 1354). Hermes keeps whether a
-//  chat is pinned, not where it sits, so the order stays here, per profile,
-//  under each chat's pin id (its lineage root, so a compacted chat keeps its
+//  chat is pinned, not where it sits, so the order stays here, per dashboard and
+//  profile, under each chat's pin id (its lineage root, so a compacted chat keeps its
 //  place). Until a profile's pins are reordered they follow recent activity
 //  as before. A pinned chat the order doesn't name yet (pinned since, here
 //  or on another device) goes on top. All's mixed Pinned section also keeps
@@ -27,22 +27,36 @@ struct PinnedChatOrder: Equatable {
         self.mixed = Self.unique(mixed)
     }
 
-    init(defaults: UserDefaults) {
-        let stored = defaults.data(forKey: Self.storageKey)
-            .flatMap { try? JSONDecoder().decode([String: [String]].self, from: $0) } ?? [:]
-        self.init(idsByProfile: stored, mixed: defaults.stringArray(forKey: Self.mixedStorageKey) ?? [])
+    /// One dashboard's orders: `scope` is its bucket
+    /// (AppState.dashboardPreferenceBucket), since its chats are its own and
+    /// their ids can repeat another host's. Nil reads the phone-wide copy
+    /// from before the order was kept per dashboard.
+    static func storageKey(scope: String?) -> String {
+        scope.map { "\(storageKey).\($0)" } ?? storageKey
     }
 
-    func save(to defaults: UserDefaults) {
+    static func mixedStorageKey(scope: String?) -> String {
+        scope.map { "\(mixedStorageKey).\($0)" } ?? mixedStorageKey
+    }
+
+    init(defaults: UserDefaults, scope: String? = nil) {
+        let stored = defaults.data(forKey: Self.storageKey(scope: scope))
+            .flatMap { try? JSONDecoder().decode([String: [String]].self, from: $0) } ?? [:]
+        self.init(idsByProfile: stored, mixed: defaults.stringArray(forKey: Self.mixedStorageKey(scope: scope)) ?? [])
+    }
+
+    func save(to defaults: UserDefaults, scope: String? = nil) {
+        let key = Self.storageKey(scope: scope)
+        let mixedKey = Self.mixedStorageKey(scope: scope)
         if idsByProfile.isEmpty {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeObject(forKey: key)
         } else if let data = try? JSONEncoder().encode(idsByProfile) {
-            defaults.set(data, forKey: Self.storageKey)
+            defaults.set(data, forKey: key)
         }
         if mixed.isEmpty {
-            defaults.removeObject(forKey: Self.mixedStorageKey)
+            defaults.removeObject(forKey: mixedKey)
         } else {
-            defaults.set(mixed, forKey: Self.mixedStorageKey)
+            defaults.set(mixed, forKey: mixedKey)
         }
     }
 

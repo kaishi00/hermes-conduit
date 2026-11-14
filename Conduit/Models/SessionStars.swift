@@ -5,7 +5,7 @@
 //  Starred chats (#757): a working list kept apart from pins. Pins are for
 //  the chats opened every day; a star marks one being worked on, and the
 //  Chats list's Starred filter lists them. Hermes has no flag for it, so
-//  stars stay on this phone, per profile, under the conversation's lineage
+//  stars stay on this phone, per dashboard and profile, under the conversation's lineage
 //  id like a pin, so a compacted chat keeps its star.
 //
 
@@ -20,8 +20,16 @@ struct SessionStars: Equatable {
         self.idsByProfile = idsByProfile.filter { !$0.value.isEmpty }
     }
 
-    init(defaults: UserDefaults) {
-        guard let data = defaults.data(forKey: Self.storageKey),
+    /// One dashboard's stars: `scope` is its bucket
+    /// (AppState.dashboardPreferenceBucket), since its chats are its own and
+    /// their ids can repeat another host's. Nil reads the phone-wide copy
+    /// from before stars were kept per dashboard.
+    static func storageKey(scope: String?) -> String {
+        scope.map { "\(storageKey).\($0)" } ?? storageKey
+    }
+
+    init(defaults: UserDefaults, scope: String? = nil) {
+        guard let data = defaults.data(forKey: Self.storageKey(scope: scope)),
               let stored = try? JSONDecoder().decode([String: [String]].self, from: data) else {
             self.init()
             return
@@ -29,11 +37,12 @@ struct SessionStars: Equatable {
         self.init(idsByProfile: stored)
     }
 
-    func save(to defaults: UserDefaults) {
+    func save(to defaults: UserDefaults, scope: String? = nil) {
+        let key = Self.storageKey(scope: scope)
         if idsByProfile.isEmpty {
-            defaults.removeObject(forKey: Self.storageKey)
+            defaults.removeObject(forKey: key)
         } else if let data = try? JSONEncoder().encode(idsByProfile) {
-            defaults.set(data, forKey: Self.storageKey)
+            defaults.set(data, forKey: key)
         }
     }
 
