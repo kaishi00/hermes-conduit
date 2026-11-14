@@ -9204,7 +9204,10 @@ final class AppStateChatResumeTests: XCTestCase {
                 loadBusyInputMode: { _ in },
                 loadProfileDisplayPreferences: {},
                 loadSlashCommands: {},
-                loadBotRoster: { counters.rosterLoads += 1 },
+                loadBotRoster: {
+                    counters.rosterLoads += 1
+                    await counters.rosterHook?()
+                },
                 botRoster: { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: false) },
                 makeTransport: { transport }
             )
@@ -9292,6 +9295,58 @@ final class AppStateChatResumeTests: XCTestCase {
             harness.appState.activeChatScrollSessionIdentity.isReconciling,
             "No reconciliation may remain open after the owed bootstrap"
         )
+    }
+
+    /// The owed bootstrap reads its bots beside its sync, as a connect does:
+    /// with bots kept from last time, the saved chat goes out while the
+    /// roster is still on its way.
+    func testOwedBootstrapResumesTheSavedChatBeforeItsBotsLand() async {
+        let rosterGate = ControlledSuspension()
+        let fixture = await startConnectInterruptedBySceneDeactivation(
+            onHarness: { appState in
+                appState.botRoster = [self.rosterBot("atlas", canonicalID: "stored-atlas")]
+                appState.sessions = [self.session("stored-saved")]
+            }
+        )
+        let counters = fixture.counters
+        XCTAssertEqual(counters.rosterLoads, 0, "the interrupted connect read no bots")
+        counters.rosterHook = { await rosterGate.suspend() }
+
+        let activation = fixture.harness.appState.handleScenePhase(.active)
+        await rosterGate.waitUntilSuspended()
+        for _ in 0..<500 where counters.openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id], "resumed while the bots are still out")
+        rosterGate.resume()
+        await activation?.value
+
+        XCTAssertEqual(counters.openedSessionIDs, [fixture.saved.id], "and only once")
+        XCTAssertEqual(fixture.harness.appState.activeSessionId, fixture.saved.id)
+    }
+
+    /// Jump to latest activity's short read goes only through the sync's own
+    /// dashboard and client: one a switch has replaced since is refused.
+    func testTheNewestChatsReadIsNotSentThroughAnotherDashboard() async {
+        let harness = makeHarness()
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "t")
+        let client = HermesClient(connection: connection, profile: "default")
+        harness.appState.client = client
+        let activeDashboard = harness.appState.activeDashboardID
+
+        for (dashboardID, readClient) in [
+            (UUID() as UUID?, client),
+            (activeDashboard, HermesClient(connection: connection, profile: "default"))
+        ] {
+            do {
+                _ = try await harness.appState.newestChatsBeforeList(
+                    profile: "default", dashboardID: dashboardID, using: readClient
+                )
+                XCTFail("a read for another dashboard or client goes nowhere")
+            } catch {
+                guard case .notReady? = error as? DashboardTicketBridgeError else {
+                    return XCTFail("refused as not ready: \(error)")
+                }
+            }
+        }
     }
 
     /// #99 × #208/#209: a cold launch showing the read-only offline copy
@@ -9802,6 +9857,8 @@ private final class OwedBootstrapCounters {
     var catalogLoads = 0
     var profileLoads = 0
     var rosterLoads = 0
+    /// Run inside each roster load (a gate, say).
+    var rosterHook: (@MainActor () async -> Void)?
     var openedSessionIDs: [String] = []
     var probes = 0
     /// Run in order, one inside each catalog load, until exhausted.
