@@ -737,6 +737,7 @@ extension AppState {
         activeRoomLooks = .empty
         activeRoomHomeName = nil
         activeRoomJustMe = []
+        activeRoomOwnHermes = nil
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1129,6 +1130,7 @@ extension AppState {
         activeRoomLooks = .empty
         activeRoomHomeName = nil
         activeRoomJustMe = []
+        activeRoomOwnHermes = nil
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1657,7 +1659,13 @@ extension AppState {
     /// overtook is dropped.
     private func readActiveRoomPeople(epoch: Int) async {
         guard canInviteLinkedPeople, let surface = activeRoomSurface,
-              let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else { return }
+              let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else {
+            // No people read to wait for: the room choices show as before.
+            if groupRoomEpoch == epoch, activeRoomSurface != nil, activeRoomOwnHermes == nil {
+                activeRoomOwnHermes = false
+            }
+            return
+        }
         let dashboard = activeDashboardID
         // One for a room already left mustn't drop the open room's read.
         guard groupRoomEpoch == epoch else { return }
@@ -1669,6 +1677,7 @@ extension AppState {
               activeRoomSurface?.room.roomID == surface.room.roomID else { return }
         guard let response, response["ok"] as? Bool == true else {
             activeRoomPeopleReadFailed = true
+            if activeRoomOwnHermes == nil { activeRoomOwnHermes = false }
             return
         }
         activeRoomPeopleReadFailed = false
@@ -1678,6 +1687,8 @@ extension AppState {
         if home != activeRoomHomeName { activeRoomHomeName = home }
         let justMe = RoomPeople.justMe(response)
         if justMe != activeRoomJustMe { activeRoomJustMe = justMe }
+        let ownHermes = response["own_hermes"] as? Bool == true
+        if ownHermes != activeRoomOwnHermes { activeRoomOwnHermes = ownHermes }
         // How they look comes with who they are (RoomLooks.swift).
         Task { await self.readActiveRoomLooks(epoch: epoch) }
         let attribution = RoomPostAttribution(
@@ -1896,6 +1907,7 @@ extension AppState {
         activeRoomLooks = .empty
         activeRoomHomeName = nil
         activeRoomJustMe = []
+        activeRoomOwnHermes = nil
         activeRoomLooksReadAt = nil
         activeRoomCopyApprovalsReadAt = nil
         activeRoomPeopleRetries = 0

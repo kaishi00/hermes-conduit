@@ -535,7 +535,12 @@ extension AppState {
         }
         let requestedProfile = PendingVoiceLaunchPolicy.normalizedProfile(profile)
         var switchedProfile = false
-        if let requestedProfile, requestedProfile != activeProfile {
+        if let requestedProfile, requestedProfile != activeProfile, isVoiceCallInProgress {
+            // The switch would end the call running, which a screenshot is
+            // often asked during: it stays in this profile and the call goes
+            // on (issue 2390, as #1297's refusals).
+            showCallRefusal(AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone))
+        } else if let requestedProfile, requestedProfile != activeProfile {
             await switchProfile(to: requestedProfile)
             guard isConnected else { return false }
             if requestedProfile == activeProfile {
@@ -641,7 +646,10 @@ extension AppState {
     /// keyboard when the shortcut asks for it. A turn still running in the
     /// chat gets the keyboard: the screenshot waits for a new turn.
     private func startScreenQuestionInput(_ start: ScreenQuestionStart, on sessionID: String) async {
-        guard start == .voice, turnState == .idle else {
+        // A call running anywhere (the Watch, CarPlay, a call from Hermes)
+        // keeps going: a new voice conversation would replace it, so the
+        // screenshot waits for typing instead (issue 2390).
+        guard start == .voice, turnState == .idle, !isVoiceCallInProgress else {
             requestComposerFocus(on: sessionID)
             return
         }
@@ -652,6 +660,12 @@ extension AppState {
                 requestComposerFocus(on: sessionID)
                 return
             }
+        }
+        // Again after the capability read: a call answered meanwhile keeps
+        // going too.
+        guard !isVoiceCallInProgress else {
+            requestComposerFocus(on: sessionID)
+            return
         }
         let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: false, source: .screenQuestion)
         if !(await openVoiceConversation(intent)) {

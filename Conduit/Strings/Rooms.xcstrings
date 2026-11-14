@@ -33672,6 +33672,88 @@
           }
         }
       }
+    },
+    "Every Hermes here is yours, so each bot works as it does at home, with its own tools and memory." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Hermes hier gehört dir, daher arbeitet jeder Bot wie zu Hause, mit seinen eigenen Tools und seinem eigenen Gedächtnis."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos los Hermes de aquí son tuyos, así que cada bot funciona como en casa, con sus propias herramientas y memoria."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tous les Hermes ici sont à vous, donc chaque bot travaille comme chez lui, avec ses propres outils et sa propre mémoire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua Hermes di sini milikmu, jadi setiap bot bekerja seperti di rumah, dengan alat dan memorinya sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutti gli Hermes qui sono tuoi, quindi ogni bot lavora come a casa, con i propri strumenti e la propria memoria."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここにあるHermesはすべてあなたのものなので、どのボットも自分のツールと記憶を使って、ホームと同じように動きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기 있는 Hermes는 모두 내 것이라서, 모든 봇이 자기 도구와 기억으로 홈에서처럼 일해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wszystkie Hermesy tutaj są twoje, więc każdy bot działa jak u siebie, z własnymi narzędziami i pamięcią."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todos os Hermes aqui são seus, então cada bot funciona como em casa, com as próprias ferramentas e memória."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Все Hermes здесь ваши, поэтому каждый бот работает как дома, со своими инструментами и памятью."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki tüm Hermes'ler senin, bu yüzden her bot kendi araçları ve hafızasıyla evdeki gibi çalışır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里的每个 Hermes 都是你的，所以每个机器人都像在家一样工作，使用自己的工具和记忆。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的每個 Hermes 都是你的，所以每個機器人都像在家一樣工作，使用自己的工具和記憶。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

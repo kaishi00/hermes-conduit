@@ -1228,6 +1228,14 @@ enum GroupRoomReplyQuote {
 /// function of the log, so replaying it here names the member whose turn is
 /// running. Presentation only — routing stays the gateway's.
 enum GroupRoomTurns {
+    /// Whether Group Info offers per-room choices for your agents: only
+    /// beside other people's agents, and only once the room's people read
+    /// says it isn't a room of only your own Hermes (`ownHermes` nil until
+    /// then), so such a room never paints or reads them first.
+    static func offersChoices(canSet: Bool, members: [GroupMember], ownHermes: Bool?) -> Bool {
+        canSet && members.contains(where: \.isPeer) && ownHermes == false
+    }
+
     /// `MAX_DISCUSSION_ROUNDS` / `MAX_DISCUSSION_MESSAGES` upstream.
     static let maxRounds = 3
     static let maxMessages = 10

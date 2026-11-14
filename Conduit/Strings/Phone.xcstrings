@@ -18226,6 +18226,88 @@
           }
         }
       }
+    },
+    "A call is running, so the screenshot is in this profile, not the one the shortcut asked for." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anruf läuft, daher ist der Screenshot in diesem Profil und nicht in dem, das der Kurzbefehl wollte."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hay una llamada en curso, así que la captura está en este perfil, no en el que pidió el atajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel est en cours, la capture est donc dans ce profil, pas dans celui demandé par le raccourci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada panggilan yang sedang berjalan, jadi tangkapan layar ada di profil ini, bukan di profil yang diminta pintasan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "È in corso una chiamata, quindi lo screenshot è in questo profilo, non in quello chiesto dal comando rapido."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話中のため、スクリーンショットはショートカットが指定したプロファイルではなく、このプロファイルにあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화 중이라 스크린샷은 단축어가 요청한 프로필이 아닌 이 프로필에 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trwa połączenie, więc zrzut ekranu jest w tym profilu, a nie w tym, o który prosił skrót."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Há uma chamada em andamento, então a captura está neste perfil, não no que o atalho pediu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Идёт звонок, поэтому снимок экрана в этом профиле, а не в том, который указала быстрая команда."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir arama sürüyor, bu yüzden ekran görüntüsü kestirmenin istediği profilde değil, bu profilde."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在通话，所以截图在当前资料中，而不是快捷指令要求的那个。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "正在通話，所以截圖在目前的設定檔中，而不是捷徑要求的那個。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

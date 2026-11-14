@@ -466,6 +466,8 @@ struct V2Shell: View {
     @State private var profileSwitchToken = 0
     /// A profile tapped while a switch runs, switched to once it ends.
     @State private var queuedProfilePick = V2QueuedProfilePick()
+    /// A strip pick made during a call, waiting on the user's answer (issue 2390).
+    @State private var pendingCallEndingSwitch: CallEndingSwitch?
     /// A switch picked from the strip is running, from the first tap's
     /// fade-out until the switch is over.
     @State private var isPickingProfile = false
@@ -735,6 +737,7 @@ struct V2Shell: View {
 
     var body: some View {
         sizedTabs
+            .callEndingSwitchConfirmation($pendingCallEndingSwitch)
             .onChange(of: conversationVisible, initial: true) { _, visible in
                 // Covered means streaming rows needn't redraw and the chat
                 // doesn't count as seen (AppState.showSidebar).
@@ -1437,7 +1440,7 @@ struct V2Shell: View {
     /// page), the profile switches, and the new profile's sessions slide in
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
-    private func pickProfile(_ profile: String, haptic: Bool = true) {
+    private func pickProfile(_ profile: String, haptic: Bool = true, callEndAccepted: Bool = false) {
         // A switch takes a moment on a real dashboard: a tap meanwhile (its
         // fade-out included) is kept rather than dropped, and the last one
         // goes once it ends.
@@ -1453,6 +1456,19 @@ struct V2Shell: View {
         // just ended elsewhere no longer goes.
         queuedProfilePick = V2QueuedProfilePick()
         guard profile != appState.activeProfile else { return }
+        // The switch would end a call running: ask first (issue 2390). A
+        // pick from under All leaves All on until the user accepts (the
+        // strip holds that change back during a call), so Cancel leaves
+        // the list as it was.
+        if !callEndAccepted && appState.isVoiceCallInProgress {
+            if haptic { Haptics.medium() }
+            let leavesAll = appState.isAllProfilesChatsOn
+            appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
+                if leavesAll { appState.setAllProfilesChatsOn(false) }
+                pickProfile(profile, haptic: false, callEndAccepted: true)
+            }
+            return
+        }
         if haptic { Haptics.medium() }
         isPickingProfile = true
         isFadingOutForPick = true
@@ -1494,6 +1510,14 @@ struct V2Shell: View {
                     queuedProfilePick.tap(target, dashboardID: appState.activeDashboardID)
                 }
                 isPickingProfile = false
+                return
+            }
+            // A call that rang in during the fade-out wasn't asked about:
+            // the content comes back and the pick asks first (issue 2390).
+            if !callEndAccepted && appState.isVoiceCallInProgress {
+                isPickingProfile = false
+                fadeContentBackIn()
+                pickProfile(target, haptic: false)
                 return
             }
             await appState.switchProfile(to: target)

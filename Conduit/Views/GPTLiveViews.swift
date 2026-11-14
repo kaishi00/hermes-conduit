@@ -187,6 +187,9 @@ struct GPTLiveSettingsSection: View {
                     Text("The voice GPT-Live speaks with. Server default uses the voice set on your Hermes server (voice.gpt_live in the profile's config). The model is set there too. Applies to the next conversation.")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Haetsal and Hanul are ChatGPT's Korean voices. Like the others, they speak the call's language. If your ChatGPT plan doesn't offer a voice, the call won't start.", table: .voice))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
                 } else {
                     apiSettings
                 }

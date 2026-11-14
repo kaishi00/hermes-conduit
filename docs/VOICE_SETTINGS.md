@@ -85,6 +85,32 @@ administration concerns and are intentionally not mirrored here. Unknown or
 plugin providers discovered by Hermes still appear in the pickers with the
 generic model/language/voice fields.
 
+## Microphone and output
+
+Settings > Voice > Microphone and output, and two buttons under every call
+screen's title (Classic, Gemini, Qwen, Grok, GPT-Live, Local Live, and calls
+from Hermes), show the microphone and the output the voice uses now and open
+iOS's own pickers (issue 2389):
+
+- **Microphone**: on iOS 26 and later, iOS's input picker, which lists the
+  microphones on offer (the iPhone's, a wired headset, Bluetooth), the Mic
+  Mode (Voice Isolation, Wide Spectrum and the standard one) and a level
+  meter. iOS remembers the choice for Conduit. Outside a call the picker
+  holds the voice session open while it's up, since iOS lists inputs only
+  for a session that records. Before iOS 26 the call screen's button opens
+  Control Center's Mic Mode. Apps can't set a Mic Mode themselves.
+- **Output**: iOS's route picker (speaker, earpiece, headsets, the car).
+  Calls play on what's connected, otherwise on the speaker; calls from
+  Hermes start on the earpiece, and the call screen's Speaker button still
+  moves them.
+- **When the microphone opens**: there is no level to set. Classic voice
+  learns the room's noise and listens for speech above it; the live modes'
+  providers detect speech themselves. Settings says so.
+
+Wake listening on CarPlay and the built-in microphone fallback for a
+Bluetooth headset that won't record put the user's chosen microphone back
+when they finish, instead of clearing it.
+
 ## Keep listening when locked
 
 Classic Voice normally suspends when Conduit leaves the foreground and is
@@ -114,7 +140,7 @@ Swiping down the Gemini Live, Grok Live or GPT-Live sheet minimises the call ins
 
 GPT-Live's settings have a **Billing** choice, per profile:
 
-- **ChatGPT plan** (the default): the call bills the ChatGPT subscription the Hermes server is signed in to (`hermes auth`, OpenAI Codex), with ChatGPT's voices.
+- **ChatGPT plan** (the default): the call bills the ChatGPT subscription the Hermes server is signed in to (`hermes auth`, OpenAI Codex), with ChatGPT's voices. Haetsal and Hanul are ChatGPT's Korean voices; like the others they speak the call's language, not only Korean. A call with a voice your plan doesn't offer doesn't start; when you picked the voice in Conduit, it says which one to change. It never switches to another voice or to the API key.
 - **API key · billed per minute**: the call uses the public GPT-Live API (`gpt-live-1`, the same one Hermes desktop's voice mode uses) on the server's OpenAI API key. OpenAI bills that key per minute of call time, separately from any ChatGPT plan. It has its own voices (marin, cedar, …) and needs the Hermes notifier plugin 0.22 or newer.
 
 The two are kept apart so nobody pays for the one they didn't pick:

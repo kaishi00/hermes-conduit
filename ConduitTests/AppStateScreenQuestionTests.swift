@@ -922,6 +922,29 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    /// A shortcut naming another profile during a call keeps the
+    /// screenshot here: the switch would end the call (issue 2390).
+    func testAScreenshotDuringACallStaysInThisProfile() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.isWatchVoiceCallActive = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, profile: "work", enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        let refusal = AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone)
+        XCTAssertTrue(harness.appState.pinSyncNotice?.message == refusal || harness.appState.errorMessage == refusal)
+        XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin", "No voice conversation starts over the call: the keyboard comes up")
+    }
+
     func testNewChatThatCannotStartKeepsTheScreenshot() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         // Connected, but no client: no chat can be started.

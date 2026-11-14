@@ -22,6 +22,8 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var isSwitchingTo: UUID?
     @State private var pendingRemoval: SavedDashboardRowModel?
     @State private var showsAddDashboard = false
+    /// A switch picked during a call, waiting on the user's answer (issue 2390).
+    @State private var pendingCallEndingSwitch: CallEndingSwitch?
     /// Ask Which Dashboard at Launch (#1908): AppState reads it as Conduit
     /// opens.
     @AppStorage(AppState.asksWhichDashboardAtLaunchKey) private var asksWhichDashboardAtLaunch = false
@@ -86,6 +88,7 @@ struct SavedDashboardsSettingsDetail: View {
         } message: {
             Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
         }
+        .callEndingSwitchConfirmation($pendingCallEndingSwitch)
         // Adding a dashboard is a sheet over this page: Cancel leaves the
         // current dashboard and chat as they were.
         .sheet(isPresented: $showsAddDashboard) {
@@ -135,6 +138,12 @@ struct SavedDashboardsSettingsDetail: View {
     }
 
     private func switchTo(_ row: SavedDashboardRowModel) {
+        appState.switchEndingCall(to: row.dashboard.label, pending: &pendingCallEndingSwitch) {
+            startSwitch(to: row)
+        }
+    }
+
+    private func startSwitch(to row: SavedDashboardRowModel) {
         let id = row.dashboard.id
         isSwitchingTo = id
         Task {

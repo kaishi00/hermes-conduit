@@ -418,6 +418,10 @@ final class AppState: ObservableObject {
     /// What on screen shows other profiles' live status, by what asked:
     /// their registries are read with the profile in use's while it shows.
     var liveStatusAsks: [String: LiveStatusAsk] = [:]
+    /// The profiles whose live status read failure was logged, once per
+    /// profile for the connection it names (another connection starts over).
+    weak var liveStatusReadFailureClient: HermesClient?
+    var liveStatusReadFailuresLogged: Set<String> = []
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     weak var activeListUnsupportedClient: HermesClient?
@@ -770,7 +774,15 @@ final class AppState: ObservableObject {
     @Published var botAvatarGeneration = 0
     /// When `reloadBotRoster` last asked for every picture again.
     var botAvatarsReloadedAt: Date?
+    /// The same, by dashboard: a pull asks again only for that
+    /// dashboard's pictures, so another's phone copies stay fresh.
+    var botPicturesPulledAt: [UUID: Date] = [:]
     var botAvatarFetchedGeneration: [String: Int] = [:]
+    /// When each bot's picture last came from Hermes, by dashboard and
+    /// name. Kept across switches (unlike the generation above), so a
+    /// switch back within `botPictureRecheckInterval` shows the phone's
+    /// copy instead of downloading it again.
+    var botPictureFetchedAt: [String: Date] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
     var botAvatarFetchInflight: [String: Int] = [:]
@@ -3227,6 +3239,12 @@ final class AppState: ObservableObject {
     @Published var activeRoomHomeName: String?
     /// On the home: who's in the open room with none of their agents.
     @Published var activeRoomJustMe: [String] = []
+    /// Whether every Hermes in the open room is the user's own, over Links
+    /// both sides marked (`GET /rooms/people`'s `own_hermes`, plugin 0.169):
+    /// its bots work as at home, so Group Info offers no room choices. Nil
+    /// until the room's first people read lands (or fails, which reads as
+    /// false: the rules hold), so such a room never shows them first.
+    @Published var activeRoomOwnHermes: Bool?
     var activeRoomLooksReadAt: Date?
     /// When the open copy's room screen last read your agents' approvals:
     /// a quiet room's ticks read them only every
