@@ -4701,8 +4701,8 @@ reasoning chip · typed `/model` (opens the sheet),
 `/fast` and `/yolo` · a bot's model picker and the Model page's Default,
 Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings) · the notifier's session route
-(`dashboard/api/session_route.py`: a pick sticks across Hermes' rebuilds) ·
-Pulse putting its chat on its model (`pulse_host._use_model`, the same
+(`notifier/dashboard/api/session_route.py`: a pick sticks across Hermes' rebuilds) ·
+Pulse putting its chat on its model (`notifier/pulse_host.py` _use_model, the same
 `config.set model`)
 
 **Code**
@@ -4710,7 +4710,7 @@ Pulse putting its chat on its model (`pulse_host._use_model`, the same
 - Reasoning bars: `Conduit/Views/Components/ReasoningEffortBars.swift`
 - Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState+YoloAndReasoning.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
 - Tests: `ConduitTests/ModelPickerTests.swift`
-- Notifier: `dashboard/api/session_route.py` (aligned, ensure_installed), `tests/test_session_route.py`, `upstream/test_session_route.py`
+- Notifier: `notifier/dashboard/api/session_route.py` (aligned, ensure_installed), `notifier/tests/test_session_route.py`, `notifier/upstream/test_session_route.py`
 
 **Rulings**
 - Every control applies on tap, like Settings; the sheet has no Apply button and stays open (Eric, 2026-10-27, #1333, #1334).
