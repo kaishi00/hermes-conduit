@@ -46,6 +46,12 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         XCTAssertTrue(appState.loadVoiceProfilePreferences(profile: "default").outputMuted)
         let key = preferencesKey(profile: "default", gateway: "https://example.com")
         XCTAssertEqual(appState.decodedVoicePreferences[key]?.preferences, seed, "kept beside its bytes")
+        // Read again, the same bytes aren't decoded again: what's kept
+        // beside them is what comes back.
+        var kept = seed
+        kept.spokenStopPhrases = ["kept, not decoded"]
+        appState.decodedVoicePreferences[key] = (try XCTUnwrap(defaults.data(forKey: key)), kept)
+        XCTAssertEqual(appState.loadVoiceProfilePreferences(profile: "default"), kept)
 
         // A write that didn't go through AppState (another device's, the
         // shared preferences') is seen on the next read.

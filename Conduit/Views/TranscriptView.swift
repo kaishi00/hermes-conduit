@@ -269,6 +269,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     // MARK: - Swap slide (TranscriptSwapMotion)
 
     var showsChatRows: Bool { appliedRows.contains(where: \.isChatRow) }
+    var shownConversation: String? { appliedConversation }
 
     /// Rows were applied. Another chat's slide in when the screen swapped
     /// them for the last one's, in the commit that draws them: its own

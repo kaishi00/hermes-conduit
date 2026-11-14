@@ -70,6 +70,17 @@ enum BotChatSwap: Equatable {
         var botChat: String?
         /// The bot whose workstream shows, if one does.
         var workstreamOf: String?
+        /// That workstream's chat, which tells one of a bot's workstreams
+        /// from another.
+        var workstream: String?
+    }
+
+    /// What the screen watches to hear of a swap: the chat the transcript
+    /// draws changes when an open is asked for, the open chat's id once
+    /// Hermes has it, a moment later.
+    struct Watched: Equatable {
+        var openChat: String?
+        var drawn: String
     }
 
     static func direction(from old: Shown, to new: Shown) -> BotChatSwap? {
@@ -288,15 +299,21 @@ struct V2ConversationScreen: View {
             // Animation Hitches track says whether that frame came late.
             ResponsivenessSignposts.signposter.emitEvent("Conversation appeared")
             sidePanelIDs = appState.activeChatArtifactSessionIDs
-            shownChat = currentShownChat
+            shownChat = chatShown(byOpenChatToo: true)
         }
-        .onChange(of: appState.activeSessionId) { _, _ in
-            sidePanelIDs = appState.activeChatArtifactSessionIDs
-            let shown = currentShownChat
-            if slidesBetweenChats, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
-                swapMotion.expect(swap)
+        .onChange(of: watchedChat) { old, new in
+            let opened = old.openChat != new.openChat
+            // The swap is heard of as the transcript draws the other chat,
+            // so its slide is asked for before its rows land; the open
+            // chat's id is the second chance, for a chat the drawn id
+            // alone doesn't place.
+            let shown = chatShown(byOpenChatToo: opened)
+            if shown != shownChat, slidesBetweenChats, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
+                swapMotion.expect(swap, conversation: new.drawn)
             }
             shownChat = shown
+            guard opened else { return }
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
             // A workstream opened from the panel shows its own chat, and
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
@@ -546,8 +563,23 @@ struct V2ConversationScreen: View {
         }
     }
 
-    private var currentShownChat: BotChatSwap.Shown {
-        BotChatSwap.Shown(botChat: appState.activeBotChatProfile, workstreamOf: appState.activeWorkstream?.profile)
+    private var watchedChat: BotChatSwap.Watched {
+        BotChatSwap.Watched(openChat: appState.activeSessionId, drawn: ChatView.drawnConversation(in: appState))
+    }
+
+    /// The Bot Chat or workstream the transcript draws, placed by the
+    /// drawn chat's id: the open chat's id follows it by a few hundred
+    /// milliseconds on an open (a device trace, #2458: a slide asked for
+    /// by it came after the workstream's rows). `byOpenChatToo` places a
+    /// chat the drawn id doesn't by the open chat, once that changed.
+    private func chatShown(byOpenChatToo: Bool) -> BotChatSwap.Shown {
+        guard appState.activeRoomSurface == nil else { return BotChatSwap.Shown() }
+        let drawn = ChatView.drawnOrFallbackScrollSessionKey(in: appState).sessionID
+        let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn])
+        let work = appState.botWork.workstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
+        let bot = appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
+            ?? (byOpenChatToo ? appState.activeBotChatProfile : nil)
+        return BotChatSwap.Shown(botChat: bot, workstreamOf: work?.profile, workstream: work?.item.sessionID)
     }
 
     /// A Bot Chat and its workstream slide over one another: not beside

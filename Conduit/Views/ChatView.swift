@@ -164,8 +164,11 @@ struct ChatView: View {
     /// The conversation the transcript draws, which its kept row heights
     /// go by: row ids repeat across conversations (Load earlier, the live
     /// rows) and dashboards.
-    private var drawnConversation: String {
-        let key = drawnOrFallbackScrollSessionKey
+    private var drawnConversation: String { Self.drawnConversation(in: appState) }
+
+    @MainActor
+    static func drawnConversation(in appState: AppState) -> String {
+        let key = drawnOrFallbackScrollSessionKey(in: appState)
         return "\(appState.activeDashboardID?.uuidString ?? "")|\(key.profile)|\(key.sessionID)"
     }
 

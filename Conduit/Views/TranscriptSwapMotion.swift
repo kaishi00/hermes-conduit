@@ -44,22 +44,31 @@ final class TranscriptSwapMotion {
         wait(patience)
     }
 
-    /// The chat being opened comes in as `swap` once its rows are drawn.
-    /// The screen hears of the open and the transcript of its rows in no
-    /// set order, so rows drawn a moment ago slide in now. Until they're
-    /// drawn, what the transcript shows steps aside: the chat being left,
-    /// or the opened chat's welcome while it has no rows yet.
-    func expect(_ swap: BotChatSwap) {
+    /// The chat being opened, `conversation` as the transcript names it,
+    /// comes in as `swap` once its rows are drawn. The screen hears of the
+    /// open and the transcript of its rows in no set order, so rows drawn
+    /// a moment ago slide in now. Until they're drawn, what the transcript
+    /// shows steps aside: the chat being left, or the opened chat's
+    /// welcome while it has no rows yet. Heard of later than that, with
+    /// the chat already showing, nothing moves: rows that slid away then
+    /// would have nothing to bring them back (the first re-trace of
+    /// #2458's second build, every open).
+    func expect(_ swap: BotChatSwap, conversation: String) {
         guard let stage else {
             expected = swap
             chatIsOnStage = false
             wait(patience)
             return
         }
-        let onStage = stage.conversationJustChanged
-        if onStage, stage.showsChatRows {
+        let onStage = stage.shownConversation == conversation
+        let justDrawn = onStage && stage.conversationJustChanged
+        if onStage, stage.showsChatRows || !justDrawn {
             settle()
-            stage.slideIn(swap)
+            if justDrawn {
+                stage.slideIn(swap)
+            } else {
+                stage.comeBack()
+            }
             return
         }
         expected = swap
@@ -108,6 +117,8 @@ final class TranscriptSwapMotion {
 /// The transcript, as `TranscriptSwapMotion` moves it.
 @MainActor
 protocol TranscriptSwapStage: AnyObject {
+    /// The chat whose rows are drawn, as the chat view names it.
+    var shownConversation: String? { get }
     /// Another chat's rows were drawn in this pass of the main thread.
     var conversationJustChanged: Bool { get }
     /// The rows drawn include the chat's own (a message, a turn under

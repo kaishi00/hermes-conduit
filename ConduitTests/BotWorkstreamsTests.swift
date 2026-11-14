@@ -1169,7 +1169,7 @@ extension BotModeTests {
         // Back: the workstream leaves at once, the Bot Chat comes in with
         // its rows.
         motion.leave(.back)
-        motion.expect(.back)
+        motion.expect(.back, conversation: "opened")
         XCTAssertEqual(stage.played, ["out back at once"], "already away, it doesn't leave twice")
         XCTAssertNil(motion.rowsDrawn(conversationChanged: false, chatRows: true), "the workstream's own rows drawn again")
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .back)
@@ -1177,24 +1177,50 @@ extension BotModeTests {
 
         // A workstream opened: the screen hears after the rows are drawn.
         stage.reset()
+        stage.shownConversation = "opened"
         stage.conversationJustChanged = true
         stage.showsChatRows = true
-        motion.expect(.forward)
+        motion.expect(.forward, conversation: "opened")
         XCTAssertEqual(stage.played, ["in forward"])
         XCTAssertNil(motion.expected)
+
+        // The screen hears long after the rows were drawn (the open chat's
+        // id follows the drawn chat's by a few hundred milliseconds):
+        // nothing moves, and rows still away come back.
+        stage.reset()
+        stage.shownConversation = "opened"
+        stage.showsChatRows = true
+        motion.expect(.forward, conversation: "opened")
+        XCTAssertEqual(stage.played, [], "rows on screen don't slide away")
+        XCTAssertNil(motion.expected)
+        stage.rowsAreAway = true
+        motion.expect(.forward, conversation: "opened")
+        XCTAssertEqual(stage.played, ["back"])
+        // Its welcome, drawn a while ago, stays too.
+        stage.reset()
+        stage.shownConversation = "opened"
+        motion.expect(.forward, conversation: "opened")
+        XCTAssertEqual(stage.played, [])
+        XCTAssertNil(motion.expected)
+        // Drawn in this pass, the welcome steps aside for the rows.
+        stage.conversationJustChanged = true
+        motion.expect(.forward, conversation: "opened")
+        XCTAssertEqual(stage.played, ["out forward"])
+        XCTAssertTrue(motion.chatIsOnStage)
+        XCTAssertEqual(motion.rowsDrawn(conversationChanged: false, chatRows: true), .forward)
 
         // A workstream opened, the screen hearing first: the Bot Chat
         // steps aside, never flushed from inside a view update, and the
         // workstream comes in with its rows.
         stage.reset()
-        motion.expect(.forward)
+        motion.expect(.forward, conversation: "opened")
         XCTAssertEqual(stage.played, ["out forward"])
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .forward)
 
         // A chat with no saved rows draws its welcome first: it waits out
         // of sight, and the chat slides in when Hermes' rows land.
         stage.reset()
-        motion.expect(.forward)
+        motion.expect(.forward, conversation: "opened")
         XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: false))
         XCTAssertTrue(motion.chatIsOnStage)
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: false, chatRows: true), .forward)
@@ -1202,7 +1228,7 @@ extension BotModeTests {
         // A chat with nothing in it: its welcome comes back after a moment.
         stage.reset()
         motion.rowsPatience = .milliseconds(20)
-        motion.expect(.forward)
+        motion.expect(.forward, conversation: "opened")
         XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: false))
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(stage.played, ["out forward", "back"])
@@ -1213,7 +1239,7 @@ extension BotModeTests {
         stage.reset()
         motion.patience = .milliseconds(20)
         motion.leave(.back)
-        motion.expect(.back)
+        motion.expect(.back, conversation: "opened")
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(stage.played, ["out back at once", "back"])
         XCTAssertNil(motion.rowsDrawn(conversationChanged: true, chatRows: true))
@@ -1293,7 +1319,7 @@ extension BotModeTests {
         // it; its wait is stood down before it gets to run.
         usleep(100_000)
         motion.patience = .seconds(30)
-        motion.expect(.back)
+        motion.expect(.back, conversation: "opened")
         try await Task.sleep(for: .milliseconds(150))
         XCTAssertEqual(stage.played, ["out back at once"], "the old wait brought nothing back")
         XCTAssertEqual(motion.expected, .back)
@@ -2038,6 +2064,7 @@ extension BotModeTests {
 /// A transcript that only notes what `TranscriptSwapMotion` asks of it.
 @MainActor
 private final class SwapStageRecorder: TranscriptSwapStage {
+    var shownConversation: String? = "left"
     var conversationJustChanged = false
     var showsChatRows = false
     var rowsAreAway = false
@@ -2054,11 +2081,13 @@ private final class SwapStageRecorder: TranscriptSwapStage {
     }
 
     func comeBack() {
+        guard rowsAreAway else { return }
         rowsAreAway = false
         played.append("back")
     }
 
     func reset() {
+        shownConversation = "left"
         conversationJustChanged = false
         showsChatRows = false
         rowsAreAway = false
