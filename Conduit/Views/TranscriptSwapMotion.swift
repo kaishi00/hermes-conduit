@@ -40,6 +40,10 @@ final class TranscriptSwapMotion {
     /// The chat on screen leaves, ahead of the one being opened: the swipe
     /// or the tap is answered at once, while the open runs.
     func leave(_ swap: BotChatSwap) {
+        // A chat left while its own rows were still waited for no longer
+        // has a slide to come in with.
+        expected = nil
+        chatIsOnStage = false
         stage?.slideOut(swap, atOnce: true)
         wait(patience)
     }
