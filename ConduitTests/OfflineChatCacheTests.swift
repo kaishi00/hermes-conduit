@@ -2219,6 +2219,49 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
+    /// Opening a chat left mid-reply shows its rows and the reply so far
+    /// while it loads, and lets go of the followed copy once it lands.
+    func testOpeningAFollowedChatShowsItAndReleasesItWhenItLands() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gatesNextOpenOfB = false
+        let live = [session("stored-a"), session("stored-b"), session("stored-c")]
+        let opened = OpenedChats()
+        let (appState, _, _) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-b", gatesNextOpenOfB else { return }
+                    gatesNextOpenOfB = false
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+
+        appState.turnState = .running
+        appState.handleStreamEvent(.messageDelta(sessionId: "stored-b", text: "Still going"))
+        let openedC = await appState.openSession("stored-c")
+        XCTAssertTrue(openedC)
+        XCTAssertNotNil(appState.followedChat(answering: ["stored-b"]))
+
+        gatesNextOpenOfB = true
+        let opening = Task { @MainActor in await appState.openSession("stored-b") }
+        await gate.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.last?.content, "Still going")
+        XCTAssertNotNil(appState.followedChat(answering: ["stored-b"]), "Followed until the open lands")
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertNil(appState.followedChat(answering: ["stored-b"]), "Its own transcript took over")
+    }
+
     /// A chat with no saved copy opens as it always has.
     func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
         useInMemoryKeychain()
