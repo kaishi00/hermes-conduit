@@ -83,6 +83,88 @@
         }
       }
     },
+    "Off: the phrase continues the chat you were in last, as the chat's voice button does, and the call starts knowing what was said there. On: each phrase starts a new conversation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus: Die Phrase setzt den Chat fort, in dem du zuletzt warst, wie die Sprachtaste des Chats, und der Anruf weiß, was dort gesagt wurde. An: Jede Phrase beginnt eine neue Unterhaltung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado: la frase continúa el último chat en el que estuviste, como el botón de voz del chat, y la llamada empieza sabiendo lo que se dijo allí. Activado: cada frase inicia una conversación nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivé : la phrase reprend la dernière discussion où vous étiez, comme le bouton vocal de la discussion, et l'appel commence en sachant ce qui s'y est dit. Activé : chaque phrase lance une nouvelle conversation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mati: frasa melanjutkan chat terakhir yang Anda buka, seperti tombol suara chat, dan panggilan dimulai dengan mengetahui apa yang dibicarakan di sana. Nyala: setiap frasa memulai percakapan baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disattivato: la frase continua l'ultima chat in cui eri, come il pulsante vocale della chat, e la chiamata inizia sapendo cosa è stato detto lì. Attivato: ogni frase avvia una nuova conversazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ：フレーズは最後に開いていたチャットを、チャットの音声ボタンと同じように続け、通話はそこでの会話を把握した状態で始まります。オン：フレーズのたびに新しい会話を始めます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끔: 문구를 말하면 채팅의 음성 버튼처럼 마지막으로 있던 채팅을 이어 가며, 통화는 그 채팅의 대화를 알고 시작합니다. 켬: 문구를 말할 때마다 새 대화를 시작합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyłączone: fraza kontynuuje czat, w którym byłeś ostatnio, tak jak przycisk głosowy czatu, a rozmowa zaczyna się ze znajomością tego, co tam powiedziano. Włączone: każda fraza rozpoczyna nową rozmowę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desativado: a frase continua o último chat em que você estava, como o botão de voz do chat, e a chamada começa sabendo o que foi dito ali. Ativado: cada frase inicia uma nova conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выкл.: фраза продолжает чат, в котором вы были последним, как кнопка голоса в чате, и звонок начинается со знанием того, что там обсуждалось. Вкл.: каждая фраза начинает новый разговор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapalı: ifade, sohbetin ses düğmesi gibi en son bulunduğunuz sohbeti sürdürür ve arama orada konuşulanları bilerek başlar. Açık: her ifade yeni bir konuşma başlatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭：唤醒短语会像聊天的语音按钮一样继续你最后所在的聊天，通话开始时就了解那里说过的内容。打开：每次说出短语都会开始新的对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉：喚醒短語會像聊天的語音按鈕一樣繼續你最後所在的聊天，通話開始時就了解那裡說過的內容。開啟：每次說出短語都會開始新的對話。"
+          }
+        }
+      }
+    },
     "Your Hermes server can't save voice calls yet." : {
       "localizations" : {
         "de" : {
@@ -48347,6 +48429,1646 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "GPT-Live 沒有開始對話。如果你的 ChatGPT 方案不提供語音 %@，請在 GPT-Live 設定中換一個。"
+          }
+        }
+      }
+    },
+    "Hermes answers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes antwortet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes responde"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes répond"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yang menjawab"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risponde Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが応答"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 응답"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiada Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes responde"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечает Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yanıtlar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由 Hermes 回答"
+          }
+        }
+      }
+    },
+    "For a server with a model of its own, such as a hosted realtime model: it then only listens and reads Hermes' replies aloud. Leave it off for a server you point at Conduit, such as speech-to-speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für einen Server mit eigenem Modell, etwa ein gehostetes Echtzeitmodell: Er hört dann nur zu und liest die Antworten von Hermes vor. Lass es aus für einen Server, den du auf Conduit richtest, etwa speech-to-speech."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para un servidor con modelo propio, como un modelo en tiempo real alojado: entonces solo escucha y lee en voz alta las respuestas de Hermes. Déjalo desactivado para un servidor que apuntas a Conduit, como speech-to-speech."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour un serveur doté de son propre modèle, comme un modèle temps réel hébergé : il se contente alors d'écouter et de lire à voix haute les réponses de Hermes. Laissez désactivé pour un serveur que vous pointez vers Conduit, comme speech-to-speech."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk server yang punya model sendiri, seperti model realtime yang di-host: server itu lalu hanya mendengarkan dan membacakan balasan Hermes. Biarkan mati untuk server yang kamu arahkan ke Conduit, seperti speech-to-speech."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per un server con un modello proprio, come un modello realtime ospitato: in quel caso ascolta soltanto e legge ad alta voce le risposte di Hermes. Lascialo disattivato per un server che punti a Conduit, come speech-to-speech."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホスト型のリアルタイムモデルなど、独自のモデルを持つサーバー向けです。オンにすると、サーバーは聞き取りとHermesの返答の読み上げだけを行います。speech-to-speechのようにConduitに向けて設定するサーバーではオフのままにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스팅된 실시간 모델처럼 자체 모델이 있는 서버용입니다. 켜면 서버는 듣기와 Hermes 답변 읽어 주기만 합니다. speech-to-speech처럼 Conduit을 가리키도록 설정하는 서버에서는 꺼 두세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dla serwera z własnym modelem, na przykład hostowanego modelu czasu rzeczywistego: wtedy tylko słucha i czyta na głos odpowiedzi Hermesa. Zostaw wyłączone dla serwera, który kierujesz na Conduit, na przykład speech-to-speech."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para um servidor com modelo próprio, como um modelo em tempo real hospedado: ele passa a apenas ouvir e ler em voz alta as respostas do Hermes. Deixe desativado para um servidor que você aponta para o Conduit, como o speech-to-speech."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для сервера с собственной моделью, например размещённой модели реального времени: тогда он только слушает и читает вслух ответы Hermes. Оставьте выключенным для сервера, который вы направляете на Conduit, например speech-to-speech."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barındırılan bir gerçek zamanlı model gibi kendi modeli olan bir sunucu için: sunucu o zaman yalnızca dinler ve Hermes'in yanıtlarını sesli okur. speech-to-speech gibi Conduit'e yönlendirdiğin bir sunucu için kapalı bırak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用于自带模型的服务器，例如托管的实时模型：开启后它只负责聆听并朗读 Hermes 的回复。对于指向 Conduit 的服务器（例如 speech-to-speech），请保持关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用於自帶模型的伺服器，例如託管的即時模型：開啟後它只負責聆聽並朗讀 Hermes 的回覆。對於指向 Conduit 的伺服器（例如 speech-to-speech），請保持關閉。"
+          }
+        }
+      }
+    },
+    "Hermes answers on this server, so there's nothing to set up on it. The Conduit plugin runs each turn and has the server read the reply aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf diesem Server antwortet Hermes, dort ist also nichts einzurichten. Das Conduit-Plugin führt jede Runde aus und lässt den Server die Antwort vorlesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En este servidor responde Hermes, así que no hay nada que configurar en él. El plugin de Conduit lleva cada turno y hace que el servidor lea la respuesta en voz alta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes répond sur ce serveur, il n'y a donc rien à y configurer. Le plugin Conduit gère chaque tour et fait lire la réponse à voix haute par le serveur."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yang menjawab di server ini, jadi tidak ada yang perlu diatur di sana. Plugin Conduit menjalankan setiap giliran dan meminta server membacakan balasannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo server risponde Hermes, quindi non c'è nulla da configurare lì. Il plugin Conduit gestisce ogni turno e fa leggere la risposta ad alta voce al server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーではHermesが応答するため、サーバー側の設定は不要です。Conduitプラグインが各ターンを進め、サーバーに返答を読み上げさせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에서는 Hermes가 응답하므로 서버에서 설정할 것이 없습니다. Conduit 플러그인이 각 턴을 진행하고 서버가 답변을 읽어 주게 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym serwerze odpowiada Hermes, więc nie trzeba na nim niczego ustawiać. Wtyczka Conduit prowadzi każdą turę i każe serwerowi przeczytać odpowiedź na głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes responde neste servidor, então não há nada para configurar nele. O plugin do Conduit conduz cada turno e faz o servidor ler a resposta em voz alta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом сервере отвечает Hermes, поэтому настраивать на нём нечего. Плагин Conduit ведёт каждый ход и даёт серверу прочитать ответ вслух."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucuda Hermes yanıtlar, bu yüzden sunucuda ayarlanacak bir şey yok. Conduit eklentisi her turu yürütür ve yanıtı sunucuya sesli okutur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器上由 Hermes 回答，因此无需在服务器上进行任何设置。Conduit 插件负责每一轮对话，并让服务器朗读回复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器上由 Hermes 回答，因此無需在伺服器上進行任何設定。Conduit 外掛負責每一輪對話，並讓伺服器朗讀回覆。"
+          }
+        }
+      }
+    },
+    "Your speech server answered a call by itself, so Hermes never got a turn. Turn on Hermes answers under Your speech server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver hat in einem Anruf selbst geantwortet, Hermes kam also nie an die Reihe. Schalte unter „Dein Sprachserver“ die Option „Hermes antwortet“ ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz respondió por su cuenta en una llamada, así que Hermes nunca tuvo turno. Activa «Hermes responde» en Tu servidor de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal a répondu de lui-même pendant un appel, Hermes n'a donc jamais eu la parole. Activez « Hermes répond » dans Votre serveur vocal."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suaramu menjawab sendiri dalam sebuah panggilan, jadi Hermes tidak pernah mendapat giliran. Nyalakan “Hermes yang menjawab” di Server suaramu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale ha risposto da solo durante una chiamata, quindi Hermes non ha mai avuto il turno. Attiva «Risponde Hermes» in Il tuo server vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバーが通話中に自分で応答したため、Hermesの番が来ませんでした。「あなたの音声サーバー」で「Hermesが応答」をオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버가 통화에서 스스로 응답해 Hermes에게 차례가 오지 않았습니다. ‘내 음성 서버’에서 ‘Hermes가 응답’을 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy sam odpowiedział w rozmowie, więc Hermes nie doszedł do głosu. Włącz „Odpowiada Hermes” w sekcji Twój serwer mowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz respondeu sozinho em uma chamada, então o Hermes nunca teve a vez. Ative “Hermes responde” em Seu servidor de voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голосовой сервер сам ответил во время звонка, поэтому до Hermes очередь не дошла. Включите «Отвечает Hermes» в разделе «Ваш голосовой сервер»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucun bir aramada kendi başına yanıt verdi, bu yüzden sıra Hermes'e hiç gelmedi. Konuşma sunucun bölümünde “Hermes yanıtlar” seçeneğini aç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的语音服务器在一次通话中自行作答，Hermes 没有得到发言机会。请在“你的语音服务器”下开启“由 Hermes 回答”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的語音伺服器在一次通話中自行作答，Hermes 沒有得到發言機會。請在「你的語音伺服器」下開啟「由 Hermes 回答」。"
+          }
+        }
+      }
+    },
+    "Known servers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bekannte Server"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores conocidos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serveurs connus"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server yang dikenal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server noti"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "既知のサーバー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "알려진 서버"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Znane serwery"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Servidores conhecidos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Известные серверы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilinen sunucular"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已知服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已知伺服器"
+          }
+        }
+      }
+    },
+    "Transcription model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Transkriptionsmodell"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de transcripción"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle de transcription"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model transkripsi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modello di trascrizione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文字起こしモデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "전사 모델"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model transkrypcji"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de transcrição"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модель транскрипции"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yazıya dökme modeli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "转写模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轉寫模型"
+          }
+        }
+      }
+    },
+    "Optional. A hosted server may need its model, a voice and a transcription model named. Leave them empty for a server that needs none, such as speech-to-speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Optional. Ein gehosteter Server braucht eventuell die Angabe seines Modells, einer Stimme und eines Transkriptionsmodells. Lass die Felder leer bei einem Server, der nichts davon braucht, etwa speech-to-speech."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcional. Un servidor alojado puede necesitar que se indiquen su modelo, una voz y un modelo de transcripción. Déjalos vacíos para un servidor que no necesita ninguno, como speech-to-speech."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facultatif. Un serveur hébergé peut avoir besoin qu’on lui indique son modèle, une voix et un modèle de transcription. Laisse ces champs vides pour un serveur qui n’en a pas besoin, comme speech-to-speech."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opsional. Server yang di-hosting mungkin perlu diberi nama model, suara, dan model transkripsinya. Biarkan kosong untuk server yang tidak memerlukannya, seperti speech-to-speech."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Facoltativo. Un server ospitato può richiedere che vengano indicati il modello, una voce e un modello di trascrizione. Lasciali vuoti per un server che non ne ha bisogno, come speech-to-speech."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任意。ホスト型のサーバーでは、モデル、声、文字起こしモデルの指定が必要なことがあります。speech-to-speechのように不要なサーバーでは空のままにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "선택 사항입니다. 호스팅 서버는 모델, 음성, 전사 모델을 지정해야 할 수 있습니다. speech-to-speech처럼 필요 없는 서버라면 비워 두세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcjonalne. Serwer hostowany może wymagać podania modelu, głosu i modelu transkrypcji. Zostaw pola puste dla serwera, który ich nie potrzebuje, na przykład speech-to-speech."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opcional. Um servidor hospedado pode precisar que você informe o modelo, uma voz e um modelo de transcrição. Deixe em branco para um servidor que não precisa de nenhum, como o speech-to-speech."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Необязательно. Размещённому серверу может потребоваться указать модель, голос и модель транскрипции. Оставьте поля пустыми для сервера, которому они не нужны, например speech-to-speech."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İsteğe bağlı. Barındırılan bir sunucu için modelin, bir sesin ve bir yazıya dökme modelinin belirtilmesi gerekebilir. speech-to-speech gibi bunlara ihtiyaç duymayan bir sunucu için boş bırak."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "可选。托管的服务器可能需要指定模型、声音和转写模型。像 speech-to-speech 这样不需要的服务器，留空即可。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選填。託管的伺服器可能需要指定模型、聲音和轉寫模型。像 speech-to-speech 這類不需要的伺服器，留空即可。"
+          }
+        }
+      }
+    },
+    "This server has a model of its own. Turn on Hermes answers to have Hermes answer your calls on it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Server hat ein eigenes Modell. Aktiviere „Hermes antwortet“, damit Hermes deine Anrufe darauf beantwortet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor tiene un modelo propio. Activa «Hermes responde» para que Hermes conteste tus llamadas en él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce serveur a son propre modèle. Active « Hermes répond » pour que Hermes réponde à tes appels sur ce serveur."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server ini punya model sendiri. Aktifkan “Hermes yang menjawab” agar Hermes yang menjawab panggilanmu di server ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo server ha un modello proprio. Attiva “Risponde Hermes” perché sia Hermes a rispondere alle tue chiamate su questo server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このサーバーには独自のモデルがあります。「Hermesが応答」をオンにすると、このサーバーでの通話にHermesが応答します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 서버에는 자체 모델이 있습니다. ‘Hermes가 응답’을 켜면 이 서버에서의 통화에 Hermes가 응답합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten serwer ma własny model. Włącz „Odpowiada Hermes”, aby to Hermes odpowiadał na twoje połączenia na tym serwerze."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este servidor tem um modelo próprio. Ative “Hermes responde” para que o Hermes atenda suas chamadas nele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У этого сервера есть собственная модель. Включите «Отвечает Hermes», чтобы на ваши звонки на нём отвечал Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucunun kendi modeli var. Bu sunucudaki aramalarını Hermes’in yanıtlaması için “Hermes yanıtlar” seçeneğini aç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此服务器有自己的模型。打开“由 Hermes 回答”，让 Hermes 在这台服务器上回答你的通话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此伺服器有自己的模型。打開「由 Hermes 回答」，讓 Hermes 在這台伺服器上回答你的通話。"
+          }
+        }
+      }
+    },
+    "Finish the address: put your own workspace or host in place of the example." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vervollständige die Adresse: Ersetze das Beispiel durch deinen eigenen Workspace oder Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completa la dirección: sustituye el ejemplo por tu propio espacio de trabajo o host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complète l’adresse : remplace l’exemple par ton propre espace de travail ou hôte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lengkapi alamatnya: ganti contoh dengan workspace atau host milikmu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completa l’indirizzo: sostituisci l’esempio con il tuo workspace o host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アドレスを完成させてください。例の部分を自分のワークスペースまたはホストに置き換えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주소를 완성하세요. 예시 부분을 내 워크스페이스나 호스트로 바꾸세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uzupełnij adres: wstaw własny obszar roboczy lub host w miejsce przykładu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Complete o endereço: troque o exemplo pelo seu próprio workspace ou host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Допишите адрес: замените пример своим рабочим пространством или хостом."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresi tamamla: örneğin yerine kendi çalışma alanını veya ana makineni yaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请补全地址：把示例换成你自己的工作空间或主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請補全位址：把範例換成你自己的工作區或主機。"
+          }
+        }
+      }
+    },
+    "Ringtone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klingelton"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tono de llamada"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonnerie"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada dering"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suoneria"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "着信音"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "벨소리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwonek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рингтон"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zil sesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "铃声"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鈴聲"
+          }
+        }
+      }
+    },
+    "Ringtone for %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klingelton für %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tono de llamada para %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sonnerie pour %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nada dering untuk %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suoneria per %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@の着信音"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 벨소리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwonek dla: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque para %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рингтон для %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ için zil sesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的铃声"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的鈴聲"
+          }
+        }
+      }
+    },
+    "Same as other bots" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie die anderen Bots"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual que los demás bots"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comme les autres bots"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sama seperti bot lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come gli altri bot"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかのボットと同じ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 봇과 동일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Taki sam jak u innych botów"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual aos outros bots"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как у других ботов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diğer botlarla aynı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与其他机器人相同"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與其他機器人相同"
+          }
+        }
+      }
+    },
+    "iOS default" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS-Standard"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predeterminado de iOS"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Par défaut d’iOS"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bawaan iOS"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Predefinita di iOS"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOSのデフォルト"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 기본값"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Domyślny iOS"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Padrão do iOS"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Стандартный iOS"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS varsayılanı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 默认"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS 預設"
+          }
+        }
+      }
+    },
+    "Chime" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Glockenspiel"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Campanilla"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Carillon"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lonceng"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Campanella"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャイム"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "차임"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dzwoneczek"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sininho"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Колокольчик"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Çan"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "钟声"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "鐘聲"
+          }
+        }
+      }
+    },
+    "Lantern" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laterne"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Farol"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lanterne"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lentera"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lanterna"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ランタン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "랜턴"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Latarnia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lanterna"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фонарь"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fener"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "灯笼"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "燈籠"
+          }
+        }
+      }
+    },
+    "Ripple" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Welle"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onda"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ondulation"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riak"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onda"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "さざ波"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "물결"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fala"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onda"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рябь"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dalga"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "涟漪"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "漣漪"
+          }
+        }
+      }
+    },
+    "Signal" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signal"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Señal"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Signal"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sinyal"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Segnale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "シグナル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시그널"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sygnał"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sinal"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сигнал"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sinyal"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信号"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "信號"
+          }
+        }
+      }
+    },
+    "Beacon" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leuchtfeuer"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Baliza"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Balise"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suar"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faro"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ビーコン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "비컨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Boja"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Farol"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маяк"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İşaret"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "灯塔"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "燈塔"
+          }
+        }
+      }
+    },
+    "Orbit" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orbit"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Órbita"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orbite"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orbit"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orbita"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オービット"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오비트"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orbita"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Órbita"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Орбита"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yörünge"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轨道"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "軌道"
+          }
+        }
+      }
+    },
+    "Each bot can ring with its own tone. iOS shares only its default ringtone with apps, so the others are Conduit's own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Bot kann mit einem eigenen Ton klingeln. iOS gibt Apps nur seinen Standardklingelton frei, daher stammen die anderen von Conduit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada bot puede sonar con su propio tono. iOS solo comparte con las apps su tono predeterminado, así que los demás son de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque bot peut sonner avec son propre son. iOS ne partage avec les apps que sa sonnerie par défaut ; les autres sont donc celles de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap bot dapat berdering dengan nadanya sendiri. iOS hanya membagikan nada dering bawaannya ke aplikasi, jadi nada lainnya milik Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni bot può squillare con un suono tutto suo. iOS condivide con le app solo la suoneria predefinita, quindi le altre sono di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットごとに別の着信音を設定できます。iOSがアプリに提供するのはデフォルトの着信音だけなので、ほかの音はConduit独自のものです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇마다 다른 벨소리를 쓸 수 있습니다. iOS는 앱에 기본 벨소리만 제공하므로 나머지는 Conduit 자체 벨소리입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każdy bot może dzwonić własnym dźwiękiem. iOS udostępnia aplikacjom tylko domyślny dzwonek, więc pozostałe pochodzą z Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada bot pode tocar com seu próprio som. O iOS compartilha com os apps apenas o toque padrão, então os outros são do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "У каждого бота может быть свой рингтон. iOS даёт приложениям только стандартный рингтон, поэтому остальные — собственные рингтоны Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her bot kendi sesiyle çalabilir. iOS uygulamalarla yalnızca varsayılan zil sesini paylaşır; diğerleri Conduit'in kendi sesleridir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每个机器人都可以使用自己的铃声。iOS 只向 App 提供默认铃声，其他铃声由 Conduit 自带。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每個機器人都可以使用自己的鈴聲。iOS 只向 App 提供預設鈴聲，其他鈴聲由 Conduit 內建。"
           }
         }
       }

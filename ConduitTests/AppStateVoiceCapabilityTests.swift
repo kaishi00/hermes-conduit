@@ -428,15 +428,44 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
     }
 
     func testVoiceInASavedCallsRowResumesThatCall() {
-        XCTAssertEqual(AppState.savedCallToResume(source: .composer, openCallID: "call-1", canResume: true), "call-1",
+        func resumes(_ source: PendingVoiceIntent.Source, fresh: Bool = false, openCallID: String? = "call-1", canResume: Bool = true) -> String? {
+            let intent = PendingVoiceIntent(profile: nil, startsFreshConversation: fresh, source: source)
+            return AppState.savedCallToResume(resumesOpenCall: intent.resumesOpenChatCall, openCallID: openCallID, canResume: canResume)
+        }
+        XCTAssertEqual(resumes(.composer), "call-1",
                        "the chat's voice button picks the call up rather than starting another row")
-        XCTAssertNil(AppState.savedCallToResume(source: .composer, openCallID: nil, canResume: true),
+        XCTAssertNil(resumes(.composer, openCallID: nil),
                      "a chat that isn't a saved call gets a call attached to it")
-        XCTAssertNil(AppState.savedCallToResume(source: .composer, openCallID: "call-1", canResume: false),
+        XCTAssertNil(resumes(.composer, canResume: false),
                      "with saving off (or no live mode) there is no row to add to")
-        XCTAssertNil(AppState.savedCallToResume(source: .siri, openCallID: "call-1", canResume: true),
-                     "only the chat's own buttons resume it")
-        XCTAssertNil(AppState.savedCallToResume(source: .newCall, openCallID: "call-1", canResume: true))
+        XCTAssertNil(resumes(.siri), "only the chat's own buttons resume it")
+        XCTAssertNil(resumes(.newCall, fresh: true))
+        XCTAssertEqual(resumes(.wakePhrase, fresh: false), "call-1",
+                       "a wake phrase set to continue picks the open call up (issue 2416)")
+        XCTAssertNil(resumes(.wakePhrase, fresh: true), "a wake phrase that starts fresh makes its own call")
+    }
+
+    func testAWakePhraseSetToContinueStartsInTheOpenChat() {
+        func inChat(_ source: PendingVoiceIntent.Source, fresh: Bool) -> Bool {
+            PendingVoiceIntent(profile: nil, startsFreshConversation: fresh, source: source).liveCallStartsInOpenChat
+        }
+        XCTAssertTrue(inChat(.wakePhrase, fresh: false), "Start a new conversation off: the call joins the open chat (issue 2416)")
+        XCTAssertFalse(inChat(.wakePhrase, fresh: true), "the default still stands alone")
+        XCTAssertTrue(inChat(.composer, fresh: false))
+        XCTAssertTrue(inChat(.screenQuestion, fresh: false))
+        XCTAssertTrue(inChat(.hermesCall, fresh: false))
+        XCTAssertFalse(inChat(.siri, fresh: false), "Siri keeps standing alone; only the wake phrase has the setting")
+        XCTAssertFalse(inChat(.newCall, fresh: true))
+
+        // What openVoiceConversation asks: a phrase bound to another profile
+        // switches to it and stands alone, never joining this profile's chat.
+        let wake = PendingVoiceIntent(profile: "fam", startsFreshConversation: false, source: .wakePhrase)
+        XCTAssertTrue(wake.liveCallStartsInOpenChat(targetProfile: "fam", activeProfile: "fam"))
+        XCTAssertTrue(wake.resumesOpenChatCall(targetProfile: "fam", activeProfile: "fam"))
+        XCTAssertFalse(wake.liveCallStartsInOpenChat(targetProfile: "fam", activeProfile: "work"),
+                       "another profile's phrase doesn't join the open chat")
+        XCTAssertFalse(wake.resumesOpenChatCall(targetProfile: "fam", activeProfile: "work"),
+                       "nor resume the open chat's saved call")
     }
 
     func testTheQuickHintCountsEachAttachedCallOnce() {

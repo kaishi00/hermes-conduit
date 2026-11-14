@@ -212,11 +212,62 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(status.url)
         XCTAssertTrue(status.hasKey)
         XCTAssertEqual(status.reason, "voice.example.com is a public address, so the speech server needs wss://.")
+        // A plugin before "Hermes answers" sends no drive_turns: no switch.
+        XCTAssertNil(status.driveTurns)
+        XCTAssertEqual(SpeechServerStatus(response: ["configured": true, "drive_turns": false]).driveTurns, false)
+        XCTAssertEqual(SpeechServerStatus(response: ["configured": true, "drive_turns": true]).driveTurns, true)
 
         let connected = SpeechServerTestResult(response: ["connected": true, "latency_ms": 42, "event": "session.created"])
         XCTAssertEqual(connected.message, "Connected. Your speech server answered in 42 ms.")
         let refused = SpeechServerTestResult(response: ["connected": false, "reason": "The speech server refused the key (HTTP 401)"])
         XCTAssertEqual(refused.message, "The speech server refused the key (HTTP 401)")
+    }
+
+    /// Issue 2438, stage 2: the server's names, the known servers and what
+    /// the test says the server is, as plugin 0.174.0 sends them.
+    func testSpeechServerNamesPresetsAndAbilitiesParse() {
+        // A plugin before the names sends none: no fields.
+        XCTAssertFalse(SpeechServerStatus(response: ["configured": true, "drive_turns": false]).namesItsModel)
+        let unset = SpeechServerStatus(response: [
+            "configured": true, "model": NSNull(), "voice": NSNull(), "transcription_model": NSNull(),
+        ])
+        XCTAssertTrue(unset.namesItsModel)
+        XCTAssertNil(unset.model)
+        let named = SpeechServerStatus(response: [
+            "configured": true, "model": "gpt-realtime", "voice": "marin", "transcription_model": "gpt-4o-mini-transcribe",
+        ])
+        XCTAssertEqual(named.model, "gpt-realtime")
+        XCTAssertEqual(named.voice, "marin")
+        XCTAssertEqual(named.transcriptionModel, "gpt-4o-mini-transcribe")
+
+        let presets = SpeechServerPreset.list(response: ["ok": true, "presets": [
+            ["id": "openai-realtime", "name": "OpenAI Realtime", "url": "wss://api.openai.com/v1/realtime",
+             "model": "gpt-realtime", "voice": "marin", "transcription_model": "gpt-4o-mini-transcribe",
+             "needs_key": true, "drive_turns": true] as [String: Any],
+            ["id": "qwen-audio-realtime", "name": "Qwen Audio Realtime",
+             "url_hint": "wss://WORKSPACE.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime",
+             "model": "qwen-audio-3.0-realtime-plus", "needs_key": true, "drive_turns": true] as [String: Any],
+            ["name": "No id"] as [String: Any],
+        ]])
+        XCTAssertEqual(presets.map(\.id), ["openai-realtime", "qwen-audio-realtime"])
+        XCTAssertEqual(presets[0].url, "wss://api.openai.com/v1/realtime")
+        XCTAssertTrue(presets[0].drivesTurns)
+        XCTAssertNil(presets[1].url)
+        XCTAssertEqual(presets[1].urlHint, "wss://WORKSPACE.ap-southeast-1.maas.aliyuncs.com/api-ws/v1/realtime")
+        XCTAssertNil(presets[1].voice)
+        XCTAssertEqual(SpeechServerPreset.list(response: ["ok": true]), [])
+
+        let hosted = SpeechServerTestResult(response: [
+            "connected": true, "latency_ms": 42,
+            "abilities": ["model": "gpt-realtime", "voice": "marin", "answers_alone": true] as [String: Any],
+        ])
+        XCTAssertEqual(hosted.answersAlone, true)
+        XCTAssertEqual(hosted.serverModel, "gpt-realtime")
+        let quiet = SpeechServerTestResult(response: [
+            "connected": true, "abilities": ["model": NSNull(), "voice": NSNull(), "answers_alone": NSNull()] as [String: Any],
+        ])
+        XCTAssertNil(quiet.answersAlone)
+        XCTAssertNil(SpeechServerTestResult(response: ["connected": true]).answersAlone)
     }
 
     func testSpeechServerRequestUsesTheRelayPathWithTicketAndProfile() throws {
@@ -387,6 +438,20 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(unavailable.serverFlags)
         XCTAssertEqual(unavailable.reason, "Set a speech server first.")
         XCTAssertTrue(SpeechServerVoiceStatus.pluginMissing.pluginMissing)
+        // Hermes answers on the server, or the server answered by itself
+        // (issue 2438); neither from a plugin that doesn't say.
+        XCTAssertFalse(status.drivesTurns)
+        XCTAssertFalse(status.answersAlone)
+        let driven = SpeechServerVoiceStatus(response: [
+            "available": true, "speech_server": ["url": "wss://voice.example.com/v1/realtime", "drive_turns": true],
+        ], dashboardBaseURL: nil)
+        XCTAssertTrue(driven.drivesTurns)
+        XCTAssertEqual(driven.speechServerURL, "wss://voice.example.com/v1/realtime")
+        let alone = SpeechServerVoiceStatus(response: [
+            "available": true, "answers_alone": true, "speech_server": ["drive_turns": false],
+        ], dashboardBaseURL: nil)
+        XCTAssertTrue(alone.answersAlone)
+        XCTAssertFalse(alone.drivesTurns)
     }
 
     func testSpeechServerSpeechRequestUsesSpeakMode() throws {

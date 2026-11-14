@@ -27,6 +27,61 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(requester.maximumInFlight, 1, "a GET→PUT ran while another was in flight")
     }
 
+    /// Issue 2438: the Hermes answers switch is a Boolean in the config,
+    /// removed when off, and waits its turn behind another save.
+    func testTheHermesAnswersSwitchWritesABooleanAndKeepsAnOverlappingSave() async {
+        let requester = SlowConfigRequester(config: ["voice": ["speech_server": ["url": "ws://10.0.0.2:8765/v1/realtime"]]])
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        async let key = service.save(value: "sk-secret", for: SpeechServerSettingsView.apiKeyKey)
+        async let drives = service.saveSpeechServerDrivesTurns(true)
+        let saved = await [key, drives]
+
+        XCTAssertEqual(saved, [true, true])
+        var server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+        XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
+        XCTAssertEqual(server?["url"] as? String, "ws://10.0.0.2:8765/v1/realtime")
+        XCTAssertEqual(requester.maximumInFlight, 1, "a GET→PUT ran while another was in flight")
+
+        let off = await service.saveSpeechServerDrivesTurns(false)
+        XCTAssertTrue(off)
+        server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertNil(server?["drive_turns"])
+        XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
+    }
+
+    /// Issue 2438, stage 2: a picked server's names and its Hermes answers
+    /// setting land in one write, an emptied name is removed, and what the
+    /// write doesn't name stays.
+    func testASpeechServersNamesAndSwitchSaveInOneWrite() async {
+        let requester = SlowConfigRequester(config: ["voice": ["speech_server": [
+            "url": "wss://api.openai.com/v1/realtime", "api_key": "sk-secret", "voice": "alloy",
+        ]]])
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        let saved = await service.saveSpeechServer(
+            names: ["model": " gpt-realtime ", "voice": "", "transcription_model": "gpt-4o-mini-transcribe"],
+            drivesTurns: true)
+
+        XCTAssertTrue(saved)
+        XCTAssertEqual(requester.maximumInFlight, 1)
+        var server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["model"] as? String, "gpt-realtime")
+        XCTAssertNil(server?["voice"])
+        XCTAssertEqual(server?["transcription_model"] as? String, "gpt-4o-mini-transcribe")
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+        XCTAssertEqual(server?["api_key"] as? String, "sk-secret")
+        XCTAssertEqual(server?["url"] as? String, "wss://api.openai.com/v1/realtime")
+
+        // Names alone leave the switch as it is.
+        let renamed = await service.saveSpeechServer(names: ["voice": "marin"], drivesTurns: nil)
+        XCTAssertTrue(renamed)
+        server = (requester.config["voice"] as? [String: Any])?["speech_server"] as? [String: Any]
+        XCTAssertEqual(server?["voice"] as? String, "marin")
+        XCTAssertEqual(server?["drive_turns"] as? Bool, true)
+    }
+
     func testAFailedSaveDoesNotHoldUpTheNextOne() async {
         let requester = SlowConfigRequester(config: [:])
         requester.failsPUTsSettingURL = true

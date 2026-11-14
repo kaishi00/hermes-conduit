@@ -483,6 +483,53 @@ final class HermesVoiceConfigurationService: ObservableObject {
         }
     }
 
+    /// Has the plugin run every turn on the speech server
+    /// (`voice.speech_server.drive_turns`), written as a Boolean; off
+    /// removes the setting, which is its default.
+    func saveSpeechServerDrivesTurns(_ enabled: Bool) async -> Bool {
+        await saveSpeechServer(names: [:], drivesTurns: enabled)
+    }
+
+    /// The speech server's names (`model`, `voice`, `transcription_model`
+    /// under voice.speech_server; an empty one is removed) and, when given,
+    /// the Hermes answers switch, in one GET→PUT: a picked preset lands
+    /// whole or not at all.
+    func saveSpeechServer(names: [String: String], drivesTurns: Bool?) async -> Bool {
+        await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
+            let key = "voice.speech_server"
+            guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
+                errorMessage = AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
+                return false
+            }
+            var voice = config["voice"] as? [String: Any] ?? [:]
+            var server = voice["speech_server"] as? [String: Any] ?? [:]
+            for (name, value) in names {
+                let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+                server[name] = trimmed.isEmpty ? nil : trimmed
+            }
+            if let drivesTurns {
+                server["drive_turns"] = drivesTurns ? true : nil
+            }
+            voice["speech_server"] = server
+            config["voice"] = voice
+            do {
+                try await putConfig(config)
+                return true
+            } catch {
+                errorMessage = AppLocalization.string("Could not save \(key): \(UserFacingError.message(for: error))")
+                return false
+            }
+        }
+    }
+
+    /// The speech servers the plugin knows by name; none from a plugin
+    /// before the list (0.174.0) or when the host doesn't answer.
+    func speechServerPresets() async -> [SpeechServerPreset] {
+        guard let response = try? await requester.requestJSON(
+            path: SpeechServerTranscription.presetsPath, method: "GET", body: nil) else { return [] }
+        return SpeechServerPreset.list(response: response)
+    }
+
     /// The user's own speech server as the notifier reads it
     /// (`voice.speech_server`). A plugin without the route predates it.
     func speechServerStatus() async -> SpeechServerStatus {

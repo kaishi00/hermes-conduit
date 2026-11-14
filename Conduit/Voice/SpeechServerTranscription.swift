@@ -23,6 +23,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     static let socketPath = "/api/plugins/conduit_push/speech-server/socket"
     static let statusPath = "/api/plugins/conduit_push/speech-server/status"
     static let testPath = "/api/plugins/conduit_push/speech-server/test"
+    static let presetsPath = "/api/plugins/conduit_push/speech-server/presets"
     /// What the speech server is sent: the OpenAI Realtime input rate.
     nonisolated static let inputSampleRate: Double = 24_000
     /// Trailing silence at the end of speech, longer than a typical turn
@@ -434,6 +435,19 @@ struct SpeechServerStatus: Equatable {
     /// The WebSocket URL the host dials, normalized.
     var url: String?
     var hasKey: Bool
+    /// Whether Hermes answers on a server with a model of its own
+    /// (voice.speech_server.drive_turns): the plugin runs every turn and
+    /// the server only listens and reads aloud. Nil from a plugin before
+    /// the setting (0.173.0), which has no switch to show.
+    var driveTurns: Bool?
+    /// The model the address asks for, the voice each session is set to and
+    /// the model the server transcribes with (voice.speech_server.model,
+    /// .voice, .transcription_model), as set. `namesItsModel` is false from
+    /// a plugin before these settings (0.174.0), which has no fields to show.
+    var model: String?
+    var voice: String?
+    var transcriptionModel: String?
+    var namesItsModel = false
     var reason: String?
     var pluginMissing: Bool
     /// Hermes didn't answer; `reason` says why. Not what's set: what was
@@ -477,6 +491,11 @@ struct SpeechServerStatus: Equatable {
         available = response["available"] as? Bool ?? false
         url = (response["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         hasKey = response["has_key"] as? Bool ?? false
+        driveTurns = response["drive_turns"] as? Bool
+        namesItsModel = response["model"] != nil
+        model = (response["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        voice = (response["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        transcriptionModel = (response["transcription_model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         reason = (response["reason"] as? String ?? response["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         pluginMissing = false
     }
@@ -487,6 +506,11 @@ struct SpeechServerTestResult: Equatable {
     var connected: Bool
     var latencyMilliseconds: Int?
     var reason: String?
+    /// What the server's first event says about it (plugin 0.174.0): the
+    /// model it names, and whether it answers by itself, which is the kind
+    /// of server the Hermes answers switch is for. Nil where it doesn't say.
+    var serverModel: String?
+    var answersAlone: Bool?
 
     init(connected: Bool, latencyMilliseconds: Int?, reason: String?) {
         self.connected = connected
@@ -498,6 +522,9 @@ struct SpeechServerTestResult: Equatable {
         connected = response["connected"] as? Bool ?? false
         latencyMilliseconds = (response["latency_ms"] as? NSNumber)?.intValue
         reason = (response["reason"] as? String ?? response["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let abilities = response["abilities"] as? [String: Any]
+        serverModel = (abilities?["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        answersAlone = abilities?["answers_alone"] as? Bool
     }
 
     var message: String {

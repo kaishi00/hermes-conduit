@@ -38,7 +38,13 @@ struct SpeechServerVoiceSettingsView: View {
             }
 
             if let status {
-                if let address = status.modelAddress, let key = status.apiKey {
+                if status.drivesTurns, status.available {
+                    Label(AppLocalization.string("Hermes answers on this server, so there's nothing to set up on it. The Conduit plugin runs each turn and has the server read the reply aloud.", table: .voice), systemImage: "checkmark.circle.fill")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.green)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("voice.speechServerVoice.drivesTurns")
+                } else if let address = status.modelAddress, let key = status.apiKey {
                     Text(AppLocalization.string("On the speech server, set its language model to this address and key, with the model name \(status.modelName). It then reads Hermes' replies aloud instead of writing its own.", table: .voice))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
@@ -54,7 +60,15 @@ struct SpeechServerVoiceSettingsView: View {
                     Text(AppLocalization.string("Run it with two pipelines so it can listen and speak at once.", table: .voice))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
-                    lastAskedRow(status.lastRequestAt)
+                    if status.answersAlone {
+                        Label(AppLocalization.string("Your speech server answered a call by itself, so Hermes never got a turn. Turn on Hermes answers under Your speech server.", table: .voice), systemImage: "exclamationmark.triangle.fill")
+                            .scaledFont(.caption)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("voice.speechServerVoice.answersAlone")
+                    } else {
+                        lastAskedRow(status.lastRequestAt)
+                    }
                     HStack {
                         Button(role: .destructive) { Task { await rotate() } } label: {
                             if isRotating {
@@ -69,7 +83,7 @@ struct SpeechServerVoiceSettingsView: View {
                     .buttonStyle(.borderless)
                     .scaledFont(.footnote)
                 }
-                if !status.available || status.modelAddress == nil {
+                if !status.available || (status.modelAddress == nil && !status.drivesTurns) {
                     Label(status.reason ?? AppLocalization.string("Your Hermes host didn't send a key.", table: .voice), systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
                         .foregroundStyle(.orange)
@@ -94,6 +108,10 @@ struct SpeechServerVoiceSettingsView: View {
             }
         }
         .task(id: service.profile) { await load() }
+        // The switch above (Hermes answers) changes what this section says.
+        .onChange(of: service.speechServer?.driveTurns) { _, _ in
+            Task { await read() }
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.
         .onChange(of: service.isLoading) { _, loading in
