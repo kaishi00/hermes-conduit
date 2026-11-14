@@ -468,6 +468,37 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(box.loads, 5, "The list moved: 5 s again")
     }
 
+    /// A change only spaced out by the quiet-read wait keeps the slow
+    /// backstop: the list's 30 s read doesn't read it halfway through a
+    /// 40 s wait.
+    func testAChangeSpacedOutByTheQuietWaitKeepsTheSlowBackstop() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("a", profile: profile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+        // Three change reads that list the same rows: the next waits 40 s.
+        for wait in [10.0, 10, 20] {
+            box.now += wait
+            appState.handleStreamEvent(.sessionsChanged)
+            await appState.leaveCatalogRefreshTask?.value
+        }
+        XCTAssertEqual(box.loads, 4)
+        XCTAssertEqual(appState.catalogChangeSignal.interval, 40)
+
+        box.now += 1
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        box.now += 34
+        await poll(appState)
+        XCTAssertEqual(box.loads, 4, "Not read by the 30 s backstop at 35 s")
+        box.now += 6
+        await poll(appState)
+        XCTAssertEqual(box.loads, 5, "Read when its 40 s wait ends")
+    }
+
     // MARK: - The Chats list reading the catalog
 
     private func row(_ id: String, profile: String, minutesAgo: Double = 60) -> SessionSummary {

@@ -307,7 +307,11 @@ extension AppState {
                 let listedSessions = allSessions.filter { $0.source != .cron }
                 let listedCron = allSessions.filter { $0.source == .cron }
                 // A project's page beside the chat follows this list too.
-                if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
+                if listedSessions != sessions || listedCron != cronSessions {
+                    chatListCatalogGeneration &+= 1
+                    // A changed list brings the change signal's wait back to 5 s.
+                    catalogChangeSignal.noteListChanged()
+                }
                 sessions = listedSessions
                 cronSessions = listedCron
                 settleNewChatAwaitingListing(loaded: loadedSessions)
