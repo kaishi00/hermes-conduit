@@ -91,7 +91,8 @@ struct GroupRoomInfoSheet: View {
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
                 if let copy = appState.activeRoomSurface?.copy {
-                    Text(verbatim: RoomLeaveText.leaveMessage(copy))
+                    Text(verbatim: appState.activeRoomOwnHermes == true
+                         ? RoomLeaveText.leaveOwnMessage : RoomLeaveText.leaveMessage(copy))
                 }
             }
             .alert(
@@ -146,7 +147,8 @@ struct GroupRoomInfoSheet: View {
                             )
                         } label: {
                             HStack {
-                                GroupRoomMemberRow(member: member, route: nil)
+                                GroupRoomMemberRow(member: member, route: nil,
+                                                   ownHermes: appState.activeRoomOwnHermes == true)
                                 Spacer(minLength: 8)
                                 if let tools = agentTools[profile].map({ RoomInviteChoicesView.toolsLabel($0.tools) }),
                                    !tools.isEmpty {
@@ -163,7 +165,8 @@ struct GroupRoomInfoSheet: View {
                     } else {
                         GroupRoomMemberRow(
                             member: member,
-                            route: member.out == nil ? appState.activeRoomDriverStatus?.routeStatus(for: member) : nil
+                            route: member.out == nil ? appState.activeRoomDriverStatus?.routeStatus(for: member) : nil,
+                            ownHermes: appState.activeRoomOwnHermes == true
                         )
                         Spacer(minLength: 8)
                     }
@@ -323,6 +326,9 @@ extension GroupRoomInfoSheet {
 
     private func takeOutMessage(_ member: GroupMember) -> String {
         let name = GroupRoomTurns.displayName(of: member)
+        if appState.activeRoomOwnHermes == true {
+            return RoomLeaveText.takeOutOwnMessage(name)
+        }
         if let copy = appState.activeRoomSurface?.copy {
             return RoomLeaveText.takeOutMessage(name, in: copy)
         }
@@ -388,6 +394,8 @@ private struct TakeOutActions: ViewModifier {
 private struct GroupRoomMemberRow: View {
     let member: GroupMember
     let route: GroupPeerRoute.Status?
+    /// A room of only your own Hermes: a far bot's line says it's yours.
+    var ownHermes = false
 
     private var trouble: (text: String, symbol: String)? {
         switch route {
@@ -407,7 +415,7 @@ private struct GroupRoomMemberRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(name)
                     .lineLimit(1)
-                Text(GroupRoomTurns.ownerLine(of: member))
+                Text(GroupRoomTurns.ownerLine(of: member, ownHermes: ownHermes))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if let trouble {

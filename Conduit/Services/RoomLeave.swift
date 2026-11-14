@@ -48,6 +48,17 @@ enum RoomLeaveText {
         AppLocalization.string("Take \(name) out of this room?", table: .rooms)
     }
 
+    /// A bot of your other Hermes, in a room of only your own Hermes (either
+    /// side's Take Out, and Leave on the far side).
+    static func takeOutOwnMessage(_ name: String) -> String {
+        AppLocalization.string("\(name) stops taking part, and your other Hermes is told.", table: .rooms)
+    }
+
+    static var leaveOwnMessage: String {
+        AppLocalization.string(
+            "Your bots stop taking part, and your other Hermes is told. Your copy of the room and their chats for it stay until you delete it.", table: .rooms)
+    }
+
     /// Another person's agent, in a room you host.
     static func takeOutMessage(_ name: String, owner: String?) -> String {
         if let owner = owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {

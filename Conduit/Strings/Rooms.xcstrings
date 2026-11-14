@@ -1,6 +1,88 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ stops taking part, and your other Hermes is told." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ nimmt nicht mehr teil, und dein anderer Hermes wird informiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deja de participar y se avisa a tu otro Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ cesse de participer, et votre autre Hermes en est informé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ berhenti ikut serta, dan Hermes Anda yang lain diberi tahu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ smette di partecipare e l'altro tuo Hermes viene avvisato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は参加をやめ、もう一方の Hermes に通知されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 참여를 멈추고, 다른 Hermes에 알림이 갑니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ przestaje uczestniczyć, a Twój drugi Hermes zostaje o tym powiadomiony."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ deixa de participar e seu outro Hermes é avisado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ перестаёт участвовать, и другой ваш Hermes получает уведомление."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ katılmayı bırakır ve diğer Hermes'inize bildirilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再参与，你的另一个 Hermes 会收到通知。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 不再參與，你的另一個 Hermes 會收到通知。"
+          }
+        }
+      }
+    },
     "Can't check this post." : {
       "localizations" : {
         "de" : {
@@ -407,6 +489,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "在 %@ 上 · 請先在那裡為它開啟房間"
+          }
+        }
+      }
+    },
+    "The room ends, and this Hermes deletes its bots' sessions for it. Your other Hermes keeps its bots' sessions. This cannot be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Raum endet, und dieser Hermes löscht die Sitzungen seiner Bots dafür. Dein anderer Hermes behält die Sitzungen seiner Bots. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sala termina y este Hermes elimina las sesiones de sus bots para ella. Tu otro Hermes conserva las sesiones de sus bots. Esto no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le salon prend fin et ce Hermes supprime les sessions de ses bots pour ce salon. Votre autre Hermes garde celles de ses bots. Cette action est irréversible."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruang berakhir, dan Hermes ini menghapus sesi bot-botnya untuk ruang ini. Hermes Anda yang lain menyimpan sesi bot-botnya. Ini tidak dapat dibatalkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La stanza termina e questo Hermes elimina le sessioni dei suoi bot per la stanza. L'altro tuo Hermes conserva quelle dei suoi bot. Non è possibile annullare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ルームは終了し、この Hermes はボットのこのルーム用セッションを削除します。もう一方の Hermes は自分のボットのセッションを保持します。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "룸이 종료되고 이 Hermes는 봇의 이 룸 세션을 삭제합니다. 다른 Hermes는 자기 봇의 세션을 보관합니다. 이 작업은 되돌릴 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokój się kończy, a ten Hermes usuwa sesje swoich botów z tego pokoju. Twój drugi Hermes zachowuje sesje swoich botów. Tego nie można cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sala termina e este Hermes apaga as sessões dos seus bots nela. Seu outro Hermes mantém as sessões dos bots dele. Isso não pode ser desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Комната закрывается, и этот Hermes удаляет сеансы своих ботов для неё. Другой ваш Hermes сохраняет сеансы своих ботов. Это нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oda sona erer ve bu Hermes, botlarının bu odadaki oturumlarını siler. Diğer Hermes'iniz kendi botlarının oturumlarını tutar. Bu işlem geri alınamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房间结束，此 Hermes 会删除其机器人在此房间的会话。你的另一个 Hermes 保留其机器人的会话。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房間結束，此 Hermes 會刪除其機器人在此房間的工作階段。你的另一個 Hermes 保留其機器人的工作階段。此操作無法復原。"
+          }
+        }
+      }
+    },
+    "The room ends. This Hermes is set to keep its bots' sessions for it, and your other Hermes keeps its bots' sessions. This cannot be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Raum endet. Dieser Hermes ist so eingestellt, dass er die Sitzungen seiner Bots dafür behält, und dein anderer Hermes behält die Sitzungen seiner Bots. Das kann nicht rückgängig gemacht werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sala termina. Este Hermes está configurado para conservar las sesiones de sus bots para ella, y tu otro Hermes conserva las sesiones de sus bots. Esto no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le salon prend fin. Ce Hermes est réglé pour garder les sessions de ses bots pour ce salon, et votre autre Hermes garde celles de ses bots. Cette action est irréversible."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruang berakhir. Hermes ini diatur untuk menyimpan sesi bot-botnya untuk ruang ini, dan Hermes Anda yang lain menyimpan sesi bot-botnya. Ini tidak dapat dibatalkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La stanza termina. Questo Hermes è impostato per conservare le sessioni dei suoi bot per la stanza, e l'altro tuo Hermes conserva quelle dei suoi bot. Non è possibile annullare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ルームは終了します。この Hermes はボットのこのルーム用セッションを保持する設定で、もう一方の Hermes も自分のボットのセッションを保持します。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "룸이 종료됩니다. 이 Hermes는 봇의 이 룸 세션을 보관하도록 설정되어 있고, 다른 Hermes도 자기 봇의 세션을 보관합니다. 이 작업은 되돌릴 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokój się kończy. Ten Hermes jest ustawiony tak, by zachować sesje swoich botów z tego pokoju, a Twój drugi Hermes zachowuje sesje swoich botów. Tego nie można cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sala termina. Este Hermes está configurado para manter as sessões dos seus bots nela, e seu outro Hermes mantém as sessões dos bots dele. Isso não pode ser desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Комната закрывается. Этот Hermes настроен хранить сеансы своих ботов для неё, а другой ваш Hermes сохраняет сеансы своих ботов. Это нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oda sona erer. Bu Hermes, botlarının bu odadaki oturumlarını tutacak şekilde ayarlı ve diğer Hermes'iniz de kendi botlarının oturumlarını tutar. Bu işlem geri alınamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房间结束。此 Hermes 设置为保留其机器人在此房间的会话，你的另一个 Hermes 也保留其机器人的会话。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "房間結束。此 Hermes 設定為保留其機器人在此房間的工作階段，你的另一個 Hermes 也保留其機器人的工作階段。此操作無法復原。"
           }
         }
       }
@@ -7065,6 +7311,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已結束，沒有人還有話要說"
+          }
+        }
+      }
+    },
+    "Your agent, on %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Agent, auf %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu agente, en %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre agent, sur %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agen Anda, di %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo agente, su %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのエージェント（%@）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 에이전트, %@에 있음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój agent, na %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu agente, em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш агент, на %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajanınız, %@ üzerinde"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的智能体，在 %@ 上"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的代理，在 %@ 上"
+          }
+        }
+      }
+    },
+    "Your agent, on your other Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Agent, auf deinem anderen Hermes"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu agente, en tu otro Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre agent, sur votre autre Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agen Anda, di Hermes Anda yang lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo agente, sull'altro tuo Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのエージェント（もう一方の Hermes）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 에이전트, 내 다른 Hermes에 있음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój agent, na Twoim drugim Hermesie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu agente, no seu outro Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш агент, на другом вашем Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajanınız, diğer Hermes'inizde"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的智能体，在你的另一个 Hermes 上"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的代理，在你的另一個 Hermes 上"
+          }
+        }
+      }
+    },
+    "Your bots stop taking part, and your other Hermes is told. Your copy of the room and their chats for it stay until you delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Bots nehmen nicht mehr teil, und dein anderer Hermes wird informiert. Deine Kopie des Raums und ihre Chats dafür bleiben, bis du sie löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus bots dejan de participar y se avisa a tu otro Hermes. Tu copia de la sala y sus chats en ella se quedan hasta que la elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos bots cessent de participer, et votre autre Hermes en est informé. Votre copie du salon et leurs discussions restent jusqu'à ce que vous la supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot Anda berhenti ikut serta, dan Hermes Anda yang lain diberi tahu. Salinan ruang dan obrolan mereka untuknya tetap ada sampai Anda menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I tuoi bot smettono di partecipare e l'altro tuo Hermes viene avvisato. La tua copia della stanza e le loro chat restano finché non la elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのボットは参加をやめ、もう一方の Hermes に通知されます。ルームのコピーとボットのチャットは、削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 봇이 참여를 멈추고, 다른 Hermes에 알림이 갑니다. 룸 사본과 봇의 채팅은 삭제할 때까지 남아 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje boty przestają uczestniczyć, a Twój drugi Hermes zostaje o tym powiadomiony. Twoja kopia pokoju i ich czaty zostają, dopóki jej nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seus bots deixam de participar e seu outro Hermes é avisado. Sua cópia da sala e os chats deles nela ficam até você apagá-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши боты перестают участвовать, и другой ваш Hermes получает уведомление. Ваша копия комнаты и их чаты в ней остаются, пока вы её не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botlarınız katılmayı bırakır ve diğer Hermes'inize bildirilir. Odanın kopyası ve onların bu odadaki sohbetleri siz silene kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的机器人不再参与，你的另一个 Hermes 会收到通知。你的房间副本及它们在其中的聊天会保留，直到你删除。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的機器人不再參與，你的另一個 Hermes 會收到通知。你的房間副本及它們在其中的聊天會保留，直到你刪除。"
           }
         }
       }

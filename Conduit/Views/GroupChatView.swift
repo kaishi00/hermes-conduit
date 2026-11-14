@@ -130,7 +130,8 @@ struct GroupChatView: View {
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
             Text(GroupRoomDisband.warning(members: surface?.room.members ?? [],
-                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
+                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true,
+                                          ownHermes: appState.activeRoomOwnHermes == true))
         }
         .modifier(RoomCopyDelete(copy: copyPendingDelete, confirming: Binding(
             get: { copyPendingDelete != nil },
@@ -1137,7 +1138,8 @@ struct GroupMemberBubble: View {
 
     /// Whose agent it is, when it's another person's: their name, beside
     /// the agent's (Eric, 2026-11-07: "Bot · Owner's" read oddly).
-    private var owner: String? { GroupRoomTurns.shownOwner(of: member) }
+    /// None in a room of only your own Hermes: every bot there is yours.
+    private var owner: String? { GroupRoomTurns.shownOwner(of: member, ownHermes: looks.ownHermes) }
 
     /// The member's tag, when the room can be addressed to it.
     private var handle: String? {
