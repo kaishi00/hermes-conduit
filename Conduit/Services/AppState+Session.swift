@@ -963,8 +963,9 @@ extension AppState {
             widgetLease: widgetLease,
             listsBeforeHermes: true
         )
-        // No chat started: the one still open is on screen, not left.
-        if let followedIDs, activeSessionId == previousSessionID {
+        // No chat started: the one still open is on screen, not left. A
+        // New Chat tapped again meanwhile still leaves it, so it stays.
+        if let followedIDs, activeSessionId == previousSessionID, newSessionCreationsInFlight == 1 {
             releaseFollowedChat(answering: followedIDs)
         }
         // An expired widget launch adopts nothing: the chat still open gets

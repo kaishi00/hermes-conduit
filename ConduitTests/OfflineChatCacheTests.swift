@@ -3499,8 +3499,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(cut.apply(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false)), .updated)
         XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Let me look", "Checking the map."])
         XCTAssertEqual(cut.apply(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil)), .ended)
-        XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Checking the map.", "Let me look. Found it."],
-                       "The reply's opening words show once")
+        XCTAssertEqual(cut.rows.map(\.content), ["Checking the map.", "Let me look. Found it."],
+                       "The reply's opening words show once, whether cut off before or after it was left")
 
         var list: [BackgroundChat] = []
         list = BackgroundChat.adding(chat("1"), to: list)

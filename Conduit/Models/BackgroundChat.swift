@@ -55,8 +55,10 @@ struct BackgroundChat: Equatable {
         self.dashboardID = dashboardID
         self.profile = profile
         self.isBotChat = isBotChat
-        // Partials are the streamed text a tool step cut off: they read as
-        // the reply's own words in a saved copy.
+        // Partials are the streamed text a tool step or an interim note cut
+        // off: they read as the reply's own words in a saved copy, until
+        // the final row takes their place, as it does on screen.
+        cutOffReplyRowIDs = Set(rows.filter { $0.role == .partial }.map(\.id))
         self.rows = rows.map { row in
             guard row.role == .partial else { return row }
             var copy = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author)
