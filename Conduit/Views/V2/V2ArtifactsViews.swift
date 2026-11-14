@@ -610,7 +610,7 @@ private struct ArtifactsList: View {
                 .overlay(alignment: .topTrailing) {
                     if savedIDs.contains(item.id) {
                         Image(systemName: "bookmark.fill")
-                            .font(.caption.weight(.semibold))
+                            .scaledFont(.caption.weight(.semibold))
                             .foregroundStyle(.white)
                             .padding(5)
                             .background(.black.opacity(0.5), in: Circle())
@@ -656,7 +656,7 @@ private struct ArtifactsList: View {
                             .truncationMode(.middle)
                         if savedIDs.contains(item.id) {
                             Image(systemName: "bookmark.fill")
-                                .font(.caption)
+                                .scaledFont(.caption)
                                 .foregroundStyle(Color.conduitAccent)
                                 .accessibilityHidden(true)
                         }
