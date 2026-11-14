@@ -1254,7 +1254,7 @@ extension AppState {
         quietTransportCheckTask = nil
     }
 
-    private func awaitConnectionDropped(timeout: Duration) async {
+    func awaitConnectionDropped(timeout: Duration) async {
         guard isConnected else { return }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in

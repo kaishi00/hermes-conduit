@@ -33,10 +33,20 @@ private final class FakeHermes {
     /// Picked chats asked for, and what each resolves to (nil: gone).
     var picks: [ShortcutPickedChat] = []
     var pickedTarget: VoiceThreadTarget?
+    /// The connection drops under the next steps of each kind, once per entry.
+    var createErrors: [Error] = []
+    var resumeErrors: [Error] = []
+    var submitErrors: [Error] = []
+    var reconnects = 0
+    var reconnectsLand = true
 
     func backend() -> ShortcutSendBackend {
         ShortcutSendBackend(
             connect: { _ in self.connects },
+            reconnect: { _ in
+                self.reconnects += 1
+                return self.reconnectsLand
+            },
             activeProfile: { "default" },
             pickedChat: { picked in
                 self.picks.append(picked)
@@ -44,12 +54,14 @@ private final class FakeHermes {
                 return target
             },
             createChat: { profile, title in
+                if !self.createErrors.isEmpty { throw self.createErrors.removeFirst() }
                 self.created.append((profile, title))
                 let id = "run-\(self.created.count)"
                 return VoiceThreadTarget(runtimeSessionID: id, storedSessionID: "stored-\(self.created.count)",
                                          title: title, profile: profile)
             },
             resumeChat: { chat in
+                if !self.resumeErrors.isEmpty { throw self.resumeErrors.removeFirst() }
                 self.resumed.append(chat)
                 if self.resumeFails { throw HermesError.invalidResponse }
                 return "resumed-\(self.resumed.count)"
@@ -59,6 +71,7 @@ private final class FakeHermes {
                 return "reopened-\(self.reopened.count)"
             },
             submit: { _, runtimeID, text in
+                if !self.submitErrors.isEmpty { throw self.submitErrors.removeFirst() }
                 if self.goneRuntimes.contains(runtimeID) {
                     throw RpcError(code: 4001, message: "session not found")
                 }
@@ -113,6 +126,96 @@ extension ScreenQuestionTests {
             reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "work", botName: nil, botLabel: nil,
                                                    sessionID: session, isUnverified: false),
             title: "Trip planning")
+    }
+
+    // MARK: - A connection that drops under the run (issue 2473)
+
+    /// Off screen the run often starts on a socket iOS let die during the
+    /// suspension: the first request finds it dead, and the run goes on
+    /// over the reconnect instead of failing.
+    @MainActor
+    func testADropUnderTheNewChatWaitsForTheReconnectAndSends() async throws {
+        let hermes = FakeHermes()
+        hermes.createErrors = [HermesError.connectionClosed]
+        let outcome = try await sender(hermes, shortcutChats())
+            .send(shortcutRequest("Buy milk", chat: "Groceries"), deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.reconnects, 1)
+        XCTAssertEqual(hermes.created.map(\.title), ["Groceries"])
+        XCTAssertEqual(hermes.submitted.map(\.text), ["Buy milk"])
+    }
+
+    /// A drop while resuming a named chat says nothing about the chat: the
+    /// run resumes it once reconnected, and never makes a second one.
+    @MainActor
+    func testADropResumingANamedChatResumesItAfterTheReconnect() async throws {
+        let hermes = FakeHermes()
+        let chats = shortcutChats()
+        chats.save(VoiceThreadTarget(runtimeSessionID: "old", storedSessionID: "stored-log", title: "Log", profile: "default"),
+                   named: "Log", profile: "default")
+        hermes.resumeErrors = [HermesError.notConnected]
+        _ = try await sender(hermes, chats)
+            .send(shortcutRequest("Ran 5 km", chat: "Log"), deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(hermes.reconnects, 1)
+        XCTAssertTrue(hermes.created.isEmpty)
+        XCTAssertEqual(hermes.resumed.map(\.storedSessionID), ["stored-log"])
+        XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["resumed-1"])
+    }
+
+    /// A prompt whose send found the socket closed never went: it goes
+    /// again once reconnected. One the socket dropped under after it went
+    /// may have reached Hermes, so it is never sent twice.
+    @MainActor
+    func testOnlyAPromptThatNeverWentIsSentAgainAfterADrop() async throws {
+        let unsent = FakeHermes()
+        unsent.submitErrors = [HermesError.notConnected]
+        let outcome = try await sender(unsent, shortcutChats())
+            .send(shortcutRequest("Buy milk"), deadline: unsent.now.addingTimeInterval(25))
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(unsent.reconnects, 1)
+        XCTAssertEqual(unsent.submitted.map(\.text), ["Buy milk"])
+
+        let maybeSent = FakeHermes()
+        maybeSent.submitErrors = [HermesError.connectionClosed]
+        do {
+            _ = try await sender(maybeSent, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: maybeSent.now.addingTimeInterval(25))
+            XCTFail("a prompt Hermes may have taken isn't sent again")
+        } catch {
+            XCTAssertTrue(ShortcutSender.isDrop(error))
+        }
+        XCTAssertEqual(maybeSent.reconnects, 0)
+        XCTAssertTrue(maybeSent.submitted.isEmpty)
+    }
+
+    /// A reconnect that doesn't land says Conduit couldn't reach Hermes, and
+    /// a connection that keeps dropping is given up on after two tries.
+    @MainActor
+    func testARunGivesUpWhenTheReconnectFailsOrKeepsDropping() async throws {
+        let unreachable = FakeHermes()
+        unreachable.createErrors = [HermesError.connectionClosed]
+        unreachable.reconnectsLand = false
+        do {
+            _ = try await sender(unreachable, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: unreachable.now.addingTimeInterval(25))
+            XCTFail("nothing reconnected")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .notConnected)
+        }
+
+        let flapping = FakeHermes()
+        flapping.createErrors = Array(repeating: HermesError.connectionClosed, count: ShortcutSender.maximumReconnects + 1)
+        do {
+            _ = try await sender(flapping, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: flapping.now.addingTimeInterval(25))
+            XCTFail("it kept dropping")
+        } catch {
+            XCTAssertTrue(ShortcutSender.isDrop(error))
+        }
+        XCTAssertEqual(flapping.reconnects, ShortcutSender.maximumReconnects)
+        XCTAssertTrue(flapping.submitted.isEmpty)
     }
 
     @MainActor

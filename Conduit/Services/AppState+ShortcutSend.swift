@@ -41,6 +41,17 @@ extension AppState {
         return client != nil
     }
 
+    /// Connects again for a run whose step found the connection dropped
+    /// (issue 2473). The socket's close reaches handleDisconnect a moment
+    /// after the step failed: until then Conduit still reads as connected,
+    /// and waiting on that would hand the step back the dead socket.
+    func reconnectForBackgroundRun(deadline: Date) async -> Bool {
+        if isConnected, client?.isConnected != true {
+            await awaitConnectionDropped(timeout: .seconds(2))
+        }
+        return await connectForBackgroundRun(deadline: deadline)
+    }
+
     /// With `dashboardID`, every chat it makes and every send stops with
     /// `chatOnAnotherDashboard` once that dashboard is no longer the active
     /// one, checked again after each wait before it picks the chat or sends.
@@ -56,6 +67,9 @@ extension AppState {
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
                 await self?.connectForBackgroundRun(deadline: deadline) ?? false
+            },
+            reconnect: { [weak self] deadline in
+                await self?.reconnectForBackgroundRun(deadline: deadline) ?? false
             },
             activeProfile: { [weak self] in self?.activeProfile ?? "default" },
             pickedChat: { [weak self] picked in
