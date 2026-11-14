@@ -12,6 +12,8 @@ import OSLog
 import UIKit
 import WebKit
 
+private let earlyResumeLogger = Logger(subsystem: "com.milim.relay", category: "ChatResume")
+
 extension AppState {
     // MARK: - Authoritative reconciliation
 
@@ -151,6 +153,7 @@ extension AppState {
                     purpose: purpose
                 )
                 noteConnectionStep("Chat resume before the chat list")
+                earlyResumeLogger.notice("Chat resume goes out before the chat list")
                 // Read below only as this resume's own answer: a resume that
                 // stops before asking leaves it as it is.
                 reconciliationSessionWasNotFound = false
@@ -1181,38 +1184,47 @@ extension AppState {
         dashboardID: UUID?,
         purpose: ChatResumeSyncPurpose
     ) -> (sessionID: String, identity: ConversationIdentity)? {
-        guard purpose == .automaticReturn,
-              chatResumeCoordinator.behavior == .continueWhereLeftOff,
-              PushNotificationService.shared.pendingTarget == nil,
+        // Why the resume waits for the list, in the device log: the
+        // connection timeline only reaches it during a call trace.
+        func waits(_ reason: String) -> (sessionID: String, identity: ConversationIdentity)? {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: \(reason, privacy: .public)")
+            return nil
+        }
+        guard purpose == .automaticReturn else { return waits("not an automatic return") }
+        guard chatResumeCoordinator.behavior == .continueWhereLeftOff else { return waits("jump to latest activity") }
+        guard PushNotificationService.shared.pendingTarget == nil,
               chatPickedFromSavedList == nil,
-              pendingNewChat == nil else { return nil }
+              pendingNewChat == nil else { return waits("another chat is waiting to open") }
         let rows = sessions + (savedChatListForActiveScope?.list.sessions ?? [])
         // As the live list's pick does: Pulse's chat is never resumed.
         dropSavedPulseChat(profile: profile, purpose: purpose, among: rows)
-        guard let reference = chatResumeCoordinator.lastSession(for: profile),
-              reference.kind == .dashboard, !reference.isUnverified,
-              let sessionID = ChatScrollIdentityNormalization.sessionID(reference.sessionID) else { return nil }
+        guard let reference = chatResumeCoordinator.lastSession(for: profile) else { return waits("no saved chat") }
+        guard reference.kind == .dashboard else { return waits("the saved chat is a Bot Chat") }
+        guard !reference.isUnverified else { return waits("the saved chat is unverified") }
+        guard let sessionID = ChatScrollIdentityNormalization.sessionID(reference.sessionID) else { return waits("no saved chat") }
         let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
-        guard !dead.contains(sessionID) else { return nil }
+        guard !dead.contains(sessionID) else { return waits("the saved chat is gone") }
         let ownership = botOwnership
         let aliases = Self.aliasesForStoredReference(reference, catalog: rows)
         guard ownership.referenceIfBot(reference, aliases: aliases) == nil,
-              aliases.union([sessionID]).isDisjoint(with: ownership.botOwnedIDs) else { return nil }
+              aliases.union([sessionID]).isDisjoint(with: ownership.botOwnedIDs) else { return waits("a bot owns the saved chat") }
         let scoped = rows.filter { sessionBelongsToProfile($0, profile: profile) }
         // The row owns the id as its own or its stored one, as nesting
         // reads it; a row that only lists it as an alias borrows it, and a
         // chat the list doesn't show is the live list's to find.
-        guard let row = scoped.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }),
-              !isUnlistedChat(row),
+        guard let row = scoped.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) else {
+            return waits(rows.isEmpty ? "no list on hand" : "the list on hand doesn't show the saved chat")
+        }
+        guard !isUnlistedChat(row),
               // The live list's own filter: no canonical Bot Chat (by the
               // roster or the reserved title, which needs no roster) and
               // nothing a bot owns.
               !BotChatHygiene.ordinaryResumeCandidates(
                   [row], roster: botRoster, botOwnedSessionIDs: ownership.botOwnedIDs
-              ).isEmpty else { return nil }
+              ).isEmpty else { return waits("the saved chat isn't an ordinary chat") }
         // Another chat on screen: which one to show is the list's call.
         if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
-           !row.nestingIDs.contains(onScreen) { return nil }
+           !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
         return (sessionID, ConversationIdentity(
             profile: profile,
             durableSessionID: row.storedSessionId ?? row.id,
