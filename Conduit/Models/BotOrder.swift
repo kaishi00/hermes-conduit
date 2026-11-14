@@ -4,17 +4,18 @@
 //
 //  The order of the bots on Bots Home, set by dragging a portrait or from
 //  Reorder Bots. Hermes keeps whether a bot is pinned, not where it sits,
-//  so the order stays here, by profile name, and goes to other devices
-//  through Sync across devices (`bots.order`). Until it's set the bots
+//  so the order stays here, by profile name, one per dashboard (each
+//  host's bots are its own), and goes to other devices through Sync
+//  across devices (`bots.order`). Until it's set the bots
 //  follow Hermes' order (pinned, then recent activity). A bot the order
 //  doesn't name yet (made since, here or elsewhere) goes at the end; a
 //  hidden or deleted bot keeps its name in the order, so it comes back to
 //  its place.
 //
 //  The same order keeps Bots Home's group chats, by room id, under a key
-//  of its own (`roomStorageKey`, synced as `groups.order`): Hermes lists
-//  rooms by activity and keeps no place for them either. Room ids match
-//  exactly (the gateway's are case-sensitive), and a room the order
+//  of its own, per dashboard too (`roomStorageKey`, synced as
+//  `groups.order`): Hermes lists rooms by activity and keeps no place for
+//  them either. Room ids match exactly (the gateway's are case-sensitive), and a room the order
 //  doesn't name yet goes first, where Hermes lists a room just made.
 //
 
@@ -25,6 +26,18 @@ struct BotOrder: Equatable {
     static let storageKey = "conduit.botOrder.v1"
     /// The group chats' order, by room id.
     static let roomStorageKey = "conduit.groupRoomOrder.v1"
+
+    /// One dashboard's order: `scope` is its bucket
+    /// (AppState.dashboardPreferenceBucket). Its bots and rooms are its
+    /// own, so another dashboard never reads or overwrites it. Nil is the
+    /// phone-wide copy from before.
+    static func storageKey(scope: String?) -> String {
+        scope.map { "\(storageKey).\($0)" } ?? storageKey
+    }
+
+    static func roomStorageKey(scope: String?) -> String {
+        scope.map { "\(roomStorageKey).\($0)" } ?? roomStorageKey
+    }
 
     /// What the order holds: bots by profile name, matched in any case,
     /// with ones it doesn't name last; or rooms by id, matched exactly,

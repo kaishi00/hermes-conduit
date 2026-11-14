@@ -723,7 +723,7 @@ jobs:
               minor finding. A PR that changes a mapped feature's code without editing its
               entry, at least its Checked line, is a minor finding (CI checks
               that an edited entry's Checked line names the PR). On a PR into
-              `pulse` or `linked-rooms` that merges main, an entry main changed
+              `pulse`, `linked-rooms` or `all-live` that merges main, an entry main changed
               since that branch last took it that matches main's copy came in
               from main: it keeps main's Checked line, and main's PR checked
               its siblings. If no entry covers what the PR

@@ -227,9 +227,11 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
 
         let host = app.textFields["setup.host"]
         tapVisible(host, in: app)
+        host.waitForKeyboardFocus()
         host.typeText("192.168.1.28")
         let port = app.textFields["setup.port"]
         tapVisible(port, in: app)
+        port.waitForKeyboardFocus()
         port.typeText("9119")
         dismissKeyboard(app)
         tapVisible(app.buttons[Identity.next], in: app)
@@ -241,6 +243,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
             let username = app.textFields["setup.username"]
             tapVisible(username, in: app)
+            username.waitForKeyboardFocus()
             username.typeText("round4-user")
             // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
             // can leave the password field under the keyboard, out of
@@ -248,6 +251,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             dismissKeyboard(app)
             let password = app.secureTextFields["setup.password"]
             tapVisible(password, in: app)
+            password.waitForKeyboardFocus()
             password.typeText("round4-private-fixture")
             // Leave the step with the password field unfocused: see
             // ConnectionSetupUITests' LAN credentials test (nightly

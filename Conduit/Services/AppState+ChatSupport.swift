@@ -56,26 +56,26 @@ extension AppState {
         let dashboard = activeDashboardID?.uuidString ?? ""
         let key = "\(dashboard)|\(ref.profile)|\(ref.sessionId)|\(ref.rowId)"
         let pictureKey = "\(key)|\(ref.index)"
-        guard !inlineImageRowsUnavailable.contains(key),
-              !inlineImageRowsUnavailable.contains(pictureKey) else { return nil }
+        guard !shownChat.inlineImageRowsUnavailable.contains(key),
+              !shownChat.inlineImageRowsUnavailable.contains(pictureKey) else { return nil }
         let fetch: Task<InlineImageRowFetch, Never>
-        if let running = inlineImageRowFetches[key] {
+        if let running = shownChat.inlineImageRowFetches[key] {
             fetch = running
         } else {
             fetch = Task { @MainActor [weak self] in
                 guard let self else { return .failed }
                 let result = await self.fetchInlineImageRow(ref)
-                self.inlineImageRowFetches[key] = nil
-                if case .unavailable = result { self.inlineImageRowsUnavailable.insert(key) }
+                self.shownChat.inlineImageRowFetches[key] = nil
+                if case .unavailable = result { self.shownChat.inlineImageRowsUnavailable.insert(key) }
                 return result
             }
-            inlineImageRowFetches[key] = fetch
+            shownChat.inlineImageRowFetches[key] = fetch
         }
         guard case .found(let urls) = await fetch.value else { return nil }
         guard urls.indices.contains(ref.index), let url = urls[ref.index] else {
             // The row holds no copy of this picture (a web link, or fewer
             // pictures than stand-ins), so it is not asked for again.
-            inlineImageRowsUnavailable.insert(pictureKey)
+            shownChat.inlineImageRowsUnavailable.insert(pictureKey)
             return nil
         }
         return url
@@ -243,8 +243,8 @@ extension AppState {
         guard turnState != .unsupportedGateway else { return }
         // Every call is authoritative live evidence, even a re-affirmation:
         // the ambiguity-recovery guard compares revisions, not values.
-        turnLifecycleEvidence = TurnLifecycleEvidence(
-            revision: turnLifecycleEvidence.revision &+ 1,
+        shownChat.turnLifecycleEvidence = TurnLifecycleEvidence(
+            revision: shownChat.turnLifecycleEvidence.revision &+ 1,
             running: running
         )
         if running {
@@ -255,8 +255,8 @@ extension AppState {
             // Hermes persisted its user row at turn start, so the next
             // locally-owned turn must anchor AFTER it.
             recordLocalOrderingDebtForSettledTurn()
-            locallyOwnedInFlightTurn = nil
-            runningTurnNoteIDs = []
+            shownChat.locallyOwnedInFlightTurn = nil
+            shownChat.runningTurnNoteIDs = []
         }
         // Every message and reasoning delta re-affirms `.running`. Writing
         // the same value would still publish AppState once per gateway frame
@@ -276,7 +276,7 @@ extension AppState {
     /// degrades to a spurious-but-safe authoritative reconcile, never to a
     /// silent overshoot.
     private func recordLocalOrderingDebtForSettledTurn() {
-        guard let marker = locallyOwnedInFlightTurn else { return }
+        guard let marker = shownChat.locallyOwnedInFlightTurn else { return }
         if !marker.persistedBoundaryObserved {
             recordLocalOrderingDebt(
                 sessionIDs: marker.sessionIDs,
@@ -304,13 +304,13 @@ extension AppState {
         allowTrailingRowsWithoutNewUserBoundary: Bool = false
     ) {
         guard !baseline.isUnknown else { return }
-        if pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
-            pendingLocalOrderingDebt?.expectedUserTurnCount += expectedUserTurnIncrement
+        if shownChat.pendingLocalOrderingDebt?.sessionIDs == sessionIDs {
+            shownChat.pendingLocalOrderingDebt?.expectedUserTurnCount += expectedUserTurnIncrement
             if allowTrailingRowsWithoutNewUserBoundary {
-                pendingLocalOrderingDebt?.allowTrailingRowsWithoutNewUserBoundary = true
+                shownChat.pendingLocalOrderingDebt?.allowTrailingRowsWithoutNewUserBoundary = true
             }
         } else {
-            pendingLocalOrderingDebt = PendingLocalOrderingDebt(
+            shownChat.pendingLocalOrderingDebt = PendingLocalOrderingDebt(
                 sessionIDs: sessionIDs,
                 expectedUserTurnCount: expectedUserTurnIncrement,
                 allowTrailingRowsWithoutNewUserBoundary: allowTrailingRowsWithoutNewUserBoundary

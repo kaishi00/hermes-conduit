@@ -27,7 +27,7 @@ extension AppState {
         let sessionIDs = Set(delegateAgents.lazy
             .filter { $0.status == .running && $0.hasGatewayID && !$0.sessionId.isEmpty }
             .map(\.sessionId))
-        delegateAgentSeenAt = delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
+        shownChat.delegateAgentSeenAt = shownChat.delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
             guard let roster = try? await client.subagentRoster(sessionId: sessionID),
                   self.client === client else { continue }
@@ -35,7 +35,7 @@ extension AppState {
             // A card's latest news is its last event, published or not.
             let seen = delegateAgents.map { agent -> DelegateAgentActivity in
                 var stamped = agent
-                if let at = delegateAgentSeenAt[agent.id], at > stamped.updatedAt { stamped.updatedAt = at }
+                if let at = shownChat.delegateAgentSeenAt[agent.id], at > stamped.updatedAt { stamped.updatedAt = at }
                 return stamped
             }
             let reconciled = DelegateAgentActivity.reconciled(

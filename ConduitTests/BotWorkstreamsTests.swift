@@ -958,10 +958,129 @@ extension BotModeTests {
         XCTAssertEqual(slot.read() as? [String], ["atlas", "hermes"])
         slot.write(["furina", "atlas"])
         XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
-        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.storageKey), ["furina", "atlas"])
+        let key = BotOrder.storageKey(scope: appState.dashboardListsScope)
+        XCTAssertEqual(defaults.stringArray(forKey: key), ["furina", "atlas"])
         slot.write(nil)
         XCTAssertTrue(appState.botOrder.isEmpty)
-        XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey))
+        XCTAssertNil(defaults.stringArray(forKey: key))
+    }
+
+    /// Each dashboard keeps its own bots' and rooms' orders, Pinned order,
+    /// stars and hidden projects: a switch reads the selected one's, and
+    /// connecting there no longer wipes them (Eric, 2026-11-14: switching
+    /// between two dashboards reshuffled Bots Home, as the wiped order then
+    /// went to the host through Sync across devices).
+    @MainActor
+    func testEachDashboardKeepsItsOwnOrdersAcrossASwitch() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let conduit = SavedDashboard(id: UUID(), label: "conduit", normalizedURL: "https://conduit.example.test")
+        let furina = SavedDashboard(id: UUID(), label: "Furina", normalizedURL: "https://furina.example.test")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        let chat = SessionSummary(id: "chat-1", alternateIds: [], title: "Chat", model: "Hermes", updatedLabel: "",
+                                  profile: "default", source: .chat, isActive: false, isArchived: false)
+        appState.setBotOrder(BotOrder(names: ["furina", "atlas"]))
+        appState.setGroupRoomOrder(BotOrder(names: ["b", "a"], kind: .rooms))
+        appState.setPinnedChatOrder(["p2", "p1"], profile: "default")
+        appState.setSessionStarred(chat, starred: true, profile: "default")
+        let hidden = appState.syncedPreferenceSlots.first { $0.key == "app.hidden_chat_projects" }
+        hidden?.write(["work"])
+
+        appState.savedDashboardRegistry.activeDashboardID = furina.id
+        XCTAssertTrue(appState.botOrder.isEmpty, "Furina never had conduit's order")
+        XCTAssertTrue(appState.groupRoomOrder.isEmpty)
+        XCTAssertTrue(appState.pinnedChatOrder.isEmpty)
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        XCTAssertNil(appState.syncedPreferenceSlots.first { $0.key == "app.hidden_chat_projects" }?.read())
+        appState.setBotOrder(BotOrder(names: ["nahida", "raiden"]))
+        appState.prepareChatResumeForConnection(to: furina.normalizedURL, dashboardID: furina.id)
+        XCTAssertEqual(appState.botOrder.names, ["nahida", "raiden"], "connecting there keeps its order")
+
+        appState.savedDashboardRegistry.activeDashboardID = conduit.id
+        appState.prepareChatResumeForConnection(to: conduit.normalizedURL, dashboardID: conduit.id)
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
+        XCTAssertEqual(appState.botOrderSlot.read() as? [String], ["furina", "atlas"], "sync sends conduit's own")
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "a"])
+        XCTAssertEqual(appState.pinnedChatOrder.ids(profile: "default"), ["p2", "p1"])
+        XCTAssertTrue(appState.isSessionStarred(chat))
+        XCTAssertEqual(
+            appState.syncedPreferenceSlots.first { $0.key == "app.hidden_chat_projects" }?.read() as? [String],
+            ["work"]
+        )
+
+        // Forgetting one dashboard's (Sign Out, Remove) leaves the other's.
+        appState.forgetDashboardLists(dashboardID: furina.id)
+        XCTAssertNil(defaults.stringArray(forKey: BotOrder.storageKey(scope: furina.id.uuidString)))
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
+        appState.forgetDashboardLists(dashboardID: conduit.id)
+        XCTAssertTrue(appState.botOrder.isEmpty)
+        XCTAssertFalse(appState.isSessionStarred(chat))
+        XCTAssertEqual(defaults.dictionary(forKey: HiddenChatProjects.key) as? [String: [String]], [:])
+    }
+
+    /// The phone-wide copies from before go to the dashboard selected at
+    /// launch, and the other dashboards' sync ledgers forget those keys, so
+    /// their first sync takes the host's order rather than clearing it.
+    @MainActor
+    func testThePhoneWideOrdersMoveToTheSelectedDashboard() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let conduit = SavedDashboard(id: UUID(), label: "conduit", normalizedURL: "https://conduit.example.test")
+        let furina = SavedDashboard(id: UUID(), label: "Furina", normalizedURL: "https://furina.example.test")
+        defaults.set(["furina", "atlas"], forKey: BotOrder.storageKey)
+        defaults.set(["b", "a"], forKey: BotOrder.roomStorageKey)
+        defaults.set(["default": ["work"], "\(furina.id.uuidString)|default": ["lab"]], forKey: HiddenChatProjects.key)
+        let controller = SyncedPreferencesController(defaults: defaults)
+        let entry = SyncedPreferencesLedgerEntry(lastLocal: ["bots.order": "[\"x\"]", "app.accent": "\"gold\""])
+        controller.setLedger(entry, for: "\(conduit.id.uuidString)|default")
+        controller.setLedger(entry, for: "\(furina.id.uuidString)|default")
+
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"])
+        XCTAssertEqual(appState.groupRoomOrder.names, ["b", "a"])
+        XCTAssertNil(defaults.object(forKey: BotOrder.storageKey), "the phone-wide copy goes")
+        XCTAssertNil(defaults.object(forKey: BotOrder.roomStorageKey))
+        XCTAssertEqual(
+            defaults.dictionary(forKey: HiddenChatProjects.key) as? [String: [String]],
+            ["\(conduit.id.uuidString)|default": ["work"], "\(furina.id.uuidString)|default": ["lab"]]
+        )
+        XCTAssertEqual(controller.ledger(for: "\(conduit.id.uuidString)|default")?.lastLocal, entry.lastLocal)
+        XCTAssertEqual(
+            controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""],
+            "phone-wide preferences keep their ledger"
+        )
+        appState.savedDashboardRegistry.activeDashboardID = furina.id
+        XCTAssertTrue(appState.botOrder.isEmpty)
+
+        // Once only: a later launch leaves the ledgers alone.
+        controller.setLedger(entry, for: "\(furina.id.uuidString)|default")
+        _ = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        XCTAssertEqual(controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, entry.lastLocal)
+
+        // A switch on an older build wiped the phone-wide copy: with nothing
+        // to move, every ledger, the selected dashboard's too, forgets them.
+        defaults.removeObject(forKey: AppState.dashboardListsAdoptedKey)
+        _ = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: conduit.id, dashboards: [conduit, furina])
+        )
+        XCTAssertEqual(controller.ledger(for: "\(conduit.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""])
+        XCTAssertEqual(controller.ledger(for: "\(furina.id.uuidString)|default")?.lastLocal, ["app.accent": "\"gold\""])
     }
 
     /// A room being started: bots join once, whatever their case, all or
@@ -1606,7 +1725,8 @@ extension BotModeTests {
         XCTAssertNil(slot.read())
         appState.moveGroupRoom("b", before: "a", shown: ["a", "b", "c"])
         XCTAssertEqual(slot.read() as? [String], ["b", "a", "c"])
-        XCTAssertEqual(defaults.stringArray(forKey: BotOrder.roomStorageKey), ["b", "a", "c"])
+        let key = BotOrder.roomStorageKey(scope: appState.dashboardListsScope)
+        XCTAssertEqual(defaults.stringArray(forKey: key), ["b", "a", "c"])
         XCTAssertTrue(appState.botOrder.isEmpty, "the bots' order is its own")
         appState.moveGroupRooms(fromOffsets: IndexSet(integer: 2), toOffset: 0, shown: ["b", "a", "c"])
         XCTAssertEqual(appState.groupRoomOrder.names, ["c", "b", "a"])
@@ -1619,7 +1739,7 @@ extension BotModeTests {
         XCTAssertEqual(BotOrder(names: ["a", "A"]).names, ["a"], "bots match in any case")
         slot.write(nil)
         XCTAssertTrue(appState.groupRoomOrder.isEmpty)
-        XCTAssertNil(defaults.stringArray(forKey: BotOrder.roomStorageKey))
+        XCTAssertNil(defaults.stringArray(forKey: key))
     }
 
     /// A room's tile dropped on another takes its place: carried on, it goes

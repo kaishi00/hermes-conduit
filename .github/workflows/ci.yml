@@ -40,10 +40,12 @@ name: CI
 
 on:
   push:
-    branches: [main, linked-rooms]
+    branches: [main, linked-rooms, all-live]
   pull_request:
     # linked-rooms: the Linked Rooms app side, kept off main until it all works.
-    branches: [main, linked-rooms]
+    # all-live: the all-live rework (several chats and Hermes instances live
+    # at once), on its own TestFlight builds until Eric has tested each stage.
+    branches: [main, linked-rooms, all-live]
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
 # commit instead, so every merge gets a full run: branch protection does not
@@ -101,7 +103,7 @@ jobs:
         # run number) and from this repository's branch, never a fork's of the
         # same name, so two runs never cancel each other. Only a run whose one
         # PR is this one (number and base): a branch with PRs into both main
-        # and linked-rooms (whose copy of this workflow shares its path) runs
+        # and linked-rooms or all-live (whose copies share its path) runs
         # for each, and a run that lists both PRs is left alone. Best effort:
         # a failed lookup leaves the older run going, which costs runner
         # time, not correctness.
@@ -288,7 +290,7 @@ jobs:
         # where their code lives; a path that moved would send it to the
         # wrong file. notifier/ paths are checked on the plugin's main. On a
         # PR, an entry it adds or edits names it on its Checked line. A PR
-        # into pulse or linked-rooms (that branch's copy of this workflow
+        # into pulse, linked-rooms or all-live (that branch's copy of this workflow
         # runs on those) that merges main, so it leaves fewer of main's
         # commits to take than its base does, also passes main's maps where
         # the PR and its base meet main (their merge bases): an entry main
@@ -627,7 +629,7 @@ jobs:
 
       - name: Save the build cache
         # Pushes' builds only. A PR restores the newest it can reach: main's,
-        # and on a PR into pulse or linked-rooms (each runs its own copy of
+        # and on a PR into pulse, linked-rooms or all-live (each runs its own copy of
         # this workflow) that branch's too, never another branch's. Smoke
         # always builds the full app (project.yml); the app-only (slim) build
         # the nightly unit shards restore is saved by nightly unit shard 1.

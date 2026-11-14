@@ -64,6 +64,8 @@ extension AppState {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
+        // A chat left mid-reply follows the rest of it (stage 2).
+        if applyBackgroundChatEvent(event) { return }
         if bufferIfReconciling(event, turnGeneration: turnGeneration) { return }
         applyNumberedStreamEvent(event, turnGeneration: turnGeneration)
     }
@@ -285,7 +287,7 @@ extension AppState {
         invalidatePersistedHistoryInvariants()
         // A live turn owns the transcript: never replace it underneath the
         // turn. Freshness-stale routes the post-turn authoritative path here.
-        if turnState == .running || locallyOwnedInFlightTurn != nil {
+        if turnState == .running || shownChat.locallyOwnedInFlightTurn != nil {
             transcriptFreshnessIsStale = true
             // Fence: a reconcile that fetched pre-compaction rows must not
             // commit them underneath the live turn after this rewrite.
@@ -322,7 +324,7 @@ extension AppState {
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
-            heldSideAgentCompletions.append(event)
+            shownChat.heldSideAgentCompletions.append(event)
             return true
         }
         if reconciliation.bufferedGenerations.count != reconciliation.bufferedEvents.count {
@@ -415,7 +417,7 @@ extension AppState {
 
         case .messageDelta(_, let text):
             finalizePendingStreamingCompletion()
-            streamingBuffer += text
+            shownChat.streamingBuffer += text
             scheduleStreamingPublish()
             setRunning(true)
             notifyVoiceAssistant(.delta(sessionID: streamSessionId, text: text))
@@ -431,7 +433,7 @@ extension AppState {
 
         case .reasoningDelta(_, let text):
             finalizePendingStreamingCompletion()
-            receivedReasoningForCurrentTurn = true
+            shownChat.receivedReasoningForCurrentTurn = true
             appendReasoning(text)
             setRunning(true)
 
@@ -758,7 +760,7 @@ extension AppState {
 
         case .delegateAgent(let sessionId, var activity):
             activity.sessionId = sessionId
-            delegateAgentSeenAt[activity.id] = activity.updatedAt
+            shownChat.delegateAgentSeenAt[activity.id] = activity.updatedAt
             var updated = delegateAgents
             if let index = updated.firstIndex(where: { $0.id == activity.id }) {
                 let card = updated[index].merged(with: activity)

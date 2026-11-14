@@ -1791,7 +1791,7 @@ extension AppState {
         forgetKeptBot(bot.name, on: rosterOwner)
         guard dashboardTicketBridge === bridge else { return nil }
         sessionStars.forget(profile: bot.name)
-        sessionStars.save(to: defaults)
+        sessionStars.save(to: defaults, scope: dashboardListsScope)
         if let sessionId = activeSessionId,
            let owner = botChatSessionProfiles[sessionId],
            owner.caseInsensitiveCompare(bot.name) == .orderedSame {
