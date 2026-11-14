@@ -114,6 +114,12 @@ struct CustomHeadersEditorSheet: View {
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.red)
                         }
+                        if problem(for: row) == nil, let note = CustomHeaderPolicy.note(for: row) {
+                            Text(note)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.orange)
+                                .accessibilityIdentifier("extra-headers.note")
+                        }
                         Button(role: .destructive) {
                             rows.removeAll { $0.id == row.id }
                         } label: {

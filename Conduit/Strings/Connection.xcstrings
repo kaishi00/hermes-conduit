@@ -23229,6 +23229,88 @@
         }
       }
     },
+    "This address is your saved dashboard “%@”. Repair won't change its sign-in; switch to it instead. Switching to %@ ends the call that's running." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Adresse gehört zu deinem gespeicherten Dashboard „%@“. Die Reparatur ändert seine Anmeldung nicht; wechsle stattdessen dorthin. Der Wechsel zu %@ beendet den laufenden Anruf."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta dirección es tu panel guardado «%@». La reparación no cambiará su inicio de sesión; cambia a él. Cambiar a %@ termina la llamada en curso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette adresse est celle de votre tableau de bord enregistré « %@ ». La réparation ne modifiera pas sa connexion ; basculez plutôt vers celui-ci. Passer à %@ termine l'appel en cours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alamat ini adalah dasbor tersimpan Anda “%@”. Perbaikan tidak akan mengubah info masuknya; beralihlah ke dasbor itu. Beralih ke %@ mengakhiri panggilan yang sedang berjalan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo indirizzo è la tua dashboard salvata “%@”. La riparazione non cambierà il suo accesso; passa a quella. Passare a %@ termina la chiamata in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスは保存済みのダッシュボード「%@」のものです。修復ではそのサインインは変更されません。そちらに切り替えてください。%@に切り替えると、進行中の通話が終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 주소는 저장된 대시보드 “%@”의 주소예요. 복구해도 그 로그인은 바뀌지 않으니 그 대시보드로 전환하세요. %@(으)로 전환하면 진행 중인 통화가 끝납니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten adres należy do zapisanego panelu „%@”. Naprawa nie zmieni jego logowania; zamiast tego przełącz się na niego. Przełączenie na %@ zakończy trwające połączenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este endereço é do seu painel salvo “%@”. O reparo não altera o login dele; mude para ele. Trocar para %@ encerra a chamada em andamento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот адрес принадлежит сохранённому дашборду «%@». Восстановление не изменит его вход; переключитесь на него. Переключение на %@ завершит текущий звонок."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu adres kayıtlı panelin “%@” adresi. Onarım onun girişini değiştirmez; bunun yerine ona geç. %@ öğesine geçmek süren aramayı bitirir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址属于你已保存的仪表板“%@”。修复不会更改它的登录信息，请改为切换到它。切换到 %@ 会结束正在进行的通话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址屬於你已儲存的儀表板「%@」。修復不會變更它的登入資訊，請改為切換到它。切換到 %@ 會結束正在進行的通話。"
+          }
+        }
+      }
+    },
     "This address only works on the computer running Hermes." : {
       "localizations" : {
         "de" : {
@@ -38149,6 +38231,416 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新內容"
+          }
+        }
+      }
+    },
+    "A sign-in through the system browser uses the Authorization header itself, so this one is left off its requests. Behind a proxy that needs this header, sign in with a password, or set HERMES_DASHBOARD_SESSION_TOKEN on the Hermes host and Conduit asks for that token instead." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Anmeldung über den Systembrowser verwendet den Authorization-Header selbst, daher fehlt dieser bei ihren Anfragen. Hinter einem Proxy, der diesen Header braucht, melde dich mit einem Passwort an oder setze HERMES_DASHBOARD_SESSION_TOKEN auf dem Hermes-Host, dann fragt Conduit stattdessen nach diesem Token."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un inicio de sesión mediante el navegador del sistema usa él mismo el encabezado Authorization, así que este no se incluye en sus solicitudes. Detrás de un proxy que necesite este encabezado, inicia sesión con una contraseña o define HERMES_DASHBOARD_SESSION_TOKEN en el host de Hermes y Conduit pedirá ese token en su lugar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une connexion via le navigateur du système utilise elle-même l’en-tête Authorization, donc celui-ci n’est pas envoyé avec ses requêtes. Derrière un proxy qui a besoin de cet en-tête, connectez-vous avec un mot de passe, ou définissez HERMES_DASHBOARD_SESSION_TOKEN sur l’hôte Hermes et Conduit demandera ce jeton à la place."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Proses masuk melalui browser sistem memakai header Authorization itu sendiri, jadi header ini tidak disertakan pada permintaannya. Di belakang proxy yang membutuhkan header ini, masuklah dengan kata sandi, atau atur HERMES_DASHBOARD_SESSION_TOKEN di host Hermes dan Conduit akan meminta token itu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un accesso tramite il browser di sistema usa già l’intestazione Authorization, quindi questa non viene inviata con le sue richieste. Dietro un proxy che richiede questa intestazione, accedi con una password oppure imposta HERMES_DASHBOARD_SESSION_TOKEN sull’host Hermes e Conduit chiederà quel token."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システムブラウザ経由のサインインは Authorization ヘッダ自体を使うため、そのリクエストにはこのヘッダは含まれません。このヘッダを必要とするプロキシの背後では、パスワードでサインインするか、Hermes ホストに HERMES_DASHBOARD_SESSION_TOKEN を設定してください。Conduit は代わりにそのトークンを尋ねます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 브라우저를 통한 로그인은 Authorization 헤더를 직접 사용하므로, 그 요청에는 이 헤더가 빠져요. 이 헤더가 필요한 프록시 뒤에서는 암호로 로그인하거나 Hermes 호스트에 HERMES_DASHBOARD_SESSION_TOKEN을 설정하세요. 그러면 Conduit이 대신 그 토큰을 물어봐요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Logowanie przez przeglądarkę systemową samo używa nagłówka Authorization, więc ten nagłówek jest pomijany w jego żądaniach. Za proxy, które wymaga tego nagłówka, zaloguj się hasłem albo ustaw HERMES_DASHBOARD_SESSION_TOKEN na hoście Hermes, a Conduit poprosi o ten token."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um início de sessão pelo navegador do sistema usa o próprio cabeçalho Authorization, então este fica fora das solicitações dele. Atrás de um proxy que precise deste cabeçalho, inicie sessão com uma senha ou defina HERMES_DASHBOARD_SESSION_TOKEN no host do Hermes e o Conduit pedirá esse token."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вход через системный браузер сам использует заголовок Authorization, поэтому в его запросах этого заголовка нет. За прокси, которому нужен этот заголовок, войдите по паролю или задайте HERMES_DASHBOARD_SESSION_TOKEN на хосте Hermes, и Conduit запросит этот токен."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistem tarayıcısı üzerinden giriş, Authorization üstbilgisini kendisi kullanır; bu yüzden bu üstbilgi o isteklerde yer almaz. Bu üstbilgiye ihtiyaç duyan bir proxy’nin arkasında parolayla giriş yapın ya da Hermes ana makinesinde HERMES_DASHBOARD_SESSION_TOKEN ayarlayın; Conduit bunun yerine o belirteci sorar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过系统浏览器登录时会自行使用 Authorization 请求头，因此这些请求不会带上此请求头。如果代理需要此请求头，请使用密码登录，或在 Hermes 主机上设置 HERMES_DASHBOARD_SESSION_TOKEN，Conduit 会改为询问该令牌。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過系統瀏覽器登入時會自行使用 Authorization 標頭，因此這些請求不會帶上此標頭。如果代理伺服器需要此標頭，請使用密碼登入，或在 Hermes 主機上設定 HERMES_DASHBOARD_SESSION_TOKEN，Conduit 會改為詢問該權杖。"
+          }
+        }
+      }
+    },
+    "Session token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzungstoken"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token de sesión"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeton de session"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token sesi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token di sessione"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッショントークン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션 토큰"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token sesji"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token de sessão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Токен сеанса"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum belirteci"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话令牌"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作階段權杖"
+          }
+        }
+      }
+    },
+    "The session token this Hermes was set up with (HERMES_DASHBOARD_SESSION_TOKEN). Conduit keeps it in Keychain and sends it only to this server." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Sitzungstoken, mit dem dieses Hermes eingerichtet wurde (HERMES_DASHBOARD_SESSION_TOKEN). Conduit bewahrt es im Schlüsselbund auf und sendet es nur an diesen Server."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El token de sesión con el que se configuró este Hermes (HERMES_DASHBOARD_SESSION_TOKEN). Conduit lo guarda en el llavero y solo lo envía a este servidor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le jeton de session avec lequel ce Hermes a été configuré (HERMES_DASHBOARD_SESSION_TOKEN). Conduit le conserve dans le trousseau et ne l’envoie qu’à ce serveur."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token sesi yang dipakai saat Hermes ini disiapkan (HERMES_DASHBOARD_SESSION_TOKEN). Conduit menyimpannya di Rantai Kunci dan hanya mengirimkannya ke server ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il token di sessione con cui è stato configurato questo Hermes (HERMES_DASHBOARD_SESSION_TOKEN). Conduit lo conserva nel portachiavi e lo invia solo a questo server."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この Hermes の設定に使われたセッショントークン（HERMES_DASHBOARD_SESSION_TOKEN）。Conduit はこれをキーチェーンに保存し、このサーバにのみ送信します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Hermes를 설정할 때 사용한 세션 토큰(HERMES_DASHBOARD_SESSION_TOKEN)이에요. Conduit은 이를 키체인에 보관하고 이 서버에만 보내요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token sesji, z którym skonfigurowano tego Hermesa (HERMES_DASHBOARD_SESSION_TOKEN). Conduit przechowuje go w pęku kluczy i wysyła tylko do tego serwera."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O token de sessão com que este Hermes foi configurado (HERMES_DASHBOARD_SESSION_TOKEN). O Conduit o guarda nas Chaves e o envia somente a este servidor."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Токен сеанса, с которым настроен этот Hermes (HERMES_DASHBOARD_SESSION_TOKEN). Conduit хранит его в связке ключей и отправляет только на этот сервер."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Hermes’in kurulduğu oturum belirteci (HERMES_DASHBOARD_SESSION_TOKEN). Conduit bunu Anahtar Zinciri’nde saklar ve yalnızca bu sunucuya gönderir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "设置此 Hermes 时使用的会话令牌（HERMES_DASHBOARD_SESSION_TOKEN）。Conduit 将其保存在钥匙串中，并且只发送到此服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "設定此 Hermes 時使用的工作階段權杖（HERMES_DASHBOARD_SESSION_TOKEN）。Conduit 會將其保存在鑰匙圈中，並且只傳送到此伺服器。"
+          }
+        }
+      }
+    },
+    "Hermes didn’t accept this token. Check it and try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat dieses Token nicht akzeptiert. Prüfe es und versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no aceptó este token. Revísalo e inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a pas accepté ce jeton. Vérifiez-le et réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak menerima token ini. Periksa lalu coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non ha accettato questo token. Controllalo e riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes はこのトークンを受け付けませんでした。確認してもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 토큰을 받아들이지 않았어요. 확인한 뒤 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie przyjął tego tokenu. Sprawdź go i spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não aceitou este token. Confira e tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не принял этот токен. Проверьте его и повторите попытку."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu belirteci kabul etmedi. Kontrol edip yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受此令牌。请检查后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 未接受此權杖。請檢查後再試一次。"
+          }
+        }
+      }
+    },
+    "Enter the token exactly as it is set on the Hermes host, with no spaces or line breaks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib das Token genau so ein, wie es auf dem Hermes-Host gesetzt ist, ohne Leerzeichen oder Zeilenumbrüche."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Introduce el token exactamente como está definido en el host de Hermes, sin espacios ni saltos de línea."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisissez le jeton exactement tel qu’il est défini sur l’hôte Hermes, sans espaces ni sauts de ligne."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masukkan token persis seperti yang diatur di host Hermes, tanpa spasi atau baris baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inserisci il token esattamente com’è impostato sull’host Hermes, senza spazi o interruzioni di riga."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ホストに設定されているとおりに、スペースや改行なしでトークンを入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트에 설정된 그대로, 공백이나 줄바꿈 없이 토큰을 입력하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wpisz token dokładnie tak, jak jest ustawiony na hoście Hermes, bez spacji i znaków nowej linii."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digite o token exatamente como está definido no host do Hermes, sem espaços nem quebras de linha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введите токен точно так, как он задан на хосте Hermes, без пробелов и переносов строк."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belirteci Hermes ana makinesinde ayarlandığı gibi, boşluk veya satır sonu olmadan girin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请按 Hermes 主机上设置的内容原样输入令牌，不要包含空格或换行。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請依 Hermes 主機上設定的內容原樣輸入權杖，不要包含空格或換行。"
           }
         }
       }

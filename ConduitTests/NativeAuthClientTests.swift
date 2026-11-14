@@ -238,6 +238,30 @@ final class NativeAuthClientTests: XCTestCase {
         XCTAssertFalse(supported)
     }
 
+    /// The status body names the session-token provider (issue 2442): a
+    /// list with it is offered, a status without the key or without the
+    /// provider is not, and anything but a list of strings is an error.
+    func testSessionTokenCapabilityReadsTheStatusBodysProviders() async throws {
+        func offered(_ host: String) async throws -> Bool {
+            try await NativeAuthClient(baseURL: "https://\(host)", sessionConfiguration: makeSessionConfiguration())
+                .supportsSessionToken()
+        }
+        let tokenOnly = try await offered("session-token-capability.example")
+        XCTAssertTrue(tokenOnly)
+        let olderStatus = try await offered("legacy-capability.example")
+        XCTAssertFalse(olderStatus)
+        let nativeOnly = try await offered("native-capability.example")
+        XCTAssertFalse(nativeOnly)
+        for host in ["malformed-session-token-capability.example", "malformed-capability.example", "failed-capability.example"] {
+            do {
+                _ = try await offered(host)
+                XCTFail("Expected the session token probe to fail for \(host)")
+            } catch {
+                XCTAssertTrue(error is AuthClientError, host)
+            }
+        }
+    }
+
     func testNativeOAuthCapabilityDoesNotDowngradeMalformedOrFailedProbe() async {
         for host in ["malformed-capability.example", "failed-capability.example"] {
             let client = NativeAuthClient(
@@ -674,6 +698,8 @@ private final class NativeAuthURLProtocol: URLProtocol {
             "redirect.example",
             "providers.example",
             "native-capability.example",
+            "session-token-capability.example",
+            "malformed-session-token-capability.example",
             "legacy-capability.example",
             "malformed-capability.example",
             "failed-capability.example",
@@ -937,6 +963,18 @@ private final class NativeAuthURLProtocol: URLProtocol {
                 statusCode: 200,
                 headers: ["Content-Type": "application/json"],
                 body: Data(#"{"status":"ok","auth_flows":["native_pkce"]}"#.utf8)
+            )
+        case "session-token-capability.example":
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"status":"ok","auth_providers":["session-token"],"auth_flows":["cookie"]}"#.utf8)
+            )
+        case "malformed-session-token-capability.example":
+            return Fixture(
+                statusCode: 200,
+                headers: ["Content-Type": "application/json"],
+                body: Data(#"{"status":"ok","auth_providers":"session-token"}"#.utf8)
             )
         case "legacy-capability.example":
             return Fixture(
