@@ -362,7 +362,7 @@ final class ArtifactsClient {
             throw Failure.malformed
         }
         // An older plugin lists missing files whatever it was asked.
-        let items = rows.compactMap(ArtifactItem.init).filter { showMissing || $0.exists }
+        let items = rows.compactMap { ArtifactItem($0) }.filter { showMissing || $0.exists }
         // Each artifact once, so list identity holds whatever the host sends.
         return ArtifactPage(items: merged([], with: items), nextBefore: response["next_before"] as? Int)
     }
