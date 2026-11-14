@@ -64,6 +64,9 @@ final class VoiceAudioRouteNames: ObservableObject {
 final class VoiceInputPicker: NSObject, ObservableObject {
     private var interaction: AnyObject?
     private var lease: VoiceAudioLease?
+    /// The preferred input when the picker opened: a dismissal that leaves
+    /// it as it was picked nothing.
+    private var preferredInputAtPresent: String?
     private let coordinator: VoiceAudioSessionCoordinator
 
     init(coordinator: VoiceAudioSessionCoordinator = .shared) {
@@ -101,6 +104,7 @@ final class VoiceInputPicker: NSObject, ObservableObject {
                 return
             }
         }
+        preferredInputAtPresent = AVAudioSession.sharedInstance().preferredInput?.uid
         picker.present()
     }
 
@@ -119,7 +123,12 @@ extension VoiceInputPicker: AVInputPickerInteraction.Delegate {
     nonisolated func inputPickerInteractionWillBeginDismissing(_ interaction: AVInputPickerInteraction) {}
     nonisolated func inputPickerInteractionDidEndDismissing(_ interaction: AVInputPickerInteraction) {
         MainActor.assumeIsolated {
-            VoiceBuiltInMicrophoneFallback.userPickedInput()
+            // Closing the picker without a change keeps the fallback's
+            // restore; re-picking the input already preferred reads the
+            // same, and the restore wins that rarer case.
+            if AVAudioSession.sharedInstance().preferredInput?.uid != preferredInputAtPresent {
+                VoiceBuiltInMicrophoneFallback.userPickedInput()
+            }
             releaseSession()
             // Without a lease of its own the session stays; the names
             // still change with the pick.
