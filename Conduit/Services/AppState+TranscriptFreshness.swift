@@ -395,7 +395,7 @@ extension AppState {
         }
         let recoveryPurpose = foregroundRecoveryPurpose
         let bridge = dashboardTicketBridge
-        let localFrontier = durablePersistedRowIDs
+        let localFrontier = shownChat.durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
         let locallyOwnedTurn = locallyOwnedFreshnessTurnEvidence(
@@ -419,7 +419,7 @@ extension AppState {
         // merge order. The transcript moved, so the append-only merge can no
         // longer be proven safe — the bounded resume refresh converges it.
         guard messages.last?.id == lastLocalMessageID,
-              durablePersistedRowIDs == localFrontier else {
+              shownChat.durablePersistedRowIDs == localFrontier else {
             lifecycleLog.notice(
                 "Foreground freshness: session=\(requestedSessionID, privacy: .private(mask: .hash)) transcript moved during read → bounded resume refresh"
             )
@@ -568,12 +568,12 @@ extension AppState {
         guard turnState.isRunning,
               let marker = locallyOwnedInFlightTurn,
               marker.sessionIDs.contains(sessionID),
-              !durablePersistedRowIDs.contains(marker.optimisticUserRowID),
+              !shownChat.durablePersistedRowIDs.contains(marker.optimisticUserRowID),
               let userIndex = messages.lastIndex(where: {
                   $0.id == marker.optimisticUserRowID
               }),
               messages[userIndex...].allSatisfy({
-                  !durablePersistedRowIDs.contains($0.id)
+                  !shownChat.durablePersistedRowIDs.contains($0.id)
               }) else {
             return nil
         }
@@ -663,7 +663,7 @@ extension AppState {
         // durable ids as the frontier (same per-hydration replacement
         // semantics as reconcile) so the next freshness check anchors
         // against the rows this merge added.
-        durablePersistedRowIDs = transcript.durableRowIDs
+        shownChat.durablePersistedRowIDs = transcript.durableRowIDs
         let priorOwned: PersistedTranscriptWindowState? = priorWindowOwnsThisConversation(
             persistedTranscriptWindow,
             requestedSessionId: requestedSessionID,
@@ -749,7 +749,7 @@ extension AppState {
         // cross-surface freshness path); scope to the active conversation.
         let profile = persistedTailProfile(for: sessionId)
         let bridge = dashboardTicketBridge
-        let localFrontier = durablePersistedRowIDs
+        let localFrontier = shownChat.durablePersistedRowIDs
         let localMessageIDs = Set(messages.map { $0.id })
         let lastLocalMessageID = messages.last?.id
         lifecycleLog.notice(
@@ -823,7 +823,7 @@ extension AppState {
             // The transcript moved under the gate (a stream edge landed):
             // the comparison evidence is stale — converge authoritatively.
             guard messages.last?.id == lastLocalMessageID,
-                  durablePersistedRowIDs == localFrontier else {
+                  shownChat.durablePersistedRowIDs == localFrontier else {
                 await syncSession(
                     purpose: .preserveCurrent,
                     using: nil,

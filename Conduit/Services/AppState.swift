@@ -491,7 +491,13 @@ final class AppState: ObservableObject {
         }
     }
     @Published var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
-    @Published private(set) var chatTranscriptRevision: UInt64 = 0
+    /// The chat on screen: its transcript and the reply streaming into it
+    /// (ChatState, stage 1 of the all-live rework). Its changes publish as
+    /// AppState's (`shownChatChanges`).
+    let shownChat = ChatState()
+    var shownChatChanges: AnyCancellable?
+    /// Bumped on every write to `messages`.
+    var chatTranscriptRevision: UInt64 { shownChat.transcriptRevision }
     /// A message an Artifacts screen asked to show; the chat scrolls to it
     /// once its transcript has the row (AppState+Artifacts).
     @Published var pendingArtifactReveal: ArtifactReveal?
@@ -505,21 +511,15 @@ final class AppState: ObservableObject {
     /// waiting card once its transcript has it.
     @Published var pendingNeedsYouReveal: NeedsYouReveal?
     /// Cached once per transcript mutation so view updates do not rescan the full history.
-    @Published private(set) var pendingClarifyMessageID: String?
+    var pendingClarifyMessageID: String? { shownChat.pendingClarifyMessageID }
     /// What that card is, for the jump button's words.
-    @Published private(set) var pendingDecisionKind = PendingDecisionKind.question
-    @Published var messages: [ChatMessage] = [] {
-        didSet {
-            chatTranscriptRevision &+= 1
-            let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
-            if pendingClarifyMessageID != pendingClarify {
-                pendingClarifyMessageID = pendingClarify
-            }
-            let kind = pendingClarify.flatMap { id in messages.last { $0.id == id } }
-                .map(PendingDecisionKind.init(message:)) ?? .question
-            if pendingDecisionKind != kind {
-                pendingDecisionKind = kind
-            }
+    var pendingDecisionKind: PendingDecisionKind { shownChat.pendingDecisionKind }
+    /// The chat on screen's transcript (`ChatState.messages`, which also
+    /// keeps its revision and waiting card current).
+    var messages: [ChatMessage] {
+        get { shownChat.messages }
+        set {
+            shownChat.messages = newValue
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // Hermes' rows take over from the saved copy's in the same
             // update: the chat view draws one or the other, never a mix, and
@@ -529,15 +529,14 @@ final class AppState: ObservableObject {
             }
         }
     }
-    /// Read-only copy of a recently opened conversation, shown while the
-    /// server has not answered yet (#99): the chat view draws its rows as
-    /// the chat's, provisionally. It never feeds `messages`, `sessions`, or
-    /// any resume/selection/routing decision, and while it's up nothing
-    /// that needs Hermes' word acts on its rows (approvals, Load earlier,
-    /// Retry, Edit, reactions, pins).
-    @Published var offlineChatPresentation: OfflineChatPresentation? {
+    /// The chat on screen's saved copy, shown while the server has not
+    /// answered yet (`ChatState.offlineChatPresentation`).
+    var offlineChatPresentation: OfflineChatPresentation? {
+        get { shownChat.offlineChatPresentation }
         // A message waiting for the chat on screen follows what's shown.
-        didSet {
+        set {
+            let oldValue = shownChat.offlineChatPresentation
+            shownChat.offlineChatPresentation = newValue
             if (oldValue == nil) != (offlineChatPresentation == nil) { updateChatOnScreen() }
             guard pendingComposerSend != nil else { return }
             if (oldValue == nil) != (offlineChatPresentation == nil)
@@ -572,20 +571,12 @@ final class AppState: ObservableObject {
     /// were last wiped, and so may be saved.
     var savableChatListScope: WidgetWorkspaceID?
     @Published var activeSessionTitle = AppLocalization.string("New conversation")
-    /// Persisted-history pagination window of the active conversation.
-    /// Drives the "Load earlier messages" affordance; nil means the current
-    /// transcript is either a legacy one-shot hydration or not persisted-
-    /// history-backed at all, and no older pages exist to fetch.
-    @Published var persistedTranscriptWindow: PersistedTranscriptWindowState?
-    /// Row ids POSITIVELY known to originate from validated persisted-
-    /// transcript hydration (raw rows carrying a durable `id`/`message_id`)
-    /// for the active conversation, adopted from the latest accepted
-    /// hydration and cleared whenever a reconcile begins or fails to adopt a
-    /// transcript. Consumed only by the ambiguous-delivery verifier as
-    /// ordering anchors — never populated from visible id shape, so local
-    /// optimistic / streaming / positional ids can never masquerade as
-    /// persisted anchors.
-    var durablePersistedRowIDs: Set<String> = []
+    /// Persisted-history pagination window of the active conversation
+    /// (`ChatState.persistedTranscriptWindow`).
+    var persistedTranscriptWindow: PersistedTranscriptWindowState? {
+        get { shownChat.persistedTranscriptWindow }
+        set { shownChat.persistedTranscriptWindow = newValue }
+    }
     @Published var isChatRefreshing = false
     @Published var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published var chatReturnSurface: ChatReturnSurface = .conversation
@@ -705,11 +696,9 @@ final class AppState: ObservableObject {
     /// The profile's `timezone` config value ("" = the server's local time)
     /// and the profile it was read for. Hermes runs cron schedules in it.
     @Published var profileTimeZoneSetting: (profile: String, value: String)?
-    /// The running turn's live reply text and thinking card. They publish on
-    /// their own object, never on AppState: while a turn streams they change
-    /// 20 to 30 times a second, and an AppState publish re-renders every view
-    /// that observes it, so any open sheet re-rendered at that rate and lagged.
-    let liveTurn = LiveTurnProjection()
+    /// The running turn's live reply text and thinking card, on their own
+    /// object (`ChatState.liveTurn`).
+    var liveTurn: LiveTurnProjection { shownChat.liveTurn }
     /// An explicit user-send request lets ChatView scroll after SwiftUI has
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published var chatScrollRequest = 0
@@ -2429,37 +2418,6 @@ final class AppState: ObservableObject {
     /// closes, whether its reconcile committed or was dropped.
     var heldSideAgentCompletions: [StreamEvent] = []
     var activeClientEpoch = UUID()
-    var activeAssistantMessageId: String?
-    var activeReasoningMessageId: String?
-    var receivedReasoningForCurrentTurn = false
-    /// Authoritative merged reasoning for the live thinking card. Raw deltas
-    /// merge into this buffer immediately; the published transcript is only
-    /// republished at a coalesced cadence so an expanded ThinkingCard cannot
-    /// monopolize main-actor layout work during a live reasoning stream.
-    var reasoningBuffer = ""
-    var reasoningPublishTask: Task<Void, Never>?
-    var hasScheduledReasoningPublish = false
-    var streamingBuffer = ""
-    /// The last row a `message.interim` sealed in the running turn.
-    var interimRowID: String?
-    /// Every row `message.interim` sealed while the current turn runs: its
-    /// progress notes, which a call's chat seed leaves out (#1991). A
-    /// finished reply can keep an interim row's id, so the id alone doesn't
-    /// tell.
-    var runningTurnNoteIDs: Set<String> = []
-    /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
-    /// transcript. Keep the authoritative buffer intact, but publish at a
-    /// display-friendly cadence so an active response cannot monopolize the
-    /// main actor (and make sheets or session rows feel untappable).
-    var streamingPublishTask: Task<Void, Never>?
-    /// A fast gateway can emit its final delta and completion inside one
-    /// publish interval. Keep that final projection alive briefly so the UI's
-    /// character reveal can drain instead of jumping straight to the result.
-    var streamingCompletionTask: Task<Void, Never>?
-    var pendingStreamingCompletion: PendingStreamingCompletion?
-    var hasScheduledStreamingPublish = false
-    var lastStreamingPublishBurst = 0
-    var lastStreamingPublishDate: Date?
     var responseHapticConclusionTask: Task<Void, Never>?
     var responseHaptics = ResponseHapticState()
     var scenePhaseTask: Task<Void, Never>?
@@ -2868,6 +2826,11 @@ final class AppState: ObservableObject {
         if let data = defaults.data(forKey: voiceJobSessionIDsByProfileKey),
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             voiceJobSessionIDsByProfile = stored
+        }
+        // The chat on screen's changes publish as AppState's, as they did
+        // when its transcript and stream were AppState's own properties.
+        shownChatChanges = shownChat.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
         // Hydrate the visible profile list from the persisted known-profile
         // cache before any discovery runs. A cold launch must not present an

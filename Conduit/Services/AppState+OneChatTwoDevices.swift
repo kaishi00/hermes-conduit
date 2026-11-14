@@ -226,7 +226,7 @@ extension AppState {
                 if !message.isSteer { break }
             }
         }
-        ownTexts.append(streamingBuffer)
+        ownTexts.append(shownChat.streamingBuffer)
         return OpenChatLocalTurn(
             sessionID: sessionId,
             isRunning: turnState.isRunning,
@@ -995,7 +995,7 @@ extension AppState {
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
         clearStreamingText()
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         turnState = .idle
         finishChatViewportTransition(generation: transitionGeneration)

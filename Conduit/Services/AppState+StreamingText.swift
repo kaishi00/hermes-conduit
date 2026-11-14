@@ -27,18 +27,18 @@ extension AppState {
     /// boundary commit.
     func appendReasoning(_ text: String) {
         guard !text.isEmpty else { return }
-        reasoningBuffer = mergedReasoning(
-            existing: reasoningBuffer,
+        shownChat.reasoningBuffer = mergedReasoning(
+            existing: shownChat.reasoningBuffer,
             incoming: text
         )
-        guard activeReasoningMessageId != nil else {
+        guard shownChat.activeReasoningMessageId != nil else {
             let id = "reasoning-\(Date().timeIntervalSince1970)"
-            activeReasoningMessageId = id
+            shownChat.activeReasoningMessageId = id
             TranscriptPerf.note(.reasoningProjectionPublish)
             liveReasoningSegment = LiveReasoningSegment(
                 id: id,
                 timestamp: Self.localTimestamp(),
-                content: reasoningBuffer
+                content: shownChat.reasoningBuffer
             )
             return
         }
@@ -46,11 +46,11 @@ extension AppState {
     }
 
     private func scheduleReasoningPublish() {
-        guard !liveRowsHidden, !hasScheduledReasoningPublish else { return }
-        hasScheduledReasoningPublish = true
-        let cardID = activeReasoningMessageId
+        guard !liveRowsHidden, !shownChat.hasScheduledReasoningPublish else { return }
+        shownChat.hasScheduledReasoningPublish = true
+        let cardID = shownChat.activeReasoningMessageId
 
-        reasoningPublishTask = Task { @MainActor [weak self] in
+        shownChat.reasoningPublishTask = Task { @MainActor [weak self] in
             do {
                 // Reasoning updates republish the live projection at this
                 // cadence; an expanded ThinkingCard restyles its attributed
@@ -63,8 +63,8 @@ extension AppState {
             }
 
             guard !Task.isCancelled, let self else { return }
-            self.hasScheduledReasoningPublish = false
-            self.reasoningPublishTask = nil
+            self.shownChat.hasScheduledReasoningPublish = false
+            self.shownChat.reasoningPublishTask = nil
             self.publishReasoningBuffer(liveCardID: cardID)
         }
     }
@@ -73,11 +73,11 @@ extension AppState {
     /// switch has ended the live card, the captured id no longer matches, so
     /// nothing can mutate a finalized or replaced transcript.
     private func publishReasoningBuffer(liveCardID: String?) {
-        guard let liveCardID, liveCardID == activeReasoningMessageId,
+        guard let liveCardID, liveCardID == shownChat.activeReasoningMessageId,
               var segment = liveReasoningSegment, segment.id == liveCardID,
-              segment.content != reasoningBuffer else { return }
+              segment.content != shownChat.reasoningBuffer else { return }
         TranscriptPerf.note(.reasoningProjectionPublish)
-        segment.content = reasoningBuffer
+        segment.content = shownChat.reasoningBuffer
         liveReasoningSegment = segment
     }
 
@@ -90,10 +90,10 @@ extension AppState {
     /// a measured window contains exactly the publications the deltas imply
     /// instead of racing the ~50 ms coalescing task's scheduler timing.
     func flushReasoningPublish() {
-        reasoningPublishTask?.cancel()
-        reasoningPublishTask = nil
-        hasScheduledReasoningPublish = false
-        publishReasoningBuffer(liveCardID: activeReasoningMessageId)
+        shownChat.reasoningPublishTask?.cancel()
+        shownChat.reasoningPublishTask = nil
+        shownChat.hasScheduledReasoningPublish = false
+        publishReasoningBuffer(liveCardID: shownChat.activeReasoningMessageId)
     }
 
     /// Commit the live reasoning segment into the settled transcript EXACTLY
@@ -105,9 +105,9 @@ extension AppState {
     /// preserves the pre-projection transcript shape: the card is in
     /// `messages`, complete, and no stale publish can touch it afterwards.
     func settleReasoningSegmentIntoTranscript(explicitContent: String? = nil) {
-        reasoningPublishTask?.cancel()
-        reasoningPublishTask = nil
-        hasScheduledReasoningPublish = false
+        shownChat.reasoningPublishTask?.cancel()
+        shownChat.reasoningPublishTask = nil
+        shownChat.hasScheduledReasoningPublish = false
 
         func commit(id: String, timestamp: String, content: String) {
             guard !content.isEmpty else { return }
@@ -128,13 +128,13 @@ extension AppState {
             )
             settled.stepDuration = ChatStepTiming.elapsed(from: timestamp, to: Date())
             messages.append(settled)
-            reasoningBuffer = ""
-            activeReasoningMessageId = nil
+            shownChat.reasoningBuffer = ""
+            shownChat.activeReasoningMessageId = nil
             liveReasoningSegment = nil
         }
 
-        if let segment = liveReasoningSegment, activeReasoningMessageId == segment.id {
-            commit(id: segment.id, timestamp: segment.timestamp, content: explicitContent ?? reasoningBuffer)
+        if let segment = liveReasoningSegment, shownChat.activeReasoningMessageId == segment.id {
+            commit(id: segment.id, timestamp: segment.timestamp, content: explicitContent ?? shownChat.reasoningBuffer)
         } else if let text = explicitContent {
             commit(
                 id: "reasoning-\(Date().timeIntervalSince1970)",
@@ -149,11 +149,11 @@ extension AppState {
     /// assistant TURN continues — reasoning may resume in a fresh segment, and
     /// reasoning already streamed this turn still counts at completion.
     func resetReasoningSegment() {
-        reasoningPublishTask?.cancel()
-        reasoningPublishTask = nil
-        hasScheduledReasoningPublish = false
-        reasoningBuffer = ""
-        activeReasoningMessageId = nil
+        shownChat.reasoningPublishTask?.cancel()
+        shownChat.reasoningPublishTask = nil
+        shownChat.hasScheduledReasoningPublish = false
+        shownChat.reasoningBuffer = ""
+        shownChat.activeReasoningMessageId = nil
         liveReasoningSegment = nil
     }
 
@@ -165,7 +165,7 @@ extension AppState {
     /// look already-streamed.
     func resetReasoningTurn() {
         resetReasoningSegment()
-        receivedReasoningForCurrentTurn = false
+        shownChat.receivedReasoningForCurrentTurn = false
     }
 
     private func mergedReasoning(existing: String, incoming: String) -> String {
@@ -191,10 +191,10 @@ extension AppState {
     }
 
     func scheduleStreamingPublish() {
-        guard !liveRowsHidden, !hasScheduledStreamingPublish else { return }
-        hasScheduledStreamingPublish = true
+        guard !liveRowsHidden, !shownChat.hasScheduledStreamingPublish else { return }
+        shownChat.hasScheduledStreamingPublish = true
 
-        streamingPublishTask = Task { [weak self] in
+        shownChat.streamingPublishTask = Task { [weak self] in
             do {
                 // Coalesce raw deltas just enough to avoid invalidating the
                 // transcript for every WebSocket frame. Character pacing is
@@ -205,15 +205,15 @@ extension AppState {
             }
 
             guard !Task.isCancelled, let self else { return }
-            let projectedText = self.streamingBuffer
-            self.lastStreamingPublishBurst = max(
+            let projectedText = self.shownChat.streamingBuffer
+            self.shownChat.lastStreamingPublishBurst = max(
                 projectedText.count - self.streamingText.count,
                 0
             )
-            self.lastStreamingPublishDate = Date()
+            self.shownChat.lastStreamingPublishDate = Date()
             self.streamingText = projectedText
-            self.hasScheduledStreamingPublish = false
-            self.streamingPublishTask = nil
+            self.shownChat.hasScheduledStreamingPublish = false
+            self.shownChat.streamingPublishTask = nil
         }
     }
 
@@ -227,23 +227,23 @@ extension AppState {
         // messageComplete is a semantic boundary: the thinking card must show
         // its full buffered reasoning immediately, not one cadence later.
         settleReasoningSegmentIntoTranscript()
-        streamingCompletionTask?.cancel()
-        streamingPublishTask?.cancel()
-        streamingPublishTask = nil
-        hasScheduledStreamingPublish = false
+        shownChat.streamingCompletionTask?.cancel()
+        shownChat.streamingPublishTask?.cancel()
+        shownChat.streamingPublishTask = nil
+        shownChat.hasScheduledStreamingPublish = false
 
-        let finalContent = content ?? streamingBuffer
+        let finalContent = content ?? shownChat.streamingBuffer
         let hasPartials = messages.contains { $0.role == .partial }
         let shownRowID = alreadyShown
-            ? interimRowID.flatMap { id in messages.contains { $0.id == id } ? id : nil }
+            ? shownChat.interimRowID.flatMap { id in messages.contains { $0.id == id } ? id : nil }
             : nil
         // Text already on screen as an interim row is not drawn again as the tail.
-        let finalProjection = hasPartials || shownRowID != nil ? streamingBuffer : finalContent
+        let finalProjection = hasPartials || shownRowID != nil ? shownChat.streamingBuffer : finalContent
         let newlyPublishedCharacters = max(finalProjection.count - streamingText.count, 0)
         let recentPublishBurst: Int
-        if let lastStreamingPublishDate,
+        if let lastStreamingPublishDate = shownChat.lastStreamingPublishDate,
            Date().timeIntervalSince(lastStreamingPublishDate) < 0.25 {
-            recentPublishBurst = lastStreamingPublishBurst
+            recentPublishBurst = shownChat.lastStreamingPublishBurst
         } else {
             recentPublishBurst = 0
         }
@@ -251,7 +251,7 @@ extension AppState {
         if !finalProjection.isEmpty {
             streamingText = finalProjection
         }
-        pendingStreamingCompletion = PendingStreamingCompletion(
+        shownChat.pendingStreamingCompletion = PendingStreamingCompletion(
             sessionId: sessionId,
             messageId: messageId,
             finalContent: finalContent,
@@ -270,7 +270,7 @@ extension AppState {
         )
         scheduleResponseHapticConclusion(after: drainMilliseconds)
 
-        streamingCompletionTask = Task { @MainActor [weak self] in
+        shownChat.streamingCompletionTask = Task { @MainActor [weak self] in
             do {
                 try await Task.sleep(for: .milliseconds(drainMilliseconds))
             } catch {
@@ -286,13 +286,13 @@ extension AppState {
     func finalizePendingStreamingCompletion(
         cancelResponseHapticConclusion: Bool = true
     ) {
-        guard let pendingStreamingCompletion else { return }
+        guard let pendingStreamingCompletion = shownChat.pendingStreamingCompletion else { return }
         if cancelResponseHapticConclusion {
             cancelPendingResponseHapticConclusion()
         }
-        streamingCompletionTask?.cancel()
-        streamingCompletionTask = nil
-        self.pendingStreamingCompletion = nil
+        shownChat.streamingCompletionTask?.cancel()
+        shownChat.streamingCompletionTask = nil
+        shownChat.pendingStreamingCompletion = nil
         finalizeStreamingCompletion(
             sessionId: pendingStreamingCompletion.sessionId,
             messageId: pendingStreamingCompletion.messageId,
@@ -316,7 +316,7 @@ extension AppState {
         // Some gateways repeat the full trace in completion after already
         // emitting reasoning events. Use it only when streaming supplied no
         // reasoning so an existing card is not duplicated.
-        if !receivedReasoningForCurrentTurn, let reasoning, !reasoning.isEmpty {
+        if !shownChat.receivedReasoningForCurrentTurn, let reasoning, !reasoning.isEmpty {
             finalizeReasoning(reasoning)
         }
 
@@ -369,7 +369,7 @@ extension AppState {
             messageReadAloudController.adoptLiveReply(sessionID: sessionId, messageID: rowID)
         }
         clearStreamingText()
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         setRunning(false)
         // The turn has settled, its reply in place.
@@ -398,7 +398,7 @@ extension AppState {
     /// Flush any accumulated streaming text as a .partial message so tool cards
     /// interleave correctly with assistant text during a turn.
     func flushStreamingPartial() {
-        let buffer = streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        let buffer = shownChat.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !buffer.isEmpty else { return }
         messages.append(ChatMessage(
             id: "partial-\(Date().timeIntervalSince1970)",
@@ -406,7 +406,7 @@ extension AppState {
             content: buffer,
             timestamp: Self.localTimestamp()
         ))
-        streamingBuffer = ""
+        shownChat.streamingBuffer = ""
         streamingText = ""
     }
 
@@ -423,8 +423,8 @@ extension AppState {
     func sealInterimCommentary(_ text: String, alreadyStreamed: Bool) {
         let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if alreadyStreamed {
-            if !streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                streamingBuffer = ""
+            if !shownChat.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                shownChat.streamingBuffer = ""
                 streamingText = ""
             } else if messages.last?.role == .partial, messages.last?.content == content {
                 messages.removeLast()
@@ -440,21 +440,21 @@ extension AppState {
             timestamp: Self.localTimestamp(),
             author: activeProfile
         ))
-        interimRowID = id
-        runningTurnNoteIDs.insert(id)
+        shownChat.interimRowID = id
+        shownChat.runningTurnNoteIDs.insert(id)
     }
 
     func clearStreamingText() {
-        interimRowID = nil
-        streamingCompletionTask?.cancel()
-        streamingCompletionTask = nil
-        pendingStreamingCompletion = nil
-        streamingPublishTask?.cancel()
-        streamingPublishTask = nil
-        hasScheduledStreamingPublish = false
-        lastStreamingPublishBurst = 0
-        lastStreamingPublishDate = nil
-        streamingBuffer = ""
+        shownChat.interimRowID = nil
+        shownChat.streamingCompletionTask?.cancel()
+        shownChat.streamingCompletionTask = nil
+        shownChat.pendingStreamingCompletion = nil
+        shownChat.streamingPublishTask?.cancel()
+        shownChat.streamingPublishTask = nil
+        shownChat.hasScheduledStreamingPublish = false
+        shownChat.lastStreamingPublishBurst = 0
+        shownChat.lastStreamingPublishDate = nil
+        shownChat.streamingBuffer = ""
         streamingText = ""
     }
 }

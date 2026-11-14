@@ -401,7 +401,7 @@ extension AppState {
         // in it, follows on from the chat: every live mode is seeded with
         // its latest turns, GPT-Live as history (issue 1983).
         if resume == nil, let thread = voiceBackgroundJobSupervisor.liveThread, isOpenChat(thread) {
-            liveVoiceResumeContext = VoiceResumeContext.chat(messages, runningNotes: turnState.mayBeRunning ? runningTurnNoteIDs : nil)
+            liveVoiceResumeContext = VoiceResumeContext.chat(messages, runningNotes: turnState.mayBeRunning ? shownChat.runningTurnNoteIDs : nil)
         }
         hermesCallToldCards = []
         hermesCallbackEngine = engine

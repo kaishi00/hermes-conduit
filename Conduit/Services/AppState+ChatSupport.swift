@@ -256,7 +256,7 @@ extension AppState {
             // locally-owned turn must anchor AFTER it.
             recordLocalOrderingDebtForSettledTurn()
             locallyOwnedInFlightTurn = nil
-            runningTurnNoteIDs = []
+            shownChat.runningTurnNoteIDs = []
         }
         // Every message and reasoning delta re-affirms `.running`. Writing
         // the same value would still publish AppState once per gateway frame
