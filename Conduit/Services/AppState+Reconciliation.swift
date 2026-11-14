@@ -180,7 +180,7 @@ extension AppState {
                 }
             }
             if readsNewestFirst {
-                switch await newestChatsUnlessTheListLands(profile: profile, using: client, list: catalogReadFailed) {
+                switch await newestChatsUnlessTheListLands(profile: profile, dashboardID: dashboardID, using: client, list: catalogReadFailed) {
                 case .read(let newest):
                     savedChat = latestChatBeforeList(
                         among: newest, profile: profile, dashboardID: dashboardID, roster: earlyRoster
@@ -1415,6 +1415,7 @@ extension AppState {
     /// then the list picks at once rather than waiting on the short read.
     func newestChatsUnlessTheListLands(
         profile: String,
+        dashboardID: UUID?,
         using client: HermesClient,
         list: CatalogReadFailure
     ) async -> NewestChatsRead {
@@ -1425,7 +1426,7 @@ extension AppState {
             list.onFinish = { race.finish(.listLanded) }
             race.read = Task { @MainActor in
                 do {
-                    race.finish(.read(try await self.newestChatsBeforeList(profile: profile, using: client)))
+                    race.finish(.read(try await self.newestChatsBeforeList(profile: profile, dashboardID: dashboardID, using: client)))
                 } catch {
                     race.finish(.failed)
                 }
