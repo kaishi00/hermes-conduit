@@ -487,6 +487,11 @@ final class AppStateMultiDashboardTests: XCTestCase {
         // A plugin without the route forgets what it served.
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: farm.id, in: defaults)
         XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: farm.id, in: defaults), [])
+
+        // A removed dashboard's goes with it.
+        NotifierPluginStatus.Remembered.remember(.reported(version: nil, capabilities: ["pulse"]), for: home.id, in: defaults)
+        appState.removeDashboard(home.id)
+        XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: home.id, in: defaults), [])
     }
 
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {

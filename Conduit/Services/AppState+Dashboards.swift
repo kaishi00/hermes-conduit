@@ -452,9 +452,11 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
-        // Who manages the plugin goes with the host: a moved entry's new host
-        // says for itself. Signing out keeps it (same host).
+        // Who manages the plugin, and what it served, go with the host: a
+        // moved entry's new host says for itself. Signing out keeps them
+        // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
         return registry.dashboards[index]
     }
 
@@ -828,9 +830,11 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
-        // Who manages the plugin goes with the host: a moved entry's new host
-        // says for itself. Signing out keeps it (same host).
+        // Who manages the plugin, and what it served, go with the host: a
+        // moved entry's new host says for itself. Signing out keeps them
+        // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.
