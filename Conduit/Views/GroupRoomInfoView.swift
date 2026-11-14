@@ -91,7 +91,8 @@ struct GroupRoomInfoSheet: View {
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
                 if let copy = appState.activeRoomSurface?.copy {
-                    Text(verbatim: appState.activeRoomOwnHermes == true
+                    // Just me has no bots to speak of: its own words.
+                    Text(verbatim: appState.activeRoomOwnHermes == true && !copy.justMe
                          ? RoomLeaveText.leaveOwnMessage : RoomLeaveText.leaveMessage(copy))
                 }
             }

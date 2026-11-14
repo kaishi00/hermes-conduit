@@ -2206,6 +2206,14 @@ struct GroupCreateSheet: View {
                     ForEach(farBots) { bot in
                         farToggleRow(bot)
                     }
+                    // A bot here or a person picked after far bots can leave
+                    // one Hermes past its share: say why Create waits.
+                    if !pickedFar.isEmpty, !pickedBots.isEmpty,
+                       !GroupCreateLimits.canCreate(bots: pickedBots.count, far: pickedFarByLink, people: pickedPeople.count) {
+                        Text(GroupCreateLimits.limitText(people: pickedPeople.count))
+                            .settingsCaption()
+                            .foregroundStyle(.orange)
+                    }
                     Text(AppLocalization.string(
                         "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room.", table: .rooms
                     ))
@@ -2255,6 +2263,11 @@ struct GroupCreateSheet: View {
             .navigationTitle(AppLocalization.string("New Group Chat"))
             .navigationBarTitleDisplayMode(.inline)
             .task { await appState.refreshLinkedRoomDrafts() }
+            // A far bot that's gone or no longer ready is no longer picked,
+            // so it doesn't come back picked when it's ready again.
+            .onChange(of: farBots) { _, bots in
+                selectedFar.formIntersection(bots.filter(\.ready).map(\.id))
+            }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -2343,8 +2356,10 @@ struct GroupCreateSheet: View {
     /// the Hermes it lives on. One not set up for rooms there can't be picked.
     private func farToggleRow(_ bot: OwnHermesBot) -> some View {
         let isSelected = selectedFar.contains(bot.id) && bot.ready
+        // Within 6 and within its Hermes' share of the places.
         let canPick = bot.ready && (isSelected
-            || GroupCreateLimits.canPickBot(bots: pickedBots.count + pickedFar.count, people: pickedPeople.count))
+            || GroupCreateLimits.canPickFar(bots: pickedBots.count, far: pickedFarByLink, link: bot.linkID,
+                                            people: pickedPeople.count))
         return Button {
             Haptics.light()
             if selectedFar.contains(bot.id) {

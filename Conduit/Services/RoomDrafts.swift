@@ -170,7 +170,24 @@ enum GroupCreateLimits {
         people < maxPeople && bots + people < maxAgents
     }
 
-    /// One bot is enough when there's someone to invite.
+    /// Whether one more bot of your other Hermes over `link` can be picked:
+    /// the room it makes, with at least one bot here, stays within 6 and
+    /// each Link's share.
+    static func canPickFar(bots: Int, far: [String: Int], link: String, people: Int) -> Bool {
+        var more = far
+        more[link, default: 0] += 1
+        return canCreate(bots: max(bots, 1), far: more, people: people)
+    }
+
+    /// The limit New Group Chat names when a pick breaks it.
+    static func limitText(people: Int) -> String {
+        people > 0
+            ? AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms)
+            : AppLocalization.string("A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places.", table: .rooms)
+    }
+
+    /// One bot is enough when there's someone to invite, or a bot of your
+    /// other Hermes to bring.
     static func offersNewGroup(visibleBots: Int, invitesPeople: Bool) -> Bool {
         visibleBots >= 2 || (invitesPeople && visibleBots >= 1)
     }
@@ -537,7 +554,7 @@ extension AppState {
         }
         let far = Dictionary(grouping: farBots, by: \.linkID).mapValues(\.count)
         guard GroupCreateLimits.canCreate(bots: bots.count, far: far, people: links.count) else {
-            errorMessage = AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms)
+            errorMessage = GroupCreateLimits.limitText(people: links.count)
             return .refused
         }
         guard !trimmedName.isEmpty else { return .refused }

@@ -83,6 +83,88 @@
         }
       }
     },
+    "A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Raum fasst bis zu 6 Bots, und jeder deiner anderen Hermes bringt höchstens seinen Anteil der Plätze mit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una sala admite hasta 6 bots, y cada uno de tus otros Hermes aporta como mucho su parte de los puestos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un salon accueille jusqu'à 6 bots, et chacun de vos autres Hermes apporte au plus sa part des places."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu ruang memuat hingga 6 bot, dan setiap Hermes Anda yang lain membawa paling banyak bagiannya dari tempat yang ada."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una stanza ospita fino a 6 bot, e ciascuno dei tuoi altri Hermes porta al massimo la sua parte dei posti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ルームに入れるボットは最大 6 体で、ほかの Hermes はそれぞれ枠の取り分までしか連れてこられません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "룸에는 봇을 최대 6개까지 넣을 수 있고, 다른 Hermes는 각자 자리 몫까지만 데려올 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokój mieści do 6 botów, a każdy z Twoich pozostałych Hermesów wnosi najwyżej swoją część miejsc."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma sala comporta até 6 bots, e cada um dos seus outros Hermes traz no máximo sua parte das vagas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В комнате до 6 ботов, и каждый другой ваш Hermes приводит не больше своей доли мест."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir odada en fazla 6 bot olur ve diğer Hermes'lerinizin her biri yerlerden en fazla kendi payını getirir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一个房间最多容纳 6 个机器人，你的每个其他 Hermes 最多带来其应得的名额。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一個房間最多容納 6 個機器人，你的每個其他 Hermes 最多帶來其應得的名額。"
+          }
+        }
+      }
+    },
     "Can't check this post." : {
       "localizations" : {
         "de" : {

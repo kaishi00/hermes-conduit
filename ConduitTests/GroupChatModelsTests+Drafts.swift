@@ -333,6 +333,17 @@ extension GroupChatModelsTests {
         // No far bots: the rules of your own and people's rooms.
         XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: [:], people: 0))
         XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 0], people: 1))
+        // A far bot is pickable only while its Hermes stays within its share,
+        // counting at least one bot here.
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 0, far: [:], link: "own1", people: 0))
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own2", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own1", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 5], link: "own1", people: 0))
+        // The limit names people only when there are some.
+        XCTAssertEqual(GroupCreateLimits.limitText(people: 1),
+                       AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms))
+        XCTAssertEqual(GroupCreateLimits.limitText(people: 0), AppLocalization.string(
+            "A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places.", table: .rooms))
     }
 
     @MainActor
