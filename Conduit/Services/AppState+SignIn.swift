@@ -303,6 +303,8 @@ extension AppState {
                 // it, so the selection's reload reads them.
                 profileAppearanceStore.adoptLegacyAppearance(into: primary)
                 adoptLegacyProfilePreferences(into: primary)
+                // The phone-wide lists go to the dashboard it opens, as at launch.
+                adoptLegacyDashboardLists(into: stored.activeDashboardID ?? primary)
                 savedDashboardRegistry = stored
                 // Launch ordered the cached profiles with no dashboard's order.
                 profiles = orderedProfiles(profiles)

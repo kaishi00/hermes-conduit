@@ -316,6 +316,7 @@ final class SyncedPreferencesController: ObservableObject {
     /// this device's. For values that moved from one phone-wide copy to
     /// one per dashboard, where only that dashboard kept the copy.
     func forgetLedgerValues(keys: Set<String>, exceptDashboard: String? = nil, onlyDashboard: String? = nil) {
+        assert(exceptDashboard == nil || onlyDashboard == nil, "one filter at a time")
         guard let data = defaults.data(forKey: Self.ledgerKey),
               var ledgers = try? JSONDecoder().decode([String: SyncedPreferencesLedgerEntry].self, from: data) else { return }
         for (scope, var entry) in ledgers {
