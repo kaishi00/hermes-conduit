@@ -177,13 +177,22 @@ struct ConnectionSetupView: View {
                 get: { repairAddressConflict != nil },
                 set: { if !$0 { repairAddressConflict = nil } }
             ), presenting: repairAddressConflict) { owner in
-                Button("Switch") {
+                // During a call this alert is the ask: the switch ends the
+                // call, so it says so before the tap (issue 2390).
+                Button(appState.isVoiceCallInProgress
+                       ? AppLocalization.string("End Call and Switch")
+                       : AppLocalization.string("Switch"), role: appState.isVoiceCallInProgress ? .destructive : nil) {
                     dismiss()
                     Task { await appState.switchDashboard(to: owner.id) }
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { owner in
-                Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection))
+                if appState.isVoiceCallInProgress {
+                    Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection)
+                         + " " + AppLocalization.string("Switching to \(owner.label) ends the call that's running."))
+                } else {
+                    Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection))
+                }
             }
         }
     }

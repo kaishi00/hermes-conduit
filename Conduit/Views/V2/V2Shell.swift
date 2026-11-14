@@ -1512,6 +1512,14 @@ struct V2Shell: View {
                 isPickingProfile = false
                 return
             }
+            // A call that rang in during the fade-out wasn't asked about:
+            // the content comes back and the pick asks first (issue 2390).
+            if !callEndAccepted && appState.isVoiceCallInProgress {
+                isPickingProfile = false
+                fadeContentBackIn()
+                pickProfile(target, haptic: false)
+                return
+            }
             await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
             isPickingProfile = false

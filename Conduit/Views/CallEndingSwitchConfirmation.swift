@@ -57,7 +57,7 @@ private struct CallEndingSwitchConfirmationModifier: ViewModifier {
             titleVisibility: .visible,
             presenting: pending
         ) { request in
-            Button(AppLocalization.string("End Call and Switch", table: .voice), role: .destructive) {
+            Button(AppLocalization.string("End Call and Switch"), role: .destructive) {
                 pending = nil
                 request.perform()
             }
@@ -65,7 +65,7 @@ private struct CallEndingSwitchConfirmationModifier: ViewModifier {
                 pending = nil
             }
         } message: { request in
-            Text(AppLocalization.string("Switching to \(request.destination) ends the call that's running.", table: .voice))
+            Text(AppLocalization.string("Switching to \(request.destination) ends the call that's running."))
         }
     }
 }
