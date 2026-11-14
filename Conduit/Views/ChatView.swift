@@ -56,8 +56,6 @@ struct ChatView: View {
     @Environment(\.scenePhase) private var scenePhase
     /// The V2 shell keeps a tab's screens mounted while another tab shows.
     @Environment(\.v2Shell) private var shell
-    /// The slide between a Bot Chat and its workstream, on V2's screen.
-    @Environment(\.transcriptSwapMotion) private var swapMotion
     /// Load earlier's fetch, cancelled when the view disappears. (The
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
@@ -366,6 +364,9 @@ struct ChatView: View {
     /// leak into (or churn) a measured fixture. Production never sets it
     /// (nil) and the preference decides exactly as before.
     var chatTextSizeOverride: ChatTextSize? = nil
+    /// The slide between a Bot Chat and its workstream, from the screen
+    /// that shows both in place (V2's conversation screen).
+    var swapMotion: TranscriptSwapMotion? = nil
 
     /// The chat-only text-size preference (issue #85). Local, device-only
     /// @AppStorage like ComposerReturnKey — never synced to Hermes or the

@@ -3,7 +3,6 @@
 //  Conduit
 //
 
-import SwiftUI
 import UIKit
 
 /// The slide between a Bot Chat and its workstream (`BotChatSwap`), played
@@ -91,18 +90,6 @@ protocol TranscriptSwapStage: AnyObject {
     /// Rows that left show again where they were: their chat is still the
     /// open one.
     func comeBack()
-}
-
-private struct TranscriptSwapMotionKey: EnvironmentKey {
-    static let defaultValue: TranscriptSwapMotion? = nil
-}
-
-extension EnvironmentValues {
-    /// Set by a screen whose chats slide over one another in place.
-    var transcriptSwapMotion: TranscriptSwapMotion? {
-        get { self[TranscriptSwapMotionKey.self] }
-        set { self[TranscriptSwapMotionKey.self] = newValue }
-    }
 }
 
 /// The slide's shape, apart from the layer it plays on.

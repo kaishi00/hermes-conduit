@@ -202,7 +202,10 @@ struct V2ConversationScreen: View {
                 .environment(\.v2ComposerRests, true)
                 .environment(\.composerStaysExpanded, composerStaysExpanded)
         } else {
-            ChatView()
+            // A Bot Chat and its workstreams share this screen: one's
+            // transcript slides in over the other's as a push or a pop
+            // would.
+            ChatView(swapMotion: swapMotion)
                 .environment(\.v2ComposerRests, true)
                 .environment(\.composerStaysExpanded, composerStaysExpanded)
         }
@@ -455,10 +458,6 @@ struct V2ConversationScreen: View {
                         BotWorkHeader(work: appState.botWork)
                     }
                 }
-                // A Bot Chat and its workstreams share this screen: one's
-                // transcript slides in over the other's as a push or a pop
-                // would.
-                .environment(\.transcriptSwapMotion, swapMotion)
                 .overlay(alignment: .bottomTrailing) {
                     // On a Mac, not when all it would do is the call the
                     // header has (issue 1534).
