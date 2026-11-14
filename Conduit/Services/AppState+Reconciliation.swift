@@ -146,7 +146,13 @@ extension AppState {
             async let catalogRead = profileCatalogNotingFailure(using: client, failure: catalogReadFailed)
             // The list read goes out first; one that has already failed
             // leaves the chat to the connection's retry, as before.
-            if savedChat != nil { await Task.yield() }
+            // Until the read has started, not just one turn: a single
+            // yield didn't always let it run, so a list that failed at once
+            // could still see the chat go out ahead of it.
+            if savedChat != nil {
+                await Task.yield()
+                for _ in 0..<20 where !catalogReadFailed.began { await Task.yield() }
+            }
             if readsNewestFirst {
                 do {
                     let newest = try await newestChatsBeforeList(using: client)
@@ -1331,6 +1337,7 @@ extension AppState {
         using client: HermesClient,
         failure: CatalogReadFailure
     ) async throws -> ProfileCatalogLoad {
+        failure.began = true
         do {
             return try await profileCatalog(using: client, deferringOlderPages: true)
         } catch {
@@ -3975,4 +3982,6 @@ extension AppState {
 @MainActor
 final class CatalogReadFailure {
     var failed = false
+    /// The read has started: a list that fails at once has said so by then.
+    var began = false
 }
