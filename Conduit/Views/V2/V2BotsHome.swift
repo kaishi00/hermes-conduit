@@ -1178,9 +1178,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// The wait in the bot's chats its "needs you" opens: only when none
     /// of its workstreams waits, whose list the overview shows.
     private func chatWaitThePillOpens(_ status: BotPortraitStatus) -> NeedsYouItem? {
-        guard case .needsYou = status,
-              (appState.servesBotWorkstreams ? work.snapshot(bot.name)?.needsYouCount ?? 0 : 0) == 0 else { return nil }
-        return appState.newestBotChatWait(bot.name)
+        guard case .needsYou = status else { return nil }
+        // As the status counts them: a bot whose work is off has none.
+        let snapshot = appState.servesBotWorkstreams ? work.snapshot(bot.name) : nil
+        guard (snapshot?.isOn == true ? snapshot?.needsYouCount ?? 0 : 0) == 0 else { return nil }
+        return appState.newestBotChatWait(bot.name, leavingOut: snapshot?.knownSessionIDs ?? [])
     }
 
     private var color: Color { appState.botColor(bot) }
@@ -1625,6 +1627,8 @@ struct BotOverviewSheet: View {
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
     @ObservedObject var work: BotWorkStore
+    /// The plugin's waits, which the header's chat counts include.
+    @ObservedObject var needsYou: NeedsYouStore
     let profile: String
     /// Edit Bot, for a bot that can be edited here; nil hides it.
     var onEdit: ((BotProfile) -> Void)?
@@ -1657,7 +1661,10 @@ struct BotOverviewSheet: View {
     private var showsWork: Bool { appState.servesBotWorkstreams }
 
     private var headerStatus: BotPortraitStatus {
-        .of(showsWork ? work.snapshot(profile) : nil, talkingIn: appState.talkingRooms(of: profile).map(\.name))
+        let snapshot = showsWork ? work.snapshot(profile) : nil
+        return .of(snapshot,
+                   talkingIn: appState.talkingRooms(of: profile).map(\.name),
+                   chats: appState.botLiveChats(profile, leavingOut: snapshot?.knownSessionIDs ?? []))
     }
 
     private var shown: Section { showsWork ? section : .artifacts }
@@ -1714,6 +1721,12 @@ struct BotOverviewSheet: View {
                 try? await Task.sleep(for: BotsTalkingRoomsReader.every)
             }
         }
+        // The header's chats, as its portrait's on Bots Home, which this
+        // covers (its reads stop then); opened from a Bot Chat too.
+        .task(id: "\(scenePhase == .active)|\(appState.isConnected)|\(profile)") {
+            guard scenePhase == .active, appState.isConnected else { return }
+            await appState.runBotsHomeLiveStatus(bots: [profile], key: "overview")
+        }
         // A workstream opened from its list shows its own chat.
         .onChange(of: appState.activeSessionId) { _, _ in onClose() }
         .sheet(item: $screenTarget) { target in
@@ -1764,6 +1777,25 @@ struct BotOverviewSheet: View {
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
+                }
+                // What its chats do, as its portrait counts them (its
+                // workstreams' are in the line above), in words for
+                // VoiceOver too, which skips the portrait.
+                if let chats = appState.botLiveChats(profile, leavingOut: (showsWork ? work.snapshot(profile)?.knownSessionIDs : nil) ?? []),
+                   chats.waiting + chats.working > 0 {
+                    let parts = [
+                        chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
+                        chats.working > 0 ? BotPortraitStatus.working(chats.working).title : nil,
+                    ].compactMap { $0 }
+                    Label {
+                        Text(verbatim: parts.joined(separator: " · "))
+                    } icon: {
+                        Image(systemName: "bubble.left.fill")
+                    }
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 // Where it talks now, as its portrait's pill says.
                 let rooms = appState.talkingRooms(of: profile).map(\.name)

@@ -352,6 +352,7 @@ struct V2ConversationScreen: View {
                 // artifacts, and Chat, which is this chat.
                 BotOverviewSheet(
                     work: appState.botWork,
+                    needsYou: appState.needsYou,
                     profile: workProfile,
                     onEdit: appState.botModePhase == .available && appState.isConnected
                         ? { (bot: BotProfile) in

@@ -5253,6 +5253,15 @@ final class AppStateChatResumeTests: XCTestCase {
         await appState.refreshLiveSessionStatuses()
         XCTAssertNil(appState.sessionLiveStatus(theirs))
 
+        // A wait only work's registry knows (no plugin list yet): its pill
+        // opens that chat by its stored id.
+        probe.byProfile["work"] = [LiveSessionStatus(runtimeSessionId: "rt-asks", storedSessionId: "asks", status: "waiting", isProfileScoped: true)]
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(appState.newestBotChatWait("work")?.sessionIDs, ["asks"])
+        XCTAssertNil(appState.newestBotChatWait("work", leavingOut: ["asks"]), "A workstream's wait opens from its own list")
+        probe.byProfile["work"] = []
+        await appState.refreshLiveSessionStatuses()
+
         // A wait the plugin lists in work's chat: Needs approval on the row
         // and on its bot.
         appState.needsYou.apply(
@@ -5264,12 +5273,12 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.botLiveChats("work"), BotLiveChats(working: 0, waiting: 1))
         XCTAssertEqual(appState.newestBotChatWait("work")?.waitID, "w1")
 
-        // The page closed: work isn't read any more, and its read goes.
+        // The page closed: its read goes at once, and work isn't read any more.
         appState.endLiveStatusAsk("project", token: token)
+        XCTAssertNil(appState.otherProfilesLiveStatus.index(for: "work", client: appState.client.map { ObjectIdentifier($0) }))
         probe.asked = []
         await appState.refreshLiveSessionStatuses()
         XCTAssertEqual(probe.asked, [])
-        XCTAssertNil(appState.otherProfilesLiveStatus.index(for: "work", client: appState.client.map { ObjectIdentifier($0) }))
     }
 
     func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
