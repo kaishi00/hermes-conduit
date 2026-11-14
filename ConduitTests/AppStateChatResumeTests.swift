@@ -6123,6 +6123,31 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
     }
 
+    /// A New Chat that comes in while the list read starts is the
+    /// destination: the saved chat doesn't go out ahead of it.
+    func testNewChatArrivingAsTheListGoesOutKeepsTheSavedChatBack() async {
+        let row = session("stored-a")
+        let opened = await openedBeforeTheListLands(
+            rows: [row],
+            whileListing: { appState in
+                appState.pendingNewChat = WidgetWorkspaceID(dashboardID: UUID(), profile: "default")
+            }
+        ) { _, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: row.id), for: "default")
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
+    }
+
+    /// A list read that has already failed leaves the chat to the
+    /// connection's retry, as before.
+    func testListFailingAtOnceKeepsTheSavedChatBack() async {
+        let row = session("stored-a")
+        let opened = await openedBeforeTheListLands(rows: [row], listFailsAtOnce: true) { _, coordinator in
+            coordinator.rememberSession(.dashboard(profile: "default", sessionID: row.id), for: "default")
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing resumed after a failed list: \(opened)")
+    }
+
     /// A row with the reserved Bot Chat title is never an ordinary resume,
     /// even before the roster is read (a cold launch).
     func testSavedChatWithTheBotChatTitleWaitsForTheChatList() async {
@@ -6234,21 +6259,32 @@ final class AppStateChatResumeTests: XCTestCase {
     private func openedBeforeTheListLands(
         rows: [SessionSummary],
         whileConnecting: ((AppState) -> Void)? = nil,
+        whileListing: ((AppState) -> Void)? = nil,
+        listFailsAtOnce: Bool = false,
         configure: (AppState, ChatResumeCoordinator) -> Void
     ) async -> [String] {
         let catalogGate = ControlledSuspension()
         var openedBeforeList: [String] = []
         var listLanded = false
         var connected: @MainActor () -> Void = {}
+        var listing: @MainActor () -> Void = {}
+        // A failed list's retry stays scheduled, never run, here.
+        let scheduler = ControlledReconnectScheduler()
         let harness = makeHarness(
+            reconnectScheduler: scheduler.schedule(after:operation:),
             lifecycleOperations: savedChatFirstOperations(
                 catalog: rows,
                 gate: catalogGate,
-                catalogLoads: {},
+                catalogLoads: { listing() },
                 opened: { if !listLanded { openedBeforeList.append($0) } },
-                connected: { connected() }
+                connected: { connected() },
+                failAtOnce: listFailsAtOnce
             )
         )
+        if let whileListing {
+            let appState = harness.appState
+            listing = { whileListing(appState) }
+        }
         if let whileConnecting {
             let appState = harness.appState
             connected = { whileConnecting(appState) }
@@ -6258,7 +6294,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let connecting = Task { @MainActor in
             await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
         }
-        await catalogGate.waitUntilSuspended()
+        if !listFailsAtOnce { await catalogGate.waitUntilSuspended() }
         for _ in 0..<50 { await Task.yield() }
         listLanded = true
         catalogGate.resume()
@@ -6272,12 +6308,14 @@ final class AppStateChatResumeTests: XCTestCase {
         catalogLoads: @escaping @MainActor () -> Void,
         opened: @escaping @MainActor (String) -> Void,
         failList: Bool = false,
-        connected: @escaping @MainActor () -> Void = {}
+        connected: @escaping @MainActor () -> Void = {},
+        failAtOnce: Bool = false
     ) -> ChatResumeLifecycleOperations {
         ChatResumeLifecycleOperations(
             connectClient: { _ in connected() },
             loadCatalog: { _, _ in
                 catalogLoads()
+                if failAtOnce { throw ControlledLifecycleError.failed }
                 await gate.suspend()
                 if failList { throw ControlledLifecycleError.failed }
                 return catalog
