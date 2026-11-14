@@ -1054,6 +1054,9 @@ extension AppState {
         // A chat left after Load earlier keeps its older rows for coming
         // back to it (issue 1825); the reconcile below takes them.
         keepLeftBackfilledTranscript()
+        // A chat left mid-reply, followed since (stage 2): taken before the
+        // open names it, which lets go of whatever follows the chat opened.
+        let leftReply = takeBackgroundChat(answering: acceptedSessionIDs.union([sessionId]))
         setActiveSessionState(id: sessionId)
         if closedRoom { roomHandedTo = .openedChat }
         keepDelegateAgents(of: acceptedSessionIDs)
@@ -1063,7 +1066,9 @@ extension AppState {
         // one on the phone.
         // A known Bot Chat opened the ordinary way (a notification, a link)
         // is still the bot's: the registry names it.
-        if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
+        if let leftReply, presentBackgroundChat(leftReply, openedAs: sessionId) {
+            // Its rows and the reply as far as it got, newer than any copy.
+        } else if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionId, title: preferredTitle)
         } else if let listedSession {
             presentSavedCopyWhileOpening(

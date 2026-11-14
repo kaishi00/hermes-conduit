@@ -3143,6 +3143,112 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.composerNotice)
     }
 
+    // MARK: - A chat left mid-reply (all-live stage 2, BackgroundChat)
+
+    /// Leaving a chat while its reply streams keeps its rows and the reply
+    /// so far; the rest of the reply grows the copy, the finished one is
+    /// saved without becoming the chat a cold launch shows, and opening
+    /// the chat again shows the reply as far as it got.
+    func testAChatLeftMidReplyFollowsTheRestOfItsReply() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+
+        state.setActiveSessionState(id: "b")
+        // As an open does: chat b starts empty and idle.
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes the left chat's words")
+
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time, the end.", reasoning: nil))
+        let left = try XCTUnwrap(state.backgroundChats.first)
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.rows.map(\.content), ["Tell me a story", "Once upon a time, the end."])
+
+        store.waitForPendingWrites()
+        let saved = try XCTUnwrap(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
+        XCTAssertEqual(saved.messages.last?.content, "Once upon a time, the end.")
+        XCTAssertNotEqual(store.load(dashboardID: dashboard, profile: state.activeProfile)?.lastSessionID, "a",
+                          "A copy saved in the background doesn't become the chat a cold launch opens")
+
+        let taken = try XCTUnwrap(state.takeBackgroundChat(answering: ["a"]))
+        state.setActiveSessionState(id: "a")
+        state.messages = []
+        XCTAssertTrue(state.presentBackgroundChat(taken, openedAs: "a"))
+        XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time, the end.")
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+    }
+
+    /// A chat left while nothing runs isn't followed, and opening a
+    /// followed chat another way lets go of it.
+    func testOnlyAChatLeftWhileItRepliesIsFollowed() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.setActiveSessionState(id: "b")
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.turnState = .running
+        state.setActiveSessionState(id: "a")
+        XCTAssertEqual(state.backgroundChats.first?.sessionIDs, ["b"])
+        state.turnState = .idle
+        state.setActiveSessionState(id: "b")
+        XCTAssertTrue(state.backgroundChats.isEmpty, "The chat opened is its own again")
+    }
+
+    /// The reply's events, one by one: an interim note Hermes already
+    /// streamed is sealed in place, a failure ends it, and five left
+    /// chats keep four, letting go of a finished one first.
+    func testABackgroundChatFollowsTheReplyEventByEvent() {
+        let dashboard = UUID()
+        func chat(_ id: String, running: Bool = true) -> BackgroundChat {
+            var chat = BackgroundChat(
+                sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
+                profile: "default", isBotChat: false,
+                rows: [ChatMessage(id: "p", role: .partial, content: "Looking", timestamp: "1")],
+                streamingText: ""
+            )
+            if !running { _ = chat.apply(.messageInterrupted(sessionId: id)) }
+            return chat
+        }
+        var left = chat("a")
+        XCTAssertEqual(left.rows.first?.role, .assistant, "A partial reads as the reply's words")
+        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Checking the map")), .updated)
+        XCTAssertEqual(left.apply(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true)), .updated)
+        XCTAssertEqual(left.rows.last?.content, "Checking the map.")
+        XCTAssertEqual(left.apply(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil)), .ignored)
+        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Found it")), .updated)
+        XCTAssertEqual(left.rows.count, 3)
+        XCTAssertEqual(left.apply(.messageError(sessionId: "a", message: "boom")), .ended)
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.apply(.sessionBusy(sessionId: "a", busy: false)), .ignored)
+
+        var list: [BackgroundChat] = []
+        list = BackgroundChat.adding(chat("1"), to: list)
+        list = BackgroundChat.adding(chat("2", running: false), to: list)
+        list = BackgroundChat.adding(chat("3"), to: list)
+        list = BackgroundChat.adding(chat("4"), to: list)
+        list = BackgroundChat.adding(chat("5"), to: list)
+        XCTAssertEqual(list.map { $0.sessionIDs.first }, ["5", "4", "3", "1"])
+        list = BackgroundChat.adding(chat("3"), to: list)
+        XCTAssertEqual(list.map { $0.sessionIDs.first }, ["3", "5", "4", "1"], "One entry per chat, newest first")
+    }
+
     // MARK: - Helpers
 
     private func makeStore(writesAsynchronously: Bool = false) -> OfflineChatCacheStore {

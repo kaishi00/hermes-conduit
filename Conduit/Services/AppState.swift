@@ -495,6 +495,9 @@ final class AppState: ObservableObject {
     /// (ChatState, stage 1 of the all-live rework). Its changes publish as
     /// AppState's (`shownChatChanges`).
     let shownChat = ChatState()
+    /// Chats left while their reply was still coming, following the rest
+    /// of it (all-live stage 2, AppState+BackgroundChats.swift).
+    var backgroundChats: [BackgroundChat] = []
     var shownChatChanges: AnyCancellable?
     /// The chat on screen's own activity (`ChatState`): its title, plan
     /// card, refresh, branch and rewind, its agents, and replies streaming
