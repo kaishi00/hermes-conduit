@@ -1466,8 +1466,9 @@ struct V2Shell: View {
         if !callEndAccepted && appState.isVoiceCallInProgress {
             if haptic { Haptics.medium() }
             appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
-                if leavesAll { appState.setAllProfilesChatsOn(false) }
-                pickProfile(profile, haptic: false, callEndAccepted: true)
+                // All goes off as the accepted switch starts, below, and
+                // comes back if it doesn't land.
+                pickProfile(profile, haptic: false, callEndAccepted: true, leavesAll: leavesAll)
             }
             return
         }
@@ -1476,6 +1477,7 @@ struct V2Shell: View {
         // rings in during the fade-out puts it back for the question below.
         // A pick from another tab (no All chip there) leaves All alone.
         let leftAll = leavesAll && appState.isAllProfilesChatsOn
+        let pickDashboardID = appState.activeDashboardID
         if leftAll { appState.setAllProfilesChatsOn(false) }
         isPickingProfile = true
         isFadingOutForPick = true
@@ -1535,7 +1537,11 @@ struct V2Shell: View {
             guard token == profileSwitchToken else { return }
             // A switch that didn't land (the connection dropped) leaves All
             // as it was.
-            if leftAll, appState.activeProfile != target { appState.setAllProfilesChatsOn(true) }
+            // Only on the dashboard the pick was made on: another one picked
+            // meanwhile keeps its own All.
+            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target {
+                appState.setAllProfilesChatsOn(true)
+            }
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
