@@ -69,7 +69,10 @@ extension AppState {
         }
     }
 
-    /// The chat an open (or a switch) landed on is followed no longer.
+    /// The chat an open (or a switch) landed on is followed no longer: the
+    /// one of this dashboard and profile that answers to any of `ids`, as
+    /// `followedChat(answering:)` finds it. An open that lands after a switch
+    /// to another dashboard leaves the first dashboard's chat followed.
     func releaseFollowedChat(answering ids: Set<String>) {
         backgroundChats.removeAll {
             $0.dashboardID == activeDashboardID && $0.profile == activeProfile
