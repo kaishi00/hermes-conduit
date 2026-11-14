@@ -5279,6 +5279,20 @@ final class AppStateChatResumeTests: XCTestCase {
         probe.asked = []
         await appState.refreshLiveSessionStatuses()
         XCTAssertEqual(probe.asked, [])
+
+        // A legacy dashboard (rows without a source) is still read by name,
+        // which settles another profile's Lock Screen card, but its rows
+        // never count as one bot's nor open a wait.
+        probe.own = [LiveSessionStatus(runtimeSessionId: "rt-mine", storedSessionId: "mine", status: "working")]
+        probe.byProfile["work"] = [LiveSessionStatus(runtimeSessionId: "rt-asks", storedSessionId: "asks", status: "waiting")]
+        appState.needsYou.apply([], profile: "work", dashboardID: appState.activeDashboardID) { _ in false }
+        await appState.refreshLiveSessionStatuses()
+        let again = appState.askLiveStatus("project", profiles: ["work"])
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.asked, ["work"])
+        XCTAssertNil(appState.botLiveChats("work"))
+        XCTAssertNil(appState.newestBotChatWait("work"))
+        appState.endLiveStatusAsk("project", token: again)
     }
 
     func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
