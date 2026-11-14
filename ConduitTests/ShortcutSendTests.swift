@@ -727,6 +727,17 @@ extension ScreenQuestionTests {
         let missing = await refusal(pick("nobody"))
         XCTAssertEqual(missing, .chatUnavailable)
 
+        // The connection dropped under the lookup: that says nothing about the
+        // bot, so the run waits out the drop rather than call it gone (issue 2473).
+        appState.isConnected = false
+        do {
+            _ = try await backend.pickedChat(pick("nobody"))
+            XCTFail("a dropped lookup isn't an answer")
+        } catch {
+            XCTAssertTrue(ShortcutSender.isDrop(error))
+        }
+        appState.isConnected = true
+
         // A bot with no chat is never given a new one from here, and an empty
         // lookup for a chat the roster names is worth a retry, not "gone".
         roster = [bot("atlas"), bot("rei"), bot("nia", canonical: "nia-durable")]
