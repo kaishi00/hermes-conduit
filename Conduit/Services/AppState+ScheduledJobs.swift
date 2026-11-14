@@ -19,7 +19,7 @@ extension AppState {
 
     func loadCronJobs() async {
         let profile = activeProfile
-        let generation = shownBot.cronJobsGeneration
+        let generation = cronJobsGeneration
         // One read at a time for the list as it is, on the connection and
         // profile it is for: one an edit, a dashboard switch, a reconnect or
         // a profile change made stale since doesn't hold the next back.
@@ -28,7 +28,7 @@ extension AppState {
         // The same list's read joins the one out: it runs on its own, so a
         // Tasks tab whose task restarted mid-read (tab away and back) still
         // sees it land, rather than finding it held and reading nothing.
-        if let running = shownBot.cronJobsRead, running.owner == owner {
+        if let running = cronJobsRead, running.owner == owner {
             await running.task.value
             return
         }
@@ -38,7 +38,7 @@ extension AppState {
         let task = Task<Void, Never> { [weak self] in
             await self?.readCronJobs(token: token, profile: profile, generation: generation)
         }
-        shownBot.cronJobsRead = (owner, token, task)
+        cronJobsRead = (owner, token, task)
         cronJobsLoading = true
         await task.value
     }
@@ -47,8 +47,8 @@ extension AppState {
         let startedBridge = dashboardTicketBridge
         let startedClient = client
         defer {
-            if shownBot.cronJobsRead?.token == token {
-                shownBot.cronJobsRead = nil
+            if cronJobsRead?.token == token {
+                cronJobsRead = nil
                 cronJobsLoading = false
             }
         }
@@ -58,23 +58,23 @@ extension AppState {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile, generation == shownBot.cronJobsGeneration,
+                guard profile == activeProfile, generation == cronJobsGeneration,
                       self.dashboardTicketBridge === dashboardTicketBridge,
-                      shownBot.cronJobsRead?.token == token else { return }
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client, generation == shownBot.cronJobsGeneration,
-                      shownBot.cronJobsRead?.token == token else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration,
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
         } catch is CancellationError {
             return
         } catch {
             // A read the outgoing connection failed isn't the next one's to report.
-            guard profile == activeProfile, generation == shownBot.cronJobsGeneration,
+            guard profile == activeProfile, generation == cronJobsGeneration,
                   dashboardTicketBridge === startedBridge, client === startedClient,
-                  shownBot.cronJobsRead?.token == token else { return }
+                  cronJobsRead?.token == token else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
     }
@@ -82,9 +82,9 @@ extension AppState {
     /// The jobs listed are the outgoing dashboard's: they go, and a read
     /// still out for them commits nothing (issue 2094).
     func retireCronJobsForDashboardSwitch() {
-        shownBot.cronJobsGeneration += 1
+        cronJobsGeneration += 1
         cronJobs = []
-        shownBot.cronJobsRead = nil
+        cronJobsRead = nil
         cronJobsLoading = false
     }
 
@@ -121,8 +121,8 @@ extension AppState {
         }
         // A retry shows the spinner again, not the last read's failure.
         cronRunsFailure = nil
-        shownBot.cronRunsLoad += 1
-        let load = shownBot.cronRunsLoad
+        cronRunsLoad += 1
+        let load = cronRunsLoad
         let inProfile: (CronRun) -> Bool = { run in
             guard let owner = run.profile, !owner.isEmpty else { return true }
             return Self.profilesMatch(owner, profile)
@@ -137,20 +137,20 @@ extension AppState {
                     timeoutMilliseconds: 12_000,
                     maxResponseBytes: DataURLLimits.maxJSONResponseBytes
                 )
-                guard profile == activeProfile, shownBot.cronRunsLoad == load else { return }
+                guard profile == activeProfile, cronRunsLoad == load else { return }
                 answerCronRuns(cronRunValues(from: result).compactMap(decodeCronRun).filter(inProfile))
             } else if let gateway, let runs = try await gateway() {
-                guard profile == activeProfile, shownBot.cronRunsLoad == load else { return }
+                guard profile == activeProfile, cronRunsLoad == load else { return }
                 answerCronRuns(runs.filter { $0.isRun(ofJob: job.id) && inProfile($0) })
             } else {
                 // Nothing to ask (offline, or the client was replaced mid-read).
-                guard profile == activeProfile, shownBot.cronRunsLoad == load, !cronRunsLoaded else { return }
+                guard profile == activeProfile, cronRunsLoad == load, !cronRunsLoaded else { return }
                 cronRunsFailure = AppLocalization.string("Connect to Hermes to check.")
             }
         } catch {
             // A sheet closed mid-read: no failure, the next open reads again.
             if error is CancellationError || Task.isCancelled { return }
-            guard profile == activeProfile, shownBot.cronRunsLoad == load else { return }
+            guard profile == activeProfile, cronRunsLoad == load else { return }
             let message = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
             if cronRunsLoaded {
                 errorMessage = message
@@ -217,11 +217,11 @@ extension AppState {
             )
             // Gone on Hermes either way; only the list on screen needs the
             // same profile.
-            shownBot.cronJobsGeneration += 1
+            cronJobsGeneration += 1
             if profile == activeProfile {
                 cronJobs.removeAll { $0.id == job.id }
-                shownBot.cronMutedJobIDs.remove(job.id)
-                shownBot.cronActingJobIDs.remove(job.id)
+                cronMutedJobIDs.remove(job.id)
+                cronActingJobIDs.remove(job.id)
             }
             return true
         } catch {
@@ -258,7 +258,7 @@ extension AppState {
         guard profile == activeProfile else { return }
         if let updated = decodeCronJob(result), let index = cronJobs.firstIndex(where: { $0.id == job.id }) {
             // A list read already on its way predates the change.
-            shownBot.cronJobsGeneration += 1
+            cronJobsGeneration += 1
             cronJobs[index] = updated
         } else {
             await loadCronJobs()
@@ -299,7 +299,7 @@ extension AppState {
         let created = decodeCronJob(result["job"] ?? result)
         guard profile == activeProfile else { return created }
         if let created {
-            shownBot.cronJobsGeneration += 1
+            cronJobsGeneration += 1
             cronJobs.removeAll { $0.id == created.id }
             cronJobs.append(created)
             cronJobs.sort { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }

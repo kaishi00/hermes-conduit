@@ -24,8 +24,8 @@ extension AppState {
     /// Whether a job's runs notify on the active dashboard and profile.
     /// Unknown (not read yet) counts as on, as the host defaults.
     func cronJobNotifies(_ job: CronJob) -> Bool {
-        guard shownBot.cronMutedJobsKey == cronNotificationsKey(profile: activeProfile) else { return true }
-        return !shownBot.cronMutedJobIDs.contains(job.id)
+        guard cronMutedJobsKey == cronNotificationsKey(profile: activeProfile) else { return true }
+        return !cronMutedJobIDs.contains(job.id)
     }
 
     func refreshCronNotifications() async {
@@ -34,21 +34,21 @@ extension AppState {
         // asked for meanwhile runs once it ends, so one triggered by the
         // capability landing is not lost.
         guard cronNotificationsChangingJobID == nil else {
-            shownBot.cronNotificationsReadDeferred = true
+            cronNotificationsReadDeferred = true
             return
         }
         let profile = activeProfile
         let key = cronNotificationsKey(profile: profile)
-        let generation = shownBot.cronNotificationsGeneration
+        let generation = cronNotificationsGeneration
         do {
             let choices = try await cronNotificationsClient.choices(profile: profile)
             guard key == cronNotificationsKey(profile: activeProfile),
                   cronNotificationsChangingJobID == nil,
-                  generation == shownBot.cronNotificationsGeneration else { return }
-            shownBot.cronMutedJobIDs = choices.muted
-            shownBot.cronActingJobIDs = choices.act
-            shownBot.cronShowsBotChatReports = choices.showsReports
-            shownBot.cronMutedJobsKey = key
+                  generation == cronNotificationsGeneration else { return }
+            cronMutedJobIDs = choices.muted
+            cronActingJobIDs = choices.act
+            cronShowsBotChatReports = choices.showsReports
+            cronMutedJobsKey = key
         } catch is CancellationError {
             return
         } catch {
@@ -65,24 +65,24 @@ extension AppState {
         let profile = activeProfile
         let key = cronNotificationsKey(profile: profile)
         cronNotificationsChangingJobID = job.id
-        shownBot.cronNotificationsGeneration += 1
+        cronNotificationsGeneration += 1
         defer {
             cronNotificationsChangingJobID = nil
-            shownBot.cronNotificationsGeneration += 1
-            if shownBot.cronNotificationsReadDeferred { refreshCronNotificationsAfterSave() }
+            cronNotificationsGeneration += 1
+            if cronNotificationsReadDeferred { refreshCronNotificationsAfterSave() }
         }
         // The switch moves at once; the host's answer settles it. Not read
         // yet: start from nothing muted, as the switch showed.
-        let seeded = shownBot.cronMutedJobsKey != key
+        let seeded = cronMutedJobsKey != key
         if seeded {
-            shownBot.cronMutedJobIDs = []
-            shownBot.cronActingJobIDs = []
+            cronMutedJobIDs = []
+            cronActingJobIDs = []
             // Unknown until a read says this Hermes shows reports.
-            shownBot.cronShowsBotChatReports = false
-            shownBot.cronMutedJobsKey = key
+            cronShowsBotChatReports = false
+            cronMutedJobsKey = key
         }
-        let wasMuted = shownBot.cronMutedJobIDs.contains(job.id)
-        if notify { shownBot.cronMutedJobIDs.remove(job.id) } else { shownBot.cronMutedJobIDs.insert(job.id) }
+        let wasMuted = cronMutedJobIDs.contains(job.id)
+        if notify { cronMutedJobIDs.remove(job.id) } else { cronMutedJobIDs.insert(job.id) }
         do {
             let muted = try await cronNotificationsClient.setNotify(notify, jobID: job.id, profile: profile)
             guard key == cronNotificationsKey(profile: activeProfile) else {
@@ -90,22 +90,22 @@ extension AppState {
                 refreshCronNotificationsAfterSave()
                 return false
             }
-            shownBot.cronMutedJobIDs = muted
-            shownBot.cronMutedJobsKey = key
+            cronMutedJobIDs = muted
+            cronMutedJobsKey = key
             return true
         } catch {
             let stillHere = key == cronNotificationsKey(profile: activeProfile)
-            if shownBot.cronMutedJobsKey == key {
+            if cronMutedJobsKey == key {
                 if seeded {
                     // Never read: back to unknown, which reads as on.
-                    shownBot.cronMutedJobsKey = nil
-                    shownBot.cronMutedJobIDs = []
-                    shownBot.cronActingJobIDs = []
-                    shownBot.cronShowsBotChatReports = false
+                    cronMutedJobsKey = nil
+                    cronMutedJobIDs = []
+                    cronActingJobIDs = []
+                    cronShowsBotChatReports = false
                 } else if wasMuted {
-                    shownBot.cronMutedJobIDs.insert(job.id)
+                    cronMutedJobIDs.insert(job.id)
                 } else {
-                    shownBot.cronMutedJobIDs.remove(job.id)
+                    cronMutedJobIDs.remove(job.id)
                 }
             }
             if !stillHere || seeded { refreshCronNotificationsAfterSave() }
@@ -127,36 +127,36 @@ extension AppState {
     /// The job editor offers the choice: the plugin keeps it and the
     /// profile's Hermes can show a report without a turn, as last read.
     var offersCronBotChatChoice: Bool {
-        supportsCronBotChatReports && shownBot.cronMutedJobsKey == cronNotificationsKey(profile: activeProfile)
-            && shownBot.cronShowsBotChatReports
+        supportsCronBotChatReports && cronMutedJobsKey == cronNotificationsKey(profile: activeProfile)
+            && cronShowsBotChatReports
     }
 
     /// Whether a job delivered to a Bot Chat lets the bot act on its
     /// report. Unknown (not read yet) counts as just showing it, as the
     /// host defaults.
     func cronJobLetsBotAct(_ jobID: String) -> Bool {
-        guard shownBot.cronMutedJobsKey == cronNotificationsKey(profile: activeProfile) else { return false }
-        return shownBot.cronActingJobIDs.contains(jobID)
+        guard cronMutedJobsKey == cronNotificationsKey(profile: activeProfile) else { return false }
+        return cronActingJobIDs.contains(jobID)
     }
 
     /// Saves a job's Bot Chat choice on the profile the job was saved to.
     /// Throws when the host didn't take it.
     func setCronJobLetsBotAct(_ act: Bool, jobID: String, profile: String) async throws {
         guard supportsCronBotChatReports else { return }
-        shownBot.cronNotificationsGeneration += 1
-        defer { shownBot.cronNotificationsGeneration += 1 }
+        cronNotificationsGeneration += 1
+        defer { cronNotificationsGeneration += 1 }
         let choices = try await cronNotificationsClient.setActs(act, jobID: jobID, profile: profile)
         let key = cronNotificationsKey(profile: profile)
         guard key == cronNotificationsKey(profile: activeProfile) else { return }
-        shownBot.cronMutedJobIDs = choices.muted
-        shownBot.cronActingJobIDs = choices.act
-        shownBot.cronShowsBotChatReports = choices.showsReports
-        shownBot.cronMutedJobsKey = key
+        cronMutedJobIDs = choices.muted
+        cronActingJobIDs = choices.act
+        cronShowsBotChatReports = choices.showsReports
+        cronMutedJobsKey = key
     }
 
     /// A refresh skipped while the save ran, once it has ended.
     private func refreshCronNotificationsAfterSave() {
-        shownBot.cronNotificationsReadDeferred = false
+        cronNotificationsReadDeferred = false
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.refreshCronNotifications()
