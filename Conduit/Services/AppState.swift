@@ -1242,10 +1242,32 @@ final class AppState: ObservableObject {
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
     @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
-    @Published var skills: [CapabilitySkill] = []
-    @Published var toolsets: [CapabilityToolset] = []
-    /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
-    @Published var toolCatalog = ToolCatalog()
+    /// The bot on screen's skills, toolsets, tools catalog and MCP servers,
+    /// and whose they are (`BotState`).
+    var skills: [CapabilitySkill] {
+        get { shownBot.skills }
+        set { shownBot.skills = newValue }
+    }
+    var toolsets: [CapabilityToolset] {
+        get { shownBot.toolsets }
+        set { shownBot.toolsets = newValue }
+    }
+    var toolCatalog: ToolCatalog {
+        get { shownBot.toolCatalog }
+        set { shownBot.toolCatalog = newValue }
+    }
+    var capabilitiesOwner: CapabilitySnapshotOwner? {
+        get { shownBot.capabilitiesOwner }
+        set { shownBot.capabilitiesOwner = newValue }
+    }
+    var capabilitiesAreKept: Bool {
+        get { shownBot.capabilitiesAreKept }
+        set { shownBot.capabilitiesAreKept = newValue }
+    }
+    var mcpServers: [CapabilityMcpServer] {
+        get { shownBot.mcpServers }
+        set { shownBot.mcpServers = newValue }
+    }
     /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
@@ -1268,25 +1290,6 @@ final class AppState: ObservableObject {
     }
     /// Test seam: answers `POST /predict` in place of the dashboard.
     var predictiveSender: (([String: Any]) async throws -> [String: Any])?
-    /// Whose catalog `toolCatalog` is (dashboard and profile), and the
-    /// catalogs Hermes already sent this run, or is sending now.
-    var toolCatalogOwner: String?
-    var toolCatalogFetched: Set<String> = []
-    var toolCatalogLoading: Set<String> = []
-    /// The dashboard, bridge and profile the installed skills/toolsets were
-    /// read from. Rows are only presentable, and their switches only act,
-    /// while this equals `currentCapabilitiesOwner`: two dashboards can have
-    /// a profile of the same name.
-    @Published var capabilitiesOwner: CapabilitySnapshotOwner?
-    /// The installed skills and toolsets shown are the ones kept from
-    /// Hermes' last answer (#1533), drawn until it answers again.
-    @Published var capabilitiesAreKept = false
-    /// Monotonic request token for capability loads; older requests can never
-    /// commit over newer ones (protects the A -> B -> A race).
-    var capabilityLoadGeneration: UInt64 = 0
-    /// Skill and toolset switches, written in the order flipped.
-    let capabilityToggleWrites = CapabilityToggleWrites()
-    @Published var mcpServers: [CapabilityMcpServer] = []
     @Published var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published var isVoiceEnabled = false
     @Published var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
