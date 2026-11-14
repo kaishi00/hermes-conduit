@@ -6029,6 +6029,10 @@ final class AppStateChatResumeTests: XCTestCase {
             await harness.appState.connect(with: connection)
         }
         await catalogGate.waitUntilSuspended()
+        // The saved chat's resume goes out beside the list read; the drag
+        // comes after it, so the order doesn't depend on scheduling.
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [active.id], "resumed beside the list read")
         XCTAssertTrue(harness.appState.isConnected)
         XCTAssertEqual(harness.appState.turnState, .synchronizing)
 
