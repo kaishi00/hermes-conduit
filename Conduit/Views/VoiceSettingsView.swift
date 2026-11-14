@@ -633,6 +633,11 @@ struct VoiceSettingsView: View {
             if voice.pluginMissing || !voice.available || voice.modelAddress == nil {
                 return setupStep(title, detail: voice.reason ?? waiting, state: .attention)
             }
+            if voice.answersAlone, voice.lastRequestAt == nil {
+                // A server with a model of its own never asks for words:
+                // the switch is what it needs, not the address and key.
+                return setupStep(title, detail: AppLocalization.string("Your speech server answered a call by itself, so Hermes never got a turn. Turn on Hermes answers under Your speech server.", table: .voice), state: .attention)
+            }
             return voice.lastRequestAt == nil
                 ? setupStep(title, detail: waiting, state: .pending)
                 : setupStep(title, detail: AppLocalization.string("Your speech server", table: .voice), state: .done)
@@ -1986,9 +1991,11 @@ private struct WakePhraseSettingsSection: View {
                         model.save(phrases, value)
                     }
                 ))
+                .accessibilityHint(Text(verbatim: AppLocalization.string("Off: the phrase continues the chat you were in last, as the chat's voice button does, and the call starts knowing what was said there. On: each phrase starts a new conversation.", table: .voice)))
                 Text(verbatim: AppLocalization.string("Off: the phrase continues the chat you were in last, as the chat's voice button does, and the call starts knowing what was said there. On: each phrase starts a new conversation.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
                 Toggle("Listen on CarPlay", isOn: Binding(
                     get: { listensOnCarPlay },
                     set: { value in

@@ -1557,8 +1557,11 @@ table marks agent mode)
 A speech server that answers by itself (a hosted realtime model) as the ears
 and mouth of Classic and Local Live, with Hermes or the fast model answering:
 the "Hermes answers" switch, `voice.speech_server.drive_turns` (issue 2438).
-It is stage 1 of speech servers as data: the next stages add a list of known
-services and the server's own model as a third choice of who answers.
+It is stage 1 of speech servers as data. Stage 2 makes the server settings
+and a list: its model, voice and transcription model are fields, the known
+services are a presets file in the plugin, and Test connection says what the
+server is. The last stage adds the server's own model as a third choice of
+who answers.
 
 **Siblings:** Local Live on the phone's socket · agent mode's fast model (it
 answers as on any read-back server) · the Watch's bridge · Classic's listen
@@ -1569,7 +1572,11 @@ server answered by itself) · the Assistant voice setup step · Talking over
 Hermes (a response the server starts unasked is cancelled, not played as a
 filler) · docs/OWN_VOICE_SERVER.md · the notifier's README and changelog ·
 `conduit_settings` (not needed: Hermes doesn't change the speech server
-through it) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
+through it) · Known servers and the Model, Voice and Transcription model
+fields under Your speech server (done, #2464) · the set voice on every
+session: Classic's listen and speak sockets, Local Live on the phone and the
+Watch, driven or not (done, notifier 0.174.0) · Test connection's line for a
+server with a model of its own (done, #2464) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
 answer, by design)
 
 **Code**
@@ -1579,19 +1586,24 @@ answer, by design)
 - The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchSession.run's setup)
 - The switch: `Conduit/Views/SpeechServerSettingsView.swift` (saveDriveTurns), `Conduit/Voice/HermesVoiceConfigurationService.swift` (saveSpeechServerDrivesTurns, a Boolean in the config), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus.driveTurns)
 - What step 2 says: `Conduit/Views/SpeechServerVoiceSettingsView.swift`, `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerVoiceStatus.drivesTurns, answersAlone), `Conduit/Views/VoiceSettingsView.swift` (assistantVoiceStep)
-- Tests: `notifier/tests/test_local_live.py` (the tests after "The plugin runs the turns"), `notifier/tests/test_watch_local_live.py` (test_a_driven_server_has_the_host_run_the_watchs_turns_from_the_first_update), `ConduitTests/HermesVoiceGatewayTimeoutTests+SpeechServer.swift`
+- The server as data: `notifier/dashboard/speech_server_presets.json`, `notifier/dashboard/api/speech_server.py` (speech_server_presets and its route, speech_server_model, speech_server_voice, _speech_server_with_model, SpeechServerSetup, speech_server_abilities), `notifier/dashboard/api/local_live_read_back.py` (passed_on, setup), `Conduit/Voice/SpeechServerPresets.swift`, `Conduit/Voice/HermesVoiceConfigurationService.swift` (saveSpeechServer, speechServerPresets), `Conduit/Views/SpeechServerSettingsView.swift` (pick, changedNames, presetDrivesTurns), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus's model, voice and transcriptionModel, SpeechServerTestResult.answersAlone)
+- Tests: `notifier/tests/test_local_live.py` (the tests after "The plugin runs the turns"), `notifier/tests/test_watch_local_live.py` (test_a_driven_server_has_the_host_run_the_watchs_turns_from_the_first_update), `notifier/tests/test_speech_server.py` (the tests under "the server as data"), `ConduitTests/HermesVoiceGatewayTimeoutTests+SpeechServer.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests+OverlappingSaves.swift`
 
 **Rulings**
 - The end state is a speech server described by data, in two roles (voice for Hermes, or its own brain with Conduit's briefing and tools), with known services as a presets file; Gemini, Qwen, Grok and GPT-Live stay as they are (Eric picked this on 2026-11-14, option B of the design for issue 2438).
 - The switch is the user's: off by default, per profile, and nothing turns it on for them. Settings only says when a server answered a call by itself and names the switch (2026-11-14, #2455).
 - A driven server is told to read each sentence aloud as written, on the session and on every sentence, and a response it starts by itself is cancelled and never heard, whether or not it honours `create_response: false`. The read-back check stays: two sentences in a row answered instead of read end the call with that reason (2026-11-14, #2455).
 - The switch shows only when the plugin reports `drive_turns` (0.173.0 or later) and a server is set (2026-11-14, #2455).
+- A known server is only a way to fill the settings in: picking one writes `url`, `model`, `voice`, `transcription_model` and `drive_turns` on Save, and nothing reads which one was picked, so a server that isn't listed works the same once its fields are filled in. A new service is a new entry in the plugin's presets file, with no app change (2026-11-14, #2464).
+- The set voice goes on every session the plugin passes on, driven or not, and a frame that names a voice keeps it; the set model goes on the address unless the address names one, and the address Settings shows stays as typed (2026-11-14, #2464).
+- Test connection only reports what the server's first event says: a server that names a model and whose turn detection starts responses gets the line naming the switch. Nothing turns the switch on by itself, except the user saving a picked known server that has a model of its own (2026-11-14, #2464).
 
 **Open gaps**
 - How faithfully a given hosted model reads text back isn't known ahead of the call: it was tested against the relay's own server doubles, not against Qwen's or OpenAI's realtime models, for want of a key. The reporter of issue 2438 is asked to confirm (2026-11-14, #2455).
-- `transcription_model` is set by hand in config.yaml; Settings has no field for it until servers are data (stage 2).
+- The known servers' model and voice names were taken from the services' documentation on 2026-11-14 and not tried against them, for want of keys.
+- Voice is a text field: Settings doesn't list a known server's voices or models to pick from, though the presets file carries them.
 
-**Checked:** 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
+**Checked:** 2026-11-14, #2464 (stage 2: known servers, the model, voice and transcription model fields, the voice on every session and what Test connection says, notifier 0.174.0; the Assistant voice step names the switch after a call the server answered by itself); 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
 
 ## Talking over Hermes
 
@@ -1788,25 +1800,26 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
 ## Texting someone for the user
 
 Hermes writes a text for someone ("text my wife her flight landed") and
-puts it on a contact card; Send text opens Messages with the number and
-the text filled in, and the user taps Send there.
+puts it on a contact card; Send text opens Messages with the number (or,
+for someone with no phone, their email, as an iMessage recipient) and the
+text filled in, and the user taps Send there.
 
-**Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok and
-Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
+**Siblings:** typed chats (conduit_show) · the call screen (Gemini, Grok, Qwen
+and Local Live show_on_screen, and Classic through Hermes) · GPT-Live · the saved
 call transcript · group rooms · the Watch · CarPlay · an iPad without
-Messages · what conduit_show, conduit_contacts and the voice contacts tool
+Messages, and the Mac (the text is copied; the Mac opens no sms: link) · what conduit_show, conduit_contacts and the voice contacts tool
 tell models · Settings > Contacts' caption
 
 **Code**
-- Card and Send text: `Conduit/Cards/RichMediaCard.swift` (RichPerson.message), `Conduit/Cards/RichMediaCardViews.swift` (RichPersonRow, RichTextComposeSheet)
-- Schema: `Conduit/Cards/card-schema.json`, `Conduit/Cards/RichCardSchema.swift`; feature "text-drafts" in `Conduit/Services/PresentedScreens.swift`
+- Card and Send text: `Conduit/Cards/RichMediaCard.swift` (RichPerson.message, textRecipient, smsURL), `Conduit/Cards/RichMediaCardViews.swift` (RichPersonRow, RichTextComposeSheet)
+- Schema: `Conduit/Cards/card-schema.json`, `Conduit/Cards/RichCardSchema.swift`; features "text-drafts" and "email-texts" in `Conduit/Services/PresentedScreens.swift`
 - Live models' show_on_screen text: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`
-- Notifier: `notifier/cards/card-schema.json` (people[].message), `notifier/card_schema.py`, `notifier/show_tool.py` (TEXT_DRAFTS_FEATURE), `notifier/phone_tool.py` (CONTACTS_SCHEMA, VOICE_CONTACTS_DESCRIPTION)
+- Notifier: `notifier/cards/card-schema.json` (people[].message), `notifier/card_schema.py`, `notifier/show_tool.py` (TEXT_DRAFTS_FEATURE, EMAIL_TEXTS_FEATURE), `notifier/phone_tool.py` (CONTACTS_SCHEMA, VOICE_CONTACTS_DESCRIPTION), README.md (contact cards)
 
 **Rulings**
 - Nothing is sent for the user: Messages opens filled in and only their tap sends it, so models say it's ready, never that it was sent (2026-10-23, #1159).
-- A text needs the person's phone; one without is dropped (2026-10-23, #1159).
-- A Conduit that doesn't say "text-drafts" gets the card without the text, and Hermes hears to put the text in its reply (2026-10-23, #1159).
+- A text needs the person's phone or, without one, their email, which Messages takes as an iMessage recipient; one with neither is dropped. A number goes first when they have both (Eric, 2026-11-14, issue 2465, #2470 and notifier 810; was phone only, 2026-10-23, #1159).
+- A Conduit that doesn't say "text-drafts" gets the card without the text, and Hermes hears to put the text in its reply (2026-10-23, #1159). One that says it but not "email-texts" gets a text only for someone with a phone, the same way (2026-11-14, #2470).
 
 **Open gaps**
 - No queued send for when the user isn't looking: CarPlay and the Watch show no card, and a locked phone waits for the user to open the chat (#1159).
@@ -1815,7 +1828,7 @@ tell models · Settings > Contacts' caption
 - Line breaks in the text become spaces, as in every card's text.
 - Hermes doesn't hear whether the user sent or cancelled it.
 
-**Checked:** 2026-11-04, #1739 (room boards leave contact cards out); 2026-10-23, at #1174.
+**Checked:** 2026-11-14, #2470 (a text to someone with only an email, issue 2465); 2026-11-04, #1739 (room boards leave contact cards out); 2026-10-23, at #1174.
 
 ## Message row actions
 
@@ -4431,7 +4444,7 @@ first, see Open gaps)
 - After the early resume has gone out: a notification tapped before it lands shows the saved chat briefly before the tapped one; a durable id Hermes changed since the kept list (a compaction) flashes the wrong-chat banner until the list heals it; typing over the saved copy then resumes the same chat a second time.
 - A picture still rides the chat's socket: the first visit to a dashboard in a launch downloads every picture once its chat is open, and a send in those seconds waits behind them. Hermes' drafted `avatar_rev` (see Moving pictures) would let the phone skip unchanged ones on every visit.
 
-**Checked:** 2026-11-14, #2447 (from #2443's reviews: the fence test reads through a recording bridge, so nothing is sent for a mismatch and the matching read goes out and is answered); 2026-11-14, #2443 (from #2440's reviews: tests for the owed bootstrap's bots beside its sync and the short read's dashboard fence, the fence moved into bridgeForSync so its test tells a match from a mismatch); 2026-11-14, #2440 (from #2439's reviews: a connect interrupted by the scene going inactive reads its bots beside its sync too; the short read is never sent through another dashboard's bridge; the sheet's close and the row's Connecting… tested); 2026-11-14, #2439 (a connection reads its bots beside the chat sync, the early resume checking the bots kept from last time; a switch's sheet closes once the socket is up; from #2437's reviews: a list landing before Jump to latest activity's short read picks at once, a move of the selected dashboard drops its live set, the short read reads the sync's profile, a store test for the stash); 2026-11-14, #2437 (each dashboard keeps the chat you left there across a switch; Jump to latest activity opens the newest of a 20-chat read before the list lands; the list's newer pick still opens); 2026-11-14, #2433 (Settings home lists the plugin's pages from its last answer until it answers, forgotten with a removed or moved host; the Gridania gap read: Jump to latest activity waits for the list); 2026-11-14, #2428 (a test for an open begun during the yield; the failed-list test counts every open; the ruling names #2426's fences); 2026-11-14, #2426 (the early resume also stands back for an open, switch or new client that came in as the list read started; tests for a New Chat then and a list failing at once; gaps from #2421's reviews and the Gridania run); 2026-11-14, #2421 (the chat you left resumes beside the chat list in narrow cases, closing #2412's gap); 2026-11-14, #2418 (the picture-skip test keeps its pictures in a temp folder); 2026-11-14, #2414 (a test pins the switch-back skip and the per-dashboard pull); 2026-11-14, #2412 (pictures fresh on the phone aren't downloaded again on a switch and the rest wait for the chat; the resume beside the list was tried and left as a gap; Gridania timeline); 2026-11-13, #2365 (a big native answer parsed off the main actor and dropped after a switch, issue 2356; the ticket, the first reads and every other screen's reads share it and needed nothing else); 2026-11-12, #2321 (the #2308 note says reconnect tail; the busy-mode test covers a profile-less read); 2026-11-12, #2315 (the ruling names the reconnect tail as the three-read site; a test pins the busy-mode read's profile check; review follow-up to #2308); 2026-11-12, #2308 (carries #1927: the reconnect tail's three reads and the foreground tail's two go out together, issue 1727; Rulings); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-02, #1668 (an older profile list or display settings read landing after a newer one doesn't commit; the profile list's other readers, a new, copied or deleted bot and a linked chat's profile check, read through the same fence); 2026-11-02, #1665: a time-zone save landing while the settings read is out no longer puts the older zone back, counted apart from display saves so one doesn't cost the other; #1663 (added: reads and the ticket without the page, and the first reads sent with the ticket).
+**Checked:** 2026-11-14, #2457 (each connection step goes to the device console with its time, as do the newest chats read, whether the sync waited for the bots, and a slow WebKit cookie read before a read without the page, to find the 0.6-1.2 s before Furina's resume decision; the steps also show in Gateway Diagnostics' timeline); 2026-11-14, #2447 (from #2443's reviews: the fence test reads through a recording bridge, so nothing is sent for a mismatch and the matching read goes out and is answered); 2026-11-14, #2443 (from #2440's reviews: tests for the owed bootstrap's bots beside its sync and the short read's dashboard fence, the fence moved into bridgeForSync so its test tells a match from a mismatch); 2026-11-14, #2440 (from #2439's reviews: a connect interrupted by the scene going inactive reads its bots beside its sync too; the short read is never sent through another dashboard's bridge; the sheet's close and the row's Connecting… tested); 2026-11-14, #2439 (a connection reads its bots beside the chat sync, the early resume checking the bots kept from last time; a switch's sheet closes once the socket is up; from #2437's reviews: a list landing before Jump to latest activity's short read picks at once, a move of the selected dashboard drops its live set, the short read reads the sync's profile, a store test for the stash); 2026-11-14, #2437 (each dashboard keeps the chat you left there across a switch; Jump to latest activity opens the newest of a 20-chat read before the list lands; the list's newer pick still opens); 2026-11-14, #2433 (Settings home lists the plugin's pages from its last answer until it answers, forgotten with a removed or moved host; the Gridania gap read: Jump to latest activity waits for the list); 2026-11-14, #2428 (a test for an open begun during the yield; the failed-list test counts every open; the ruling names #2426's fences); 2026-11-14, #2426 (the early resume also stands back for an open, switch or new client that came in as the list read started; tests for a New Chat then and a list failing at once; gaps from #2421's reviews and the Gridania run); 2026-11-14, #2421 (the chat you left resumes beside the chat list in narrow cases, closing #2412's gap); 2026-11-14, #2418 (the picture-skip test keeps its pictures in a temp folder); 2026-11-14, #2414 (a test pins the switch-back skip and the per-dashboard pull); 2026-11-14, #2412 (pictures fresh on the phone aren't downloaded again on a switch and the rest wait for the chat; the resume beside the list was tried and left as a gap; Gridania timeline); 2026-11-13, #2365 (a big native answer parsed off the main actor and dropped after a switch, issue 2356; the ticket, the first reads and every other screen's reads share it and needed nothing else); 2026-11-12, #2321 (the #2308 note says reconnect tail; the busy-mode test covers a profile-less read); 2026-11-12, #2315 (the ruling names the reconnect tail as the three-read site; a test pins the busy-mode read's profile check; review follow-up to #2308); 2026-11-12, #2308 (carries #1927: the reconnect tail's three reads and the foreground tail's two go out together, issue 1727; Rulings); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-02, #1668 (an older profile list or display settings read landing after a newer one doesn't commit; the profile list's other readers, a new, copied or deleted bot and a linked chat's profile check, read through the same fence); 2026-11-02, #1665: a time-zone save landing while the settings read is out no longer puts the older zone back, counted apart from display saves so one doesn't cost the other; #1663 (added: reads and the ticket without the page, and the first reads sent with the ticket).
 
 ## Conduit tools in Hermes' tool catalog
 
@@ -5639,7 +5652,7 @@ outside it, see Plugin settings, #2011)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
-- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
+- Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveSpeechServerDrivesTurns, saveSpeechServer, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
 - AppState: `Conduit/Services/AppState+ProfileConfig.swift` (updateProfileConfig, setDisplayPreference, setProfileFallbackModels, setProfileMainModel, setProfileSetting), `Conduit/Services/AppState+HelperModels.swift` (setVoiceReplyModel, setHelperModel), `Conduit/Services/AppState+Capabilities.swift` (toggleSkill, toggleToolset)
 - Capabilities: `Conduit/Services/CapabilitiesStore.swift` (request, writesProfileConfig, serverConfig and saveServer: Edit Server's read, and its read and whole-map write in one turn)
 - Gateway RPCs: `Conduit/Services/HermesClient.swift` (configureBotProfile, configureBotModel, addBotMcpServer, addMcpServer, setBusyInputMode)
@@ -5661,7 +5674,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-11-13, #2387 (Add MCP Server's addMcpServer, from #2386, waits its turn in the queue); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-11-14, #2464 (the speech server page's Hermes answers switch, saveSpeechServerDrivesTurns from #2455, and its names, saveSpeechServer, are listed and tested in the queue); 2026-11-13, #2387 (Add MCP Server's addMcpServer, from #2386, waits its turn in the queue); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
