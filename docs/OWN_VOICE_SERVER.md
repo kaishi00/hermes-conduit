@@ -22,9 +22,10 @@ network.
   one on your network (an LXC, a GPU box, a Mac).
 - For Local Live, the speech server must be able to reach your Hermes
   dashboard the way your phone does (LAN, Tailscale or a public domain),
-  unless it only reads text aloud, or **Hermes answers** is on (see A
-  server with a model of its own): then the plugin runs each turn and the
-  server never asks the dashboard.
+  unless it only reads text aloud, **Hermes answers** is on (see A
+  server with a model of its own), or its own model answers Live > Local:
+  then the plugin runs each turn, or hands the server the call's tools, and
+  the server never asks the dashboard.
 
 ## Two ways to use it
 

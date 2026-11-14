@@ -101,6 +101,8 @@ struct LocalLiveOwnModelToggle: View {
     @State private var draft: Bool?
     @State private var isSaving = false
     @State private var errorMessage: String?
+    /// The read after a save failed: the page's next check asks again.
+    @State private var readFailed = false
 
     var body: some View {
         if let ownModel = service.speechServerVoice?.ownModel {
@@ -125,6 +127,16 @@ struct LocalLiveOwnModelToggle: View {
                         .accessibilityIdentifier("voice.localLive.ownModel.saveError")
                 }
             }
+            .onChange(of: service.isLoading) { _, loading in
+                guard !loading, readFailed else { return }
+                Task {
+                    let status = await service.speechServerVoiceStatus()
+                    if !status.readFailed {
+                        readFailed = false
+                        errorMessage = nil
+                    }
+                }
+            }
         }
     }
 
@@ -142,7 +154,14 @@ struct LocalLiveOwnModelToggle: View {
         if !saved {
             errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
-        _ = await service.speechServerVoiceStatus()
+        // A save that landed with a read that failed says why, rather than
+        // the switch going back to the old value without a word.
+        let status = await service.speechServerVoiceStatus()
+        guard service.profile == profile else { return }
+        readFailed = status.readFailed
+        if status.readFailed, saved {
+            errorMessage = status.reason
+        }
     }
 }
 
@@ -236,7 +255,10 @@ struct LocalLiveFrontModelSettingsView: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         } else if let status {
-            if status.available {
+            if status.available, service.speechServerVoice?.ownModel == true {
+                // The switch above says who answers: the server's own model.
+                EmptyView()
+            } else if status.available {
                 Label(AppLocalization.string("Calls answer with \(status.model ?? "") and hand the work to Hermes.", table: .voice), systemImage: "checkmark.circle.fill")
                     .scaledFont(.footnote)
                     .foregroundStyle(.green)
