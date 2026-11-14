@@ -140,16 +140,16 @@ extension AppState {
     /// Sign-out or removal of the open dashboard: nothing Predictive knew
     /// of its chats stays for the next account.
     func forgetPredictiveState() {
-        predictiveGeneration &+= 1
-        predictivePauseTask?.cancel()
-        predictivePauseTask = nil
-        predictiveFollowUpTask?.cancel()
-        predictiveFollowUpTask = nil
-        predictiveRepliesAsked = nil
-        predictiveDraftAsked = nil
-        predictiveFollowUp = PredictiveFollowUpState()
+        shownChat.predictiveGeneration &+= 1
+        shownChat.predictivePauseTask?.cancel()
+        shownChat.predictivePauseTask = nil
+        shownChat.predictiveFollowUpTask?.cancel()
+        shownChat.predictiveFollowUpTask = nil
+        shownChat.predictiveRepliesAsked = nil
+        shownChat.predictiveDraftAsked = nil
+        shownChat.predictiveFollowUp = PredictiveFollowUpState()
         stopWaitingForPredictiveFollowUp()
-        predictiveReplyEnded = nil
+        shownChat.predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()
     }
@@ -512,7 +512,7 @@ extension AppState {
         // call) gets nothing, and the composer keeps the words: the shared
         // newChatOpenedSessionID would name that other creation's chat.
         guard let created = await createNewSessionMarkingStart(),
-              newChatOpenedSessionID == created, activeSessionId == created else { return nil }
+              shownChat.newChatOpenedSessionID == created, activeSessionId == created else { return nil }
         return composerSubmissionContext()
     }
 
@@ -650,7 +650,7 @@ extension AppState {
             sessionID: context.sessionID,
             viewportTransitionGeneration: context.viewportTransitionGeneration,
             startsChat: startsChat,
-            earlierNewChat: newChatOpenedSessionID
+            earlierNewChat: shownChat.newChatOpenedSessionID
         )
         composerSendChecks.append(marker)
         defer { composerSendChecks.removeAll { $0.id == marker.id } }
@@ -663,7 +663,7 @@ extension AppState {
             if check.startsChat, isStartingNewChat {
                 // The chat this check starts, never one an earlier New Chat made.
                 return activeSessionId == nil
-                    || (activeSessionId == newChatOpenedSessionID && activeSessionId != check.earlierNewChat)
+                    || (activeSessionId == shownChat.newChatOpenedSessionID && activeSessionId != check.earlierNewChat)
             }
             return check.sessionID == activeSessionId
                 && check.viewportTransitionGeneration == chatViewportTransitionGeneration

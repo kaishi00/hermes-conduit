@@ -314,7 +314,7 @@ extension AppState {
                         }
                         // A turn a restart cut off holds the chat: the send
                         // waits behind it in the dock, and no turn starts.
-                        if !authorityQueue.lost.isEmpty, !startedAdmissionIDs.contains(admission),
+                        if !authorityQueue.lost.isEmpty, !shownChat.startedAdmissionIDs.contains(admission),
                            let queueChat = authorityQueue.sessionID,
                            queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
                             shownChat.locallyOwnedInFlightTurn = nil
@@ -981,7 +981,7 @@ extension AppState {
             // card, whose Resend sends the words again), never the transcript too.
             // Its turn already started (the start came during this read):
             // the bubble stays where it is.
-            if !startedAdmissionIDs.contains(row.admissionID),
+            if !shownChat.startedAdmissionIDs.contains(row.admissionID),
                let optimisticRowID, let index = messages.firstIndex(where: { $0.id == optimisticRowID }) {
                 holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
                 cacheMessagePresentation()

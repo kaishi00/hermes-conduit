@@ -224,4 +224,114 @@ final class ChatState: ObservableObject {
     /// here (a cancelled token is stale, so a new one is always minted), so
     /// clearing at entry re-arms the composer for each new window.
     var composerEditClaimedAutomaticWork = false
+
+    // MARK: Sending while connecting
+
+    /// A message sent before its chat was ready (#417): it shows in that
+    /// chat as "Sends when connected" and goes once the chat is ready. Its
+    /// file beside the dashboard's saved chats brings it back as a draft
+    /// if Conduit stops first.
+    @Published var pendingComposerSend: PendingComposerSend?
+    /// The chat Conduit last created, while it's the one open: it takes the
+    /// New Chat draft and a message that waited for it.
+    var newChatOpenedSessionID: String? {
+        didSet {
+            if newChatOpenedSessionID == nil { newChatOpenedDurableSessionID = nil }
+        }
+    }
+    var newChatOpenedDurableSessionID: String?
+    /// The ids of an empty chat Hermes lost and of the fresh chat Conduit
+    /// opened in its place (replaceLostEmptyNewChat): a draft typed in the
+    /// lost one is the fresh one's, as the New Chat draft is its chat's.
+    var lostChatReplacement: (lost: Set<String>, fresh: Set<String>)?
+    var pendingComposerSendCheckScheduled = false
+    /// A waiting message whose chat is ready but still settling is looked
+    /// at again shortly: not all of that settling is published.
+    var pendingComposerSendRecheckTask: Task<Void, Never>?
+    /// Waiting messages handed to the normal send and not back yet. Their
+    /// files stay until it goes, so a switch back to their dashboard
+    /// mustn't restore them meanwhile.
+    var deliveringPendingComposerSendIDs: Set<UUID> = []
+
+    // MARK: Queue, suggestions and step summaries
+
+    /// Read through AppState's forwarders (`predictive`, `authorityQueue`,
+    /// `sessionControl`, `stepSummaryRequested`, `predictiveComposerRequest`);
+    /// the rest is AppState's own working state for the chat on screen.
+    /// Summary questions Hermes accepted, by btw task id, to their run.
+    var stepSummaryTasks: [String: ChatStepSummaries.Run] = [:]
+    /// Summary questions sent whose task id hasn't come back yet.
+    var stepSummaryUnclaimed = 0
+    /// Answers that came before their question's task id did; cleared
+    /// once no question is waiting for its id.
+    var stepSummaryEarlyAnswers: [String: String] = [:]
+    /// Runs asked about and not answered yet, with when they were asked.
+    @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    /// The suggestion row's guesses (AppState+Predictive.swift).
+    let predictive = PredictiveStore()
+    /// The open chat's queue on the session authority: messages waiting
+    /// their turn and turns a restart cut off (AppState+AuthorityQueue.swift).
+    let authorityQueue = AuthorityQueueStore()
+    /// The open chat's standing goal, loop and heartbeat, for the dock above
+    /// the composer (AppState+SessionControl.swift).
+    let sessionControl = SessionControlStore()
+    /// The user's own messages the authority queued, by their admission id
+    /// (the receipt's, which their queue row and their turn's start name):
+    /// their bubble waits in the dock above the composer and comes back to
+    /// the transcript when their turn starts. The newest few are kept.
+    var queuedSendRows: [String: ChatMessage] = [:]
+    var queuedSendOrder: [String] = []
+    /// The user's sends the authority took as a new turn, by admission id,
+    /// with their bubble's id: one Hermes then lists as waiting behind
+    /// another client's turn moves to the dock too. Cleared when it starts.
+    var ownSendRowIDs: [String: String] = [:]
+    /// Admissions whose turn this socket saw start, so a reply that comes
+    /// after its start never holds that bubble back.
+    var startedAdmissionIDs: Set<String> = []
+    /// For a started admission whose bubble wasn't held yet: the row its
+    /// turn began after (nil, an empty transcript), so a late bubble goes
+    /// above its reply.
+    var startedAdmissionAnchors: [String: String?] = [:]
+    /// What the row asks the composer to do: send, edit or insert a guess.
+    @Published var predictiveComposerRequest: PredictiveComposerRequest?
+    /// The reply suggested replies were last asked for (asked once each).
+    var predictiveRepliesAsked: PredictiveStore.Anchor?
+    /// The draft last asked about, and the wait for the next pause.
+    var predictiveDraftAsked: (sessionID: String, draft: String)?
+    var predictivePauseTask: Task<Void, Never>?
+    /// The follow-up checks for the reply on screen, and the next one.
+    var predictiveFollowUp = PredictiveFollowUpState()
+    var predictiveFollowUpTask: Task<Void, Never>?
+    /// The hidden turn sent for Hermes to follow up, until it settles.
+    /// `after` is the chat's last row when it was sent: only a reply
+    /// after it is the follow-up's.
+    var predictiveFollowUpTurn: (sessionID: String, why: String, after: String?)?
+    /// Advanced by forgetPredictiveState: an answer asked before it is
+    /// dropped, whatever is on screen when it comes.
+    var predictiveGeneration = 0
+    /// The hidden turn was queued behind a turn already running (another
+    /// client's): the next turn to end is that one, not the follow-up.
+    var predictiveFollowUpQueued = false
+    /// The hidden prompt is on its way and Hermes hasn't said how it took
+    /// it: a turn ending meanwhile is the one ahead, not the follow-up.
+    var predictiveFollowUpSending = false
+    /// A turn ended while the hidden prompt was on its way: when it comes
+    /// back queued, it was queued behind that one.
+    var predictiveFollowUpAheadEnded = false
+    /// Turns of messages sent before the hidden prompt was queued that
+    /// ran ahead of it, so a reply Conduit never sees end is stopped
+    /// waiting for.
+    var predictiveFollowUpTurnsAhead = 0
+    /// When the hidden prompt was sent, if Hermes queued it: only a message
+    /// sent before then can run ahead of it.
+    var predictiveFollowUpQueuedAt: Date?
+    /// Row ids of messages other clients sent while the follow-up waits;
+    /// a reply ending before one is read can't be told apart.
+    var predictiveFollowUpUnreadMessages: Set<Int> = []
+    /// Bumped by each follow-up sent and each stop: a send that returns
+    /// after either leaves the follow-up waiting now as it is.
+    var predictiveFollowUpSend = 0
+    /// When the last reply settled here, so a follow-up check can say how
+    /// long ago without reading timestamps.
+    var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
 }

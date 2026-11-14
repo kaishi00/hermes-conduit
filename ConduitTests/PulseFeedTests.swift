@@ -852,7 +852,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // A chat an earlier New Chat made is still open, under the chat list.
         state.activeSessionId = "earlier"
-        state.newChatOpenedSessionID = "earlier"
+        state.shownChat.newChatOpenedSessionID = "earlier"
         state.showSidebar = true
         // A new chat that doesn't start gets nothing, and the earlier one isn't taken for it.
         state.widgetSessionCreatorOverride = { _, _ in throw URLError(.timedOut) }

@@ -1134,7 +1134,7 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         appState.client = HermesClient(connection: connection, profile: "default")
         appState.isConnected = true
         appState.activeSessionId = "earlier-new"
-        appState.newChatOpenedSessionID = "earlier-new"
+        appState.shownChat.newChatOpenedSessionID = "earlier-new"
         appState.widgetSessionCreatorOverride = { [weak appState] _, _ in
             appState?.activeSessionId = "opened-meanwhile"
             throw CreateRefused()
