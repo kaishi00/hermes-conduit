@@ -833,7 +833,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let answeredPeer = FakeGPTLivePeer()
         let answeredCall = GPTLiveSession(client: FakeGPTLiveClient(), voice: "haetsal", makePeer: { answeredPeer })
         answeredCall.start()
-        await settle()
+        await settle(until: { !answeredPeer.acceptedAnswers.isEmpty })
         XCTAssertEqual(answeredCall.state, .connecting)
         answeredPeer.onDisconnected?()
         XCTAssertEqual(answeredCall.state, .failed(GPTLiveSession.notStartedMessage(voice: "haetsal", billing: .subscription)))
