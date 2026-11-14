@@ -771,6 +771,11 @@ final class AppState: ObservableObject {
     /// When `reloadBotRoster` last asked for every picture again.
     var botAvatarsReloadedAt: Date?
     var botAvatarFetchedGeneration: [String: Int] = [:]
+    /// When each bot's picture last came from Hermes, by dashboard and
+    /// name. Kept across switches (unlike the generation above), so a
+    /// switch back within `botPictureRecheckInterval` shows the phone's
+    /// copy instead of downloading it again.
+    var botPictureFetchedAt: [String: Date] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
     var botAvatarFetchInflight: [String: Int] = [:]

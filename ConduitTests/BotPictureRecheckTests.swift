@@ -55,4 +55,43 @@ final class BotPictureRecheckTests: XCTestCase {
         await appState.reloadBotRoster()
         XCTAssertEqual(appState.botAvatarGeneration, start &+ 2)
     }
+
+    /// A dashboard switch downloaded every bot's picture again over the
+    /// chat's socket, ahead of the chat's resume (3 to 6 s on Gridania). A
+    /// picture fetched within the recheck interval, and since the last pull,
+    /// is shown from the phone's copy instead.
+    func testAPictureFetchedRecentlyAndSinceThePullIsFresh() {
+        let fetchedAt = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertTrue(AppState.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: nil, now: fetchedAt.addingTimeInterval(60)))
+        XCTAssertFalse(AppState.botPictureIsFresh(
+            fetchedAt: fetchedAt, reloadedAt: nil,
+            now: fetchedAt.addingTimeInterval(AppState.botPictureRecheckInterval + 1)
+        ), "old enough to ask again")
+        XCTAssertFalse(AppState.botPictureIsFresh(
+            fetchedAt: fetchedAt, reloadedAt: fetchedAt.addingTimeInterval(1),
+            now: fetchedAt.addingTimeInterval(60)
+        ), "a pull since asks for every picture again")
+        XCTAssertTrue(AppState.botPictureIsFresh(
+            fetchedAt: fetchedAt, reloadedAt: fetchedAt.addingTimeInterval(-1),
+            now: fetchedAt.addingTimeInterval(60)
+        ), "fetched after the pull")
+    }
+
+    func testAPictureWithNoCopyOnThePhoneIsNeverFresh() {
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        XCTAssertFalse(appState.hasFreshBotPicture("furina"))
+    }
+
+    /// Pictures wait while the connection opens its chat, and not past the
+    /// limit.
+    func testPictureDownloadsWaitWhileTheChatOpensUpToTheLimit() async {
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.turnState = .synchronizing
+        XCTAssertTrue(appState.isOpeningChat)
+        let started = Date()
+        await appState.waitWhileOpeningChat(limit: 0.3)
+        XCTAssertGreaterThanOrEqual(Date().timeIntervalSince(started), 0.25)
+        appState.turnState = .idle
+        XCTAssertFalse(appState.isOpeningChat)
+    }
 }

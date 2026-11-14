@@ -774,6 +774,19 @@ extension AppState {
         }
         let generation = botAvatarGeneration
         guard botAvatarFetchedGeneration[name] != generation else { return true }
+        // Fetched from this dashboard a moment ago and still on the phone
+        // (a switch back, a reconnect): the copy shows, nothing downloads.
+        if hasFreshBotPicture(name) {
+            botAvatarFetchedGeneration[name] = generation
+            return true
+        }
+        // A picture is up to 2 MB on the chat's own socket, and Hermes
+        // answers that socket's requests one at a time: the open chat's
+        // resume goes first.
+        await waitWhileOpeningChat()
+        guard !Task.isCancelled else { return false }
+        // Another fetch may have landed it meanwhile.
+        guard botAvatarFetchedGeneration[name] != generation else { return true }
         // In flight elsewhere or offline: not done yet, so a retrying caller
         // checks again after its backoff instead of trusting the other fetch.
         guard botAvatarFetchInflight[name] != generation,
@@ -801,6 +814,7 @@ extension AppState {
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
+            if let dashboardID { botPictureFetchedAt[Self.botPictureKey(name, dashboardID: dashboardID)] = Date() }
             // Rooms over Links show it too (digest-gated, RoomLooks.swift).
             Task { await self.shareRoomLooksIfNeeded() }
             return true
@@ -810,6 +824,44 @@ extension AppState {
             // ship together, so a gateway without the method never sends
             // rows that call it.)
             return false
+        }
+    }
+
+    /// Whether the phone holds this dashboard's copy of the bot's picture,
+    /// fetched within `botPictureRecheckInterval` and since the last pull
+    /// on the Bots list (which asks for every picture again).
+    func hasFreshBotPicture(_ name: String, now: Date = Date()) -> Bool {
+        guard let dashboardID = activeDashboardID,
+              let fetchedAt = botPictureFetchedAt[Self.botPictureKey(name, dashboardID: dashboardID)],
+              Self.botPictureIsFresh(fetchedAt: fetchedAt, reloadedAt: botAvatarsReloadedAt, now: now),
+              profileAvatarURLs[name] != nil,
+              profileAppearanceStore.isMirrored(name, dashboardID: dashboardID) else { return false }
+        return true
+    }
+
+    nonisolated static func botPictureIsFresh(fetchedAt: Date, reloadedAt: Date?, now: Date) -> Bool {
+        if let reloadedAt, fetchedAt < reloadedAt { return false }
+        let age = now.timeIntervalSince(fetchedAt)
+        return age >= 0 && age < botPictureRecheckInterval
+    }
+
+    nonisolated static func botPictureKey(_ name: String, dashboardID: UUID) -> String {
+        "\(dashboardID.uuidString)|\(name)"
+    }
+
+    /// Whether a connection is still opening its chat: signing in, or the
+    /// chat list and the chat's resume not answered yet.
+    var isOpeningChat: Bool {
+        isConnecting || turnState == .synchronizing || reconciliation != nil
+    }
+
+    /// Waits while the connection opens its chat, at most `limit`, so a
+    /// picture download doesn't go ahead of the chat's resume on the
+    /// socket. A connection that never settles still gets its pictures.
+    func waitWhileOpeningChat(limit: TimeInterval = 10) async {
+        let deadline = Date().addingTimeInterval(limit)
+        while isOpeningChat, Date() < deadline, !Task.isCancelled {
+            try? await Task.sleep(for: .milliseconds(100))
         }
     }
 
