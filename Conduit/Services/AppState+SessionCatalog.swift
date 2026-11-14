@@ -462,9 +462,28 @@ extension AppState {
         return sessions
     }
 
-    func profileSessionsPath(_ profile: String, offset: Int = 0) -> String {
+    /// How many chats the read ahead of the list asks for on Jump to latest
+    /// activity: enough to pass a few bot chats, workstreams or Pulse's.
+    static let newestChatsReadLimit = 20
+
+    /// The profile's newest chats, read beside the chat list on Jump to
+    /// latest activity so its pick needn't wait for the whole page
+    /// (`latestChatBeforeList`). Not cached or published: the list does that.
+    func newestChatsBeforeList(using client: HermesClient) async throws -> [SessionSummary] {
+        if let loadNewestChats = chatResumeLifecycleOperations.loadNewestChats {
+            return try await loadNewestChats(client)
+        }
+        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let profile = activeProfile
+        let response = try await bridge.requestJSON(path: profileSessionsPath(profile, limit: Self.newestChatsReadLimit))
+        let batch = response["sessions"] as? [Any] ?? []
+        return await dashboardOwnedSessions(batch, profile: profile)
+            .filter { sessionBelongsToProfile($0, profile: profile) }
+    }
+
+    func profileSessionsPath(_ profile: String, offset: Int = 0, limit: Int = 200) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
+            "/api/profiles/sessions?limit=\(limit)&offset=\(offset)&min_messages=1&archived=exclude&order=recent&exclude_sources=\(SessionSource.chatListExcludedSources)",
             profile: profile
         )
     }

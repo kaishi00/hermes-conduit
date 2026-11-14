@@ -287,6 +287,30 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
     }
 
+    func testEachDashboardKeepsTheChatYouLeftThereAcrossASwitch() {
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let coordinator = appState.chatResumeCoordinator
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-a"), for: "default")
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        // A's chat never reaches B, whose profile has the same name.
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+        coordinator.rememberSession(.dashboard(profile: "default", sessionID: "on-b"), for: "default")
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "on-a")
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        XCTAssertEqual(coordinator.lastSessionID(for: "default"), "on-b")
+
+        // Removing A takes the chat it kept with it.
+        appState.removeDashboard(a.id)
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertNil(coordinator.lastSessionID(for: "default"))
+    }
+
     func testDashboardIdentityNeverCollidesWithURLOfAnotherServer() {
         // A dashboard UUID and a URL-shaped identity are disjoint: switching
         // between dashboard-scoped and URL-scoped connections is a server
@@ -487,6 +511,11 @@ final class AppStateMultiDashboardTests: XCTestCase {
         // A plugin without the route forgets what it served.
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: farm.id, in: defaults)
         XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: farm.id, in: defaults), [])
+
+        // A removed dashboard's goes with it.
+        NotifierPluginStatus.Remembered.remember(.reported(version: nil, capabilities: ["pulse"]), for: home.id, in: defaults)
+        appState.removeDashboard(home.id)
+        XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: home.id, in: defaults), [])
     }
 
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {

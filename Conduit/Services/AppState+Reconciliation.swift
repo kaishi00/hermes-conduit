@@ -126,6 +126,9 @@ extension AppState {
         // then decides without asking for it again.
         var resumedBeforeList = false
         var refusedBeforeList: String?
+        // The chat Jump to latest activity opened from the newest chats
+        // read, before the whole list could say which is newest.
+        var latestPickedBeforeList: String?
         do {
             // The chat list decides which chat to resume, so the resume
             // comes after it: a persisted runtime id can belong to a process
@@ -135,12 +138,30 @@ extension AppState {
             // long list (619 chats on a real host: 3 s) doesn't hold the chat.
             let readTicket = takeSessionListReadTicket()
             pendingCatalogReadTicket = readTicket
-            let savedChat = savedChatToResumeBeforeList(profile: profile, dashboardID: dashboardID, purpose: purpose)
+            var savedChat = savedChatToResumeBeforeList(profile: profile, dashboardID: dashboardID, purpose: purpose)
+            // On Jump to latest activity the newest chat is read from a
+            // short page beside the list instead (`latestChatBeforeList`).
+            let readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
             let catalogReadFailed = CatalogReadFailure()
             async let catalogRead = profileCatalogNotingFailure(using: client, failure: catalogReadFailed)
             // The list read goes out first; one that has already failed
             // leaves the chat to the connection's retry, as before.
-            if savedChat != nil { await Task.yield() }
+            // Until the read has started, not just one turn: a single
+            // yield didn't always let it run, so a list that failed at once
+            // could still see the chat go out ahead of it.
+            if savedChat != nil {
+                await Task.yield()
+                for _ in 0..<20 where !catalogReadFailed.began { await Task.yield() }
+            }
+            if readsNewestFirst {
+                do {
+                    let newest = try await newestChatsBeforeList(using: client)
+                    savedChat = latestChatBeforeList(among: newest, profile: profile, dashboardID: dashboardID)
+                } catch {
+                    earlyResumeLogger.notice("Chat resume waits for the chat list: the newest chats read failed")
+                }
+                if savedChat != nil { latestPickedBeforeList = savedChat?.sessionID }
+            }
             // A notification, a new chat, a saved-list pick or an open of
             // its own (a link, Siri, CarPlay) that came in during the yield
             // is the destination now, and so is a switch or a new client.
@@ -286,7 +307,19 @@ extension AppState {
             }
             // The chat is already live; the list only had to land. One that
             // didn't go live (gone, refused) is decided from the list below.
-            if resumedBeforeList { return .completed }
+            // On Jump to latest activity the whole list can still name a
+            // newer chat than the short read did (a call archived with its
+            // chat is listed only by the list): that one opens instead,
+            // unless the user has moved on since.
+            if resumedBeforeList {
+                guard let picked = latestPickedBeforeList,
+                      automaticChatResumeWorkIsCurrent(automaticWorkToken, syncOperationID: automaticOperationID),
+                      chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                      let newest = latestOrdinaryChat(among: allSessions, profile: profile, dashboardID: dashboardID),
+                      !newest.nestingIDs.contains(picked) else { return .completed }
+                earlyResumeLogger.notice("Chat resume: the chat list names a newer chat than the newest chats read")
+                resumedBeforeList = false
+            }
             // A canonical Bot Chat is reserved presentation state reachable
             // only through the Bots roster: it must never be chosen as this
             // workspace's ordinary resume target. Selection-only — the
@@ -1197,7 +1230,9 @@ extension AppState {
             return nil
         }
         guard purpose == .automaticReturn else { return waits("not an automatic return") }
-        guard chatResumeCoordinator.behavior == .continueWhereLeftOff else { return waits("jump to latest activity") }
+        // Jump to latest activity reads the newest chats instead
+        // (`latestChatBeforeList`).
+        guard chatResumeCoordinator.behavior == .continueWhereLeftOff else { return nil }
         guard PushNotificationService.shared.pendingTarget == nil,
               chatPickedFromSavedList == nil,
               pendingNewChat == nil else { return waits("another chat is waiting to open") }
@@ -1241,12 +1276,68 @@ extension AppState {
         ))
     }
 
+    /// Whether Jump to latest activity may read the newest chats beside the
+    /// list and open the newest of them before the list lands: an
+    /// automatic return with nothing else waiting to open (a notification,
+    /// a chat picked in the saved list, a New Chat).
+    func latestChatMayResumeBeforeList(purpose: ChatResumeSyncPurpose) -> Bool {
+        guard purpose == .automaticReturn, chatResumeCoordinator.behavior == .latestActivity else { return false }
+        guard PushNotificationService.shared.pendingTarget == nil,
+              chatPickedFromSavedList == nil,
+              pendingNewChat == nil else {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: another chat is waiting to open")
+            return false
+        }
+        return true
+    }
+
+    /// The newest chat among `rows` by the live list's own pick: the
+    /// profile's ordinary chats (no Bot Chat, nothing a bot owns, no
+    /// workstream or Pulse chat, none found gone), by last activity. Nil,
+    /// so the list decides, when another chat is on screen.
+    func latestChatBeforeList(
+        among rows: [SessionSummary],
+        profile: String,
+        dashboardID: UUID?
+    ) -> (sessionID: String, identity: ConversationIdentity)? {
+        func waits(_ reason: String) -> (sessionID: String, identity: ConversationIdentity)? {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: \(reason, privacy: .public)")
+            return nil
+        }
+        guard let row = latestOrdinaryChat(among: rows, profile: profile, dashboardID: dashboardID),
+              let sessionID = ChatScrollIdentityNormalization.sessionID(row.id) else {
+            return waits("no ordinary chat among the newest chats")
+        }
+        if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+           !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
+        // The identity the list's own pick resumes with.
+        return (sessionID, ConversationIdentity(
+            profile: profile,
+            durableSessionID: row.storedSessionId ?? row.id,
+            runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
+            acceptedSessionIDs: Set([row.id] + row.alternateIds)
+        ))
+    }
+
+    /// The profile's newest ordinary chat among `rows`, as the live list's
+    /// pick on Jump to latest activity reads it.
+    func latestOrdinaryChat(among rows: [SessionSummary], profile: String, dashboardID: UUID?) -> SessionSummary? {
+        let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
+        let candidates = BotChatHygiene.ordinaryResumeCandidates(
+            rows.filter { sessionBelongsToProfile($0, profile: profile) },
+            roster: botRoster,
+            botOwnedSessionIDs: botOwnership.botOwnedIDs
+        ).filter { !Self.resumeRow($0, isAmong: dead) && !isUnlistedChat($0) }
+        return ChatResumeSessionResolver.latestChat(in: candidates)
+    }
+
     /// This sync's list read, noting a failure as it happens, so a list
     /// that failed at once keeps the old order (no resume ahead of it).
     func profileCatalogNotingFailure(
         using client: HermesClient,
         failure: CatalogReadFailure
     ) async throws -> ProfileCatalogLoad {
+        failure.began = true
         do {
             return try await profileCatalog(using: client, deferringOlderPages: true)
         } catch {
@@ -3891,4 +3982,6 @@ extension AppState {
 @MainActor
 final class CatalogReadFailure {
     var failed = false
+    /// The read has started: a list that fails at once has said so by then.
+    var began = false
 }
