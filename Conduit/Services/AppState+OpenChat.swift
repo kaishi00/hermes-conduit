@@ -1132,6 +1132,7 @@ extension AppState {
             dismissOfflineChatPresentation()
         }
         guard widgetLease?.isCurrent != false else {
+            if let leftReply { putBackBackgroundChat(leftReply) }
             // The widget launch expired with nothing newer on screen: settle
             // like a failed open, so the composer doesn't stay synchronizing
             // a transcript this open will never publish.
@@ -1143,6 +1144,7 @@ extension AppState {
             return (.superseded, false, false)
         }
         guard chatViewportTransitionIsCurrent(generation: transitionGeneration) else {
+            if let leftReply { putBackBackgroundChat(leftReply) }
             return (.superseded, false, false)
         }
         if !reconciled {
@@ -1156,6 +1158,11 @@ extension AppState {
             // unless another reconcile (an automatic resume of another chat)
             // began meanwhile and set them for its own chat (#1918).
             let verdictIsOwn = shownChat.reconciliationToken == token
+            // A followed chat goes on being followed, unless Hermes no
+            // longer has it.
+            if let leftReply, !(verdictIsOwn && shownChat.reconciliationSessionWasNotFound) {
+                putBackBackgroundChat(leftReply)
+            }
             return (
                 .failed,
                 verdictIsOwn && (shownChat.reconciliationWasIdentityRejected || shownChat.reconciliationSessionWasNotFound),

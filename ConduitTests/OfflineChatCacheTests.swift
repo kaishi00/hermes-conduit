@@ -3215,6 +3215,44 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.messages.isEmpty)
     }
 
+    /// A profile switch leaves the chat on screen mid-reply: it's followed
+    /// under its own profile, and only opened again there. The same chat
+    /// under a new runtime id (a voice thread's rebind) isn't left at all.
+    func testAChatLeftByAProfileSwitchFollowsItsReplyUnderItsProfile() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        let home = state.activeProfile
+
+        state.followChatLeftForProfileSwitch()
+        // As the switch does: the target profile's chat is adopted as is.
+        state.activeProfile = "work"
+        state.activeSessionId = "b"
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.first?.profile, home)
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertNil(state.takeBackgroundChat(answering: ["a"]), "Another profile doesn't open it")
+
+        state.activeProfile = home
+        XCTAssertNotNil(state.takeBackgroundChat(answering: ["a"]))
+        state.activeSessionId = nil
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-old", durableID: "st", profile: home, source: .resume)
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-new", durableID: "st", profile: home, source: .resume)
+        state.setActiveSessionState(id: "rt-old")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.turnState = .running
+        state.setActiveSessionState(id: "rt-new")
+        XCTAssertTrue(state.backgroundChats.isEmpty, "A rebind keeps the chat on screen")
+    }
+
     /// A chat left while nothing runs isn't followed, and opening a
     /// followed chat another way lets go of it.
     func testOnlyAChatLeftWhileItRepliesIsFollowed() {
