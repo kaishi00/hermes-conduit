@@ -39,6 +39,9 @@ extension AppState {
     /// that fails or that a newer navigation overtakes leaves it followed.
     /// False when it isn't one.
     func presentFollowedChatAfterProfileChange(_ sessionID: String) -> Bool {
+        // Only a switch that shows a followed copy has one to release; an
+        // earlier switch that never landed leaves none behind.
+        followedChatShownBySwitch = nil
         guard let left = followedChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
             return false
         }

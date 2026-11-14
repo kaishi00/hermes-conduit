@@ -3276,8 +3276,9 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.backgroundChats.isEmpty, "A rebind keeps the chat on screen")
     }
 
-    /// A chat left while nothing runs isn't followed, and opening a
-    /// followed chat another way lets go of it.
+    /// A chat left while nothing runs isn't followed, and a followed chat
+    /// on screen again without an open stays followed (an open lets go of
+    /// it as it lands) while its events still reach the screen.
     func testOnlyAChatLeftWhileItRepliesIsFollowed() {
         let (state, _, _) = makeAppState()
         state.sessions = [session("a"), session("b")]
@@ -3294,8 +3295,11 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.backgroundChats.first?.sessionIDs, ["b"])
         state.turnState = .idle
         state.setActiveSessionState(id: "b")
-        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "b", text: "Hi")),
-                       "The chat opened takes its own events")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until an open lands")
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "b", text: "Hi there")),
+                       "The chat on screen takes its own events")
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Hi there",
+                       "and its followed copy keeps up")
     }
 
     /// The reply's events, one by one: an interim note Hermes already
