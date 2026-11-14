@@ -42,24 +42,24 @@ extension AppState {
     }
 
     func pauseLivePublishes() {
-        streamingPublishTask?.cancel()
-        streamingPublishTask = nil
-        hasScheduledStreamingPublish = false
-        reasoningPublishTask?.cancel()
-        reasoningPublishTask = nil
-        hasScheduledReasoningPublish = false
+        shownChat.streamingPublishTask?.cancel()
+        shownChat.streamingPublishTask = nil
+        shownChat.hasScheduledStreamingPublish = false
+        shownChat.reasoningPublishTask?.cancel()
+        shownChat.reasoningPublishTask = nil
+        shownChat.hasScheduledReasoningPublish = false
     }
 
     /// What streamed while the live rows were hidden, in one publish.
     func resumeLivePublishesIfShown() {
         guard !liveRowsHidden else { return }
-        if !streamingBuffer.isEmpty, streamingBuffer != streamingText {
-            lastStreamingPublishBurst = max(
-                streamingBuffer.count - streamingText.count,
+        if !shownChat.streamingBuffer.isEmpty, shownChat.streamingBuffer != streamingText {
+            shownChat.lastStreamingPublishBurst = max(
+                shownChat.streamingBuffer.count - streamingText.count,
                 0
             )
-            lastStreamingPublishDate = Date()
-            streamingText = streamingBuffer
+            shownChat.lastStreamingPublishDate = Date()
+            streamingText = shownChat.streamingBuffer
         }
         flushReasoningPublish()
     }

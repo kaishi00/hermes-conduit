@@ -1006,7 +1006,7 @@ extension AppState {
             streamTextAtBoundary = existingReconciliation.streamTextAtBoundary
             streamSessionIDAtBoundary = existingReconciliation.streamSessionIDAtBoundary
         } else {
-            streamTextAtBoundary = activeSessionId.map { _ in streamingBuffer }
+            streamTextAtBoundary = activeSessionId.map { _ in shownChat.streamingBuffer }
             streamSessionIDAtBoundary = activeSessionId
         }
         reconciliationToken = token
@@ -1316,8 +1316,8 @@ extension AppState {
         // transaction; they are re-adopted below only from a transcript this
         // reconcile actually validated and accepted. A rejected identity
         // restores them — the rejection must not consume ordering evidence.
-        let savedDurablePersistedRowIDs = durablePersistedRowIDs
-        durablePersistedRowIDs = []
+        let savedDurablePersistedRowIDs = shownChat.durablePersistedRowIDs
+        shownChat.durablePersistedRowIDs = []
         reconciliationWasIdentityRejected = false
         reconciliationSessionWasNotFound = false
         reconciliationWasKanbanWorker = false
@@ -1531,7 +1531,7 @@ extension AppState {
                 // rejection may not consume it. (The already-published
                 // catalog refresh stays — discovery state is independent of
                 // the rejected claim.)
-                durablePersistedRowIDs = savedDurablePersistedRowIDs
+                shownChat.durablePersistedRowIDs = savedDurablePersistedRowIDs
                 reconciliationWasIdentityRejected = true
                 // Unstick the synchronizing wait without clobbering a live
                 // running turn; the transcript and identity above are left
@@ -1672,7 +1672,7 @@ extension AppState {
             // persisted ORDERING frontier is re-established from the same
             // acceptance — never carried over from a previous conversation
             // state.
-            durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
+            shownChat.durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
             persistedOrderingFrontier = Self.orderingFrontier(
                 from: transcriptMatches ? transcript : nil
             )
@@ -1858,7 +1858,7 @@ extension AppState {
             var bufferedEvents = bufferedEntries.map { $0.event }
             var bufferedGenerations = bufferedEntries.map { $0.generation }
             if result.snapshot.hasLiveProjection {
-                let resumedInflightText = streamingBuffer
+                let resumedInflightText = shownChat.streamingBuffer
                 let boundary = reconciliation?.token == token ? reconciliation : nil
                 let acceptedSessionIDs: Set<String>
                 if let boundary,
@@ -2330,7 +2330,7 @@ extension AppState {
             resetTranscriptLifecycleEvidence()
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
-            activeAssistantMessageId = nil
+            shownChat.activeAssistantMessageId = nil
             resetReasoningTurn()
             turnState = .idle
             noteConnectionStep("New chat ready")
@@ -2523,7 +2523,7 @@ extension AppState {
         // The same messages from the other source (Hermes' stored rows or a
         // resume's) keep the ids they're drawn under (#1648).
         let rekeyed = isSameChat
-            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: durablePersistedRowIDs)
+            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: shownChat.durablePersistedRowIDs)
             : restored
         let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
@@ -2682,10 +2682,10 @@ extension AppState {
                 result.snapshot.inflightAssistantText,
                 after: messages
             )
-            streamingBuffer = recoveredText
+            shownChat.streamingBuffer = recoveredText
             streamingText = recoveredText
         }
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         applyRuntime(
             result.snapshot,
@@ -2719,7 +2719,7 @@ extension AppState {
         // A resume that says the turn is over settles it, as setRunning(false)
         // does: its notes are no longer running (a forced idle that only
         // unsticks a sync keeps them; their ids are unique to this turn).
-        if result.snapshot.running == false { runningTurnNoteIDs = [] }
+        if result.snapshot.running == false { shownChat.runningTurnNoteIDs = [] }
         // The resume snapshot is authoritative about the turn state.
         turnLifecycleEvidence = TurnLifecycleEvidence(
             revision: turnLifecycleEvidence.revision &+ 1,

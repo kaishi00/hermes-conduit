@@ -1093,7 +1093,7 @@ extension AppState {
         // for; the reconcile below re-establishes it authoritatively.
         resetTranscriptLifecycleEvidence()
         clearStreamingText()
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         // A canonical Bot Chat carries its own title (the bot's display
         // label) and must never write the catalog's wire title — or any

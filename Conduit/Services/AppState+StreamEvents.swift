@@ -415,7 +415,7 @@ extension AppState {
 
         case .messageDelta(_, let text):
             finalizePendingStreamingCompletion()
-            streamingBuffer += text
+            shownChat.streamingBuffer += text
             scheduleStreamingPublish()
             setRunning(true)
             notifyVoiceAssistant(.delta(sessionID: streamSessionId, text: text))
@@ -431,7 +431,7 @@ extension AppState {
 
         case .reasoningDelta(_, let text):
             finalizePendingStreamingCompletion()
-            receivedReasoningForCurrentTurn = true
+            shownChat.receivedReasoningForCurrentTurn = true
             appendReasoning(text)
             setRunning(true)
 

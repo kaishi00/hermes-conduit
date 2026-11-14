@@ -88,8 +88,8 @@ extension AppState {
         // whether the submitted turn landed even when the registry has gone
         // idle/absent.
         let submissionBaseline = PromptTranscriptBaseline(
-            durableIDs: durablePersistedRowIDs,
-            holdsUnprovenRows: messages.contains { !durablePersistedRowIDs.contains($0.id) }
+            durableIDs: shownChat.durablePersistedRowIDs,
+            holdsUnprovenRows: messages.contains { !shownChat.durablePersistedRowIDs.contains($0.id) }
         )
         // The locally-owned turn marker's ordering baseline, frozen BEFORE
         // the optimistic append changes the transcript below: the persisted

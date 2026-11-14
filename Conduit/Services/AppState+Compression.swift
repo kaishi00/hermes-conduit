@@ -483,7 +483,7 @@ extension AppState {
     /// lands — they are re-established only by a fresh validated hydration.
     func invalidatePersistedHistoryInvariants() {
         persistedTranscriptWindow = nil
-        durablePersistedRowIDs = []
+        shownChat.durablePersistedRowIDs = []
         persistedOrderingFrontier = PersistedOrderingFrontier()
     }
 
@@ -499,7 +499,7 @@ extension AppState {
     ) {
         settleReasoningSegmentIntoTranscript()
         clearStreamingText()
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         markChatViewportReplacement()
         // Locally restored-but-unanswered decision cards survive a
@@ -588,7 +588,7 @@ extension AppState {
             return
         }
         persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
-        durablePersistedRowIDs = transcript.durableRowIDs
+        shownChat.durablePersistedRowIDs = transcript.durableRowIDs
         if let page = transcript.page, page.honorsTailContract {
             persistedTranscriptWindow = PersistedTranscriptWindowState(
                 requestedSessionID: requestedSessionID,
