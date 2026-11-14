@@ -2746,7 +2746,7 @@ the job's detail sheet for row wrapping (not needed: it scrolls and has no
 Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 
 **Code**
-- App: `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronRuns, decodeCronRun), `Conduit/Services/AppState.swift` (cronRunsJobID, cronRunsLoaded), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
+- App: `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronRuns, decodeCronRun), `Conduit/Services/BotState.swift` (cronRunsJobID, cronRunsLoaded, read through AppState's forwarders), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
 - Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
 
 **Rulings**
@@ -2759,7 +2759,7 @@ Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-14, #2426 (the run history's state moved into BotState, all-live stage 1; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## A scheduled job's model
 
