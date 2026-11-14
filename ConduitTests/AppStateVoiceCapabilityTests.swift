@@ -462,9 +462,9 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         let wake = PendingVoiceIntent(profile: "fam", startsFreshConversation: false, source: .wakePhrase)
         XCTAssertTrue(wake.liveCallStartsInOpenChat(targetProfile: "fam", activeProfile: "fam"))
         XCTAssertTrue(wake.resumesOpenChatCall(targetProfile: "fam", activeProfile: "fam"))
-        XCTAssertFalse(wake.liveCallStartsInOpenChat(targetProfile: "work", activeProfile: "fam"),
+        XCTAssertFalse(wake.liveCallStartsInOpenChat(targetProfile: "fam", activeProfile: "work"),
                        "another profile's phrase doesn't join the open chat")
-        XCTAssertFalse(wake.resumesOpenChatCall(targetProfile: "work", activeProfile: "fam"),
+        XCTAssertFalse(wake.resumesOpenChatCall(targetProfile: "fam", activeProfile: "work"),
                        "nor resume the open chat's saved call")
     }
 
