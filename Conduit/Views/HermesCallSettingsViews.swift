@@ -305,7 +305,8 @@ struct HermesCallSettingsSection: View {
     private func previewRingtone(_ ringtone: HermesRingtone) {
         let appState = AppStateRuntimeRegistry.shared.existing
         // A call from Hermes ringing or answered counts too, before its
-        // voice has started.
+        // voice has started. The preview itself stays quiet on a phone call
+        // of another app's.
         ringtonePreview.play(ringtone, voiceInUse: appState.map { $0.isVoiceInUse || $0.isCallHoldingAudio || $0.isWatchVoiceCallActive } ?? false)
     }
 
