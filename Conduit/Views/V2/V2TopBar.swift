@@ -420,15 +420,19 @@ struct V2ProfileStrip: View {
                 Haptics.selection()
                 appState.setAllProfilesChatsOn(false)
             } else {
-                // During a call the pick asks first, and All goes off only
-                // once the user accepts, so Cancel leaves the list as it was
-                // (V2Shell.pickProfile). A pick while a switch runs is only
-                // kept for later and asks nothing, so All goes off now, as
-                // before.
-                if allSelected, switching || !appState.isVoiceCallInProgress {
+                // The shell turns All off as the switch starts, and during
+                // a call only once the user accepts, so Cancel leaves the
+                // list as it was (V2Shell.pickProfile). A pick while a
+                // switch runs is only kept for later and asks nothing, so
+                // All goes off now, as before.
+                if allSelected, switching {
                     appState.setAllProfilesChatsOn(false)
+                    shell.pickProfile(profile)
+                } else if allSelected {
+                    shell.pickProfileLeavingAll(profile)
+                } else {
+                    shell.pickProfile(profile)
                 }
-                shell.pickProfile(profile)
             }
         } label: {
             HStack(spacing: 7) {

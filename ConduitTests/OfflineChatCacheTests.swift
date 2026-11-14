@@ -1554,6 +1554,8 @@ final class OfflineChatCacheTests: XCTestCase {
         seedCopy(freshStore, dashboard: home.id)
         seedCopy(freshStore, dashboard: work.id)
         fresh.phoneScreenIsAway = { false }
+        // Records a password sign-in if a refused unlock went on to one.
+        fresh.beginConnectionTimeline("test")
         var freshAsks = 0
         fresh.unlockWithFaceID = {
             freshAsks += 1
@@ -1562,11 +1564,13 @@ final class OfflineChatCacheTests: XCTestCase {
         await fresh.restoreSavedCredentials(saved(home), dashboardID: home.id)
         XCTAssertTrue(fresh.showLogin, "A refused unlock goes to sign-in")
         XCTAssertNil(fresh.offlineChatPresentation, "and shows no saved chats")
+        XCTAssertNotNil(fresh.connectionTimeline)
         XCTAssertNil(fresh.connectionTimeline?.events.first { $0.label.hasPrefix("Password sign-in") }, "and starts no sign-in")
         await fresh.restoreSavedCredentials(saved(work), dashboardID: work.id)
         XCTAssertEqual(freshAsks, 2)
         XCTAssertTrue(fresh.showLogin)
         XCTAssertNil(fresh.offlineChatPresentation)
+        XCTAssertNil(fresh.connectionTimeline?.events.first { $0.label.hasPrefix("Password sign-in") })
     }
 
     /// A dashboard switch starts the phone's pins over until Hermes' arrive
