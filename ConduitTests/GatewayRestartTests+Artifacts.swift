@@ -332,4 +332,91 @@ extension GatewayRestartTests {
         XCTAssertEqual(own.map(\.profile), [appState.activeProfile])
         XCTAssertNil(own.first?.label)
     }
+
+    // MARK: - Saved (issue 2467)
+
+    /// A saved row carries its note, when it was saved and the copy the
+    /// host keeps: a file whose original is gone opens that copy, one with
+    /// neither can't open, and a link always opens.
+    func testSavedArtifactsOpenTheirKeptCopyOnceTheOriginalIsGone() throws {
+        let answer: [String: Any] = ["ok": true, "pins": [
+            artifactRow(["exists": false, "kept_path": "/root/.hermes/conduit-saved-artifacts/ab/map.png",
+                         "note": "trip map", "pinned_at": 1_760_000_500.0]),
+            artifactRow(["path": "/root/out/gone.pdf", "kind": "document", "exists": false, "pinned_at": 1_760_000_400.0]),
+            artifactRow(["kind": "link", "source": "link", "path": NSNull(), "url": "https://example.com/a",
+                         "pinned_at": 1_760_000_300.0]),
+        ]]
+        let items = try ArtifactPinsClient.parse(answer)
+        XCTAssertEqual(items.count, 3)
+        XCTAssertEqual(items[0].note, "trip map")
+        XCTAssertEqual(items[0].openPath, "/root/.hermes/conduit-saved-artifacts/ab/map.png")
+        XCTAssertTrue(items[0].canOpen)
+        XCTAssertEqual(items[0].id, "/root/out/map.png", "one artifact, by its original path")
+        XCTAssertEqual(items[0].savedAt, Date(timeIntervalSince1970: 1_760_000_500))
+        XCTAssertNil(items[1].openPath)
+        XCTAssertFalse(items[1].canOpen)
+        XCTAssertTrue(items[2].canOpen)
+        XCTAssertThrowsError(try ArtifactPinsClient.parse(["ok": true]))
+
+        let live = try XCTUnwrap(ArtifactItem(artifactRow([:])))
+        XCTAssertEqual(live.openPath, "/root/out/map.png", "the original while the host has it")
+    }
+
+    /// Saved lists what each store covers: a store read for some chats
+    /// only theirs. The one saved last comes first, each artifact once,
+    /// another profile's under its name, and the search reads notes too.
+    func testSavedListsWhatTheListsStoresCover() throws {
+        func saved(_ path: String, session: String, at: Double, note: String? = nil) throws -> ArtifactItem {
+            var row = artifactRow(["path": path, "session_id": session, "pinned_at": at])
+            if let note { row["note"] = note }
+            return try XCTUnwrap(ArtifactItem(savedRow: row))
+        }
+        let work = [try saved("/a.png", session: "s1", at: 10), try saved("/b.png", session: "s2", at: 30, note: "wedding")]
+        let atlas = [try saved("/c.png", session: "bot", at: 20), try saved("/d.png", session: "other", at: 40),
+                     try saved("/a.png", session: "bot", at: 50)]
+        let sources = [
+            ArtifactSource(profile: "work", sessionIDs: []),
+            ArtifactSource(profile: "atlas", sessionIDs: ["bot"], label: "Atlas", isBotChat: true),
+        ]
+        let items = ArtifactPinsClient.items(sources: sources, saved: [work, atlas])
+        XCTAssertEqual(items.map(\.path), ["/b.png", "/c.png", "/a.png"])
+        XCTAssertEqual(items.first { $0.path == "/c.png" }?.otherProfile, "atlas")
+        XCTAssertEqual(items.first { $0.path == "/a.png" }?.otherProfile, nil, "the first store's, once")
+        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "WEDD").map(\.path),
+                       ["/b.png"])
+        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [nil, atlas]).map(\.path), ["/c.png"],
+                       "a store not read adds nothing")
+        let chat = [ArtifactSource(profile: "work", sessionIDs: ["s1"])]
+        XCTAssertEqual(ArtifactPinsClient.items(sources: chat, saved: [work]).map(\.path), ["/a.png"])
+    }
+
+    /// Saving sends the row as the list gave it, in the store's profile,
+    /// with the note on one line; unsaving names it by its path.
+    func testSavingSendsTheRowAndUnsavingNamesIt() async throws {
+        var asked: [(String, String, [String: Any]?)] = []
+        let client = ArtifactPinsClient { path, method, body in
+            asked.append((path, method, body))
+            if method == "POST" {
+                var row = (body?["item"] as? [String: Any]) ?? [:]
+                row["pinned_at"] = 1_760_000_000.0
+                row["note"] = body?["note"]
+                return ["ok": true, "pin": row]
+            }
+            return ["ok": true, "removed": true]
+        }
+        let item = try XCTUnwrap(ArtifactItem(artifactRow(["path": "/root/out/a b.png"])))
+        let saved = try await client.save(item, note: "  for   the\nsite ", profile: "atlas")
+        XCTAssertEqual(saved.note, "for the site")
+        XCTAssertEqual(asked[0].0, DashboardPath.withProfile(ArtifactPinsClient.path, profile: "atlas"))
+        XCTAssertEqual(asked[0].1, "POST")
+        let row = try XCTUnwrap(asked[0].2?["item"] as? [String: Any])
+        XCTAssertEqual(row["path"] as? String, "/root/out/a b.png")
+        XCTAssertEqual(row["session_id"] as? String, "s1")
+        XCTAssertEqual(row["message_id"] as? Int, 12)
+        XCTAssertNil(ArtifactPinsClient.cleanNote("   "))
+
+        try await client.remove(item, profile: "default")
+        XCTAssertEqual(asked[1].1, "DELETE")
+        XCTAssertEqual(asked[1].0, "\(ArtifactPinsClient.path)?id=\(DashboardPath.encodedQueryComponent("/root/out/a b.png")!)")
+    }
 }
