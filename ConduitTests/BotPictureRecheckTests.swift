@@ -8,6 +8,7 @@
 //  list always does.
 //
 
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -87,6 +88,43 @@ final class BotPictureRecheckTests: XCTestCase {
         XCTAssertNotNil(appState.botPicturesPulledAt[first])
         appState.savedDashboardRegistry.activeDashboardID = second
         XCTAssertNil(appState.botPicturesPulledAt[second], "the other dashboard's pull says nothing here")
+    }
+
+    /// The skip itself: a picture this dashboard sent a moment ago, kept on
+    /// the phone, is shown with no download, and a pull on another
+    /// dashboard in between doesn't change that. A pull on its own
+    /// dashboard asks for it again.
+    func testASwitchBackShowsAFreshPictureWithoutDownloadingIt() async throws {
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let first = UUID(), second = UUID()
+        let png = UIGraphicsImageRenderer(size: CGSize(width: 1, height: 1)).pngData { context in
+            UIColor.red.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1, height: 1))
+        }
+        _ = try appState.profileAppearanceStore.saveMirroredAvatar(png, for: "raiden", dashboardID: second)
+        defer { appState.profileAppearanceStore.removeAvatar(for: "raiden", dashboardID: second) }
+        let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: true, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+
+        appState.savedDashboardRegistry.activeDashboardID = second
+        XCTAssertNotNil(appState.profileAvatarURLs["raiden"], "the switch loads that dashboard's copy")
+        appState.botPictureFetchedAt[AppState.botPictureKey("raiden", dashboardID: second)] = Date()
+
+        appState.savedDashboardRegistry.activeDashboardID = first
+        await appState.reloadBotRoster()
+        appState.savedDashboardRegistry.activeDashboardID = second
+        XCTAssertTrue(appState.hasFreshBotPicture("raiden"), "a pull on the other dashboard leaves it fresh")
+        // No client here: anything but the skip would have to download, and
+        // can't, so it would answer false.
+        let shown = await appState.loadBotAvatarIfNeeded(raiden)
+        XCTAssertTrue(shown, "shown from the phone's copy")
+        XCTAssertEqual(appState.botAvatarFetchedGeneration["raiden"], appState.botAvatarGeneration)
+
+        await appState.reloadBotRoster()
+        XCTAssertFalse(appState.hasFreshBotPicture("raiden"), "a pull here asks for it again")
+        let shownAfterPull = await appState.loadBotAvatarIfNeeded(raiden)
+        XCTAssertFalse(shownAfterPull, "it has to be downloaded now")
     }
 
     func testAPictureWithNoCopyOnThePhoneIsNeverFresh() {
