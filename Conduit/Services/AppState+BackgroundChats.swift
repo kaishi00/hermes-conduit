@@ -71,7 +71,10 @@ extension AppState {
 
     /// The chat an open (or a switch) landed on is followed no longer.
     func releaseFollowedChat(answering ids: Set<String>) {
-        backgroundChats.removeAll { $0.profile == activeProfile && !$0.sessionIDs.isDisjoint(with: ids) }
+        backgroundChats.removeAll {
+            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+                && !$0.sessionIDs.isDisjoint(with: ids)
+        }
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {

@@ -320,25 +320,9 @@ final class AppState: ObservableObject {
             updateSessionReferenceTitles()
         }
     }
-    @Published var projects: [ProjectSummary] = [] {
-        didSet {
-            projectPositionsBySessionID = nil
-            projectsSeededFromSavedList = false
-        }
-    }
-    /// The project pages came from the saved Chats list, not from Hermes:
-    /// they leave with it, and say nothing yet about whether this Hermes
-    /// takes new projects. Any later write to `projects` replaces them.
-    var projectsSeededFromSavedList = false
-    /// For each conversation id a project previews, the position of the
-    /// first project that lists it. Built once per `projects` change for
-    /// `knownProjectID(for:)`, which the chat list asks for every row on
-    /// every render.
-    var projectPositionsBySessionID: [String: Int]?
     /// The catalog's rows under every id they answer to, built once per
     /// `sessions` change for `catalogRow(answeringTo:)`.
     var catalogRowsByAnyID: [String: SessionSummary]?
-    @Published var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
     /// reconnect, or a gateway upgraded in place) probes the RPC again.
@@ -352,11 +336,28 @@ final class AppState: ObservableObject {
     weak var projectEditingUnsupportedClient: HermesClient? {
         willSet { objectWillChange.send() }
     }
-    @Published var projectsLoading = false
-    /// The last projects load failed for a reason other than the host not
-    /// having projects (a dropped or timed-out request), so an empty list
-    /// isn't "no projects".
-    @Published var projectsLoadFailed = false
+    /// The bot on screen's projects, and whether its Hermes has them
+    /// (`BotState`).
+    var projects: [ProjectSummary] {
+        get { shownBot.projects }
+        set { shownBot.projects = newValue }
+    }
+    var projectsSeededFromSavedList: Bool {
+        get { shownBot.projectsSeededFromSavedList }
+        set { shownBot.projectsSeededFromSavedList = newValue }
+    }
+    var supportsProjects: Bool {
+        get { shownBot.supportsProjects }
+        set { shownBot.supportsProjects = newValue }
+    }
+    var projectsLoading: Bool {
+        get { shownBot.projectsLoading }
+        set { shownBot.projectsLoading = newValue }
+    }
+    var projectsLoadFailed: Bool {
+        get { shownBot.projectsLoadFailed }
+        set { shownBot.projectsLoadFailed = newValue }
+    }
     @Published var archivedSessions: [SessionSummary] = []
     @Published var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
@@ -502,6 +503,10 @@ final class AppState: ObservableObject {
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?
     var shownChatChanges: AnyCancellable?
+    /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
+    /// the all-live rework). Its changes publish as AppState's.
+    let shownBot = BotState()
+    var shownBotChanges: AnyCancellable?
     /// The chat on screen's own activity (`ChatState`): its title, plan
     /// card, refresh, branch and rewind, its agents, and replies streaming
     /// to another device.
@@ -726,10 +731,6 @@ final class AppState: ObservableObject {
     /// Each profile's archived calls as last read, which a catalog read
     /// within their lifetime takes again (issue 2357).
     var archivedCallsReads: [String: ArchivedCallsRead] = [:]
-    /// The projects as last read: for which profile, through which client,
-    /// and when. A catalog read that changed nothing reads them again only
-    /// past `projectsRereadInterval` (issue 2357).
-    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
     /// The scope the catalog last committed for: a read that lists the same
     /// rows for it again skips the work that follows a change (issue 2357).
     var catalogCommitOwner: SessionCatalogOwner?
@@ -1238,10 +1239,32 @@ final class AppState: ObservableObject {
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
     @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
-    @Published var skills: [CapabilitySkill] = []
-    @Published var toolsets: [CapabilityToolset] = []
-    /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
-    @Published var toolCatalog = ToolCatalog()
+    /// The bot on screen's skills, toolsets, tools catalog and MCP servers,
+    /// and whose they are (`BotState`).
+    var skills: [CapabilitySkill] {
+        get { shownBot.skills }
+        set { shownBot.skills = newValue }
+    }
+    var toolsets: [CapabilityToolset] {
+        get { shownBot.toolsets }
+        set { shownBot.toolsets = newValue }
+    }
+    var toolCatalog: ToolCatalog {
+        get { shownBot.toolCatalog }
+        set { shownBot.toolCatalog = newValue }
+    }
+    var capabilitiesOwner: CapabilitySnapshotOwner? {
+        get { shownBot.capabilitiesOwner }
+        set { shownBot.capabilitiesOwner = newValue }
+    }
+    var capabilitiesAreKept: Bool {
+        get { shownBot.capabilitiesAreKept }
+        set { shownBot.capabilitiesAreKept = newValue }
+    }
+    var mcpServers: [CapabilityMcpServer] {
+        get { shownBot.mcpServers }
+        set { shownBot.mcpServers = newValue }
+    }
     /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
@@ -1264,25 +1287,6 @@ final class AppState: ObservableObject {
     }
     /// Test seam: answers `POST /predict` in place of the dashboard.
     var predictiveSender: (([String: Any]) async throws -> [String: Any])?
-    /// Whose catalog `toolCatalog` is (dashboard and profile), and the
-    /// catalogs Hermes already sent this run, or is sending now.
-    var toolCatalogOwner: String?
-    var toolCatalogFetched: Set<String> = []
-    var toolCatalogLoading: Set<String> = []
-    /// The dashboard, bridge and profile the installed skills/toolsets were
-    /// read from. Rows are only presentable, and their switches only act,
-    /// while this equals `currentCapabilitiesOwner`: two dashboards can have
-    /// a profile of the same name.
-    @Published var capabilitiesOwner: CapabilitySnapshotOwner?
-    /// The installed skills and toolsets shown are the ones kept from
-    /// Hermes' last answer (#1533), drawn until it answers again.
-    @Published var capabilitiesAreKept = false
-    /// Monotonic request token for capability loads; older requests can never
-    /// commit over newer ones (protects the A -> B -> A race).
-    var capabilityLoadGeneration: UInt64 = 0
-    /// Skill and toolset switches, written in the order flipped.
-    let capabilityToggleWrites = CapabilityToggleWrites()
-    @Published var mcpServers: [CapabilityMcpServer] = []
     @Published var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published var isVoiceEnabled = false
     @Published var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
@@ -2271,44 +2275,40 @@ final class AppState: ObservableObject {
 
     // MARK: - Cron
 
-    @Published var cronJobs: [CronJob] = []
-    @Published var cronRuns: [CronRun] = []
-    /// The job `cronRuns` is the history of (#1707).
-    var cronRunsJobID: String?
-    /// The newest Run history read, so an older one that lands last is dropped.
-    var cronRunsLoad = 0
-    /// Whether `cronRuns` holds an answer for `cronRunsJobID` yet, so the
-    /// sheet says a job hasn't run only once it knows.
-    @Published var cronRunsLoaded = false
-    /// Why the open job's history couldn't be read, before any answer came:
-    /// the sheet says so rather than that the job hasn't run.
-    @Published var cronRunsFailure: String?
-    @Published var cronJobsLoading = false
-    @Published var cronJobActionID: String?
-    /// Bumped by a job delete so a list load that started before it can't
-    /// bring the deleted job back.
-    var cronJobsGeneration = 0
-    /// The read in flight and the list generation, profile and connection
-    /// it is for. A second ask for the same list joins it.
-    var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
-    /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
-    /// the dashboard and profile in `cronMutedJobsKey`.
-    @Published var cronMutedJobIDs: Set<String> = []
-    @Published var cronMutedJobsKey: String?
-    /// Cron jobs delivered to a Bot Chat whose report starts the bot's turn
-    /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
-    /// the same `cronMutedJobsKey`.
-    @Published var cronActingJobIDs: Set<String> = []
-    /// Whether the host's Hermes shows a Bot Chat job's report without a
-    /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
-    @Published var cronShowsBotChatReports = false
-    @Published var cronNotificationsChangingJobID: String?
-    /// A notification read asked for while a save was in flight. The
-    /// capability report can land then, so the read is repeated when the
-    /// save ends instead of being dropped.
-    var cronNotificationsReadDeferred = false
-    /// Moves with every save, so a refresh that started before one drops its answer.
-    var cronNotificationsGeneration = 0
+    /// The bot on screen's scheduled jobs and their run history
+    /// (`BotState`).
+    var cronJobs: [CronJob] {
+        get { shownBot.cronJobs }
+        set { shownBot.cronJobs = newValue }
+    }
+    var cronRuns: [CronRun] {
+        get { shownBot.cronRuns }
+        set { shownBot.cronRuns = newValue }
+    }
+    var cronRunsJobID: String? {
+        get { shownBot.cronRunsJobID }
+        set { shownBot.cronRunsJobID = newValue }
+    }
+    var cronRunsLoaded: Bool {
+        get { shownBot.cronRunsLoaded }
+        set { shownBot.cronRunsLoaded = newValue }
+    }
+    var cronRunsFailure: String? {
+        get { shownBot.cronRunsFailure }
+        set { shownBot.cronRunsFailure = newValue }
+    }
+    var cronJobsLoading: Bool {
+        get { shownBot.cronJobsLoading }
+        set { shownBot.cronJobsLoading = newValue }
+    }
+    var cronJobActionID: String? {
+        get { shownBot.cronJobActionID }
+        set { shownBot.cronJobActionID = newValue }
+    }
+    var cronNotificationsChangingJobID: String? {
+        get { shownBot.cronNotificationsChangingJobID }
+        set { shownBot.cronNotificationsChangingJobID = newValue }
+    }
     lazy var cronNotificationsClient = CronNotificationsClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
@@ -2530,7 +2530,6 @@ final class AppState: ObservableObject {
     /// beside the open chat wouldn't show it (issue 1454). The lists keep
     /// it while it is the open chat and the catalog doesn't list it.
     @Published var newChatAwaitingListing: NewChatAwaitingListing?
-    var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
     var pendingApprovalsRequestGeneration: UInt64 = 0
@@ -2742,6 +2741,9 @@ final class AppState: ObservableObject {
         // The chat on screen's changes publish as AppState's, as they did
         // when its transcript and stream were AppState's own properties.
         shownChatChanges = shownChat.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
         // Hydrate the visible profile list from the persisted known-profile
