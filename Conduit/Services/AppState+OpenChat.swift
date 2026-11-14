@@ -1158,8 +1158,8 @@ extension AppState {
             let verdictIsOwn = shownChat.reconciliationToken == token
             // A followed chat goes on being followed, unless Hermes no
             // longer has it.
-            if leftReply != nil, verdictIsOwn && shownChat.reconciliationSessionWasNotFound {
-                releaseFollowedChat(answering: acceptedSessionIDs.union([sessionId]))
+            if let leftReply, verdictIsOwn && shownChat.reconciliationSessionWasNotFound {
+                releaseFollowedChat(answering: leftReply.sessionIDs)
             }
             return (
                 .failed,
@@ -1169,7 +1169,7 @@ extension AppState {
         }
         // Landed: the chat's own transcript has taken over from a followed
         // copy of it.
-        if leftReply != nil { releaseFollowedChat(answering: acceptedSessionIDs.union([sessionId])) }
+        if let leftReply { releaseFollowedChat(answering: leftReply.sessionIDs) }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false, false)
     }

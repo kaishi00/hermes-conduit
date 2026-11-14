@@ -42,14 +42,19 @@ extension AppState {
         guard let left = followedChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
             return false
         }
+        // Released by its own ids: the switch's resume can move the chat on
+        // screen to a runtime id the entry never knew.
+        followedChatShownBySwitch = left.sessionIDs
         return presentBackgroundChat(left, openedAs: sessionID)
     }
 
-    /// The chat on screen, once a profile switch lands on it, is followed
-    /// no longer: its own transcript has taken over.
+    /// The chat a profile switch showed from a followed copy, once the
+    /// switch lands on it, is followed no longer: its own transcript has
+    /// taken over.
     func releaseFollowedChatOnScreen() {
-        guard let sessionID = activeSessionId else { return }
-        releaseFollowedChat(answering: knownSessionIDs(for: sessionID).union([sessionID]))
+        guard let ids = followedChatShownBySwitch else { return }
+        followedChatShownBySwitch = nil
+        releaseFollowedChat(answering: ids)
     }
 
     /// The followed chat of this dashboard and profile that answers to any

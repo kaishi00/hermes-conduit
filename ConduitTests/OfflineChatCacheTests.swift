@@ -3259,6 +3259,9 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.presentFollowedChatAfterProfileChange("a"), "Switching back shows it")
         XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time")
         XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the switch lands")
+        // The switch's resume can move the chat to a runtime id the
+        // followed copy never knew; it's released all the same.
+        state.activeSessionId = "rt-a"
         state.releaseFollowedChatOnScreen()
         XCTAssertTrue(state.backgroundChats.isEmpty, "It's the chat on screen again")
         state.dismissOfflineChatPresentation()
