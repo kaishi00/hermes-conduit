@@ -298,12 +298,12 @@ struct BotRosterView: View {
     }
 
     /// A new group picks from Hermes' bots, never the kept copy's. It needs
-    /// two bots, or one and someone you've linked to invite
-    /// (GroupCreateLimits).
+    /// two bots, or one and someone you've linked to invite or a bot of
+    /// your other Hermes to bring (GroupCreateLimits).
     private var canStartGroups: Bool {
         hostedGroupsAvailable && GroupCreateLimits.offersNewGroup(
             visibleBots: appState.botRoster.lazy.filter { !$0.isHiddenByMeta }.count,
-            invitesPeople: !appState.invitableLinkedPeople.isEmpty
+            invitesPeople: !appState.invitableLinkedPeople.isEmpty || appState.invitableOwnBots.contains(where: \.ready)
         )
     }
 

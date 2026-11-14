@@ -781,7 +781,8 @@ private struct ConversationDialogs: ViewModifier {
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
                 Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? [],
-                                              chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
+                                              chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true,
+                                              ownHermes: appState.activeRoomOwnHermes == true))
             }
             .modifier(RoomCopyDelete(copy: roomCopyPendingDelete, confirming: Binding(
                 get: { roomCopyPendingDelete != nil },

@@ -519,6 +519,16 @@ extension GroupChatModelsTests {
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: unnamed), AppLocalization.string("On another Hermes", table: .rooms))
         // Renamed by your roster, it keeps its owner.
         XCTAssertEqual(GroupRoomTurns.members(members, namedBy: []).map(\.owner), ["Furina", nil, "Mona"])
+        // A room of only your own Hermes draws every bot as yours: no owner
+        // chip, and Group Info names the Hermes it lives on.
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: members[2], ownHermes: true))
+        XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[0], ownHermes: true),
+                       AppLocalization.string("Your agent, on \("Furina")", table: .rooms))
+        XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[1], ownHermes: true), AppLocalization.string("Your agent", table: .rooms))
+        XCTAssertEqual(GroupRoomTurns.ownerLine(of: unnamed, ownHermes: true),
+                       AppLocalization.string("Your agent, on your other Hermes", table: .rooms))
+        XCTAssertEqual(RoomLeaveText.takeOutOwnMessage("Laifu"),
+                       AppLocalization.string("\("Laifu") stops taking part, and your other Hermes is told.", table: .rooms))
     }
 
     @MainActor

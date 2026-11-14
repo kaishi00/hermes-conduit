@@ -314,6 +314,57 @@ extension GroupChatModelsTests {
         XCTAssertFalse(GroupCreateLimits.offersNewGroup(visibleBots: 0, invitesPeople: true))
     }
 
+    // MARK: - Your other Hermes' bots
+
+    func testBotsOfYourOtherHermesCountTowardSixWithinTheirShare() {
+        // One bot here and one of your other Hermes make a room.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 1], people: 0))
+        // This Hermes hosts it: at least one of its bots.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 0, far: ["own1": 2], people: 0))
+        // Alone, the other Hermes may fill every place this one leaves.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 5], people: 0))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 5], people: 0))
+        // With a person, the places split by Link: (6 - 2) / 2 = 2 each.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2], people: 1))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 3], people: 1))
+        // Two other Hermes: (6 - 2) / 2 = 2 each.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2, "own2": 2], people: 0))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 4, "own2": 1], people: 0))
+        // No far bots: the rules of your own and people's rooms.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: [:], people: 0))
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 0], people: 1))
+        // A far bot is pickable only while its Hermes stays within its share,
+        // counting at least one bot here.
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 0, far: [:], link: "own1", people: 0))
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own2", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own1", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 5], link: "own1", people: 0))
+        // The limit names people only when there are some.
+        XCTAssertEqual(GroupCreateLimits.limitText(people: 1),
+                       AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms))
+        XCTAssertEqual(GroupCreateLimits.limitText(people: 0), AppLocalization.string(
+            "A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places.", table: .rooms))
+    }
+
+    @MainActor
+    func testADraftBringsYourOtherHermesBotsByLink() async throws {
+        var sent: [String: Any]?
+        let client = RoomDraftsClient { _, _, body, _ in
+            sent = body
+            return ["ok": true, "draft": self.draftsDraft("conduit-9")]
+        }
+        let agents = try XCTUnwrap(RoomDraftAgent.agents(for: [draftsBot("default")]))
+        _ = try await client.create(name: "Both", agents: agents, links: ["own1"], bring: ["own1": ["yelan", "nahida"]],
+                                    profile: "default")
+        let body = try XCTUnwrap(sent)
+        XCTAssertEqual(Set(body.keys), ["name", "agents", "links", "bring"])
+        XCTAssertEqual(body["links"] as? [String], ["own1"])
+        XCTAssertEqual(body["bring"] as? [String: [String]], ["own1": ["yelan", "nahida"]])
+        // Nothing to bring: the body an older plugin takes.
+        _ = try await client.create(name: "Both", agents: agents, links: ["lk1"], profile: "default")
+        XCTAssertEqual(Set(try XCTUnwrap(sent).keys), ["name", "agents", "links"])
+    }
+
     // MARK: - The profile
 
     @MainActor
