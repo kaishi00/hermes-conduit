@@ -22,6 +22,13 @@ final class CustomHeadersTests: XCTestCase {
         XCTAssertNil(CustomHeaderPolicy.issue(for: CustomHeader(name: "  Authorization ", value: "Basic dXNlcjpwYXNz")))
     }
 
+    func testOnlyAnAuthorizationHeaderCarriesANote() {
+        let note = CustomHeaderPolicy.note(for: CustomHeader(name: " authorization ", value: "Basic dXNlcjpwYXNz"))
+        XCTAssertEqual(note?.contains("P-Access-Token-Id"), true)
+        XCTAssertNil(CustomHeaderPolicy.note(for: CustomHeader(name: "P-Access-Token", value: "secret")))
+        XCTAssertNil(CustomHeaderPolicy.note(for: CustomHeader(name: "Proxy-Authorization", value: "Basic dXNlcjpwYXNz")))
+    }
+
     func testInvalidNamesAreRejected() {
         XCTAssertEqual(CustomHeaderPolicy.issue(for: CustomHeader(name: "  ", value: "v")), .emptyName)
         XCTAssertEqual(CustomHeaderPolicy.issue(for: CustomHeader(name: "X Key", value: "v")), .invalidName)

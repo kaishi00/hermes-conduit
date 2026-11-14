@@ -4779,6 +4779,88 @@
         }
       }
     },
+    "Conduit sends its own Authorization header when it signs in to Hermes directly, and for notifications and the Watch. Those requests leave this one out, so a proxy that needs it will refuse them. If your proxy has its own token headers, use those instead (Pangolin: P-Access-Token-Id and P-Access-Token)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sendet einen eigenen Authorization-Header, wenn es sich direkt bei Hermes anmeldet, sowie für Mitteilungen und die Watch. Bei diesen Anfragen fehlt dieser Header, sodass ein Proxy, der ihn braucht, sie ablehnt. Hat dein Proxy eigene Token-Header, verwende stattdessen diese (Pangolin: P-Access-Token-Id und P-Access-Token)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit envía su propio encabezado Authorization cuando inicia sesión directamente en Hermes, y para las notificaciones y el Watch. Esas solicitudes no incluyen este, así que un proxy que lo necesite las rechazará. Si tu proxy tiene sus propios encabezados de token, úsalos en su lugar (Pangolin: P-Access-Token-Id y P-Access-Token)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit envoie son propre en-tête Authorization quand il se connecte directement à Hermes, ainsi que pour les notifications et la Watch. Ces requêtes n’incluent pas celui-ci, donc un proxy qui en a besoin les refusera. Si votre proxy a ses propres en-têtes de jeton, utilisez-les à la place (Pangolin : P-Access-Token-Id et P-Access-Token)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit mengirim header Authorization miliknya sendiri saat masuk langsung ke Hermes, serta untuk notifikasi dan Watch. Permintaan itu tidak menyertakan header ini, jadi proxy yang membutuhkannya akan menolaknya. Jika proxy Anda punya header token sendiri, gunakan itu (Pangolin: P-Access-Token-Id dan P-Access-Token)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit invia la propria intestazione Authorization quando accede direttamente a Hermes, e per le notifiche e il Watch. Quelle richieste non includono questa, quindi un proxy che la richiede le rifiuterà. Se il tuo proxy ha proprie intestazioni per i token, usa quelle (Pangolin: P-Access-Token-Id e P-Access-Token)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit は Hermes に直接サインインするとき、および通知と Watch のために、独自の Authorization ヘッダを送信します。これらのリクエストにはこのヘッダが含まれないため、これを必要とするプロキシは拒否します。プロキシに専用のトークンヘッダがある場合は、そちらを使ってください（Pangolin: P-Access-Token-Id と P-Access-Token）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 Hermes에 직접 로그인할 때, 그리고 알림과 Watch를 위해 자체 Authorization 헤더를 보내요. 이런 요청에는 이 헤더가 빠지므로, 이 헤더가 필요한 프록시는 요청을 거부해요. 프록시에 자체 토큰 헤더가 있다면 그것을 사용하세요(Pangolin: P-Access-Token-Id 및 P-Access-Token)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit wysyła własny nagłówek Authorization, gdy loguje się bezpośrednio do Hermes, a także dla powiadomień i zegarka Watch. Te żądania pomijają ten nagłówek, więc proxy, które go wymaga, je odrzuci. Jeśli Twoje proxy ma własne nagłówki tokenów, użyj ich (Pangolin: P-Access-Token-Id i P-Access-Token)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit envia seu próprio cabeçalho Authorization quando inicia sessão diretamente no Hermes, e para as notificações e o Watch. Essas solicitações não incluem este, então um proxy que precise dele vai recusá-las. Se o seu proxy tiver cabeçalhos de token próprios, use-os (Pangolin: P-Access-Token-Id e P-Access-Token)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit отправляет собственный заголовок Authorization, когда входит в Hermes напрямую, а также для уведомлений и Watch. В таких запросах этого заголовка нет, поэтому прокси, которому он нужен, их отклонит. Если у вашего прокси есть свои заголовки с токеном, используйте их (Pangolin: P-Access-Token-Id и P-Access-Token)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, Hermes’e doğrudan giriş yaparken ve bildirimler ile Watch için kendi Authorization üstbilgisini gönderir. Bu isteklerde bu üstbilgi yer almaz, bu yüzden ona ihtiyaç duyan bir proxy onları reddeder. Proxy’nizin kendi belirteç üstbilgileri varsa onları kullanın (Pangolin: P-Access-Token-Id ve P-Access-Token)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在直接登录 Hermes 时，以及为通知和 Watch 发送请求时，会发送自己的 Authorization 请求头。这些请求不会带上此请求头，因此需要它的代理会拒绝这些请求。如果你的代理有自己的令牌请求头，请改用它们（Pangolin：P-Access-Token-Id 和 P-Access-Token）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在直接登入 Hermes 時，以及為通知和 Watch 傳送請求時，會傳送自己的 Authorization 標頭。這些請求不會帶上此標頭，因此需要它的代理伺服器會拒絕這些請求。如果你的代理伺服器有自己的權杖標頭，請改用它們（Pangolin：P-Access-Token-Id 和 P-Access-Token）。"
+          }
+        }
+      }
+    },
     "Conduit was signed out of this dashboard, so it can’t reach Hermes. Sign in again to reconnect." : {
       "localizations" : {
         "de" : {

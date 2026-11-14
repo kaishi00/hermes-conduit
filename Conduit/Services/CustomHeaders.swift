@@ -75,6 +75,16 @@ enum CustomHeaderPolicy {
         return nil
     }
 
+    /// What to know about a header that saves but isn't always sent, or nil.
+    /// `Authorization` is the one: a request that carries Conduit's own
+    /// bearer (Hermes' native sign-in, the plugin's notification and Watch
+    /// calls) keeps it, so a proxy's `Authorization: Basic` is left off
+    /// those and the proxy refuses them (issue 2442).
+    static func note(for header: CustomHeader) -> String? {
+        guard header.trimmedName.lowercased() == "authorization" else { return nil }
+        return AppLocalization.string("Conduit sends its own Authorization header when it signs in to Hermes directly, and for notifications and the Watch. Those requests leave this one out, so a proxy that needs it will refuse them. If your proxy has its own token headers, use those instead (Pangolin: P-Access-Token-Id and P-Access-Token).", table: .connection)
+    }
+
     /// The headers that may go on the wire: valid ones, names trimmed, the
     /// first entry winning when a name repeats.
     static func sendable(_ headers: [CustomHeader]) -> [CustomHeader] {
