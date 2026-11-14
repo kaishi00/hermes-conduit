@@ -1298,6 +1298,10 @@ extension BotModeTests {
         XCTAssertTrue(chatLeft.areStill(botChatRows))
         XCTAssertFalse(chatLeft.areStill([TranscriptRow(id: TranscriptRow.emptyID, kind: .empty)]), "the welcome is the new chat's")
         XCTAssertFalse(chatLeft.areStill(botChatRows), "rows that changed once are the new chat's from then on")
+        // A Bot Chat's Load earlier isn't carried over with its messages.
+        chatLeft.chatChanged(showing: [TranscriptRow(id: TranscriptRow.loadEarlierID, kind: .loadEarlier(isLoading: false))] + botChatRows)
+        XCTAssertTrue(chatLeft.areStill(botChatRows))
+        XCTAssertFalse(chatLeft.areStill([TranscriptRow(id: "w1", kind: .thinking)]))
 
         // Only a chat's own rows count as the chat having come in.
         XCTAssertFalse(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty).isChatRow)

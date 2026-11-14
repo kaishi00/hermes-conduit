@@ -155,20 +155,26 @@ protocol TranscriptSwapStage: AnyObject {
 /// pass or more later (a device log, #2458: a workstream's conversation
 /// drawn with its Bot Chat's 60 rows, then the welcome, then its own 21
 /// some 240 ms on), so a slide played on that pass moved the chat being
-/// left. Rows count as the new chat's once they differ from these.
+/// left. Rows count as the new chat's once its own rows differ from these:
+/// the chat's own rows only, as the carried ones lose a Bot Chat's Load
+/// earlier (a second device log: 61 rows shown, 60 carried).
 struct TranscriptRowsOfChatLeft {
     private var ids: [String]?
 
     mutating func chatChanged(showing rows: [TranscriptRow]) {
-        ids = rows.map(\.id)
+        ids = Self.chatRowIDs(rows)
     }
 
     /// Whether `rows` are still the ones the chat left showed.
     mutating func areStill(_ rows: [TranscriptRow]) -> Bool {
         guard let ids else { return false }
-        if rows.map(\.id) == ids { return true }
+        if Self.chatRowIDs(rows) == ids { return true }
         self.ids = nil
         return false
+    }
+
+    private static func chatRowIDs(_ rows: [TranscriptRow]) -> [String] {
+        rows.filter(\.isChatRow).map(\.id)
     }
 }
 
