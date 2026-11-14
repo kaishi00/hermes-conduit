@@ -6121,9 +6121,13 @@ final class AppStateChatResumeTests: XCTestCase {
     /// there while the list is out keeps it).
     func testSavedChatWaitsWhileAnotherChatIsOnScreen() async {
         let saved = session("stored-b")
-        let opened = await openedBeforeTheListLands(rows: [saved, session("stored-a")]) { appState, coordinator in
+        // A connection puts the saved chat on screen as it starts, so the
+        // other chat is opened while the socket connects.
+        let opened = await openedBeforeTheListLands(
+            rows: [saved, session("stored-a")],
+            whileConnecting: { appState in appState.activeSessionId = "stored-a" }
+        ) { _, coordinator in
             coordinator.rememberSession(.dashboard(profile: "default", sessionID: saved.id), for: "default")
-            appState.activeSessionId = "stored-a"
         }
         XCTAssertTrue(opened.isEmpty, "nothing resumed before the list: \(opened)")
     }
@@ -6211,19 +6215,26 @@ final class AppStateChatResumeTests: XCTestCase {
 
     private func openedBeforeTheListLands(
         rows: [SessionSummary],
+        whileConnecting: ((AppState) -> Void)? = nil,
         configure: (AppState, ChatResumeCoordinator) -> Void
     ) async -> [String] {
         let catalogGate = ControlledSuspension()
         var openedBeforeList: [String] = []
         var listLanded = false
+        var connected: @MainActor () -> Void = {}
         let harness = makeHarness(
             lifecycleOperations: savedChatFirstOperations(
                 catalog: rows,
                 gate: catalogGate,
                 catalogLoads: {},
-                opened: { if !listLanded { openedBeforeList.append($0) } }
+                opened: { if !listLanded { openedBeforeList.append($0) } },
+                connected: { connected() }
             )
         )
+        if let whileConnecting {
+            let appState = harness.appState
+            connected = { whileConnecting(appState) }
+        }
         harness.appState.sessions = rows
         configure(harness.appState, harness.coordinator)
         let connecting = Task { @MainActor in
@@ -6242,10 +6253,11 @@ final class AppStateChatResumeTests: XCTestCase {
         gate: ControlledSuspension,
         catalogLoads: @escaping @MainActor () -> Void,
         opened: @escaping @MainActor (String) -> Void,
-        failList: Bool = false
+        failList: Bool = false,
+        connected: @escaping @MainActor () -> Void = {}
     ) -> ChatResumeLifecycleOperations {
         ChatResumeLifecycleOperations(
-            connectClient: { _ in },
+            connectClient: { _ in connected() },
             loadCatalog: { _, _ in
                 catalogLoads()
                 await gate.suspend()
