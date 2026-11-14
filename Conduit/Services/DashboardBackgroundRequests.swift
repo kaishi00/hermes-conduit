@@ -14,7 +14,10 @@
 //
 
 import Foundation
+import OSLog
 import WebKit
+
+private let backgroundRequestLogger = Logger(subsystem: "com.milim.relay", category: "DashboardBridge")
 
 extension DashboardTicketBridge {
     /// A request whose JSON body is already encoded (a file upload's),
@@ -297,7 +300,15 @@ extension DashboardTicketBridge {
         // on to the page. Off screen nothing can retry through the page, so it
         // gets the full wait.
         let webKitWait: Duration = cookies.isEmpty || !webViewCanRun() ? .seconds(2) : .milliseconds(500)
-        if let webKit = await webKitCookies(timeout: webKitWait) {
+        let askedAt = Date()
+        let webKit = await webKitCookies(timeout: webKitWait)
+        let waited = Int(Date().timeIntervalSince(askedAt) * 1_000)
+        if waited >= 100 {
+            // A read without the page waits on WebKit's cookie store first;
+            // a slow one holds every such read, so the console says so.
+            backgroundRequestLogger.notice("WebKit cookies for a read without the page took \(waited) ms\(webKit == nil ? ", timed out" : "", privacy: .public)")
+        }
+        if let webKit {
             cookies += webKit
         }
         cookies += DashboardCookiePersistence.nativeCookieStorage(for: dashboardID).cookies ?? []

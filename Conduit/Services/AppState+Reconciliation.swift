@@ -145,10 +145,13 @@ extension AppState {
             if let botEvidence {
                 let onHand = shownBotRoster
                 if onHand.isEmpty {
+                    let waitedAt = Date()
                     await botEvidence()
                     botEvidenceLanded = true
+                    noteConnectionStep("Chat sync waited for the bots: none on hand", since: waitedAt)
                 } else {
                     earlyRoster = onHand
+                    noteConnectionStep("Chat sync picks on \(onHand.count) bots on hand")
                 }
             }
             // The chat list decides which chat to resume, so the resume
@@ -1420,14 +1423,19 @@ extension AppState {
         list: CatalogReadFailure
     ) async -> NewestChatsRead {
         if list.finished { return .listLanded }
+        let startedAt = Date()
+        defer { noteConnectionStep("Newest chats race over", since: startedAt) }
         let race = NewestChatsRace()
         let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<NewestChatsRead, Never>) in
             race.continuation = continuation
             list.onFinish = { race.finish(.listLanded) }
             race.read = Task { @MainActor in
                 do {
-                    race.finish(.read(try await self.newestChatsBeforeList(profile: profile, dashboardID: dashboardID, using: client)))
+                    let newest = try await self.newestChatsBeforeList(profile: profile, dashboardID: dashboardID, using: client)
+                    self.noteConnectionStep("Newest chats, \(newest.count) rows", since: startedAt)
+                    race.finish(.read(newest))
                 } catch {
+                    self.noteConnectionStep("Newest chats", since: startedAt, error: error)
                     race.finish(.failed)
                 }
             }
