@@ -871,7 +871,7 @@ final class BotWorkSettingsClient {
 }
 
 /// A Bot Chat's work tool call, as its transcript card shows it ("Started
-/// W3: Login bug", "Asked Nahida"). A model behind Tool Search calls the
+/// W3: Login bug", "Asked Nahida", "Told Nahida"). A model behind Tool Search calls the
 /// tools through `tool_call`, which names the tool and its arguments.
 struct BotWorkCall: Equatable {
     enum Tool: String {
@@ -883,6 +883,7 @@ struct BotWorkCall: Equatable {
         case list = "work_list"
         case ask = "work_ask"
         case reply = "work_reply"
+        case tell = "work_tell"
         case note = "work_note"
         case progress = "work_progress"
         case propose = "work_propose"
@@ -967,6 +968,7 @@ struct BotWorkCall: Equatable {
         case .close: return ref.isEmpty ? nil : AppLocalization.string("Closed \(ref)", table: .bots)
         case .ask: return bot.map { AppLocalization.string("Asked \($0)", table: .bots) }
         case .reply: return ref.isEmpty ? nil : AppLocalization.string("Answered \(ref)", table: .bots)
+        case .tell: return bot.map { AppLocalization.string("Told \($0)", table: .bots) }
         case .propose: return answered ? AppLocalization.string("Kept your answer", table: .bots)
             : AppLocalization.string("Asked you", table: .bots)
         case .list, .note, .progress: return nil
