@@ -461,6 +461,34 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNil(PluginUpdateAsk.managedBy)
     }
 
+    func testSettingsListsTheSwitchedToDashboardsPluginPagesBeforeItsPluginAnswers() {
+        let home = dashboard("Home", "https://home.example.test")
+        let farm = dashboard("Farm", "https://farm.example.test")
+        NotifierPluginStatus.Remembered.remember(
+            .reported(version: "0.170.2", capabilities: [PulseClient.capability, "hermes-calls"]),
+            for: farm.id, in: defaults
+        )
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, farm]))
+        // Home's plugin never said: nothing is listed ahead of its answer.
+        XCTAssertFalse(appState.settingsListsPluginPage(false, capability: PulseClient.capability))
+
+        appState.selectDashboardTarget(farm.id)
+        XCTAssertEqual(appState.notifierPlugin.state, .unknown)
+        XCTAssertTrue(appState.settingsListsPluginPage(appState.showsPulseSettings, capability: PulseClient.capability))
+        XCTAssertTrue(appState.settingsListsPluginPage(appState.supportsHermesCalls, capability: "hermes-calls"))
+        XCTAssertFalse(appState.settingsListsPluginPage(appState.canLinkRooms, capability: RoomLinksClient.capability))
+
+        // Its answer decides from then on, and is kept for next time.
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.170.3", "capabilities": ["hermes-calls"]])
+        XCTAssertFalse(appState.settingsListsPluginPage(appState.showsPulseSettings, capability: PulseClient.capability))
+        XCTAssertTrue(appState.settingsListsPluginPage(appState.supportsHermesCalls, capability: "hermes-calls"))
+        XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: farm.id, in: defaults), ["hermes-calls"])
+
+        // A plugin without the route forgets what it served.
+        NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: farm.id, in: defaults)
+        XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: farm.id, in: defaults), [])
+    }
+
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
         let home = dashboard("Home", "http://127.0.0.1:1")
         let work = dashboard("Work", "https://work.example.test")
