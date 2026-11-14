@@ -6047,8 +6047,10 @@ final class AppStateChatResumeTests: XCTestCase {
         // (turnState .reconnecting) and the bounded request retries through
         // reconnect recovery instead — never a giant WebSocket transcript.
         // The viewport-cancellation handoff under test is unchanged by that
-        // outcome.
-        XCTAssertEqual(openedSessionIDs, [active.id])
+        // outcome. The saved chat's resume went out beside the list read
+        // before the drag (#2420's early resume), so the handoff's own
+        // resume is the second.
+        XCTAssertEqual(openedSessionIDs, [active.id, active.id])
         XCTAssertEqual(harness.appState.activeSessionId, active.id)
         XCTAssertTrue(harness.appState.messages.isEmpty)
         XCTAssertTrue(harness.appState.isConnected)
@@ -6194,7 +6196,6 @@ final class AppStateChatResumeTests: XCTestCase {
                         snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
                     )
                 },
-                persistedTranscript: { _, _, _ in .unavailable },
                 refreshContext: { _, _ in }
             )
         )
@@ -6251,8 +6252,10 @@ final class AppStateChatResumeTests: XCTestCase {
                 if failList { throw ControlledLifecycleError.failed }
                 return catalog
             },
-            openSession: { _, sessionID, _ in
-                opened(sessionID)
+            openSession: { _, sessionID, compact in
+                // One resume is a compact one, then (no history source here)
+                // the same chat with its transcript: counted once.
+                if compact { opened(sessionID) }
                 return SessionResumeResult(
                     sessionId: sessionID,
                     messages: [ChatMessage(id: "m-\(sessionID)", role: .assistant, content: "Hi", timestamp: "1")],
