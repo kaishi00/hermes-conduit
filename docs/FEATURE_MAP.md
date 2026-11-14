@@ -1428,7 +1428,7 @@ live model is told when the host won't keep the watch
 
 **Open gaps**
 - Not yet tried on a device: that watchOS rings with the picked tone (its CallKit takes `ringtoneSound`, but may play its own), and what the car plays for a call ringing on CarPlay (issue 2445).
-- A call the Watch rings from a sealed push names no profile, so it rings with every bot's ringtone, not the calling bot's own (issue 2445).
+- A call the Watch rings from a sealed push names no profile, so it rings with every bot's ringtone, not the calling bot's own; so does a call on the iPhone whose push names no profile, as it rings from the address no bot's contact holds (issue 2445).
 - A ring for another iPhone still reaches the Watch, which can't tell it apart, and its answer goes to that iPhone: an old iPhone still paired with some profile keeps the Watch's token until that profile is paired here too (notifier #440).
 - A sealed push carries no profile to the Watch, so its call screen says "Hermes" (#541).
 - A Watch on watchOS 10 never rings: it sends the iPhone no call token and rings no push, since its calls get no network ("A Watch call with no network", #1591, #1346). The iPhone rings alone.

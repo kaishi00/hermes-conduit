@@ -304,7 +304,9 @@ struct HermesCallSettingsSection: View {
     /// A pick plays once, so the user hears it without placing a call.
     private func previewRingtone(_ ringtone: HermesRingtone) {
         let appState = AppStateRuntimeRegistry.shared.existing
-        ringtonePreview.play(ringtone, voiceInUse: appState.map { $0.isVoiceInUse || $0.isWatchVoiceCallActive } ?? false)
+        // A call from Hermes ringing or answered counts too, before its
+        // voice has started.
+        ringtonePreview.play(ringtone, voiceInUse: appState.map { $0.isVoiceInUse || $0.isCallHoldingAudio || $0.isWatchVoiceCallActive } ?? false)
     }
 
     /// This bot's own ringtone: none of its own, or any of the tones.
@@ -370,7 +372,12 @@ struct HermesCallSettingsSection: View {
                 }
                 if draft.enabled {
                     if HermesNativeCalls.offersRinging {
-                        Toggle("Ring like a phone call", isOn: $ringsLikeCall)
+                        // Animated, so the ringtone and contact rows it
+                        // reveals slide in rather than pop.
+                        Toggle("Ring like a phone call", isOn: Binding(
+                            get: { ringsLikeCall },
+                            set: { rings in withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { ringsLikeCall = rings } }
+                        ))
                             .onChange(of: ringsLikeCall) { _, _ in HermesNativeCalls.shared.ringingSettingChanged() }
                         Text("On this iPhone and your Apple Watch. Off, a “Hermes wants to talk” notification comes instead: tap Talk to answer.")
                             .scaledFont(.caption)
