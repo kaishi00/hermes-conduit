@@ -629,6 +629,38 @@ struct PendingVoiceIntent: Equatable {
     /// `hermesCall`: Talk on a "Hermes wants to talk" notification (#449),
     /// in the job's chat it opened.
     enum Source: String, Equatable { case composer, wakePhrase, siri, newCall, screenQuestion, hermesCall }
+
+    /// A wake phrase whose profile has Start a new conversation off
+    /// (Settings > Voice > Wake phrase) continues the chat open last, as the
+    /// chat's voice button does (issue 2416).
+    var continuesOpenChat: Bool { source == .wakePhrase && !startsFreshConversation }
+
+    /// A live call this starts works in the open chat: one started from the
+    /// chat's voice button, for a screenshot's chat, answering a call from
+    /// Hermes in its chat, or a wake phrase set to continue.
+    var liveCallStartsInOpenChat: Bool {
+        switch source {
+        case .composer, .screenQuestion, .hermesCall: return true
+        case .wakePhrase: return continuesOpenChat
+        case .siri, .newCall: return false
+        }
+    }
+
+    /// In a saved call's row, this picks that call up rather than starting
+    /// another: the chat's voice button, and a wake phrase set to continue.
+    var resumesOpenChatCall: Bool { source == .composer || continuesOpenChat }
+
+    /// Whether a live call this starts on `targetProfile` works in the chat
+    /// open on `activeProfile`: never for another profile's call (a phrase
+    /// bound to another profile switches to it and stands alone).
+    func liveCallStartsInOpenChat(targetProfile: String, activeProfile: String) -> Bool {
+        liveCallStartsInOpenChat && targetProfile == activeProfile
+    }
+
+    /// Whether this resumes the open chat's saved call on `targetProfile`.
+    func resumesOpenChatCall(targetProfile: String, activeProfile: String) -> Bool {
+        resumesOpenChatCall && targetProfile == activeProfile
+    }
 }
 
 /// How the chat opened by Ask Hermes About Screen takes the question.

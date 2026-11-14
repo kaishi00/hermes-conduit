@@ -83,6 +83,88 @@
         }
       }
     },
+    "Off: the phrase continues the chat you were in last, as the chat's voice button does, and the call starts knowing what was said there. On: each phrase starts a new conversation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus: Die Phrase setzt den Chat fort, in dem du zuletzt warst, wie die Sprachtaste des Chats, und der Anruf weiß, was dort gesagt wurde. An: Jede Phrase beginnt eine neue Unterhaltung."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivado: la frase continúa el último chat en el que estuviste, como el botón de voz del chat, y la llamada empieza sabiendo lo que se dijo allí. Activado: cada frase inicia una conversación nueva."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivé : la phrase reprend la dernière discussion où vous étiez, comme le bouton vocal de la discussion, et l'appel commence en sachant ce qui s'y est dit. Activé : chaque phrase lance une nouvelle conversation."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mati: frasa melanjutkan chat terakhir yang Anda buka, seperti tombol suara chat, dan panggilan dimulai dengan mengetahui apa yang dibicarakan di sana. Nyala: setiap frasa memulai percakapan baru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Disattivato: la frase continua l'ultima chat in cui eri, come il pulsante vocale della chat, e la chiamata inizia sapendo cosa è stato detto lì. Attivato: ogni frase avvia una nuova conversazione."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフ：フレーズは最後に開いていたチャットを、チャットの音声ボタンと同じように続け、通話はそこでの会話を把握した状態で始まります。オン：フレーズのたびに新しい会話を始めます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끔: 문구를 말하면 채팅의 음성 버튼처럼 마지막으로 있던 채팅을 이어 가며, 통화는 그 채팅의 대화를 알고 시작합니다. 켬: 문구를 말할 때마다 새 대화를 시작합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyłączone: fraza kontynuuje czat, w którym byłeś ostatnio, tak jak przycisk głosowy czatu, a rozmowa zaczyna się ze znajomością tego, co tam powiedziano. Włączone: każda fraza rozpoczyna nową rozmowę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desativado: a frase continua o último chat em que você estava, como o botão de voz do chat, e a chamada começa sabendo o que foi dito ali. Ativado: cada frase inicia uma nova conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выкл.: фраза продолжает чат, в котором вы были последним, как кнопка голоса в чате, и звонок начинается со знанием того, что там обсуждалось. Вкл.: каждая фраза начинает новый разговор."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapalı: ifade, sohbetin ses düğmesi gibi en son bulunduğunuz sohbeti sürdürür ve arama orada konuşulanları bilerek başlar. Açık: her ifade yeni bir konuşma başlatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭：唤醒短语会像聊天的语音按钮一样继续你最后所在的聊天，通话开始时就了解那里说过的内容。打开：每次说出短语都会开始新的对话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉：喚醒短語會像聊天的語音按鈕一樣繼續你最後所在的聊天，通話開始時就了解那裡說過的內容。開啟：每次說出短語都會開始新的對話。"
+          }
+        }
+      }
+    },
     "Your Hermes server can't save voice calls yet." : {
       "localizations" : {
         "de" : {
