@@ -1535,16 +1535,24 @@ final class OfflineChatCacheTests: XCTestCase {
         await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
         XCTAssertEqual(unlocks, 1, "The launch's unlock covers the other dashboard")
 
+        // A different password saved for it later (Edit Connection, no
+        // sign-out) wasn't unlocked yet.
+        let replaced = DashboardCredentials(baseURL: work.normalizedURL, username: "hermes", password: "changed", requiresFaceID: true)
+        await appState.restoreSavedCredentials(replaced, dashboardID: work.id)
+        XCTAssertEqual(unlocks, 2, "A replaced password asks again")
+
         appState.clearSavedPassword(dashboardID: work.id)
         await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
-        XCTAssertEqual(unlocks, 2, "A cleared password asks again")
+        XCTAssertEqual(unlocks, 3, "A cleared password asks again")
         await appState.restoreSavedCredentials(saved(work), dashboardID: work.id)
-        XCTAssertEqual(unlocks, 2, "Its new unlock holds")
+        XCTAssertEqual(unlocks, 3, "Its new unlock holds")
 
         // A refused first unlock opens nothing.
-        let fresh = makeAppState(
+        let (fresh, freshStore, _) = makeAppState(
             registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work])
-        ).0
+        )
+        seedCopy(freshStore, dashboard: home.id)
+        seedCopy(freshStore, dashboard: work.id)
         fresh.phoneScreenIsAway = { false }
         var freshAsks = 0
         fresh.unlockWithFaceID = {
@@ -1552,8 +1560,13 @@ final class OfflineChatCacheTests: XCTestCase {
             return false
         }
         await fresh.restoreSavedCredentials(saved(home), dashboardID: home.id)
+        XCTAssertTrue(fresh.showLogin, "A refused unlock goes to sign-in")
+        XCTAssertNil(fresh.offlineChatPresentation, "and shows no saved chats")
+        XCTAssertNil(fresh.connectionTimeline?.events.first { $0.label.hasPrefix("Password sign-in") }, "and starts no sign-in")
         await fresh.restoreSavedCredentials(saved(work), dashboardID: work.id)
         XCTAssertEqual(freshAsks, 2)
+        XCTAssertTrue(fresh.showLogin)
+        XCTAssertNil(fresh.offlineChatPresentation)
     }
 
     /// A dashboard switch starts the phone's pins over until Hermes' arrive

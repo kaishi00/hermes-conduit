@@ -6772,7 +6772,7 @@ the lock only)
 
 **Rulings**
 - One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, #2423).
-- A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for one already unlocked (#2423).
+- A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for it after an unlock covered it (the launch's unlock covers the password a dashboard signs in with first) (#2423).
 - The unlock holds while Conduit runs, also after a long time away, as a connected Conduit never asks again on return.
 
 **Open gaps**

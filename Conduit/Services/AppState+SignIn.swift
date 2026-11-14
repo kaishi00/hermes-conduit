@@ -131,6 +131,11 @@ extension AppState {
         // and neither does a switch to another saved dashboard.
         let faceIDUnlockHeld = scopedDashboardID.map { faceIDUnlockHolds(for: $0, credentials) } ?? false
         if credentials.requiresFaceID, faceIDUnlockHeld {
+            if let scopedDashboardID, faceIDUnlockedDashboards[scopedDashboardID] == nil {
+                // The launch's unlock now covers this password: a different
+                // one saved for the dashboard later asks again.
+                faceIDUnlockedDashboards[scopedDashboardID] = Self.faceIDUnlockFingerprint(credentials)
+            }
             if let scopedDashboardID {
                 // A retry keeps the copy already on screen.
                 if offlineChatPresentation == nil {
