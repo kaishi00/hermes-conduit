@@ -178,9 +178,9 @@ extension ChatTypographyTests {
                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil
             )]
             state.activeSessionId = "s1"
-            state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+            state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
             state.handleStreamEvent(event)
-            XCTAssertNil(state.predictiveFollowUpTurn, "\(event)")
+            XCTAssertNil(state.shownChat.predictiveFollowUpTurn, "\(event)")
             XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
         }
     }
@@ -195,19 +195,19 @@ extension ChatTypographyTests {
         )
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueued = true
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueued = true
 
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Another client's reply.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "the turn ahead isn't Hermes following up")
-        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
-        XCTAssertFalse(state.predictiveFollowUpQueued)
+        XCTAssertEqual(state.shownChat.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertFalse(state.shownChat.predictiveFollowUpQueued)
 
         state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertEqual(state.predictive.followUpReasons["a3"], "Worth a check.")
-        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
     }
 
     /// A draft over the plugin's limit is never asked about, by ⋯ > Refresh
@@ -228,12 +228,12 @@ extension ChatTypographyTests {
         let over = String(repeating: "a", count: Predictive.maximumDraftScalars + 1)
         state.predictive.draftChanged(over)
         state.refreshPredictions()
-        XCTAssertNil(state.predictiveDraftAsked, "a draft over the limit isn't asked about")
+        XCTAssertNil(state.shownChat.predictiveDraftAsked, "a draft over the limit isn't asked about")
 
         let atLimit = String(repeating: "a", count: Predictive.maximumDraftScalars)
         state.predictive.draftChanged(atLimit)
         state.refreshPredictions()
-        XCTAssertEqual(state.predictiveDraftAsked?.draft, atLimit, "one at the limit is")
+        XCTAssertEqual(state.shownChat.predictiveDraftAsked?.draft, atLimit, "one at the limit is")
     }
 
     /// A system notice merged into the last row anchors no guesses and no
@@ -271,12 +271,12 @@ extension ChatTypographyTests {
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
         let anchor = try XCTUnwrap(state.predictiveAnchor)
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
         state.startPredictiveFollowUpClock(for: anchor)
-        XCTAssertNil(state.predictiveFollowUpTask)
-        state.predictiveFollowUpTurn = nil
+        XCTAssertNil(state.shownChat.predictiveFollowUpTask)
+        state.shownChat.predictiveFollowUpTurn = nil
         state.startPredictiveFollowUpClock(for: anchor)
-        XCTAssertNotNil(state.predictiveFollowUpTask, "the clock runs once nothing waits")
+        XCTAssertNotNil(state.shownChat.predictiveFollowUpTask, "the clock runs once nothing waits")
         state.stopPredictiveFollowUpClock()
     }
 
@@ -310,33 +310,33 @@ extension ChatTypographyTests {
         ]
         for error in busy {
             state.predictiveSender = { _ in throw error }
-            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
             let asked = Date()
             await state.checkPredictiveFollowUp(for: anchor)
-            XCTAssertFalse(state.predictiveFollowUp.stopped, "\(error)")
-            let next = try XCTUnwrap(state.predictiveFollowUp.nextCheck, "\(error)")
+            XCTAssertFalse(state.shownChat.predictiveFollowUp.stopped, "\(error)")
+            let next = try XCTUnwrap(state.shownChat.predictiveFollowUp.nextCheck, "\(error)")
             XCTAssertEqual(next.timeIntervalSince(asked), TimeInterval(Predictive.askAgainRange.lowerBound), accuracy: 5)
-            XCTAssertNotNil(state.predictiveFollowUpTask, "the next check is on the clock: \(error)")
+            XCTAssertNotNil(state.shownChat.predictiveFollowUpTask, "the next check is on the clock: \(error)")
             state.stopPredictiveFollowUpClock()
         }
         // Writing meanwhile starts the idle time over: the retry waits the
         // chosen time from when the composer is empty again.
         state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
-        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+        state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
         await state.checkPredictiveFollowUp(for: anchor)
-        XCTAssertNotNil(state.predictiveFollowUp.nextCheck)
+        XCTAssertNotNil(state.shownChat.predictiveFollowUp.nextCheck)
         state.predictiveDraftChanged("Actually")
         state.predictiveDraftChanged("")
-        XCTAssertFalse(state.predictiveFollowUp.stopped)
+        XCTAssertFalse(state.shownChat.predictiveFollowUp.stopped)
         XCTAssertGreaterThan(TimeInterval(Predictive.followUpDelay()), TimeInterval(Predictive.askAgainRange.lowerBound))
         XCTAssertEqual(state.predictiveFollowUpDue.timeIntervalSinceNow, TimeInterval(Predictive.followUpDelay()),
                        accuracy: 5, "the chosen wait applies again, not the sooner retry")
         state.stopPredictiveFollowUpClock()
         // The reply's last check isn't followed by another.
         state.predictiveSender = { _ in throw DashboardTicketBridgeError.http(status: 429, detail: "") }
-        state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
+        state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
         await state.checkPredictiveFollowUp(for: anchor)
-        XCTAssertTrue(state.predictiveFollowUp.stopped, "the checks ran out")
+        XCTAssertTrue(state.shownChat.predictiveFollowUp.stopped, "the checks ran out")
         let final: [Error] = [
             DashboardTicketBridgeError.http(status: 404, detail: "That chat isn't open on the host"),
             DashboardTicketBridgeError.http(status: 400, detail: "bad request"),
@@ -344,9 +344,9 @@ extension ChatTypographyTests {
         ]
         for error in final {
             state.predictiveSender = { _ in throw error }
-            state.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+            state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
             await state.checkPredictiveFollowUp(for: anchor)
-            XCTAssertTrue(state.predictiveFollowUp.stopped, "\(error)")
+            XCTAssertTrue(state.shownChat.predictiveFollowUp.stopped, "\(error)")
         }
     }
 
@@ -363,14 +363,14 @@ extension ChatTypographyTests {
         )
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpSending = true
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpSending = true
 
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Another client's reply.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "the turn ahead isn't Hermes following up")
-        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
-        XCTAssertTrue(state.predictiveFollowUpAheadEnded)
+        XCTAssertEqual(state.shownChat.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertTrue(state.shownChat.predictiveFollowUpAheadEnded)
     }
 
     /// A reply to a message someone sent, queued ahead of the hidden
@@ -386,9 +386,9 @@ extension ChatTypographyTests {
         state.activeSessionId = "s1"
         let queuedAt = Date()
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueued = true
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueued = true
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
 
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "Done.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
@@ -397,13 +397,13 @@ extension ChatTypographyTests {
         state.messages.append(ChatMessage(id: "a3", role: .assistant, content: "That too.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty, "a reply to someone's message isn't a follow-up")
-        XCTAssertEqual(state.predictiveFollowUpTurn?.after, "a2")
-        XCTAssertEqual(state.predictiveFollowUpTurnsAhead, 1)
+        XCTAssertEqual(state.shownChat.predictiveFollowUpTurn?.after, "a2")
+        XCTAssertEqual(state.shownChat.predictiveFollowUpTurnsAhead, 1)
 
         state.messages.append(ChatMessage(id: "a4", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertEqual(state.predictive.followUpReasons["a4"], "Worth a check.")
-        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
     }
 
     /// A follow-up whose reply was never seen to end stops waiting after a
@@ -419,15 +419,15 @@ extension ChatTypographyTests {
         state.activeSessionId = "s1"
         let queuedAt = Date()
         state.messages = [ChatMessage(id: "a0", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a0")
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
         for turn in 1...(AppState.predictiveFollowUpMaximumTurnsAhead + 1) {
             state.messages.append(ChatMessage(id: "u\(turn)", role: .user, content: "Next?",
                                               timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-10))))
             state.messages.append(ChatMessage(id: "a\(turn)", role: .assistant, content: "Sure.", timestamp: "now"))
             state.predictiveTurnSettled(sessionId: "s1")
         }
-        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
     }
 
@@ -445,15 +445,15 @@ extension ChatTypographyTests {
             let sentAt = Date()
             state.activeSessionId = "s1"
             state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
             // Queued behind a turn that has since ended, or run at once.
-            state.predictiveFollowUpQueuedAt = queued ? sentAt : nil
+            state.shownChat.predictiveFollowUpQueuedAt = queued ? sentAt : nil
             state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
                                               timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
             state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
             state.predictiveTurnSettled(sessionId: "s1")
             XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.", "queued: \(queued)")
-            XCTAssertNil(state.predictiveFollowUpTurn)
+            XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
         }
     }
 
@@ -479,12 +479,12 @@ extension ChatTypographyTests {
         )
         state.activeSessionId = "s1"
         state.messages = messages
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "gone")
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "gone")
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
-        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
     }
 
     /// Two messages queued ahead whose rows land together, before either
@@ -501,8 +501,8 @@ extension ChatTypographyTests {
         let before = Self.isoTimestamp(queuedAt.addingTimeInterval(-5))
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
         state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?", timestamp: before))
         state.messages.append(ChatMessage(id: "u2", role: .user, content: "Second?", timestamp: before))
         for reply in ["a2", "a3"] {
@@ -530,8 +530,8 @@ extension ChatTypographyTests {
             let sentAt = Date()
             state.activeSessionId = "s1"
             state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-            state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-            state.predictiveFollowUpQueuedAt = sentAt
+            state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+            state.shownChat.predictiveFollowUpQueuedAt = sentAt
             state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "From the desktop", origin: nil))
             if read {
                 state.messages.append(ChatMessage(id: "u1", role: .user, content: "From the desktop",
@@ -540,7 +540,7 @@ extension ChatTypographyTests {
             state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
             state.predictiveTurnSettled(sessionId: "s1")
             XCTAssertEqual(state.predictive.followUpReasons["a2"], read ? "Worth a check." : nil, "read: \(read)")
-            XCTAssertNil(state.predictiveFollowUpTurn)
+            XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
         }
     }
 
@@ -558,9 +558,9 @@ extension ChatTypographyTests {
         let queuedAt = Date()
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Working on it.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueued = true
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueued = true
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
         state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 7, text: "And the other one?", origin: nil))
         state.messages.append(ChatMessage(id: "u1", role: .user, content: "And the other one?",
                                           timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5)), rowId: 7))
@@ -587,12 +587,12 @@ extension ChatTypographyTests {
         let sentAt = Date()
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueuedAt = sentAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueuedAt = sentAt
         state.messages.append(ChatMessage(id: "u1", role: .user, content: "Also, the list?",
                                           timestamp: Self.isoTimestamp(sentAt.addingTimeInterval(2))))
         state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Also, the list?", origin: nil))
-        XCTAssertTrue(state.predictiveFollowUpUnreadMessages.isEmpty)
+        XCTAssertTrue(state.shownChat.predictiveFollowUpUnreadMessages.isEmpty)
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
@@ -613,10 +613,10 @@ extension ChatTypographyTests {
             ChatMessage(id: "u1", role: .user, content: "Thanks!", timestamp: "now", rowId: 41),
             ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now"),
         ]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueuedAt = Date()
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueuedAt = Date()
         state.handleStreamEvent(.userMessage(sessionId: "s1", rowId: 42, text: "Thanks!", origin: nil))
-        XCTAssertEqual(state.predictiveFollowUpUnreadMessages, [42])
+        XCTAssertEqual(state.shownChat.predictiveFollowUpUnreadMessages, [42])
     }
 
     /// A message queued ahead of the follow-up whose turn fails: the
@@ -632,12 +632,12 @@ extension ChatTypographyTests {
         let queuedAt = Date()
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
-        state.predictiveFollowUpQueuedAt = queuedAt
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", "a1")
+        state.shownChat.predictiveFollowUpQueuedAt = queuedAt
         state.messages.append(ChatMessage(id: "u1", role: .user, content: "First?",
                                           timestamp: Self.isoTimestamp(queuedAt.addingTimeInterval(-5))))
         state.predictiveTurnEnded(sessionId: "s1")
-        XCTAssertNotNil(state.predictiveFollowUpTurn)
+        XCTAssertNotNil(state.shownChat.predictiveFollowUpTurn)
         state.messages.append(ChatMessage(id: "a2", role: .assistant, content: "One more thing.", timestamp: "now"))
         state.predictiveTurnSettled(sessionId: "s1")
         XCTAssertEqual(state.predictive.followUpReasons["a2"], "Worth a check.")
@@ -656,11 +656,11 @@ extension ChatTypographyTests {
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         state.activeSessionId = "s1"
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
         state.updatePredictiveScreen()
-        XCTAssertNotNil(state.predictiveFollowUpTurn, "still on screen")
+        XCTAssertNotNil(state.shownChat.predictiveFollowUpTurn, "still on screen")
         state.showSidebar = true
-        XCTAssertNil(state.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
     }
 
     @MainActor
@@ -677,29 +677,29 @@ extension ChatTypographyTests {
         state.predictive.draftChanged("Can you delete")
         state.predictive.noteFollowUp(messageID: "a1", why: "Worth a check.")
         state.predictive.hide(sessionID: "s2")
-        state.predictiveRepliesAsked = anchor
-        state.predictiveDraftAsked = ("s1", "Can you delete")
-        state.predictiveFollowUp.anchor = anchor
-        state.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
-        state.predictiveReplyEnded = (anchor, Date())
+        state.shownChat.predictiveRepliesAsked = anchor
+        state.shownChat.predictiveDraftAsked = ("s1", "Can you delete")
+        state.shownChat.predictiveFollowUp.anchor = anchor
+        state.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        state.shownChat.predictiveReplyEnded = (anchor, Date())
         let pause = Task<Void, Never> { try? await Task.sleep(nanoseconds: 60_000_000_000) }
-        state.predictivePauseTask = pause
-        let generation = state.predictiveGeneration
+        state.shownChat.predictivePauseTask = pause
+        let generation = state.shownChat.predictiveGeneration
 
         state.forgetPredictiveState()
 
-        XCTAssertNotEqual(state.predictiveGeneration, generation, "answers asked before are dropped")
+        XCTAssertNotEqual(state.shownChat.predictiveGeneration, generation, "answers asked before are dropped")
 
         XCTAssertFalse(state.predictive.isShowing)
         XCTAssertEqual(state.predictive.draft, "")
         XCTAssertTrue(state.predictive.followUpReasons.isEmpty)
         XCTAssertTrue(state.predictive.hiddenSessions.isEmpty)
-        XCTAssertNil(state.predictiveRepliesAsked)
-        XCTAssertNil(state.predictiveDraftAsked)
-        XCTAssertNil(state.predictiveFollowUp.anchor)
-        XCTAssertNil(state.predictiveFollowUpTurn)
-        XCTAssertNil(state.predictiveReplyEnded)
-        XCTAssertNil(state.predictivePauseTask)
+        XCTAssertNil(state.shownChat.predictiveRepliesAsked)
+        XCTAssertNil(state.shownChat.predictiveDraftAsked)
+        XCTAssertNil(state.shownChat.predictiveFollowUp.anchor)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
+        XCTAssertNil(state.shownChat.predictiveReplyEnded)
+        XCTAssertNil(state.shownChat.predictivePauseTask)
         XCTAssertTrue(pause.isCancelled)
     }
 

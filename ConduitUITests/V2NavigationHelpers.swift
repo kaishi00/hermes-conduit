@@ -41,3 +41,32 @@ extension XCUIApplication {
         _ = element.waitForExistence(timeout: 5)
     }
 }
+
+extension XCUIElement {
+    /// Waits until this field has the keyboard, for a test about to type in
+    /// it. A simulator's first keyboard after a fresh install can take
+    /// several seconds to come up: typing straight after the tap then failed
+    /// with "Neither element nor any descendant has keyboard focus" on the
+    /// first run of a Nightly shard (2026-11-14). Taps again once, halfway
+    /// through, if the first tap was lost; `tappingAgain: false` is for a
+    /// field that got its focus some other way (Return from the field above).
+    func waitForKeyboardFocus(
+        timeout: TimeInterval = 40,
+        tappingAgain: Bool = true,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        let retapAt = Date().addingTimeInterval(timeout / 2)
+        var tappedAgain = !tappingAgain
+        while Date() < deadline {
+            if (value(forKey: "hasKeyboardFocus") as? Bool) == true { return }
+            if !tappedAgain, Date() >= retapAt {
+                tappedAgain = true
+                if isHittable { tap() }
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        XCTFail("\(identifier) never got keyboard focus", file: file, line: line)
+    }
+}

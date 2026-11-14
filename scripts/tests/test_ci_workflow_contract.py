@@ -132,16 +132,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("CI Gate", text)
         self.assertNotIn("Build & Test", text)
 
-    def test_ci_runs_for_main_and_linked_rooms(self):
-        """linked-rooms' copy runs on that branch's pushes and the PRs into
-        it as on main's, as pulse's copy does for pulse (docs/CI.md). Only
-        this branch has the test: main's copy runs for main alone and never
-        gets it, so neither does pulse."""
+    def test_ci_runs_for_main_and_long_lived_branches(self):
+        """linked-rooms' and all-live's copies run on those branches' pushes
+        and the PRs into them as on main's, as pulse's copy does for pulse
+        (docs/CI.md)."""
         text = self._workflow_text()
         triggers = text[text.index("\non:\n"):text.index("\nconcurrency:")]
-        self.assertIn("\n  push:\n    branches: [main, linked-rooms]\n  pull_request:\n", triggers)
+        self.assertIn("\n  push:\n    branches: [main, linked-rooms, all-live]\n  pull_request:\n", triggers)
         self.assertRegex(triggers.split("\n  pull_request:\n", 1)[1],
-                         r"\A(    #.*\n)*    branches: \[main, linked-rooms\]\n")
+                         r"\A(    #.*\n)*    branches: \[main, linked-rooms, all-live\]\n")
 
     def test_one_macos_job_per_run(self):
         """Runner queueing (5 concurrent macOS jobs per account) was CI v4's
@@ -230,7 +229,7 @@ class WorkflowContractTests(unittest.TestCase):
                       "never a fork's run on a branch of the same name")
         self.assertIn('(.pull_requests | length) == 1 and .pull_requests[0].number == $PR_NUMBER'
                       ' and .pull_requests[0].base.ref == \\"$BASE_REF\\"', plan,
-                      "only this PR's runs: a branch with PRs into main and linked-rooms runs for each")
+                      "only this PR's runs: a branch with PRs into main and linked-rooms or all-live runs for each")
         self.assertIn('actions/runs/$id/cancel', plan)
 
     def _cancel_step_script(self):
@@ -370,7 +369,7 @@ class WorkflowContractTests(unittest.TestCase):
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
         passes the PR's number and the base's map (HEAD^1 of the merge commit),
-        and for a PR into pulse or linked-rooms, main's maps where the PR and
+        and for a PR into pulse, linked-rooms or all-live, main's maps where the PR and
         its base meet main, so the entries a merge of main brings in keep
         main's Checked lines."""
         step = _step_text(self._job_text("self-test"), "Feature map paths exist")
@@ -476,9 +475,9 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_smoke_job_builds_incrementally_and_pushes_save_the_full_build(self):
         """The smoke job restores the newest DerivedData it can reach (main's,
-        and on a PR into pulse or linked-rooms that branch's) before
+        and on a PR into pulse, linked-rooms or all-live that branch's) before
         building, and saves its own only on pushes (to main, and in pulse's
-        and linked-rooms' copies to that branch; always the full app there),
+        linked-rooms' and all-live's copies to that branch; always the full app there),
         after a successful build, with the same path list (a different list
         is a different cache)."""
         text = self._job_text("smoke")

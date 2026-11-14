@@ -66,6 +66,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         let username = app.textFields[Identity.username]
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)
+        username.waitForKeyboardFocus()
         username.typeText("uitest-user")
         // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
         // can leave the password field under the keyboard, out of
@@ -73,6 +74,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
         tapVisible(password, in: app)
+        password.waitForKeyboardFocus()
         password.typeText("uitest-fixture")
         dismissKeyboard(app)
         tapVisible(app.buttons[Identity.next], in: app)

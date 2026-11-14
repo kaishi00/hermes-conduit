@@ -37,9 +37,11 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
         tapVisible(host, in: app)
+        host.waitForKeyboardFocus()
         host.typeText("192.168.1.28")
         let port = app.textFields["setup.port"]
         tapVisible(port, in: app)
+        port.waitForKeyboardFocus()
         port.typeText("0")
         // Dismiss the keyboard before tapping Continue: with the number pad
         // up, the Continue button can sit behind the keyboard window yet
@@ -49,6 +51,7 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(app.buttons["setup.next"], in: app)
         XCTAssertTrue(app.staticTexts["Enter a port between 1 and 65535."].waitForExistence(timeout: 3))
         tapVisible(port, in: app)
+        port.waitForKeyboardFocus()
         port.typeText(XCUIKeyboardKey.delete.rawValue + "9119")
         dismissKeyboard(app)
         tapVisible(app.buttons["setup.next"], in: app)
@@ -63,6 +66,7 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(app.buttons["setup.test.enter-credentials"], in: app)
         let username = app.textFields["setup.username"]
         tapVisible(username, in: app)
+        username.waitForKeyboardFocus()
         username.typeText("round3-user")
         // Dismiss the keyboard before reaching for the password field: on
         // iOS 27 the Passwords AutoFill bar makes the keyboard tall enough
@@ -72,6 +76,7 @@ final class ConnectionSetupUITests: XCTestCase {
         dismissKeyboard(app)
         let password = app.secureTextFields["setup.password"]
         tapVisible(password, in: app)
+        password.waitForKeyboardFocus()
         password.typeText("round3-private-fixture")
         // Dismiss the keyboard before Continue, as ConnectionRepairUITests
         // does. Leaving the step with the password field still focused
@@ -133,6 +138,7 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(app.buttons["setup.details-ready"], in: app)
         let host = app.textFields["setup.host"]
         tapVisible(host, in: app)
+        host.waitForKeyboardFocus()
         host.typeText("machine.tailnet.ts.net")
         tapVisible(app.buttons["setup.next"], in: app)
         XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5), "The address alone reaches the staged test")

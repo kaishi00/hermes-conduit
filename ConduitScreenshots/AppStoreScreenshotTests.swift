@@ -159,6 +159,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             composer.tap()
             if app.keyboards.firstMatch.waitForExistence(timeout: 3) { break }
         }
+        waitForKeyboardFocus(composer)
         composer.typeText("What should we pack?")
         settle(0.5)
         app.buttons["Send message"].tap()
@@ -244,10 +245,38 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     // MARK: - Steps
 
+    /// Waits until a field has the keyboard, for a step about to type in it
+    /// (as ConduitUITests' `XCUIElement.waitForKeyboardFocus`, which this
+    /// target can't see). A simulator's first keyboard after a fresh install
+    /// can take several seconds to come up, and typing before it fails with
+    /// "Neither element nor any descendant has keyboard focus". Taps again
+    /// once, halfway through, if the first tap was lost.
+    private func waitForKeyboardFocus(
+        _ field: XCUIElement,
+        timeout: TimeInterval = 40,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let deadline = Date().addingTimeInterval(timeout)
+        let retapAt = Date().addingTimeInterval(timeout / 2)
+        var tappedAgain = false
+        while Date() < deadline {
+            if (field.value(forKey: "hasKeyboardFocus") as? Bool) == true { return }
+            if !tappedAgain, Date() >= retapAt {
+                tappedAgain = true
+                if field.isHittable { field.tap() }
+            }
+            Thread.sleep(forTimeInterval: 0.25)
+        }
+        let name = field.identifier.isEmpty ? field.label : field.identifier
+        XCTFail("\(name.isEmpty ? "The field" : name) never got keyboard focus", file: file, line: line)
+    }
+
     private func signInIfNeeded() {
         let serverField = app.textFields["login.server-url"]
         guard serverField.waitForExistence(timeout: 15) else { return }
         serverField.tap()
+        waitForKeyboardFocus(serverField)
         serverField.typeText(demoURL ?? "")
         snap("debug-login-address")
         // Return submits the address. Tapping Continue under the keyboard
@@ -262,12 +291,14 @@ final class AppStoreScreenshotTests: XCTestCase {
         }
         snap("debug-login-password-step")
         username.tap()
+        waitForKeyboardFocus(username)
         if let current = username.value as? String, !current.isEmpty, current != "Username" {
             username.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
         }
         username.typeText(demoUser)
         let password = app.secureTextFields["login.password"]
         password.tap()
+        waitForKeyboardFocus(password)
         password.typeText(demoPassword + "\n")
         snap("debug-after-sign-in")
         dismissSystemAlerts()

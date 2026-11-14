@@ -140,7 +140,7 @@ extension AppState {
             return !pending.isNewChat && ids.contains(pending.draftSessionID)
         case .live(let sessionID):
             if pending.isNewChat {
-                guard sessionID == newChatOpenedSessionID, let created = newChatOpenedDurableSessionID else { return false }
+                guard sessionID == shownChat.newChatOpenedSessionID, let created = shownChat.newChatOpenedDurableSessionID else { return false }
                 return liveChatOwnsComposerDraftSessionID(created)
             }
             return liveChatOwnsComposerDraftSessionID(pending.draftSessionID)
@@ -279,11 +279,11 @@ extension AppState {
     /// Looks at the waiting message once the current update is done: its
     /// chat may have landed, gone or become ready.
     func schedulePendingComposerSendCheck() {
-        guard pendingComposerSend != nil, !pendingComposerSendCheckScheduled else { return }
-        pendingComposerSendCheckScheduled = true
+        guard pendingComposerSend != nil, !shownChat.pendingComposerSendCheckScheduled else { return }
+        shownChat.pendingComposerSendCheckScheduled = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.pendingComposerSendCheckScheduled = false
+            self.shownChat.pendingComposerSendCheckScheduled = false
             self.settlePendingComposerSend()
         }
     }
@@ -323,13 +323,13 @@ extension AppState {
     private func deliverPendingComposerSend(_ pending: PendingComposerSend) {
         cancelPendingComposerSendRecheck()
         pendingComposerSend = nil
-        deliveringPendingComposerSendIDs.insert(pending.id)
+        shownChat.deliveringPendingComposerSendIDs.insert(pending.id)
         let context = composerSubmissionContext()
         let key = durableComposerDraftKeyOnScreen
         Task { @MainActor [weak self] in
             guard let self else { return }
             let sent = await self.submitComposer(text: pending.outboundText, context: context)
-            self.deliveringPendingComposerSendIDs.remove(pending.id)
+            self.shownChat.deliveringPendingComposerSendIDs.remove(pending.id)
             if sent {
                 self.removePendingComposerSendFile(pending)
                 return
@@ -374,16 +374,16 @@ extension AppState {
     }
 
     private func cancelPendingComposerSendRecheck() {
-        pendingComposerSendRecheckTask?.cancel()
-        pendingComposerSendRecheckTask = nil
+        shownChat.pendingComposerSendRecheckTask?.cancel()
+        shownChat.pendingComposerSendRecheckTask = nil
     }
 
     private func recheckPendingComposerSendSoon() {
-        guard pendingComposerSendRecheckTask == nil else { return }
-        pendingComposerSendRecheckTask = Task { @MainActor [weak self] in
+        guard shownChat.pendingComposerSendRecheckTask == nil else { return }
+        shownChat.pendingComposerSendRecheckTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(250))
             guard let self, !Task.isCancelled else { return }
-            self.pendingComposerSendRecheckTask = nil
+            self.shownChat.pendingComposerSendRecheckTask = nil
             self.settlePendingComposerSend()
         }
     }
@@ -445,7 +445,7 @@ extension AppState {
         guard dashboardID == activeDashboardID else { return }
         let leftBehind = pendingComposerSendFiles(dashboardID: dashboardID).filter { file in
             file.id != pendingComposerSend?.id
-                && !deliveringPendingComposerSendIDs.contains(file.id)
+                && !shownChat.deliveringPendingComposerSendIDs.contains(file.id)
                 && !composerRestoreRequests.contains { $0.pending?.id == file.id }
         }
         composerRestoreRequests.append(contentsOf: leftBehind.map { restoreRequest(for: $0, focuses: false) })
@@ -583,7 +583,7 @@ extension AppState {
     func composerDraftKeysAreSameChat(_ lhs: ComposerDraftKey, _ rhs: ComposerDraftKey) -> Bool {
         guard lhs.profile == rhs.profile else { return false }
         if lhs == rhs { return true }
-        if let replacement = lostChatReplacement, lhs.profile == activeProfile,
+        if let replacement = shownChat.lostChatReplacement, lhs.profile == activeProfile,
            activeSessionId.map(replacement.fresh.contains) == true,
            replacement.lost.contains(lhs.sessionID) && replacement.fresh.contains(rhs.sessionID)
             || replacement.lost.contains(rhs.sessionID) && replacement.fresh.contains(lhs.sessionID) {
@@ -592,8 +592,8 @@ extension AppState {
         if lhs.isNewConversation || rhs.isNewConversation {
             let chat = lhs.isNewConversation ? rhs : lhs
             return !chat.isNewConversation && chat.profile == activeProfile
-                && (chat.sessionID == newChatOpenedSessionID || chat.sessionID == newChatOpenedDurableSessionID)
-                && newChatOpenedDurableSessionID.map(liveChatOwnsComposerDraftSessionID) == true
+                && (chat.sessionID == shownChat.newChatOpenedSessionID || chat.sessionID == shownChat.newChatOpenedDurableSessionID)
+                && shownChat.newChatOpenedDurableSessionID.map(liveChatOwnsComposerDraftSessionID) == true
         }
         let rows = (sessions + cronSessions).filter { sessionBelongsToProfile($0, profile: lhs.profile) }
         if let destination = rows.first(where: { $0.nestingIDs.contains(rhs.sessionID) }) {
