@@ -21,6 +21,9 @@ struct ProfilePickerSheet: View {
     /// (Keychain reads stay off the render path).
     @State private var dashboardRows: [SavedDashboardRowModel] = []
     @State private var switchingToDashboard: UUID?
+    /// The sheet closed for a switch once its dashboard connected; the
+    /// switch's end doesn't close it again.
+    @State private var closedForConnectedSwitch = false
     /// A pick made during a call, waiting on the user's answer (issue 2390).
     @State private var pendingCallEndingSwitch: CallEndingSwitch?
     /// The bar's Profiles preference: Current only leaves one chip, so the All
@@ -107,6 +110,10 @@ struct ProfilePickerSheet: View {
             .task { await appState.refreshBotRosterAndStalePictures() }
             .task { dashboardRows = SavedDashboardRowModel.rows(appState) }
             .onChange(of: appState.savedDashboardRegistry) { _, _ in dashboardRows = SavedDashboardRowModel.rows(appState) }
+            // A switch closes the sheet once the dashboard is connected: its
+            // chat list, and the chat it was in, keep coming in behind it
+            // (a 600-chat list takes seconds), which the sheet held up.
+            .onChange(of: appState.isConnected) { _, connected in closeOnSwitchedDashboardConnected(connected) }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
@@ -207,8 +214,16 @@ extension ProfilePickerSheet {
             switchingToDashboard = nil
             // The sheet belongs to the outgoing dashboard's bar; a switch
             // that ends at sign-in shows the login behind it.
-            dismiss()
+            if !closedForConnectedSwitch { dismiss() }
         }
+    }
+
+    private func closeOnSwitchedDashboardConnected(_ connected: Bool) {
+        guard connected, !closedForConnectedSwitch,
+              let target = switchingToDashboard,
+              appState.activeDashboardID == target else { return }
+        closedForConnectedSwitch = true
+        dismiss()
     }
 }
 

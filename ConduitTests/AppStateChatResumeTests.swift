@@ -6101,6 +6101,95 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .idle)
     }
 
+    /// The chat you left goes out on the bots on hand (kept from this
+    /// dashboard's last read) while the connection's own bots are still on
+    /// their way: a slow host answers the profile list in over a second.
+    func testSavedChatResumesBeforeTheConnectionsBotsLand() async {
+        let catalogGate = ControlledSuspension()
+        let rosterGate = ControlledSuspension()
+        let active = session("stored-a")
+        var openedSessionIDs: [String] = []
+        var operations = savedChatFirstOperations(
+            catalog: [active, session("other")],
+            gate: catalogGate,
+            catalogLoads: {},
+            opened: { openedSessionIDs.append($0) }
+        )
+        operations.loadBotRoster = { await rosterGate.suspend() }
+        let harness = makeHarness(lifecycleOperations: operations)
+        harness.appState.botRoster = [rosterBot("atlas", canonicalID: "stored-atlas")]
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: active.id), for: "default")
+        harness.appState.sessions = [active]
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await rosterGate.waitUntilSuspended()
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [active.id], "resumed while the bots are still out")
+        rosterGate.resume()
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs, [active.id], "the list's pick isn't resumed again")
+        XCTAssertEqual(harness.appState.activeSessionId, active.id)
+    }
+
+    /// The connection's bots, landing after the chat went out on the kept
+    /// ones, say a bot owns it: the list decides again, and opens it as
+    /// that bot's chat, on the bot's profile, as it does with the bots in
+    /// hand.
+    func testABotOwningTheChatResumedBeforeItsBotsLandedHandsThePickToTheList() async {
+        let catalogGate = ControlledSuspension()
+        let rosterGate = ControlledSuspension()
+        let active = session("stored-a")
+        let other = session("other")
+        var openedSessionIDs: [String] = []
+        var opens: [String] = []
+        var landRoster: @MainActor () -> Void = {}
+        var operations = savedChatFirstOperations(
+            catalog: [active, other],
+            gate: catalogGate,
+            catalogLoads: {},
+            opened: { openedSessionIDs.append($0) }
+        )
+        operations.openSessionWithProfile = { _, sessionID, compact, profile in
+            if compact {
+                openedSessionIDs.append(sessionID)
+                opens.append("\(sessionID)@\(profile ?? "-")")
+            }
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "m-\(sessionID)", role: .assistant, content: "Hi", timestamp: "1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        operations.loadBotRoster = {
+            await rosterGate.suspend()
+            landRoster()
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        let appState = harness.appState
+        landRoster = { appState.botRoster = [self.rosterBot("atlas", canonicalID: active.id)] }
+        appState.botRoster = [rosterBot("atlas", canonicalID: "stored-atlas")]
+        harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: active.id), for: "default")
+        appState.sessions = [active]
+        let connecting = Task { @MainActor in
+            await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await rosterGate.waitUntilSuspended()
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [active.id], "went out on the kept bots")
+        rosterGate.resume()
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs.first, active.id)
+        XCTAssertEqual(opens.last, "\(active.id)@atlas", "opened again as the bot's chat: \(opens)")
+        XCTAssertNotEqual(appState.activeSessionId, other.id, "not swapped for an ordinary chat")
+    }
+
     /// An untyped (v1) reference can't be told from a bot chat without the
     /// list's evidence: it waits for the list, as before.
     func testUnverifiedSavedChatWaitsForTheChatList() async {
@@ -6319,6 +6408,24 @@ final class AppStateChatResumeTests: XCTestCase {
         return openedBeforeList
     }
 
+    private func rosterBot(_ name: String, canonicalID: String) -> BotProfile {
+        BotProfile(
+            name: name,
+            botTitle: nil,
+            displayName: name,
+            profileDescription: "",
+            model: nil,
+            provider: nil,
+            hasAvatar: false,
+            isPinned: false,
+            isHiddenByMeta: false,
+            appearanceColor: nil,
+            canonicalSession: BotCanonicalSession(id: canonicalID, resolvedID: nil, lastActive: nil, preview: nil),
+            lastActive: nil,
+            lastPreview: nil
+        )
+    }
+
     private func savedChatFirstOperations(
         catalog: [SessionSummary],
         gate: ControlledSuspension,
@@ -6430,6 +6537,42 @@ final class AppStateChatResumeTests: XCTestCase {
             appState.setChatResumeBehavior(.latestActivity)
         }
         XCTAssertTrue(opened.isEmpty, "nothing opened before the list: \(opened)")
+    }
+
+    /// A list that lands before the short read picks at once: the short
+    /// read doesn't hold it (both through the page just after a browser
+    /// sign-in, say).
+    func testLatestActivityOpensTheListsPickWhenTheListLandsBeforeTheNewestChats() async {
+        let newer = session("newer")
+        let older = session("older")
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        let newestGate = ControlledSuspension()
+        var operations = savedChatFirstOperations(
+            catalog: [newer, older],
+            gate: catalogGate,
+            catalogLoads: {},
+            opened: { openedSessionIDs.append($0) }
+        )
+        operations.loadNewestChats = { _ in
+            await newestGate.suspend()
+            return [older]
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        await newestGate.waitUntilSuspended()
+        catalogGate.resume()
+        await connecting.value
+
+        XCTAssertEqual(openedSessionIDs, [newer.id], "the list's pick, with the short read still out")
+        XCTAssertEqual(harness.appState.activeSessionId, newer.id)
+        newestGate.resume()
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [newer.id], "the short read's late answer opens nothing")
     }
 
     /// A chat already on screen is the list's to keep or replace.

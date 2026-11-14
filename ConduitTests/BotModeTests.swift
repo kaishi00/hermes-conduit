@@ -3394,7 +3394,9 @@ final class BotModeTests: XCTestCase {
     /// Bot evidence must exist BEFORE the sync that decides which conversation
     /// the workspace was in: the reserved-title rule covers a cold launch, but
     /// the registry rule (and reference healing) needs the roster, so the
-    /// roster load leads the connect sequence.
+    /// roster load leads the connect sequence. (With bots on hand, kept from
+    /// the dashboard's last read, the saved chat may go out beside it:
+    /// AppStateChatResumeTests' testSavedChatResumesBeforeTheConnectionsBotsLand.)
     func testConnectLoadsBotRosterBeforeTheResumeDecision() async {
         var events: [String] = []
         let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
