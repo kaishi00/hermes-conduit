@@ -128,8 +128,8 @@ struct GroupRoomInfoSheet: View {
         // Named as the bots are now, as in the room, with their owners.
         let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
         // Choices matter only beside other people's agents: not in a room of only your own Hermes.
-        let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
-            && !appState.activeRoomOwnHermes
+        let offersChoices = GroupRoomTurns.offersChoices(
+            canSet: appState.canSetRoomChoices, members: members, ownHermes: appState.activeRoomOwnHermes)
         let choiceProfiles = offersChoices
             ? Array(Set(members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty })).sorted()
             : []
@@ -197,7 +197,7 @@ struct GroupRoomInfoSheet: View {
             if offersChoices {
                 Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here. Other people choose for theirs.", table: .rooms))
                     .settingsCaption()
-            } else if appState.activeRoomOwnHermes {
+            } else if appState.activeRoomOwnHermes == true {
                 Text(AppLocalization.string("Every Hermes here is yours, so each bot works as it does at home, with its own tools and memory.", table: .rooms))
                     .settingsCaption()
             }

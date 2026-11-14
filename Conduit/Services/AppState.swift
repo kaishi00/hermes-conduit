@@ -3229,8 +3229,10 @@ final class AppState: ObservableObject {
     @Published var activeRoomJustMe: [String] = []
     /// Whether every Hermes in the open room is the user's own, over Links
     /// both sides marked (`GET /rooms/people`'s `own_hermes`, plugin 0.169):
-    /// its bots work as at home, so Group Info offers no room choices.
-    @Published var activeRoomOwnHermes = false
+    /// its bots work as at home, so Group Info offers no room choices. Nil
+    /// until the room's first people read lands (or fails, which reads as
+    /// false: the rules hold), so such a room never shows them first.
+    @Published var activeRoomOwnHermes: Bool?
     var activeRoomLooksReadAt: Date?
     /// When the open copy's room screen last read your agents' approvals:
     /// a quiet room's ticks read them only every
