@@ -1436,7 +1436,7 @@ private struct SettingsHome: View {
         var voice = [
             SettingsHomeRow(.open(.voice), icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in", table: .settings)),
         ]
-        if appState.supportsHermesCalls {
+        if appState.settingsListsPluginPage(appState.supportsHermesCalls, capability: "hermes-calls") {
             voice.append(SettingsHomeRow(.open(.hermesCalls), icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you", table: .settings), identifier: "settings.hermes-calls"))
         }
         groups.append(SettingsHomeGroup(id: "voice", title: AppLocalization.string("Voice"), symbol: "waveform", rows: voice))
@@ -1449,11 +1449,11 @@ private struct SettingsHome: View {
             SettingsHomeRow(.open(.capabilities), icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins", table: .settings)),
             SettingsHomeRow(.open(.credentialVault), icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with", table: .settings), identifier: "settings.vault"),
         ]
-        if appState.canLinkRooms {
+        if appState.settingsListsPluginPage(appState.canLinkRooms, capability: RoomLinksClient.capability) {
             hermes.append(SettingsHomeRow(.open(.people), icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents", table: .settings), identifier: "settings.people"))
         }
         // Where the plugin serves Pulse (AppState+Pulse.swift).
-        if appState.showsPulseSettings {
+        if appState.settingsListsPluginPage(appState.showsPulseSettings, capability: PulseClient.capability) {
             hermes.append(SettingsHomeRow(.open(.pulse), icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own", table: .settings), identifier: "settings.pulse"))
         }
         groups.append(SettingsHomeGroup(id: "hermes", title: AppLocalization.string("Hermes"), symbol: "gearshape.2", rows: hermes))
@@ -1483,16 +1483,16 @@ private struct SettingsHome: View {
     /// the feature is available here.
     private var deviceRows: [SettingsHomeRow] {
         var rows: [SettingsHomeRow] = []
-        if appState.showsHealthSettings {
+        if appState.settingsListsPluginPage(appState.showsHealthSettings, capability: AppState.healthSyncCapability) {
             rows.append(SettingsHomeRow(.open(.health), icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes", table: .settings), identifier: "settings.health"))
         }
-        if appState.showsLocationSettings {
+        if appState.settingsListsPluginPage(appState.showsLocationSettings, capability: LocationSharingController.capability) {
             rows.append(SettingsHomeRow(.open(.location), icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes", table: .settings), identifier: "settings.location"))
         }
-        if appState.showsPhoneSettings {
+        if appState.settingsListsPluginPage(appState.showsPhoneSettings, capability: AppState.phoneSyncCapability) {
             rows.append(SettingsHomeRow(.open(.phone), icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes", table: .settings), identifier: "settings.phone"))
         }
-        if appState.showsShortcutInboxSettings {
+        if appState.settingsListsPluginPage(appState.showsShortcutInboxSettings, capability: AppState.shortcutInboxCapability) {
             rows.append(SettingsHomeRow(.open(.shortcutInbox), icon: "tray.full", title: AppLocalization.string("Shortcuts inbox"), detail: AppLocalization.string("What your automations logged for Hermes", table: .settings), identifier: "settings.shortcut-inbox"))
         }
         return rows
@@ -1507,7 +1507,7 @@ private struct SettingsHome: View {
             SettingsHomeRow(.open(.chat), icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone", table: .settings)),
             SettingsHomeRow(.open(.voice), icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in", table: .settings)),
         ]
-        if appState.supportsHermesCalls {
+        if appState.settingsListsPluginPage(appState.supportsHermesCalls, capability: "hermes-calls") {
             hermes.append(SettingsHomeRow(.open(.hermesCalls), icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you", table: .settings), identifier: "settings.hermes-calls"))
         }
         hermes += [
@@ -1517,11 +1517,11 @@ private struct SettingsHome: View {
             SettingsHomeRow(.open(.capabilities), icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins", table: .settings)),
             SettingsHomeRow(.open(.credentialVault), icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with", table: .settings), identifier: "settings.vault"),
         ]
-        if appState.canLinkRooms {
+        if appState.settingsListsPluginPage(appState.canLinkRooms, capability: RoomLinksClient.capability) {
             hermes.append(SettingsHomeRow(.open(.people), icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents", table: .settings), identifier: "settings.people"))
         }
         // Where the plugin serves Pulse (AppState+Pulse.swift).
-        if appState.showsPulseSettings {
+        if appState.settingsListsPluginPage(appState.showsPulseSettings, capability: PulseClient.capability) {
             hermes.append(SettingsHomeRow(.open(.pulse), icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own", table: .settings), identifier: "settings.pulse"))
         }
         var device = [
