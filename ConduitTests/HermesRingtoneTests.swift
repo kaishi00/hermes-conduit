@@ -3,14 +3,15 @@
 //  ConduitTests
 //
 //  The ringtone a call from Hermes rings with (issue 2445). In
-//  HermesCallsTests, as the unit suite is at its class cap.
+//  VoiceConversationControllerTests, like HermesCallsTests.swift, as the
+//  unit suite is at its class cap.
 //
 
 import AVFoundation
 import XCTest
 @testable import Conduit
 
-extension HermesCallsTests {
+extension VoiceConversationControllerTests {
     private func ringtoneDefaults(_ name: String = #function) -> UserDefaults {
         let suite = "HermesRingtoneTests.\(name)"
         let defaults = UserDefaults(suiteName: suite)!
