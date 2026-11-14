@@ -23229,6 +23229,88 @@
         }
       }
     },
+    "This address is your saved dashboard “%@”. Repair won't change its sign-in; switch to it instead. Switching to %@ ends the call that's running." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Adresse gehört zu deinem gespeicherten Dashboard „%@“. Die Reparatur ändert seine Anmeldung nicht; wechsle stattdessen dorthin. Der Wechsel zu %@ beendet den laufenden Anruf."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta dirección es tu panel guardado «%@». La reparación no cambiará su inicio de sesión; cambia a él. Cambiar a %@ termina la llamada en curso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette adresse est celle de votre tableau de bord enregistré « %@ ». La réparation ne modifiera pas sa connexion ; basculez plutôt vers celui-ci. Passer à %@ termine l'appel en cours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alamat ini adalah dasbor tersimpan Anda “%@”. Perbaikan tidak akan mengubah info masuknya; beralihlah ke dasbor itu. Beralih ke %@ mengakhiri panggilan yang sedang berjalan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo indirizzo è la tua dashboard salvata “%@”. La riparazione non cambierà il suo accesso; passa a quella. Passare a %@ termina la chiamata in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このアドレスは保存済みのダッシュボード「%@」のものです。修復ではそのサインインは変更されません。そちらに切り替えてください。%@に切り替えると、通話中の通話が終了します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 주소는 저장된 대시보드 “%@”의 주소예요. 복구해도 그 로그인은 바뀌지 않으니 그 대시보드로 전환하세요. %@(으)로 전환하면 진행 중인 통화가 끝납니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten adres należy do zapisanego panelu „%@”. Naprawa nie zmieni jego logowania; zamiast tego przełącz się na niego. Przełączenie na %@ zakończy trwające połączenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este endereço é do seu painel salvo “%@”. O reparo não altera o login dele; mude para ele. Trocar para %@ encerra a chamada em andamento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот адрес принадлежит сохранённому дашборду «%@». Восстановление не изменит его вход; переключитесь на него. Переключение на %@ завершит текущий звонок."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu adres kayıtlı panelin “%@” adresi. Onarım onun girişini değiştirmez; bunun yerine ona geç. %@ öğesine geçmek süren aramayı bitirir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此地址属于你已保存的仪表板“%@”。修复不会更改它的登录信息，请改为切换到它。切换到 %@ 会结束正在进行的通话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此位址屬於你已儲存的儀表板「%@」。修復不會變更它的登入資訊，請改為切換到它。切換到 %@ 會結束正在進行的通話。"
+          }
+        }
+      }
+    },
     "This address only works on the computer running Hermes." : {
       "localizations" : {
         "de" : {

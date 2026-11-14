@@ -945,6 +945,35 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin", "No voice conversation starts over the call: the keyboard comes up")
     }
 
+    /// With voice ready to start (GPT-Live set up, cleared for screen
+    /// questions, so no capability read stands in the way), a call on the
+    /// Watch still keeps it from starting: the keyboard comes up.
+    func testAScreenshotDuringACallStartsNoVoiceEvenWhenVoiceIsReady() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.setGPTLiveEnabled(true)
+        XCTAssertEqual(
+            ScreenQuestionVoiceRouting.liveEngine(for: harness.appState.configuredLiveVoiceEngine(profile: harness.appState.activeProfile)),
+            .gptLive,
+            "Voice is ready to start for a screenshot here"
+        )
+        harness.appState.isWatchVoiceCallActive = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertFalse(harness.appState.showGPTLiveSheet, "No voice conversation starts over the call")
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin")
+    }
+
     func testNewChatThatCannotStartKeepsTheScreenshot() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         // Connected, but no client: no chat can be started.

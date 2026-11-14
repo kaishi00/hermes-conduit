@@ -155,6 +155,9 @@ struct V2ShellContext: Equatable {
     }
 
     var pickProfile: (String) -> Void = { _ in }
+    /// A pick from under the All chip: All goes off as the switch goes
+    /// ahead (and during a call, only once the user accepts).
+    var pickProfileLeavingAll: (String) -> Void = { _ in }
     /// Drops a profile tap kept for after the running switch: a later tap
     /// on All decides instead.
     var dropQueuedProfilePick: () -> Void = {}
@@ -731,7 +734,7 @@ struct V2Shell: View {
                 // stack, and never grow past the column's width
                 // (`windowSideContent`, #1900).
                 .environment(\.windowSideInsets, WindowSideInsets(proxy.safeAreaInsets, width: proxy.size.width))
-                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
+                .environment(\.v2Shell, V2ShellContext(pickProfile: { pickProfile($0) }, pickProfileLeavingAll: { pickProfile($0, leavesAll: true) }, dropQueuedProfilePick: { queuedProfilePick = V2QueuedProfilePick() }, showScheduledRuns: showScheduledRuns, values: .init(contentFaded: contentFaded, contentShift: contentShift, isSplit: split, canSplit: canSplit, isPickingProfile: isPickingProfile)))
         }
     }
 
@@ -1440,7 +1443,7 @@ struct V2Shell: View {
     /// page), the profile switches, and the new profile's sessions slide in
     /// from the other side (with the backdrop glow in its color). Under
     /// Reduce Motion it only fades.
-    private func pickProfile(_ profile: String, haptic: Bool = true, callEndAccepted: Bool = false) {
+    private func pickProfile(_ profile: String, haptic: Bool = true, callEndAccepted: Bool = false, leavesAll: Bool = false) {
         // A switch takes a moment on a real dashboard: a tap meanwhile (its
         // fade-out included) is kept rather than dropped, and the last one
         // goes once it ends.
@@ -1457,12 +1460,10 @@ struct V2Shell: View {
         queuedProfilePick = V2QueuedProfilePick()
         guard profile != appState.activeProfile else { return }
         // The switch would end a call running: ask first (issue 2390). A
-        // pick from under All leaves All on until the user accepts (the
-        // strip holds that change back during a call), so Cancel leaves
-        // the list as it was.
+        // pick from under All leaves All on until the user accepts, so
+        // Cancel leaves the list as it was.
         if !callEndAccepted && appState.isVoiceCallInProgress {
             if haptic { Haptics.medium() }
-            let leavesAll = appState.isAllProfilesChatsOn
             appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
                 if leavesAll { appState.setAllProfilesChatsOn(false) }
                 pickProfile(profile, haptic: false, callEndAccepted: true)
@@ -1470,6 +1471,11 @@ struct V2Shell: View {
             return
         }
         if haptic { Haptics.medium() }
+        // A pick from under All leaves it as the switch starts; a call that
+        // rings in during the fade-out puts it back for the question below.
+        // A pick from another tab (no All chip there) leaves All alone.
+        let leftAll = leavesAll && appState.isAllProfilesChatsOn
+        if leftAll { appState.setAllProfilesChatsOn(false) }
         isPickingProfile = true
         isFadingOutForPick = true
         profileSwitchToken &+= 1
@@ -1513,11 +1519,13 @@ struct V2Shell: View {
                 return
             }
             // A call that rang in during the fade-out wasn't asked about:
-            // the content comes back and the pick asks first (issue 2390).
+            // the content comes back with All as it was, and the pick asks
+            // first (issue 2390), so Cancel leaves the list unchanged.
             if !callEndAccepted && appState.isVoiceCallInProgress {
+                if leftAll { appState.setAllProfilesChatsOn(true) }
                 isPickingProfile = false
                 fadeContentBackIn()
-                pickProfile(target, haptic: false)
+                pickProfile(target, haptic: false, leavesAll: leftAll)
                 return
             }
             await appState.switchProfile(to: target)

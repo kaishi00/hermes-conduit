@@ -661,8 +661,9 @@ extension AppState {
                 return
             }
         }
-        // Again after the capability read: a call answered meanwhile keeps
-        // going too.
+        // Again after this capability read: a call answered meanwhile keeps
+        // going too. Classic voice reads the capabilities once more before
+        // it arms, and stops there for a call the same way (yieldsToACall).
         guard !isVoiceCallInProgress else {
             requestComposerFocus(on: sessionID)
             return
