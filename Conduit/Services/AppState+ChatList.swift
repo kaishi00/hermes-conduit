@@ -249,6 +249,8 @@ extension AppState {
         resetReasoningTurn()
         dismissOfflineChatPresentation()
         guard let sessionID = activeSessionId else { return }
+        // A chat a switch left mid-reply: its rows and the reply so far.
+        if presentFollowedChatAfterProfileChange(sessionID) { return }
         if let bot = botConversationProfile(for: sessionID) {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionID, title: activeSessionTitle)
             return
@@ -405,12 +407,14 @@ extension AppState {
     }
 
     /// Kept chats go with their saved copies: a deleted chat, a removed
-    /// dashboard, a sign-out, Delete saved chats.
+    /// dashboard, a sign-out, Delete saved chats. So does a chat followed
+    /// while its reply runs, or the reply's end would save it again.
     func forgetLeftBackfilledTranscripts(dashboardID: UUID?, sessionIDs: Set<String>? = nil) {
         leftBackfilledTranscripts.removeAll { kept in
             (dashboardID == nil || kept.dashboardID == dashboardID)
                 && sessionIDs.map { !kept.sessionIDs.isDisjoint(with: $0) } != false
         }
+        stopFollowingChats(dashboardID: dashboardID, sessionIDs: sessionIDs)
     }
 
     /// Keeps the Bot Chat on screen, as `recordOfflineChatCopy` saves any

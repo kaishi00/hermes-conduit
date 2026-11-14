@@ -1024,6 +1024,7 @@ extension AppState {
         title: String? = nil
     ) {
         if activeSessionId != id {
+            followLeftChatIfItsReplyRuns(leaving: activeSessionId, for: id)
             clearPendingDecisionRestorationGuard()
             resetResponseHapticTurn()
         }

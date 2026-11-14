@@ -1054,6 +1054,9 @@ extension AppState {
         // A chat left after Load earlier keeps its older rows for coming
         // back to it (issue 1825); the reconcile below takes them.
         keepLeftBackfilledTranscript()
+        // A chat left mid-reply, followed since (stage 2): it shows while
+        // the chat opens, and stays followed until the open lands.
+        let leftReply = followedChat(answering: acceptedSessionIDs.union([sessionId]))
         setActiveSessionState(id: sessionId)
         if closedRoom { roomHandedTo = .openedChat }
         keepDelegateAgents(of: acceptedSessionIDs)
@@ -1063,7 +1066,9 @@ extension AppState {
         // one on the phone.
         // A known Bot Chat opened the ordinary way (a notification, a link)
         // is still the bot's: the registry names it.
-        if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
+        if let leftReply, presentBackgroundChat(leftReply, openedAs: sessionId) {
+            // Its rows and the reply as far as it got, newer than any copy.
+        } else if let bot = conversationProfile ?? botConversationProfile(for: sessionId) {
             presentKeptBotChatCopy(bot: bot, openedAs: sessionId, title: preferredTitle)
         } else if let listedSession {
             presentSavedCopyWhileOpening(
@@ -1151,12 +1156,20 @@ extension AppState {
             // unless another reconcile (an automatic resume of another chat)
             // began meanwhile and set them for its own chat (#1918).
             let verdictIsOwn = shownChat.reconciliationToken == token
+            // A followed chat goes on being followed, unless Hermes no
+            // longer has it.
+            if let leftReply, verdictIsOwn && shownChat.reconciliationSessionWasNotFound {
+                releaseFollowedChat(answering: leftReply.sessionIDs)
+            }
             return (
                 .failed,
                 verdictIsOwn && (shownChat.reconciliationWasIdentityRejected || shownChat.reconciliationSessionWasNotFound),
                 verdictIsOwn && shownChat.reconciliationSessionWasNotFound && !shownChat.reconciliationWasKanbanWorker
             )
         }
+        // Landed: the chat's own transcript has taken over from a followed
+        // copy of it.
+        if let leftReply { releaseFollowedChat(answering: leftReply.sessionIDs) }
         if opensUnreadReply, !landsFromSavedRows { chatReplyStartLandingRequest &+= 1 }
         return (.opened, false, false)
     }

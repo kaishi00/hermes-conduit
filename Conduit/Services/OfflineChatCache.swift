@@ -763,6 +763,7 @@ final class OfflineChatCacheStore {
         title: String,
         messages: [ChatMessage],
         sessions: [SessionSummary],
+        becomesLastOpened: Bool = true,
         now: Date = Date()
     ) {
         let rows = Self.keptRows(of: messages)
@@ -783,6 +784,7 @@ final class OfflineChatCacheStore {
                 identities: identities,
                 title: title,
                 catalogRows: catalogRows,
+                becomesLastOpened: becomesLastOpened,
                 now: now
             )
         }
@@ -796,6 +798,7 @@ final class OfflineChatCacheStore {
         identities: Set<String>,
         title: String,
         catalogRows: [OfflineCachedSession],
+        becomesLastOpened: Bool = true,
         now: Date
     ) {
         var snapshot = load(dashboardID: dashboardID, profile: profile)
@@ -833,7 +836,11 @@ final class OfflineChatCacheStore {
                 previouslySaved: snapshot.sessions
             )
         }
-        snapshot.lastSessionID = sessionID
+        // A chat followed in the background (BackgroundChat) saves its copy
+        // without becoming the one a cold launch shows first.
+        if becomesLastOpened {
+            snapshot.lastSessionID = sessionID
+        }
         // The same chat left again with nothing new: nothing to write, but a
         // copy an earlier failed index write left behind still goes.
         if snapshot != saved {

@@ -2219,6 +2219,49 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["atlas-reply-3"])
     }
 
+    /// Opening a chat left mid-reply shows its rows and the reply so far
+    /// while it loads, and lets go of the followed copy once it lands.
+    func testOpeningAFollowedChatShowsItAndReleasesItWhenItLands() async throws {
+        useInMemoryKeychain()
+        let gate = ControlledSuspension()
+        var gatesNextOpenOfB = false
+        let live = [session("stored-a"), session("stored-b"), session("stored-c")]
+        let opened = OpenedChats()
+        let (appState, _, _) = makeAppState(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+            },
+            lifecycleOperations: connectedLifecycle(
+                catalog: { _ in live },
+                opened: opened,
+                beforeOpen: { sessionID in
+                    guard sessionID == "stored-b", gatesNextOpenOfB else { return }
+                    gatesNextOpenOfB = false
+                    await gate.suspend()
+                }
+            )
+        )
+        addTeardownBlock { appState.client?.disconnect() }
+        await appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"))
+        await waitUntil { appState.activeSessionId == "stored-b" && appState.messages.map(\.id) == ["live-stored-b"] }
+
+        appState.turnState = .running
+        appState.handleStreamEvent(.messageDelta(sessionId: "stored-b", text: "Still going"))
+        let openedC = await appState.openSession("stored-c")
+        XCTAssertTrue(openedC)
+        XCTAssertNotNil(appState.followedChat(answering: ["stored-b"]))
+
+        gatesNextOpenOfB = true
+        let opening = Task { @MainActor in await appState.openSession("stored-b") }
+        await gate.waitUntilSuspended()
+        XCTAssertEqual(appState.offlineChatPresentation?.displayedMessages.last?.content, "Still going")
+        XCTAssertNotNil(appState.followedChat(answering: ["stored-b"]), "Followed until the open lands")
+        gate.resume()
+        let landed = await opening.value
+        XCTAssertTrue(landed)
+        XCTAssertNil(appState.followedChat(answering: ["stored-b"]), "Its own transcript took over")
+    }
+
     /// A chat with no saved copy opens as it always has.
     func testAChatWithNoSavedCopyOpensWithoutOne() async throws {
         useInMemoryKeychain()
@@ -3141,6 +3184,203 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.composerNotice)
         appState.returnPendingComposerSendToDraft(pending)
         XCTAssertNil(appState.composerNotice)
+    }
+
+    // MARK: - A chat left mid-reply (all-live stage 2, BackgroundChat)
+
+    /// Leaving a chat while its reply streams keeps its rows and the reply
+    /// so far; the rest of the reply grows the copy, the finished one is
+    /// saved without becoming the chat a cold launch shows, and opening
+    /// the chat again shows the reply as far as it got.
+    func testAChatLeftMidReplyFollowsTheRestOfItsReply() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+
+        state.setActiveSessionState(id: "b")
+        // As an open does: chat b starts empty and idle.
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon")
+
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes the left chat's words")
+
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time, the end.", reasoning: nil))
+        let left = try XCTUnwrap(state.backgroundChats.first)
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.rows.map(\.content), ["Tell me a story", "Once upon a time, the end."])
+
+        store.waitForPendingWrites()
+        let saved = try XCTUnwrap(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
+        XCTAssertEqual(saved.messages.last?.content, "Once upon a time, the end.")
+        XCTAssertNotEqual(store.load(dashboardID: dashboard, profile: state.activeProfile)?.lastSessionID, "a",
+                          "A copy saved in the background doesn't become the chat a cold launch opens")
+
+        let followed = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        state.setActiveSessionState(id: "a")
+        state.messages = []
+        XCTAssertTrue(state.presentBackgroundChat(followed, openedAs: "a"))
+        XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time, the end.")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the open lands")
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+    }
+
+    /// A followed chat Hermes deleted stops being followed, so its reply's
+    /// end doesn't save the deleted chat's copy again.
+    func testADeletedChatLeftMidReplyIsNotSavedAgain() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+
+        state.removeSavedCopies(ofDeleted: ["a"], dashboardID: dashboard, profile: state.activeProfile)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        store.waitForPendingWrites()
+        XCTAssertNil(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile))
+        XCTAssertTrue(state.messages.isEmpty)
+
+        // Deleted while an open shows it: it's no longer followed either.
+        state.turnState = .running
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.setActiveSessionState(id: "a")
+        XCTAssertNotNil(state.followedChat(answering: ["b"]))
+        state.setActiveSessionState(id: "b")
+        state.removeSavedCopies(ofDeleted: ["b"], dashboardID: dashboard, profile: state.activeProfile)
+        XCTAssertNil(state.followedChat(answering: ["b"]))
+    }
+
+    /// A profile switch leaves the chat on screen mid-reply: it's followed
+    /// under its own profile, and only opened again there. The same chat
+    /// under a new runtime id (a voice thread's rebind) isn't left at all.
+    func testAChatLeftByAProfileSwitchFollowsItsReplyUnderItsProfile() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        // Running, with no reply words yet (just sent, or a tool step).
+        state.turnState = .running
+        let home = state.activeProfile
+
+        // The switch sets the turn to synchronizing before it follows.
+        state.turnState = .synchronizing
+        state.followChatLeftForProfileSwitch(turnWasRunning: true)
+        // As the switch does: the target profile's chat is adopted as is.
+        state.activeProfile = "work"
+        state.activeSessionId = "b"
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.first?.profile, home)
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon a time"))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertNil(state.followedChat(answering: ["a"]), "Another profile doesn't open it")
+
+        state.activeProfile = home
+        state.activeSessionId = "a"
+        state.messages = []
+        XCTAssertTrue(state.presentFollowedChatAfterProfileChange("a"), "Switching back shows it")
+        XCTAssertEqual(state.offlineChatPresentation?.displayedMessages.last?.content, "Once upon a time")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until the switch lands")
+        // The switch's resume can move the chat to a runtime id the
+        // followed copy never knew; it's released all the same.
+        state.activeSessionId = "rt-a"
+        state.releaseFollowedChatOnScreen()
+        XCTAssertTrue(state.backgroundChats.isEmpty, "It's the chat on screen again")
+        state.dismissOfflineChatPresentation()
+        state.activeSessionId = nil
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-old", durableID: "st", profile: home, source: .resume)
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-new", durableID: "st", profile: home, source: .resume)
+        state.setActiveSessionState(id: "rt-old")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.turnState = .running
+        state.setActiveSessionState(id: "rt-new")
+        XCTAssertTrue(state.backgroundChats.isEmpty, "A rebind keeps the chat on screen")
+    }
+
+    /// A chat left while nothing runs isn't followed, and a followed chat
+    /// on screen again without an open stays followed (an open lets go of
+    /// it as it lands) while its events still reach the screen.
+    func testOnlyAChatLeftWhileItRepliesIsFollowed() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.setActiveSessionState(id: "b")
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.turnState = .running
+        state.setActiveSessionState(id: "a")
+        XCTAssertEqual(state.backgroundChats.first?.sessionIDs, ["b"])
+        state.turnState = .idle
+        state.setActiveSessionState(id: "b")
+        XCTAssertEqual(state.backgroundChats.count, 1, "Followed until an open lands")
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "b", text: "Hi there")),
+                       "The chat on screen takes its own events")
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Hi there",
+                       "and its followed copy keeps up")
+    }
+
+    /// The reply's events, one by one: an interim note Hermes already
+    /// streamed is sealed in place, a failure ends it, and five left
+    /// chats keep four, letting go of a finished one first.
+    func testABackgroundChatFollowsTheReplyEventByEvent() {
+        let dashboard = UUID()
+        func chat(_ id: String, running: Bool = true) -> BackgroundChat {
+            var chat = BackgroundChat(
+                sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
+                profile: "default", isBotChat: false,
+                rows: [ChatMessage(id: "p", role: .partial, content: "Looking", timestamp: "1")],
+                streamingText: ""
+            )
+            if !running { _ = chat.apply(.messageInterrupted(sessionId: id)) }
+            return chat
+        }
+        var left = chat("a")
+        XCTAssertEqual(left.rows.first?.role, .assistant, "A partial reads as the reply's words")
+        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Checking the map")), .updated)
+        XCTAssertEqual(left.apply(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true)), .updated)
+        XCTAssertEqual(left.rows.last?.content, "Checking the map.")
+        XCTAssertEqual(left.apply(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil)), .ignored)
+        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Found it")), .updated)
+        XCTAssertEqual(left.rows.count, 3)
+        XCTAssertEqual(left.apply(.messageError(sessionId: "a", message: "boom")), .ended)
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.apply(.sessionBusy(sessionId: "a", busy: false)), .ignored)
+
+        var list: [BackgroundChat] = []
+        list = BackgroundChat.adding(chat("1"), to: list)
+        list = BackgroundChat.adding(chat("2", running: false), to: list)
+        list = BackgroundChat.adding(chat("3"), to: list)
+        list = BackgroundChat.adding(chat("4"), to: list)
+        list = BackgroundChat.adding(chat("5"), to: list)
+        XCTAssertEqual(list.map { $0.sessionIDs.first }, ["5", "4", "3", "1"])
+        list = BackgroundChat.adding(chat("3"), to: list)
+        XCTAssertEqual(list.map { $0.sessionIDs.first }, ["3", "5", "4", "1"], "One entry per chat, newest first")
     }
 
     // MARK: - Helpers

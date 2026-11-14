@@ -64,6 +64,8 @@ extension AppState {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
+        // A chat left mid-reply follows the rest of it (stage 2).
+        if applyBackgroundChatEvent(event) { return }
         if bufferIfReconciling(event, turnGeneration: turnGeneration) { return }
         applyNumberedStreamEvent(event, turnGeneration: turnGeneration)
     }
