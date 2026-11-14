@@ -6275,6 +6275,7 @@ final class AppStateChatResumeTests: XCTestCase {
         whileConnecting: ((AppState) -> Void)? = nil,
         whileListing: ((AppState) -> Void)? = nil,
         listFailsAtOnce: Bool = false,
+        newest: [SessionSummary]? = nil,
         configure: (AppState, ChatResumeCoordinator) -> Void
     ) async -> [String] {
         let catalogGate = ControlledSuspension()
@@ -6292,7 +6293,8 @@ final class AppStateChatResumeTests: XCTestCase {
                 catalogLoads: { listing() },
                 opened: { if !listLanded { openedBeforeList.append($0) } },
                 connected: { connected() },
-                failAtOnce: listFailsAtOnce
+                failAtOnce: listFailsAtOnce,
+                newest: newest
             )
         )
         if let whileListing {
@@ -6324,9 +6326,10 @@ final class AppStateChatResumeTests: XCTestCase {
         opened: @escaping @MainActor (String) -> Void,
         failList: Bool = false,
         connected: @escaping @MainActor () -> Void = {},
-        failAtOnce: Bool = false
+        failAtOnce: Bool = false,
+        newest: [SessionSummary]? = nil
     ) -> ChatResumeLifecycleOperations {
-        ChatResumeLifecycleOperations(
+        var operations = ChatResumeLifecycleOperations(
             connectClient: { _ in connected() },
             loadCatalog: { _, _ in
                 catalogLoads()
@@ -6352,6 +6355,95 @@ final class AppStateChatResumeTests: XCTestCase {
             loadProfileDisplayPreferences: {},
             loadSlashCommands: {}
         )
+        // Jump to latest activity's short read: nil stands for one that
+        // fails, as it does with no dashboard.
+        operations.loadNewestChats = { _ in
+            guard let newest else { throw ControlledLifecycleError.failed }
+            return newest
+        }
+        return operations
+    }
+
+    /// Jump to latest activity opens the newest chat from the short read
+    /// while the whole list is still out, and the list doesn't open it again.
+    func testLatestActivityOpensTheNewestChatBeforeTheListLands() async {
+        let newer = session("newer")
+        let older = session("older")
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [newer, older],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { openedSessionIDs.append($0) },
+                newest: [newer, older]
+            )
+        )
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [newer.id], "opened while the list is out")
+        catalogGate.resume()
+        await connecting.value
+        XCTAssertEqual(openedSessionIDs, [newer.id], "the list's pick isn't opened again")
+        XCTAssertEqual(harness.appState.activeSessionId, newer.id)
+        XCTAssertEqual(harness.appState.turnState, .idle)
+    }
+
+    /// The whole list can name a newer chat than the short read did: that
+    /// one opens once the list lands.
+    func testLatestActivityOpensTheListsNewerChatWhenTheShortReadMissedIt() async {
+        let listed = session("listed-newest")
+        let older = session("older")
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [listed, older],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { openedSessionIDs.append($0) },
+                newest: [older]
+            )
+        )
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [older.id])
+        catalogGate.resume()
+        await connecting.value
+        XCTAssertEqual(openedSessionIDs, [older.id, listed.id])
+        XCTAssertEqual(harness.appState.activeSessionId, listed.id)
+    }
+
+    /// A short read that fails leaves the pick to the list, as before.
+    func testLatestActivityWaitsForTheListWhenTheNewestChatsReadFails() async {
+        let newer = session("newer")
+        let opened = await openedBeforeTheListLands(rows: [newer], newest: nil) { appState, _ in
+            appState.setChatResumeBehavior(.latestActivity)
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing opened before the list: \(opened)")
+    }
+
+    /// A chat already on screen is the list's to keep or replace.
+    func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
+        let newer = session("newer")
+        let onScreen = session("on-screen")
+        let opened = await openedBeforeTheListLands(
+            rows: [newer, onScreen],
+            whileConnecting: { $0.activeSessionId = onScreen.id },
+            newest: [newer, onScreen]
+        ) { appState, _ in
+            appState.setChatResumeBehavior(.latestActivity)
+        }
+        XCTAssertTrue(opened.isEmpty, "nothing opened before the list: \(opened)")
     }
 
     func testBehaviorChangeDuringReconnectHandsOffToPreserveCurrentSynchronization() async {
