@@ -2608,6 +2608,9 @@ final class AppState: ObservableObject {
     /// Hermes' `sessions.changed` waiting for its catalog read, and the
     /// wait for one held back by the 5 s spacing.
     var catalogChangeSignal = CatalogChangeSignal()
+    /// Whether the last catalog read that listed changed the list, for
+    /// the change signal's wait (CatalogChangeSignal).
+    var lastCatalogReadChangedList = false
     var catalogChangeReadTask: Task<Void, Never>?
     /// The registry read before reading rows a catalog read found moved.
     var openChatCatalogCheck: Task<Void, Never>?

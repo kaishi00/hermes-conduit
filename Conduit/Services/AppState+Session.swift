@@ -510,7 +510,11 @@ extension AppState {
             let owner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
             let listChanged = listedSessions != sessions || listedCron != cronSessions
             let sameListAgain = !listChanged && catalogCommitOwner == owner
-            if listChanged { chatListCatalogGeneration &+= 1 }
+            if listChanged {
+                chatListCatalogGeneration &+= 1
+                catalogChangeSignal.noteListChanged()
+            }
+            lastCatalogReadChangedList = listChanged
             if listedSessions != sessions { sessions = listedSessions }
             if listedCron != cronSessions { cronSessions = listedCron }
             catalogCommitOwner = owner
@@ -684,7 +688,16 @@ extension AppState {
                     requiredViewportTransitionGeneration: nil,
                     reportsFailure: reportsFailure
                 )
-                if readsChange, !listed { self.catalogChangeSignal.noteChanged() }
+                if readsChange {
+                    if listed {
+                        // Hermes signals every profile's changes: a read
+                        // that finds this list as it was waits longer
+                        // before the next.
+                        self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !self.lastCatalogReadChangedList)
+                    } else {
+                        self.catalogChangeSignal.noteChanged()
+                    }
+                }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
             self.leaveCatalogRefreshTask = nil
         }
