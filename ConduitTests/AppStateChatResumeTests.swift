@@ -9325,19 +9325,22 @@ final class AppStateChatResumeTests: XCTestCase {
 
     /// Jump to latest activity's short read goes only through the sync's own
     /// dashboard and client: one a switch has replaced since gets no bridge,
-    /// and the read is refused without being sent.
-    func testTheNewestChatsReadIsNotSentThroughAnotherDashboard() async {
+    /// and the read is refused without anything sent. The bridge holds a
+    /// session cookie and records every send, so a refusal can only be the
+    /// fence's, and the matching read is sent and answered.
+    func testTheNewestChatsReadIsNotSentThroughAnotherDashboard() async throws {
         let harness = makeHarness()
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "t")
         let client = HermesClient(connection: connection, profile: "default")
-        let bridge = DashboardTicketBridge(baseURL: "https://one.example")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
         harness.appState.client = client
-        harness.appState.dashboardTicketBridge = bridge
+        harness.appState.dashboardTicketBridge = held.bridge
         let activeDashboard = harness.appState.activeDashboardID
         let otherClient = HermesClient(connection: connection, profile: "default")
 
         XCTAssertTrue(
-            harness.appState.bridgeForSync(dashboardID: activeDashboard, client: client) === bridge,
+            harness.appState.bridgeForSync(dashboardID: activeDashboard, client: client) === held.bridge,
             "the sync's own dashboard and client read through its bridge"
         )
         XCTAssertNil(harness.appState.bridgeForSync(dashboardID: UUID(), client: client), "another dashboard")
@@ -9355,6 +9358,19 @@ final class AppStateChatResumeTests: XCTestCase {
                 }
             }
         }
+        XCTAssertTrue(held.sent.isEmpty, "neither refused read was sent")
+
+        let read = Task { @MainActor in
+            try await harness.appState.newestChatsBeforeList(
+                profile: "default", dashboardID: activeDashboard, using: client
+            )
+        }
+        try await held.waitForRequests(1)
+        XCTAssertEqual(held.sent.first?.path, "/api/profiles/sessions", "the sync's own read goes out")
+        try await held.answer(["sessions": [Any]()])
+        let chats = try await read.value
+        XCTAssertTrue(chats.isEmpty)
+        XCTAssertEqual(held.sent.count, 1)
     }
 
     /// #99 × #208/#209: a cold launch showing the read-only offline copy
