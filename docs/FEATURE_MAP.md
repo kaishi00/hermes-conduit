@@ -1502,8 +1502,9 @@ microphone · voice clips in the chat · audio and video on cards Hermes shows �
 Agent mode (Live > Local): a fast model the user picks answers each thing
 said on the call, and hands work to Hermes as background jobs through the
 call's tools. Which speech servers it reaches: one that asks the plugin's
-model address for replies, and one that only reads text aloud, where the
-plugin's read-back relay runs the turns.
+model address for replies, and one that only reads text aloud, or any
+server with "Hermes answers" on, where the plugin's read-back relay runs the
+turns.
 
 **Siblings:** the model address (`/local-live/v1/chat/completions`) · the
 read-back relay on the phone's socket (notifier 0.153.0) · the Watch's
@@ -1542,7 +1543,48 @@ table marks agent mode)
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-14, #2455 (the read-back relay also runs the turns on a server with "Hermes answers" on, where the fast model answers the same way; see that entry); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+
+## Hermes answers on a speech server with a model of its own
+
+A speech server that answers by itself (a hosted realtime model) as the ears
+and mouth of Classic and Local Live, with Hermes or the fast model answering:
+the "Hermes answers" switch, `voice.speech_server.drive_turns` (issue 2438).
+It is stage 1 of speech servers as data: the next stages add a list of known
+services and the server's own model as a third choice of who answers.
+
+**Siblings:** Local Live on the phone's socket · agent mode's fast model (it
+answers as on any read-back server) · the Watch's bridge · Classic's listen
+and speak sockets · CarPlay and calls from Hermes (the phone's call: not
+needed) · the switch under Your speech server · what Local's step 2 and
+Classic's "Your speech server speaks too" say (nothing to set up, or that the
+server answered by itself) · the Assistant voice setup step · Talking over
+Hermes (a response the server starts unasked is cancelled, not played as a
+filler) · docs/OWN_VOICE_SERVER.md · the notifier's README and changelog ·
+`conduit_settings` (not needed: Hermes doesn't change the speech server
+through it) · Gemini, Qwen, Grok and GPT-Live (not needed: their models
+answer, by design)
+
+**Code**
+- The setting and what a driven server is told: `notifier/dashboard/api/speech_server.py` (speech_server_drives, SpeechServerDrive, SPEECH_SERVER_SAY_INSTRUCTIONS, speech_server_status's drive_turns, _speech_server_relay's drive)
+- The turns: `notifier/dashboard/api/local_live_read_back.py` (_LocalLiveReadBack's drive: on from the start, _send_update, _pump, the unasked response.created and the busy error, _note_who_answered)
+- Status: `notifier/dashboard/api/local_live.py` (_local_live_answered_alone, local_live_status's answers_alone)
+- The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchSession.run's setup)
+- The switch: `Conduit/Views/SpeechServerSettingsView.swift` (saveDriveTurns), `Conduit/Voice/HermesVoiceConfigurationService.swift` (saveSpeechServerDrivesTurns, a Boolean in the config), `Conduit/Voice/SpeechServerTranscription.swift` (SpeechServerStatus.driveTurns)
+- What step 2 says: `Conduit/Views/SpeechServerVoiceSettingsView.swift`, `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerVoiceStatus.drivesTurns, answersAlone), `Conduit/Views/VoiceSettingsView.swift` (assistantVoiceStep)
+- Tests: `notifier/tests/test_local_live.py` (the tests after "The plugin runs the turns"), `notifier/tests/test_watch_local_live.py` (test_a_driven_server_has_the_host_run_the_watchs_turns_from_the_first_update), `ConduitTests/HermesVoiceGatewayTimeoutTests+SpeechServer.swift`
+
+**Rulings**
+- The end state is a speech server described by data, in two roles (voice for Hermes, or its own brain with Conduit's briefing and tools), with known services as a presets file; Gemini, Qwen, Grok and GPT-Live stay as they are (Eric picked this on 2026-11-14, option B of the design for issue 2438).
+- The switch is the user's: off by default, per profile, and nothing turns it on for them. Settings only says when a server answered a call by itself and names the switch (2026-11-14, #2455).
+- A driven server is told to read each sentence aloud as written, on the session and on every sentence, and a response it starts by itself is cancelled and never heard, whether or not it honours `create_response: false`. The read-back check stays: two sentences in a row answered instead of read end the call with that reason (2026-11-14, #2455).
+- The switch shows only when the plugin reports `drive_turns` (0.173.0 or later) and a server is set (2026-11-14, #2455).
+
+**Open gaps**
+- How faithfully a given hosted model reads text back isn't known ahead of the call: it was tested against the relay's own server doubles, not against Qwen's or OpenAI's realtime models, for want of a key. The reporter of issue 2438 is asked to confirm (2026-11-14, #2455).
+- `transcription_model` is set by hand in config.yaml; Settings has no field for it until servers are data (stage 2).
+
+**Checked:** 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
 
 ## Talking over Hermes
 
@@ -1582,6 +1624,7 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 - Push to talk is per profile and off by default. While held no silence timer runs; a press while Hermes speaks interrupts, while it thinks steers. CarPlay and calls from Hermes stay hands-free (2026-10-22, #1106).
 - Interrupt (CarPlay's Stop and the Watch orb too) stops what plays on the device. In Local Live (the phone's Interrupt, CarPlay's Stop and the Watch orb) it also sends the speech server `response.cancel`, which the read-back relay passes on even when no sentence is in progress, so a server that shuts its own microphone while its reply plays listens again; nothing is guessed from the audio, and background jobs go on. Gemini, Grok and Qwen stop only what plays here: their servers hear the user over the reply and keep no gate (2026-10-27, #1331, notifier #404, from #1325).
 - A filler a read-back speech server says on its own while Hermes works (ConvFill's "let me look that up") plays on the call as the reply's start: Hermes' sentences wait for it to end, and talking over it, Interrupt, CarPlay's Stop and the Watch orb stop it like the reply, on the phone's socket and the Watch's bridge alike (2026-11-06, notifier #588, carrying ds-002's #582).
+- On a server with "Hermes answers" on (voice.speech_server.drive_turns), a response the server starts by itself is its own model answering, not a filler: it is cancelled and never plays, and Hermes' sentences follow once it has ended (2026-11-14, #2455, notifier 0.173.0).
 - Interrupt drops the rest of a model turn only while that turn is still arriving. Pressed after it ended, while its last audio still plays, it silences that tail and nothing more: the model's next reply (a job update, a text Send to Hermes answer, a turn of its own) is heard and captioned. The same holds for the Watch orb, in direct calls and over the bridge, and for CarPlay's Stop, which runs the phone's Interrupt (2026-11-05, #1795, issue 1790).
 - With Continuous Conversation on, the default, Classic keeps listening through silence instead of pausing the microphone (2026-10-10, #520).
 - Classic's end of speech goes by the room it hears: an utterance whose levels hold within a narrow band for 1.5 s is over, since a voice rises and falls between words and a room holds, and that level becomes the floor. So an answer spoken as the window opens, before the room was learned, or a room that gets louder mid-answer, ends with trailing silence instead of listening until the 60 s cap (2026-11-07, #1944, notifier issue 596).
@@ -1593,7 +1636,7 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 - A cancelled turn whose start Voice never saw: held in a resume's buffer and replayed after the cancel, or still in the hop to the main actor when the chat's Stop noted it. The start is held from Voice, so a Classic conversation still waiting on that very turn (stopped from the chat, not by Voice) ignores its end and stays thinking until the next turn's first event or the user speaks. Telling that wait from one on the next question needs the controller to know which turn it awaits; both windows are narrow (a resume, or a few milliseconds, racing a chat Stop), so this is left for now (2026-11-03, #1696).
 - Push to talk is Classic only: not the live modes, the Watch, or the Action, headset and CarPlay buttons (#1106).
 
-**Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1944 (Classic's turn ends over steady room noise, notifier issue 596; the live modes and the Watch detect speech on their servers, push to talk has no silence timer); 2026-11-06, #1902 (a read-back server's own filler plays and opens the reply, and stops like it, notifier #588); 2026-11-05, #1795 (Interrupt after a turn ended only silences its tail, on the phone, CarPlay and the Watch); 2026-11-03, #1696 (a cancelled turn's words stay away from Voice, by its execution generation, until the next turn's first event, even after the next question was sent; its end reaches Voice as an interruption); 2026-11-03, #1694 (a spoken Stop retires the turn it cancels, as talking over and Interrupt do; a failed cancel is retried before the next turn); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-11-14, #2455 (a driven server's unasked response is cancelled, not played as a filler); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1944 (Classic's turn ends over steady room noise, notifier issue 596; the live modes and the Watch detect speech on their servers, push to talk has no silence timer); 2026-11-06, #1902 (a read-back server's own filler plays and opens the reply, and stops like it, notifier #588); 2026-11-05, #1795 (Interrupt after a turn ended only silences its tail, on the phone, CarPlay and the Watch); 2026-11-03, #1696 (a cancelled turn's words stay away from Voice, by its execution generation, until the next turn's first event, even after the next question was sent; its end reaches Voice as an interruption); 2026-11-03, #1694 (a spoken Stop retires the turn it cancels, as talking over and Interrupt do; a failed cancel is retried before the next turn); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
 ## Read replies aloud
 
@@ -2272,7 +2315,7 @@ README.md
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
@@ -4205,7 +4248,50 @@ browser (separate)
 - To switch accounts on a dashboard with a saved grant, sign out first; the switch alone keeps the grant.
 - Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
 
-**Checked:** 2026-11-10, #2102 (a native token request's 401 stays an unexpected response, its 403 says Server refused access); 2026-10-27, at #1343, carrying #1329.
+**Checked:** 2026-11-14, #2450 (NativeOAuthSignInSheet shows the session token's form instead of the browser when that is the sign-in, see Session token sign-in; the browser, the switch and their errors unchanged); 2026-11-10, #2102 (a native token request's 401 stays an unexpected response, its 403 says Server refused access); 2026-10-27, at #1343, carrying #1329.
+
+## Session token sign-in
+
+Signing in to a dashboard with Hermes' deployment session token
+(`HERMES_DASHBOARD_SESSION_TOKEN`), sent in Hermes' own
+`X-Hermes-Session-Token` header, so `Authorization` stays free for a proxy
+in front of the dashboard that needs it (`Authorization: Basic`).
+
+**Siblings:** the sign-in decision (a Hermes that lists no provider and names
+`session-token` on `/api/status`) · the token's form, on the native sign-in's
+sheet, so the sign-in screen, Repair's Sign In to Reconnect, Settings' Sign In
+Again and the saved dashboards screen all open it · REST requests and socket
+tickets · the socket's upgrade · file downloads · location's host pass and
+the Pulse widget's (background sends) · sign-out (not needed: the token has
+no refresh token to revoke, and the Keychain copy is cleared with the native
+grant's) · the Extra headers editor's note under an `Authorization` row (see
+Settings connection page) · README.md (Connecting, under Cloudflare Access) ·
+the website's setup page and the notifier's support page (not needed: neither
+describes proxy sign-in or extra headers) · the plugin (not needed: its
+dashboard routes read no `Authorization`, and Conduit's own bearers for
+notifications and the Watch go to the relay) · the Private sign-in page
+switch (not needed: it still shows where a native sign-in may start and the
+token's form doesn't read it)
+
+**Code**
+- The token as a sign-in: `Conduit/Services/NativeOAuth.swift` (NativeOAuthTokenSet.sessionToken, requestHeader, authorize, sentAccessToken(in:); NativeOAuthAPIClient.requestJSON and mintTicket's asSessionToken; NativeOAuthSession.authorizedRequest, authorizeUpgrade; NativeOAuthLoginModel.signIn(sessionToken:))
+- The form and when it opens: `Conduit/Services/NativeOAuth.swift` (NativeOAuthSignInSheet.step, SessionTokenSignInForm), `Conduit/Services/CustomHeaders.swift` (CustomHeaderStore.sendsAuthorization)
+- The decision: `Conduit/Services/DashboardSignIn.swift` (DashboardSignInResolver.supportsSessionToken, mode), `Conduit/Services/NativeAuthClient.swift` (supportsSessionToken, HermesProviderCheck.advertisesSessionToken)
+- Upgrade and background sends: `Conduit/Services/DashboardRequestAuthorizer.swift` (authorizeUpgrade), `Conduit/Services/AppState+Location.swift` (dashboardHostPass, locationHostTokensRotated)
+- Tests: `ConduitTests/NativeOAuthTests.swift` (testASessionTokenGoesInHermesOwnHeaderNotAuthorization, testASessionTokenSignInNeverRefreshesAndKeepsAProxysAuthorization), `ConduitTests/DashboardRequestAuthorizerTests.swift` (testASessionTokenUpgradeKeepsAProxysAuthorizationHeader), `ConduitTests/DashboardSignInDecisionTests.swift` (testAnEmptyProviderListWithTheSessionTokenProviderSignsInWithTheToken), `ConduitTests/NativeAuthClientTests.swift` (testSessionTokenCapabilityReadsTheStatusBodysProviders), `ConduitTests/CustomHeadersTests.swift` (testAServerSendsAuthorizationOnlyWithAValidAuthorizationHeader, testOnlyAnAuthorizationHeaderCarriesANote)
+
+**Rulings**
+- Conduit works behind a proxy that needs `Authorization: Basic` on every request (Eric, 2026-11-14, issue 2442, #2450), and the support is additive: a dashboard that signs in today sends exactly what it sent before. Nothing here runs unless Hermes lists no sign-in provider, or the server has an `Authorization` extra header.
+- Hermes takes a native sign-in's tokens only as `Authorization: Bearer` and takes only its deployment token in `X-Hermes-Session-Token`, tried when the request has no bearer and no session cookie. So the token is kept as the dashboard's native sign-in (provider `session-token`, no refresh token, nothing to refresh) and every request that would carry the bearer carries that header instead, leaving an `Authorization` header already on the request alone. A 401 ends the sign-in and clears it, as a native grant with no refresh token.
+- The form opens in place of the system browser in two cases: discovery found only the session token (Hermes answers an empty provider list, which used to be "unexpected server response"), or the server has an `Authorization` extra header, the sign-in would be native and Hermes names the `session-token` provider. A status that fails or can't be read leaves what there was: the browser sign-in in the second case, and "unexpected server response" in the first, never "can't reach the server" after discovery reached it. A dashboard with a password offers the password as before, and it already works behind such a proxy (cookies).
+- A token Hermes refuses is said on the form and can be corrected; any other failure ends the sign-in the way a native sign-in's does. Cancelling or closing the form while Hermes checks the token ends it there: nothing connects, no failure is shown, and the token is not kept.
+- Checked against Hermes 0.23.1 with `Authorization: Basic` on every request: password cookies and the session token each pass REST, `/api/auth/ws-ticket` and the `/api/ws` upgrade (2026-11-14).
+
+**Open gaps**
+- Not run on a device behind a real Pangolin, Caddy or nginx Basic-auth proxy; the reporter of issue 2442 is asked to try it.
+- A dashboard whose only sign-in is an OAuth provider, behind such a proxy, with no session token set on the host, still can't sign in: the system browser can't carry the proxy's header and Hermes takes those tokens only as `Authorization: Bearer`. The editor's note says what to set.
+
+**Checked:** 2026-11-14, #2450 (added).
 
 ## Native OAuth token transport
 
@@ -4234,7 +4320,7 @@ rotation; see Maps lookups)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #2031 (a saved refresh posts the rotation notice for location's host pass; see Maps lookups); 2026-11-04, #1737 (an invalidated client cancels instead of raising).
+**Checked:** 2026-11-14, #2450 (a session token sign-in rides this transport with Hermes' own header and no refresh, see Session token sign-in; a native sign-in's requests unchanged); 2026-11-08, #2031 (a saved refresh posts the rotation notice for location's host pass; see Maps lookups); 2026-11-04, #1737 (an invalidated client cancels instead of raising).
 
 ## Dashboard sign-in redirects
 
@@ -6143,7 +6229,7 @@ native sign-in refresh)
 - The HTTPS timeout in issue 2028 isn't confirmed as the stale host pass; the device log tells on the next report.
 - The host pass's save after a token rotation (AppState's observer, the rebuild and the bearer swap) has no test: no location test binds the shared LocationSharingController yet. Only the rotation notice is tested (#2031).
 
-**Checked:** 2026-11-08, #2052 with notifier #635 (the Bot Chat runs `conduit_maps` itself under every setting, strict included; Siblings); 2026-11-08, #2031 (the push extension's ATS block and the host pass after a token refresh, issue 2028; the voice tool, navigate and the notifier needed no change); 2026-11-08, #2032 with notifier #621 (a Bot Chat on lookups runs `conduit_maps` itself, navigate included; Siblings); 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
+**Checked:** 2026-11-14, #2450 (a session-token sign-in's pass carries `X-Hermes-Session-Token` and no expiry, and a rotation leaves it alone: that token never rotates, see Session token sign-in; a native sign-in's bearer swap unchanged); 2026-11-08, #2052 with notifier #635 (the Bot Chat runs `conduit_maps` itself under every setting, strict included; Siblings); 2026-11-08, #2031 (the push extension's ATS block and the host pass after a token refresh, issue 2028; the voice tool, navigate and the notifier needed no change); 2026-11-08, #2032 with notifier #621 (a Bot Chat on lookups runs `conduit_maps` itself, navigate included; Siblings); 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
 
 ## Phone data sync with the host
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (LocationSharingController's fix and send work)
@@ -6751,6 +6837,7 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 - Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
 - Docs: `README.md`, `notifier/docs/support/index.html`
 - Tests: `ConduitTests/ConnectionFailureTests+ChatTraces.swift` (testGatewayDiagnosticsWithNoDashboardSayNotConnected)
+- Extra headers: `Conduit/Services/CustomHeaders.swift` (CustomHeaderPolicy, CustomHeaderStore), `Conduit/Views/CustomHeadersEditor.swift` (also opened from the sign-in card); tests `ConduitTests/CustomHeadersTests.swift`
 - Update Hermes: `Conduit/Services/HermesUpdate.swift` (HermesUpdateCheck, HermesUpdateState, HermesUpdater), `Conduit/Services/AppState+HermesUpdate.swift`, `Conduit/Views/HermesUpdateViews.swift` (HermesUpdateSection); tests `ConduitTests/GatewayRestartTests+HermesUpdate.swift`
 
 **Rulings**
@@ -6758,11 +6845,12 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 - Diagnostics & logs opens whatever the connection: signed out, never connected or reconnecting, it still shows and shares what the device keeps (the last connection, device reports, chat traces). With no dashboard to ask, its gateway part says it isn't connected, and the connectors and gateway logs are left out until there's something to show; from the sign-in screen it has no gateway part or gateway buttons at all. Connecting or dropping while it's open reads the gateway again, and so does a restart ending, wherever the page is open (#1841). Its sheets have Done, for the iPad app on a Mac (Eric, 2026-11-05: Diagnostics & logs couldn't be opened while disconnected; #1840).
 - Update Hermes asks first, then runs `hermes update` on the host through the dashboard (`POST /api/hermes/update`) and follows its action log: the dashboard going quiet is the restart, sign-in is renewed when it's back, and Conduit reconnects. It reads only the receipt with its own action id (a partial run counts as updated), gives up after 6 minutes updating or 4 minutes coming back with "Hermes isn't back yet", and names the new version from a fresh check. An install the dashboard can't update (Docker, pip) shows the command to run on the host instead; a Hermes without the routes says so (2026-11-13, #2364, as Hermes Desktop's).
 - Restart Gateway, Restart now, Update Hermes and the plugin update exclude each other: none starts while another restarts Hermes on that dashboard (a Hermes check doesn't count), Restart now says "Wait for the Hermes update to finish." and the plugin update says the same as its reason (2026-11-13, #2384, issue 2373: only Update Hermes waited for the others).
+- An extra header never replaces one the request already carries, so an `Authorization` extra header (a proxy's `Authorization: Basic`, as Pangolin's header auth, Caddy's `basic_auth` and nginx's `auth_basic` ask for) is left off only the requests of a native (system browser) sign-in, whose tokens Hermes takes only as `Authorization: Bearer`. A password or browser-view sign-in (cookies) and a session token sign-in send it on every request: see Session token sign-in. Conduit's other bearers (notifications, the Watch) go to the relay, never through the proxy. The editor still saves the header and says under the row that a system-browser sign-in leaves it off and what to sign in with instead, in orange, read once by VoiceOver as its own text; it never blocks Save. The Settings caption and the editor's intro are unchanged; README says it under Cloudflare Access (2026-11-14, #2450, issue 2442; Eric chose full support for these proxies).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-14, #2450 (the Extra headers editor says when an Authorization header is left off and README covers proxies that need it, issue 2442; its code and tests listed); 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 
