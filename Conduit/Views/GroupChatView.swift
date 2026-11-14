@@ -2081,6 +2081,8 @@ struct GroupCreateSheet: View {
     @State private var selected = Set<String>()
     /// The Links of the people picked.
     @State private var selectedPeople = Set<String>()
+    /// Bots of your own other Hermes picked (`OwnHermesBot.id`).
+    @State private var selectedFar = Set<String>()
     /// The room id is minted ONCE per logical room (per sheet): a retry of
     /// an ambiguous create reuses the SAME id, so the gateway's create
     /// idempotency deduplicates instead of forking a twin room.
@@ -2124,25 +2126,43 @@ struct GroupCreateSheet: View {
         people.filter { selectedPeople.contains($0.id) }
     }
 
+    /// Your other Hermes' bots, listed with your own (multi-instance plan).
+    private var farBots: [OwnHermesBot] {
+        appState.invitableOwnBots
+    }
+
+    private var pickedFar: [OwnHermesBot] {
+        farBots.filter { selectedFar.contains($0.id) && $0.ready }
+    }
+
+    private var pickedFarByLink: [String: Int] {
+        Dictionary(grouping: pickedFar, by: \.linkID).mapValues(\.count)
+    }
+
+    /// Any pick that makes the room a draft over Links.
+    private var makesDraft: Bool { !pickedPeople.isEmpty || !pickedFar.isEmpty }
+
     private struct DraftPicks: Equatable {
         let name: String
         let bots: [String]
         let links: [String]
+        let far: [String]
     }
 
     private var draftPicks: DraftPicks {
         DraftPicks(
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             bots: pickedBots.map(\.name).sorted(),
-            links: pickedPeople.map(\.id).sorted()
+            links: pickedPeople.map(\.id).sorted(),
+            far: pickedFar.map(\.id).sorted()
         )
     }
 
     private var canCreate: Bool {
         !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && GroupCreateLimits.canCreate(bots: pickedBots.count, people: pickedPeople.count)
+            && GroupCreateLimits.canCreate(bots: pickedBots.count, far: pickedFarByLink, people: pickedPeople.count)
             && !isCreating
-            && (pickedPeople.isEmpty || draftPicks != sendingDraft)
+            && (!makesDraft || draftPicks != sendingDraft)
     }
 
     /// Settings > Multiplayer, pushed in the sheet: Link with someone, room
@@ -2180,6 +2200,9 @@ struct GroupCreateSheet: View {
                 ) {
                     ForEach(visibleBots) { bot in
                         memberToggleRow(bot)
+                    }
+                    ForEach(farBots) { bot in
+                        farToggleRow(bot)
                     }
                     Text(AppLocalization.string(
                         "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room.", table: .rooms
@@ -2243,10 +2266,12 @@ struct GroupCreateSheet: View {
                         let bots = pickedBots
                         let roomName = name
                         let links = pickedPeople.map(\.id)
-                        guard links.isEmpty else {
+                        let far = pickedFar
+                        guard links.isEmpty, far.isEmpty else {
                             let picks = draftPicks
                             Task { @MainActor in
-                                let outcome = await appState.createLinkedRoomDraft(name: roomName, bots: bots, links: links)
+                                let outcome = await appState.createLinkedRoomDraft(
+                                    name: roomName, bots: bots, links: links, farBots: far)
                                 isCreating = false
                                 switch outcome {
                                 case .made:
@@ -2286,7 +2311,8 @@ struct GroupCreateSheet: View {
 
     private func memberToggleRow(_ bot: BotProfile) -> some View {
         let isSelected = selected.contains(bot.name)
-        let canPick = isSelected || GroupCreateLimits.canPickBot(bots: pickedBots.count, people: pickedPeople.count)
+        let canPick = isSelected
+            || GroupCreateLimits.canPickBot(bots: pickedBots.count + pickedFar.count, people: pickedPeople.count)
         return Button {
             toggle(bot.name)
         } label: {
@@ -2311,9 +2337,47 @@ struct GroupCreateSheet: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
+    /// A bot of your own other Hermes: picked like your own, and named by
+    /// the Hermes it lives on. One not set up for rooms there can't be picked.
+    private func farToggleRow(_ bot: OwnHermesBot) -> some View {
+        let isSelected = selectedFar.contains(bot.id) && bot.ready
+        let canPick = bot.ready && (isSelected
+            || GroupCreateLimits.canPickBot(bots: pickedBots.count + pickedFar.count, people: pickedPeople.count))
+        return Button {
+            Haptics.light()
+            if selectedFar.contains(bot.id) {
+                selectedFar.remove(bot.id)
+            } else {
+                selectedFar.insert(bot.id)
+            }
+        } label: {
+            HStack(spacing: 12) {
+                RoomPersonGlyph()
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: bot.displayName)
+                        .scaledFont(.body)
+                        .foregroundStyle(.primary)
+                    Text(bot.ready
+                         ? AppLocalization.string("On \(bot.linkName)", table: .rooms)
+                         : AppLocalization.string("On \(bot.linkName) · turn on rooms for it there first", table: .rooms))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 0)
+                selectionGlyph(isSelected: isSelected)
+            }
+            .opacity(canPick ? 1 : 0.45)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(!canPick)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
     private func personToggleRow(_ person: RoomLink) -> some View {
         let isSelected = selectedPeople.contains(person.id)
-        let canPick = isSelected || GroupCreateLimits.canPickPerson(bots: pickedBots.count, people: pickedPeople.count)
+        let canPick = isSelected
+            || GroupCreateLimits.canPickPerson(bots: pickedBots.count + pickedFar.count, people: pickedPeople.count)
         return Button {
             Haptics.light()
             if isSelected {
