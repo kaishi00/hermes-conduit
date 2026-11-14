@@ -89,6 +89,17 @@ enum BotChatSwap: Equatable {
         return nil
     }
 
+    /// The slide for the chat now placed as `shown`, after `last`, and
+    /// the placement to keep. The drawn chat's id alone (`opened` false)
+    /// may not place a chat yet: that keeps the last placement, so the
+    /// open chat's id can still ask for the slide. The same placement
+    /// heard twice asks once.
+    static func heard(_ shown: Shown, after last: Shown, opened: Bool) -> (swap: BotChatSwap?, shown: Shown) {
+        guard opened || shown != Shown() else { return (nil, last) }
+        guard shown != last else { return (nil, last) }
+        return (direction(from: last, to: shown), shown)
+    }
+
     /// A swipe toward the trailing edge, mostly sideways and far enough.
     static func isBackSwipe(_ translation: CGSize) -> Bool {
         translation.width > 80 && abs(translation.height) < translation.width * 0.6
@@ -307,11 +318,11 @@ struct V2ConversationScreen: View {
             // so its slide is asked for before its rows land; the open
             // chat's id is the second chance, for a chat the drawn id
             // alone doesn't place.
-            let shown = chatShown(byOpenChatToo: opened)
-            if shown != shownChat, slidesBetweenChats, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
+            let heard = BotChatSwap.heard(chatShown(byOpenChatToo: opened), after: shownChat, opened: opened)
+            if slidesBetweenChats, let swap = heard.swap {
                 swapMotion.expect(swap, conversation: new.drawn)
             }
-            shownChat = shown
+            shownChat = heard.shown
             guard opened else { return }
             sidePanelIDs = appState.activeChatArtifactSessionIDs
             // A workstream opened from the panel shows its own chat, and

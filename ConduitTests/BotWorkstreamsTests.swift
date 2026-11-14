@@ -1207,6 +1207,10 @@ extension BotModeTests {
         motion.expect(.forward, conversation: "opened")
         XCTAssertEqual(stage.played, ["out forward"])
         XCTAssertTrue(motion.chatIsOnStage)
+        // Asked again while its rows are waited for, the wait goes on.
+        stage.conversationJustChanged = false
+        motion.expect(.forward, conversation: "opened")
+        XCTAssertEqual(stage.played, ["out forward"], "the welcome stays aside")
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: false, chatRows: true), .forward)
 
         // A workstream opened, the screen hearing first: the Bot Chat
@@ -1256,6 +1260,26 @@ extension BotModeTests {
         XCTAssertFalse(TranscriptSwapSlide.out(from: layer, by: 100).isRemovedOnCompletion)
         XCTAssertTrue(TranscriptSwapSlide.in(from: 100, opacity: 0.4).isRemovedOnCompletion)
         XCTAssertTrue(TranscriptSwapSlide.back(from: layer).isRemovedOnCompletion)
+        // The screen hears of a chat twice, by the id the transcript draws
+        // and then by the open chat's: one slide, asked for by the first
+        // that places it.
+        let botChat = BotChatSwap.Shown(botChat: "furina")
+        let work = BotChatSwap.Shown(botChat: "furina", workstreamOf: "furina", workstream: "w6")
+        var heard = BotChatSwap.heard(work, after: botChat, opened: false)
+        XCTAssertEqual(heard.swap, .forward)
+        heard = BotChatSwap.heard(work, after: heard.shown, opened: true)
+        XCTAssertNil(heard.swap, "the open chat's id asks for nothing more")
+        XCTAssertEqual(heard.shown, work)
+        heard = BotChatSwap.heard(BotChatSwap.Shown(), after: botChat, opened: false)
+        XCTAssertNil(heard.swap)
+        XCTAssertEqual(heard.shown, botChat, "not placed by the drawn id, it's still the open chat's to place")
+        XCTAssertEqual(BotChatSwap.heard(work, after: heard.shown, opened: true).swap, .forward)
+        XCTAssertEqual(BotChatSwap.heard(BotChatSwap.Shown(), after: work, opened: true).shown, BotChatSwap.Shown(), "another kind of chat opened")
+        XCTAssertEqual(BotChatSwap.heard(botChat, after: work, opened: false).swap, .back)
+        var other = work
+        other.workstream = "w7"
+        XCTAssertEqual(BotChatSwap.heard(other, after: work, opened: false).swap, .forward, "another of the bot's workstreams")
+
         // Only a chat's own rows count as the chat having come in.
         XCTAssertFalse(TranscriptRow(id: TranscriptRow.emptyID, kind: .empty).isChatRow)
         XCTAssertFalse(TranscriptRow(id: TranscriptRow.savedCopyStatusID, kind: .savedCopyStatus(isOpening: true)).isChatRow)
