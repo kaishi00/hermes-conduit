@@ -452,9 +452,18 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
-        // Who manages the plugin goes with the host: a moved entry's new host
-        // says for itself. Signing out keeps it (same host).
+        // Who manages the plugin, and what it served, go with the host: a
+        // moved entry's new host says for itself. Signing out keeps them
+        // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        // So do the chats it kept to resume: set aside, or still the live
+        // set when it's the selected dashboard (a switch to it failed), so
+        // the old host's ids never reach the new one.
+        chatResumeCoordinator.forgetServer(id.uuidString)
+        if defaults.string(forKey: Self.chatResumeServerIdentityKey) == id.uuidString {
+            chatResumeCoordinator.clearResumeState()
+        }
         return registry.dashboards[index]
     }
 
@@ -766,6 +775,9 @@ extension AppState {
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)
+        // The chats it kept to resume belong to the signed-out user, as
+        // the active dashboard's do (disconnect clears those).
+        chatResumeCoordinator.forgetServer(id.uuidString)
         ShortcutInboxQueue.forgetDashboard(id)
         // The dashboard is not connected, but its OWN web session may still
         // hold live cookies from an earlier session; sign-out removes the
@@ -828,9 +840,13 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
-        // Who manages the plugin goes with the host: a moved entry's new host
-        // says for itself. Signing out keeps it (same host).
+        // Who manages the plugin, and what it served, go with the host: a
+        // moved entry's new host says for itself. Signing out keeps them
+        // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        // So do the chats it kept to resume.
+        chatResumeCoordinator.forgetServer(id.uuidString)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.

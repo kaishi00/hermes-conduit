@@ -217,6 +217,56 @@ final class ChatResumeStore {
         persist()
     }
 
+    /// Where each saved dashboard's chats wait while another is in use, by
+    /// the server identity (`AppState.chatResumeServerIdentityKey`: the
+    /// dashboard's UUID, or a dashboard-less address).
+    static let serverStashKey = "conduit.chatResume.byServer.v1"
+
+    private struct ServerStash: Codable {
+        var lastSessionByProfile: [String: SessionReference]
+        var snapshots: [StoredSnapshot]
+    }
+
+    /// A switch to another dashboard: the chats the user left and their
+    /// scroll places stay with the outgoing dashboard, and the incoming
+    /// one's come back, so Continue where I left off holds across a
+    /// switch. Ids from one server never reach another: each set is only
+    /// ever live while its own dashboard is.
+    func switchServer(from previous: String, to identity: String) {
+        var stashes = Self.stashes(in: defaults)
+        stashes[previous] = ServerStash(
+            lastSessionByProfile: payload.lastSessionByProfile,
+            snapshots: payload.snapshots
+        )
+        let incoming = stashes.removeValue(forKey: identity)
+        payload.lastSessionByProfile = incoming?.lastSessionByProfile ?? [:]
+        payload.snapshots = incoming?.snapshots ?? []
+        payload = Self.normalized(payload)
+        Self.save(stashes, in: defaults)
+        persist()
+    }
+
+    /// A removed dashboard's chats go with it.
+    func forgetServer(_ identity: String) {
+        var stashes = Self.stashes(in: defaults)
+        guard stashes.removeValue(forKey: identity) != nil else { return }
+        Self.save(stashes, in: defaults)
+    }
+
+    private static func stashes(in defaults: UserDefaults) -> [String: ServerStash] {
+        guard let data = defaults.data(forKey: serverStashKey),
+              let stashes = try? JSONDecoder().decode([String: ServerStash].self, from: data) else { return [:] }
+        return stashes
+    }
+
+    private static func save(_ stashes: [String: ServerStash], in defaults: UserDefaults) {
+        if stashes.isEmpty {
+            defaults.removeObject(forKey: serverStashKey)
+        } else if let data = try? JSONEncoder().encode(stashes) {
+            defaults.set(data, forKey: serverStashKey)
+        }
+    }
+
     /// Removes every trace of the given sessions inside `profile`: their
     /// scroll snapshots, and the profile's last-selected pointer when it
     /// names one of them. The delete path calls this so a deleted

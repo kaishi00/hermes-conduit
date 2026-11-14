@@ -90,6 +90,7 @@ extension AppState {
             before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
         )
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
+        NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -134,8 +135,19 @@ extension AppState {
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
         notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
+        NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
+    }
+
+    /// Settings home lists a plugin page while this dashboard's plugin
+    /// hasn't answered yet (just switched or reconnecting) when it served
+    /// it last time, so the rows don't shift when the answer comes. Only
+    /// the list: each page reads the plugin's answer itself.
+    func settingsListsPluginPage(_ shown: Bool, capability: String) -> Bool {
+        if shown { return true }
+        guard notifierPlugin.state == .unknown else { return false }
+        return NotifierPluginStatus.Remembered.capabilities(for: activeDashboardID, in: defaults).contains(capability)
     }
 
     /// Reads the latest and stable plugin versions (saved, then from GitHub

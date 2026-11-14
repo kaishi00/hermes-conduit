@@ -382,7 +382,8 @@ extension AppState {
         automaticWorkToken: ChatResumeAutomaticWorkToken?,
         automaticReconnectOperationID: UUID?,
         client: HermesClient,
-        profile: String
+        profile: String,
+        botEvidence: (@MainActor () async -> Void)? = nil
     ) async -> ChatResumeTransportContinuation? {
         guard transportContinuation(
                 purpose: purpose,
@@ -398,6 +399,7 @@ extension AppState {
             purpose: purpose,
             using: nil,
             automaticWorkToken: automaticWorkToken,
+            botEvidence: botEvidence,
             onCatalogPublished: { publishedCatalog = true }
         )
         // Before the checkpoint below: a sync that published the catalog has
@@ -424,6 +426,7 @@ extension AppState {
         }
 
         var preservedPublishedCatalog = false
+        await botEvidence?()
         _ = await performSyncSession(
             purpose: .preserveCurrent,
             using: nil,
@@ -686,7 +689,8 @@ extension AppState {
 
         retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
         owedPostConnectBootstrap = nil
-        chatResumeCoordinator.clearResumeState()
+        // The chat you left there waits for your return to that dashboard.
+        chatResumeCoordinator.switchServer(from: previousIdentity, to: identity)
         cancelOwnedAutomaticOperations()
         activeAutomaticChatResumeWork = nil
         cancelScheduledReconnect()

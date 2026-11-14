@@ -39,6 +39,34 @@ final class ChatResumeStoreTests: XCTestCase {
         XCTAssertEqual(restored.snapshot(for: key), snapshot)
     }
 
+    /// A switch sets the outgoing server's chat and scroll places aside and
+    /// brings the incoming one's back, across a relaunch too; forgetting a
+    /// server drops its set.
+    func testEachServerKeepsItsChatAndScrollPlacesAcrossASwitch() throws {
+        let (defaults, suite) = try defaults()
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "on-a")
+        let snapshot = ChatScrollSnapshot(anchorMessageID: "anchor-a", followsLatest: false)
+        let store = ChatResumeStore(defaults: defaults)
+        store.setLastSessionID("on-a", for: "default")
+        store.save(snapshot, for: key, at: Date(timeIntervalSince1970: 100))
+
+        store.switchServer(from: "server-a", to: "server-b")
+        XCTAssertNil(store.lastSessionID(for: "default"))
+        XCTAssertNil(store.snapshot(for: key), "A's scroll place never shows on B")
+        store.setLastSessionID("on-b", for: "default")
+        store.flush()
+
+        let relaunched = ChatResumeStore(defaults: defaults)
+        relaunched.switchServer(from: "server-b", to: "server-a")
+        XCTAssertEqual(relaunched.lastSessionID(for: "default"), "on-a")
+        XCTAssertEqual(relaunched.snapshot(for: key), snapshot)
+
+        relaunched.forgetServer("server-b")
+        relaunched.switchServer(from: "server-a", to: "server-b")
+        XCTAssertNil(relaunched.lastSessionID(for: "default"), "B's set was forgotten")
+    }
+
     func testCorruptPayloadFallsBackWithoutThrowing() throws {
         let (defaults, suite) = try defaults()
         defer { defaults.removePersistentDomain(forName: suite) }

@@ -660,5 +660,13 @@ extension SidebarLayoutTests {
         pick.tap("lab", dashboardID: dashboard)
         XCTAssertNil(pick.take(landedOn: "work", dashboardID: UUID()), "A tap on another dashboard is dropped.")
         XCTAssertNil(pick.take(landedOn: "work", dashboardID: dashboard), "Dropped, not kept for later.")
+
+        pick.tap("lab", dashboardID: dashboard, leavesAll: true)
+        XCTAssertTrue(pick.leavesAll, "A pick from under All keeps that until it goes.")
+        pick.tap("home", dashboardID: dashboard)
+        XCTAssertFalse(pick.leavesAll, "A newer tap made with All already off replaces it.")
+        pick.tap("lab", dashboardID: dashboard, leavesAll: true)
+        XCTAssertEqual(pick.take(landedOn: "work", dashboardID: dashboard), "lab")
+        XCTAssertFalse(pick.leavesAll, "Taking the pick clears it.")
     }
 }

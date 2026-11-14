@@ -29,6 +29,9 @@ struct ChatResumeLifecycleOperations {
 
     var connectClient: (@MainActor (HermesClient) async throws -> Void)?
     var loadCatalog: (@MainActor (HermesClient, Bool) async throws -> [SessionSummary])?
+    /// Test seam for the newest chats read ahead of the list on Jump to
+    /// latest activity (`newestChatsBeforeList`).
+    var loadNewestChats: (@MainActor (HermesClient) async throws -> [SessionSummary])?
     var mintTicket: (@MainActor (String) async throws -> String)?
     var openSession: (@MainActor (HermesClient, String, Bool) async throws -> SessionResumeResult)?
     /// Profile-aware variant of `openSession`. Preferred over the 3-argument

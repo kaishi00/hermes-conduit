@@ -922,6 +922,81 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    /// A shortcut naming another profile during a call keeps the
+    /// screenshot here: the switch would end the call (issue 2390).
+    func testAScreenshotDuringACallStaysInThisProfile() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.isWatchVoiceCallActive = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, profile: "work", enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeProfile, "default")
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        let refusal = AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone)
+        XCTAssertTrue(harness.appState.pinSyncNotice?.message == refusal || harness.appState.errorMessage == refusal)
+        XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin", "No voice conversation starts over the call: the keyboard comes up")
+    }
+
+    /// With voice ready to start (GPT-Live set up, cleared for screen
+    /// questions, so no capability read stands in the way), a call on the
+    /// Watch still keeps it from starting: the keyboard comes up.
+    func testAScreenshotDuringACallStartsNoVoiceEvenWhenVoiceIsReady() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.setGPTLiveEnabled(true)
+        XCTAssertEqual(
+            ScreenQuestionVoiceRouting.liveEngine(for: harness.appState.configuredLiveVoiceEngine(profile: harness.appState.activeProfile)),
+            .gptLive,
+            "Voice is ready to start for a screenshot here"
+        )
+        harness.appState.isWatchVoiceCallActive = true
+        let now = Date()
+        harness.appState.lastLeftForegroundAt = now.addingTimeInterval(-60)
+        let shot = try stagedScreenshot()
+
+        let opened = await harness.appState.openScreenQuestion(intent(for: shot, enqueuedAt: now))
+
+        XCTAssertTrue(opened)
+        XCTAssertFalse(harness.appState.showGPTLiveSheet, "No voice conversation starts over the call")
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+        XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "composer-origin"), shot)
+        XCTAssertEqual(harness.appState.composerFocusRequest?.sessionID, "composer-origin")
+    }
+
+    /// Classic voice for a screenshot reads the capabilities once more
+    /// before it arms: a call answered by then (here, on the Watch) keeps
+    /// going, and the preparation stops rather than failing or arming.
+    func testClassicVoiceForAScreenshotYieldsToACallAfterItsCapabilityRead() async {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        harness.appState.sessions = [session("composer-origin")]
+        harness.appState.activeSessionId = "composer-origin"
+        harness.appState.isConnected = true
+        harness.appState.isWatchVoiceCallActive = true
+
+        let other = await harness.appState.prepareVoiceConversation(profile: nil, startsFreshConversation: false)
+        XCTAssertNotEqual(other, .deferred, "Without the flag the call isn't consulted")
+
+        let screenshot = await harness.appState.prepareVoiceConversation(
+            profile: nil,
+            startsFreshConversation: false,
+            yieldsToACall: true
+        )
+        XCTAssertEqual(screenshot, .deferred)
+        XCTAssertFalse(harness.appState.showVoiceSheet)
+        XCTAssertTrue(harness.appState.isWatchVoiceCallActive, "The call goes on")
+    }
+
     func testNewChatThatCannotStartKeepsTheScreenshot() async throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         // Connected, but no client: no chat can be started.

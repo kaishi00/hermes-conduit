@@ -419,6 +419,10 @@ final class AppState: ObservableObject {
     /// What on screen shows other profiles' live status, by what asked:
     /// their registries are read with the profile in use's while it shows.
     var liveStatusAsks: [String: LiveStatusAsk] = [:]
+    /// The profiles whose live status read failure was logged, once per
+    /// profile for the connection it names (another connection starts over).
+    weak var liveStatusReadFailureClient: HermesClient?
+    var liveStatusReadFailuresLogged: Set<String> = []
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     weak var activeListUnsupportedClient: HermesClient?
@@ -771,7 +775,15 @@ final class AppState: ObservableObject {
     @Published var botAvatarGeneration = 0
     /// When `reloadBotRoster` last asked for every picture again.
     var botAvatarsReloadedAt: Date?
+    /// The same, by dashboard: a pull asks again only for that
+    /// dashboard's pictures, so another's phone copies stay fresh.
+    var botPicturesPulledAt: [UUID: Date] = [:]
     var botAvatarFetchedGeneration: [String: Int] = [:]
+    /// When each bot's picture last came from Hermes, by dashboard and
+    /// name. Kept across switches (unlike the generation above), so a
+    /// switch back within `botPictureRecheckInterval` shows the phone's
+    /// copy instead of downloading it again.
+    var botPictureFetchedAt: [String: Date] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
     var botAvatarFetchInflight: [String: Int] = [:]
@@ -3264,6 +3276,16 @@ final class AppState: ObservableObject {
     /// as a connected Conduit never asks again on return; a cold launch
     /// asks.
     var faceIDUnlockedDashboards: [UUID: SHA256.Digest] = [:]
+
+    /// One Face ID or Touch ID unlock opens every saved dashboard for the
+    /// rest of the launch: a switch to another Face ID dashboard doesn't ask
+    /// again. Set by the first successful unlock; a cold launch asks.
+    var faceIDUnlockedThisLaunch = false
+
+    /// Dashboards that ask again despite the launch's unlock: their saved
+    /// password was cleared (sign-out, removal, a switch to browser sign-in)
+    /// since. Their next unlock takes them out.
+    var faceIDRelockedDashboards: Set<UUID> = []
 
     /// Face ID or Touch ID for a saved password. Test seam.
     var unlockWithFaceID: @MainActor () async -> Bool = {

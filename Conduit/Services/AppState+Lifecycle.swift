@@ -428,22 +428,31 @@ extension AppState {
             isCurrent() && self.client === client && activeProfile == profile
         }
         botRosterVerifiedForCurrentConnection = false
-        async let profilesLoad: Void = loadChatResumeProfiles()
-        async let rosterLoad: Void = loadChatResumeBotRoster()
-        _ = await (profilesLoad, rosterLoad)
-        guard stillOwns() else {
-            settleReconciliation(token)
-            return
+        // Beside the sync, as the connect path reads them: the early resume
+        // goes out on the bots on hand or kept from this dashboard's last
+        // read, and the list's own pick waits for these.
+        let botEvidence = Task { @MainActor [weak self] in
+            guard let self else { return }
+            async let profilesLoad: Void = self.loadChatResumeProfiles()
+            async let rosterLoad: Void = self.loadChatResumeBotRoster()
+            _ = await (profilesLoad, rosterLoad)
         }
         let viewportTransitionGeneration = chatViewportTransitionGeneration
         let ownedAutomaticWorkToken = owed.purpose == .automaticReturn ? automaticWorkToken : nil
         var publishedCatalog = false
-        let outcome = await performSyncSession(
-            purpose: owed.purpose,
-            using: token,
-            automaticWorkToken: ownedAutomaticWorkToken,
-            onCatalogPublished: { publishedCatalog = true }
-        )
+        let outcome = await withTaskCancellationHandler {
+            await performSyncSession(
+                purpose: owed.purpose,
+                using: token,
+                automaticWorkToken: ownedAutomaticWorkToken,
+                botEvidence: { await botEvidence.value },
+                onCatalogPublished: { publishedCatalog = true }
+            )
+        } onCancel: {
+            botEvidence.cancel()
+        }
+        // A sync that stopped early still leaves the loads to finish.
+        await botEvidence.value
         // Same rule as the connect path: retired once the catalog was
         // published; otherwise still owed (a failed catalog load retries on
         // the next healthy foreground), as `.preserveCurrent` if the user

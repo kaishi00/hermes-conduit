@@ -12,6 +12,8 @@ import OSLog
 import UIKit
 import WebKit
 
+private let earlyResumeLogger = Logger(subsystem: "com.milim.relay", category: "ChatResume")
+
 extension AppState {
     // MARK: - Authoritative reconciliation
 
@@ -44,6 +46,7 @@ extension AppState {
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken?,
         requiredViewportTransitionGeneration: UInt64? = nil,
         historySourceUnavailable: Bool = false,
+        botEvidence: (@MainActor () async -> Void)? = nil,
         onCatalogPublished: () -> Void = {}
     ) async -> ChatResumeSyncExecutionOutcome {
         guard chatViewportTransitionIsCurrent(
@@ -119,14 +122,118 @@ extension AppState {
         // Set while this sync's catalog read is in flight: a failure there
         // is news only if no list read that started later has listed.
         var pendingCatalogReadTicket: UInt64?
+        // The saved chat went live while the list was still on its way, or
+        // Hermes refused it for good there (gone, a Kanban worker): the list
+        // then decides without asking for it again.
+        var resumedBeforeList = false
+        var refusedBeforeList: String?
+        // The chat Jump to latest activity opened from the newest chats
+        // read, before the whole list could say which is newest.
+        var latestPickedBeforeList: String?
+        // The ids of the chat resumed before the list, while this
+        // connection's own bots were still on their way: once they land,
+        // a bot owning it hands the pick back to the list.
+        var resumedOnEarlyRosterIDs: Set<String>?
         do {
-            // This intentionally mirrors the proven React Native startup
-            // sequence: discover the live gateway's current sessions first,
-            // then resume the newest chat. A persisted runtime id can belong
-            // to a process that no longer exists after a relaunch.
+            // A connection's bots (`botEvidence`) are read beside this
+            // sync, not ahead of it: the pick before the list checks the
+            // bots on hand, or kept from this dashboard's last read, and
+            // the list's own pick waits for them. With none on hand at all,
+            // the whole sync waits for them, as before.
+            var earlyRoster: [BotProfile]?
+            var botEvidenceLanded = botEvidence == nil
+            if let botEvidence {
+                let onHand = shownBotRoster
+                if onHand.isEmpty {
+                    await botEvidence()
+                    botEvidenceLanded = true
+                } else {
+                    earlyRoster = onHand
+                }
+            }
+            // The chat list decides which chat to resume, so the resume
+            // comes after it: a persisted runtime id can belong to a process
+            // that no longer exists after a relaunch. Except the chat the
+            // user left, when the list it showed last time already says it
+            // is theirs to resume: it goes out beside the list read, so a
+            // long list (619 chats on a real host: 3 s) doesn't hold the chat.
             let readTicket = takeSessionListReadTicket()
             pendingCatalogReadTicket = readTicket
-            let catalogLoad = try await profileCatalog(using: client, deferringOlderPages: true)
+            var savedChat = savedChatToResumeBeforeList(
+                profile: profile, dashboardID: dashboardID, purpose: purpose, roster: earlyRoster
+            )
+            // On Jump to latest activity the newest chat is read from a
+            // short page beside the list instead (`latestChatBeforeList`).
+            let readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
+            let catalogReadFailed = CatalogReadFailure()
+            async let catalogRead = profileCatalogNotingFailure(using: client, failure: catalogReadFailed)
+            // The list read goes out first; one that has already failed
+            // leaves the chat to the connection's retry, as before.
+            // Until the read has started, not just one turn: a single
+            // yield didn't always let it run, so a list that failed at once
+            // could still see the chat go out ahead of it.
+            if savedChat != nil {
+                await Task.yield()
+                for _ in 0..<20 where !catalogReadFailed.began { await Task.yield() }
+                if !catalogReadFailed.began {
+                    earlyResumeLogger.notice("Chat resume goes out before the list read has started")
+                }
+            }
+            if readsNewestFirst {
+                switch await newestChatsUnlessTheListLands(profile: profile, dashboardID: dashboardID, using: client, list: catalogReadFailed) {
+                case .read(let newest):
+                    savedChat = latestChatBeforeList(
+                        among: newest, profile: profile, dashboardID: dashboardID, roster: earlyRoster
+                    )
+                case .failed:
+                    earlyResumeLogger.notice("Chat resume waits for the chat list: the newest chats read failed")
+                case .listLanded:
+                    earlyResumeLogger.notice("Chat resume waits for the chat list: it landed before the newest chats")
+                }
+                if savedChat != nil { latestPickedBeforeList = savedChat?.sessionID }
+            }
+            // A notification, a new chat, a saved-list pick or an open of
+            // its own (a link, Siri, CarPlay) that came in during the yield
+            // is the destination now, and so is a switch or a new client.
+            if let savedChat, !catalogReadFailed.failed,
+               PushNotificationService.shared.pendingTarget == nil,
+               chatPickedFromSavedList == nil, pendingNewChat == nil,
+               token == shownChat.reconciliationToken,
+               automaticChatResumeWorkIsCurrent(automaticWorkToken, syncOperationID: automaticOperationID),
+               chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+               profile == activeProfile, dashboardID == activeDashboardID,
+               self.client === client {
+                chatResumeRestorationRequest = nil
+                chatResumeCoordinator.prepareDirectTarget(
+                    sessionID: savedChat.sessionID,
+                    profile: profile,
+                    purpose: purpose
+                )
+                noteConnectionStep("Chat resume before the chat list")
+                earlyResumeLogger.notice("Chat resume goes out before the chat list")
+                // Read below only as this resume's own answer: a resume that
+                // stops before asking leaves it as it is.
+                shownChat.reconciliationSessionWasNotFound = false
+                resumedBeforeList = await reconcile(
+                    sessionId: savedChat.sessionID,
+                    using: client,
+                    token: token,
+                    acceptedSessionIDs: savedChat.identity.acceptedSessionIDs,
+                    conversationIdentity: savedChat.identity,
+                    automaticWorkToken: automaticWorkToken,
+                    automaticSyncOperationID: automaticOperationID,
+                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                    historySourceUnavailable: historySourceUnavailable
+                )
+                if !resumedBeforeList, shownChat.reconciliationSessionWasNotFound {
+                    refusedBeforeList = savedChat.sessionID
+                }
+                if resumedBeforeList, earlyRoster != nil {
+                    resumedOnEarlyRosterIDs = savedChat.identity.acceptedSessionIDs.union([savedChat.sessionID])
+                }
+            }
+            if let botEvidence, !botEvidenceLanded { await botEvidence() }
+            let catalogLoad = try await catalogRead
             pendingCatalogReadTicket = nil
             // The rest of a due full read runs once this sync is over, so
             // the drawer still fills in without holding up the chat. Only a
@@ -144,11 +251,13 @@ extension AppState {
             let allSessions = uniqueSessions(
                 [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions
             )
-            guard automaticChatResumeWorkIsCurrent(
+            // A chat already live from before the list only needs the list
+            // to land: a drag or an edit since then doesn't undo it.
+            guard resumedBeforeList || automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticOperationID
                   ),
-                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   dashboardID == activeDashboardID,
@@ -168,10 +277,10 @@ extension AppState {
                 )
                 return .superseded
             }
-            guard automaticChatResumeWorkIsCurrent(
+            guard resumedBeforeList || automaticChatResumeWorkIsCurrent(
                 automaticWorkToken,
                 syncOperationID: automaticOperationID
-            ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
+            ), resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
                 settleReconciliation(
                     token,
                     automaticSyncOperationID: automaticOperationID
@@ -220,15 +329,38 @@ extension AppState {
                 return .superseded
             }
 
-            guard automaticChatResumeWorkIsCurrent(
+            guard resumedBeforeList || automaticChatResumeWorkIsCurrent(
                 automaticWorkToken,
                 syncOperationID: automaticOperationID
-            ), chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
+            ), resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration) else {
                 settleReconciliation(
                     token,
                     automaticSyncOperationID: automaticOperationID
                 )
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+            }
+            // The chat is already live; the list only had to land. One that
+            // didn't go live (gone, refused) is decided from the list below.
+            // On Jump to latest activity the whole list can still name a
+            // newer chat than the short read did (a call archived with its
+            // chat is listed only by the list): that one opens instead,
+            // unless the user has moved on since.
+            // So does the list's own pick when the connection's bots, read
+            // beside the list, say a bot owns the chat resumed on the bots
+            // kept from last time.
+            if resumedBeforeList {
+                let stillCurrent = automaticChatResumeWorkIsCurrent(automaticWorkToken, syncOperationID: automaticOperationID)
+                    && chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration)
+                if stillCurrent, let ids = resumedOnEarlyRosterIDs, !ids.isDisjoint(with: botOwnership.botOwnedIDs) {
+                    earlyResumeLogger.notice("Chat resume: this connection's bots say a bot owns the chat resumed before the list")
+                    resumedBeforeList = false
+                } else {
+                    guard stillCurrent, let picked = latestPickedBeforeList,
+                          let newest = latestOrdinaryChat(among: allSessions, profile: profile, dashboardID: dashboardID),
+                          !newest.nestingIDs.contains(picked) else { return .completed }
+                    earlyResumeLogger.notice("Chat resume: the chat list names a newer chat than the newest chats read")
+                    resumedBeforeList = false
+                }
             }
             // A canonical Bot Chat is reserved presentation state reachable
             // only through the Bots roster: it must never be chosen as this
@@ -395,18 +527,27 @@ extension AppState {
                     runtimeSessionID: target.storedSessionId != nil ? target.id : nil,
                     acceptedSessionIDs: acceptedTargetIDs
                 )
-                var succeeded = await reconcile(
-                    sessionId: target.id,
-                    using: client,
-                    token: token,
-                    acceptedSessionIDs: acceptedTargetIDs,
-                    conversationIdentity: targetIdentity,
-                    automaticWorkToken: automaticWorkToken,
-                    automaticSyncOperationID: automaticOperationID,
-                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
-                    historySourceUnavailable: historySourceUnavailable
-                )
-                if !succeeded, purpose == .automaticReturn {
+                // Refused for good before the list landed: that answer stands
+                // (its flags are still set) instead of asking again.
+                var succeeded = false
+                if let refused = refusedBeforeList, target.nestingIDs.contains(refused) {
+                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                } else {
+                    succeeded = await reconcile(
+                        sessionId: target.id,
+                        using: client,
+                        token: token,
+                        acceptedSessionIDs: acceptedTargetIDs,
+                        conversationIdentity: targetIdentity,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID,
+                        requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                        historySourceUnavailable: historySourceUnavailable
+                    )
+                }
+                // Not by the stored id again when that's what was refused.
+                if !succeeded, purpose == .automaticReturn,
+                   refusedBeforeList == nil || refusedBeforeList != target.storedSessionId {
                     succeeded = await resumeByStoredIDAfterNotFound(
                         target,
                         acceptedSessionIDs: acceptedTargetIDs,
@@ -476,17 +617,22 @@ extension AppState {
                     runtimeSessionID: nil,
                     acceptedSessionIDs: [missingSavedSessionID]
                 )
-                let succeeded = await reconcile(
-                    sessionId: missingSavedSessionID,
-                    using: client,
-                    token: token,
-                    acceptedSessionIDs: savedIdentity.acceptedSessionIDs,
-                    conversationIdentity: savedIdentity,
-                    automaticWorkToken: automaticWorkToken,
-                    automaticSyncOperationID: automaticOperationID,
-                    requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
-                    historySourceUnavailable: historySourceUnavailable
-                )
+                var succeeded = false
+                if refusedBeforeList == missingSavedSessionID {
+                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                } else {
+                    succeeded = await reconcile(
+                        sessionId: missingSavedSessionID,
+                        using: client,
+                        token: token,
+                        acceptedSessionIDs: savedIdentity.acceptedSessionIDs,
+                        conversationIdentity: savedIdentity,
+                        automaticWorkToken: automaticWorkToken,
+                        automaticSyncOperationID: automaticOperationID,
+                        requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
+                        historySourceUnavailable: historySourceUnavailable
+                    )
+                }
                 if !succeeded,
                    shownChat.reconciliationSessionWasNotFound,
                    automaticChatResumeWorkIsCurrent(
@@ -674,11 +820,11 @@ extension AppState {
                     : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
             }
         } catch {
-            guard automaticChatResumeWorkIsCurrent(
+            guard resumedBeforeList || automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticOperationID
                   ),
-                  chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
+                  resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
@@ -688,6 +834,21 @@ extension AppState {
                     automaticSyncOperationID: automaticOperationID
                 )
                 return chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
+            }
+            if resumedBeforeList {
+                // The chat is live: only the list failed. It says so, as a
+                // pull to refresh's failure does, and the next showing or
+                // pull reads it again; the connection is fine.
+                let wasCancelled = error is CancellationError
+                    || (error as? URLError)?.code == .cancelled || Task.isCancelled
+                let superseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
+                if !superseded, !wasCancelled {
+                    sessionCatalogLoadState.markFailed(
+                        UserFacingError.message(for: error),
+                        owner: SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+                    )
+                }
+                return .completed
             }
             turnState = .reconnecting
             // A list read that started after this sync's catalog read
@@ -1089,6 +1250,191 @@ extension AppState {
         )
         releaseHeldSideAgentCompletions(closing: activeReconciliation)
         return true
+    }
+
+    /// The chat the user left, when it can be resumed before this sync's
+    /// list read lands: Continue Where I Left Off, a reference this build
+    /// typed as a dashboard chat, nothing else waiting to open (a
+    /// notification, a chat picked in the saved list, a New Chat), and the
+    /// list it showed last time (or the live one, on a return) lists it as
+    /// its own row, not a bot's, a workstream or Pulse's, and no other chat
+    /// is on screen. A chat the list doesn't show, a row that only borrows
+    /// its id, or any doubt leaves it to the live list, as before.
+    /// `roster`: the bots to check against while this connection's own
+    /// roster is still on its way (the one on hand or kept from this
+    /// dashboard's last read); nil reads the live one.
+    func savedChatToResumeBeforeList(
+        profile: String,
+        dashboardID: UUID?,
+        purpose: ChatResumeSyncPurpose,
+        roster: [BotProfile]? = nil
+    ) -> (sessionID: String, identity: ConversationIdentity)? {
+        // Why the resume waits for the list, in the device log: the
+        // connection timeline only reaches it during a call trace.
+        func waits(_ reason: String) -> (sessionID: String, identity: ConversationIdentity)? {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: \(reason, privacy: .public)")
+            return nil
+        }
+        guard purpose == .automaticReturn else { return waits("not an automatic return") }
+        // Jump to latest activity reads the newest chats instead
+        // (`latestChatBeforeList`).
+        guard chatResumeCoordinator.behavior == .continueWhereLeftOff else { return nil }
+        guard PushNotificationService.shared.pendingTarget == nil,
+              chatPickedFromSavedList == nil,
+              pendingNewChat == nil else { return waits("another chat is waiting to open") }
+        let rows = sessions + (savedChatListForActiveScope?.list.sessions ?? [])
+        // As the live list's pick does: Pulse's chat is never resumed.
+        dropSavedPulseChat(profile: profile, purpose: purpose, among: rows)
+        guard let reference = chatResumeCoordinator.lastSession(for: profile) else { return waits("no saved chat") }
+        guard reference.kind == .dashboard else { return waits("the saved chat is a Bot Chat") }
+        guard !reference.isUnverified else { return waits("the saved chat is unverified") }
+        guard let sessionID = ChatScrollIdentityNormalization.sessionID(reference.sessionID) else {
+            return waits("the saved chat's id isn't a session id")
+        }
+        let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
+        guard !dead.contains(sessionID) else { return waits("the saved chat is gone") }
+        let ownership = roster.map { SessionBotOwnership(roster: $0, registryProfiles: botChatSessionProfiles) } ?? botOwnership
+        let aliases = Self.aliasesForStoredReference(reference, catalog: rows)
+        guard ownership.referenceIfBot(reference, aliases: aliases) == nil,
+              aliases.union([sessionID]).isDisjoint(with: ownership.botOwnedIDs) else { return waits("a bot owns the saved chat") }
+        let scoped = rows.filter { sessionBelongsToProfile($0, profile: profile) }
+        // The row owns the id as its own or its stored one, as nesting
+        // reads it; a row that only lists it as an alias borrows it, and a
+        // chat the list doesn't show is the live list's to find.
+        guard let row = scoped.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) else {
+            return waits(rows.isEmpty ? "no list on hand" : "the list on hand doesn't show the saved chat")
+        }
+        guard !isUnlistedChat(row),
+              // The live list's own filter: no canonical Bot Chat (by the
+              // roster or the reserved title, which needs no roster) and
+              // nothing a bot owns.
+              !BotChatHygiene.ordinaryResumeCandidates(
+                  [row], roster: roster ?? botRoster, botOwnedSessionIDs: ownership.botOwnedIDs
+              ).isEmpty else { return waits("the saved chat isn't an ordinary chat") }
+        // Another chat on screen: which one to show is the list's call.
+        if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+           !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
+        return (sessionID, ConversationIdentity(
+            profile: profile,
+            durableSessionID: row.storedSessionId ?? row.id,
+            runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
+            acceptedSessionIDs: Set(row.nestingIDs)
+        ))
+    }
+
+    /// Whether Jump to latest activity may read the newest chats beside the
+    /// list and open the newest of them before the list lands: an
+    /// automatic return with nothing else waiting to open (a notification,
+    /// a chat picked in the saved list, a New Chat).
+    func latestChatMayResumeBeforeList(purpose: ChatResumeSyncPurpose) -> Bool {
+        guard purpose == .automaticReturn, chatResumeCoordinator.behavior == .latestActivity else { return false }
+        guard PushNotificationService.shared.pendingTarget == nil,
+              chatPickedFromSavedList == nil,
+              pendingNewChat == nil else {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: another chat is waiting to open")
+            return false
+        }
+        return true
+    }
+
+    /// The newest chat among `rows` by the live list's own pick: the
+    /// profile's ordinary chats (no Bot Chat, nothing a bot owns, no
+    /// workstream or Pulse chat, none found gone), by last activity. Nil,
+    /// so the list decides, when another chat is on screen.
+    func latestChatBeforeList(
+        among rows: [SessionSummary],
+        profile: String,
+        dashboardID: UUID?,
+        roster: [BotProfile]? = nil
+    ) -> (sessionID: String, identity: ConversationIdentity)? {
+        func waits(_ reason: String) -> (sessionID: String, identity: ConversationIdentity)? {
+            earlyResumeLogger.notice("Chat resume waits for the chat list: \(reason, privacy: .public)")
+            return nil
+        }
+        guard let row = latestOrdinaryChat(among: rows, profile: profile, dashboardID: dashboardID, roster: roster),
+              let sessionID = ChatScrollIdentityNormalization.sessionID(row.id) else {
+            return waits("no ordinary chat among the newest chats")
+        }
+        if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+           !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
+        // The identity the list's own pick resumes with.
+        return (sessionID, ConversationIdentity(
+            profile: profile,
+            durableSessionID: row.storedSessionId ?? row.id,
+            runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
+            acceptedSessionIDs: Set([row.id] + row.alternateIds)
+        ))
+    }
+
+    /// The profile's newest ordinary chat among `rows`, as the live list's
+    /// pick on Jump to latest activity reads it.
+    func latestOrdinaryChat(
+        among rows: [SessionSummary],
+        profile: String,
+        dashboardID: UUID?,
+        roster: [BotProfile]? = nil
+    ) -> SessionSummary? {
+        let dead = deadResumeRowIDs[Self.deadResumeRowKey(dashboardID: dashboardID, profile: profile)] ?? []
+        let ownership = roster.map { SessionBotOwnership(roster: $0, registryProfiles: botChatSessionProfiles) } ?? botOwnership
+        let candidates = BotChatHygiene.ordinaryResumeCandidates(
+            rows.filter { sessionBelongsToProfile($0, profile: profile) },
+            roster: roster ?? botRoster,
+            botOwnedSessionIDs: ownership.botOwnedIDs
+        ).filter { !Self.resumeRow($0, isAmong: dead) && !isUnlistedChat($0) }
+        return ChatResumeSessionResolver.latestChat(in: candidates)
+    }
+
+    /// This sync's list read, noting a failure as it happens, so a list
+    /// that failed at once keeps the old order (no resume ahead of it).
+    func profileCatalogNotingFailure(
+        using client: HermesClient,
+        failure: CatalogReadFailure
+    ) async throws -> ProfileCatalogLoad {
+        failure.began = true
+        defer {
+            failure.finished = true
+            failure.onFinish?()
+            failure.onFinish = nil
+        }
+        do {
+            return try await profileCatalog(using: client, deferringOlderPages: true)
+        } catch {
+            failure.failed = true
+            throw error
+        }
+    }
+
+    enum NewestChatsRead {
+        case read([SessionSummary])
+        case failed
+        case listLanded
+    }
+
+    /// Jump to latest activity's short read, unless the whole list lands
+    /// first (both through the page, just after a browser sign-in, say):
+    /// then the list picks at once rather than waiting on the short read.
+    func newestChatsUnlessTheListLands(
+        profile: String,
+        dashboardID: UUID?,
+        using client: HermesClient,
+        list: CatalogReadFailure
+    ) async -> NewestChatsRead {
+        if list.finished { return .listLanded }
+        let race = NewestChatsRace()
+        let outcome = await withCheckedContinuation { (continuation: CheckedContinuation<NewestChatsRead, Never>) in
+            race.continuation = continuation
+            list.onFinish = { race.finish(.listLanded) }
+            race.read = Task { @MainActor in
+                do {
+                    race.finish(.read(try await self.newestChatsBeforeList(profile: profile, dashboardID: dashboardID, using: client)))
+                } catch {
+                    race.finish(.failed)
+                }
+            }
+        }
+        list.onFinish = nil
+        race.read?.cancel()
+        return outcome
     }
 
     func selectChatResumeTarget(
@@ -3719,5 +4065,31 @@ extension AppState {
             kept.append(contentsOf: notesAfter[index] ?? [])
         }
         return kept
+    }
+}
+
+/// Whether a sync's list read has failed yet (see
+/// `profileCatalogNotingFailure`).
+@MainActor
+final class CatalogReadFailure {
+    var failed = false
+    /// The read has started: a list that fails at once has said so by then.
+    var began = false
+    /// The read has ended, answered or failed, and who's waiting on that
+    /// (Jump to latest activity's short read, racing it).
+    var finished = false
+    var onFinish: (@MainActor () -> Void)?
+}
+
+/// Whichever of the short read and the list ends first answers; the other
+/// finds the answer taken.
+@MainActor
+final class NewestChatsRace {
+    var continuation: CheckedContinuation<AppState.NewestChatsRead, Never>?
+    var read: Task<Void, Never>?
+
+    func finish(_ outcome: AppState.NewestChatsRead) {
+        continuation?.resume(returning: outcome)
+        continuation = nil
     }
 }
