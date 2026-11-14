@@ -4707,13 +4707,18 @@ or picked with Return), Reasoning bars, Fast mode and YOLO toggles · the compos
 reasoning chip · typed `/model` (opens the sheet),
 `/fast` and `/yolo` · a bot's model picker and the Model page's Default,
 Delegate and Fallback model editors (not siblings: they're saved with the bot
-or the profile, not live session settings)
+or the profile, not live session settings) · the notifier's session route
+(`notifier/dashboard/api/session_route.py`: a pick sticks across Hermes' rebuilds) ·
+Pulse putting its chat on its model (`notifier/pulse_host.py` _use_model, the same
+`config.set model`) · Text (not needed: no Settings caption or README line
+describes how a pick is saved)
 
 **Code**
 - Sheet: `Conduit/Views/ModelPickerView.swift` (currentModelSection, switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
 - Reasoning bars: `Conduit/Views/Components/ReasoningEffortBars.swift`
 - Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState+YoloAndReasoning.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
 - Tests: `ConduitTests/ModelPickerTests.swift`
+- Notifier: `notifier/dashboard/api/session_route.py` (aligned, ensure_installed), `notifier/tests/test_session_route.py`, `notifier/upstream/test_session_route.py`
 
 **Rulings**
 - Every control applies on tap, like Settings; the sheet has no Apply button and stays open (Eric, 2026-10-27, #1333, #1334).
@@ -4723,10 +4728,12 @@ or the profile, not live session settings)
 - Errors show in the sheet, since the composer's banner is behind it: a switch's in the current model card at the top, whichever list the tap came from.
 - The sheet opens on the model the chat runs and its reasoning. Reasoning is one bar per level, rising from Off to Ultra; a finger slides across them, the level follows the column it's in (the strip's full height), a selection haptic plays on each bar crossed, and the level is sent once, on lift; a tap picks a bar, and a drag that starts up or down scrolls the sheet instead. A level picked while one is being sent goes next. VoiceOver adjusts it as one control (Eric, 2026-11-08, #1984).
 
+- A pick on hermes dashboard is the route Hermes rebuilds the chat on. Hermes' TUI saves the picked route at the top of the chat's `model_config` and leaves the nested `gateway_runtime` an earlier gateway turn wrote, which its rebuilds read first, so the plugin writes the live route into `gateway_runtime` too (2026-11-14, notifier #798, 0.172.1: Furina's Bot Chat kept rebuilding every pick on zai from a fallback turn, zai refused it and the fallback put it back on glm-5.3-flash). On the gateway's own listener a pick commits through the session authority and needs none.
+
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.
 
-**Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #1984 (current model card, reasoning bars replace the pills that scrolled sideways, see Pinned and recent models); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1616 (an Add a provider row under the list and the search matches, whose sheet's Custom endpoint waits for the sheet's catalog; the models are read again when it closes); 2026-10-31, #1567 (the sheet opens on the models kept from Hermes' last answer, whose rows switch once Hermes answers; a row being switched to keeps its check when an answer lands); 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
+**Checked:** 2026-11-14, #2435 (a pick sticks across Hermes' rebuilds: the notifier keeps the chat's stored gateway route in step, notifier #798; Pulse's switch of its chat goes the same way; the sheet needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #1984 (current model card, reasoning bars replace the pills that scrolled sideways, see Pinned and recent models); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1616 (an Add a provider row under the list and the search matches, whose sheet's Custom endpoint waits for the sheet's catalog; the models are read again when it closes); 2026-10-31, #1567 (the sheet opens on the models kept from Hermes' last answer, whose rows switch once Hermes answers; a row being switched to keeps its check when an answer lands); 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
 
 ## Searching for a model
 
