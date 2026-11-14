@@ -618,14 +618,15 @@ notifier CHANGELOG.md
 - Tests: `ConduitTests/GPTLiveVoiceTests.swift` (testGPTLiveOffersChatGPTsKoreanVoicesAndNamesAChosenVoiceWhenACallNeverStarts, testGPTLiveAPIVoicesIncludeTheOtherLanguageVoices), `notifier/tests/test_watch_audio.py` (test_a_gpt_live_call_that_never_connects_names_the_chosen_voice)
 
 **Rulings**
-- A voice joins the ChatGPT plan's list only once Codex's endpoint has been seen to take its ID on a real call: ChatGPT's apps showing a voice is no evidence the subscription transport takes it. Codex answers the session request for any name (HTTP 201 with an SDP), then never connects a call whose voice it doesn't know, so a 201 proves nothing and a wrong name fails at the start rather than speaking with another voice. Probed on .52's ChatGPT plan: `haetsal` and `hanul` (OpenAI's Korean Live voices Haetsal 햇살 and Hanul 한울) connect and speak; `noeul` (an API-key voice) and made-up names never connect (2026-11-14, issue 2388).
+- A voice joins the ChatGPT plan's list only once Codex's endpoint has been seen to take its ID on a real call: ChatGPT's apps showing a voice is no evidence the subscription transport takes it. Codex answers the session request for any name (HTTP 201 with an SDP), then never connects a call whose voice it doesn't know, so a 201 proves nothing and a wrong name fails at the start rather than speaking with another voice. Probed on .52's ChatGPT plan, on Codex's frameless endpoint: `haetsal` and `hanul` (OpenAI's Korean Live voices Haetsal 햇살 and Hanul 한울) connect and speak; `noeul` (an API-key voice) and made-up names never connect (2026-11-14, issue 2388).
 - The voice never decides the call's language: a Korean voice told to speak Mandarin spoke Mandarin on the probe, and every call keeps the language rule. The picker's caption says so for Haetsal and Hanul.
 - Nothing swaps a voice or reroutes the call: the plugin sends the pick as it is, and a ChatGPT-plan call that never starts with a chosen voice says that voice may not be on the plan and to pick another, on the phone and the Watch alike. The API key's voices are a separate list that is never offered on the ChatGPT plan (#1099).
 
 **Open gaps**
 - Whether a ChatGPT account without a voice in its apps is refused it the same way is unverified: .52's account was the only one probed.
+- Codex's GA endpoint (accounts ChatGPT has moved, issue 2236) wasn't probed: whether it takes the same voice IDs, and refuses an unknown one the same way, is unverified.
 
-**Checked:** 2026-11-14, #2411 (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
+**Checked:** 2026-11-14, #FOLLOWUP (from #2411's reviews: a connection lost before the host answered never names the voice, the watchdog's message tested through a session, the GA endpoint's voices an open gap); 2026-11-14, #2411 (added: Haetsal and Hanul on the ChatGPT plan, a call that never starts names the chosen voice, notifier #787; issue 2388).
 
 ## Starting a call
 
