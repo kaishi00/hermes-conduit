@@ -101,6 +101,10 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         }
     }
     private(set) var conversationJustChanged = false
+    /// The rows slid away and wait for `slideIn` or `comeBack`. Kept here
+    /// rather than read off the layer: UIKit drops a layer's animations
+    /// when the app leaves the screen, and the rows must still come back.
+    private(set) var rowsAreAway = false
 
     private var rowsByID: [String: TranscriptRow] = [:]
     private var appliedRows: [TranscriptRow] = []
@@ -292,6 +296,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         layer.add(out, forKey: TranscriptSwapSlide.key)
         // Away, the rows take no taps where they were: only what shows
         // moved, not the views.
+        rowsAreAway = true
         collectionView.isUserInteractionEnabled = false
         collectionView.accessibilityElementsHidden = true
         // Sent to the render server now, so it plays while the open that
@@ -313,13 +318,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         guard isViewLoaded else { return }
         let layer = collectionView.layer
         // Only rows that left and are held away: a slide in ends on its own.
-        guard let held = layer.animation(forKey: TranscriptSwapSlide.key), !held.isRemovedOnCompletion else { return }
+        guard rowsAreAway else { return }
         layer.add(TranscriptSwapSlide.back(from: layer), forKey: TranscriptSwapSlide.key)
         rowsAreBack()
     }
 
     /// The rows show again, so they take taps and VoiceOver again.
     private func rowsAreBack() {
+        rowsAreAway = false
         collectionView.isUserInteractionEnabled = true
         collectionView.accessibilityElementsHidden = false
     }

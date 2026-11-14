@@ -1213,6 +1213,76 @@ extension BotModeTests {
         XCTAssertTrue(TranscriptSwapSlide.back(from: layer).isRemovedOnCompletion)
     }
 
+    /// Rows that slid away show nothing where they were, so they take no
+    /// taps and VoiceOver passes them, until they slide in or come back.
+    @MainActor
+    func testRowsThatSlidAwayTakeNoTapsUntilTheyShowAgain() async throws {
+        let suite = "swap-slide-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let controller = TranscriptViewController(
+            appState: AppState(defaults: defaults, loadSavedConnection: false),
+            scroller: TranscriptScroller()
+        )
+        controller.loadViewIfNeeded()
+        let rows = controller.collectionView
+        let motion = TranscriptSwapMotion()
+        controller.swapMotion = motion
+        XCTAssertTrue(motion.stage === controller)
+
+        motion.leave(.back)
+        XCTAssertTrue(controller.rowsAreAway)
+        XCTAssertFalse(rows.isUserInteractionEnabled)
+        XCTAssertTrue(rows.accessibilityElementsHidden)
+
+        // The chat opened comes in.
+        controller.slideIn(.back)
+        XCTAssertFalse(controller.rowsAreAway)
+        XCTAssertTrue(rows.isUserInteractionEnabled)
+        XCTAssertFalse(rows.accessibilityElementsHidden)
+
+        // An open that draws nothing: they come back on their own, even
+        // if UIKit dropped the layer's animations meanwhile.
+        motion.patience = .milliseconds(20)
+        motion.leave(.back)
+        rows.layer.removeAllAnimations()
+        try await Task.sleep(for: .milliseconds(200))
+        XCTAssertFalse(controller.rowsAreAway)
+        XCTAssertTrue(rows.isUserInteractionEnabled)
+        XCTAssertFalse(rows.accessibilityElementsHidden)
+
+        // Rows that never left aren't touched by a comeback.
+        controller.comeBack()
+        XCTAssertTrue(rows.isUserInteractionEnabled)
+    }
+
+    /// A wait whose sleep ended just as a newer swap stood it down ends
+    /// nothing: the newer swap keeps its slide and the rows stay away.
+    @MainActor
+    func testAStoodDownWaitDoesntEndTheSwapAfterIt() async throws {
+        final class Stage: TranscriptSwapStage {
+            var conversationJustChanged = false
+            var played: [String] = []
+            func slideOut(_ swap: BotChatSwap) { played.append("out") }
+            func slideIn(_ swap: BotChatSwap) { played.append("in") }
+            func comeBack() { played.append("back") }
+        }
+        let stage = Stage()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+        motion.patience = .milliseconds(20)
+        motion.leave(.back)
+        // The sleep ends while the main thread is kept, as the swap keeps
+        // it; its wait is stood down before it gets to run.
+        usleep(100_000)
+        motion.patience = .seconds(30)
+        motion.expect(.back)
+        try await Task.sleep(for: .milliseconds(150))
+        XCTAssertEqual(stage.played, ["out"], "the old wait brought nothing back")
+        XCTAssertEqual(motion.expected, .back)
+        XCTAssertEqual(motion.conversationChanged(), .back)
+    }
+
     /// A workstream's screen holds back the zoom's own dismissals by their
     /// UIKit names, so a slow swipe can't pop past its Bot Chat to Bots Home.
     func testTheBackSwipeGateKnowsTheZoomsDismissals() {
