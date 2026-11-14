@@ -2270,7 +2270,7 @@ README.md
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
@@ -4203,7 +4203,50 @@ browser (separate)
 - To switch accounts on a dashboard with a saved grant, sign out first; the switch alone keeps the grant.
 - Whether the session shares MobileSafari's own sign-in depends on iOS; in simulator testing with Pocket ID it kept only its own session.
 
-**Checked:** 2026-11-10, #2102 (a native token request's 401 stays an unexpected response, its 403 says Server refused access); 2026-10-27, at #1343, carrying #1329.
+**Checked:** 2026-11-14, #2450 (NativeOAuthSignInSheet shows the session token's form instead of the browser when that is the sign-in, see Session token sign-in; the browser, the switch and their errors unchanged); 2026-11-10, #2102 (a native token request's 401 stays an unexpected response, its 403 says Server refused access); 2026-10-27, at #1343, carrying #1329.
+
+## Session token sign-in
+
+Signing in to a dashboard with Hermes' deployment session token
+(`HERMES_DASHBOARD_SESSION_TOKEN`), sent in Hermes' own
+`X-Hermes-Session-Token` header, so `Authorization` stays free for a proxy
+in front of the dashboard that needs it (`Authorization: Basic`).
+
+**Siblings:** the sign-in decision (a Hermes that lists no provider and names
+`session-token` on `/api/status`) · the token's form, on the native sign-in's
+sheet, so the sign-in screen, Repair's Sign In to Reconnect, Settings' Sign In
+Again and the saved dashboards screen all open it · REST requests and socket
+tickets · the socket's upgrade · file downloads · location's host pass and
+the Pulse widget's (background sends) · sign-out (not needed: the token has
+no refresh token to revoke, and the Keychain copy is cleared with the native
+grant's) · the Extra headers editor's note under an `Authorization` row (see
+Settings connection page) · README.md (Connecting, under Cloudflare Access) ·
+the website's setup page and the notifier's support page (not needed: neither
+describes proxy sign-in or extra headers) · the plugin (not needed: its
+dashboard routes read no `Authorization`, and Conduit's own bearers for
+notifications and the Watch go to the relay) · the Private sign-in page
+switch (not needed: it still shows where a native sign-in may start and the
+token's form doesn't read it)
+
+**Code**
+- The token as a sign-in: `Conduit/Services/NativeOAuth.swift` (NativeOAuthTokenSet.sessionToken, requestHeader, authorize, sentAccessToken(in:); NativeOAuthAPIClient.requestJSON and mintTicket's asSessionToken; NativeOAuthSession.authorizedRequest, authorizeUpgrade; NativeOAuthLoginModel.signIn(sessionToken:))
+- The form and when it opens: `Conduit/Services/NativeOAuth.swift` (NativeOAuthSignInSheet.step, SessionTokenSignInForm), `Conduit/Services/CustomHeaders.swift` (CustomHeaderStore.sendsAuthorization)
+- The decision: `Conduit/Services/DashboardSignIn.swift` (DashboardSignInResolver.supportsSessionToken, mode), `Conduit/Services/NativeAuthClient.swift` (supportsSessionToken, HermesProviderCheck.advertisesSessionToken)
+- Upgrade and background sends: `Conduit/Services/DashboardRequestAuthorizer.swift` (authorizeUpgrade), `Conduit/Services/AppState+Location.swift` (dashboardHostPass, locationHostTokensRotated)
+- Tests: `ConduitTests/NativeOAuthTests.swift` (testASessionTokenGoesInHermesOwnHeaderNotAuthorization, testASessionTokenSignInNeverRefreshesAndKeepsAProxysAuthorization), `ConduitTests/DashboardRequestAuthorizerTests.swift` (testASessionTokenUpgradeKeepsAProxysAuthorizationHeader), `ConduitTests/DashboardSignInDecisionTests.swift` (testAnEmptyProviderListWithTheSessionTokenProviderSignsInWithTheToken), `ConduitTests/NativeAuthClientTests.swift` (testSessionTokenCapabilityReadsTheStatusBodysProviders), `ConduitTests/CustomHeadersTests.swift` (testAServerSendsAuthorizationOnlyWithAValidAuthorizationHeader, testOnlyAnAuthorizationHeaderCarriesANote)
+
+**Rulings**
+- Conduit works behind a proxy that needs `Authorization: Basic` on every request (Eric, 2026-11-14, issue 2442, #2450), and the support is additive: a dashboard that signs in today sends exactly what it sent before. Nothing here runs unless Hermes lists no sign-in provider, or the server has an `Authorization` extra header.
+- Hermes takes a native sign-in's tokens only as `Authorization: Bearer` and takes only its deployment token in `X-Hermes-Session-Token`, tried when the request has no bearer and no session cookie. So the token is kept as the dashboard's native sign-in (provider `session-token`, no refresh token, nothing to refresh) and every request that would carry the bearer carries that header instead, leaving an `Authorization` header already on the request alone. A 401 ends the sign-in and clears it, as a native grant with no refresh token.
+- The form opens in place of the system browser in two cases: discovery found only the session token (Hermes answers an empty provider list, which used to be "unexpected server response"), or the server has an `Authorization` extra header, the sign-in would be native and Hermes names the `session-token` provider. A status that fails or can't be read leaves what there was: the browser sign-in in the second case, and "unexpected server response" in the first, never "can't reach the server" after discovery reached it. A dashboard with a password offers the password as before, and it already works behind such a proxy (cookies).
+- A token Hermes refuses is said on the form and can be corrected; any other failure ends the sign-in the way a native sign-in's does. Cancelling or closing the form while Hermes checks the token ends it there: nothing connects, no failure is shown, and the token is not kept.
+- Checked against Hermes 0.23.1 with `Authorization: Basic` on every request: password cookies and the session token each pass REST, `/api/auth/ws-ticket` and the `/api/ws` upgrade (2026-11-14).
+
+**Open gaps**
+- Not run on a device behind a real Pangolin, Caddy or nginx Basic-auth proxy; the reporter of issue 2442 is asked to try it.
+- A dashboard whose only sign-in is an OAuth provider, behind such a proxy, with no session token set on the host, still can't sign in: the system browser can't carry the proxy's header and Hermes takes those tokens only as `Authorization: Bearer`. The editor's note says what to set.
+
+**Checked:** 2026-11-14, #2450 (added).
 
 ## Native OAuth token transport
 
@@ -4232,7 +4275,7 @@ rotation; see Maps lookups)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #2031 (a saved refresh posts the rotation notice for location's host pass; see Maps lookups); 2026-11-04, #1737 (an invalidated client cancels instead of raising).
+**Checked:** 2026-11-14, #2450 (a session token sign-in rides this transport with Hermes' own header and no refresh, see Session token sign-in; a native sign-in's requests unchanged); 2026-11-08, #2031 (a saved refresh posts the rotation notice for location's host pass; see Maps lookups); 2026-11-04, #1737 (an invalidated client cancels instead of raising).
 
 ## Dashboard sign-in redirects
 
@@ -6139,7 +6182,7 @@ native sign-in refresh)
 - The HTTPS timeout in issue 2028 isn't confirmed as the stale host pass; the device log tells on the next report.
 - The host pass's save after a token rotation (AppState's observer, the rebuild and the bearer swap) has no test: no location test binds the shared LocationSharingController yet. Only the rotation notice is tested (#2031).
 
-**Checked:** 2026-11-08, #2052 with notifier #635 (the Bot Chat runs `conduit_maps` itself under every setting, strict included; Siblings); 2026-11-08, #2031 (the push extension's ATS block and the host pass after a token refresh, issue 2028; the voice tool, navigate and the notifier needed no change); 2026-11-08, #2032 with notifier #621 (a Bot Chat on lookups runs `conduit_maps` itself, navigate included; Siblings); 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
+**Checked:** 2026-11-14, #2450 (a session-token sign-in's pass carries `X-Hermes-Session-Token` and no expiry, and a rotation leaves it alone: that token never rotates, see Session token sign-in; a native sign-in's bearer swap unchanged); 2026-11-08, #2052 with notifier #635 (the Bot Chat runs `conduit_maps` itself under every setting, strict included; Siblings); 2026-11-08, #2031 (the push extension's ATS block and the host pass after a token refresh, issue 2028; the voice tool, navigate and the notifier needed no change); 2026-11-08, #2032 with notifier #621 (a Bot Chat on lookups runs `conduit_maps` itself, navigate included; Siblings); 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
 
 ## Phone data sync with the host
 - Background time: `Conduit/Services/BackgroundTaskHold.swift` (LocationSharingController's fix and send work)
@@ -6747,6 +6790,7 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 - Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
 - Docs: `README.md`, `notifier/docs/support/index.html`
 - Tests: `ConduitTests/ConnectionFailureTests+ChatTraces.swift` (testGatewayDiagnosticsWithNoDashboardSayNotConnected)
+- Extra headers: `Conduit/Services/CustomHeaders.swift` (CustomHeaderPolicy, CustomHeaderStore), `Conduit/Views/CustomHeadersEditor.swift` (also opened from the sign-in card); tests `ConduitTests/CustomHeadersTests.swift`
 - Update Hermes: `Conduit/Services/HermesUpdate.swift` (HermesUpdateCheck, HermesUpdateState, HermesUpdater), `Conduit/Services/AppState+HermesUpdate.swift`, `Conduit/Views/HermesUpdateViews.swift` (HermesUpdateSection); tests `ConduitTests/GatewayRestartTests+HermesUpdate.swift`
 
 **Rulings**
@@ -6754,11 +6798,12 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 - Diagnostics & logs opens whatever the connection: signed out, never connected or reconnecting, it still shows and shares what the device keeps (the last connection, device reports, chat traces). With no dashboard to ask, its gateway part says it isn't connected, and the connectors and gateway logs are left out until there's something to show; from the sign-in screen it has no gateway part or gateway buttons at all. Connecting or dropping while it's open reads the gateway again, and so does a restart ending, wherever the page is open (#1841). Its sheets have Done, for the iPad app on a Mac (Eric, 2026-11-05: Diagnostics & logs couldn't be opened while disconnected; #1840).
 - Update Hermes asks first, then runs `hermes update` on the host through the dashboard (`POST /api/hermes/update`) and follows its action log: the dashboard going quiet is the restart, sign-in is renewed when it's back, and Conduit reconnects. It reads only the receipt with its own action id (a partial run counts as updated), gives up after 6 minutes updating or 4 minutes coming back with "Hermes isn't back yet", and names the new version from a fresh check. An install the dashboard can't update (Docker, pip) shows the command to run on the host instead; a Hermes without the routes says so (2026-11-13, #2364, as Hermes Desktop's).
 - Restart Gateway, Restart now, Update Hermes and the plugin update exclude each other: none starts while another restarts Hermes on that dashboard (a Hermes check doesn't count), Restart now says "Wait for the Hermes update to finish." and the plugin update says the same as its reason (2026-11-13, #2384, issue 2373: only Update Hermes waited for the others).
+- An extra header never replaces one the request already carries, so an `Authorization` extra header (a proxy's `Authorization: Basic`, as Pangolin's header auth, Caddy's `basic_auth` and nginx's `auth_basic` ask for) is left off only the requests of a native (system browser) sign-in, whose tokens Hermes takes only as `Authorization: Bearer`. A password or browser-view sign-in (cookies) and a session token sign-in send it on every request: see Session token sign-in. Conduit's other bearers (notifications, the Watch) go to the relay, never through the proxy. The editor still saves the header and says under the row that a system-browser sign-in leaves it off and what to sign in with instead, in orange, read once by VoiceOver as its own text; it never blocks Save. The Settings caption and the editor's intro are unchanged; README says it under Cloudflare Access (2026-11-14, #2450, issue 2442; Eric chose full support for these proxies).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-14, #2450 (the Extra headers editor says when an Authorization header is left off and README covers proxies that need it, issue 2442; its code and tests listed); 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 

@@ -122,16 +122,17 @@ final class DashboardRequestAuthorizer: DashboardUpgradeAuthorizing {
     /// (replacing any Cookie header already there). In native mode the
     /// grant's access token is attached as `Authorization: Bearer`
     /// (refreshed first once expired) in place of any Authorization header
-    /// already there. A request for another address gets neither.
+    /// already there; a session-token sign-in's token goes in Hermes' own
+    /// header instead, and an Authorization header already there (a proxy's
+    /// extra header) stays. A request for another address gets neither.
     func authorizeUpgrade(_ request: URLRequest) async throws -> URLRequest {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         var authorized = request
         authorized.setValue(nil, forHTTPHeaderField: "Cookie")
         guard let url = request.url, covers(url) else { return authorized }
         if let nativeSession {
-            let bearer = try await nativeSession.upgradeBearer()
+            try await nativeSession.authorizeUpgrade(&authorized)
             guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
-            authorized.setValue("Bearer \(bearer)", forHTTPHeaderField: "Authorization")
             return authorized
         }
         guard let cookieUpgradeCookies else { return authorized }

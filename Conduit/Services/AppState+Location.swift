@@ -131,8 +131,10 @@ extension AppState {
               // A native sign-in's pass: its bearer token and no cookies. A
               // cookie pass may carry a proxy's own Authorization header,
               // which is left alone.
+              // A session token never rotates, so its pass is left too.
               pass.headers["Cookie"] == nil, pass.headers["Authorization"]?.hasPrefix("Bearer ") == true,
-              let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty
+              let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty,
+              !tokens.isSessionToken
         else { return }
         pass.headers["Authorization"] = "Bearer \(tokens.accessToken)"
         pass.expiresAt = tokens.expiresAt > 0 ? Date(timeIntervalSince1970: tokens.expiresAt) : nil
@@ -183,8 +185,11 @@ extension AppState {
             guard let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty else {
                 return nil
             }
-            headers["Authorization"] = "Bearer \(tokens.accessToken)"
-            if tokens.expiresAt > 0 { expiresAt = Date(timeIntervalSince1970: tokens.expiresAt) }
+            // A session token goes in Hermes' own header, beside a proxy's
+            // Authorization extra header.
+            let header = tokens.requestHeader
+            headers[header.name] = header.value
+            if tokens.expiresAt > 0, !tokens.isSessionToken { expiresAt = Date(timeIntervalSince1970: tokens.expiresAt) }
         } else {
             var cookies = DashboardCookiePersistence.mirroredCookies(dashboardID: dashboardID)
             if PhoneScenePresence.isInForeground, let live = await webKitCookies(bridge) { cookies += live }
