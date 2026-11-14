@@ -711,7 +711,7 @@ extension AppState {
     /// turn whose chat a one-off read found absent is settled even with the
     /// chat list's poll off screen. One at a time: a read already waiting
     /// settles every absence seen meanwhile.
-    private func scheduleLiveTurnRegistryRecheck() {
+    func scheduleLiveTurnRegistryRecheck() {
         guard liveTurnRegistryRecheck == nil else { return }
         liveTurnRegistryRecheck = Task { [weak self] in
             try? await Task.sleep(for: .seconds(LiveTurnActivities.registryAbsenceSpan + 1))

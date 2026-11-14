@@ -438,7 +438,8 @@ struct BotRosterView: View {
             onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
             canMerge: { dragged in canMerge(dragged, with: bot) },
             onSlide: { dragged in slideBot(dragged, onto: bot) },
-            onToggleRoom: { toggleNewRoom(bot) }
+            onToggleRoom: { toggleNewRoom(bot) },
+            needsYou: appState.needsYou
         )
     }
 
@@ -924,6 +925,18 @@ struct BotRosterView: View {
         // has found the gestures' menu, so the tip goes.
         .onChange(of: showingReorder) { _, showing in if showing { BotsHomeGesturesTip.learned() } }
         .onChange(of: newRoom.isEmpty) { _, empty in if !empty { BotsHomeGesturesTip.learned() } }
+        // Each bot's chats' Running and waits, read while Bots Home shows:
+        // the Chats list's poll stops here.
+        .task(id: "\(botsHomeShowsLiveStatus)|\(appState.isConnected)|\(visibleBotNames)") {
+            guard botsHomeShowsLiveStatus, appState.isConnected else { return }
+            await appState.runBotsHomeLiveStatus(bots: visibleBotNames)
+        }
+    }
+
+    /// Bots Home is on screen: its tab shows, nothing is pushed over it and
+    /// no sheet covers it.
+    private var botsHomeShowsLiveStatus: Bool {
+        shell.isTabActive && !shell.isRootCovered && !coveredBySheet
     }
 
     private func botModeFailure(_ message: String) -> some View {

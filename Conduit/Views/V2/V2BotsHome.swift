@@ -1000,24 +1000,32 @@ enum BotPortraitStatus: Equatable {
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
-    /// the Bot Chat's own background agents, talking in a room, and waiting
-    /// on another bot. `rooms`: the talking rooms it's in, which show
-    /// without the plugin's workstreams too. The Bot Chat's agents show with
-    /// its workstreams off too: then it's the one delegating.
-    static func of(_ snapshot: BotWorkSnapshot?, talkingIn rooms: [String] = []) -> BotPortraitStatus {
+    /// the Bot Chat's own background agents, talking in a room, its chats'
+    /// running turns, and waiting on another bot. `rooms`: the talking
+    /// rooms it's in, which show without the plugin's workstreams too. The
+    /// Bot Chat's agents show with its workstreams off too: then it's the
+    /// one delegating. `chats`: what its chats do (its profile's live
+    /// registry and the plugin's waits, its workstreams left out), which
+    /// show without the workstreams too: a chat waiting on the user counts
+    /// as needing them, and running chats add to its work, after its rooms
+    /// when nothing else works (a room's own turns run in the bot's chats).
+    static func of(_ snapshot: BotWorkSnapshot?, talkingIn rooms: [String] = [], chats: BotLiveChats? = nil) -> BotPortraitStatus {
         let quiet: BotPortraitStatus = rooms.isEmpty ? .idle : .inRooms(rooms)
-        guard let snapshot else { return quiet }
-        let agents = snapshot.botChatAgentCount
-        guard snapshot.isOn else { return agents > 0 ? .agents(agents) : quiet }
-        if snapshot.needsYouCount > 0 { return .needsYou(snapshot.needsYouCount) }
-        if let ask = snapshot.items.first(where: {
+        let chats = chats ?? BotLiveChats()
+        let work = snapshot?.isOn == true ? snapshot : nil
+        let needsYou = (work?.needsYouCount ?? 0) + chats.waiting
+        if needsYou > 0 { return .needsYou(needsYou) }
+        if let ask = work?.items.first(where: {
             $0.kind == .askIn && !$0.isClosed && ["starting", "running"].contains($0.status) && !$0.otherBot.isEmpty
         }) {
             return .helping(ask.otherBot)
         }
-        if snapshot.workingCount > 0 { return .working(snapshot.workingCount) }
+        if let work, work.workingCount > 0 { return .working(work.workingCount + chats.working) }
+        let agents = snapshot?.botChatAgentCount ?? 0
         if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
+        if chats.working > 0 { return .working(chats.working) }
+        guard let snapshot = work else { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
         }) {
@@ -1103,6 +1111,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// while still in hand.
     var onSlide: ((_ dragged: String) -> Void)?
     var onToggleRoom: (() -> Void)?
+    /// What waits on the user in each profile's chats (Needs you), which
+    /// the status counts.
+    @ObservedObject var needsYou: NeedsYouStore
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -1147,8 +1158,29 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// Without the plugin's workstreams, nothing to show, even if a read
     /// from before is still kept (the overview hides Work then too).
     private var status: BotPortraitStatus {
-        .of(appState.servesBotWorkstreams ? work.snapshot(bot.name) : nil,
-            talkingIn: appState.talkingRooms(of: bot.name).map(\.name))
+        let snapshot = appState.servesBotWorkstreams ? work.snapshot(bot.name) : nil
+        return .of(snapshot,
+                   talkingIn: appState.talkingRooms(of: bot.name).map(\.name),
+                   chats: appState.botLiveChats(bot.name, leavingOut: snapshot?.knownSessionIDs ?? []))
+    }
+
+    /// The pill's tap: a wait in the bot's chats, when none of its
+    /// workstreams waits, opens that chat at its card, as Needs you does;
+    /// anything else opens the overview, where its work is.
+    private func statusTapped(_ status: BotPortraitStatus) {
+        if let wait = chatWaitThePillOpens(status) {
+            appState.openNeedsYou(wait)
+            return
+        }
+        onOverview()
+    }
+
+    /// The wait in the bot's chats its "needs you" opens: only when none
+    /// of its workstreams waits, whose list the overview shows.
+    private func chatWaitThePillOpens(_ status: BotPortraitStatus) -> NeedsYouItem? {
+        guard case .needsYou = status,
+              (appState.servesBotWorkstreams ? work.snapshot(bot.name)?.needsYouCount ?? 0 : 0) == 0 else { return nil }
+        return appState.newestBotChatWait(bot.name)
     }
 
     private var color: Color { appState.botColor(bot) }
@@ -1179,6 +1211,13 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
             .accessibilityAction(named: Text(AppLocalization.string("Overview", table: .bots))) { onOverview() }
+            // The pill is hidden from VoiceOver: a wait in the bot's chats
+            // that it opens gets its own action, beside Overview.
+            .accessibilityActions {
+                if let wait = chatWaitThePillOpens(status) {
+                    Button(AppLocalization.string("Needs you")) { appState.openNeedsYou(wait) }
+                }
+            }
             .v2SelectedTrait(selection)
 
             // The name, and the ⓘ beside it; at accessibility sizes the ⓘ
@@ -1305,7 +1344,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         } else {
             Button {
                 Haptics.light()
-                onOverview()
+                statusTapped(status)
             } label: {
                 pill(status)
             }
