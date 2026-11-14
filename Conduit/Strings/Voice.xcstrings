@@ -47449,6 +47449,580 @@
         }
       }
     },
+    "Microphone and output" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon und Ausgabe"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micrófono y salida"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Micro et sortie"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon dan output"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microfono e uscita"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクと出力"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크 및 출력"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon i wyjście"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Microfone e saída"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Микрофон и вывод"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofon ve çıkış"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风与输出"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風與輸出"
+          }
+        }
+      }
+    },
+    "Chooses the microphone and its Mic Mode" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählt das Mikrofon und seinen Mikrofonmodus"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige el micrófono y su modo de micrófono"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisit le micro et son mode micro"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memilih mikrofon dan Mode Mik-nya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sceglie il microfono e la sua modalità microfono"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクとそのマイクモードを選びます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크와 마이크 모드를 선택합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybiera mikrofon i jego tryb mikrofonu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolhe o microfone e o Modo do Microfone"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбирает микрофон и его режим микрофона"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonu ve Mikrofon Modu'nu seçer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择麦克风及其麦克风模式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇麥克風及其麥克風模式"
+          }
+        }
+      }
+    },
+    "Chooses where the voice plays" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählt, wo die Stimme abgespielt wird"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige dónde suena la voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisit où la voix est jouée"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memilih tempat suara diputar"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sceglie dove si sente la voce"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声を再生する場所を選びます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성이 재생될 곳을 선택합니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybiera, gdzie odtwarzany jest głos"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolhe onde a voz toca"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбирает, где звучит голос"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesin nerede çalacağını seçer"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择语音从哪里播放"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇語音從哪裡播放"
+          }
+        }
+      }
+    },
+    "Choose the microphone calls use and its Mic Mode, such as Voice Isolation to keep the room's sound out or Wide Spectrum to pick up everyone nearby. iOS remembers your choice for Conduit's calls." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle das Mikrofon für Anrufe und seinen Mikrofonmodus, etwa Sprachisolation, um Raumgeräusche auszublenden, oder Großes Spektrum, um alle in der Nähe aufzunehmen. iOS merkt sich deine Wahl für Anrufe in Conduit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige el micrófono que usan las llamadas y su modo de micrófono, como Aislamiento de voz para dejar fuera el ruido de la sala o Espectro amplio para captar a todos los que estén cerca. iOS recuerda tu elección para las llamadas de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisis le micro utilisé pour les appels et son mode micro, comme Isolement de la voix pour couper les bruits de la pièce ou Spectre étendu pour capter tout le monde autour. iOS retient ton choix pour les appels de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih mikrofon yang dipakai panggilan dan Mode Mik-nya, seperti Isolasi Suara untuk meredam suara ruangan atau Spektrum Lebar untuk menangkap semua orang di dekatmu. iOS mengingat pilihanmu untuk panggilan Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli il microfono usato dalle chiamate e la sua modalità microfono, come Isolamento voce per tenere fuori i rumori della stanza o Spettro ampio per captare tutti quelli vicini. iOS ricorda la tua scelta per le chiamate di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話で使うマイクとそのマイクモードを選びます。部屋の音を抑える「声を分離」や、近くの全員の声を拾う「ワイドスペクトル」などがあります。選んだ設定はiOSがConduitの通話用に記憶します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화에 사용할 마이크와 마이크 모드를 선택하세요. 방 소음을 줄이는 목소리 분리나 주변 사람 모두의 소리를 담는 와이드 스펙트럼 등이 있습니다. iOS가 Conduit 통화에 쓸 선택을 기억합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz mikrofon używany w rozmowach i jego tryb mikrofonu, na przykład Izolowanie głosu, aby odciąć dźwięki pokoju, albo Szerokie spektrum, aby zbierać głos wszystkich w pobliżu. iOS zapamięta Twój wybór dla rozmów w Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha o microfone que as chamadas usam e o Modo do Microfone, como Isolamento de Voz para deixar o som do ambiente de fora ou Amplo Espectro para captar todo mundo por perto. O iOS lembra sua escolha para as chamadas do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите микрофон для звонков и его режим микрофона, например «Изоляция голоса», чтобы убрать шум комнаты, или «Широкий спектр», чтобы слышать всех рядом. iOS запомнит выбор для звонков Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramaların kullandığı mikrofonu ve Mikrofon Modu'nu seçin; örneğin odadaki sesi dışarıda tutmak için Ses Yalıtımı, yakındaki herkesi duymak için Geniş Spektrum. iOS, Conduit aramaları için seçiminizi hatırlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择通话使用的麦克风及其麦克风模式，例如用“语音突显”挡住房间里的声音，或用“宽谱”收进附近所有人的声音。iOS 会为 Conduit 的通话记住你的选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇通話使用的麥克風及其麥克風模式，例如用「語音突顯」擋住房間裡的聲音，或用「寬頻譜」收進附近所有人的聲音。iOS 會為 Conduit 的通話記住你的選擇。"
+          }
+        }
+      }
+    },
+    "Mic Mode, such as Voice Isolation to keep the room's sound out, is in Control Center during a call. On iOS 26 and later you can choose the microphone and its Mic Mode here." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Den Mikrofonmodus, etwa Sprachisolation gegen Raumgeräusche, findest du während eines Anrufs im Kontrollzentrum. Ab iOS 26 kannst du Mikrofon und Mikrofonmodus hier wählen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modo de micrófono, como Aislamiento de voz para dejar fuera el ruido de la sala, está en el Centro de control durante una llamada. En iOS 26 y posterior puedes elegir aquí el micrófono y su modo de micrófono."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le mode micro, comme Isolement de la voix pour couper les bruits de la pièce, se trouve dans le centre de contrôle pendant un appel. Sous iOS 26 et ultérieur, tu peux choisir ici le micro et son mode micro."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode Mik, seperti Isolasi Suara untuk meredam suara ruangan, ada di Pusat Kontrol selama panggilan. Di iOS 26 dan lebih baru, kamu bisa memilih mikrofon dan Mode Mik-nya di sini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La modalità microfono, come Isolamento voce per tenere fuori i rumori della stanza, si trova nel Centro di Controllo durante una chiamata. Da iOS 26 puoi scegliere qui il microfono e la sua modalità microfono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "部屋の音を抑える「声を分離」などのマイクモードは、通話中にコントロールセンターで選べます。iOS 26以降では、マイクとそのマイクモードをここで選べます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방 소음을 줄이는 목소리 분리 같은 마이크 모드는 통화 중 제어 센터에 있습니다. iOS 26 이상에서는 여기에서 마이크와 마이크 모드를 선택할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryb mikrofonu, na przykład Izolowanie głosu odcinające dźwięki pokoju, znajdziesz w centrum sterowania podczas rozmowy. W iOS 26 i nowszym możesz wybrać tutaj mikrofon i jego tryb mikrofonu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Modo do Microfone, como Isolamento de Voz para deixar o som do ambiente de fora, fica na Central de Controle durante uma chamada. No iOS 26 ou posterior, você pode escolher aqui o microfone e o Modo do Microfone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Режим микрофона, например «Изоляция голоса» против шума комнаты, во время звонка находится в Пункте управления. В iOS 26 и новее микрофон и его режим можно выбрать здесь."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odadaki sesi dışarıda tutan Ses Yalıtımı gibi Mikrofon Modu, arama sırasında Denetim Merkezi'ndedir. iOS 26 ve sonrasında mikrofonu ve Mikrofon Modu'nu burada seçebilirsiniz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风模式（例如挡住房间声音的“语音突显”）在通话期间位于控制中心。在 iOS 26 及更高版本中，可以在这里选择麦克风及其麦克风模式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風模式（例如擋住房間聲音的「語音突顯」）在通話期間位於控制中心。在 iOS 26 及以上版本中，可以在這裡選擇麥克風及其麥克風模式。"
+          }
+        }
+      }
+    },
+    "Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call. Both pickers are on the call screen too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe laufen über das verbundene Headset, die AirPods oder das Auto, sonst über den Lautsprecher; Anrufe von Hermes beginnen wie ein Telefonat an der Hörmuschel. Beide Auswahlen gibt es auch im Anrufbildschirm."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas suenan en los auriculares, los AirPods o el coche que estén conectados y, si no, en el altavoz; las llamadas de Hermes empiezan en el auricular del teléfono, como una llamada normal. Ambos selectores también están en la pantalla de llamada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels passent par le casque, les AirPods ou la voiture connectés, sinon par le haut-parleur ; les appels de Hermes commencent sur l'écouteur, comme un appel téléphonique. Les deux sélecteurs sont aussi sur l'écran d'appel."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan diputar di headset, AirPods, atau mobil yang terhubung, atau di speaker jika tidak ada; panggilan dari Hermes dimulai di speaker telinga, seperti panggilan telepon. Kedua pemilih juga ada di layar panggilan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate si sentono dalle cuffie, dagli AirPods o dall'auto collegati, altrimenti dall'altoparlante; le chiamate da Hermes iniziano dall'auricolare, come una telefonata. Entrambi i selettori sono anche nella schermata di chiamata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話は接続中のヘッドセット、AirPods、車で再生され、なければスピーカーで再生されます。Hermesからの通話は電話と同じように受話口で始まります。どちらの選択も通話画面にあります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화는 연결된 헤드셋, AirPods 또는 차량으로 재생되고, 없으면 스피커로 재생됩니다. Hermes에서 온 통화는 전화처럼 수화부에서 시작합니다. 두 선택기는 통화 화면에도 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowy grają w podłączonym zestawie słuchawkowym, AirPods lub samochodzie, a w przeciwnym razie z głośnika; rozmowy od Hermesa zaczynają się w słuchawce, jak połączenie telefoniczne. Oba wybory są też na ekranie rozmowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas tocam no fone, nos AirPods ou no carro conectado, ou então no alto-falante; chamadas do Hermes começam no receptor, como uma ligação. Os dois seletores também estão na tela da chamada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки звучат в подключённой гарнитуре, AirPods или машине, а если их нет — в динамике; звонки от Hermes начинаются в разговорном динамике, как обычный звонок. Оба выбора есть и на экране звонка."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramalar bağlı kulaklıkta, AirPods'ta veya araçta, yoksa hoparlörde çalar; Hermes'ten gelen aramalar telefon araması gibi ahizede başlar. İki seçici arama ekranında da var."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话在已连接的耳机、AirPods 或汽车上播放，否则用扬声器；来自 Hermes 的通话像电话一样从听筒开始。两个选择在通话界面上也有。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話會在已連接的耳機、AirPods 或汽車上播放，否則使用揚聲器；來自 Hermes 的通話會像電話一樣從聽筒開始。兩個選擇在通話畫面上也有。"
+          }
+        }
+      }
+    },
+    "There is no level to set for when the microphone opens. Classic voice listens for your voice above the room's noise and adjusts as the room changes; in the live modes the provider decides when you start and stop speaking." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einen Pegel, ab dem sich das Mikrofon öffnet, stellst du nicht ein. Klassische Sprache erkennt deine Stimme über dem Raumgeräusch und passt sich an, wenn sich der Raum ändert; in den Live-Modi entscheidet der Anbieter, wann du zu sprechen beginnst und aufhörst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No hay un nivel que ajustar para que se abra el micrófono. La voz clásica detecta tu voz por encima del ruido de la sala y se adapta cuando la sala cambia; en los modos en vivo, el proveedor decide cuándo empiezas y terminas de hablar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il n'y a pas de niveau à régler pour l'ouverture du micro. La voix classique repère ta voix au-dessus du bruit de la pièce et s'adapte quand la pièce change ; dans les modes en direct, c'est le fournisseur qui décide quand tu commences et finis de parler."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada level yang perlu diatur untuk kapan mikrofon terbuka. Suara klasik mendengarkan suaramu di atas kebisingan ruangan dan menyesuaikan saat ruangan berubah; di mode live, penyedia yang menentukan kapan kamu mulai dan berhenti bicara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non c'è un livello da impostare per l'apertura del microfono. La voce classica riconosce la tua voce sopra il rumore della stanza e si adatta quando la stanza cambia; nelle modalità live è il fornitore a decidere quando inizi e smetti di parlare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "マイクが反応するレベルを設定する項目はありません。クラシックボイスは部屋の雑音より大きいあなたの声を聞き取り、部屋の状況に合わせて調整します。ライブモードでは、話し始めと話し終わりをプロバイダが判断します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "마이크가 열리는 레벨을 따로 설정하지는 않습니다. 클래식 음성은 방 소음보다 큰 목소리를 알아듣고 방의 상황이 바뀌면 맞춰 조정합니다. 라이브 모드에서는 말을 시작하고 끝내는 시점을 제공자가 판단합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie ma poziomu do ustawienia, przy którym otwiera się mikrofon. Głos klasyczny wychwytuje Twój głos ponad hałasem pokoju i dostosowuje się, gdy pokój się zmienia; w trybach na żywo to dostawca decyduje, kiedy zaczynasz i kończysz mówić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não há nível a ajustar para quando o microfone abre. A voz clássica ouve sua voz acima do ruído do ambiente e se ajusta quando o ambiente muda; nos modos ao vivo, o provedor decide quando você começa e termina de falar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уровня, с которого открывается микрофон, нет. Классический голос слышит ваш голос поверх шума комнаты и подстраивается, когда обстановка меняется; в живых режимах провайдер решает, когда вы начали и закончили говорить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mikrofonun açılacağı bir seviye ayarı yoktur. Klasik ses, odadaki gürültünün üstündeki sesinizi algılar ve oda değiştikçe uyum sağlar; canlı modlarda konuşmaya ne zaman başlayıp bitirdiğinize sağlayıcı karar verir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麦克风何时打开没有可设置的音量门槛。经典语音会在房间噪音之上听出你的声音，并随房间变化自动调整；在实时模式中，由服务提供方判断你何时开始和结束说话。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "麥克風何時開啟沒有可設定的音量門檻。經典語音會在房間噪音之上聽出你的聲音，並隨房間變化自動調整；在即時模式中，由服務提供者判斷你何時開始和結束說話。"
+          }
+        }
+      }
+    },
     "End the call and switch?" : {
       "localizations" : {
         "de" : {

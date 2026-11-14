@@ -411,6 +411,13 @@ final class AppState: ObservableObject {
     }
 
     var liveSessionStatusProfile: String?
+    /// The registries of the other profiles something on screen shows (All,
+    /// a project's page, Bots Home), read by name beside the profile in
+    /// use's.
+    @Published var otherProfilesLiveStatus = OtherProfilesLiveStatus()
+    /// What on screen shows other profiles' live status, by what asked:
+    /// their registries are read with the profile in use's while it shows.
+    var liveStatusAsks: [String: LiveStatusAsk] = [:]
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     weak var activeListUnsupportedClient: HermesClient?
@@ -3220,6 +3227,10 @@ final class AppState: ObservableObject {
     @Published var activeRoomHomeName: String?
     /// On the home: who's in the open room with none of their agents.
     @Published var activeRoomJustMe: [String] = []
+    /// Whether every Hermes in the open room is the user's own, over Links
+    /// both sides marked (`GET /rooms/people`'s `own_hermes`, plugin 0.169):
+    /// its bots work as at home, so Group Info offers no room choices.
+    @Published var activeRoomOwnHermes = false
     var activeRoomLooksReadAt: Date?
     /// When the open copy's room screen last read your agents' approvals:
     /// a quiet room's ticks read them only every

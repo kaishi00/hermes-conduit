@@ -92,6 +92,10 @@ struct ChatResumeLifecycleOperations {
     /// Production calls `session.active_list`; unsupported gateways throw and
     /// the caller degrades to the resume-based refresh.
     var probeActiveSessions: (@MainActor (HermesClient) async throws -> [LiveSessionStatus])?
+    /// Another profile's registry, read by name (`session.active_list`
+    /// with `profile`) for the rows and bots it shows. Not an init
+    /// parameter: tests set it on the value.
+    var probeProfileActiveSessions: (@MainActor (HermesClient, String) async throws -> [LiveSessionStatus])?
     var steer: (@MainActor (HermesClient, String, String) async throws -> Void)?
     var redirect: (@MainActor (
         HermesClient,

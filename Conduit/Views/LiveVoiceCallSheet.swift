@@ -264,6 +264,8 @@ struct LiveVoiceCallSheet: View {
                 if let modeSwitch {
                     VoiceModeCapsule(modeSwitch: modeSwitch)
                 }
+                // The microphone and output pickers (issue 2389).
+                VoiceCallAudioDeviceButtons()
             }
             .frame(maxWidth: .infinity)
 

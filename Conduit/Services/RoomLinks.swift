@@ -87,6 +87,14 @@ struct RoomLink: Identifiable, Equatable {
     /// `yours` (it sent one yours doesn't take). Nil when they match, and
     /// from plugins before 0.167.4.
     var behind: String? = nil
+    /// Your own Hermes on both ends (multi-instance plan, Rooms 1): this side
+    /// marked the Link as the owner's own (`own`), the other side did
+    /// (`theirOwn`), and both did (`ownLink`), which is what lets a room of
+    /// only your own Hermes run as at home. All false from plugins before
+    /// 0.169.
+    var own = false
+    var theirOwn = false
+    var ownLink = false
 }
 
 /// An invite this Hermes made that hasn't been used or run out.
@@ -166,6 +174,8 @@ enum RoomLinkName {
 /// rooms mailbox, which the plugin gives up to 50 seconds.
 struct RoomLinksClient {
     static let capability = "room-links"
+    /// `PUT /rooms/links/own`: marks a Link as one between your own Hermes.
+    static let ownCapability = "room-own-links"
     static let path = "/api/plugins/conduit_push/rooms"
     /// Past the plugin's own 50 s for a call that waits on the mailbox.
     static let mailboxTimeoutMilliseconds = 55_000
@@ -230,6 +240,17 @@ struct RoomLinksClient {
         return link
     }
 
+    /// Marks a linked Link as your own Hermes, or not: the Link as the
+    /// plugin now shows it. The other side's Hermes hears it through the
+    /// mailbox; only a Link both sides marked lifts the room rules.
+    func setOwn(_ linkID: String, own: Bool) async throws -> RoomLink {
+        let response = try await request("\(Self.path)/links/own", "PUT", ["link_id": linkID, "own": own],
+                                         Self.mailboxTimeoutMilliseconds)
+        guard response["ok"] as? Bool == true, let object = response["link"] as? [String: Any],
+              let link = Self.link(object) else { throw HermesError.invalidResponse }
+        return link
+    }
+
     static func parseInvite(_ response: [String: Any]) throws -> RoomLinkInviteMade {
         guard response["ok"] as? Bool == true,
               let text = response["url"] as? String, let url = RoomLinkURL(text),
@@ -279,7 +300,9 @@ struct RoomLinksClient {
               let status = object["status"] as? String,
               let words = Self.words(object["words"]) else { return nil }
         return RoomLink(id: id, name: name, status: status, words: words, createdAt: date(object["created_at"]),
-                        plugin: object["plugin"] as? String, behind: object["behind"] as? String)
+                        plugin: object["plugin"] as? String, behind: object["behind"] as? String,
+                        own: object["own"] as? Bool == true, theirOwn: object["their_own"] as? Bool == true,
+                        ownLink: object["own_link"] as? Bool == true)
     }
 
     static func invite(_ object: [String: Any]) -> RoomLinkInvite? {
@@ -321,6 +344,13 @@ extension AppState {
     /// notice.
     var canLinkRooms: Bool {
         notifierPlugin.reports(RoomLinksClient.capability)
+    }
+
+    /// Whether the host's plugin can mark a Link as one between your own
+    /// Hermes. No setting shows it: Conduit marks Links between Hermes it
+    /// holds (multi-instance plan).
+    var canMarkOwnLinks: Bool {
+        canLinkRooms && notifierPlugin.reports(RoomLinksClient.ownCapability)
     }
 
     /// A `conduit://link/` invite opened Conduit or was tapped in a chat:
