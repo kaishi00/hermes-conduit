@@ -11,8 +11,9 @@ import Foundation
 /// Only the reply's words are followed. Tool steps, reasoning and decision
 /// cards that come while the chat is away show when Hermes' rows land.
 struct BackgroundChat: Equatable {
-    /// Every id the chat answers to.
-    let sessionIDs: Set<String>
+    /// Every id the chat answers to. A runtime id Hermes binds to it while
+    /// it's away joins them (`answer(to:)`).
+    private(set) var sessionIDs: Set<String>
     /// The id its saved copy is kept under, when its row is listed.
     let durableSessionID: String?
     let title: String
@@ -24,6 +25,10 @@ struct BackgroundChat: Equatable {
     /// The reply streaming now, and its row while it has one.
     private(set) var replyText = ""
     private(set) var replyRowID: String?
+    /// Reply rows an unstreamed interim note cut off. They read as the
+    /// reply's words until it finishes, then the final row takes their
+    /// place, as the screen removes its partials at completion.
+    private(set) var cutOffReplyRowIDs: Set<String> = []
     private(set) var isRunning = true
     /// When the chat was left. The list keeps the newest first by when each
     /// joined it.
@@ -70,6 +75,13 @@ struct BackgroundChat: Equatable {
         !sessionID.isEmpty && sessionIDs.contains(sessionID)
     }
 
+    /// A runtime id the chat was bound to while away, so the rest of its
+    /// reply under that id still reaches it.
+    mutating func answer(to sessionID: String) {
+        guard !sessionID.isEmpty else { return }
+        sessionIDs.insert(sessionID)
+    }
+
     /// What applying an event did, so the app knows whether to save it.
     enum Outcome: Equatable {
         /// Not a reply event this copy follows.
@@ -99,13 +111,22 @@ struct BackgroundChat: Equatable {
             let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if alreadyStreamed, let replyRowID, let index = rows.lastIndex(where: { $0.id == replyRowID }) {
                 if !content.isEmpty { rows[index].content = content }
-            } else if !content.isEmpty {
-                rows.append(Self.row(id: "background-interim-\(UUID().uuidString)", content: content, author: profile))
+            } else {
+                // The reply so far wasn't the note: it stays until the
+                // final row replaces it (sealInterimCommentary on screen).
+                if !alreadyStreamed, let replyRowID { cutOffReplyRowIDs.insert(replyRowID) }
+                if !content.isEmpty {
+                    rows.append(Self.row(id: "background-interim-\(UUID().uuidString)", content: content, author: profile))
+                }
             }
             closeReply()
             return .updated
         case .messageComplete(_, let messageId, let content, _, _):
             let final = (content ?? replyText).trimmingCharacters(in: .whitespacesAndNewlines)
+            if !final.isEmpty, !cutOffReplyRowIDs.isEmpty {
+                rows.removeAll { cutOffReplyRowIDs.contains($0.id) }
+            }
+            cutOffReplyRowIDs = []
             if let replyRowID, let index = rows.lastIndex(where: { $0.id == replyRowID }) {
                 if !final.isEmpty { rows[index].content = final }
             } else if !final.isEmpty, rows.last?.content != final {
@@ -116,12 +137,15 @@ struct BackgroundChat: Equatable {
             isRunning = false
             return .ended
         case .messageError, .messageInterrupted:
+            // A reply that never finished keeps the words that came.
+            cutOffReplyRowIDs = []
             closeReply()
             isRunning = false
             return .ended
         case .sessionBusy(_, let busy):
             guard !busy else { return .ignored }
             guard isRunning else { return .ignored }
+            cutOffReplyRowIDs = []
             closeReply()
             isRunning = false
             return .ended

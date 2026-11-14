@@ -3353,7 +3353,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         // The switch sets the turn to synchronizing before it follows.
         state.turnState = .synchronizing
-        state.followChatLeftForProfileSwitch(turnWasRunning: true)
+        state.followChatBeingLeft(turnWasRunning: true)
         // As the switch does: the target profile's chat is adopted as is.
         state.activeProfile = "work"
         state.activeSessionId = "b"
@@ -3414,6 +3414,57 @@ final class OfflineChatCacheTests: XCTestCase {
                        "and its followed copy keeps up")
     }
 
+    /// A followed chat of another dashboard is let go on its next event,
+    /// which reaches neither the chat on screen nor a saved copy.
+    func testAnotherDashboardsFollowedChatIsLetGoOnItsNextEvent() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+
+        state.savedDashboardRegistry.activeDashboardID = UUID()
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil)))
+        store.waitForPendingWrites()
+        XCTAssertNotEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                          "Once upon a time.", "The reply's end saves nothing once it's let go")
+    }
+
+    /// A runtime id Hermes binds to a followed chat while it's away
+    /// (another device resumed it), as the identity index knows it, still
+    /// reaches the followed chat, which answers to it from then on.
+    func testAFollowedChatTakesARuntimeIDBoundWhileItsAway() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " a time")),
+                       "An id the index doesn't know isn't the followed chat's")
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "a", profile: state.activeProfile, source: .resume)
+        XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " a time")))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertEqual(state.backgroundChats.first?.answers(to: "rt-elsewhere"), true)
+        XCTAssertTrue(state.messages.isEmpty)
+    }
+
     /// The reply's events, one by one: an interim note Hermes already
     /// streamed is sealed in place, a failure ends it, and five left
     /// chats keep four, letting go of a finished one first.
@@ -3440,6 +3491,16 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(left.apply(.messageError(sessionId: "a", message: "boom")), .ended)
         XCTAssertFalse(left.isRunning)
         XCTAssertEqual(left.apply(.sessionBusy(sessionId: "a", busy: false)), .ignored)
+
+        // An interim note Hermes didn't stream cuts the reply off: the
+        // reply so far shows until the final row takes its place.
+        var cut = chat("c")
+        _ = cut.apply(.messageDelta(sessionId: "c", text: "Let me look"))
+        XCTAssertEqual(cut.apply(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false)), .updated)
+        XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Let me look", "Checking the map."])
+        XCTAssertEqual(cut.apply(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil)), .ended)
+        XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Checking the map.", "Let me look. Found it."],
+                       "The reply's opening words show once")
 
         var list: [BackgroundChat] = []
         list = BackgroundChat.adding(chat("1"), to: list)

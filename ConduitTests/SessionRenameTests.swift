@@ -571,6 +571,41 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNotEqual(appState.errorMessage, AppLocalization.string("Connect to Hermes to start a conversation."))
     }
 
+    // MARK: - New Chat leaves a chat mid-reply (all-live stage 2)
+
+    /// New Chat while the open chat's turn runs with no words yet (just
+    /// sent, or a tool step) follows that chat's reply, as an open or a
+    /// profile switch does, though the turn reads synchronizing by the time
+    /// the new chat is adopted. A New Chat that starts nothing lets go of it.
+    func testANewChatFollowsARunningTurnWithNoWordsYet() async {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.savedDashboardRegistry.activeDashboardID = UUID()
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
+        var createFails = true
+        let creator = appState.widgetSessionCreatorOverride
+        appState.widgetSessionCreatorOverride = { client, cwd in
+            if createFails { throw URLError(.notConnectedToInternet) }
+            return try await creator!(client, cwd)
+        }
+        appState.setActiveSessionState(id: "a")
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        appState.turnState = .running
+
+        await appState.createNewSession()
+        XCTAssertEqual(appState.activeSessionId, "a")
+        XCTAssertTrue(appState.backgroundChats.isEmpty, "No chat started: the one on screen isn't left")
+
+        appState.turnState = .running
+        createFails = false
+        let created = await appState.createNewSession()
+        XCTAssertEqual(created, "created-runtime")
+        XCTAssertEqual(appState.backgroundChats.first?.sessionIDs.contains("a"), true)
+        appState.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon a time"))
+        XCTAssertEqual(appState.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertFalse(appState.messages.contains { $0.content == "Once upon a time" },
+                       "The new chat never takes the left chat's words")
+    }
+
     // MARK: - A new chat in the list (issue 1454)
 
     func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {
