@@ -1616,6 +1616,66 @@ extension BotModeTests {
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .back)
     }
 
+    /// A sideways scroller scrolled away from its start takes a swipe
+    /// toward the trailing edge, so the swipe home waits; at its start, or
+    /// one that can't scroll, leaves the swipe home as it was.
+    @MainActor
+    func testASidewaysScrollerThatCanScrollBackHoldsTheSwipeHome() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+
+        let cards = UIScrollView(frame: CGRect(x: 0, y: 200, width: 390, height: 300))
+        cards.contentSize = CGSize(width: 1000, height: 300)
+        let card = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        cards.addSubview(card)
+        page.view.addSubview(cards)
+        let middle = CGPoint(x: 200, y: 300)
+
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(cards), "at its start")
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+
+        cards.contentOffset = CGPoint(x: 150, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(cards))
+        XCTAssertTrue(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+        XCTAssertFalse(
+            SidewaysScrollTouch.holdsBackSwipe(under: card, at: CGPoint(x: 10, y: 300), in: window),
+            "from the leading edge it's still the swipe back"
+        )
+
+        cards.isScrollEnabled = false
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(cards), "one that can't scroll")
+        cards.isScrollEnabled = true
+
+        let narrow = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        narrow.contentSize = CGSize(width: 390, height: 800)
+        narrow.contentOffset = CGPoint(x: 0, y: 200)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(narrow), "a scroller that only scrolls down")
+
+        // A pager the stack sits in isn't the page's scroller.
+        let pager = UIScrollView(frame: window.bounds)
+        pager.contentSize = CGSize(width: 1170, height: 844)
+        pager.contentOffset = CGPoint(x: 390, y: 0)
+        let pagerRoot = UIViewController()
+        let pagerPage = UIViewController()
+        let pagerStack = UINavigationController()
+        pagerStack.setViewControllers([pagerRoot, pagerPage], animated: false)
+        // The page's own view straight in the pager, standing in for the
+        // stack's views between them.
+        pagerPage.view.frame = window.bounds
+        pager.addSubview(pagerPage.view)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(pager))
+        let bubble = UIView(frame: CGRect(x: 50, y: 300, width: 200, height: 40))
+        pagerPage.view.addSubview(bubble)
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: bubble, at: middle, in: window))
+    }
+
     /// A workstream's screen holds back the zoom's own dismissals by their
     /// UIKit names, so a slow swipe can't pop past its Bot Chat to Bots Home.
     func testTheBackSwipeGateKnowsTheZoomsDismissals() {

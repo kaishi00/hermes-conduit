@@ -352,6 +352,8 @@ struct V2ConversationScreen: View {
         // chat (a Bot Chat or room grown from its portrait, Eric
         // 2026-11-06): the chat's title, Back and ⋯ come back.
         .background { NavigationBarKeeper() }
+        // Notes where each finger lands, for the swipe home above.
+        .background { SidewaysScrollTouchProbe() }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
@@ -564,8 +566,13 @@ struct V2ConversationScreen: View {
             // toward the trailing edge read as this swipe, and the chat
             // closed under the finger (issue 1948). Asked as the drag ends,
             // since a selection doesn't redraw the screen.
+            // Nor when it started on something that scrolls sideways and
+            // could scroll back (cards, a wide table or code block, chips):
+            // the drag is that scroller's, as iOS's own swipe lets it be.
+            // From the screen's leading edge it's still the swipe back.
             guard swipesBack, BotChatSwap.isBackSwipe(drag.translation),
-                  !ChatTextSelection.isShowing else { return }
+                  !ChatTextSelection.isShowing,
+                  !SidewaysScrollTouch.lastTouchCouldScrollBack else { return }
             if workstreamGoesBack != nil {
                 backToCoordinator()
             } else {
