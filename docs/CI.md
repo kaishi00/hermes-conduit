@@ -249,8 +249,10 @@ The cron moved to 09:47 UTC, after the timer in EDT and EST alike, as a
 backup: its plan job skips the run when a dispatched Nightly ran on `main` in
 the last 20 hours (cron runs don't count, so yesterday's skipped backup can't
 hide a missed timer), and otherwise runs with a warning: that no dispatch
-reached GitHub (the timer's journal says why: host down, token expired, or
-the dispatch refused), or, when the run lookup itself fails,
+reached GitHub (the timer's journal shows a refused or failed dispatch, such
+as an expired token; no entry for 03:17 means the service never started, so
+check that the host was up and `systemctl list-timers conduit-nightly.timer`),
+or, when the run lookup itself fails,
 that it's unknown whether the timer ran.
 
 When macOS arm64 capacity runs short, GitHub gives up on a queued job after

@@ -19,9 +19,12 @@ nightly run is dispatched from a timer on an always-on machine instead.
 - Backup: Nightly's own cron, at 09:47 UTC, skips itself when Nightly ran on
   `main` in the last 20 hours by dispatch (its own cron runs don't count),
   and otherwise runs with a warning. "The overnight timer ... missed" means
-  no dispatch reached GitHub: look at `journalctl -u conduit-nightly.service`
-  for why (host down at 3:17, token expired or revoked, GitHub refused the
-  dispatch); "Couldn't list Nightly runs" means
+  no dispatch reached GitHub. `journalctl -u conduit-nightly.service` shows a
+  failed or refused dispatch (token expired or revoked, GitHub refused it).
+  No entry for 3:17 means the service never started: the timer has
+  `Persistent=false`, so a host that was down at 3:17 leaves no trace there;
+  check the host's uptime and `systemctl list-timers conduit-nightly.timer`.
+  "Couldn't list Nightly runs" means
   GitHub's API failed and says nothing about the timer.
 
 ## Install (on the host, as root)

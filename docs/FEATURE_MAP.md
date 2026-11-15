@@ -6860,7 +6860,7 @@ rule that every job of a candidate's dispatched Nightly passes
 **Open gaps**
 - The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
 
-**Checked:** 2026-11-15, #2509 (the missed warning means no dispatch arrived, its causes listed, not diagnosed; the Code line names the dispatch tests); 2026-11-15, #2506 (CI.md and the timer README name the failed-lookup warning; a test checks the token reaches curl on stdin, not argv); 2026-11-15, #2501 (#2493's review leftovers: a failed run lookup runs the backup, the token stays out of argv, the first ruling names the timer's runs); 2026-11-15, #2493 (the overnight timer and the backup cron; the rerun follows the timer's title; CI.md and RELEASE_WORKFLOW.md updated); 2026-10-29, #1506.
+**Checked:** 2026-11-15, #2509 (the missed warning means no dispatch arrived, its causes listed, not diagnosed; a missing 03:17 journal entry points at the host or timer; the Code line names the dispatch tests); 2026-11-15, #2506 (CI.md and the timer README name the failed-lookup warning; a test checks the token reaches curl on stdin, not argv); 2026-11-15, #2501 (#2493's review leftovers: a failed run lookup runs the backup, the token stays out of argv, the first ruling names the timer's runs); 2026-11-15, #2493 (the overnight timer and the backup cron; the rerun follows the timer's title; CI.md and RELEASE_WORKFLOW.md updated); 2026-10-29, #1506.
 
 ## Smoke selection
 
