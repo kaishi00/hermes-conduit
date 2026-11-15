@@ -899,6 +899,11 @@ extension AppState {
             liveEngine = ScreenQuestionVoiceRouting.liveEngine(for: liveEngine)
         }
         if let liveEngine {
+            // A live call on another profile than the one asked for (it
+            // goes on across a profile switch, all-live stage 2) isn't the
+            // call asked for: the new start replaces it, as it did while
+            // the switch still ended it.
+            endLiveCallOnAnotherProfile(than: targetProfile)
             if targetProfile != activeProfile {
                 if let widgetLease {
                     _ = await switchProfile(to: targetProfile, reusing: nil, widgetLease: widgetLease)
@@ -1001,6 +1006,9 @@ extension AppState {
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
+        // A live call just ended off its profile hands its jobs back now,
+        // before this conversation starts any of its own.
+        handBackEndedCallJobsNow()
         if let rawProfile = profile {
             let requestedProfile = rawProfile.trimmingCharacters(in: .whitespacesAndNewlines)
             if !requestedProfile.isEmpty, requestedProfile != activeProfile {

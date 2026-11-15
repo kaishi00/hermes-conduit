@@ -91,6 +91,29 @@ extension AppState {
         isVoiceCallInProgress && !callSurvivesProfileSwitch
     }
 
+    /// A live call start for `profile` while a live call runs on another
+    /// one: that call isn't the one asked for, and since it goes on across
+    /// a profile switch the engine's own "already running" check would
+    /// keep it. It ends first and hands its jobs back. A call on the
+    /// profile asked for is kept, as before.
+    func endLiveCallOnAnotherProfile(than profile: String) {
+        guard isLiveCallUp, !Self.profilesMatch(voiceCallProfile, profile) else { return }
+        stopQwenLiveConversation()
+        stopGeminiLiveConversation()
+        stopGPTLiveConversation()
+        stopGrokLiveConversation()
+        stopLocalLiveConversation()
+        handBackEndedCallJobsNow()
+    }
+
+    /// A client made for a reconnect while a live call is up (a failed
+    /// switch drops the one that held them): the call's sessions name its
+    /// profile on this one too.
+    func keepCallSessionsOnTheirProfile(afterReconnect client: HermesClient) {
+        guard isLiveCallUp || callProfileHandingBack != nil else { return }
+        keepCallSessionsOnTheirProfile(voiceCallProfile, for: client)
+    }
+
     /// The call's own sessions as a switch changes the profile on screen:
     /// the next client names the call's profile for each, so a turn, a
     /// cancel or a read about one still reaches it (and forgets them again
@@ -101,7 +124,9 @@ extension AppState {
 
     /// The call's sessions that name no profile of their own (its jobs',
     /// its thread's and Local Live's own chat): the ones a switch names the
-    /// call's profile for. `callSessionIDs` is all of them.
+    /// call's profile for. Not "the profile on screen's": they are the
+    /// call's profile's, wherever the screen is. `callSessionIDs` is all
+    /// of them, a job's on a profile it named included.
     var callSessionIDsOnActiveProfile: [String?] {
         voiceBackgroundJobSupervisor.sessionIDsOnActiveProfile + localLiveOwnChatSessionIDs
     }

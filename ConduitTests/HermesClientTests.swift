@@ -5604,6 +5604,16 @@ extension HermesClientTests {
         appState.switchEndingCall(to: "Other dashboard", pending: &asked) { XCTFail("A dashboard switch still ends the call") }
         XCTAssertNotNil(asked, "A dashboard pick still asks first")
 
+        // A client made by a reconnect (a failed switch dropped the one
+        // that knew) names the call's profile for its chat again.
+        let reconnected = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(afterReconnect: reconnected)
+        XCTAssertEqual(reconnected.sessionProfile(for: "chat-1"), "default")
+        XCTAssertEqual(reconnected.sessionProfile(for: "stored-1"), "default")
+        // A live start for the call's own profile keeps the call.
+        appState.endLiveCallOnAnotherProfile(than: "Default")
+        XCTAssertTrue(appState.isLiveCallUp)
+
         // Classic voice can't go on: the pick asks first, as before.
         appState.showVoiceSheet = true
         XCTAssertFalse(appState.callSurvivesProfileSwitch)
@@ -5638,6 +5648,14 @@ extension HermesClientTests {
         back.inheritSessionProfiles(from: incoming)
         appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: back)
         XCTAssertNil(back.sessionProfile(for: "chat-1"))
+
+        // A live call asked for on the profile on screen (Siri, a Shortcut)
+        // isn't the one running on "default": that one ends and hands its
+        // jobs back, so the new call starts as its own.
+        appState.endLiveCallOnAnotherProfile(than: "work")
+        XCTAssertFalse(appState.isLiveCallUp)
+        XCTAssertNil(appState.liveCallProfile)
+        XCTAssertEqual(appState.voiceCallProfile, "work")
     }
 
     func testASwitchTheCallGoesOnAcrossKeepsTheCallsRequestsInFlight() async throws {

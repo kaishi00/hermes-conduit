@@ -1525,6 +1525,10 @@ extension AppState {
         // The same dashboard: a Bot Chat this client hasn't opened again
         // still names the bot's profile.
         if let previousClient { client.inheritSessionProfiles(from: previousClient) }
+        // A live call off the profile on screen keeps its sessions on its
+        // own profile, with no predecessor to take them from too (a failed
+        // switch drops both clients before it reconnects).
+        keepCallSessionsOnTheirProfile(afterReconnect: client)
         self.client = client
         previousClient?.disconnect()
 

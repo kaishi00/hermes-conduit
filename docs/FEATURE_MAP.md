@@ -2060,10 +2060,15 @@ Hermes About Screen naming another profile: the screenshot stays in the
 profile on screen and the call goes on, and one with no question comes up
 for typing rather than starting voice over the call · Repair's "Already a
 Saved Dashboard" alert: during a call its button reads End Call and Switch
-and the message says the call ends · not needed: a Siri,
-Shortcut or Action-button call naming another profile (it starts a new call,
-which replaces the running one in any profile, its own included; a widget's
-new call refuses instead, see Starting a call) · CarPlay's
+and the message says the call ends · a Siri, Shortcut or Action-button call for another profile than a live
+call's (one that goes on across a profile switch): the running call ends
+first and hands its jobs back, then the new one starts, so the start still
+replaces it (`endLiveCallOnAnotherProfile`, #2538; a start for the call's own
+profile comes back to the running call, and a widget's new call refuses
+instead, see Starting a call) · not needed: a Siri, Shortcut or
+Action-button call naming another profile during any other call (it starts
+a new call, which replaces the running one in any profile, its own
+included) · CarPlay's
 agent list (picking an agent there is how a driver changes who they talk
 to, and it ends its own conversation first, as before), a call from Hermes
 opening its own chat (see Notifications), adding a dashboard or signing in (no call can run without a connection to it, and the new sign-in replaces the connection by design) · a live call that goes on across a profile switch: what it reads and sends names its own profile (its jobs and their ledger, its chat and its replies, chat search and reads, approvals and answers, "call me when it's done", the host's tools, the live engines' host routes, its style and its end phrases), its sheet's header and its minimised bar name that profile while another is on screen, and its chat's link opens on it · docs/VOICE_SETTINGS.md (the minimised call) · the refusals and the asks for a profile switch (the strip, the Profiles sheet, a notification or chat link for another profile, a chat from All profiles, New Chat or a project folder in another profile, a room's chat, Pulse's Bot Chat, Needs you, an artifact's chat, Ask Hermes About Screen naming another profile) all go ahead for such a call · not needed: a widget's launch of a chat (it refuses any move during a call, its own profile's chats included)
