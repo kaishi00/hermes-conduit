@@ -8400,23 +8400,28 @@ What the Chats list draws while a chat covers it, and when it catches up:
 covered, it skips AppState's publishes; shown again, it draws once with
 what it missed.
 
-**Siblings:** a project's page and the list beside a chat on a wide window
-(the same gate; beside a chat the list stays shown and coalesces bursts
-instead) · the drawer shell's sidebar (V1: not needed, no pushed chat
+**Siblings:** a project's page (its own V2ShownUpdates since #2500: the
+same pop wait and split rule, rows compared on what they show; before, it
+redrew on every publish, mid-slide included) · the list beside a chat on a
+wide window (the same gate; beside a chat the list stays shown and
+coalesces bursts instead) · the drawer shell's sidebar (V1: not needed, no pushed chat
 covers it) · Bots Home (gap: it redraws on every publish, see its entry) ·
 text: none (no caption or doc describes it)
 
 **Code**
-- `Conduit/Views/V2/V2Shell.swift` (V2ShownUpdates: isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ChatsView.swift` (the list's Visibility, which sets revealDelay for a pop)
-- Tests: `ConduitTests/SidebarLayoutTests.swift` (testCoveredChatsListWaitsUntilItShowsAgain, testChatsListBesideAChatDrawsABurstOnce, testScrollingChatsListDrawsHeldPublishesOnceItRests)
+- `Conduit/Views/V2/V2Shell.swift` (V2ListVisibility and isPop; V2ShownUpdates: follow, isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ProjectPage.swift` (the page's updates and visibility; V2ProjectSessionRow and its content), `Conduit/Views/V2/V2ChatsView.swift` (the list's visibility; V2ChatsRow and V2ChatsRowContent, compared on its item)
+- Tests: `ConduitTests/SidebarLayoutTests.swift` (testCoveredChatsListWaitsUntilItShowsAgain, testChatsListBesideAChatDrawsABurstOnce, testScrollingChatsListDrawsHeldPublishesOnceItRests, testOnlyAPopUncoveringTheChatsListCountsAsAPop, testChatsRowComparesOnWhatItShows, testChatsListReRunLeavesUnchangedRowsAlone, testProjectPageFollowsTheChatsListsGate)
 
 **Rulings**
-- Shown again by a chat popping off it, the list draws what it missed once the pop has slid (0.45 s), not as the finger lifts: drawn then, the whole list's bodies held the slide's first frame 158 to 175 ms on an iPhone 16 Pro Max (2026-11-14). Meanwhile it shows the rows it showed as the chat opened, and publishes in that wait join the one draw. Shown by a tab switch, where nothing slides, it draws at once. Its own setting writes always draw at once.
+- Shown again by a chat popping off it, the list draws what it missed once the pop has slid (0.45 s), not as the finger lifts: drawn then, the whole list's bodies held the slide's first frame 158 to 175 ms on an iPhone 16 Pro Max (2026-11-14). Meanwhile it shows the rows it showed as the chat opened, and publishes in that wait join the one draw. Shown by a tab switch, where nothing slides (a pop landing on the list's tab from another tab included), it draws at once. Its own setting writes always draw at once.
+- A pop starts the wait even when the list missed nothing, so a publish during the slide waits too. Uncovered by the window widening or the list's toggle putting it beside the chat, nothing slides: it draws at once, and such a change during a pop's wait ends the wait (#2500).
+- The project page takes the same gate (#2500): its re-read on a catalog change and its reload on reconnecting follow its draws, so under a chat they wait for it to show again; its 20 s reads keep their own rule (Reads while a screen shows).
+- A row redraws for its own item or a draw of the list's updates, never because the list's body re-ran: the list re-runs as a chat covers or uncovers it (the shell's covered flag), and every row re-running with it held the pop's first frame (#2500). A row's content sits behind `.equatable()` (`V2ChatsRowContent`, `V2ProjectSessionRowContent`) and its list traits and actions stay outside it, on the row: inside an `EquatableView` they never reached the List and the rows drew black with system insets. SwiftUI didn't compare an Equatable row without the wrapper (the mounted test counted every row).
 
 **Open gaps**
-- Pushing a chat still re-runs the list's body as it's covered (about 80 ms of list bodies spread over the push on an iPhone 16 Pro Max, 2026-11-14).
+- Pushing or popping a chat still re-runs the list's own body (its sections and the top bar), and the project page's, as the covered flag changes; since #2500 their rows no longer re-run with it.
 
-**Checked:** 2026-11-15, #2489 (new entry: a pop's catch-up draw waits out the slide; the project page and the list beside a chat share the gate; Bots Home's gap unchanged)
+**Checked:** 2026-11-15, #2500 (rows compared on their item; a pop always waits out the slide; a split change draws at once, mid-wait too; the project page joins the gate; Bots Home's gap unchanged)
 
 ## Reads while a screen shows
 
