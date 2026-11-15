@@ -72,7 +72,7 @@ struct BotLastReply: View {
     enum Style {
         /// A card that opens the Bot Chat (one bot).
         case card
-        /// Two lines under the portrait (two bots).
+        /// Two lines under the portrait that open the Bot Chat (two bots).
         case caption
     }
 
