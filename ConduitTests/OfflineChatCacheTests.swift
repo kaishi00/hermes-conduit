@@ -3610,7 +3610,10 @@ final class OfflineChatCacheTests: XCTestCase {
         let settled = try XCTUnwrap(state.followedChat(answering: ["a"]))
         XCTAssertFalse(settled.isRunning)
 
+        // The create's adoption, while its New Chat is under way.
+        state.newSessionCreationsInFlight += 1
         state.setActiveSessionState(id: "b")
+        state.newSessionCreationsInFlight -= 1
         XCTAssertEqual(state.backgroundChats.count, 1, "The adoption keeps the one follow")
         store.waitForPendingWrites()
         XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
