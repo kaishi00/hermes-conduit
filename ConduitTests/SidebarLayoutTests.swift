@@ -785,11 +785,12 @@ final class SidebarLayoutTests: XCTestCase {
         // The bar's height changes with the window (a turned phone, a
         // resized iPad window): the list's inset follows it, each time.
         for height in [CGFloat(70), 32] {
+            // UIKit lays the bar out by its own height and lays it out
+            // again whenever the list's safe area changes, so the test bar
+            // reports the height it's given and announces it as a resize.
             (bar as? SizableNavigationBar)?.height = height
             navigation.view.setNeedsLayout()
             navigation.view.layoutIfNeeded()
-            // Where the system lays the bar out by its own height, set it.
-            if bar.bounds.height != height { bar.bounds.size.height = height }
             waitUntil("the list's inset follows a \(height) pt bar") {
                 bar.bounds.height == height && list.additionalSafeAreaInsets.top == -height
             }
@@ -806,11 +807,18 @@ final class SidebarLayoutTests: XCTestCase {
 /// A navigation bar whose height a test sets, standing in for the bar's
 /// height changing with the window.
 private final class SizableNavigationBar: UINavigationBar {
-    var height: CGFloat?
+    /// The height the bar reports, whatever UIKit lays it out at. Setting it
+    /// sets the bounds, so whoever observes them hears of the change.
+    var height: CGFloat? {
+        didSet { bounds = super.bounds }
+    }
 
-    override func sizeThatFits(_ size: CGSize) -> CGSize {
-        var fits = super.sizeThatFits(size)
-        if let height { fits.height = height }
-        return fits
+    override var bounds: CGRect {
+        get {
+            var reported = super.bounds
+            if let height { reported.size.height = height }
+            return reported
+        }
+        set { super.bounds = newValue }
     }
 }

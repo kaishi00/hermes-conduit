@@ -89,7 +89,7 @@ struct V2ListNavigationBar: UIViewRepresentable {
                         self?.attach(retriesLeft: retriesLeft - 1)
                     }
                 } else {
-                    ChatViewportTrace.shared.log("list bar keeper found no page in a stack: its bar stays shown over the list")
+                    ChatViewportTrace.shared.log("list bar keeper found no page in a stack after \(SystemBackSwipeGate.GateView.retries) looks: its bar stays shown over the list")
                 }
                 return
             }
