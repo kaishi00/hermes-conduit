@@ -56,6 +56,7 @@ extension AppState {
             finalizePendingStreamingCompletion()
             settleReasoningSegmentIntoTranscript()
             resetReasoningTurn()
+            keepWordsOfAnUnfinishedReply()
             setRunning(true)
         case .messageDelta(_, let text):
             finalizePendingStreamingCompletion()
@@ -95,7 +96,8 @@ extension AppState {
             // The segment ends, the turn's flag stays: a completion that
             // carries the reasoning already streamed mustn't add it again.
             resetReasoningSegment()
-            flushStreamingPartial()
+            // The words so far stay the reply's: a completion that comes
+            // after with no words of its own settles them as its row.
             setRunning(false)
         case .toolStart(_, let name, let input, let eventToolID):
             applyToolStart(name: name, input: input, eventToolID: eventToolID, streamSessionId: sessionID)
@@ -224,6 +226,32 @@ extension AppState {
             act(on: chat) { finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false) }
             saveBackgroundChatCopy(chat)
         }
+    }
+
+    /// A new turn on a left chat whose last reply never completed (its
+    /// turn ended without a completion): those words stay as a row of
+    /// their own rather than running into the new reply.
+    private func keepWordsOfAnUnfinishedReply() {
+        // Words a tool step cut off before it ended are the reply's too:
+        // the next completion removes partials, so they become its rows.
+        if messages.contains(where: { $0.role == .partial }) {
+            messages = messages.map { row in
+                guard row.role == .partial else { return row }
+                var kept = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author ?? actingProfile)
+                kept.reasoning = row.reasoning
+                return kept
+            }
+        }
+        let words = shownChat.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        messages.append(ChatMessage(
+            id: "assistant-\(Date().timeIntervalSince1970)",
+            role: .assistant,
+            content: words,
+            timestamp: Self.localTimestamp(),
+            author: actingProfile
+        ))
+        clearStreamingText()
     }
 
     /// A state of its own for the chat on screen as it's left mid-reply:

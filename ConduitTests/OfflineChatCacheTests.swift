@@ -3438,6 +3438,26 @@ final class OfflineChatCacheTests: XCTestCase {
         store.waitForPendingWrites()
         XCTAssertNotEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
                           "Once upon a time.", "The reply's end saves nothing once it's let go")
+
+        // The same for one whose id is the chat on screen's (one host saved
+        // as two dashboards): let go, and the screen still takes the event.
+        state.savedDashboardRegistry.activeDashboardID = dashboard
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Again", timestamp: "2")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Twice"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        state.savedDashboardRegistry.activeDashboardID = UUID()
+        state.setActiveSessionState(id: "a")
+        state.messages = []
+        state.clearStreamingText()
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " more"))
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+        XCTAssertEqual(state.shownChat.streamingBuffer, " more", "The screen still takes the event")
     }
 
     /// A chat left while its finished reply's last words still drain on
@@ -3574,6 +3594,27 @@ final class OfflineChatCacheTests: XCTestCase {
         store.waitForPendingWrites()
         XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
                        "Half of it, then all.")
+
+        // A completion with no words of its own after the turn's end
+        // settles the words that came as the reply.
+        leave("c")
+        state.handleStreamEvent(.messageDelta(sessionId: "c", text: "All of it"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "c", busy: false))
+        XCTAssertEqual(rows("c").last?.content, "All of it")
+        state.handleStreamEvent(.messageComplete(sessionId: "c", messageId: "r4", content: nil, reasoning: nil))
+        XCTAssertEqual(rows("c").last?.content, "All of it")
+        XCTAssertEqual(rows("c").last?.id, "r4")
+        // A new turn after one that never completed keeps those words apart.
+        leave("e")
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Cut short"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "e", busy: false))
+        state.handleStreamEvent(.messageStart(sessionId: "e"))
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Next reply"))
+        XCTAssertEqual(rows("e").suffix(2).map(\.content), ["Cut short", "Next reply"])
+        // Words a tool step cut off in that unfinished turn stay too, once
+        // the new reply completes.
+        state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r5", content: "Next reply.", reasoning: nil))
+        XCTAssertEqual(rows("e").map(\.content), ["Looking", "Cut short", "Next reply."])
         XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes a left chat's events")
 
         func chat(_ id: String, running: Bool = true) -> BackgroundChat {
