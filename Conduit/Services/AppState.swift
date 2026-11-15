@@ -1907,12 +1907,15 @@ final class AppState: ObservableObject {
                     if callsModel {
                         options = self.watchCallJobSession(self.loadVoiceProfilePreferences(profile: targetProfile), profile: targetProfile)
                     }
-                    let created = try await client.createSession(
-                        model: options.model,
-                        provider: options.provider,
-                        reasoningEffort: options.reasoningEffort,
-                        inProfile: targetProfile
-                    )
+                    // The call's request: a switch it goes on across carries it.
+                    let created = try await CallRequestScope.$isCallRequest.withValue(true) {
+                        try await client.createSession(
+                            model: options.model,
+                            provider: options.provider,
+                            reasoningEffort: options.reasoningEffort,
+                            inProfile: targetProfile
+                        )
+                    }
                     if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, targetProfile) {
                         throw HermesError.invalidResponse
                     }
@@ -1930,12 +1933,14 @@ final class AppState: ObservableObject {
                     runtimeModel: offScreen == nil ? self.runtime.model : "",
                     runtimeProvider: offScreen == nil ? self.runtime.provider : ""
                 )
-                let created = try await client.createSession(
-                    model: options.model,
-                    provider: options.provider,
-                    reasoningEffort: options.reasoningEffort,
-                    inProfile: offScreen
-                )
+                let created = try await CallRequestScope.$isCallRequest.withValue(true) {
+                    try await client.createSession(
+                        model: options.model,
+                        provider: options.provider,
+                        reasoningEffort: options.reasoningEffort,
+                        inProfile: offScreen
+                    )
+                }
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse
                 }

@@ -2070,6 +2070,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return ids
     }
 
+    /// Every session the call's jobs and thread use, whatever their profile.
+    var callSessionIDs: [String?] {
+        var ids = jobs.flatMap { [$0.runtimeSessionID, $0.storedSessionID] }
+        for thread in [liveThread, deletedLiveThread].compactMap({ $0 }) {
+            ids += [thread.runtimeSessionID, thread.storedSessionID]
+        }
+        return ids
+    }
+
     /// Whether `chat` was deleted (`noteChatDeleted`).
     func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
         [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }

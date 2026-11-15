@@ -1063,6 +1063,27 @@ private struct PendingRequest {
     /// The session the request names, if any: a call's request goes on
     /// across a profile switch that keeps the call (`handOffSocket`).
     var sessionID: String? = nil
+    /// A live call's request that names no session yet (its job's
+    /// `session.create`): carried on with the call's others.
+    var isCallRequest = false
+    /// The client holding the request: its timeout, cancellation and send
+    /// failure settle it there, wherever it was carried on to.
+    let home: PendingRequestHome
+}
+
+/// Where a pending request lives now. Its timer and its task's cancellation
+/// hold this, never the client that sent it, which a hand-off leaves behind.
+@MainActor
+final class PendingRequestHome {
+    weak var client: HermesClient?
+    init(_ client: HermesClient) { self.client = client }
+}
+
+/// Set around a live call's requests that name no session of the call's
+/// yet (its job's `session.create`), so a profile switch the call goes on
+/// across carries them on with the socket (`handOffSocket`).
+enum CallRequestScope {
+    @TaskLocal static var isCallRequest = false
 }
 
 // MARK: - WebSocket seam
@@ -1567,21 +1588,24 @@ final class HermesClient: ObservableObject {
     /// their replies on the same socket still answer them. A spoken job's
     /// submit in flight then still learns it started rather than failing
     /// and cancelling the turn.
-    func handOffSocket(to successor: HermesClient, carryingSessions: Set<String> = []) -> Bool {
+    func handOffSocket(
+        to successor: HermesClient,
+        carryingSessions: Set<String> = [],
+        carryingCallRequests: Bool = false
+    ) -> Bool {
         guard canHandOffSocket, let socket,
               successor !== self, successor.socket == nil,
               successor.connection.baseUrl == connection.baseUrl else { return false }
         closedIntentionally = true
         stopKeepalive()
-        let carried = carryingSessions.isEmpty ? [:] : pending.filter { _, request in
-            request.sessionID.map { carryingSessions.contains($0) } == true
+        let carried = pending.filter { _, request in
+            (carryingCallRequests && request.isCallRequest)
+                || request.sessionID.map { carryingSessions.contains($0) } == true
         }
         for id in carried.keys { pending.removeValue(forKey: id) }
         failAllPendingRequests(with: HermesError.connectionClosed)
-        if !carried.isEmpty {
-            successor.pending.merge(carried) { mine, _ in mine }
-            requestsCarriedTo = successor
-        }
+        for request in carried.values { request.home.client = successor }
+        successor.pending.merge(carried) { mine, _ in mine }
         self.socket = nil
         isConnected = false
         socketSuccessor = successor
@@ -1660,20 +1684,6 @@ final class HermesClient: ObservableObject {
     private var awaitsHandedOnFrame = false
     /// A receive loop is running: its receive may be waiting on the socket.
     private var isReceiving = false
-
-    /// The client this one's carried requests went to (`handOffSocket`):
-    /// their timeouts and cancellations, set up here, find them there.
-    private weak var requestsCarriedTo: HermesClient?
-
-    /// A pending request, here or carried on to a successor.
-    private func takePendingRequest(_ id: Int) -> PendingRequest? {
-        var client: HermesClient? = self
-        while let current = client {
-            if let request = current.pending.removeValue(forKey: id) { return request }
-            client = current.requestsCarriedTo
-        }
-        return nil
-    }
 
     /// The successor, let go once this client's last receive has ended.
     private func takeSocketSuccessor() -> HermesClient? {
@@ -2415,6 +2425,7 @@ final class HermesClient: ObservableObject {
         logger.notice("Sending RPC id \(id) method \(method, privacy: .public)")
 
         let sendWatch = AuthorityAnswerSend.watch
+        let home = PendingRequestHome(self)
         return try await withTaskCancellationHandler(operation: {
             try await withCheckedThrowingContinuation { continuation in
                 guard !Task.isCancelled else {
@@ -2425,10 +2436,10 @@ final class HermesClient: ObservableObject {
                 }
 
                 // Timeout
-                let timer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { [weak self] _ in
+                let timer = Timer.scheduledTimer(withTimeInterval: timeout, repeats: false) { _ in
                     Task { @MainActor in
-                        self?.requestsBeingWritten.remove(id)
-                        if let pending = self?.takePendingRequest(id) {
+                        home.client?.requestsBeingWritten.remove(id)
+                        if let pending = home.client?.pending.removeValue(forKey: id) {
                             pending.continuation.resume(throwing: HermesError.timeout(method))
                         }
                     }
@@ -2438,7 +2449,9 @@ final class HermesClient: ObservableObject {
                     continuation: continuation,
                     timer: timer,
                     method: method,
-                    sessionID: scopedParams?["session_id"] as? String
+                    sessionID: scopedParams?["session_id"] as? String,
+                    isCallRequest: CallRequestScope.isCallRequest,
+                    home: home
                 )
 
                 // Hermes' established React Native client uses WebSocket text
@@ -2452,7 +2465,7 @@ final class HermesClient: ObservableObject {
                     if let error {
                         self?.logger.error("RPC send failed for \(method, privacy: .public): \(LogRedaction.message(error), privacy: .public)")
                         Task { @MainActor in
-                            if let pending = self?.takePendingRequest(id) {
+                            if let pending = home.client?.pending.removeValue(forKey: id) {
                                 pending.timer?.invalidate()
                                 sendWatch?.unwritten = true
                                 pending.continuation.resume(throwing: error)
@@ -2462,8 +2475,8 @@ final class HermesClient: ObservableObject {
                 }
             }
         }, onCancel: {
-            Task { @MainActor [weak self] in
-                self?.cancelPendingRequest(id: id)
+            Task { @MainActor in
+                home.client?.cancelPendingRequest(id: id)
             }
         })
     }
@@ -2478,7 +2491,7 @@ final class HermesClient: ObservableObject {
                 self?.requestsBeingWritten.remove(id)
             }
         }
-        guard let pending = takePendingRequest(id) else { return }
+        guard let pending = pending.removeValue(forKey: id) else { return }
         pending.timer?.invalidate()
         pending.continuation.resume(throwing: CancellationError())
     }

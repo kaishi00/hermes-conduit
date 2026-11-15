@@ -388,6 +388,8 @@ extension AppState {
             HermesCallTrace.shared.note("Voice not opened (connected: \(isConnected), voice in use: \(isVoiceInUse))")
             return false
         }
+        // An ended call's jobs go back before this one notes anything.
+        handBackEndedCallJobsNow()
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)

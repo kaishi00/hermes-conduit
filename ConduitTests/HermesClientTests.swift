@@ -5653,13 +5653,33 @@ extension HermesClientTests {
         let list = Task { try await outgoing.sessions() }
         try await sentList.wait("the screen's list read to be sent")
 
-        let incoming = makeClient(transport: transport, profile: "work")
-        XCTAssertTrue(outgoing.handOffSocket(to: incoming, carryingSessions: ["job-1"]))
+        // Another job's chat still being made: it names no session yet.
+        let sentCreate = Gate()
+        socket.onSend = { sentCreate.signal() }
+        let create = Task {
+            try await CallRequestScope.$isCallRequest.withValue(true) { try await outgoing.createSession() }
+        }
+        try await sentCreate.wait("the job's chat create to be sent")
+        let createID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+
+        // Two switches: the requests follow the socket to whoever holds it.
+        let between = makeClient(transport: transport, profile: "work")
+        XCTAssertTrue(outgoing.handOffSocket(to: between, carryingSessions: ["job-1"], carryingCallRequests: true))
         outgoing.disconnect()
         do {
             _ = try await awaitResult(of: list, "the screen's request to fail")
             XCTFail("The outgoing profile's own request still fails at the hand-off")
         } catch HermesError.connectionClosed {}
+        let incoming = makeClient(transport: transport, profile: "home")
+        XCTAssertTrue(between.handOffSocket(to: incoming, carryingSessions: ["job-1"], carryingCallRequests: true))
+        between.disconnect()
+
+        try deliverReply([
+            "jsonrpc": "2.0", "id": createID,
+            "result": ["session_id": "job-2", "stored_session_id": "stored-2"]
+        ], on: socket)
+        let created = try await awaitResult(of: create, "the carried create to be answered")
+        XCTAssertEqual(created.sessionId, "job-2")
 
         // The submit's answer comes on the same socket: the job learns it started.
         try deliverReply(["jsonrpc": "2.0", "id": submitID, "result": ["status": "streaming"]], on: socket)

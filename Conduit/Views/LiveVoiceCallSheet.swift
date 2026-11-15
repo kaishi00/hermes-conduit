@@ -81,6 +81,8 @@ struct LiveVoiceCallSheet: View {
     /// The job chat to open once the result sheet has gone, so the call
     /// sheet isn't dismissed while its child is still animating out.
     @State private var pendingJobChat: String?
+    /// The pending job chat's own profile; nil is the call's.
+    @State private var pendingJobProfile: String?
     /// The cards that opened by themselves, so each opens only once.
     @State private var autoOpenedCardIDs: Set<UUID> = []
     /// Whether what's open opened by itself, so a newer card may replace it.
@@ -143,14 +145,17 @@ struct LiveVoiceCallSheet: View {
             // Leaving for the job's chat minimises the call.
             guard let chatID = pendingJobChat else { return }
             pendingJobChat = nil
+            let profile = pendingJobProfile
+            pendingJobProfile = nil
             dismiss()
-            openURL(appState.callChatLink(ConduitAppLink.session(id: chatID)).url)
+            openURL(appState.callChatLink(ConduitAppLink.session(id: chatID, profile: profile)).url)
         }) { selected in
             Group {
                 switch selected {
                 case .job(let jobID):
                     LiveVoiceJobResultSheet(jobs: jobs, jobID: jobID) { chatID in
                         pendingJobChat = chatID
+                        pendingJobProfile = jobs.jobs.first { $0.id == jobID }?.profile
                         selection = nil
                     }
                 case .screen(let card, _):

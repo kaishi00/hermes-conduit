@@ -330,7 +330,6 @@ extension AppState {
     /// modes never share the audio session.
     @discardableResult
     func openGeminiLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
-        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -343,6 +342,9 @@ extension AppState {
         showGeminiLiveSheet = true
         if !geminiLiveController.isActive {
             geminiLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // An ended call's jobs go back first (the modes stopped above may
+            // have just ended one off its profile).
+            handBackEndedCallJobsNow()
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -362,7 +364,6 @@ extension AppState {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startGeminiLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
-        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -371,6 +372,7 @@ extension AppState {
         stopGrokLiveConversation()
         stopLocalLiveConversation()
         guard !geminiLiveController.isActive else { return }
+        handBackEndedCallJobsNow()
         // A call started from CarPlay's chat list is attached to that chat,
         // as one started from a chat on the phone is.
         if let thread {
@@ -449,7 +451,6 @@ extension AppState {
     /// modes never share the audio session.
     @discardableResult
     func openQwenLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
-        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -462,6 +463,9 @@ extension AppState {
         showQwenLiveSheet = true
         if !qwenLiveController.isActive {
             qwenLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // An ended call's jobs go back first (the modes stopped above may
+            // have just ended one off its profile).
+            handBackEndedCallJobsNow()
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -481,7 +485,6 @@ extension AppState {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startQwenLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
-        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -490,6 +493,7 @@ extension AppState {
         stopGrokLiveConversation()
         stopLocalLiveConversation()
         guard !qwenLiveController.isActive else { return }
+        handBackEndedCallJobsNow()
         // A call started from CarPlay's chat list is attached to that chat,
         // as one started from a chat on the phone is.
         if let thread {

@@ -162,7 +162,6 @@ extension AppState {
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
     func openLocalLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
-        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -175,6 +174,9 @@ extension AppState {
         showLocalLiveSheet = true
         if !localLiveController.isActive {
             localLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // An ended call's jobs go back first (the modes stopped above may
+            // have just ended one off its profile).
+            handBackEndedCallJobsNow()
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -196,7 +198,6 @@ extension AppState {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startLocalLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
-        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -205,6 +206,7 @@ extension AppState {
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         guard !localLiveController.isActive else { return }
+        handBackEndedCallJobsNow()
         // A call started from CarPlay's chat list is attached to that chat,
         // as one started from a chat on the phone is.
         if let thread {

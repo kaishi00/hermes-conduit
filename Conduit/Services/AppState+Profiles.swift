@@ -279,8 +279,9 @@ extension AppState {
             // them it can't refuse here; the fallback below is for a switch
             // that kept no socket and so holds a fresh ticket.
             // A call that goes on across the switch keeps its requests in flight.
-            let carried: Set<String> = keepsCall ? Set(callSessionIDsOnActiveProfile.compactMap { $0 }) : []
-            if let keptSocketClient, keptSocketClient.handOffSocket(to: nextClient, carryingSessions: carried) {
+            if let keptSocketClient, keptSocketClient.handOffSocket(
+                to: nextClient, carryingSessions: keepsCall ? callSessionIDs : [], carryingCallRequests: keepsCall
+            ) {
                 noteConnectionStep("Socket kept for the switch")
             } else {
                 try await connectChatResumeClient(nextClient)

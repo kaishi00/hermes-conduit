@@ -100,10 +100,18 @@ extension AppState {
     }
 
     /// The sessions a live call uses on the profile on screen: its jobs',
-    /// its thread's and Local Live's own chat. A switch the call goes on
-    /// across carries their requests in flight to the new client.
+    /// its thread's and Local Live's own chat.
     var callSessionIDsOnActiveProfile: [String?] {
         voiceBackgroundJobSupervisor.sessionIDsOnActiveProfile + localLiveOwnChatSessionIDs
+    }
+
+    /// Every session the live call uses, a job's on a profile it named
+    /// included. A switch the call goes on across carries their requests
+    /// in flight to the new client.
+    var callSessionIDs: Set<String> {
+        var ids = voiceBackgroundJobSupervisor.callSessionIDs
+        if let own = localLiveOwnChat { ids += [own.runtimeSessionID, own.storedSessionID] }
+        return Set(ids.compactMap { $0 })
     }
 
     /// A Local Live call's own chat (one it made with no chat attached).
