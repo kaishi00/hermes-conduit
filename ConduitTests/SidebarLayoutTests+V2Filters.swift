@@ -314,6 +314,34 @@ extension SidebarLayoutTests {
         state.sessions.append(filterRow("brand-new", source: .chat, at: 120))
         XCTAssertNotEqual(inputs(.home), home)
         XCTAssertEqual(inputs(.home).recentChats.map(\.id), ["brand-new", "newest", "middle"])
+
+        // Bots Home's menu keeps a bot's name and label, not what else its
+        // row carries (its preview, when it last talked).
+        func bot(_ name: String, _ lastActive: Double?, preview: String? = nil) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: lastActive, lastPreview: preview)
+        }
+        state.botRoster = [bot("atlas", 10), bot("furina", 30)]
+        let bots = inputs(.bots)
+        XCTAssertEqual(bots.callableBots.map(\.id), ["furina", "atlas"])
+        XCTAssertTrue(bots.recentChats.isEmpty)
+        state.botRoster = [bot("atlas", 10, preview: "On it."), bot("furina", 35)]
+        XCTAssertEqual(inputs(.bots), bots)
+        state.botRoster = [bot("atlas", 40), bot("furina", 35)]
+        XCTAssertEqual(inputs(.bots).callableBots.map(\.id), ["atlas", "furina"])
+
+        // A project's page: the button reads its folder only.
+        func project(_ path: String?, count: Int) -> V2VoiceContext {
+            .project(ProjectSummary(
+                id: "p1", title: "Site", primaryPath: path, icon: nil, colorHex: nil,
+                isHome: false, sessionCount: count, previewSessions: []
+            ))
+        }
+        XCTAssertTrue(project("/srv/site", count: 2).isSameVoiceButton(as: project(" /srv/site ", count: 9)))
+        XCTAssertFalse(project("/srv/site", count: 2).isSameVoiceButton(as: project(nil, count: 2)))
+        XCTAssertFalse(project("/srv/site", count: 2).isSameVoiceButton(as: .home))
+        XCTAssertEqual(inputs(project("/srv/site", count: 2)), inputs(project("/srv/other", count: 3)))
     }
 
     func testChatsListGivesEveryRowOfANestItsOwnItem() {

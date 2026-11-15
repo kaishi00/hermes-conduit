@@ -26,6 +26,18 @@ enum V2VoiceContext: Equatable {
     /// The open conversation: voice in it (a Bot Chat calls its bot, a
     /// saved call's row resumes the call).
     case conversation
+
+    /// The same button: a project's page is told apart by its folder, all
+    /// the button reads of it, so the page's other changes (its chats, its
+    /// count) don't redraw the button.
+    func isSameVoiceButton(as other: V2VoiceContext) -> Bool {
+        switch (self, other) {
+        case (.home, .home), (.bots, .bots), (.conversation, .conversation): return true
+        case (.project(let mine), .project(let theirs)):
+            return V2VoiceButton.folder(of: mine) == V2VoiceButton.folder(of: theirs)
+        default: return false
+        }
+    }
 }
 
 /// The gold circle or its top-bar glyph. This outer view reads AppState, so
@@ -103,6 +115,14 @@ struct V2VoiceButton: View {
     }
 }
 
+/// A bot in Bots Home's voice menu: what the menu shows of it. The tap
+/// reads the bot itself from the roster.
+struct V2VoiceBotChoice: Identifiable, Equatable {
+    /// The bot's profile name.
+    let id: String
+    let label: String
+}
+
 /// A recent conversation in the voice button's menu.
 struct V2VoiceRecentChat: Identifiable, Equatable {
     let id: String
@@ -131,7 +151,7 @@ struct V2VoiceButtonInputs: Equatable {
     let recentChats: [V2VoiceRecentChat]
     /// Bots Home's menu: the bots shown there, the one that talked last
     /// first.
-    let callableBots: [BotProfile]
+    let callableBots: [V2VoiceBotChoice]
     /// The call's label in the chat, whatever the button's tap does.
     let conversationCallLabel: String
     /// The App Language its labels were made in.
@@ -165,7 +185,9 @@ struct V2VoiceButtonInputs: Equatable {
         } else {
             recentChats = []
         }
-        callableBots = context == .bots ? V2VoiceButton.botsToCall(appState.shownBotRoster) : []
+        callableBots = context == .bots
+            ? V2VoiceButton.botsToCall(appState.shownBotRoster).map { V2VoiceBotChoice(id: $0.name, label: $0.displayLabel) }
+            : []
         if context != .conversation {
             conversationCallLabel = ""
         } else if appState.openChatCallToResume != nil {
@@ -202,7 +224,7 @@ struct V2VoiceButtonContent: View, Equatable {
     @GestureState private var isPressing = false
 
     nonisolated static func == (lhs: V2VoiceButtonContent, rhs: V2VoiceButtonContent) -> Bool {
-        lhs.context == rhs.context && lhs.style == rhs.style && lhs.isHidden == rhs.isHidden
+        lhs.context.isSameVoiceButton(as: rhs.context) && lhs.style == rhs.style && lhs.isHidden == rhs.isHidden
             && lhs.inputs == rhs.inputs && lhs.appState === rhs.appState
     }
 
@@ -242,7 +264,7 @@ struct V2VoiceButtonContent: View, Equatable {
         context == .bots && !returnsToCall && !needsSetup && !callableBots.isEmpty
     }
 
-    private var callableBots: [BotProfile] { inputs.callableBots }
+    private var callableBots: [V2VoiceBotChoice] { inputs.callableBots }
 
     /// Touch and hold on the chat's big button: a live call or dictation,
     /// whichever the tap doesn't do.
@@ -291,10 +313,10 @@ struct V2VoiceButtonContent: View, Equatable {
                 Menu {
                     ForEach(callableBots) { bot in
                         Button {
-                            call(bot)
+                            call(bot.id)
                         } label: {
                             Label {
-                                Text(verbatim: bot.displayLabel)
+                                Text(verbatim: bot.label)
                             } icon: {
                                 Image(systemName: "waveform")
                             }
@@ -586,8 +608,10 @@ struct V2VoiceButtonContent: View, Equatable {
     }
 
     /// Opens a bot's Bot Chat and calls the bot in it.
-    private func call(_ bot: BotProfile) {
-        guard !isStarting else { return }
+    private func call(_ name: String) {
+        // The bot as the roster has it now: the menu keeps only its name
+        // and label.
+        guard !isStarting, let bot = appState.shownBotRoster.first(where: { $0.name == name }) else { return }
         Haptics.medium()
         isStarting = true
         Task { @MainActor in
