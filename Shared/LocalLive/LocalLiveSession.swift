@@ -147,8 +147,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// it refuses another response.create until that one is done
     /// (`conversation_already_has_active_response`, issue 2524).
     private var serverResponseActive = false
-    /// The turn whose response.create went out and hasn't started yet: if
-    /// the server refuses it for a response already going, it waits again.
+    /// The turn whose response.create went out, until a response ends or
+    /// the server refuses it: if refused for a response already going (one
+    /// the server started on the user's speech, say), it waits again. Not
+    /// cleared by a response.created, which can be that other response.
     private var unstartedTurn: AskedTurn?
     /// Turns waiting for the server's response to end, oldest first.
     private var heldTurns: [AskedTurn] = []
@@ -640,10 +642,12 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             localLiveLogger.notice("Local Live error event: \(message, privacy: .private)")
             guard let refused = unstartedTurn else { return }
             unstartedTurn = nil
-            if Self.isActiveResponseRefusal(message) {
+            if Self.isActiveResponseRefusal(message), let create = refused.texts.last {
                 // A response the session didn't know of is going: the turn
-                // waits for it, first in line.
-                heldTurns.insert(refused, at: 0)
+                // waits for it, first in line. The server took its item;
+                // only the response.create goes again, so the conversation
+                // never holds the words twice.
+                heldTurns.insert(AskedTurn(texts: [create], onSent: nil, onFailure: refused.onFailure), at: 0)
                 serverResponseActive = true
                 armHeldTurnLimit()
             } else {
@@ -658,7 +662,6 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             if let onTrace { onTrace(turnTrace.speechStopped()) }
         case .responseStarted:
             serverResponseActive = true
-            unstartedTurn = nil
             if readinessResponseOpen { return }
             onTrace?("Reply started")
             responseHadTranscript = false

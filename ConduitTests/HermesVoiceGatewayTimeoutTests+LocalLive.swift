@@ -503,6 +503,12 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
+    /// The call's own response.create frames (the readiness check's carries
+    /// its input in `response`).
+    private func localLiveResponseCreates(_ socket: FakeGeminiLiveSocket) -> Int {
+        socket.sent.filter { $0["type"] as? String == "response.create" && $0["response"] == nil }.count
+    }
+
     /// A call from Hermes' opening is asked as the call goes ready, while the
     /// readiness check's response is still open: speech-to-speech refuses a
     /// second response.create then, so the opening waits for response.done.
@@ -560,8 +566,9 @@ extension HermesVoiceGatewayTimeoutTests {
         await localLiveSettle(until: { false }, limit: .milliseconds(100))
         XCTAssertEqual(localLiveAskedTexts(socket).count, 1, "waits for the response going to end")
         socket.deliver(["type": "response.done"])
-        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 2 })
-        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening", "Opening"], "asked once more, not dropped")
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 2 })
+        XCTAssertEqual(localLiveResponseCreates(socket), 2, "asked once more, not dropped")
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening"], "the server kept the item: the words go once")
 
         // A refusal for another reason isn't asked again, and doesn't hold
         // the next turn.
@@ -569,12 +576,38 @@ extension HermesVoiceGatewayTimeoutTests {
         socket.deliver(["type": "response.done"])
         await localLiveSettle(until: { false }, limit: .milliseconds(50))
         session.send(.textTurn("Bad"))
-        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 3 })
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 2 })
         socket.deliver(["type": "error", "error": ["message": "Invalid item"]])
         await localLiveSettle(until: { false }, limit: .milliseconds(50))
         session.send(.textTurn("Next"))
-        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 4 })
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 3 })
         XCTAssertEqual(Array(localLiveAskedTexts(socket).suffix(2)), ["Bad", "Next"])
+        session.stop()
+    }
+
+    /// The server starts a response on the user's speech while the asked
+    /// turn is on its way: that response.created isn't the turn's, and the
+    /// refusal that follows still asks again.
+    func testLocalLiveSessionAsksAgainWhenTheUsersOwnResponseStartedFirst() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+
+        session.send(.textTurn("Opening"))
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 1 })
+        socket.deliver(["type": "response.created"])
+        socket.deliver(["type": "error", "error": ["code": "conversation_already_has_active_response"]])
+        await localLiveSettle(until: { false }, limit: .milliseconds(100))
+        XCTAssertEqual(localLiveResponseCreates(socket), 1, "waits for the user's reply to end")
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 2 })
+        XCTAssertEqual(localLiveResponseCreates(socket), 2)
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening"])
         session.stop()
     }
 
