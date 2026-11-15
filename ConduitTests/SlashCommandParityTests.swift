@@ -192,7 +192,13 @@ extension ComposerDraftStoreTests {
                     .object(["type": .string("text"), "text": .string("look")]),
                     .object(["type": .string("image_url"), "image_url": .object([:])])
                 ])]),
-                .object(["role": .string("user"), "row_id": .number(7), "content": .string("summary"), "_compressed_summary": .bool(true)])
+                .object(["role": .string("user"), "row_id": .number(7), "content": .string("summary"), "_compressed_summary": .bool(true)]),
+                // Notes a compaction's projection handed back untyped
+                // (their row carried the summary): nobody typed them.
+                .object(["role": .string("user"), "row_id": .number(8),
+                         "content": .string("[Cron job \"Backups\" report: shown in the chat, no reply asked for]\n\nAll green")]),
+                .object(["role": .string("user"), "row_id": .number(9), "content": .string("Agent finished"),
+                         "display_metadata": .object(["completion_note": .array([.string("delegation:1")])])])
             ])
         ]
         let snapshot = SessionRewindSnapshot(resume: resume)

@@ -3690,6 +3690,46 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages[0].content, "Background watch fired: nightly build finished.")
     }
 
+    func testANoteACompactionHandedBackUntypedStaysANote() {
+        // Hermes folds a compaction's summary into the first row it keeps
+        // when no role alternates; its display projection then unwraps the
+        // row's own text and drops `display_kind`. A cron report in that
+        // row came back as the user's bubble.
+        let report = "[Cron job \"PBS backup capacity follow-up\" report: shown in the chat, no reply asked for]\n\nAlert: backups failed."
+        let messages = MessageNormalizer.normalizeMessages([
+            // As projected: the metadata survives.
+            .object([
+                "id": .number(401), "role": .string("user"), "content": .string(report),
+                "display_metadata": .object([
+                    "completion_note": .array([.string("cron:1")]), "completion_admission": .string("a1")
+                ])
+            ]),
+            // Where a projection dropped the metadata too, the first line says it.
+            .object(["id": .number(402), "role": .string("user"), "content": .string("\n" + report)]),
+            // Another completion's note, by its metadata alone.
+            .object([
+                "id": .number(403), "role": .string("user"), "content": .string("Background agent finished: tests pass."),
+                "display_metadata": .string("{\"completion_note\": [\"delegation:7\"]}")
+            ]),
+            // The user's own words, a reaction's metadata, a line that only starts like a report.
+            .object([
+                "id": .number(404), "role": .string("user"), "content": .string("[Cron job \"x\" is broken, look"),
+                "display_metadata": .object(["reactions": .array([])])
+            ]),
+            // An assistant's reply quoting a report stays a reply.
+            .object(["id": .number(405), "role": .string("assistant"), "content": .string(report)])
+        ])
+
+        XCTAssertEqual(messages.map(\.role), [.system, .system, .system, .user, .assistant])
+        XCTAssertEqual(messages.prefix(3).map(\.displayKind), ["internal_notification", "internal_notification", "internal_notification"])
+        XCTAssertEqual(messages[0].content, report)
+        XCTAssertEqual(messages[1].content, report)
+        XCTAssertEqual(CronBotChatReport.parse(messages[1].content)?.job, "PBS backup capacity follow-up")
+        XCTAssertEqual(messages[2].content, "Background agent finished: tests pass.")
+        XCTAssertNil(messages[3].displayKind)
+        XCTAssertNil(messages[4].displayKind)
+    }
+
     func testInternalNotificationKindStripsSystemWrapper() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([
