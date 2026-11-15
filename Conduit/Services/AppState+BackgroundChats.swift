@@ -222,6 +222,7 @@ extension AppState {
         // settles in the left chat's own rows.
         if chat.state.pendingStreamingCompletion != nil {
             act(on: chat) { finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false) }
+            saveBackgroundChatCopy(chat)
         }
     }
 
@@ -244,7 +245,7 @@ extension AppState {
         left.pendingStreamingCompletion = screen.pendingStreamingCompletion
         // Its reply is still coming, whether or not it has words yet; one
         // only draining its last words has finished.
-        left.turnState = turnRunning || screen.pendingStreamingCompletion == nil ? .running : .idle
+        left.turnState = (turnRunning || screen.pendingStreamingCompletion == nil) ? .running : .idle
         return left
     }
 
@@ -270,13 +271,13 @@ extension AppState {
         guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
             ?? followedChatIndex(reboundTo: id) else { return false }
         let chat = backgroundChats[index]
+        guard chat.dashboardID == activeDashboardID else {
+            backgroundChats.remove(at: index)
+            return false
+        }
         if onScreen {
             // The chat on screen saves its own copy.
             act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
-            return false
-        }
-        guard chat.dashboardID == activeDashboardID else {
-            backgroundChats.remove(at: index)
             return false
         }
         let wasRunning = chat.isRunning

@@ -3440,6 +3440,28 @@ final class OfflineChatCacheTests: XCTestCase {
                           "Once upon a time.", "The reply's end saves nothing once it's let go")
     }
 
+    /// A chat left while its finished reply's last words still drain on
+    /// screen: the reply settles in the left chat's rows and is saved.
+    func testAChatLeftWhileItsReplyDrainsSavesTheFinalReply() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+
+        state.setActiveSessionState(id: "b")
+        let left = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.rows.map(\.content), ["Tell me a story", "Once upon a time."])
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
+    }
+
     /// A runtime id Hermes binds to a followed chat while it's away
     /// (another device resumed it), as the identity index knows it, still
     /// reaches the followed chat, only while the index maps it there.
