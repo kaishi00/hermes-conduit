@@ -232,6 +232,16 @@ extension AppState {
     /// turn ended without a completion): those words stay as a row of
     /// their own rather than running into the new reply.
     private func keepWordsOfAnUnfinishedReply() {
+        // Words a tool step cut off before it ended are the reply's too:
+        // the next completion removes partials, so they become its rows.
+        if messages.contains(where: { $0.role == .partial }) {
+            messages = messages.map { row in
+                guard row.role == .partial else { return row }
+                var kept = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author ?? actingProfile)
+                kept.reasoning = row.reasoning
+                return kept
+            }
+        }
         let words = shownChat.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty else { return }
         messages.append(ChatMessage(

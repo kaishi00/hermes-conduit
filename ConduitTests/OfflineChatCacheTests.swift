@@ -3455,8 +3455,9 @@ final class OfflineChatCacheTests: XCTestCase {
         state.setActiveSessionState(id: "a")
         state.messages = []
         state.clearStreamingText()
-        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " more")))
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " more"))
         XCTAssertTrue(state.backgroundChats.isEmpty)
+        XCTAssertEqual(state.shownChat.streamingBuffer, " more", "The screen still takes the event")
     }
 
     /// A chat left while its finished reply's last words still drain on
@@ -3610,6 +3611,10 @@ final class OfflineChatCacheTests: XCTestCase {
         state.handleStreamEvent(.messageStart(sessionId: "e"))
         state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Next reply"))
         XCTAssertEqual(rows("e").suffix(2).map(\.content), ["Cut short", "Next reply"])
+        // Words a tool step cut off in that unfinished turn stay too, once
+        // the new reply completes.
+        state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r5", content: "Next reply.", reasoning: nil))
+        XCTAssertEqual(rows("e").map(\.content), ["Looking", "Cut short", "Next reply."])
         XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes a left chat's events")
 
         func chat(_ id: String, running: Bool = true) -> BackgroundChat {
