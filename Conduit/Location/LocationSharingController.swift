@@ -369,7 +369,8 @@ final class LocationSharingController: ObservableObject {
         guard callWatch != nil, settings.shares(.call, at: now()) else { return }
         if let last = lastCallFix, last.distance(from: location) < LocationBackgroundMonitor.callMoveDistance { return }
         lastCallFix = location
-        Task { await share(location, source: .call) }
+        let drops = unsentDrops
+        Task { await share(location, source: .call, drops: drops) }
     }
 
     // MARK: Layer 2: in the background
@@ -382,7 +383,8 @@ final class LocationSharingController: ObservableObject {
         // The first answer for a place is where the phone is, not a move.
         guard let before, before != inside, settings.shares(.place, at: now()) else { return }
         let event = LocationPlaceEvent(kind: inside ? .arrive : .leave, placeID: place.id, at: date, isPrivate: place.isPrivate)
-        Task { await shareFix(source: .place, events: [event]) }
+        let drops = unsentDrops
+        Task { await shareFix(source: .place, events: [event], drops: drops) }
     }
 
     private func visited(_ visit: CLVisit) {
@@ -392,12 +394,14 @@ final class LocationSharingController: ObservableObject {
             coordinate: visit.coordinate, altitude: 0, horizontalAccuracy: visit.horizontalAccuracy,
             verticalAccuracy: -1, timestamp: at == .distantPast ? now() : at
         )
-        Task { await share(location, source: .visit) }
+        let drops = unsentDrops
+        Task { await share(location, source: .visit, drops: drops) }
     }
 
     private func movedSignificantly(_ location: CLLocation) {
         guard readConfigIfNeeded(), settings.shares(.significant, at: now()) else { return }
-        Task { await share(location, source: .significant) }
+        let drops = unsentDrops
+        Task { await share(location, source: .significant, drops: drops) }
     }
 
     /// The phone came within a watched shop's circle: a fresh fix says how
@@ -405,10 +409,10 @@ final class LocationSharingController: ObservableObject {
     /// entry goes now. Nothing inside a private place.
     private func spotEntered(_ spot: PulseSpotState.Spot, at date: Date) {
         guard readConfigIfNeeded(), watchesSpots else { return }
+        let drops = unsentDrops
         Task { @MainActor in
             let endBackground = beginBackgroundWork(for: .place)
             defer { endBackground() }
-            let drops = unsentDrops
             let location = await fixes.currentFix(accuracy: kCLLocationAccuracyBest, maxAge: 15, timeout: .seconds(15))
             // Nothing from inside a private place: without a fresh fix the last
             // known one decides, and with neither nothing is sent.
@@ -437,9 +441,11 @@ final class LocationSharingController: ObservableObject {
     /// Takes a fix for `source` (with any events) and sends it. True when
     /// the host has it.
     @discardableResult
-    func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
-        guard let bound = config.binding, settings.shares(source, at: now()) else { return false }
-        let drops = unsentDrops
+    /// `drops` is `unsentDrops` when what's shared was seen: a Sign Out
+    /// since drops it.
+    func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = [], drops seen: Int? = nil) async -> Bool {
+        let drops = seen ?? unsentDrops
+        guard drops == unsentDrops, let bound = config.binding, settings.shares(source, at: now()) else { return false }
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
@@ -479,7 +485,7 @@ final class LocationSharingController: ObservableObject {
            !messageFixIsNews(LocationRawFix(location), precision: precision) {
             return true
         }
-        return await share(location, source: source, events: events)
+        return await share(location, source: source, events: events, drops: drops)
     }
 
     /// A fix iOS took a few minutes ago while the phone was still, instead
@@ -516,12 +522,14 @@ final class LocationSharingController: ObservableObject {
     }
 
     @discardableResult
-    func share(_ location: CLLocation?, source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
-        guard readConfigIfNeeded(), config.binding != nil, settings.shares(source, at: now()) else { return false }
+    func share(_ location: CLLocation?, source: LocationFixSource, events: [LocationPlaceEvent] = [],
+               drops seen: Int? = nil) async -> Bool {
+        let drops = seen ?? unsentDrops
+        guard drops == unsentDrops, readConfigIfNeeded(), config.binding != nil,
+              settings.shares(source, at: now()) else { return false }
         let endBackground = beginBackgroundWork(for: source)
         defer { endBackground() }
         let bound = config.binding
-        let drops = unsentDrops
         var record: LocationFixRecord?
         if let location {
             // Any fix may move the shops watched along (walking past).
