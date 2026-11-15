@@ -8426,7 +8426,7 @@ text: none (no caption or doc describes it)
 **Open gaps**
 - Pushing or popping a chat still re-runs the list's own body (its sections and the top bar), and the project page's, as the covered flag changes; since #2500 their rows' content no longer re-runs with it.
 
-**Checked:** 2026-11-15, #2532 (row actions read what they say when they show; Bots Home's gap unchanged)
+**Checked:** 2026-11-15, #2536 (one figure for the actions' cost); #2532 (row actions read what they say when they show; Bots Home's gap unchanged)
 
 ## Reads while a screen shows
 
