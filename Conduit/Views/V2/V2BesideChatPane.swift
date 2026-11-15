@@ -112,6 +112,7 @@ struct V2ChatWindow: View {
 
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismissWindow) private var dismissWindow
+    @Environment(\.scenePhase) private var scenePhase
     let key: String?
 
     private var chat: BackgroundChat? { key.flatMap { appState.windowChat($0) } }
@@ -126,8 +127,16 @@ struct V2ChatWindow: View {
         }
         .onAppear { closeWithoutAChat() }
         .onChange(of: appState.windowChatIDs) { _, _ in closeWithoutAChat() }
+        // On screen, it keeps the app's connection live while the main
+        // window is behind it.
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            if let key, chat != nil { appState.noteScenePhase(phase, scene: "chat-window:\(key)") }
+        }
         .onDisappear {
-            if let key { appState.closeChatWindow(key) }
+            if let key {
+                appState.noteScenePhase(nil, scene: "chat-window:\(key)")
+                appState.closeChatWindow(key)
+            }
         }
     }
 

@@ -524,6 +524,11 @@ final class AppState: ObservableObject {
     /// The chats shown in windows of their own (AppState+ChatWindows.swift),
     /// each by the ids it answers to. Followed like the pane's chat.
     @Published var windowChatIDs: [Set<String>] = []
+    /// Each window's scene phase, the main window's and each chat window's
+    /// (AppState+ChatWindows.swift, noteScenePhase).
+    var windowScenePhases: [String: ScenePhase] = [:]
+    /// The app's phase across them, as handleScenePhase last heard it.
+    var mergedScenePhase: ScenePhase?
     /// The followed chat a profile switch shows while it lands, by the ids
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?

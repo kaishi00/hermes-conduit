@@ -3523,6 +3523,19 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
         state.windowChat(key)?.state.messages.removeLast(3)
 
+        // The app is in the background only once every window is.
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .active]), .active)
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .inactive]), .inactive)
+        XCTAssertEqual(AppState.mergedScenePhase([.background]), .background)
+        XCTAssertNil(AppState.mergedScenePhase([]))
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+        state.noteScenePhase(.active, scene: "chat-window:\(key)")
+        state.noteScenePhase(.background, scene: AppState.mainWindowScene)
+        XCTAssertTrue(state.isSceneActive, "A chat window on screen keeps the app active")
+        state.noteScenePhase(nil, scene: "chat-window:\(key)")
+        XCTAssertFalse(state.isSceneActive)
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+
         // Closing the window lets go of a chat with no reply running.
         state.closeChatWindow(key)
         XCTAssertTrue(state.windowChatIDs.isEmpty)

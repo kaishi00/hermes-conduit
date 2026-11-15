@@ -11,7 +11,7 @@
 //  chat back to the chat's own column to write in.
 //
 
-import Foundation
+import SwiftUI
 
 extension AppState {
     /// How many chats have windows of their own at once.
@@ -92,6 +92,34 @@ extension AppState {
         guard !windows.isEmpty else { return }
         windowChatIDs = []
         for ids in windows { letGoOfIdleFollowedChat(answering: ids) }
+    }
+
+    /// The main window's scene key in `windowScenePhases`.
+    static let mainWindowScene = "main"
+
+    /// A window's scene phase changed, or a chat window closed (nil). The
+    /// app's lifecycle (handleScenePhase) follows the most active of its
+    /// windows: a chat window on screen keeps the connection and its chat
+    /// live while the main window is behind it, and the app is in the
+    /// background only once every window is. With the main window alone,
+    /// its own phase, as before.
+    func noteScenePhase(_ phase: ScenePhase?, scene: String) {
+        if let phase {
+            windowScenePhases[scene] = phase
+        } else {
+            windowScenePhases.removeValue(forKey: scene)
+        }
+        guard let merged = Self.mergedScenePhase(Array(windowScenePhases.values)),
+              merged != mergedScenePhase else { return }
+        mergedScenePhase = merged
+        handleScenePhase(merged)
+    }
+
+    /// The most active of `phases`: active, then inactive, then background.
+    nonisolated static func mergedScenePhase(_ phases: [ScenePhase]) -> ScenePhase? {
+        if phases.contains(.active) { return .active }
+        if phases.contains(.inactive) { return .inactive }
+        return phases.isEmpty ? nil : .background
     }
 
     /// A window closes once its chat is followed no longer: opened in the

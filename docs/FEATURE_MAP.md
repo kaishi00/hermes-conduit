@@ -3242,7 +3242,7 @@ first-window guard (never closes a chat window) · README.md's feature list
 - The pane: `Conduit/Views/V2/V2BesideChatPane.swift`, its rows' state `Conduit/Views/ChatRowState.swift` (ChatRowState.beside, chatRowsBeside)
 - The layout: `Conduit/Views/V2/V2Shell.swift` (splitColumns, V2SplitLayout.besideChatWidth, showsBesideChat, v2BesideChatFits)
 - The row's menu: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions)
-- A chat window: `Conduit/Services/AppState+ChatWindows.swift` (keptChatIDs, windowChat, moveBesideChatToWindow, closeChatWindow, openWindowChatInMainWindow, closeKeptChats), `Conduit/Services/AppState.swift` (windowChatIDs), `Conduit/Views/V2/V2BesideChatPane.swift` (V2ChatWindow, the pane drawn with a windowKey), `Conduit/ConduitApp.swift` (the `conduit-chat` WindowGroup, chatWindowContent)
+- A chat window: `Conduit/Services/AppState+ChatWindows.swift` (noteScenePhase, mergedScenePhase, keptChatIDs, windowChat, moveBesideChatToWindow, closeChatWindow, openWindowChatInMainWindow, closeKeptChats), `Conduit/Services/AppState.swift` (windowChatIDs), `Conduit/Views/V2/V2BesideChatPane.swift` (V2ChatWindow, the pane drawn with a windowKey), `Conduit/ConduitApp.swift` (the `conduit-chat` WindowGroup, chatWindowContent), `Conduit/Views/RootView.swift` (the main window's phase to noteScenePhase)
 - A profile switch closes it: `Conduit/Services/AppState+Profiles.swift`; a dashboard switch: `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift` (testAChatKeptBesideIsFollowedWithNoReplyRunning, testClosingThePaneKeepsFollowingOnlyAReplyStillComing, testAChatMovesFromThePaneToAWindowOfItsOwn), `ConduitTests/V2SplitLayoutTests.swift` (testAChatKeptBesideFitsOnlyWhereBothChatsKeepTheirWidth)
 
@@ -3258,11 +3258,11 @@ first-window guard (never closes a chat window) · README.md's feature list
 - Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. A profile switch and a dashboard switch close the pane, and so does opening its chat in the chat's own column or deleting it. Settings in the chat's column and a group room only hide it, and New Chat keeps it beside the new chat (2026-11-15, #2557).
 - A chat gets a window of its own from the pane: Open in New Window in the pane's header, where the device opens windows (an iPad, a Mac). Hermes streams a chat's turns only to a connection that opened it, and the pane's chat has been on screen, so its window is live; a row's menu doesn't offer a window, since a chat that was never opened here would show a copy nothing updates. The window shows as the pane does and nothing in it acts: Open in Main Window opens its chat in the chat's own column, showing it there whatever the main window showed, and the window closes. Up to three chat windows at once (2026-11-15, #2565).
 - The pane's chat and each window's are followed whatever their age and take none of the four places chats left mid-reply have (2026-11-15, #2565; #2557 counted the pane's among the four).
+- The app counts as in the foreground while any of its windows is: a chat window on screen keeps the connection live with the main window behind it, and the app goes to the background once every window has (2026-11-15, #2565, from review).
 - A chat window closes when its chat opens in the main window, is deleted, or on a profile or dashboard switch. Closing it lets go of a chat with no reply running. One the system brings back at a relaunch has no chat to show and closes (2026-11-15, #2565).
 
 **Open gaps**
 - Not seen on a device yet: the pane's rows, its scroll and its width on an iPad and a Mac from TestFlight; a chat window's header under an iPad's and a Mac's window controls.
-- Only the main window drives the app's foreground and background handling: with the main window closed or behind on an iPad, a chat window stops updating until the main window is back.
 - A window narrower than the pane needs (a small Stage Manager window, Split View) has no pane, so no way to a chat window from it.
 - Writing in the pane or a chat window: next, as its own PR (a plain text message box).
 - With the chat list hidden, a wide window has one column and no pane.
