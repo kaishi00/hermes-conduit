@@ -10,7 +10,8 @@
 //  stays with the chat's own column: Swap or Open in Main Window.
 //
 
-import Foundation
+import SwiftUI
+import UIKit
 
 extension AppState {
     /// Whether `chat` takes a message here now: connected, on the profile
@@ -73,6 +74,8 @@ extension AppState {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !words.isEmpty, canSendInKeptChat(chat), let client,
               let target = keptChatSendTarget(chat) else { return false }
+        // A reply still settling from the last turn is no word of this one.
+        let replyWasSettled = chat.state.streamingBuffer.isEmpty
         let rowID = "user-kept-\(UUID().uuidString)"
         chat.state.messages.append(ChatMessage(
             id: rowID, role: .user, content: words, timestamp: Self.localTimestamp(), author: nil
@@ -84,18 +87,23 @@ extension AppState {
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
         do {
+            let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                _ = try await sendPrompt(client, target, words)
+                outcome = try await sendPrompt(client, target, words)
             } else {
-                _ = try await client.sendPrompt(target, text: words)
+                outcome = try await client.sendPrompt(target, text: words)
             }
+            // Steered, redirected or queued: a turn was running there
+            // already, so the message joined it and its card stands.
+            guard outcome == .accepted else { return true }
             LiveTurnActivities.shared?.turnStarted(
                 sessionIDs: ids,
                 primaryID: target,
                 linkID: chat.durableSessionID,
                 title: chat.title,
                 profile: chat.profile,
-                glowHex: profileGlowColors()[chat.profile]?.hex,
+                glowHex: profileGlowColors()[chat.profile]?.hex
+                    ?? profileGlowTint(chat.profile).flatMap { ProfileGlowRGB(UIColor($0).resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark)))?.hex },
                 dashboardID: chat.dashboardID.uuidString
             )
             return true
@@ -104,7 +112,7 @@ extension AppState {
             // Hermes' id, rows came after it, or its reply streams. Keep it.
             if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
                chat.state.messages[at].rowId != nil || at < chat.state.messages.count - 1
-                || !chat.state.streamingBuffer.isEmpty {
+                || (replyWasSettled && !chat.state.streamingBuffer.isEmpty) {
                 return true
             }
             discardTurnSurface(runtimeSessionID: target, text: words, after: error, reportedOn: reportedOn)

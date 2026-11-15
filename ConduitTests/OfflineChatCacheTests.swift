@@ -3596,9 +3596,11 @@ final class OfflineChatCacheTests: XCTestCase {
     func testAKeptChatTakesAMessageFromItsBox() async throws {
         let sent = SentPrompts()
         var fails = false
+        var hermesWordFirst: (() -> Void)?
         let (state, _, _) = makeAppState(
             lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
                 sent.prompts.append((sessionID, text))
+                hermesWordFirst?()
                 if fails { throw HermesError.timeout("prompt.submit") }
                 return .accepted
             })
@@ -3634,6 +3636,17 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(failed)
         XCTAssertFalse(kept.state.messages.contains { $0.content == "Another" })
         XCTAssertFalse(kept.isRunning)
+
+        // One whose word from Hermes came before the failure stays, its
+        // turn running.
+        hermesWordFirst = {
+            state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 30, text: "Third", origin: nil))
+        }
+        let kept3 = await state.sendInKeptChat(kept, text: "Third")
+        XCTAssertTrue(kept3)
+        XCTAssertEqual(kept.state.messages.last?.content, "Third")
+        XCTAssertEqual(kept.state.messages.last?.rowId, 30)
+        XCTAssertTrue(kept.isRunning)
         state.besideChatIDs = nil
     }
 
