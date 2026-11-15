@@ -3541,12 +3541,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.windowChatIDs.isEmpty)
         XCTAssertTrue(state.backgroundChats.isEmpty)
 
-        // Opened in the main window, the chat has its window no longer.
+        // A message under a runtime id Hermes bound to it since (another
+        // device resumed it) reaches it too.
         keepABesideB()
         let second = try XCTUnwrap(state.moveBesideChatToWindow())
-        XCTAssertNotNil(state.windowChat(second))
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: state.activeProfile, source: .resume)
+        state.handleStreamEvent(.userMessage(sessionId: "rt-a", rowId: 21, text: "Resumed elsewhere", origin: nil))
+        XCTAssertEqual(state.windowChat(second)?.state.messages.last?.rowId, 21)
+
+        // Open in Main Window shows the chat whatever the main window
+        // showed; its window closes once the open lands.
+        state.showSidebar = true
+        state.openWindowChatInMainWindow(second)
+        XCTAssertFalse(state.showSidebar)
+        XCTAssertNotNil(state.windowChat(second), "Shown until the open lands")
         state.releaseFollowedChat(answering: ["a"])
         XCTAssertTrue(state.windowChatIDs.isEmpty)
+
+        // A profile change of any kind closes every window.
+        keepABesideB()
+        XCTAssertNotNil(state.moveBesideChatToWindow())
+        let home = state.activeProfile
+        state.setActiveProfileForTesting(home + "-other")
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        state.setActiveProfileForTesting(home)
+        state.stopFollowingChats(dashboardID: nil)
 
         // A profile or dashboard switch closes the pane and every window.
         keepABesideB()

@@ -45876,6 +45876,88 @@
           }
         }
       }
+    },
+    "Moves this chat to a window of its own, and closes the pane." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verschiebt diesen Chat in ein eigenes Fenster und schließt den Bereich."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mueve este chat a una ventana propia y cierra el panel."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Déplace cette discussion dans sa propre fenêtre et ferme le panneau."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memindahkan chat ini ke jendelanya sendiri, dan menutup panel."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sposta questa chat in una finestra separata e chiude il riquadro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このチャットを専用のウインドウに移し、パネルを閉じます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 채팅을 별도 윈도우로 옮기고 패널을 닫습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przenosi ten czat do osobnego okna i zamyka panel."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Move esta conversa para uma janela própria e fecha o painel."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переносит этот чат в отдельное окно и закрывает панель."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sohbeti kendi penceresine taşır ve paneli kapatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将此聊天移到单独的窗口，并关闭面板。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將此聊天移到單獨的視窗，並關閉面板。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

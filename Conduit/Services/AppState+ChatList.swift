@@ -659,6 +659,10 @@ extension AppState {
     /// do not simplify either away.
     func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
+        // The pane's chat and each chat window's are the outgoing
+        // profile's, whatever changed it: a switch closes them first, and
+        // so does a profile Hermes no longer has, or one a sign-in brings.
+        closeKeptChats()
         activeProfile = newValue
         // A chat error waiting behind a room was the outgoing profile's chat's.
         chatErrorBehindRoom = nil

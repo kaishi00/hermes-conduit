@@ -80,6 +80,7 @@ struct V2BesideChatPane: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(AppLocalization.string("Open in New Window", table: .chat))
+            .accessibilityHint(AppLocalization.string("Moves this chat to a window of its own, and closes the pane.", table: .chat))
         }
         Button {
             Haptics.selection()

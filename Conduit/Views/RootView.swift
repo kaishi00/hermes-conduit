@@ -121,6 +121,8 @@ struct RootView: View {
         }
         .onDisappear {
             if isPrimaryWindow {
+                // A chat window left open alone decides the app's phase.
+                appState.noteScenePhase(nil, scene: AppState.mainWindowScene)
                 ConduitWindowClaimKeeper.releaseClaim()
             }
         }
