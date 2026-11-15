@@ -475,6 +475,12 @@ extension HermesVoiceGatewayTimeoutTests {
         // The user went to another folder meanwhile: it isn't moved back, and isn't told of the other's failure.
         let left = ProjectFolderPickerSheet.afterFailedNewFolder(slow, in: "/w", showing: "/w/app")
         XCTAssertTrue(!left.relists && !left.saysSo)
+        // A folder tapped while New Folder was out counts as moved on, though its listing isn't in yet.
+        let tapped = ProjectFolderPickerSheet.afterFailedNewFolder(slow, in: "/w", showing: "/w", openedSince: 1)
+        XCTAssertTrue(!tapped.relists && !tapped.saysSo)
+        let tappedAfterRefusal = ProjectFolderPickerSheet.afterFailedNewFolder(
+            DashboardTicketBridgeError.http(status: 409, detail: ""), in: "/w", showing: "/w", openedSince: 1)
+        XCTAssertFalse(tappedAfterRefusal.saysSo)
     }
 
     func testProjectFolderPickerStartsInTheChatsFolderElseHomes() throws {
