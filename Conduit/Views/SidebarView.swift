@@ -2181,8 +2181,12 @@ struct ProjectFolderPickerSheet: View {
     /// made in is listed again, so a made one shows rather than being asked
     /// for twice (notifier issue 834). Neither that nor the error reaches a
     /// picker that has moved to another folder since.
-    static func afterFailedNewFolder(_ error: Error, in folder: String, showing: String) -> (relists: Bool, saysSo: Bool) {
-        guard showing == folder else { return (false, false) }
+    /// A folder opened since New Folder was asked for (`openedSince`)
+    /// counts as moved on even while its listing is still out, since the
+    /// folder shown changes only once that listing is in.
+    static func afterFailedNewFolder(_ error: Error, in folder: String, showing: String,
+                                     openedSince: Int = 0) -> (relists: Bool, saysSo: Bool) {
+        guard showing == folder, openedSince == 0 else { return (false, false) }
         if case DashboardTicketBridgeError.http(status: 504, _) = error { return (true, true) }
         return (false, true)
     }
@@ -2196,14 +2200,14 @@ struct ProjectFolderPickerSheet: View {
                 await open(made)
             }
         } catch {
-            // A folder tapped meanwhile counts as moved on even while its
-            // listing is still out (currentPath changes only when it's in).
-            guard opened == asked else { return }
-            let after = Self.afterFailedNewFolder(error, in: folder, showing: currentPath)
+            let after = Self.afterFailedNewFolder(error, in: folder, showing: currentPath, openedSince: opened - asked)
             if after.relists { await open(folder) }
-            // Again after the listing: the user may have moved on during it.
-            let latest = after.relists ? asked + 1 : asked
-            if after.saysSo, opened == latest, currentPath == folder { errorMessage = UserFacingError.message(for: error) }
+            // Asked again after the listing (the one open this made set
+            // aside): the user may have moved on during it.
+            let since = opened - asked - (after.relists ? 1 : 0)
+            if Self.afterFailedNewFolder(error, in: folder, showing: currentPath, openedSince: since).saysSo {
+                errorMessage = UserFacingError.message(for: error)
+            }
         }
     }
 }
