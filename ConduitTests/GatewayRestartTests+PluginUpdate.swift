@@ -753,6 +753,21 @@ extension GatewayRestartTests {
         XCTAssertEqual(NotifierPluginStatus.runtime(from: kept)?.roomChatsKept, true)
     }
 
+    func testARuntimeListsWhatThePluginCantDoOnThisHermes() {
+        // Notifier issue 834: only the host's log said it before.
+        let base: [String: Any] = ["ok": true, "version": "0.177.16", "loaded_version": "0.177.16", "capabilities": []]
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: base)?.degraded, [])
+        var limited = base
+        limited["degraded"] = ["workspace-files", 7, "workstream-recovery", "a-later-one"]
+        let codes = NotifierPluginStatus.runtime(from: limited)?.degraded ?? []
+        XCTAssertEqual(codes, ["workspace-files", "workstream-recovery", "a-later-one"])
+        let lines = codes.map(NotifierPluginStatus.degradedText)
+        XCTAssertEqual(Set(lines).count, 3)
+        XCTAssertTrue(lines[2].contains("a-later-one"), "a code this build doesn't know is shown by its code")
+        limited["degraded"] = "workspace-files"
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: limited)?.degraded, [])
+    }
+
     func testProfilePairingOwner() {
         XCTAssertEqual(PushNotificationService.profilePairing(status: ["paired": false], installationID: "i1"), .unpaired)
         XCTAssertEqual(PushNotificationService.profilePairing(status: ["paired": true, "installation_id": "i1"], installationID: "i1"), .thisDevice)

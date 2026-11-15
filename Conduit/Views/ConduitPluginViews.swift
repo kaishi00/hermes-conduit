@@ -111,6 +111,20 @@ struct ConduitPluginSettingsDetail: View {
                 Text(verbatim: statusText(status))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
+                // What the plugin can't do on this Hermes right now (its
+                // `degraded` list), one line each.
+                if case .reported = status.state {
+                    ForEach(status.runtime?.degraded ?? [], id: \.self) { code in
+                        Label {
+                            Text(verbatim: NotifierPluginStatus.degradedText(code))
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                        }
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.orange)
+                        .accessibilityIdentifier("settings.plugin.degraded.\(code)")
+                    }
+                }
                 if status.updateAvailable, let notes = NotifierPluginReleaseNotes(changelog: appState.notifierPluginChangelog, status: status) {
                     if let summary = notes.summary {
                         Text(verbatim: summary)

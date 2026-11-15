@@ -2056,6 +2056,10 @@ struct ProjectFolderPickerSheet: View {
     @State private var errorMessage: String?
     @State private var asksFolderName = false
     @State private var newFolderName = ""
+    /// Counts the folders opened: a listing that comes back after a later
+    /// one was asked for is dropped, so the picker never moves back to a
+    /// folder the user left.
+    @State private var opened = 0
 
     private var parentPath: String? {
         currentPath.isEmpty ? nil : AppState.parentWorkspacePath(currentPath)
@@ -2151,6 +2155,8 @@ struct ProjectFolderPickerSheet: View {
 
     /// On a failure the picker stays on the folder it showed.
     private func open(_ path: String) async {
+        opened += 1
+        let mine = opened
         isLoading = true
         errorMessage = nil
         do {
@@ -2159,13 +2165,26 @@ struct ProjectFolderPickerSheet: View {
             } else {
                 try await appState.workspaceDirectoryEntries(at: path)
             }
+            guard mine == opened else { return }
             currentPath = path
             entries = listed
         } catch {
+            guard mine == opened else { return }
             if currentPath.isEmpty { entries = [] }
             errorMessage = UserFacingError.message(for: error)
         }
         isLoading = false
+    }
+
+    /// What a failed New Folder does to the picker. The host stopped
+    /// waiting (504) and the folder may still be made: the folder it was
+    /// made in is listed again, so a made one shows rather than being asked
+    /// for twice (notifier issue 834). Neither that nor the error reaches a
+    /// picker that has moved to another folder since.
+    static func afterFailedNewFolder(_ error: Error, in folder: String, showing: String) -> (relists: Bool, saysSo: Bool) {
+        guard showing == folder else { return (false, false) }
+        if case DashboardTicketBridgeError.http(status: 504, _) = error { return (true, true) }
+        return (false, true)
     }
 
     /// Made inside the folder shown, then opened, ready to choose.
@@ -2176,13 +2195,10 @@ struct ProjectFolderPickerSheet: View {
                 await open(made)
             }
         } catch {
-            // The host stopped waiting (504) and the folder may still be
-            // made: the folder shown is listed again, so a made one shows
-            // rather than being asked for twice (notifier issue 834).
-            if case DashboardTicketBridgeError.http(status: 504, _) = error, currentPath == folder {
-                await open(folder)
-            }
-            errorMessage = UserFacingError.message(for: error)
+            let after = Self.afterFailedNewFolder(error, in: folder, showing: currentPath)
+            if after.relists { await open(folder) }
+            // Again after the listing: the user may have moved on during it.
+            if after.saysSo, currentPath == folder { errorMessage = UserFacingError.message(for: error) }
         }
     }
 }
