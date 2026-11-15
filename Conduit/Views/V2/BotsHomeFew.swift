@@ -45,14 +45,21 @@ enum BotsHomeWork {
         return Array((open.filter(\.needsYou) + open.filter { !$0.needsYou }).prefix(shown))
     }
 
+    /// One formatter for every label, its locale set as it's used, as the
+    /// Bots list's rows keep theirs.
+    private static let activityFormatter: RelativeDateTimeFormatter = {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .abbreviated
+        return formatter
+    }()
+
     /// When a bot's Bot Chat last moved, short and relative ("12 min.
     /// ago"); nil before it has talked. The roster sends seconds, or
     /// milliseconds from older hosts.
     static func lastActiveLabel(_ lastActive: Double?, now: Date = Date()) -> String? {
         guard let lastActive, lastActive > 0 else { return nil }
         let seconds = lastActive > 10_000_000_000 ? lastActive / 1000 : lastActive
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        let formatter = activityFormatter
         formatter.locale = AppLocalization.formattingLocale
         return formatter.localizedString(for: Date(timeIntervalSince1970: seconds), relativeTo: now)
     }
@@ -75,10 +82,17 @@ struct BotLastReply: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @State private var reply: String?
+    /// The Bot Chat `reply` was read from: another chat's reply never shows
+    /// under this one (a chat Hermes replaced, a bot renamed).
+    @State private var replyChatID: String?
 
+    /// Read again when the roster says the chat moved, and, while that chat
+    /// is open beside Bots Home (a split window), as its newest message
+    /// changes, which the roster doesn't hear of until its next read.
     private var readKey: String {
         let chat = bot.canonicalSession
-        return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0),
+        let openTail = appState.activeBotChatProfile == bot.name ? (appState.messages.last?.id ?? "") : ""
+        return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive)].joined(separator: "\u{1F}")
     }
 
@@ -126,6 +140,17 @@ struct BotLastReply: View {
     }
 
     private func caption(_ reply: String) -> some View {
+        Button {
+            Haptics.light()
+            onOpen()
+        } label: {
+            captionText(reply)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.", table: .bots)))
+    }
+
+    private func captionText(_ reply: String) -> some View {
         VStack(spacing: 2) {
             Text(verbatim: reply)
                 .scaledFont(.footnote)
@@ -140,13 +165,22 @@ struct BotLastReply: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.horizontal, 4)
+        .contentShape(Rectangle())
     }
 
     /// The newest assistant reply in the bot's Bot Chat, as a call's "what
     /// did it say" reads it: from the open chat when it's on screen, else
     /// the chat's saved history in the bot's own profile.
     private func read() async {
-        guard shell.isTabActive, appState.isConnected, let chat = bot.canonicalSession else { return }
+        guard let chat = bot.canonicalSession else {
+            reply = nil
+            return
+        }
+        if replyChatID != chat.id {
+            reply = nil
+            replyChatID = chat.id
+        }
+        guard shell.isTabActive, appState.isConnected else { return }
         let target = VoiceThreadTarget(
             runtimeSessionID: chat.resolvedID ?? chat.id,
             storedSessionID: chat.id,
@@ -274,6 +308,7 @@ struct BotsHomeWorkSection: View {
                             row(item)
                         }
                         .buttonStyle(PressableButtonStyle())
+                        .accessibilityHint(Text(AppLocalization.string("Shows this bot's work", table: .bots)))
                     }
                 }
                 .settingsCard(cornerRadius: 18)
