@@ -3836,7 +3836,7 @@ private struct SettledToolCardContent: View, Equatable {
                                                     fallback: label.action ?? ChatStepSubject.line(from: tool.input))
                                     .transition(.rowFoldSwap)
                             } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
-                                ?? label.action
+                                ?? label.subjectLine
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)
