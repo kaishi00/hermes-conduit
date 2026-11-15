@@ -127,7 +127,7 @@ private struct V2KeptChatComposer: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             if failed {
-                Text(AppLocalization.string("Couldn't send here. Try again, or Swap to send from the chat.", table: .chat))
+                Text(AppLocalization.string("Couldn't send here. Try again, or open the chat to send from there.", table: .chat))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -139,7 +139,6 @@ private struct V2KeptChatComposer: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .onSubmit(send)
                     // Kept as typed until the send settles, so a failed
                     // message comes back whole.
                     .disabled(sending)

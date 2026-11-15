@@ -3562,6 +3562,7 @@ final class OfflineChatCacheTests: XCTestCase {
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: state.activeProfile, source: .resume)
         state.handleStreamEvent(.userMessage(sessionId: "rt-a", rowId: 21, text: "Resumed elsewhere", origin: nil))
         XCTAssertEqual(state.windowChat(second)?.state.messages.last?.rowId, 21)
+        XCTAssertEqual(state.windowChat(second).flatMap(state.keptChatSendTarget), "rt-a", "Its next message goes where its turns now run")
 
         // Open in Main Window shows the chat whatever the main window
         // showed; its window closes once the open lands.
@@ -3588,6 +3589,54 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.windowChatIDs.isEmpty)
         XCTAssertTrue(state.backgroundChats.isEmpty)
     }
+
+    /// A message from the pane's box shows at once, runs a turn, and goes
+    /// to the chat's own session; one that fails comes off again, unless
+    /// Hermes' word of it came first.
+    func testAKeptChatTakesAMessageFromItsBox() async throws {
+        let sent = SentPrompts()
+        var fails = false
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                if fails { throw HermesError.timeout("prompt.submit") }
+                return .accepted
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+        XCTAssertTrue(state.canSendInKeptChat(kept))
+
+        let before = state.besideChatLive.revision
+        let went = await state.sendInKeptChat(kept, text: "  Quick one  ")
+        XCTAssertTrue(went)
+        XCTAssertEqual(sent.prompts.map(\.sessionID), ["a"])
+        XCTAssertEqual(sent.prompts.map(\.text), ["Quick one"])
+        XCTAssertEqual(kept.state.messages.last?.content, "Quick one")
+        XCTAssertTrue(kept.isRunning)
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertFalse(state.canSendInKeptChat(kept), "Not while its turn runs")
+
+        // A send that fails with no word from Hermes comes off.
+        kept.state.messages.append(ChatMessage(id: "r1", role: .assistant, content: "Sure", timestamp: "2"))
+        state.act(on: kept) { state.setRunning(false) }
+        fails = true
+        let failed = await state.sendInKeptChat(kept, text: "Another")
+        XCTAssertFalse(failed)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Another" })
+        XCTAssertFalse(kept.isRunning)
+        state.besideChatIDs = nil
+    }
+
 
     /// Closing the pane lets go of a chat with no reply running, and goes
     /// on following one whose reply still comes; a chat that couldn't be

@@ -21,13 +21,20 @@ extension AppState {
             && keptChatIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } == true
     }
 
-    /// The id the chat's turns run under on this connection: the runtime id
-    /// Hermes bound it to, else the id it was left as. An id Hermes has
-    /// since bound to another chat is never a target: nil sends nothing.
+    /// The id the chat's turns run under on this connection: the id its
+    /// events came under last (a runtime id Hermes bound it to, here or on
+    /// another device), else the runtime id it was left with, else the id
+    /// it was left as. An id Hermes has since bound to another chat is
+    /// never a target: nil sends nothing.
     func keptChatSendTarget(_ chat: BackgroundChat) -> String? {
         let index = conversationIdentityIndex
         func isThisChat(_ durable: String) -> Bool {
             chat.sessionIDs.contains(durable) || chat.durableSessionID == durable
+        }
+        if let latest = keptChatEventIDs[Self.keptChatKey(chat)],
+           index.durableID(forRuntime: latest, profile: chat.profile).map(isThisChat)
+               ?? chat.sessionIDs.contains(latest) {
+            return latest
         }
         var runtime: String?
         var free: [String] = []
@@ -44,9 +51,23 @@ extension AppState {
             ?? free.first
     }
 
-    /// Sends `text` to the kept chat. The message shows in it at once and
-    /// its reply follows there. False when it didn't go: the message comes
-    /// off the chat, the turn isn't running, and the box keeps the words.
+    /// Notes the id a kept chat's event came under, the one its next
+    /// message goes to (`keptChatSendTarget`).
+    func noteKeptChatEvent(_ chat: BackgroundChat, sessionID: String) {
+        if keptChatEventIDs.count > 16 { keptChatEventIDs.removeAll() }
+        keptChatEventIDs[Self.keptChatKey(chat)] = sessionID
+    }
+
+    nonisolated static func keptChatKey(_ chat: BackgroundChat) -> String {
+        chat.durableSessionID ?? chat.sessionIDs.sorted().first ?? ""
+    }
+
+    /// Sends `text` to the kept chat as the chat's own composer sends a
+    /// message: where it was sent from goes to the plugin first (#888), its
+    /// turn gets a Live Activity (#605), and the message shows in the chat
+    /// at once with its reply following there. False when it didn't go:
+    /// the message comes off the chat, the turn isn't running, and the box
+    /// keeps the words.
     @discardableResult
     func sendInKeptChat(_ chat: BackgroundChat, text: String) async -> Bool {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -58,16 +79,35 @@ extension AppState {
         ))
         act(on: chat) { setRunning(true) }
         besideChatLive.moved()
+        let ids = chat.sessionIDs.union([target])
+        let reportedOn = activeDashboardID
+        await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
+        LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
         do {
-            _ = try await client.sendPrompt(target, text: words)
+            if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
+                _ = try await sendPrompt(client, target, words)
+            } else {
+                _ = try await client.sendPrompt(target, text: words)
+            }
+            LiveTurnActivities.shared?.turnStarted(
+                sessionIDs: ids,
+                primaryID: target,
+                linkID: chat.durableSessionID,
+                title: chat.title,
+                profile: chat.profile,
+                glowHex: profileGlowColors()[chat.profile]?.hex,
+                dashboardID: chat.dashboardID.uuidString
+            )
             return true
         } catch {
-            // A send that timed out after Hermes took it: its echo gave the
-            // row Hermes' id, or the reply has started under it. Keep both.
+            // A send that failed after Hermes took it: its echo gave the row
+            // Hermes' id, rows came after it, or its reply streams. Keep it.
             if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
-               chat.state.messages[at].rowId != nil || at < chat.state.messages.count - 1 {
+               chat.state.messages[at].rowId != nil || at < chat.state.messages.count - 1
+                || !chat.state.streamingBuffer.isEmpty {
                 return true
             }
+            discardTurnSurface(runtimeSessionID: target, text: words, after: error, reportedOn: reportedOn)
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
             besideChatLive.moved()
