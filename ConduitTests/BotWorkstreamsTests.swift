@@ -1439,7 +1439,12 @@ extension BotModeTests {
             appState: AppState(defaults: defaults, loadSavedConnection: false),
             scroller: TranscriptScroller()
         )
-        controller.loadViewIfNeeded()
+        // On screen, where the rows that leave slide out as a picture.
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = controller
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
         let rows = controller.collectionView
         let motion = TranscriptSwapMotion()
         controller.swapMotion = motion
@@ -1449,10 +1454,10 @@ extension BotModeTests {
 
         motion.leave(.back)
         XCTAssertTrue(controller.rowsAreAway)
-        if let picture = controller.leaving {
-            XCTAssertFalse(picture.isUserInteractionEnabled, "the picture of the rows that left takes no taps")
-            XCTAssertTrue(picture.accessibilityElementsHidden)
-        }
+        let picture = try XCTUnwrap(controller.leaving, "the rows that left slide out as a picture")
+        XCTAssertTrue(picture.superview === controller.view)
+        XCTAssertFalse(picture.isUserInteractionEnabled, "the picture of the rows that left takes no taps")
+        XCTAssertTrue(picture.accessibilityElementsHidden)
         XCTAssertFalse(rows.isUserInteractionEnabled)
         XCTAssertTrue(rows.accessibilityElementsHidden)
 
@@ -1473,7 +1478,8 @@ extension BotModeTests {
         XCTAssertFalse(rows.accessibilityElementsHidden)
         XCTAssertNil(controller.leaving, "the picture goes as the rows come back")
         try await Task.sleep(for: .milliseconds(400))
-        XCTAssertEqual(controller.view.subviews.count, shown, "the slid-in picture went after its slide")
+        XCTAssertNil(picture.superview, "the slid-in picture went after its slide")
+        XCTAssertEqual(controller.view.subviews.count, shown)
 
         // Rows that never left aren't touched by a comeback.
         controller.comeBack()
