@@ -8357,6 +8357,30 @@ none (no Settings caption or doc gives the cadence)
 
 **Checked:** 2026-11-14, #2479 (a signal read that lists the same rows waits longer for the next, up to 60 s; a changed list starts over; the list views, the project page and the open chat's check read the same catalog and needed no change); 2026-11-13, #2384 (a delete drops only the call archives that list it; the server-identity reset named; tests for the same-rows commit and the Projects interval, issue 2375; the list views read the same catalog and needed no change); 2026-11-13, #2370 (a read that lists the same rows changes nothing after it, Projects and the call archive read at most every 5 minutes, issue 2357; the drawer sidebar and a project's page read the same catalog); 2026-11-12, #2310 (a failed change read stays pending, issue 2294; an older read never overwrites a newer one's cached rows, issue 2293; the list views, the project page and the open chat's check read the same catalog and needed no change); 2026-11-12, #2300 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2275 (a change held by a turn here keeps the 30 s read; the wake follows Low Power's stretched first step); 2026-11-12, #2267 (issue 851).
 
+## The Chats list under a pushed chat
+
+What the Chats list draws while a chat covers it, and when it catches up:
+covered, it skips AppState's publishes; shown again, it draws once with
+what it missed.
+
+**Siblings:** a project's page and the list beside a chat on a wide window
+(the same gate; beside a chat the list stays shown and coalesces bursts
+instead) · the drawer shell's sidebar (V1: not needed, no pushed chat
+covers it) · Bots Home (gap: it redraws on every publish, see its entry) ·
+text: none (no caption or doc describes it)
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (V2ShownUpdates: isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ChatsView.swift` (the list's Visibility, which sets revealDelay for a pop)
+- Tests: `ConduitTests/SidebarLayoutTests.swift` (testCoveredChatsListWaitsUntilItShowsAgain, testChatsListBesideAChatDrawsABurstOnce, testScrollingChatsListDrawsHeldPublishesOnceItRests)
+
+**Rulings**
+- Shown again by a chat popping off it, the list draws what it missed once the pop has slid (0.45 s), not as the finger lifts: drawn then, the whole list's bodies held the slide's first frame 158 to 175 ms on an iPhone 16 Pro Max (2026-11-14). Meanwhile it shows the rows it showed as the chat opened, and publishes in that wait join the one draw. Shown by a tab switch, where nothing slides, it draws at once. Its own setting writes always draw at once.
+
+**Open gaps**
+- Pushing a chat still re-runs the list's body as it's covered (about 80 ms of list bodies spread over the push on an iPhone 16 Pro Max, 2026-11-14).
+
+**Checked:** 2026-11-15, #2489 (new entry: a pop's catch-up draw waits out the slide; the project page and the list beside a chat share the gate; Bots Home's gap unchanged)
+
 ## Reads while a screen shows
 
 What a screen reads from Hermes or the plugin on a timer, and when it

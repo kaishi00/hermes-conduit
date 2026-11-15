@@ -1440,12 +1440,15 @@ extension BotModeTests {
             scroller: TranscriptScroller()
         )
         // On screen, where the rows that leave slide out as a picture.
-        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        // In the test host's scene: a window with none is never rendered,
+        // and UIKit makes no picture of a view never rendered.
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
         window.rootViewController = controller
         window.isHidden = false
         defer { window.isHidden = true }
         window.layoutIfNeeded()
-        // Drawn once: UIKit makes no picture of a view never rendered.
         CATransaction.flush()
         try await Task.sleep(for: .milliseconds(100))
         let rows = controller.collectionView

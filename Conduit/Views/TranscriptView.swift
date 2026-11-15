@@ -322,6 +322,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
             let out = TranscriptSwapSlide.out(from: leaving == nil ? layer : picture.layer, by: distance)
             if leaving == nil {
                 picture.frame = collectionView.frame
+                picture.autoresizingMask = [.flexibleWidth, .flexibleHeight]
                 picture.isUserInteractionEnabled = false
                 picture.accessibilityElementsHidden = true
                 view.insertSubview(picture, aboveSubview: collectionView)

@@ -212,7 +212,6 @@ final class SidebarLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let updates = V2ShownUpdates(state, defaults: defaults, defaultsKeys: ["list.filter"])
-        updates.revealDelay = 0
         updates.coalesces = true
         updates.coalescingDelay = 0.05
         var sent = 0
@@ -258,7 +257,6 @@ final class SidebarLayoutTests: XCTestCase {
     func testScrollingChatsListDrawsHeldPublishesOnceItRests() {
         let state = makeAppState()
         let updates = V2ShownUpdates(state)
-        updates.revealDelay = 0
         var clock = Date(timeIntervalSinceReferenceDate: 0)
         updates.now = { clock }
         var sent = 0
@@ -469,7 +467,6 @@ final class SidebarLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let updates = V2ShownUpdates(state, defaults: defaults, defaultsKeys: ["list.filter"])
-        updates.revealDelay = 0
         var sent = 0
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }

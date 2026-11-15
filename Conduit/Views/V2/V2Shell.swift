@@ -251,8 +251,8 @@ extension EnvironmentValues {
 /// once when the scroll comes to rest: right after launch the connection,
 /// catalog, projects and live statuses publish many times a second, and a
 /// redraw of the whole list on each cost the scroll its frames. Shown
-/// again by a chat popping off it, the list draws what it missed once the
-/// pop has slid: drawn as the finger lifted, the whole list's bodies held
+/// again by a chat popping off it (not by a tab switch, where nothing
+/// slides), the list draws what it missed once the pop has slid: drawn as the finger lifted, the whole list's bodies held
 /// the slide's first frame 158 to 175 ms (an iPhone 16 Pro Max,
 /// 2026-11-14), and the rows it shows meanwhile are the ones it showed as
 /// the chat opened.
@@ -273,9 +273,11 @@ final class V2ShownUpdates: ObservableObject {
             if isShown, !oldValue, missedUpdate { reveal() }
         }
     }
-    /// How long a list shown again waits to draw what it missed: about a
-    /// pop's slide. Zero draws at once.
-    var revealDelay: TimeInterval = 0.45
+    /// How long a list shown again waits to draw what it missed: the list
+    /// sets `popSlide` when a pop shows it, zero (at once) otherwise.
+    var revealDelay: TimeInterval = 0
+    /// About a pop's slide.
+    static let popSlide: TimeInterval = 0.45
     private var revealTask: Task<Void, Never>?
 
     private func reveal() {
