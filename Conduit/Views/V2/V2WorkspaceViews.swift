@@ -1050,7 +1050,7 @@ struct WorkspaceFolderView: View {
     /// Each file goes up in turn, and the folders are read once after the
     /// last (issue 2355).
     private func upload(_ urls: [URL], into folder: String) async {
-        var uploaded = false
+        var sent = false
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -1068,13 +1068,14 @@ struct WorkspaceFolderView: View {
                 failure = tooLarge
                 continue
             }
-            if await perform(refreshing: false, { client, root in
+            // Sent, whatever came back: a file the host stopped waiting on
+            // (504) may still have landed (notifier issue 834).
+            sent = true
+            await perform(refreshing: false, { client, root in
                 try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
-            }) {
-                uploaded = true
-            }
+            })
         }
-        if uploaded { await explorer.refresh() }
+        if sent { await explorer.refresh() }
     }
 
     /// The plugin takes up to 25 MB a file.
