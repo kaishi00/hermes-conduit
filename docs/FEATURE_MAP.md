@@ -4202,7 +4202,7 @@ shows in one publish when the chat is seen again.
 
 **Siblings:** chats, project chats, Bot Chat and Kanban workers' transcripts
 (one ChatView, whose live rows are the only views that observe `liveTurn`) ·
-the sessions drawer over the chat · Conduit in the background · Conduit inactive (the app switcher, Control Center; not on a Mac) · not needed:
+the sessions drawer over the chat · Conduit in the background · Conduit inactive (the app switcher, Control Center; not on a Mac) · a chat left mid-reply (all-live stage 2): it has no rows on screen, so its turn never publishes, and its words stay in its own state until it's opened (see A chat while it opens) · not needed:
 group rooms (their messages arrive whole, nothing streams), voice modes,
 CarPlay and the Watch (they hear the stream through the voice observers,
 not the drawn text), the Live Activity (it reads the stream events), the
@@ -4223,7 +4223,7 @@ chat's saved copy and the reply's notification (the settled message)
 - If an iPad window that is on screen but not receiving events (Split View or Slide Over beside another app, Stage Manager) reports `.inactive`, its streaming reply waits until the window is touched or focused, then catches up at once; not checked on an iPad (#1744, from the reviews).
 - The rest of the chat (the transcript's rows, the composer) still updates in the background on a turn's boundaries: a tool card or a settled message lands as it comes, which is one update each, not stream cadence.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1744 (inactive pauses too, off a Mac); 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
+**Checked:** 2026-11-15, #2529 (a chat left mid-reply counts as unseen: liveRowsHidden is true while its events apply; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1744 (inactive pauses too, off a Mac); 2026-11-04, #1743 (the background pauses the live publishes as the drawer did).
 
 ## Reconnecting to Hermes
 
