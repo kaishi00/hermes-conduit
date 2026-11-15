@@ -114,15 +114,21 @@ extension AppState {
         case .sessionInfo(_, let snapshot):
             // Hermes says the turn isn't running: it ended where no event
             // of its end reached here.
+            // As the turn's own end does: the words so far stay in the
+            // buffer, so a completion after it with no words of its own
+            // still settles them as its row.
             guard snapshot.running == false, shownChat.turnState.isRunning else { break }
-            settleKeptChatTurn()
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningSegment()
+            setRunning(false)
         default:
             break
         }
     }
 
-    /// Ends a left chat's turn as far as this phone knows: its words so far
-    /// stay, its flag goes.
+    /// Ends a left chat's turn as far as this phone knows, with no
+    /// completion still to come: its words so far become its row, its flag
+    /// goes.
     private func settleKeptChatTurn() {
         settleReasoningSegmentIntoTranscript()
         resetReasoningSegment()
