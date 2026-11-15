@@ -608,6 +608,45 @@ final class SessionRenameTests: XCTestCase {
                        "The new chat never takes the left chat's words")
     }
 
+    /// Words the left chat streams while New Chat's create is out stay in
+    /// its followed copy, under its own title: the create's adoption
+    /// doesn't follow it again from the screen's rows, which stopped at the
+    /// tap (issue 2523). A repeated completion for the reply finalizes its
+    /// row in place rather than adding a twin (issue 2511).
+    func testWordsStreamedDuringANewChatsCreateStayInTheFollowedCopy() async throws {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.savedDashboardRegistry.activeDashboardID = UUID()
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
+        guard let creator = appState.widgetSessionCreatorOverride else {
+            return XCTFail("The harness creates chats through the override")
+        }
+        var waiting: CheckedContinuation<Void, Never>?
+        appState.widgetSessionCreatorOverride = { client, cwd in
+            await withCheckedContinuation { waiting = $0 }
+            return try await creator(client, cwd)
+        }
+        appState.setActiveSessionState(id: "a", title: "Story")
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        appState.turnState = .running
+        appState.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+
+        let create = Task { await appState.createNewSession() }
+        for _ in 0..<2000 where waiting == nil { await Task.yield() }
+        appState.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
+        waiting?.resume()
+        let created = await create.value
+        XCTAssertEqual(created, "created-runtime")
+
+        let followed = try XCTUnwrap(appState.followedChat(answering: ["a"]))
+        XCTAssertEqual(followed.title, "Story")
+        XCTAssertEqual(followed.rows.last?.content, "Once upon a time")
+
+        appState.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        appState.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time, the end.", reasoning: nil))
+        let finished = try XCTUnwrap(appState.followedChat(answering: ["a"]))
+        XCTAssertEqual(finished.rows.map(\.content), ["Tell me a story", "Once upon a time, the end."])
+    }
+
     /// Two New Chats that overlap (a widget's beside the button's) and
     /// start nothing: the first to finish keeps the follow, since the other
     /// still leaves the chat, and the last lets go of it, though it followed

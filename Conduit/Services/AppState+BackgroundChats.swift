@@ -119,6 +119,11 @@ extension AppState {
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
+        // Followed already (New Chat follows the chat before its create,
+        // and the create's adoption leaves it again): that copy has taken
+        // every event since and keeps the chat's own title, where the
+        // screen's rows stopped at the create (issue 2523).
+        guard followedChat(answering: ids) == nil else { return }
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running)
     }
 
