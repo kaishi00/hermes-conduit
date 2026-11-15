@@ -5596,6 +5596,17 @@ extension HermesClientTests {
         XCTAssertTrue(appState.isVoiceCallInProgress)
         XCTAssertTrue(appState.callSurvivesProfileSwitch, "The socket can be kept, so the call goes on")
         XCTAssertFalse(appState.isCallEndingProfileSwitch, "A profile pick doesn't ask")
+        // A call from Hermes answered in a live mode goes on too; one whose
+        // voice is still opening ends with the switch.
+        appState.isNativeHermesCallActive = true
+        appState.liveHermesCall = HermesCallOpening(kind: .done, title: "Build", result: "Green")
+        XCTAssertTrue(appState.callSurvivesProfileSwitch)
+        appState.pendingHermesCall = appState.liveHermesCall
+        XCTAssertFalse(appState.callSurvivesProfileSwitch)
+        XCTAssertTrue(appState.isCallEndingProfileSwitch)
+        appState.pendingHermesCall = nil
+        appState.liveHermesCall = nil
+        appState.isNativeHermesCallActive = false
         var asked: CallEndingSwitch?
         var switched = false
         appState.switchEndingCall(to: "Work", profileOnly: true, pending: &asked) { switched = true }

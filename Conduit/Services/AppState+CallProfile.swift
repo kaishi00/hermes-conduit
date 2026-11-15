@@ -5,8 +5,9 @@ import Foundation
 /// socket isn't tied to a profile, so a live call (Gemini, Qwen, GPT-Live,
 /// Grok, Local Live) goes on through it: its jobs, its chat, its searches
 /// and its host reads name the call's profile, never the one on screen.
-/// Classic voice, a call from Hermes, CarPlay and the Watch still end with
-/// the switch, which asks first as before.
+/// So does a call from Hermes answered in a live mode. Classic voice (a
+/// call from Hermes answered in it too), CarPlay and the Watch still end
+/// with the switch, which asks first as before.
 extension AppState {
     /// A live call's engine, sheet or minimised bar is up.
     var isLiveCallUp: Bool {
@@ -74,13 +75,16 @@ extension AppState {
     }
 
     /// Whether a switch to another profile now leaves the running call
-    /// going: a live call on the phone (shown or minimised), with the open
-    /// socket kept for the switch. Every other call ends with the switch.
+    /// going: a live call on the phone (shown or minimised), one Hermes
+    /// placed included once its voice has opened, with the open socket
+    /// kept for the switch. Every other call ends with the switch: Classic
+    /// voice, CarPlay, the Watch, and a call from Hermes still ringing or
+    /// opening its voice.
     var callSurvivesProfileSwitch: Bool {
         guard isLiveCallUp, let liveCallProfile, !liveCallProfile.isEmpty,
               !showVoiceSheet, !voiceConversationController.hasLiveVoiceSession,
               !isCarPlayVoiceSurfaceActive, !isWatchVoiceCallActive,
-              !isNativeHermesCallActive, liveHermesCall == nil, pendingHermesCall == nil,
+              pendingHermesCall == nil, hermesCallOpenTask == nil,
               let connection, socketToKeepForProfileSwitch(within: connection) != nil
         else { return false }
         return true
