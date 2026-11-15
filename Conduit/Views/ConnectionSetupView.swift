@@ -173,6 +173,12 @@ struct ConnectionSetupView: View {
             .sheet(isPresented: $showRepairSignIn) {
                 repairSignInSheet
             }
+            // The alert is worded for the call state it opened in: a call
+            // that ends or starts under it closes it, so an answer about one
+            // call never ends another (issue 2460). Repair asks again.
+            .onChange(of: appState.isVoiceCallInProgress) { _, _ in
+                repairAddressConflict = nil
+            }
             .alert("Already a Saved Dashboard", isPresented: Binding(
                 get: { repairAddressConflict != nil },
                 set: { if !$0 { repairAddressConflict = nil } }

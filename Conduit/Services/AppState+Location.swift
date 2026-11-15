@@ -148,7 +148,14 @@ extension AppState {
     /// too (issue 2482): a session token's pass has no expiry and nothing
     /// to revoke on the host, so it would keep background sends signed in.
     /// Sharing stays bound, and the next sign-in's connect saves a new one.
+    /// What wasn't sent yet goes too: it would go under the next sign-in.
     func forgetLocationHostPass(dashboardID: UUID) {
+        // Only a save for this dashboard is stood down: the pass is saved
+        // only for the dashboard sharing is bound to.
+        if LocationSharingController.shared.binding?.dashboardID == dashboardID {
+            locationHostPassGeneration &+= 1
+        }
+        LocationSharingController.shared.dropUnsent(boundTo: dashboardID)
         guard LocationKeychain.loadHostPass()?.dashboardID == dashboardID else { return }
         LocationKeychain.clearHostPass()
     }
@@ -160,8 +167,10 @@ extension AppState {
         let controller = LocationSharingController.shared
         guard controller.binding?.dashboardID == dashboardID,
               activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else { return }
-        // Removed or unbound while the pass was read: it isn't kept.
+        let generation = locationHostPassGeneration
+        // Removed, unbound or signed out while the pass was read: it isn't kept.
         if let pass = await dashboardHostPass(bridge: bridge, dashboardID: dashboardID),
+           generation == locationHostPassGeneration,
            controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;

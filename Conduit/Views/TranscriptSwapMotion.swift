@@ -71,8 +71,9 @@ final class TranscriptSwapMotion {
         let onStage = stage.shownConversation == conversation
         // Asked again for the chat whose rows are being waited for (the
         // screen places a chat a second time once the open chat's id is
-        // in): the wait goes on, so the rows still slide in.
-        if onStage, expected != nil, chatIsOnStage {
+        // in): the wait goes on, so the rows still slide in. Only that
+        // chat's: another chat's rows on stage take their own slide.
+        if onStage, expected != nil, chatIsOnStage, expectedConversation == conversation {
             expected = swap
             expectedConversation = conversation
             return
