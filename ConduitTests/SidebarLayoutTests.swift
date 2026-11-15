@@ -159,6 +159,7 @@ final class SidebarLayoutTests: XCTestCase {
     func testCoveredChatsListWaitsUntilItShowsAgain() {
         let state = makeAppState()
         let updates = V2ShownUpdates(state)
+        updates.revealDelay = 0.05
         var sent = 0
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
@@ -171,13 +172,33 @@ final class SidebarLayoutTests: XCTestCase {
         state.sessions = [pinnedTestSession("covered")]
         state.cronSessions = [pinnedTestSession("run", source: .cron)]
         XCTAssertEqual(sent, 0)
+        // Shown again by the pop, it draws once the pop has slid, with a
+        // publish during the slide.
         updates.isShown = true
+        XCTAssertEqual(sent, 0, "the list drew as the pop started")
+        state.sessions = [pinnedTestSession("during the pop")]
+        XCTAssertEqual(sent, 0)
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
+
+        // Covered again before it drew: the next showing draws.
+        sent = 0
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("covered again")]
+        updates.isShown = true
+        updates.isShown = false
+        settle()
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        waitUntil { sent > 0 }
         XCTAssertEqual(sent, 1)
 
         // Nothing missed, nothing to draw.
         sent = 0
         updates.isShown = false
         updates.isShown = true
+        settle()
         XCTAssertEqual(sent, 0)
     }
 
@@ -191,6 +212,7 @@ final class SidebarLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let updates = V2ShownUpdates(state, defaults: defaults, defaultsKeys: ["list.filter"])
+        updates.revealDelay = 0
         updates.coalesces = true
         updates.coalescingDelay = 0.05
         var sent = 0
@@ -222,6 +244,7 @@ final class SidebarLayoutTests: XCTestCase {
     func testScrollingChatsListDrawsHeldPublishesOnceItRests() {
         let state = makeAppState()
         let updates = V2ShownUpdates(state)
+        updates.revealDelay = 0
         var clock = Date(timeIntervalSinceReferenceDate: 0)
         updates.now = { clock }
         var sent = 0
@@ -432,6 +455,7 @@ final class SidebarLayoutTests: XCTestCase {
         let defaults = UserDefaults(suiteName: suite)!
         defer { defaults.removePersistentDomain(forName: suite) }
         let updates = V2ShownUpdates(state, defaults: defaults, defaultsKeys: ["list.filter"])
+        updates.revealDelay = 0
         var sent = 0
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }

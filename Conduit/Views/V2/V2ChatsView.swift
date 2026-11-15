@@ -1152,8 +1152,13 @@ struct V2ChatsView: View, Equatable {
     /// user's order.
     private var sourceFilters: [V2SessionFilter] {
         let fixed: [V2SessionFilter] = [.voice, .scheduled]
+        let listing = SidebarSourceRows.sourcesWithRows(
+            sessions: listed.sessions,
+            category: category,
+            hasVoiceCalls: hasVoiceCalls
+        )
         let others = appState.sessionFilterOrder.filter { source in
-            source != .voice && source != .cron && !sourceRows(source).isEmpty
+            source != .voice && source != .cron && listing.contains(source)
         }
         return fixed + others.map { V2SessionFilter.source($0) }
     }

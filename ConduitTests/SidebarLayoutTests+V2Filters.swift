@@ -349,5 +349,12 @@ extension SidebarLayoutTests {
                                    category: \.source, isPinned: { _ in false }, hasVoiceCalls: hasCalls).map(\.id),
             ["voice", "telegram", "chat-old"]
         )
+        // The filter menu's one walk agrees with listing each source's rows.
+        let listing = SidebarSourceRows.sourcesWithRows(sessions: filterChats, category: \.source, hasVoiceCalls: hasCalls)
+        for source in SessionSource.allCases where source != .cron {
+            let rows = SidebarSourceRows.rows(sessions: filterChats, cronSessions: filterRuns, source: source,
+                                              category: \.source, isPinned: { _ in false }, hasVoiceCalls: hasCalls)
+            XCTAssertEqual(listing.contains(source), !rows.isEmpty, source.rawValue)
+        }
     }
 }
