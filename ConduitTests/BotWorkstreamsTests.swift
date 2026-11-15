@@ -1445,9 +1445,14 @@ extension BotModeTests {
         controller.swapMotion = motion
         XCTAssertTrue(motion.stage === controller)
         XCTAssertFalse(controller.showsChatRows, "nothing drawn yet")
+        let shown = controller.view.subviews.count
 
         motion.leave(.back)
         XCTAssertTrue(controller.rowsAreAway)
+        if let picture = controller.leaving {
+            XCTAssertFalse(picture.isUserInteractionEnabled, "the picture of the rows that left takes no taps")
+            XCTAssertTrue(picture.accessibilityElementsHidden)
+        }
         XCTAssertFalse(rows.isUserInteractionEnabled)
         XCTAssertTrue(rows.accessibilityElementsHidden)
 
@@ -1466,6 +1471,9 @@ extension BotModeTests {
         XCTAssertFalse(controller.rowsAreAway)
         XCTAssertTrue(rows.isUserInteractionEnabled)
         XCTAssertFalse(rows.accessibilityElementsHidden)
+        XCTAssertNil(controller.leaving, "the picture goes as the rows come back")
+        try await Task.sleep(for: .milliseconds(400))
+        XCTAssertEqual(controller.view.subviews.count, shown, "the slid-in picture went after its slide")
 
         // Rows that never left aren't touched by a comeback.
         controller.comeBack()

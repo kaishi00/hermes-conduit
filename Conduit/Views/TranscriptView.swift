@@ -306,11 +306,32 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         return widths * trailing * collectionView.bounds.width
     }
 
+    /// A picture of the rows that left, which slides out in their place:
+    /// the open replaces the rows themselves within a few milliseconds
+    /// (with the new chat's welcome first, often), and those would slide
+    /// out instead. The rows wait unseen until `slideIn` or `comeBack`.
+    private(set) var leaving: UIView?
+
     func slideOut(_ swap: BotChatSwap, atOnce: Bool) {
         guard isViewLoaded else { return }
         let layer = collectionView.layer
-        let out = TranscriptSwapSlide.out(from: layer, by: swapDistance(TranscriptSwapSlide.leavingShift(swap)))
-        layer.add(out, forKey: TranscriptSwapSlide.key)
+        let distance = swapDistance(TranscriptSwapSlide.leavingShift(swap))
+        if let picture = leaving ?? collectionView.snapshotView(afterScreenUpdates: false) {
+            // From where the rows show now (a slide in still playing), or
+            // where the picture already is (asked again while away).
+            let out = TranscriptSwapSlide.out(from: leaving == nil ? layer : picture.layer, by: distance)
+            if leaving == nil {
+                picture.frame = collectionView.frame
+                picture.isUserInteractionEnabled = false
+                picture.accessibilityElementsHidden = true
+                view.insertSubview(picture, aboveSubview: collectionView)
+                leaving = picture
+            }
+            picture.layer.add(out, forKey: TranscriptSwapSlide.key)
+            layer.add(TranscriptSwapSlide.unseen(), forKey: TranscriptSwapSlide.key)
+        } else {
+            layer.add(TranscriptSwapSlide.out(from: layer, by: distance), forKey: TranscriptSwapSlide.key)
+        }
         // Away, the rows take no taps where they were: only what shows
         // moved, not the views.
         rowsAreAway = true
@@ -336,12 +357,23 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         let layer = collectionView.layer
         // Only rows that left and are held away: a slide in ends on its own.
         guard rowsAreAway else { return }
-        layer.add(TranscriptSwapSlide.back(from: layer), forKey: TranscriptSwapSlide.key)
+        // From where the picture of them went.
+        layer.add(TranscriptSwapSlide.back(from: leaving?.layer ?? layer), forKey: TranscriptSwapSlide.key)
+        leaving?.removeFromSuperview()
+        leaving = nil
         rowsAreBack()
     }
 
-    /// The rows show again, so they take taps and VoiceOver again.
+    /// The rows show again, so they take taps and VoiceOver again. The
+    /// picture of the ones that left finishes its slide (it ends unseen),
+    /// then goes.
     private func rowsAreBack() {
+        if let picture = leaving {
+            leaving = nil
+            DispatchQueue.main.asyncAfter(deadline: .now() + TranscriptSwapSlide.outDuration) { [weak picture] in
+                picture?.removeFromSuperview()
+            }
+        }
         rowsAreAway = false
         collectionView.isUserInteractionEnabled = true
         collectionView.accessibilityElementsHidden = false
