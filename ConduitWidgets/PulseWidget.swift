@@ -152,7 +152,8 @@ private struct PulseWidgetView: View {
                         }
                     }
                     let more = snapshot.openCount - shown.count
-                    if more > 0 {
+                    // A small widget's card and buttons take its whole face.
+                    if more > 0, family != .systemSmall {
                         Text(verbatim: String.localizedStringWithFormat(string("%lld more waiting"), more))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
@@ -168,7 +169,8 @@ private struct PulseWidgetView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .containerBackground(.background, for: .widget)
         // Anywhere outside a card's words and buttons opens the Pulse screen;
-        // a small widget, which takes no links, opens at its card.
+        // a small widget, which takes no links, opens at its card from
+        // anywhere outside its buttons.
         .widgetURL(entry.snapshot.map {
             PulseWidgetLink(dashboardID: $0.dashboardID, card: family == .systemSmall ? $0.cards.first?.id : nil).url
         })
@@ -235,8 +237,18 @@ private struct PulseWidgetView: View {
         .accessibilityElement(children: .combine)
     }
 
+    /// The top card with Not now and Done under it, so a small widget does
+    /// something where nothing can open Conduit: Apple HomeView shows only
+    /// small widgets, sends their button taps to the iPhone and can't open
+    /// an iPhone app (issue 2561). Do it stays on medium and large: a small
+    /// widget can't tell it's on a screen the whole household sees.
     private func smallCard(_ card: PulseWidgetCard, snapshot: PulseWidgetSnapshot) -> some View {
-        words(card, snapshot: snapshot, headlineLines: 4, sentenceLines: 0)
+        VStack(alignment: .leading, spacing: 4) {
+            words(card, snapshot: snapshot, headlineLines: 3, sentenceLines: 0)
+            buttons(card, snapshot: snapshot, offersDoIt: false)
+                .layoutPriority(1)
+        }
+        .invalidatableContent()
     }
 
     private func row(_ card: PulseWidgetCard, snapshot: PulseWidgetSnapshot) -> some View {
@@ -248,14 +260,14 @@ private struct PulseWidgetView: View {
         .invalidatableContent()
     }
 
-    private func buttons(_ card: PulseWidgetCard, snapshot: PulseWidgetSnapshot) -> some View {
+    private func buttons(_ card: PulseWidgetCard, snapshot: PulseWidgetSnapshot, offersDoIt: Bool = true) -> some View {
         HStack(spacing: 6) {
             if card.sentAt != nil {
                 Image(systemName: "paperplane.fill")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
                     .accessibilityLabel(Text(verbatim: string("Sent to Hermes.")))
-            } else if card.offersDoIt {
+            } else if offersDoIt, card.offersDoIt {
                 Button(intent: PulseWidgetDoItIntent(card: card.id, dashboardID: snapshot.dashboardID)) {
                     icon("arrow.right.circle.fill", label: string("Do it"), prominent: true)
                 }
