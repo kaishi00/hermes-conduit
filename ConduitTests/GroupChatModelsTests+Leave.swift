@@ -78,7 +78,7 @@ extension GroupChatModelsTests {
         let left = AppLocalization.string("Left the room", table: .rooms)
         let mona = AppLocalization.string("Mona's agent")
         let takenOut = AppLocalization.string("Taken out", table: .rooms)
-        XCTAssertEqual(members.map(GroupRoomTurns.ownerLine(of:)), [
+        XCTAssertEqual(members.map { GroupRoomTurns.ownerLine(of: $0) }, [
             AppLocalization.string("Furina's agent"),
             // Once yours left, the copy lists it as the host's, as Eric's:
             // the plugin's people say it's yours.

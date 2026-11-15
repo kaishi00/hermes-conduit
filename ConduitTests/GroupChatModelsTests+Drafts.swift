@@ -314,6 +314,51 @@ extension GroupChatModelsTests {
         XCTAssertFalse(GroupCreateLimits.offersNewGroup(visibleBots: 0, invitesPeople: true))
     }
 
+    // MARK: - Your other Hermes' bots
+
+    func testBotsOfYourOtherHermesComeFromOneHermesWithNobodyInvited() {
+        // One bot here and one of your other Hermes make a room.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 1], people: 0))
+        // This Hermes hosts it: at least one of its bots.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 0, far: ["own1": 2], people: 0))
+        // The other Hermes may fill every place this one leaves.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 5], people: 0))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 5], people: 0))
+        // Its Hermes joins them by itself only for an invite that names
+        // nobody else: no person, and no second Hermes, beside them.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2], people: 1))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 1, "own2": 1], people: 0))
+        // No far bots: the rules of your own and people's rooms.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: [:], people: 0))
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 0], people: 1))
+        // A far bot is pickable while the room stays that shape, counting at
+        // least one bot here.
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 0, far: [:], link: "own1", people: 0))
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own1", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own2", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: [:], link: "own1", people: 1))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 5], link: "own1", people: 0))
+    }
+
+    @MainActor
+    func testADraftBringsYourOtherHermesBotsByLink() async throws {
+        var sent: [String: Any]?
+        let client = RoomDraftsClient { _, _, body, _ in
+            sent = body
+            return ["ok": true, "draft": self.draftsDraft("conduit-9")]
+        }
+        let agents = try XCTUnwrap(RoomDraftAgent.agents(for: [draftsBot("default")]))
+        _ = try await client.create(name: "Both", agents: agents, links: ["own1"], bring: ["own1": ["yelan", "nahida"]],
+                                    profile: "default")
+        let body = try XCTUnwrap(sent)
+        XCTAssertEqual(Set(body.keys), ["name", "agents", "links", "bring"])
+        XCTAssertEqual(body["links"] as? [String], ["own1"])
+        XCTAssertEqual(body["bring"] as? [String: [String]], ["own1": ["yelan", "nahida"]])
+        // Nothing to bring: the body an older plugin takes.
+        _ = try await client.create(name: "Both", agents: agents, links: ["lk1"], profile: "default")
+        XCTAssertEqual(Set(try XCTUnwrap(sent).keys), ["name", "agents", "links"])
+    }
+
     // MARK: - The profile
 
     @MainActor

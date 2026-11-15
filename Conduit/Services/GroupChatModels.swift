@@ -1425,18 +1425,26 @@ enum GroupRoomTurns {
     }
 
     /// Whose another person's agent is, for the chip beside its name in
-    /// its bubble (GroupMemberOwnerChip); nil for yours and an unnamed one.
-    static func shownOwner(of member: GroupMember?) -> String? {
-        guard let member, member.isPeer, !member.isYours,
+    /// its bubble (GroupMemberOwnerChip); nil for yours and an unnamed one,
+    /// and for every bot in a room of only your own Hermes (`ownHermes`).
+    static func shownOwner(of member: GroupMember?, ownHermes: Bool = false) -> String? {
+        guard let member, member.isPeer, !member.isYours, !ownHermes,
               let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return nil }
         return owner
     }
 
-    /// Group Info's line under a member: whose agent it is.
-    static func ownerLine(of member: GroupMember) -> String {
+    /// Group Info's line under a member: whose agent it is. In a room of
+    /// only your own Hermes (`ownHermes`) a far bot is yours too, on the
+    /// Hermes its Link names.
+    static func ownerLine(of member: GroupMember, ownHermes: Bool = false) -> String {
         let whose: String
+        let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         if !member.isPeer || member.isYours {
             whose = AppLocalization.string("Your agent", table: .rooms)
+        } else if ownHermes {
+            whose = owner.isEmpty
+                ? AppLocalization.string("Your agent, on your other Hermes", table: .rooms)
+                : AppLocalization.string("Your agent, on \(owner)", table: .rooms)
         } else if let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
             whose = AppLocalization.string("\(owner)'s agent", table: .rooms)
         } else {
@@ -2017,8 +2025,16 @@ enum GroupRoomTurns {
 /// whole. A host set to keep a disbanded room's sessions (`chatsKept`, the
 /// plugin's `room_chats_kept`, notifier #443) keeps them in either room.
 enum GroupRoomDisband {
-    static func warning(members: [GroupMember], chatsKept: Bool = false) -> String {
+    static func warning(members: [GroupMember], chatsKept: Bool = false, ownHermes: Bool = false) -> String {
         let withPeers = members.contains(where: \.isPeer)
+        // Every Hermes is yours: each keeps or deletes its own bots' sessions.
+        if withPeers, ownHermes {
+            return chatsKept
+                ? AppLocalization.string(
+                    "The room ends. This Hermes is set to keep its bots' sessions for it, and your other Hermes keeps its bots' sessions. This cannot be undone.", table: .rooms)
+                : AppLocalization.string(
+                    "The room ends, and this Hermes deletes its bots' sessions for it. Your other Hermes keeps its bots' sessions. This cannot be undone.", table: .rooms)
+        }
         switch (withPeers, chatsKept) {
         case (true, false):
             return AppLocalization.string(

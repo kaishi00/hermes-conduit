@@ -235,6 +235,14 @@ extension GroupChatModelsTests {
         XCTAssertEqual(ownKept, AppLocalization.string(
             "The room and its history end permanently. Your Hermes is set to keep its members' sessions. This cannot be undone."
         ))
+        // A room of only your own Hermes speaks of your other Hermes, not other people's.
+        let ownHermes = [linkedRoomMember("furina"), linkedRoomMember("yelan", peer: true)]
+        XCTAssertEqual(GroupRoomDisband.warning(members: ownHermes, ownHermes: true), AppLocalization.string(
+            "The room ends, and this Hermes deletes its bots' sessions for it. Your other Hermes keeps its bots' sessions. This cannot be undone.", table: .rooms))
+        XCTAssertEqual(GroupRoomDisband.warning(members: ownHermes, chatsKept: true, ownHermes: true), AppLocalization.string(
+            "The room ends. This Hermes is set to keep its bots' sessions for it, and your other Hermes keeps its bots' sessions. This cannot be undone.", table: .rooms))
+        // Only your own agents: as before.
+        XCTAssertEqual(GroupRoomDisband.warning(members: [linkedRoomMember("furina")], ownHermes: true), own)
     }
 
     func testAMemberOnAnotherHermesNeverTakesYourBotsPicture() {

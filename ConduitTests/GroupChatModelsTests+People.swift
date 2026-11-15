@@ -249,6 +249,38 @@ extension GroupChatModelsTests {
         } catch {}
     }
 
+    @MainActor
+    func testYourOtherHermesBotsAreReadByLink() async throws {
+        let answer: [String: Any] = ["ok": true, "links": [
+            "own2": ["name": "Lab", "brings": true, "bots": [
+                ["profile": "yelan", "handle": "yelan", "display_name": "Yelan", "ready": true],
+                ["profile": "codex", "handle": "codex", "display_name": "Codex", "ready": false],
+                ["profile": "", "handle": "x", "display_name": "X", "ready": true],
+            ]],
+            "own1": ["name": "Work", "brings": true, "bots": [
+                ["profile": "default", "handle": "hermes", "display_name": "Default", "ready": true],
+            ]],
+            // A Hermes on an older plugin lists its bots but can't be brought.
+            "own3": ["name": "Old", "brings": false, "bots": [
+                ["profile": "default", "handle": "hermes", "display_name": "Default", "ready": true],
+            ]],
+        ]]
+        var asked: [(path: String, method: String)] = []
+        let client = RoomLinksClient { path, method, _, _ in
+            asked.append((path, method))
+            return answer
+        }
+        let bots = try await client.ownBots()
+        XCTAssertEqual(asked.map(\.path), ["/api/plugins/conduit_push/rooms/own-bots"])
+        XCTAssertEqual(asked.first?.method, "GET")
+        XCTAssertEqual(bots.map(\.id), ["own1/default", "own2/yelan", "own2/codex"])
+        XCTAssertEqual(bots.map(\.linkName), ["Work", "Lab", "Lab"])
+        XCTAssertEqual(bots.map(\.ready), [true, true, false])
+        XCTAssertEqual(bots.first?.handle, "hermes")
+        XCTAssertThrowsError(try RoomLinksClient.parseOwnBots(["ok": true]))
+        XCTAssertThrowsError(try RoomLinksClient.parseOwnBots(["ok": false, "links": [String: Any]()]))
+    }
+
     // MARK: - Host setup
 
     func testRoomSetupStateReadsWhatThePageShows() throws {
