@@ -482,8 +482,8 @@ extension AppState {
     /// in use.
     func beginHermesCallPresence() {
         guard supportsHermesCallPresence else { return }
-        // The call's profile: a call that goes on across a profile switch
-        // keeps its presence there when it reconnects.
+        // The call's profile, read once as it starts: the renewals keep
+        // naming it across a profile switch the call goes on over.
         let profile = voiceCallProfile
         // The same call reconnecting keeps the presence it has.
         if hermesCallPresenceTask != nil, hermesCallPresenceProfile == profile { return }

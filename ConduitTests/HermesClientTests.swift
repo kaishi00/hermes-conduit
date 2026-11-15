@@ -5605,6 +5605,12 @@ extension HermesClientTests {
         XCTAssertFalse(appState.callSurvivesProfileSwitch)
         XCTAssertTrue(appState.isCallEndingProfileSwitch)
         appState.pendingHermesCall = nil
+        // Its voice still opening after the call took its opening.
+        let opening = Task<Void, Never> {}
+        appState.hermesCallOpenTask = opening
+        XCTAssertFalse(appState.callSurvivesProfileSwitch)
+        appState.hermesCallOpenTask = nil
+        XCTAssertTrue(appState.callSurvivesProfileSwitch)
         appState.liveHermesCall = nil
         appState.isNativeHermesCallActive = false
         var asked: CallEndingSwitch?
