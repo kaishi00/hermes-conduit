@@ -16,7 +16,7 @@ extension AppState {
     /// 2520); every other chat, a workstream's included, in the one in use.
     var activeChatStoreProfile: String {
         guard let sessionID = activeSessionId, !sessionID.isEmpty else { return activeProfile }
-        return botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID) ?? activeProfile
+        return botChatStoreProfile(forSessionID: sessionID) ?? activeProfile
     }
 
     /// The open chat's checklists on the host, or nil where they stay on
