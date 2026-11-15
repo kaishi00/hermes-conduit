@@ -3019,6 +3019,48 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
     }
 
+    /// Issue 2556: a question Hermes drew no card for (the turn ran in
+    /// another Hermes process) gets the card its Needs you row carries, in
+    /// the chat on screen, once, and never beside Hermes' own.
+    func testAListedQuestionDrawsItsCardInTheOpenChat() throws {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        func wait(_ id: String, session: String, request: String, question: String) -> NeedsYouItem {
+            NeedsYouItem(
+                waitID: id, profile: "default", kind: .question, sessionIDs: [session],
+                card: .clarify(requestId: request, question: question, choices: ["staging", "production"])
+            )
+        }
+        let dashboard = appState.activeDashboardID
+        appState.needsYou.apply(
+            [wait("w1", session: "runtime-a", request: "conduit-push-abc", question: "Which environment?"),
+             wait("w2", session: "stored-b", request: "conduit-push-other", question: "Which branch?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "only the open chat's")
+        XCTAssertEqual(appState.messages.last?.clarify?.questions.first?.choices.map(\.value), ["staging", "production"])
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "one question is one card")
+
+        // Hermes' own card for the question keeps the copy out.
+        appState.messages = [ChatMessage(
+            id: "clarify-native-1", role: .clarify, content: "Which region?", timestamp: "1",
+            clarify: ClarifyActivity(requestId: "native-1", question: "Which region?", choices: [])
+        )]
+        appState.needsYou.apply(
+            [wait("w3", session: "runtime-a", request: "conduit-push-region", question: "Which region?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1"])
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(

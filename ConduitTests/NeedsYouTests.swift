@@ -30,6 +30,33 @@ extension ChatOnScreenTests {
         XCTAssertNil(NeedsYouItem(host: ["id": "x", "kind": "other", "session_ids": ["s"]], profile: "atlas"))
     }
 
+    /// Issue 2556: a question's row carries its card as the push did, for
+    /// the chat to draw when Hermes drew none there.
+    func testAQuestionsRowCarriesItsCard() throws {
+        var row = needsYouWait("q1", "s2", at: 1, kind: "question")
+        XCTAssertNil(try XCTUnwrap(NeedsYouItem(host: row, profile: "atlas")).card, "an older plugin sends none")
+        row["decision"] = [
+            "kind": "clarify", "request_id": "conduit-push-abc", "question": "Which environment?",
+            "questions": [
+                ["qid": "q0", "question": "Which environment?", "choices": ["staging", "production"]],
+                ["qid": "q1", "question": "Anything else?"]
+            ]
+        ] as [String: Any]
+        guard case let .clarifyBatch(requestId, questions)? = try XCTUnwrap(NeedsYouItem(host: row, profile: "atlas")).card else {
+            return XCTFail("the batch's card")
+        }
+        XCTAssertEqual(requestId, "conduit-push-abc")
+        XCTAssertEqual(questions.map(\.id), ["q0", "q1"])
+        XCTAssertEqual(questions.first?.choices.map(\.value), ["staging", "production"])
+        // Only the plugin's own ids are answerable through the relay.
+        row["decision"] = ["kind": "clarify", "request_id": "native-1", "question": "Which?"]
+        XCTAssertNil(try XCTUnwrap(NeedsYouItem(host: row, profile: "atlas")).card)
+        // An approval is answered on its chat's own card.
+        var approval = needsYouWait("a1", "s1", at: 1)
+        approval["decision"] = ["kind": "approval", "session_key": "s1", "description": "Run it?", "choices": ["once", "deny"]] as [String: Any]
+        XCTAssertNil(try XCTUnwrap(NeedsYouItem(host: approval, profile: "atlas")).card)
+    }
+
     func testNeedsYouBannersOnlyANewWaitOutsideTheOpenChat() {
         let store = NeedsYouStore()
         let dashboard = UUID()
