@@ -406,7 +406,6 @@ struct V2ProjectPage: View {
                     onDelete: { sessionPendingDeletion = $0 },
                     onChanged: { Task { await reload(force: true) } }
                 )
-                .equatable()
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }

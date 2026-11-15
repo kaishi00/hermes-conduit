@@ -2071,7 +2071,6 @@ struct V2ChatsView: View, Equatable {
                 onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
                 setExpanded: setExpanded
             )
-            .equatable()
             .moveDisabled(!movableIDs.contains(item.id))
         }
         .onMove(perform: move)
@@ -2401,7 +2400,10 @@ struct V2ChatsRow: View, Equatable {
     /// a draw of the list's updates, which it observes itself. Drawn
     /// as the pop's finger lifted, the rows held its first frame
     /// (iPhone 16 Pro Max, 2026-11-15). The closures write the list's own
-    /// state, the same storage whichever render made them.
+    /// state, the same storage whichever render made them. SwiftUI compares
+    /// an Equatable row with this on its own; wrapped in `.equatable()`, the
+    /// row's list traits (its clear background, hidden separator, insets,
+    /// swipe actions) no longer reached the List and the rows drew black.
     init(
         item: V2ChatsListItem,
         projectTitle: String?,
