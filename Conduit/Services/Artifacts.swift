@@ -46,6 +46,20 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
     /// From a bot's Bot Chat: it goes by the bot's name and opens the way
     /// Bots opens it, in its store's profile.
     var isBotChat = false
+    /// Saved (issue 2467): when, the user's note, and the copy the host
+    /// keeps of a file, which opens once the original is gone. Set only on
+    /// the rows of Saved (`ArtifactPinsClient`).
+    var savedAt: Date?
+    var note: String?
+    var keptPath: String?
+
+    /// The file to open: the original while the host has it, else the
+    /// copy kept when it was saved.
+    var openPath: String? { exists ? path : keptPath }
+
+    /// Whether a tap can open it: a link, a file still on the host, or a
+    /// saved one's kept copy.
+    var canOpen: Bool { url != nil && path == nil || openPath != nil }
 
     /// One path or URL is one artifact, listed at its newest mention, even
     /// when several chats sent it (the host lists it the same way).
@@ -227,7 +241,7 @@ struct ArtifactFeed: Equatable {
         return horizon
     }
 
-    private static func tagged(_ items: [ArtifactItem], from source: ArtifactSource) -> [ArtifactItem] {
+    static func tagged(_ items: [ArtifactItem], from source: ArtifactSource) -> [ArtifactItem] {
         let botChat = Set(source.botChatIDs)
         guard source.label != nil || !botChat.isEmpty else { return items }
         return items.map { item in
@@ -348,7 +362,7 @@ final class ArtifactsClient {
             throw Failure.malformed
         }
         // An older plugin lists missing files whatever it was asked.
-        let items = rows.compactMap(ArtifactItem.init).filter { showMissing || $0.exists }
+        let items = rows.compactMap { ArtifactItem($0) }.filter { showMissing || $0.exists }
         // Each artifact once, so list identity holds whatever the host sends.
         return ArtifactPage(items: merged([], with: items), nextBefore: response["next_before"] as? Int)
     }

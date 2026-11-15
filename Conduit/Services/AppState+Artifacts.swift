@@ -53,6 +53,22 @@ extension AppState {
         })
     }
 
+    /// Whether the host's notifier plugin keeps saved artifacts (plugin
+    /// 0.177+, issue 2467).
+    var supportsArtifactPins: Bool {
+        notifierPlugin.reports(ArtifactPinsClient.capability)
+    }
+
+    var artifactPinsClient: ArtifactPinsClient {
+        ArtifactPinsClient(request: { [weak self] path, method, body in
+            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            // Saving a file copies it on the host, which takes a moment for
+            // a large one.
+            return try await bridge.requestJSON(path: path, method: method, body: body,
+                                                timeoutMilliseconds: method == "POST" ? 90_000 : 20_000)
+        })
+    }
+
     /// Every id the open chat is known by, for its own Artifacts sheet.
     /// Empty when no chat with a row of its own is open (a room, a new chat).
     /// A Bot Chat has no row in the workspace's list: it goes by its own ids
