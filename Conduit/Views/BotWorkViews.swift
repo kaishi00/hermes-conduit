@@ -69,6 +69,34 @@ enum BotWorkLook {
         }
     }
 
+    /// The line under a work row's title, on the Work panel and Bots
+    /// Home: what it's doing, else why it stopped, else where it stands.
+    static func subtitle(_ item: BotWorkItem, botName: String) -> String {
+        // Resolved before it finished: "Resolved", not where it was left.
+        if item.isResolvedUnfinished { return item.statusText }
+        if item.isClosed {
+            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by \(botName)", table: .bots)
+                : AppLocalization.string("\(item.statusText) · resolved by you", table: .bots)
+        }
+        if !item.screenAsk.isEmpty {
+            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)", table: .bots)
+        }
+        // Waiting on the user says so first, then the step it stopped at:
+        // the step alone read as work still going.
+        if item.status == "needs_you" {
+            if let doing = item.doing { return AppLocalization.string("Needs you · \(doing)", table: .bots) }
+            // No step to name: what it stopped on, when it said.
+            if !item.error.isEmpty { return AppLocalization.string("Needs you · \(item.error)", table: .bots) }
+            return item.statusText
+        }
+        if let doing = item.doing { return doing }
+        if item.needsYou, !item.error.isEmpty {
+            return AppLocalization.string("Needs you · \(item.error)", table: .bots)
+        }
+        if !item.error.isEmpty, item.status != "done" { return "\(item.statusText) · \(item.error)" }
+        return item.statusText
+    }
+
     static func symbol(_ item: BotWorkItem) -> String {
         if item.isResolvedUnfinished { return "archivebox" }
         if !item.screenAsk.isEmpty, !item.isClosed { return "display" }
@@ -883,6 +911,25 @@ struct BotWorkWhySheet: View {
     }
 }
 
+/// A work row's mark: its state's symbol in its tint, filled orange
+/// while it waits on the user. On the Work panel's rows and Bots Home's.
+struct BotWorkMark: View {
+    let item: BotWorkItem
+
+    var body: some View {
+        let tint = BotWorkLook.tint(item)
+        ZStack {
+            Circle()
+                .fill(item.needsYou ? Color.orange : tint.opacity(0.16))
+            Image(systemName: BotWorkLook.symbol(item))
+                .font(.system(size: 13, weight: .bold))
+                .foregroundStyle(item.needsYou ? Color.black.opacity(0.85) : tint)
+        }
+        .frame(width: 30, height: 30)
+        .accessibilityHidden(true)
+    }
+}
+
 /// One piece of work as a card: its mark, title and where it is, its last
 /// result, and its checklist and actions once opened.
 private struct BotWorkRow: View {
@@ -910,33 +957,8 @@ private struct BotWorkRow: View {
             && item.kind == .workstream && !item.sessionID.isEmpty
     }
 
-    /// The line under the title: what it's doing, else why it stopped,
-    /// else where it stands.
-    private var subtitle: String {
-        // Resolved before it finished: "Resolved", not where it was left.
-        if item.isResolvedUnfinished { return item.statusText }
-        if item.isClosed {
-            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by \(botName)", table: .bots)
-                : AppLocalization.string("\(item.statusText) · resolved by you", table: .bots)
-        }
-        if !item.screenAsk.isEmpty {
-            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)", table: .bots)
-        }
-        // Waiting on the user says so first, then the step it stopped at:
-        // the step alone read as work still going.
-        if item.status == "needs_you" {
-            if let doing = item.doing { return AppLocalization.string("Needs you · \(doing)", table: .bots) }
-            // No step to name: what it stopped on, when it said.
-            if !item.error.isEmpty { return AppLocalization.string("Needs you · \(item.error)", table: .bots) }
-            return item.statusText
-        }
-        if let doing = item.doing { return doing }
-        if item.needsYou, !item.error.isEmpty {
-            return AppLocalization.string("Needs you · \(item.error)", table: .bots)
-        }
-        if !item.error.isEmpty, item.status != "done" { return "\(item.statusText) · \(item.error)" }
-        return item.statusText
-    }
+    /// The line under the title (BotWorkLook.subtitle).
+    private var subtitle: String { BotWorkLook.subtitle(item, botName: botName) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -1040,15 +1062,7 @@ private struct BotWorkRow: View {
 
     private var summary: some View {
         HStack(alignment: .top, spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(item.needsYou ? Color.orange : tint.opacity(0.16))
-                Image(systemName: BotWorkLook.symbol(item))
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(item.needsYou ? Color.black.opacity(0.85) : tint)
-            }
-            .frame(width: 30, height: 30)
-            .accessibilityHidden(true)
+            BotWorkMark(item: item)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.ref)

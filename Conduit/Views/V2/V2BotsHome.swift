@@ -1114,6 +1114,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// What waits on the user in each profile's chats (Needs you), which
     /// the status counts.
     @ObservedObject var needsYou: NeedsYouStore
+    /// The face at the default Text Size: 72 in the grid, larger when Bots
+    /// Home has only one or two bots (BotsHomeFew), with a larger name.
+    var portraitSize: CGFloat = 72
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -1227,7 +1230,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             HStack(spacing: 0) {
                 Button(action: tapped) {
                     Text(bot.displayLabel)
-                        .scaledFont(.subheadline.weight(.semibold))
+                        .scaledFont(portraitSize > 72 ? ScaledFont.title3.weight(.bold) : ScaledFont.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -1301,13 +1304,9 @@ struct BotPortraitCell<MenuContent: View>: View {
             onToggleRoom()
             return
         }
-        appState.beginOpeningBotChat(bot.name)
         // This chat grows out of this portrait (BotZoomDestination),
         // unless it opens beside the list, or doesn't open.
-        if openBeside == nil { appState.botZoom.tap(bot.name) }
-        Task {
-            if await !appState.openBotChatFromList(bot) { appState.botZoom.openFailed(bot.name) }
-        }
+        appState.openBotChatFromHome(bot, zooms: openBeside == nil)
     }
 
     /// The ⓘ: the bot's overview, always. A small glyph with a 44-point-tall
@@ -1457,9 +1456,10 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     private func portrait(_ status: BotPortraitStatus) -> some View {
         let ringed = selection == .open || room == .member || mergeReady
-        // 72 at the default Text Size; the monogram scales it once, up to
-        // accessibility1 (about 115), so a two-column cell still holds it.
-        return BotMonogramView(bot: bot, size: 72, animates: animates)
+        // 72 at the default Text Size (larger with one or two bots); the
+        // monogram scales it once, up to accessibility1 (about 115 from 72),
+        // so a two-column cell still holds it.
+        return BotMonogramView(bot: bot, size: portraitSize, animates: animates)
             .dynamicTypeSize(...DynamicTypeSize.accessibility1)
             // Where its face flies from when it joins a room being started.
             .anchorPreference(key: BotsHomeAnchorKey.self, value: .bounds) { [BotsHomeAnchorKey.bot(bot.name): $0] }

@@ -71,6 +71,7 @@ struct BotRosterView: View {
     /// in-list create card steps aside.
     private let createRequest: Binding<Bool>?
     @Environment(\.v2OpenBeside) private var openBeside
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     init(createRequest: Binding<Bool>? = nil) {
         self.createRequest = createRequest
@@ -346,11 +347,12 @@ struct BotRosterView: View {
     }
 
     /// Bots Home: every bot as a portrait, three across on a phone, in
-    /// the roster's own order, so a bot never moves for being busy. Hidden
-    /// bots follow under their disclosure, dimmed, as on the list.
+    /// the roster's own order, so a bot never moves for being busy; one or
+    /// two bots large instead (BotsHomeLayout). Hidden bots follow under
+    /// their disclosure, dimmed, as on the list.
     @ViewBuilder
     private var portraitGrid: some View {
-        BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+        shownPortraits
             .modifier(BotsTalkingRoomsReader())
             .rosterListRow(divider: false)
         if !hiddenBots.isEmpty {
@@ -421,7 +423,57 @@ struct BotRosterView: View {
 
     /// Bots Home's portrait of a bot: its chat, its Overview and the row's
     /// menu.
-    private func portrait(_ bot: BotProfile) -> some View {
+    @ViewBuilder
+    private var shownPortraits: some View {
+        switch BotsHomeLayout.of(visibleBots: visibleBots.count, accessibilitySize: typeSize.isAccessibilitySize) {
+        case .solo:
+            if let bot = visibleBots.first { soloHome(bot) }
+        case .pair:
+            pairHome
+        case .grid:
+            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+        }
+    }
+
+    /// One bot: its large portrait, a field to message it from here, its
+    /// last reply and its open work (Eric, 2026-11-15).
+    private func soloHome(_ bot: BotProfile) -> some View {
+        VStack(spacing: 12) {
+            portrait(bot, size: BotsHomeLayout.largePortrait)
+            BotsHomeAskField(bot: bot)
+            BotLastReply(bot: bot, style: .card) {
+                appState.openBotChatFromHome(bot, zooms: openBeside == nil)
+            }
+            BotsHomeWorkSection(bot: bot, work: appState.botWork) { overviewBot = bot }
+        }
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+
+    /// Two bots: large portraits side by side, each with its last reply,
+    /// on the way to the grid's smaller ones. A drop on either moves or
+    /// starts a room, as in the grid.
+    private var pairHome: some View {
+        HStack(alignment: .top, spacing: 14) {
+            ForEach(visibleBots) { bot in
+                VStack(spacing: 2) {
+                    portrait(bot, size: BotsHomeLayout.largePortrait)
+                    BotLastReply(bot: bot, style: .caption) {
+                        appState.openBotChatFromHome(bot, zooms: openBeside == nil)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .top)
+            }
+        }
+        .frame(maxWidth: 560)
+        .frame(maxWidth: .infinity)
+        .padding(.top, 14)
+        .padding(.bottom, 4)
+    }
+
+    private func portrait(_ bot: BotProfile, size: CGFloat = 72) -> some View {
         BotPortraitCell(
             bot: bot,
             work: appState.botWork,
@@ -440,7 +492,8 @@ struct BotRosterView: View {
             canMerge: { dragged in canMerge(dragged, with: bot) },
             onSlide: { dragged in slideBot(dragged, onto: bot) },
             onToggleRoom: { toggleNewRoom(bot) },
-            needsYou: appState.needsYou
+            needsYou: appState.needsYou,
+            portraitSize: size
         )
     }
 
@@ -1095,7 +1148,7 @@ struct BotRosterView: View {
     /// New Group Chat as its +, as New Bot is the title bar's.
     @ViewBuilder
     private var homeGroupSection: some View {
-        if showsGroupSection {
+        if showsHomeGroupSection {
             HStack(alignment: .center) {
                 Text(AppLocalization.string("Group Chats", table: .bots))
                     .scaledFont(.footnote.weight(.semibold))
@@ -1156,6 +1209,12 @@ struct BotRosterView: View {
                     }
             }
         }
+    }
+
+    /// Bots Home's Group Chats, unless there's nothing it could hold: one
+    /// bot, no rooms, and nobody linked to start one with.
+    private var showsHomeGroupSection: Bool {
+        showsGroupSection && (visibleBots.count >= 2 || canStartGroups || hasGroupRows || groupProbeFailure != nil)
     }
 
     /// Group Chats has nothing to show yet, rooms can start here and there

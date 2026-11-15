@@ -49,6 +49,29 @@ extension BotModeTests {
         XCTAssertNotNil(snapshot.stripText)
     }
 
+    /// Bots Home with one or two bots (Eric, 2026-11-15): a lone bot shows
+    /// its open work, what waits on the user first, three at most; two bots
+    /// side by side, except at accessibility sizes; three or more the grid.
+    func testBotsHomeWithFewBots() throws {
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        XCTAssertEqual(BotsHomeWork.preview(snapshot).map(\.ref), ["W2", "W1", "A1"])
+        XCTAssertEqual(BotsHomeWork.preview(nil), [])
+        let off = BotWorkSnapshot(response: ["ok": true, "policy": "off", "work": []], profile: "furina")
+        XCTAssertEqual(BotsHomeWork.preview(off), [])
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 1, accessibilitySize: false), .solo)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 1, accessibilitySize: true), .solo)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 2, accessibilitySize: false), .pair)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 2, accessibilitySize: true), .grid)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 3, accessibilitySize: false), .grid)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 0, accessibilitySize: false), .grid)
+        XCTAssertNil(BotsHomeWork.lastActiveLabel(nil))
+        XCTAssertNil(BotsHomeWork.lastActiveLabel(0))
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        // Seconds and milliseconds read as the same moment.
+        XCTAssertEqual(BotsHomeWork.lastActiveLabel(1_799_999_400, now: now),
+                       BotsHomeWork.lastActiveLabel(1_799_999_400_000, now: now))
+    }
+
     func testWorkPanelRefusesAnAnswerThatIsntAList() {
         XCTAssertNil(BotWorkSnapshot(response: ["ok": false], profile: "furina"))
         XCTAssertNil(BotWorkSnapshot(response: ["ok": true], profile: "furina"))
