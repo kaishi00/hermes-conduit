@@ -165,6 +165,8 @@ extension AppState {
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGrokLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showGrokLiveSheet || minimisedLiveVoice == .grokLive)) else { return }
         if isGrokLiveActive {
             closeGrokLiveConversation()
@@ -180,6 +182,8 @@ extension AppState {
     }
 
     func closeGrokLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.grokLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .grokLive)
@@ -202,6 +206,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     func stopGrokLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
         guard showGrokLiveSheet || minimisedLiveVoice == .grokLive || isGrokLiveActive else {

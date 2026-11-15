@@ -24,9 +24,9 @@ extension AppState {
     /// The kinds of sealed host data (`VoiceHostTool.key`) a call on `mode`
     /// may read now: each one the user lets `mode` read, shared with the
     /// dashboard and profile in use (`profile`: a Watch call's own, #1564;
-    /// nil is the active one).
+    /// nil is the phone call's, `voiceCallProfile`).
     func voiceReadableKeys(for mode: LiveVoiceModeName, profile: String? = nil) -> Set<String> {
-        let profile = profile ?? activeProfile
+        let profile = profile ?? voiceCallProfile
         var keys: Set<String> = []
         let health = healthSyncPreferences
         if health.letsVoiceRead(mode), health.destination.map({ isCallDestination($0, profile: profile) }) == true {
@@ -48,7 +48,7 @@ extension AppState {
     /// `host` is nil when the host couldn't be asked (a reconnect then keeps
     /// what it had).
     func voiceHostTools(for mode: LiveVoiceModeName, profile: String? = nil) async -> (host: [VoiceHostTool]?, local: [VoiceHostTool]) {
-        let profile = profile ?? activeProfile
+        let profile = profile ?? voiceCallProfile
         let keys = voiceReadableKeys(for: mode, profile: profile)
         let phone = phoneSync.preferences
         let phoneAllowed = phone.letsVoiceUse(mode) && phone.destination.map({ isCallDestination($0, profile: profile) }) == true
@@ -106,7 +106,7 @@ extension AppState {
     /// the calendar and phone they share on this dashboard.
     func phoneVoiceSettingHint(for mode: LiveVoiceModeName, profile: String? = nil) -> String {
         let phone = phoneSync.preferences
-        let profile = profile ?? activeProfile
+        let profile = profile ?? voiceCallProfile
         guard phone.destination.map({ isCallDestination($0, profile: profile) }) == true else { return "" }
         return PhoneVoiceTools.settingHint(for: phone, mode: mode)
     }
@@ -118,9 +118,9 @@ extension AppState {
     }
 
     /// One call for the running call. What the model hears back.
-    /// `profile`: the call's own (a Watch call's, #1564); nil is the active one.
+    /// `profile`: the call's own (a Watch call's, #1564); nil is the phone call's (`voiceCallProfile`).
     func callVoiceHostTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?, profile: String? = nil) async -> [String: String] {
-        let profile = profile ?? activeProfile
+        let profile = profile ?? voiceCallProfile
         switch tool.key {
         case "health", "location": return await callSealedReadTool(tool, arguments: arguments, mode: mode, profile: profile)
         case "phone", PhoneVoiceTools.key: return await callPhoneVoiceTool(tool, arguments: arguments, mode: mode, profile: profile)

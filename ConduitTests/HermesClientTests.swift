@@ -5577,6 +5577,69 @@ extension HermesClientTests {
         XCTAssertTrue(socket.cancelled)
     }
 
+    /// A live call on the phone goes on across a switch to another profile
+    /// (all-live stage 2, issue 2390) only through a socket the switch can
+    /// keep, and the next client names the call's profile for its chat, so
+    /// the call's next turn still reaches it.
+    func testALiveCallGoesOnAcrossAProfileSwitchThroughTheKeptSocket() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let appState = AppState(defaults: makeScratchDefaults("LiveCallAcrossSwitch"), loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://test.example", ticket: "ticket")
+        appState.client = outgoing
+        appState.isConnected = true
+        // A GPT-Live call on "default", minimised, attached to a chat.
+        appState.liveCallProfile = "default"
+        appState.minimisedLiveVoice = .gptLive
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
+        )
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertTrue(appState.callSurvivesProfileSwitch, "The socket can be kept, so the call goes on")
+        XCTAssertFalse(appState.isCallEndingProfileSwitch, "A profile pick doesn't ask")
+        var asked: CallEndingSwitch?
+        var switched = false
+        appState.switchEndingCall(to: "Work", profileOnly: true, pending: &asked) { switched = true }
+        XCTAssertTrue(switched)
+        XCTAssertNil(asked)
+        appState.switchEndingCall(to: "Other dashboard", pending: &asked) { XCTFail("A dashboard switch still ends the call") }
+        XCTAssertNotNil(asked, "A dashboard pick still asks first")
+
+        // Classic voice can't go on: the pick asks first, as before.
+        appState.showVoiceSheet = true
+        XCTAssertFalse(appState.callSurvivesProfileSwitch)
+        XCTAssertTrue(appState.isCallEndingProfileSwitch)
+        appState.showVoiceSheet = false
+
+        // The switch hands the socket on; the next client names the call's
+        // profile for the call's chat.
+        let incoming = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: incoming)
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        outgoing.disconnect()
+        appState.client = incoming
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(incoming.sessionProfile(for: "chat-1"), "default")
+        XCTAssertEqual(incoming.sessionProfile(for: "stored-1"), "default")
+        XCTAssertEqual(appState.voiceCallProfile, "default", "The call keeps its profile")
+        XCTAssertEqual(appState.callProfileOffScreen, "default")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let turn = Task { try await incoming.sendPrompt("chat-1", text: "And the hotel?") }
+        try await sent.wait("the call's turn to be sent")
+        let request = try lastRequest(on: socket)
+        XCTAssertEqual((request["params"] as? [String: Any])?["profile"] as? String, "default",
+                       "The call's turn goes to its own profile, not the one on screen")
+        incoming.disconnect()
+        _ = try? await turn.value
+
+        // Switching back to the call's profile makes them the client's own again.
+        let back = makeClient(transport: transport, profile: "default")
+        back.inheritSessionProfiles(from: incoming)
+        appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: back)
+        XCTAssertNil(back.sessionProfile(for: "chat-1"))
+    }
+
     func testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let sent = Gate()

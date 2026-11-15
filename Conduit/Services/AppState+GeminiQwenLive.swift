@@ -246,13 +246,13 @@ extension AppState {
                         search: search,
                         memory: memory,
                         personality: qwen ? self?.qwenLivePersonality : self?.geminiLivePersonality,
-                        answerLength: self?.liveVoiceStyle.answerLength ?? .standard,
+                        answerLength: self?.liveCallStyle.answerLength ?? .standard,
                         followedBy: (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                             + (self?.liveHermesCallInstructions(delegation: false) ?? "")
                             + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
                             + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                             + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
-                            + (self?.liveVoiceStyle.instructions ?? "")
+                            + (self?.liveCallStyle.instructions ?? "")
                     ),
                     functions: GeminiLiveToolBridge.declarations(
                         webSearch: search == .hermes,
@@ -308,10 +308,10 @@ extension AppState {
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
-            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
+            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveCallStyle.openingPrompt },
             provider: provider
         )
         controller.startsMuted = { [weak self] in self?.hermesCallStartsMuted ?? false }
@@ -384,6 +384,8 @@ extension AppState {
     /// conversation that already failed drops its memory and persona too:
     /// nothing presents it, so nothing would close it.
     func releaseCarPlayGeminiLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showGeminiLiveSheet || minimisedLiveVoice == .geminiLive)) else { return }
         if isGeminiLiveActive {
             closeGeminiLiveConversation()
@@ -398,6 +400,8 @@ extension AppState {
     }
 
     func closeGeminiLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.geminiLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .geminiLive)
@@ -419,6 +423,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, forced
     /// sign-out). Background jobs are retired by the same boundaries.
     func stopGeminiLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
         guard showGeminiLiveSheet || minimisedLiveVoice == .geminiLive || isGeminiLiveActive else {
@@ -495,6 +501,8 @@ extension AppState {
     /// conversation that already failed drops its memory and persona too:
     /// nothing presents it, so nothing would close it.
     func releaseCarPlayQwenLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showQwenLiveSheet || minimisedLiveVoice == .qwenLive)) else { return }
         if isQwenLiveActive {
             closeQwenLiveConversation()
@@ -509,6 +517,8 @@ extension AppState {
     }
 
     func closeQwenLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.qwenLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .qwenLive)
@@ -530,6 +540,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, forced
     /// sign-out). Background jobs are retired by the same boundaries.
     func stopQwenLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
         guard showQwenLiveSheet || minimisedLiveVoice == .qwenLive || isQwenLiveActive else {

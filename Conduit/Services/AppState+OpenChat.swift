@@ -1532,7 +1532,7 @@ extension AppState {
                 // (it's read again above), so nothing is adopted until then.
                 // During a call that retry waits for the call to end, as the
                 // switch would: retried now, it could run out of time first.
-                if let profileCallRefusal, isVoiceCallInProgress {
+                if let profileCallRefusal, isCallEndingProfileSwitch {
                     traceStage = "call in progress (bot roster)"
                     showCallRefusal(profileCallRefusal)
                     return callOutcome
@@ -1561,7 +1561,7 @@ extension AppState {
                 // A lookup that failed proves nothing either way: it is
                 // asked again on a retry, and nothing is adopted until then.
                 // During a call, the retry waits for the call to end.
-                if let profileCallRefusal, isVoiceCallInProgress {
+                if let profileCallRefusal, isCallEndingProfileSwitch {
                     traceStage = "call in progress (bot chat lookup)"
                     showCallRefusal(profileCallRefusal)
                     return callOutcome
@@ -1617,7 +1617,7 @@ extension AppState {
             // A call can have started (one from Hermes needs no tap) while
             // the checks above waited on the gateway; a notification or a
             // chat link never ends it with the switch.
-            if let profileCallRefusal, isVoiceCallInProgress {
+            if let profileCallRefusal, isCallEndingProfileSwitch {
                 traceStage = "call in progress"
                 showCallRefusal(profileCallRefusal)
                 return callOutcome
@@ -1630,7 +1630,7 @@ extension AppState {
             ) else {
                 // A call that started during the switch refuses it the
                 // same way, and says so; anything else may pass on a retry.
-                guard sparesCalls, isVoiceCallInProgress else { return .retry }
+                guard sparesCalls, isCallEndingProfileSwitch else { return .retry }
                 traceStage = "call in progress (profile switch)"
                 return callOutcome
             }

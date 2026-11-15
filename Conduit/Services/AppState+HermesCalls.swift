@@ -337,25 +337,25 @@ extension AppState {
                 return try await self.hermesCallsClient.watch(
                     sessionIDs: target.sessionIDs,
                     title: target.title,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     holdSeconds: holdSeconds,
                     endedWithinSeconds: endedWithinSeconds
                 )
             },
             hold: { [weak self] watchID, profile, seconds in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.activeProfile, seconds: seconds)
+                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.voiceCallProfile, seconds: seconds)
             },
             cancel: { [weak self] watchID, profile in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.activeProfile)
+                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.voiceCallProfile)
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
                 await HermesCallNotifications.post(HermesCallNotifications.localRequest(
                     for: target,
                     kind: kind,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     dashboardID: self.activeDashboardID
                 ))
             }

@@ -193,7 +193,7 @@ extension AppState {
     /// A message hit in another profile's chat that All hasn't listed: its
     /// link's way, refused with a notice during a call.
     func openOtherProfileChat(_ id: String, inProfile profile: String) {
-        guard !isVoiceCallInProgress else {
+        guard !isCallEndingProfileSwitch else {
             showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }
@@ -202,13 +202,13 @@ extension AppState {
 
     /// A project page's New conversation in a folder, here or in `profile`
     /// after a switch to it: a page gathering profiles asks which (issue
-    /// 1761). A switch ends a call, so none while one is up.
+    /// 1761). A switch ends a call, so none while one is up, but a live call that goes on across it (all-live stage 2).
     func createNewSession(cwd: String, inProfile profile: String) {
         guard !Self.profilesMatch(profile, activeProfile) else {
             Task { await self.createNewSession(cwd: cwd) }
             return
         }
-        guard !isVoiceCallInProgress else {
+        guard !isCallEndingProfileSwitch else {
             showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }
@@ -224,13 +224,13 @@ extension AppState {
     }
 
     /// New Chat from All's menu: here, or in `profile` after a switch to
-    /// it. A switch ends a call, so none while one is up.
+    /// it. A switch ends a call, so none while one is up, but a live call that goes on across it.
     func startNewChat(inProfile profile: String) {
         guard profile != activeProfile else {
             startNewChat()
             return
         }
-        guard !isVoiceCallInProgress else {
+        guard !isCallEndingProfileSwitch else {
             showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }

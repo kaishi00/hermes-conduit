@@ -241,7 +241,7 @@ struct LiveVoiceCallSheet: View {
                             jobs: jobs,
                             // The mode menu under the title names the engine.
                             engine: modeSwitch == nil ? title : "",
-                            profile: appState.profileDisplayName(appState.activeProfile),
+                            profile: appState.profileDisplayName(appState.voiceCallProfile),
                             onOpenChat: openAttachedChat
                         )
                     } else {
@@ -284,7 +284,8 @@ struct LiveVoiceCallSheet: View {
     /// call goes on minimised, as it does when a job's chat opens.
     private func openAttachedChat(_ link: ConduitAppLink) {
         dismiss()
-        openURL(link.url)
+        // On the call's own profile, which may not be the one on screen.
+        openURL(appState.callChatLink(link).url)
     }
 
     // MARK: Stage

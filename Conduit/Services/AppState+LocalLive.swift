@@ -78,11 +78,11 @@ extension AppState {
         tail += phoneVoiceSettingHint(for: .localLive)
         tail += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
         tail += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
-        tail += liveVoiceStyle.instructions
+        tail += liveCallStyle.instructions
         let instructions = GeminiLiveConversationController.instructions(
             search: localLiveWebLookUps ? .hermes : .none,
             personality: localLivePersonality,
-            answerLength: liveVoiceStyle.answerLength,
+            answerLength: liveCallStyle.answerLength,
             acknowledgesOnceStarted: true,
             followedBy: tail
         )
@@ -219,6 +219,8 @@ extension AppState {
     /// CarPlay went away. A Local Live call only CarPlay was presenting
     /// ends; one the phone's sheet or minimised bar shows keeps going.
     func releaseCarPlayLocalLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showLocalLiveSheet || minimisedLiveVoice == .localLive)) else { return }
         if isLocalLiveActive {
             closeLocalLiveConversation()
@@ -237,6 +239,8 @@ extension AppState {
     }
 
     func closeLocalLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.localLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .localLive)
@@ -255,6 +259,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     func stopLocalLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard showLocalLiveSheet || minimisedLiveVoice == .localLive || isLocalLiveActive else {
             // Personal text goes at the boundary even with no call up.
             dropLocalLivePersonality()
@@ -270,8 +276,10 @@ extension AppState {
     }
 
     /// Where the voice jobs' ledger is kept for this dashboard and profile
-    /// (M5b): a relaunch follows the jobs a call left running.
+    /// (M5b): a relaunch follows the jobs a call left running. The profile
+    /// is the one voice runs on: a live call's own while it goes on across
+    /// a switch (all-live stage 2).
     var voiceJobLedgerKey: String {
-        "conduit.voiceJobLedger.\(activeDashboardID?.uuidString ?? "none").\(activeProfile)"
+        "conduit.voiceJobLedger.\(activeDashboardID?.uuidString ?? "none").\(voiceCallProfile)"
     }
 }

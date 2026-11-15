@@ -1493,12 +1493,13 @@ struct V2Shell: View {
         // just ended elsewhere no longer goes.
         queuedProfilePick = V2QueuedProfilePick()
         guard profile != appState.activeProfile else { return }
-        // The switch would end a call running: ask first (issue 2390). A
+        // The switch would end a call running: ask first (issue 2390); a
+        // live call that goes on across it (all-live stage 2) doesn't. A
         // pick from under All leaves All on until the user accepts, so
         // Cancel leaves the list as it was.
-        if !callEndAccepted && appState.isVoiceCallInProgress {
+        if !callEndAccepted && appState.isCallEndingProfileSwitch {
             if haptic { Haptics.medium() }
-            appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
+            appState.switchEndingCall(to: appState.profileDisplayName(profile), profileOnly: true, pending: &pendingCallEndingSwitch) {
                 // All goes off as the accepted switch starts, below, and
                 // comes back if it doesn't land.
                 pickProfile(profile, haptic: false, callEndAccepted: true, leavesAll: leavesAll)
@@ -1580,7 +1581,7 @@ struct V2Shell: View {
             // A call that rang in during the fade-out wasn't asked about:
             // the content comes back with All as it was, and the pick asks
             // first (issue 2390), so Cancel leaves the list unchanged.
-            if !callEndAccepted && appState.isVoiceCallInProgress {
+            if !callEndAccepted && appState.isCallEndingProfileSwitch {
                 if leftAll, appState.activeDashboardID == pickDashboardID {
                     appState.setAllProfilesChatsOn(true)
                 }

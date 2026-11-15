@@ -2057,6 +2057,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// new chat is made on its bot. Cleared when the call leaves.
     private(set) var deletedLiveThread: VoiceThreadTarget?
 
+    /// The ids of the sessions made on the profile in use (the jobs and the
+    /// call's chat that name no profile), for a call that keeps its profile
+    /// across a switch (all-live stage 2).
+    var sessionIDsOnActiveProfile: [String?] {
+        var ids = jobs.filter { $0.profile == nil }.flatMap { [$0.runtimeSessionID, $0.storedSessionID] }
+        for thread in [liveThread, deletedLiveThread].compactMap({ $0 }) where thread.profile == nil {
+            ids += [thread.runtimeSessionID, thread.storedSessionID]
+        }
+        return ids
+    }
+
     /// Whether `chat` was deleted (`noteChatDeleted`).
     func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {
         [chat.runtimeSessionID, chat.storedSessionID].compactMap { $0 }.contains { deletedChatIDs.contains($0) }

@@ -107,7 +107,11 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 // Its own saved voice jobs, if no boundary already took them.
-                if voiceJobLedgerRestoredKey != nil { scheduleVoiceJobLedgerRestore() }
+                // Not while a live call keeps its profile (and so its jobs'
+                // ledger) across the switch (all-live stage 2).
+                if voiceJobLedgerRestoredKey != nil, voiceJobLedgerRestoredKey != voiceJobLedgerKey {
+                    scheduleVoiceJobLedgerRestore()
+                }
                 composerNotice = nil
                 botsListNotice = nil
                 restoreDisplayPreferences()
@@ -1398,11 +1402,11 @@ final class AppState: ObservableObject {
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
     /// through whichever dashboard bridge is current at call time.
     lazy var geminiLiveTokenClient = makeLiveTokenClient(provider: .gemini) { [weak self] in
-        self?.activeProfile ?? "default"
+        self?.voiceCallProfile ?? "default"
     }
 
     lazy var qwenLiveTokenClient = makeLiveTokenClient(provider: .qwen) { [weak self] in
-        self?.activeProfile ?? "default"
+        self?.voiceCallProfile ?? "default"
     }
 
     /// Built on first use only: boundaries that merely check whether Gemini
@@ -1430,7 +1434,7 @@ final class AppState: ObservableObject {
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
     lazy var gptLiveClient = makeGPTLiveClient { [weak self] in
-        self?.activeProfile ?? "default"
+        self?.voiceCallProfile ?? "default"
     }
 
     /// Built on first use only, like Gemini Live's.
@@ -1450,7 +1454,7 @@ final class AppState: ObservableObject {
                     briefing: self?.gptLiveBriefing() ?? GPTLiveConversationController.briefing(),
                     // A call Hermes made opens with its brief instead (#449),
                     // spoken first rather than waiting for the user (#544).
-                    greeting: self?.liveHermesCall == nil ? self?.liveVoiceStyle.greeting : nil,
+                    greeting: self?.liveHermesCall == nil ? self?.liveCallStyle.greeting : nil,
                     callOpening: self?.liveHermesCall != nil
                 )
                 // The session's own setup steps in the call trace (#1611).
@@ -1473,13 +1477,13 @@ final class AppState: ObservableObject {
             // Fails closed: without the app state, the stored answer decides.
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.gptLive) ?? LiveVoiceProviderConsent.missing(.gptLive) },
             briefing: { [weak self] in self?.gptLiveBriefing() ?? GPTLiveConversationController.briefing() },
-            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt },
+            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveCallStyle.openingPrompt },
             supervisor: self.voiceBackgroundJobSupervisor,
             webSearch: hostContext,
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -1488,7 +1492,7 @@ final class AppState: ObservableObject {
         controller.traceName = "GPT-Live"
         controller.apiCallLimit = { [weak self] in
             guard let self else { return nil }
-            return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.activeProfile).gptLiveAPIMaxMinutes)
+            return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).gptLiveAPIMaxMinutes)
         }
         return controller
     }()
@@ -1512,7 +1516,7 @@ final class AppState: ObservableObject {
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
     lazy var grokLiveClient = makeGrokLiveClient { [weak self] in
-        self?.activeProfile ?? "default"
+        self?.voiceCallProfile ?? "default"
     }
 
     /// Built on first use only, like Gemini Live's.
@@ -1540,12 +1544,12 @@ final class AppState: ObservableObject {
                 tail += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 tail += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                 tail += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
-                tail += self?.liveVoiceStyle.instructions ?? ""
+                tail += self?.liveCallStyle.instructions ?? ""
                 let instructions = GeminiLiveConversationController.instructions(
                     search: search,
                     memory: memory,
                     personality: self?.grokLivePersonality,
-                    answerLength: self?.liveVoiceStyle.answerLength ?? .standard,
+                    answerLength: self?.liveCallStyle.answerLength ?? .standard,
                     acknowledgesOnceStarted: true,
                     followedBy: tail
                 )
@@ -1596,9 +1600,9 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
-            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveVoiceStyle.openingPrompt }
+            openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveCallStyle.openingPrompt }
         )
         // A hands-free goodbye closes the sheet like the Close button.
         controller.onEndConversation = { [weak self] in self?.closeGrokLiveConversation() }
@@ -1627,7 +1631,7 @@ final class AppState: ObservableObject {
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
     lazy var localLiveClient = makeLocalLiveClient { [weak self] in
-        self?.activeProfile ?? "default"
+        self?.voiceCallProfile ?? "default"
     }
 
     /// Built on first use only, like the other live modes'.
@@ -1653,9 +1657,10 @@ final class AppState: ObservableObject {
                 own: own,
                 runtime: { try await self.localLiveChatRuntime($0) },
                 create: { profile in
-                    // No profile asked is the active one, as of the ask.
-                    let expected = profile ?? self.activeProfile
-                    let created = try await client.createSession(inProfile: profile)
+                    // No profile asked is the call's, as of the ask: the
+                    // active one, unless the call went on across a switch.
+                    let expected = profile ?? self.voiceCallProfile
+                    let created = try await client.createSession(inProfile: profile ?? self.callProfileOffScreen)
                     // Made on another profile: never the call's chat on its bot.
                     if let made = created.profile, !Self.profilesMatch(made, expected) {
                         throw HermesError.invalidResponse
@@ -1672,7 +1677,7 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             if chat.runtimeID == self.activeSessionId { return self.isBusy }
             let client = try await self.clientForVoiceRequest()
-            let rows = try await client.activeSessions(inProfile: chat.profile)
+            let rows = try await client.activeSessions(inProfile: chat.profile ?? self.callProfileOffScreen)
             return rows.contains { $0.runtimeSessionId == chat.runtimeID && $0.isRunning }
         },
         submit: { [weak self] chat, text in
@@ -1705,7 +1710,7 @@ final class AppState: ObservableObject {
             let outcome: PromptSubmissionOutcome
             do {
                 outcome = try await self.sendCallPromptTakingOver(
-                    runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile,
+                    runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile ?? self.callProfileOffScreen,
                     stillWanted: self.localLiveTurns.currentTurnCheck()
                 ) {
                     try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
@@ -1760,7 +1765,7 @@ final class AppState: ObservableObject {
                 // Hermes isn't asked, so "own words" is a short fixed line.
                 session.greeting = { [weak self] in
                     // A call from Hermes opens with why it called instead.
-                    guard self?.liveHermesCall == nil, let greeting = self?.liveVoiceStyle.greeting else { return nil }
+                    guard self?.liveHermesCall == nil, let greeting = self?.liveCallStyle.greeting else { return nil }
                     return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
                 }
                 // The turns follow the newest session: a turn opened on an
@@ -1787,7 +1792,7 @@ final class AppState: ObservableObject {
                 // that outlives a profile switch is dropped too, so another
                 // profile's SOUL.md never reaches this call.
                 let lookup = self?.claimLocalLivePersonaLookup()
-                let profile = self?.activeProfile
+                let profile = self?.voiceCallProfile
                 let status = try await client.status()
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
@@ -1805,7 +1810,7 @@ final class AppState: ObservableObject {
                     }
                     let persona = await personality
                     if self.localLivePersonaLookup == lookup {
-                        self.localLivePersonality = self.activeProfile == profile ? persona : nil
+                        self.localLivePersonality = self.voiceCallProfile == profile ? persona : nil
                     }
                     await hostTools
                 } else if let self, self.localLivePersonaLookup == lookup {
@@ -1823,7 +1828,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.activeProfile).resolvedSpokenEndConversationPhrases
+                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
             // A call from Hermes in agent mode: the fast model says why
             // Hermes called, as on the other live modes. Outside agent mode
@@ -1913,18 +1918,22 @@ final class AppState: ObservableObject {
                     return (created.sessionId, created.storedSessionId, targetProfile)
                 }
                 // Same model/provider as a composer-created chat, and the
-                // same refusal when Hermes lands it in another profile.
-                let profile = self.activeProfile
+                // same refusal when Hermes lands it in another profile. A
+                // call that went on across a switch makes them on its own
+                // profile, whose model the runtime shown isn't.
+                let profile = self.voiceCallProfile
+                let offScreen = self.callProfileOffScreen
                 // Voice jobs can run on their own (faster) model and
                 // reasoning level, chosen in Voice settings.
                 let options = self.loadVoiceProfilePreferences(profile: profile).voiceJobSessionOptions(
-                    runtimeModel: self.runtime.model,
-                    runtimeProvider: self.runtime.provider
+                    runtimeModel: offScreen == nil ? self.runtime.model : "",
+                    runtimeProvider: offScreen == nil ? self.runtime.provider : ""
                 )
                 let created = try await client.createSession(
                     model: options.model,
                     provider: options.provider,
-                    reasoningEffort: options.reasoningEffort
+                    reasoningEffort: options.reasoningEffort,
+                    inProfile: offScreen
                 )
                 if let returnedProfile = created.profile, !self.profilesMatch(returnedProfile, profile) {
                     throw HermesError.invalidResponse
@@ -1946,7 +1955,7 @@ final class AppState: ObservableObject {
             callLeftChat: { [weak self] profile, chat, call in
                 self?.voiceCallLeftChat(profile: profile, chat: chat, call: call)
             },
-            activeProfile: { [weak self] in self?.activeProfile },
+            activeProfile: { [weak self] in self?.voiceCallProfile },
             submit: { [weak self] sessionID, text in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
@@ -1971,7 +1980,8 @@ final class AppState: ObservableObject {
                 if let open { self.noteRunningTurnBeforeCancel(in: open) }
                 let noteWrite = open.flatMap { self.voiceCancelNoteWrites[$0] }
                 do {
-                    let stopped = try await client.cancel(sessionID, profile: self.presentationProfile(for: sessionID))
+                    // A job of a call that went on across a switch is on the call's profile.
+                    let stopped = try await client.cancel(sessionID, profile: client.sessionProfile(for: sessionID) ?? self.presentationProfile(for: sessionID))
                     if let open { self.noteVoiceStoppedTurn(sessionId: open, generation: stopped, wasRunning: wasRunning, ifStill: noteWrite) }
                 } catch {
                     if let open, let noteBeforeCancel {
@@ -1983,7 +1993,7 @@ final class AppState: ObservableObject {
             liveSessions: { [weak self] targetProfile in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
-                return try await client.activeSessions(inProfile: targetProfile)
+                return try await client.activeSessions(inProfile: targetProfile ?? self.callProfileOffScreen)
             },
             resolveProfile: { [weak self] spokenName in
                 self?.voiceJobProfileTarget(named: spokenName) ?? .unknown
@@ -2039,20 +2049,20 @@ final class AppState: ObservableObject {
             },
             searchChats: { [weak self] query, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.searchChatsForVoice(query, profile: profile)
+                return try await self.searchChatsForVoice(query, profile: profile ?? self.callProfileOffScreen)
             },
             readChat: { [weak self] sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.readChatForVoice(sessionID, profile: profile)
+                return try await self.readChatForVoice(sessionID, profile: profile ?? self.callProfileOffScreen)
             },
             respondToApproval: { [weak self] approval, choice, profile in
                 guard let self else { throw HermesError.notConnected }
-                return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile)
+                return try await self.respondToApprovalByVoice(approval, choice: choice, profile: profile ?? self.callProfileOffScreen)
             },
             respondToClarify: { [weak self] clarify, questionID, answer, sessionID, profile in
                 guard let self else { throw HermesError.notConnected }
                 return try await self.respondToClarifyByVoice(
-                    clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile
+                    clarify, questionID: questionID, answer: answer, sessionID: sessionID, profile: profile ?? self.callProfileOffScreen
                 )
             }
         ))
@@ -2150,7 +2160,7 @@ final class AppState: ObservableObject {
             guard let self else { return }
             if sessionIDs.count == 2 { self.learnVoiceSessionAlias(runtimeID: sessionIDs[0], storedID: sessionIDs[1]) }
             if let job = self.voiceBackgroundJobSupervisor.jobs.first(where: { job in sessionIDs.contains { job.owns(sessionID: $0) } }),
-               let targetProfile = job.profile, targetProfile != self.activeProfile {
+               let targetProfile = job.profile, targetProfile != self.voiceCallProfile {
                 // A job on another profile is that profile's chat: badged
                 // there, and noted in the call. Voice tags live in the
                 // calling profile's history, so it carries none.
@@ -2161,7 +2171,13 @@ final class AppState: ObservableObject {
                 }
                 return
             }
-            self.rememberVoiceJobSessions(sessionIDs)
+            // The call's own profile, which a call that went on across a
+            // switch has left: a job made there while the switch handed the
+            // socket on still names it on the client in use.
+            if let callProfile = self.callProfileOffScreen {
+                self.client?.noteSessionProfile(callProfile, for: sessionIDs)
+            }
+            self.rememberVoiceJobSessions(sessionIDs, profile: self.voiceCallProfile)
             // Filed under Voice Jobs on every device, with the call (or the
             // classic voice chat) it came from.
             if let recorder = self.voiceCallRecorder,
@@ -2963,6 +2979,11 @@ final class AppState: ObservableObject {
     /// another mode taking over, CarPlay releasing a stopped call, and
     /// boundary teardown (disconnect, sign-out, server or profile change).
     @Published var minimisedLiveVoice: VoiceCallEngine?
+
+    /// The profile the live call runs on, read as it starts (all-live
+    /// stage 2). It stays the call's when another profile on the same
+    /// dashboard opens, so the call goes on there: see `voiceCallProfile`.
+    var liveCallProfile: String?
 
     // MARK: - Read state (#454) (AppState+Session.swift, AppState+ChatList.swift, AppState+PinSync.swift, AppState+Reconciliation.swift)
 
