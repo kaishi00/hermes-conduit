@@ -45958,6 +45958,88 @@
           }
         }
       }
+    },
+    "Couldn't send here. Try again, or Swap to send from the chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konnte hier nicht senden. Versuche es erneut oder tausche, um aus dem Chat zu senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo enviar aquí. Inténtalo de nuevo o intercambia para enviar desde el chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoi impossible ici. Réessaie, ou échange pour envoyer depuis la discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat mengirim di sini. Coba lagi, atau tukar untuk mengirim dari chat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile inviare qui. Riprova, oppure scambia per inviare dalla chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここでは送信できませんでした。もう一度試すか、入れ替えてチャットから送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기서 보내지 못했습니다. 다시 시도하거나 바꿔서 채팅에서 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się wysłać tutaj. Spróbuj ponownie lub zamień, aby wysłać z czatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível enviar aqui. Tente de novo ou troque para enviar pela conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось отправить здесь. Попробуйте снова или поменяйте местами, чтобы отправить из чата."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradan gönderilemedi. Tekrar dene veya sohbetten göndermek için yer değiştir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法在此发送。请重试，或交换后从聊天中发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法在此傳送。請重試，或交換後從聊天中傳送。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

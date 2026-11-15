@@ -3480,7 +3480,7 @@ final class OfflineChatCacheTests: XCTestCase {
     /// with no reply running, its events telling the window; closing the
     /// window lets go of it; and the window closes once its chat opens in
     /// the main window, or on a profile or dashboard switch.
-    func testAChatMovesFromThePaneToAWindowOfItsOwn() throws {
+    func testAChatMovesFromThePaneToAWindowOfItsOwn() async throws {
         let (state, _, _) = makeAppState()
         state.sessions = [session("a"), session("b")]
         state.isConnected = true
@@ -3522,6 +3522,17 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.windowChat(key)?.state.messages.last?.rowId, 12)
         XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
         state.windowChat(key)?.state.messages.removeLast(3)
+
+        // It takes a message by the runtime id Hermes bound to it, only
+        // between turns and connected (with a client to send through).
+        let windowed = try XCTUnwrap(state.windowChat(key))
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "a", durableID: "st-a", profile: state.activeProfile, source: .resume)
+        XCTAssertEqual(state.keptChatSendTarget(windowed), "a")
+        XCTAssertFalse(state.canSendInKeptChat(windowed), "No client to send through here")
+        let sent = await state.sendInKeptChat(windowed, text: "Hello there")
+        XCTAssertFalse(sent)
+        XCTAssertFalse(windowed.state.messages.contains { $0.content == "Hello there" }, "Nothing shows that didn't go")
+        XCTAssertFalse(windowed.isRunning)
 
         // The app is in the background only once every window is.
         XCTAssertEqual(AppState.mergedScenePhase([.background, .active]), .active)
