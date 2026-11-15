@@ -1661,11 +1661,20 @@ final class AppState: ObservableObject {
                     // No profile asked is the call's, as of the ask: the
                     // active one, unless the call went on across a switch.
                     let expected = profile ?? self.voiceCallProfile
-                    let created = try await client.createSession(inProfile: profile ?? self.callProfileOffScreen)
+                    // The call's request: a switch it goes on across carries it.
+                    let created = try await CallRequestScope.$isCallRequest.withValue(true) {
+                        try await client.createSession(inProfile: profile ?? self.callProfileOffScreen)
+                    }
                     // Made on another profile: never the call's chat on its bot.
                     if let made = created.profile, !Self.profilesMatch(made, expected) {
                         throw HermesError.invalidResponse
                     }
+                    // Made while a switch handed the socket on: the client in
+                    // use names its profile from here on.
+                    self.client?.noteSessionProfile(
+                        profile ?? self.callProfileOffScreen ?? self.voiceCallProfile,
+                        for: [created.sessionId, created.storedSessionId]
+                    )
                     return VoiceThreadTarget(runtimeSessionID: created.sessionId, storedSessionID: created.storedSessionId,
                                              title: "", profile: profile)
                 }
@@ -2171,6 +2180,9 @@ final class AppState: ObservableObject {
                 // there, and noted in the call. Voice tags live in the
                 // calling profile's history, so it carries none.
                 self.rememberVoiceJobSessions(sessionIDs, profile: targetProfile)
+                // Made while a switch handed the socket on: the client in
+                // use names the job's profile too.
+                self.client?.noteSessionProfile(targetProfile, for: sessionIDs)
                 if let recorder = self.voiceCallRecorder {
                     self.captureVoiceCall()
                     recorder.note(AppLocalization.string("Started a background job on \(job.profileLabel ?? targetProfile): \(job.title)."))
