@@ -25,7 +25,7 @@ name: Nightly
 # `nightly: true`. GitHub's own cron created its events 7 to 10 hours late
 # (2026-11-09..14: 15:07-18:50 UTC), so the run held the macOS runners through
 # Eric's mornings and his PRs' Smoke jobs queued behind it. The cron stays as
-# a backup, an hour after the timer: it skips itself when Nightly already ran
+# a backup, after the timer in both EDT and EST: it skips itself when Nightly already ran
 # on main in the last 20 hours, and warns when it has to run instead.
 #
 # A run schedules 8 macOS jobs (2 unit shards + 3 timing repeats + 3 UI
@@ -91,8 +91,13 @@ jobs:
         run: |
           set -euo pipefail
           since=$(date -u -d '20 hours ago' +%Y-%m-%dT%H:%M:%SZ)
-          others=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&created=%3E%3D$since&per_page=20" \
-            --jq "[.workflow_runs[] | select(.id != $RUN_ID and .event != \"schedule\")] | length")
+          # A failed lookup runs the backup: missing a night is worse than
+          # running one twice.
+          if ! others=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&created=%3E%3D$since&per_page=20" \
+            --jq "[.workflow_runs[] | select(.id != $RUN_ID and .event != \"schedule\")] | length"); then
+            echo "::warning::Couldn't list Nightly runs; the backup cron runs."
+            others=0
+          fi
           if [ "$others" -gt 0 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::A dispatched Nightly ran on main since $since; the backup cron skips."
