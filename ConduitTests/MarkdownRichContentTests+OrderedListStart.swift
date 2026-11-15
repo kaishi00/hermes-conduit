@@ -101,6 +101,12 @@ extension MarkdownRichContentPolicyTests {
             .orderedList(["B"]),
             .unorderedList(["next"], depth: 1)
         ])
+        // So does a line of only Hermes directives, which adds no block.
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n[[audio_as_voice]]\n1. B", recognizesGatewayMedia: true), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .orderedList(["B"])
+        ])
         // A paragraph between starts over at the left edge.
         XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
             .unorderedList(["a"]),

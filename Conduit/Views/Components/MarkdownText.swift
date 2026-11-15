@@ -3646,6 +3646,8 @@ enum MarkdownParser {
                     index += 1
                 }
                 if index < lines.count { index += 1 }
+                // The block appended here ends the outline: the next list
+                // sees no list above it and starts over.
                 if directive == "columns" { blocks.append(.columns(sections.map { $0.joined(separator: "\n") }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })) }
                 else { blocks.append(.callout(kind: directive, text: sections.flatMap { $0 }.joined(separator: "\n"))) }
                 continue
@@ -3695,6 +3697,10 @@ enum MarkdownParser {
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: false))
                     }
                 }
+                // Like a directive, this line ends the outline, a line of
+                // only Hermes directives too, which adds no block.
+                listIndents = []
+                outlineNumbers = [:]
                 index += 1
                 continue
             }
