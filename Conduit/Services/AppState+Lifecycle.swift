@@ -267,7 +267,9 @@ extension AppState {
         }
 
         func finish(_ result: Result<ProfileCatalogLoad, Error>) {
-            let waiting = waiters.values
+            // A copy, not a view: a Release build (Swift 6.4.2) fails SIL
+            // verification when the values view outlives removeAll().
+            let waiting = Array(waiters.values)
             waiters.removeAll()
             for waiter in waiting { waiter.resume(with: result) }
         }
