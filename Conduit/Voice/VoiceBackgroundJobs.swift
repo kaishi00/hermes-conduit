@@ -2070,6 +2070,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return ids
     }
 
+    /// The sessions of the jobs and the call's chat that name a profile of
+    /// their own, with it: a client made with no predecessor to inherit
+    /// them from names it for each again.
+    var sessionIDsNamingAProfile: [(profile: String, ids: [String?])] {
+        var named = jobs.compactMap { job in job.profile.map { (profile: $0, ids: [job.runtimeSessionID, job.storedSessionID]) } }
+        for thread in [liveThread, deletedLiveThread].compactMap({ $0 }) {
+            if let profile = thread.profile { named.append((profile: profile, ids: [thread.runtimeSessionID, thread.storedSessionID])) }
+        }
+        return named
+    }
+
     /// Every session the call's jobs and thread use, whatever their profile.
     var callSessionIDs: [String?] {
         var ids = jobs.flatMap { [$0.runtimeSessionID, $0.storedSessionID] }

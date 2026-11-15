@@ -1692,8 +1692,8 @@ final class AppState: ObservableObject {
         },
         submit: { [weak self] chat, text in
             guard let self else { throw HermesError.notConnected }
-            let client = try await self.clientForVoiceRequest()
             if chat.runtimeID == self.activeSessionId {
+                let client = try await self.clientForVoiceRequest()
                 // On screen it goes through the composer, so the chat shows
                 // and streams it like Classic voice's turns.
                 var foundBusy = self.isBusy
@@ -1718,7 +1718,11 @@ final class AppState: ObservableObject {
             let reportedOn = self.activeDashboardID
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
             let outcome: PromptSubmissionOutcome
+            // The client as of now: a profile switch during the report
+            // handed the socket to a new one, and the call goes on there.
+            let client: HermesClient
             do {
+                client = try await self.clientForVoiceRequest()
                 outcome = try await self.sendCallPromptTakingOver(
                     runtimeID: chat.runtimeID, otherSessionIDs: [], profile: chat.profile ?? self.callProfileOffScreen,
                     stillWanted: self.localLiveTurns.currentTurnCheck()
