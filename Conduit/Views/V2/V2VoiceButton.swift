@@ -611,7 +611,12 @@ struct V2VoiceButtonContent: View, Equatable {
     private func call(_ name: String) {
         // The bot as the roster has it now: the menu keeps only its name
         // and label.
-        guard !isStarting, let bot = appState.shownBotRoster.first(where: { $0.name == name }) else { return }
+        guard !isStarting else { return }
+        guard let bot = appState.shownBotRoster.first(where: { $0.name == name }) else {
+            // Removed or renamed while the menu was open.
+            reportCouldNotOpen()
+            return
+        }
         Haptics.medium()
         isStarting = true
         Task { @MainActor in
