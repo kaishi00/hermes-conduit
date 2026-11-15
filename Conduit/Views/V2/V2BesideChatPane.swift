@@ -80,6 +80,7 @@ struct V2BesideChatPane: View {
                     .contentShape(Rectangle())
             }
             .accessibilityLabel(AppLocalization.string("Open in New Window", table: .chat))
+            .accessibilityHint(AppLocalization.string("Moves this chat to a window of its own, and closes the pane.", table: .chat))
         }
         Button {
             Haptics.selection()
@@ -105,7 +106,8 @@ struct V2BesideChatPane: View {
 
 /// A chat in a window of its own (AppState+ChatWindows.swift). The window
 /// closes once its chat is followed no longer: opened in the main window,
-/// deleted, or on a profile or dashboard left. One the system brings back
+/// deleted, a dashboard left, or any change of profile (a switch, one
+/// Hermes no longer has, one a sign-in brings). One the system brings back
 /// at a relaunch has no chat to show, and closes too.
 struct V2ChatWindow: View {
     static let sceneID = "conduit-chat"
@@ -134,6 +136,14 @@ struct V2ChatWindow: View {
         }
         .onDisappear {
             if let key {
+                // Gone to the background first, as the main window does, so
+                // the last window closing still runs the background steps.
+                // Only a window that counted: one restored at a relaunch with
+                // no chat never did, and mustn't send the launch to the
+                // background before the main window's first phase.
+                if appState.windowScenePhases["chat-window:\(key)"] != nil {
+                    appState.noteScenePhase(.background, scene: "chat-window:\(key)")
+                }
                 appState.noteScenePhase(nil, scene: "chat-window:\(key)")
                 appState.closeChatWindow(key)
             }

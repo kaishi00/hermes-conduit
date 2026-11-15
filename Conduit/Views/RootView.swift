@@ -112,6 +112,13 @@ struct RootView: View {
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
                 appState.startWakeListeningLifecycle()
+                // A main window reopened (beside a chat window, or after
+                // every window closed) counts from its first frame, not from
+                // its next phase change. At launch nothing has been heard
+                // yet, and its phase changes come as before.
+                if appState.mergedScenePhase != nil {
+                    appState.noteScenePhase(scenePhase, scene: AppState.mainWindowScene)
+                }
             } else {
                 // Environment-scoped dismissal: close THIS duplicate window
                 // only. ID-scoped dismissal targets the WindowGroup and
@@ -121,6 +128,11 @@ struct RootView: View {
         }
         .onDisappear {
             if isPrimaryWindow {
+                // A chat window left open alone decides the app's phase. The
+                // main window counts as gone to the background first, so the
+                // last window closing still runs the background steps.
+                appState.noteScenePhase(.background, scene: AppState.mainWindowScene)
+                appState.noteScenePhase(nil, scene: AppState.mainWindowScene)
                 ConduitWindowClaimKeeper.releaseClaim()
             }
         }
