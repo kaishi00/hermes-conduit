@@ -8400,13 +8400,13 @@ text: none (no caption or doc describes it)
 
 **Rulings**
 - Shown again by a chat popping off it, the list draws what it missed once the pop has slid (0.45 s), not as the finger lifts: drawn then, the whole list's bodies held the slide's first frame 158 to 175 ms on an iPhone 16 Pro Max (2026-11-14). Meanwhile it shows the rows it showed as the chat opened, and publishes in that wait join the one draw. Shown by a tab switch, where nothing slides, it draws at once. Its own setting writes always draw at once.
-- A pop starts the wait even when the list missed nothing, so a publish during the slide waits too. Uncovered by the window widening or the list's toggle putting it beside the chat, nothing slides: it draws at once (#PRNUM).
-- A row redraws for its own item or a draw of the list's updates, never because the list's body re-ran: the list re-runs as a chat covers or uncovers it (the shell's covered flag), and every row re-running with it held the pop's first frame (#PRNUM).
+- A pop starts the wait even when the list missed nothing, so a publish during the slide waits too. Uncovered by the window widening or the list's toggle putting it beside the chat, nothing slides: it draws at once (#2500).
+- A row redraws for its own item or a draw of the list's updates, never because the list's body re-ran: the list re-runs as a chat covers or uncovers it (the shell's covered flag), and every row re-running with it held the pop's first frame (#2500).
 
 **Open gaps**
-- Pushing or popping a chat still re-runs the list's own body (its sections and the top bar) as the covered flag changes; since #PRNUM its rows no longer re-run with it.
+- Pushing or popping a chat still re-runs the list's own body (its sections and the top bar) as the covered flag changes; since #2500 its rows no longer re-run with it.
 
-**Checked:** 2026-11-15, #PRNUM (rows compared on their item; a pop always waits out the slide; a split change draws at once; Bots Home's gap unchanged)
+**Checked:** 2026-11-15, #2500 (rows compared on their item; a pop always waits out the slide; a split change draws at once; Bots Home's gap unchanged)
 
 ## Reads while a screen shows
 
