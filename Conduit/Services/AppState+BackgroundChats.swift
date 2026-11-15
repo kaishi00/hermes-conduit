@@ -92,7 +92,9 @@ extension AppState {
             // Only the end of its turn: a left chat's turn only ever ends.
             guard !busy, shownChat.turnState.isRunning else { break }
             settleReasoningSegmentIntoTranscript()
-            resetReasoningTurn()
+            // The segment ends, the turn's flag stays: a completion that
+            // carries the reasoning already streamed mustn't add it again.
+            resetReasoningSegment()
             flushStreamingPartial()
             setRunning(false)
         case .toolStart(_, let name, let input, let eventToolID):
@@ -279,7 +281,12 @@ extension AppState {
         }
         let wasRunning = chat.isRunning
         act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
-        if wasRunning, !chat.isRunning {
+        // Saved as its turn ends, and again for a completion that lands
+        // after the turn's end (sessionBusy came first), whose final row
+        // takes the cut-off words' place.
+        var isCompletion = false
+        if case .messageComplete = event { isCompletion = true }
+        if !chat.isRunning, wasRunning || isCompletion {
             saveBackgroundChatCopy(chat)
         }
         return true

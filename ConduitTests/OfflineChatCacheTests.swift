@@ -3481,7 +3481,8 @@ final class OfflineChatCacheTests: XCTestCase {
     /// streamed is sealed in place, a failure ends it, and five left
     /// chats keep four, letting go of a finished one first.
     func testABackgroundChatFollowsTheReplyEventByEvent() {
-        let (state, _, dashboard) = makeAppState(store: makeStore())
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
         state.sessions = [session("a"), session("b"), session("c"), session("e")]
         state.isConnected = true
         // Leaves chat `id` mid-turn, the words a tool step cut off on
@@ -3538,6 +3539,19 @@ final class OfflineChatCacheTests: XCTestCase {
         state.handleStreamEvent(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
         state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil))
         XCTAssertEqual(rows("e").map(\.content), ["Checking the map."])
+
+        // A turn's end that comes before its completion: the completion's
+        // reasoning isn't added twice, and its final row is what's saved.
+        leave("a")
+        state.handleStreamEvent(.reasoningDelta(sessionId: "a", text: "Weighing it"))
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Half"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "a", busy: false))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r3", content: "Half of it, then all.", reasoning: "Weighing it"))
+        XCTAssertEqual(rows("a").filter { $0.role == .reasoning }.count, 1)
+        XCTAssertEqual(rows("a").last?.content, "Half of it, then all.")
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Half of it, then all.")
         XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes a left chat's events")
 
         func chat(_ id: String, running: Bool = true) -> BackgroundChat {
