@@ -3496,6 +3496,21 @@ final class OfflineChatCacheTests: XCTestCase {
         state.closeBesideChat()
         XCTAssertEqual(state.backgroundChats.count, 1, "Its reply is followed as any left chat's")
 
+        // A turn Hermes reports starting in an idle pane's chat, before
+        // any word of it, is a reply still coming.
+        state.setActiveSessionState(id: "b")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.releaseFollowedChat(answering: ["b"])
+        state.besideChatIDs = ["b"]
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        XCTAssertEqual(state.besideChat?.isRunning, false)
+        XCTAssertTrue(state.applyBackgroundChatEvent(.sessionBusy(sessionId: "b", busy: true)))
+        XCTAssertEqual(state.besideChat?.isRunning, true)
+        state.closeBesideChat()
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        state.stopFollowingChats(dashboardID: nil)
+
         // Disconnected, the chat being left isn't followed: no pane.
         state.isConnected = false
         state.besideChatIDs = ["a"]

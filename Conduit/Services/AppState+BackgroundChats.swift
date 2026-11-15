@@ -90,8 +90,15 @@ extension AppState {
             clearStreamingText()
             setRunning(false)
         case .sessionBusy(_, let busy):
-            // Only the end of its turn: a left chat's turn only ever ends.
-            guard !busy, shownChat.turnState.isRunning else { break }
+            if busy {
+                // A turn starting in a chat kept beside the one on screen,
+                // before any word of it: the pane says it works, and
+                // closing the pane goes on following the reply.
+                if !shownChat.turnState.isRunning { setRunning(true) }
+                break
+            }
+            // The end of its turn.
+            guard shownChat.turnState.isRunning else { break }
             settleReasoningSegmentIntoTranscript()
             // The segment ends, the turn's flag stays: a completion that
             // carries the reasoning already streamed mustn't add it again.

@@ -2629,7 +2629,9 @@ private struct V2SessionActions: ViewModifier {
             .contextMenu {
                 // Beside a chat in a window with the room: this one opens
                 // and that one stays in a pane beside it (all-live stage 2).
-                if !isSavedRow, besideChatFits, openBeside == .chat {
+                // Another profile's row in All opens with a switch, which
+                // closes the pane: not offered there.
+                if !isSavedRow, besideChatFits, openBeside == .chat, !appState.isOtherProfileRow(session) {
                     Button {
                         Haptics.selection()
                         appState.openBeside(session)
