@@ -49,7 +49,11 @@ enum MarkdownSelectionSegmentPlan {
 
         for (blockIndex, block) in blocks.enumerated() {
             guard blockIndex >= skipsBefore else { continue }
-            let blockSeparator = blockIndex == 0 ? "" : "\n\n"
+            // A nested list copies on the next line, as the text views copy
+            // an outline; other blocks are a blank line apart.
+            let blockSeparator = blockIndex == 0
+                ? ""
+                : (MarkdownProseRun.continuesOutline(block, after: blocks[blockIndex - 1]) ? "\n" : "\n\n")
 
             if let runEnd = runEnds[blockIndex] {
                 append("block-\(blockIndex)", separatorBefore: blockSeparator)

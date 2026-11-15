@@ -3929,10 +3929,10 @@ enum MarkdownParser {
         Int(value.prefix { $0.isASCII && $0.isNumber }) ?? 1
     }
     /// Whether `line` carries on the ordered list after its item `previous`:
-    /// the same leading whitespace and the same "." or ")" after the number.
+    /// the same list level (see `sameListLevel`) and the same "." or ")"
+    /// after the number.
     private static func continuesOrderedList(_ line: String, from previous: String) -> Bool {
-        let indent = line.prefix { $0 == " " || $0 == "\t" }
-        guard indent == previous.prefix(while: { $0 == " " || $0 == "\t" }) else { return false }
+        guard sameListLevel(line, indent: listIndent(previous)) else { return false }
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard orderedItem(trimmed) != nil else { return false }
         return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))

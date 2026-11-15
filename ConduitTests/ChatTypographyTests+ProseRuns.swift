@@ -170,6 +170,34 @@ extension ChatTypographyTests {
         XCTAssertTrue(copied.contains("\n• Charlie item\n\n3. Delta"), copied)
     }
 
+    /// Drawn as block views (a rich answer under VoiceOver, or with prose
+    /// runs off), a nested list moves in a level, sits a list item's gap
+    /// under its parent list and copies on the next line.
+    @MainActor
+    func testBlockViewsNestAnOutline() throws {
+        let source = """
+        - Alpha item
+          - Bravo sub-item
+          - Charlie sub-item
+
+        ```
+        code keeps these block views
+        ```
+        """
+        let blocks = MarkdownParser.parse(source)
+        let descriptors = MarkdownSelectionSegmentPlan.descriptors(for: blocks, joiningRuns: [])
+        XCTAssertEqual(descriptors.map(\.separatorBefore).prefix(3), ["", "\n", "\n"], "the sub-list copies a line under its parent")
+
+        let window = proseRunWindow(source, joinsProseRuns: false)
+        defer { window.isHidden = true }
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let charlie = try XCTUnwrap(origins["Charlie"])
+        XCTAssertEqual(bravo.x - alpha.x, MarkdownProseRun.nestedListIndent(chatTextSize: .default), accuracy: 1, "a level in")
+        XCTAssertEqual(bravo.y - alpha.y, charlie.y - bravo.y, accuracy: 1, "an item's gap, not a block's")
+    }
+
     // MARK: - Helpers
 
     /// Where the first line after the one `landmark` starts on begins, in
