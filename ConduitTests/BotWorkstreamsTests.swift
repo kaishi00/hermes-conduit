@@ -1577,6 +1577,25 @@ extension BotModeTests {
         XCTAssertFalse(motion.waitsForAnotherChat(than: "bot-chat"))
     }
 
+    /// The same with the workstream's welcome already on stage: the Bot
+    /// Chat's rows still slide in with their own swap, not the wait for
+    /// the workstream's.
+    func testASecondSwapsRowsSlideInPastTheFirstsWelcome() {
+        let stage = SwapStageRecorder()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+        stage.shownConversation = "workstream"
+        stage.conversationJustChanged = true
+        stage.showsChatRows = false
+        motion.expect(.forward, conversation: "workstream")
+        XCTAssertEqual(motion.expected, .forward)
+        stage.shownConversation = "bot-chat"
+        stage.showsChatRows = true
+        motion.expect(.back, conversation: "bot-chat")
+        XCTAssertEqual(stage.played.last, "in back")
+        XCTAssertNil(motion.expected)
+    }
+
     /// A wait whose sleep ended just as a newer swap stood it down ends
     /// nothing: the newer swap keeps its slide and the rows stay away.
     @MainActor
