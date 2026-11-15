@@ -55,7 +55,7 @@ extension AppState {
         if let latest = rows.lastIndex(where: { $0.role == .user }),
            rowId == nil || rows[latest].rowId == nil,
            !rows[(latest + 1)...].contains(where: { $0.role == .assistant }),
-           OpenChatSync.squashed(rows[latest].content) == OpenChatSync.squashed(text) {
+           Self.wordsOnly(rows[latest].content) == Self.wordsOnly(text) {
             if rows[latest].rowId == nil, let rowId { chat.state.messages[latest].rowId = rowId }
             return
         }
@@ -69,6 +69,12 @@ extension AppState {
         row.rowId = rowId
         chat.state.messages.append(row)
         besideChatLive.moved()
+    }
+
+    /// A message's whole words, spacing aside: two messages that only start
+    /// alike aren't the same one.
+    private static func wordsOnly(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     /// Whether the chat on screen can stay beside another: an ordinary

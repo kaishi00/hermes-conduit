@@ -3515,7 +3515,13 @@ final class OfflineChatCacheTests: XCTestCase {
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
         XCTAssertEqual(state.windowChat(key)?.state.messages.map(\.role), [.user, .user, .assistant, .user])
-        state.windowChat(key)?.state.messages.removeLast(2)
+        // One that only starts with the same words is another message.
+        let long = String(repeating: "Same opening words. ", count: 12)
+        state.windowChat(key)?.state.messages[3].content = long + "Then one thing."
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 12, text: long + "Then another.", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.last?.rowId, 12)
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
+        state.windowChat(key)?.state.messages.removeLast(3)
 
         // Closing the window lets go of a chat with no reply running.
         state.closeChatWindow(key)
