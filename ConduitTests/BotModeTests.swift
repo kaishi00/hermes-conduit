@@ -3556,9 +3556,30 @@ final class BotModeTests: XCTestCase {
     /// the notification already holds Hermes' own card for the question, so
     /// the notification's copy is not added beside it.
     func testClarifyPushedFromBotChatDoesNotDoubleHermesCard() async {
+        await assertClarifyPushFromBotChat(hermesCardStatus: .pending, restoresCopy: false)
+    }
+
+    /// Hermes' card with a failed answer still holds the question (it can
+    /// be retried), so the tapped push's copy stays out too.
+    func testClarifyPushedFromBotChatDoesNotDoubleAnErroredHermesCard() async {
+        await assertClarifyPushFromBotChat(hermesCardStatus: .error, restoresCopy: false)
+    }
+
+    /// An older answered card that asked the same thing doesn't hold the
+    /// question asked again: the tapped push restores its card (issue 2556).
+    func testClarifyPushedFromBotChatRestoresPastAnAnsweredHermesCard() async {
+        await assertClarifyPushFromBotChat(hermesCardStatus: .answered, restoresCopy: true)
+    }
+
+    private func assertClarifyPushFromBotChat(
+        hermesCardStatus: ClarifyQuestion.Status,
+        restoresCopy: Bool,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async {
         let cacheSuite = "BotModeTests.clarify-double-\(UUID().uuidString)"
         guard let cacheDefaults = UserDefaults(suiteName: cacheSuite) else {
-            XCTFail("Could not create isolated UserDefaults suite")
+            XCTFail("Could not create isolated UserDefaults suite", file: file, line: line)
             return
         }
         let cache = SessionPresentationCache(defaults: cacheDefaults)
@@ -3586,7 +3607,9 @@ final class BotModeTests: XCTestCase {
                                         id: "q0",
                                         question: "Which color?",
                                         choices: [ClarifyChoice(label: "Red", value: "Red"),
-                                                  ClarifyChoice(label: "Blue", value: "Blue")]
+                                                  ClarifyChoice(label: "Blue", value: "Blue")],
+                                        status: hermesCardStatus,
+                                        answer: hermesCardStatus == .answered ? "Red" : nil
                                     )]
                                 )
                             )
@@ -3624,19 +3647,26 @@ final class BotModeTests: XCTestCase {
             )
         )
 
-        XCTAssertTrue(routed)
-        XCTAssertEqual(harness.appState.activeBotChatProfile, "atlas")
+        XCTAssertTrue(routed, file: file, line: line)
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "atlas", file: file, line: line)
         let cards = harness.appState.messages.filter { $0.role == .clarify }
-        XCTAssertEqual(cards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+        XCTAssertEqual(
+            Set(cards.compactMap { $0.clarify?.requestId }),
+            restoresCopy ? ["gateway-rid-1", "conduit-push-bot1"] : ["gateway-rid-1"],
+            file: file, line: line
+        )
+        XCTAssertEqual(cards.count, restoresCopy ? 2 : 1, file: file, line: line)
         let cached = cache.merge(
             [],
             profile: "atlas",
             sessionIDs: ["stored-1", "runtime-1"],
             includePendingClarifications: true
         )
-        XCTAssertFalse(
+        XCTAssertEqual(
             cached.contains { $0.clarify?.requestId == "conduit-push-bot1" },
-            "The copy is not kept for a later open either"
+            restoresCopy,
+            "The copy is kept for a later open only when it was drawn",
+            file: file, line: line
         )
     }
 

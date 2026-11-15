@@ -3080,6 +3080,35 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(ids.contains("native-1"))
     }
 
+    /// Hermes' card with a failed answer, or one being sent, still holds
+    /// the question: the list's card stays out, so a second answer can't go
+    /// through the relay beside it.
+    func testAListedQuestionStaysOutBesideAnUnsettledHermesCard() {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        let dashboard = appState.activeDashboardID
+        for (index, status) in [ClarifyQuestion.Status.error, .submitting].enumerated() {
+            appState.messages = [ChatMessage(
+                id: "clarify-native-\(index)", role: .clarify, content: "Which region?", timestamp: "1",
+                clarify: ClarifyActivity(requestId: "native-\(index)", question: "Which region?", choices: [], status: status)
+            )]
+            appState.needsYou.apply(
+                [NeedsYouItem(
+                    waitID: "w-\(index)", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                    card: .clarify(requestId: "conduit-push-\(index)", question: "Which region?", choices: ["staging", "production"])
+                )],
+                profile: "default", dashboardID: dashboard
+            ) { _ in false }
+            appState.showWaitingQuestionCards()
+            XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-\(index)"], "\(status)")
+        }
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(
