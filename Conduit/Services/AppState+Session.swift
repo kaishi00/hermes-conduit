@@ -454,6 +454,7 @@ extension AppState {
         reportsFailure: Bool = true,
         yieldsToNewerReads: Bool = false,
         deferringOlderPages: Bool = false,
+        joinsReadInFlight: Bool = false,
         listedChange: (_ changed: Bool) -> Void = { _ in }
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
@@ -476,7 +477,8 @@ extension AppState {
                     using: activeClient,
                     forceRefresh: forceRefresh,
                     deferringOlderPages: deferringOlderPages,
-                    yieldsToNewerReads: yieldsToNewerReads
+                    yieldsToNewerReads: yieldsToNewerReads,
+                    joinsReadInFlight: joinsReadInFlight
                 )
                 loadedSessions = catalogLoad.sessions
                 olderPagesDeferred = catalogLoad.olderPagesDeferred
@@ -691,6 +693,9 @@ extension AppState {
                     forceRefresh: false,
                     requiredViewportTransitionGeneration: nil,
                     reportsFailure: reportsFailure,
+                    // A change's read needs rows from after the change; any
+                    // other may take the answer of a read already going out.
+                    joinsReadInFlight: !readsChange,
                     listedChange: { changedByThisRead = $0 }
                 )
                 if readsChange {
@@ -1029,7 +1034,7 @@ extension AppState {
         if !succeeded || messages == previousMessages {
             finishChatViewportTransition(generation: transitionGeneration)
         }
-        await loadSessions()
+        await loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
     }
 
     // MARK: - Read state (#454)

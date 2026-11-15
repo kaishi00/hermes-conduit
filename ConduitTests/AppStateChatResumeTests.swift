@@ -6685,6 +6685,55 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeSessionId, started.id)
     }
 
+    /// A full catalog read asked for while one is under way (the older
+    /// pages after a chat sync, a live chat not listed yet, the read after
+    /// opening a chat) takes that read's answer instead of sending its own;
+    /// a change's read, which needs rows from after the change, still sends
+    /// its own.
+    func testAFullReadAskedForWhileOneIsUnderWayTakesItsAnswer() async {
+        let rows = [session("a"), session("b")]
+        var loads = 0
+        var holds = false
+        let gate = ControlledSuspension()
+        var operations = savedChatFirstOperations(catalog: rows, gate: gate, catalogLoads: {}, opened: { _ in })
+        operations.loadCatalog = { _, _ in
+            loads += 1
+            if holds {
+                holds = false
+                await gate.suspend()
+            }
+            return rows
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        for _ in 0..<100 { await Task.yield() }
+        let appState = harness.appState
+        let before = loads
+
+        holds = true
+        let leading = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
+        }
+        await gate.waitUntilSuspended()
+        let joining = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(loads, before + 1, "the second read joined the first")
+        let ownRead = await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil)
+        XCTAssertTrue(ownRead)
+        XCTAssertEqual(loads, before + 2, "a read that doesn't join sends its own")
+
+        gate.resume()
+        let leadingListed = await leading.value
+        let joiningListed = await joining.value
+        XCTAssertTrue(leadingListed)
+        XCTAssertTrue(joiningListed, "the joined read answers with the first one's rows")
+        XCTAssertEqual(loads, before + 2)
+        XCTAssertNil(appState.catalogReadInFlight)
+        XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
+    }
+
     /// A chat already on screen is the list's to keep or replace.
     func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
         let newer = session("newer")

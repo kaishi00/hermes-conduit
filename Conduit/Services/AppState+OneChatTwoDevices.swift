@@ -100,10 +100,7 @@ extension AppState {
         // a chat deleted elsewhere during a long reply leaves as it did
         // before. One only spaced out (the quiet-read wait, up to 60 s) is
         // read when its wait ends, so it keeps the slow backstop.
-        let changeHeldByTurnOrFailure = catalogChangeSignal.isHeld(
-            now: chatSyncNow(),
-            turnRunningHere: turnState.isRunning
-        )
+        let changeHeldByTurnOrFailure = catalogChangeSignal.isHeld(turnRunningHere: turnState.isRunning)
         let fallback = followsChanges && !changeHeldByTurnOrFailure
             ? ChatListCatalogFreshness.fallbackIntervalFollowingChanges
             : ChatListCatalogFreshness.fallbackInterval

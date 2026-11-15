@@ -442,18 +442,32 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(signal.interval, 60)
 
         signal.noteChanged()
-        XCTAssertFalse(signal.isHeld(now: at(10), turnRunningHere: false), "Only spaced out")
-        XCTAssertTrue(signal.isHeld(now: at(10), turnRunningHere: true), "Held by a turn here")
+        XCTAssertFalse(signal.isHeld(turnRunningHere: false), "Only spaced out")
+        XCTAssertTrue(signal.isHeld(turnRunningHere: true), "Held by a turn here")
+        XCTAssertEqual(signal.delayUntilDue(now: at(60)), 0)
+        XCTAssertFalse(signal.isHeld(turnRunningHere: false), "Due, but read by its own wait, not the backstop")
 
         XCTAssertTrue(signal.takeRead(now: at(60), turnRunningHere: false))
         signal.noteReadFailed(at: at(63))
         XCTAssertTrue(signal.isPending)
-        XCTAssertTrue(signal.isHeld(now: at(64), turnRunningHere: false), "Held by the failure")
+        XCTAssertTrue(signal.isHeld(turnRunningHere: false), "Held by the failure")
         XCTAssertEqual(signal.delayUntilDue(now: at(64)), 4, "Tried again 5 s after the read failed")
-        XCTAssertTrue(signal.takeRead(now: at(68), turnRunningHere: false))
-        XCTAssertFalse(signal.lastReadFailed)
+        var now: TimeInterval = 68
+        for _ in 0..<2 {
+            XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+            signal.noteReadFailed(at: at(now + 1))
+            XCTAssertEqual(signal.delayUntilDue(now: at(now + 1)), 5)
+            now += 6
+        }
+        XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+        signal.noteReadFailed(at: at(now + 1))
+        XCTAssertEqual(signal.delayUntilDue(now: at(now + 1)), 60, "After three quick retries, the quiet wait")
+
+        XCTAssertTrue(signal.takeRead(now: at(now + 61), turnRunningHere: false))
+        signal.noteSignalRead(listedTheSameRows: true)
+        XCTAssertFalse(signal.lastReadFailed, "A read that lands ends the failures")
         signal.noteChanged()
-        XCTAssertEqual(signal.delayUntilDue(now: at(68)), 60, "The quiet wait again once a read went out")
+        XCTAssertEqual(signal.delayUntilDue(now: at(now + 61)), 60, "The quiet wait again")
     }
 
     /// The same through the app: a change read that lists the same rows

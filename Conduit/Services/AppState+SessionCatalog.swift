@@ -31,7 +31,8 @@ extension AppState {
                 forceRefresh: false,
                 requiredViewportTransitionGeneration: nil,
                 reportsFailure: false,
-                yieldsToNewerReads: true
+                yieldsToNewerReads: true,
+                joinsReadInFlight: true
             )
         }
     }
@@ -39,11 +40,57 @@ extension AppState {
     /// The dashboard endpoint is authoritative. `session.list` is only a
     /// legacy fallback because it is backed by the gateway's current runtime
     /// database and can otherwise leak or omit profile history.
+    ///
+    /// A full read (not forced, every page) may join one already under way
+    /// for the same catalog (`joinsReadInFlight`, CatalogReadInFlight),
+    /// unless that one yields to newer reads and could end without rows.
     func profileCatalog(
         using client: HermesClient,
         forceRefresh: Bool = false,
         deferringOlderPages: Bool = false,
-        yieldsToNewerReads: Bool = false
+        yieldsToNewerReads: Bool = false,
+        joinsReadInFlight: Bool = false
+    ) async throws -> ProfileCatalogLoad {
+        let isFullRead = !forceRefresh && !deferringOlderPages
+        let key = CatalogReadKey(
+            profile: activeProfile,
+            dashboardID: activeDashboardID,
+            client: ObjectIdentifier(client)
+        )
+        if isFullRead, joinsReadInFlight, let running = catalogReadInFlight, running.key == key {
+            sessionCatalogLog.notice("Chat list read joins the one under way")
+            return try await running.join()
+        }
+        // A read that yields to newer ones may end without rows, so none
+        // waits on it.
+        let leader = isFullRead && !yieldsToNewerReads ? CatalogReadInFlight(key: key) : nil
+        if let leader { catalogReadInFlight = leader }
+        do {
+            let load = try await readProfileCatalog(
+                using: client,
+                forceRefresh: forceRefresh,
+                deferringOlderPages: deferringOlderPages,
+                yieldsToNewerReads: yieldsToNewerReads
+            )
+            finishCatalogRead(leader, with: .success(load))
+            return load
+        } catch {
+            finishCatalogRead(leader, with: .failure(error))
+            throw error
+        }
+    }
+
+    private func finishCatalogRead(_ leader: CatalogReadInFlight?, with result: Result<ProfileCatalogLoad, Error>) {
+        guard let leader else { return }
+        if catalogReadInFlight === leader { catalogReadInFlight = nil }
+        leader.finish(result)
+    }
+
+    private func readProfileCatalog(
+        using client: HermesClient,
+        forceRefresh: Bool,
+        deferringOlderPages: Bool,
+        yieldsToNewerReads: Bool
     ) async throws -> ProfileCatalogLoad {
         catalogReadSequence &+= 1
         let readSequence = catalogReadSequence

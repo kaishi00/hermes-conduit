@@ -146,8 +146,13 @@ struct CatalogChangeSignal {
 
     private(set) var isPending = false
     private var lastReadAt: Date?
+    /// The pending change's reads that failed in a row.
+    private(set) var failedReads = 0
+    /// After this many, a failing read waits the quiet wait, not 5 s.
+    static let quickRetries = 3
+
     /// The pending change's last read failed.
-    private(set) var lastReadFailed = false
+    var lastReadFailed: Bool { failedReads > 0 }
     /// Signal reads in a row that listed the same rows.
     private(set) var quietReads = 0
 
@@ -164,30 +169,31 @@ struct CatalogChangeSignal {
     mutating func takeRead(now: Date, turnRunningHere: Bool) -> Bool {
         guard isPending, !turnRunningHere, delayUntilDue(now: now) == 0 else { return false }
         isPending = false
-        lastReadFailed = false
         lastReadAt = now
         return true
     }
 
     /// A signal's read failed: the change stays pending, tried again the
-    /// shortest wait after the failure.
+    /// shortest wait after the failure, for the first `quickRetries`
+    /// failures in a row; after that, the quiet wait.
     mutating func noteReadFailed(at now: Date) {
         isPending = true
-        lastReadFailed = true
+        failedReads += 1
         lastReadAt = now
     }
 
-    /// Whether a pending change is held past its wait, by a turn here or
-    /// a failed read, rather than only spaced out by the wait: the list's
-    /// quick backstop still reads it.
-    func isHeld(now: Date, turnRunningHere: Bool) -> Bool {
-        guard isPending else { return false }
-        return turnRunningHere || lastReadFailed || delayUntilDue(now: now) == 0
+    /// Whether a pending change is held by a turn here or a failed read,
+    /// rather than only spaced out by the wait (which `readPendingCatalogChange`
+    /// reads itself once it's over): the list's quick backstop still reads
+    /// a held one.
+    func isHeld(turnRunningHere: Bool) -> Bool {
+        isPending && (turnRunningHere || lastReadFailed)
     }
 
     /// A signal's read landed: one that listed the same rows lengthens the
     /// wait before the next.
     mutating func noteSignalRead(listedTheSameRows: Bool) {
+        failedReads = 0
         if listedTheSameRows {
             quietReads += 1
         } else {
@@ -207,7 +213,7 @@ struct CatalogChangeSignal {
     func delayUntilDue(now: Date) -> TimeInterval? {
         guard isPending else { return nil }
         guard let lastReadAt else { return 0 }
-        let wait = lastReadFailed ? Self.minimumInterval : interval
+        let wait = (1...Self.quickRetries).contains(failedReads) ? Self.minimumInterval : interval
         return max(0, wait - now.timeIntervalSince(lastReadAt))
     }
 }

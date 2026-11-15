@@ -2815,7 +2815,11 @@ extension AppState {
                       self.activeProfile == profile,
                       self.activeSessionId == runtimeSessionID else { return }
                 await self.loadSlashCommands()
-                await self.loadSessions()
+                await self.loadSessions(
+                    forceRefresh: false,
+                    requiredViewportTransitionGeneration: nil,
+                    joinsReadInFlight: true
+                )
             }
             settleReconciliationAndPublish(
                 token,

@@ -2457,6 +2457,9 @@ final class AppState: ObservableObject {
     /// Counts catalog reads as they start, so the slow read a chat sync left
     /// for later can tell that a newer read began while it was paging.
     var catalogReadSequence: UInt64 = 0
+    /// The full catalog read under way, for a read asked for meanwhile to
+    /// join rather than send its own (CatalogReadInFlight).
+    var catalogReadInFlight: CatalogReadInFlight?
     /// Ticket for each read that replaces the published list wholesale
     /// (`loadSessions` and a chat sync), taken when the read starts, and
     /// the newest ticket whose answer is listed. Reads overlap (a reconnect,
