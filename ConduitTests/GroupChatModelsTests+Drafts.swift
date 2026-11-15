@@ -316,34 +316,28 @@ extension GroupChatModelsTests {
 
     // MARK: - Your other Hermes' bots
 
-    func testBotsOfYourOtherHermesCountTowardSixWithinTheirShare() {
+    func testBotsOfYourOtherHermesComeFromOneHermesWithNobodyInvited() {
         // One bot here and one of your other Hermes make a room.
         XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 1], people: 0))
         // This Hermes hosts it: at least one of its bots.
         XCTAssertFalse(GroupCreateLimits.canCreate(bots: 0, far: ["own1": 2], people: 0))
-        // Alone, the other Hermes may fill every place this one leaves.
+        // The other Hermes may fill every place this one leaves.
         XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 5], people: 0))
         XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 5], people: 0))
-        // With a person, the places split by Link: (6 - 2) / 2 = 2 each.
-        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2], people: 1))
-        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 3], people: 1))
-        // Two other Hermes: (6 - 2) / 2 = 2 each.
-        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2, "own2": 2], people: 0))
-        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 4, "own2": 1], people: 0))
+        // Its Hermes joins them by itself only for an invite that names
+        // nobody else: no person, and no second Hermes, beside them.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2], people: 1))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 1, "own2": 1], people: 0))
         // No far bots: the rules of your own and people's rooms.
         XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: [:], people: 0))
         XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 0], people: 1))
-        // A far bot is pickable only while its Hermes stays within its share,
-        // counting at least one bot here.
+        // A far bot is pickable while the room stays that shape, counting at
+        // least one bot here.
         XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 0, far: [:], link: "own1", people: 0))
-        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own2", people: 0))
-        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2, "own2": 1], link: "own1", people: 0))
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own1", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own2", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: [:], link: "own1", people: 1))
         XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 5], link: "own1", people: 0))
-        // The limit names people only when there are some.
-        XCTAssertEqual(GroupCreateLimits.limitText(people: 1),
-                       AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms))
-        XCTAssertEqual(GroupCreateLimits.limitText(people: 0), AppLocalization.string(
-            "A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places.", table: .rooms))
     }
 
     @MainActor

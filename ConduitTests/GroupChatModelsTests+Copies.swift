@@ -496,7 +496,7 @@ extension GroupChatModelsTests {
         })
         XCTAssertEqual(routes.peopleReads, ["/api/plugins/conduit_push/rooms/people?room_id=conduit-5"])
         XCTAssertEqual(appState.activeRoomMembers.map(\.owner), [nil, "Mona"])
-        XCTAssertEqual(appState.activeRoomMembers.map(GroupRoomTurns.ownerLine(of:)),
+        XCTAssertEqual(appState.activeRoomMembers.map { GroupRoomTurns.ownerLine(of: $0) },
                        [AppLocalization.string("Your agent", table: .rooms), AppLocalization.string("Mona's agent")])
 
         // A room of only your own agents reads nobody.

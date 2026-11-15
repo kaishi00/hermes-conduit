@@ -2206,13 +2206,9 @@ struct GroupCreateSheet: View {
                     ForEach(farBots) { bot in
                         farToggleRow(bot)
                     }
-                    // A bot here or a person picked after far bots can leave
-                    // one Hermes past its share: say why Create waits.
-                    if !pickedFar.isEmpty, !pickedBots.isEmpty,
-                       !GroupCreateLimits.canCreate(bots: pickedBots.count, far: pickedFarByLink, people: pickedPeople.count) {
-                        Text(GroupCreateLimits.limitText(people: pickedPeople.count))
+                    if !farBots.isEmpty {
+                        Text(GroupCreateLimits.farText)
                             .settingsCaption()
-                            .foregroundStyle(.orange)
                     }
                     Text(AppLocalization.string(
                         "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room.", table: .rooms
@@ -2394,7 +2390,9 @@ struct GroupCreateSheet: View {
     private func personToggleRow(_ person: RoomLink) -> some View {
         let isSelected = selectedPeople.contains(person.id)
         let canPick = isSelected
-            || GroupCreateLimits.canPickPerson(bots: pickedBots.count + pickedFar.count, people: pickedPeople.count)
+            // Far bots join by themselves only when nobody else is invited.
+            || (pickedFar.isEmpty
+                && GroupCreateLimits.canPickPerson(bots: pickedBots.count, people: pickedPeople.count))
         return Button {
             Haptics.light()
             if isSelected {

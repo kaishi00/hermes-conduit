@@ -150,16 +150,15 @@ enum GroupCreateLimits {
     }
 
     /// With bots of your other Hermes too (`far`, by own Link): one bot of
-    /// this Hermes hosts it, every bot counts toward 6 with a place for each
-    /// person, and each other Hermes brings at most its share of the places
-    /// (room_invites.draft).
+    /// this Hermes hosts it and every bot counts toward 6. They come from one
+    /// other Hermes and nobody else is invited, since their Hermes joins them
+    /// by itself only for an invite that names nobody else (room_own_bots);
+    /// any other mix would leave them waiting on a join card there.
     static func canCreate(bots: Int, far: [String: Int], people: Int) -> Bool {
-        let farTotal = far.values.reduce(0, +)
-        guard farTotal > 0 else { return canCreate(bots: bots, people: people) }
-        let links = far.count + people
-        guard bots >= 1, people <= maxPeople, links >= 1, bots + farTotal + people <= maxAgents else { return false }
-        let share = (maxAgents - bots) / links
-        return far.values.allSatisfy { $0 <= share }
+        let picked = far.filter { $0.value > 0 }
+        guard !picked.isEmpty else { return canCreate(bots: bots, people: people) }
+        let farTotal = picked.values.reduce(0, +)
+        return bots >= 1 && people == 0 && picked.count == 1 && bots + farTotal <= maxAgents
     }
 
     static func canPickBot(bots: Int, people: Int) -> Bool {
@@ -171,19 +170,17 @@ enum GroupCreateLimits {
     }
 
     /// Whether one more bot of your other Hermes over `link` can be picked:
-    /// the room it makes, with at least one bot here, stays within 6 and
-    /// each Link's share.
+    /// the room it makes, with at least one bot here, stays within 6, with
+    /// bots of that one other Hermes and nobody invited.
     static func canPickFar(bots: Int, far: [String: Int], link: String, people: Int) -> Bool {
         var more = far
         more[link, default: 0] += 1
         return canCreate(bots: max(bots, 1), far: more, people: people)
     }
 
-    /// The limit New Group Chat names when a pick breaks it.
-    static func limitText(people: Int) -> String {
-        people > 0
-            ? AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms)
-            : AppLocalization.string("A room holds up to 6 bots, and each of your other Hermes brings at most its share of the places.", table: .rooms)
+    /// Under your other Hermes' bots in New Group Chat.
+    static var farText: String {
+        AppLocalization.string("A room can bring bots from one of your other Hermes, and then invites no one else. They join by themselves.", table: .rooms)
     }
 
     /// One bot is enough when there's someone to invite, or a bot of your
@@ -544,7 +541,8 @@ extension AppState {
     /// New Group Chat with people you've linked: a draft on this Hermes,
     /// which invites them and waits for their answers. The sheet shows why
     /// one wasn't made.
-    /// `farBots`: bots of your own other Hermes, which join by themselves.
+    /// `farBots`: bots of one of your own other Hermes, which join by
+    /// themselves; a draft with them invites no one else.
     func createLinkedRoomDraft(name: String, bots: [BotProfile], links: [String],
                                farBots: [OwnHermesBot] = []) async -> LinkedRoomDraftCreation {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -554,7 +552,9 @@ extension AppState {
         }
         let far = Dictionary(grouping: farBots, by: \.linkID).mapValues(\.count)
         guard GroupCreateLimits.canCreate(bots: bots.count, far: far, people: links.count) else {
-            errorMessage = GroupCreateLimits.limitText(people: links.count)
+            errorMessage = far.isEmpty
+                ? AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms)
+                : GroupCreateLimits.farText
             return .refused
         }
         guard !trimmedName.isEmpty else { return .refused }
