@@ -729,4 +729,62 @@ final class SidebarLayoutTests: XCTestCase {
         )
         XCTAssertTrue(result.isEmpty)
     }
+
+    /// The Sessions list keeps its navigation bar shown (#2580): while the
+    /// list is on top its keeper takes the bar's height out of the list's
+    /// safe area and keeps the bar's touches and VoiceOver off; a page pushed
+    /// over it gets the bar back as any screen has it, and the list takes it
+    /// again once it's on top. Dismantled, the list's inset goes back to 0.
+    @MainActor
+    func testListKeepsItsShownBarOutOfTheWayOnlyWhileItsOnTop() {
+        let list = UIViewController()
+        let navigation = UINavigationController(rootViewController: list)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        let bar = navigation.navigationBar
+        XCTAssertFalse(navigation.isNavigationBarHidden)
+
+        func waitUntil(_ what: String, _ condition: @escaping () -> Bool) {
+            let met = expectation(description: what)
+            func poll(_ triesLeft: Int) {
+                if condition() { return met.fulfill() }
+                guard triesLeft > 0 else { return }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { poll(triesLeft - 1) }
+            }
+            poll(100)
+            wait(for: [met], timeout: 3)
+        }
+
+        let keeper = V2ListNavigationBar.KeeperView()
+        list.view.addSubview(keeper)
+        waitUntil("the list takes the bar out of the way") {
+            !bar.isUserInteractionEnabled && bar.accessibilityElementsHidden
+        }
+        XCTAssertGreaterThan(bar.bounds.height, 0)
+        XCTAssertEqual(list.additionalSafeAreaInsets.top, -bar.bounds.height, "the list lies where it did under a hidden bar")
+
+        // A chat pushed over the list: the bar is the chat's.
+        navigation.pushViewController(UIViewController(), animated: false)
+        window.layoutIfNeeded()
+        waitUntil("the pushed page gets the bar back") {
+            bar.isUserInteractionEnabled && !bar.accessibilityElementsHidden
+        }
+
+        // Back on the list: it takes the bar again.
+        navigation.popViewController(animated: false)
+        window.layoutIfNeeded()
+        waitUntil("the list takes the bar again after the pop") {
+            !bar.isUserInteractionEnabled && bar.accessibilityElementsHidden
+        }
+        XCTAssertEqual(list.additionalSafeAreaInsets.top, -bar.bounds.height)
+
+        V2ListNavigationBar.dismantleUIView(keeper, coordinator: ())
+        keeper.removeFromSuperview()
+        XCTAssertEqual(list.additionalSafeAreaInsets.top, 0)
+        XCTAssertTrue(bar.isUserInteractionEnabled)
+        XCTAssertFalse(bar.accessibilityElementsHidden)
+    }
 }
