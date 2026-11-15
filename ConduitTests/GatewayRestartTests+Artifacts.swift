@@ -310,6 +310,11 @@ extension GatewayRestartTests {
         XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["bot-runtime"])
         XCTAssertEqual(appState.artifactSources(for: .chat(appState.activeChatArtifactSessionIDs)).map(\.profile),
                        ["atlas"])
+        // Its checklist ticks and card taps go to the bot's store, where its
+        // turns hear them, not the profile in use's (issue 2520).
+        XCTAssertEqual(appState.activeChatStoreProfile, "atlas")
+        appState.activeSessionId = "unlisted"
+        XCTAssertEqual(appState.activeChatStoreProfile, appState.activeProfile)
     }
 
     /// A workstream's chat has no row in the chat list either (it's left to
@@ -339,6 +344,7 @@ extension GatewayRestartTests {
         XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["20261101_w1"])
         XCTAssertEqual(appState.artifactSources(for: .chat(appState.activeChatArtifactSessionIDs)).map(\.profile),
                        ["furina"])
+        XCTAssertEqual(appState.activeChatStoreProfile, "furina")
         appState.activeSessionId = "20261031_old"
         XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["20261031_old"])
         appState.activeSessionId = "unlisted"

@@ -163,7 +163,7 @@ extension AppState {
 
     /// The bot whose Bot Chat a runtime id was rebound to (a shortcut
     /// reopening a dead runtime records only its durable id).
-    private func reboundBotChatProfile(_ sessionID: String) -> String? {
+    func reboundBotChatProfile(_ sessionID: String) -> String? {
         botRoster.first { bot in
             guard let durable = confirmedDurableSessionID(forRuntime: sessionID, profile: bot.name) else { return false }
             return Self.botChatIDs(bot).contains(durable)
