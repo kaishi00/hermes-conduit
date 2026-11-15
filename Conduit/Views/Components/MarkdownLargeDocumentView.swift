@@ -229,11 +229,16 @@ struct LargeMarkdownPreparedDocument {
         var specializedByChunk: [Int: LargeSpecializedRichContent] = [:]
         for (chunkIndex, chunk) in chunks.enumerated() {
             switch chunk {
-            case .flow:
+            case .flow(let blocks):
+                // A chunk that starts with a list nested under the list
+                // ending the chunk before copies on the next line, as an
+                // outline does in one view.
+                let previousBlock = chunkIndex > 0 ? chunks[chunkIndex - 1].lastBlock : nil
+                let inOutline = blocks.first.map { MarkdownProseRun.continuesOutline($0, after: previousBlock) } ?? false
                 let descriptor = MarkdownSelectionSegmentDescriptor(
                     id: "lmd-flow-\(chunkIndex)",
                     order: all.count,
-                    separatorBefore: all.isEmpty ? "" : "\n\n"
+                    separatorBefore: all.isEmpty ? "" : (inOutline ? "\n" : "\n\n")
                 )
                 descriptorsByChunk.append([descriptor])
                 all.append(descriptor)
@@ -392,7 +397,7 @@ extension MarkdownBlock {
         switch self {
         case .heading(_, let text), .paragraph(let text): return text
         case .quote(let lines): return lines.map(\.text).joined(separator: "\n")
-        case .unorderedList(let items), .orderedList(let items, _): return items.joined(separator: "\n")
+        case .unorderedList(let items, _), .orderedList(let items, _, _): return items.joined(separator: "\n")
         case .table(let headers, _, let rows):
             return ([headers] + rows).map { $0.joined(separator: " ") }.joined(separator: "\n")
         case .code(_, let source): return source
@@ -822,7 +827,9 @@ struct LargeFlowChunkView: View {
                 lineSpacing: 4,
                 linkColor: usesAccentSurface ? .white : .link,
                 selectionCoordinator: selectionCoordinator,
-                selectionSegment: selectionSegment
+                selectionSegment: selectionSegment,
+                // Lists and quotes carry their hanging indents.
+                keepsParagraphStyles: true
             )
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {

@@ -465,6 +465,24 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.parentWorkspacePath("/home/me/a\\b"), "/home/me", "a backslash in a POSIX name isn't a separator")
     }
 
+    func testAFolderThatMayStillBeMadeIsListedAgainOnlyWhereItWasAskedFor() {
+        // Notifier issue 834: the host stopped waiting (504), and the folder may be there.
+        let slow = DashboardTicketBridgeError.http(status: 504, detail: "")
+        let after = ProjectFolderPickerSheet.afterFailedNewFolder(slow, in: "/w", showing: "/w")
+        XCTAssertTrue(after.relists && after.saysSo)
+        let refused = ProjectFolderPickerSheet.afterFailedNewFolder(DashboardTicketBridgeError.http(status: 409, detail: ""), in: "/w", showing: "/w")
+        XCTAssertTrue(!refused.relists && refused.saysSo)
+        // The user went to another folder meanwhile: it isn't moved back, and isn't told of the other's failure.
+        let left = ProjectFolderPickerSheet.afterFailedNewFolder(slow, in: "/w", showing: "/w/app")
+        XCTAssertTrue(!left.relists && !left.saysSo)
+        // A folder tapped while New Folder was out counts as moved on, though its listing isn't in yet.
+        let tapped = ProjectFolderPickerSheet.afterFailedNewFolder(slow, in: "/w", showing: "/w", openedSince: 1)
+        XCTAssertTrue(!tapped.relists && !tapped.saysSo)
+        let tappedAfterRefusal = ProjectFolderPickerSheet.afterFailedNewFolder(
+            DashboardTicketBridgeError.http(status: 409, detail: ""), in: "/w", showing: "/w", openedSince: 1)
+        XCTAssertFalse(tappedAfterRefusal.saysSo)
+    }
+
     func testProjectFolderPickerStartsInTheChatsFolderElseHomes() throws {
         let suite = "WorkspaceFilesTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

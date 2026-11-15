@@ -732,6 +732,31 @@ extension NotificationE2ETests {
         XCTAssertEqual(controller.unsentSpotEntryCount, 0, "Nothing left: a second forget changes nothing")
     }
 
+    /// Sign Out of the bound dashboard drops what wasn't sent yet, so the
+    /// next sign-in there doesn't send it under another account; another
+    /// dashboard's Sign Out keeps it (issue 2482).
+    @MainActor
+    func testSignOutOfTheBoundDashboardDropsWhatWasntSent() {
+        var unsent = LocationUnsent()
+        unsent.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
+            LocationPlaceEvent(id: "e_1", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
+        ])
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: true),
+                                                   unsent: unsent)
+        XCTAssertTrue(controller.hasUnsent)
+
+        controller.dropUnsent(boundTo: UUID())
+        XCTAssertTrue(controller.hasUnsent, "Another dashboard's Sign Out keeps the queue")
+
+        controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(controller.hasUnsent)
+        XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
+    }
+
     @MainActor
     func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)

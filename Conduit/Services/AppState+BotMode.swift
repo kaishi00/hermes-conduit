@@ -199,14 +199,10 @@ extension AppState {
            let openID = activeSessionId,
            activeBotChatProfile == bot.name {
             let openIDs = presentationCacheSessionIDs(for: openID)
-            // Hermes' own card for the question already on screen means the
-            // copy stays out: one question is one card.
-            let hermesCardIsThere = Self.notificationClarifyActivity(for: decision).map { pushed in
-                messages.contains { message in
-                    guard let live = message.clarify,
-                          !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return false }
-                    return Self.pushCardSupersededBy(pushed, live: live)
-                }
+            // Hermes' own card still holding the question keeps the copy
+            // out; an answered or run-out one that asked the same doesn't.
+            let hermesCardIsThere = Self.notificationClarifyActivity(for: decision).map {
+                Self.hermesCardHoldsQuestion($0, in: messages)
             } ?? false
             if hermesCardIsThere {
                 sessionPresentationCache.removePendingDecision(

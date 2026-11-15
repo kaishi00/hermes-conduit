@@ -705,7 +705,14 @@ struct SessionRewindSnapshot: Equatable {
         case nil, .null?, .string("")?, .string("steer")?: break
         default: return nil
         }
-        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: epochSeconds(row["timestamp"]))
+        let words = text(of: row["content"])
+        // A note whose type a compaction's projection dropped (a cron
+        // report folded into the summary's row) was never typed by anyone,
+        // and Hermes' own count of the turns leaves it out. By its
+        // metadata alone: a report the user pasted as their own message
+        // is a turn of theirs.
+        guard !MessageNormalizer.isUntypedNote(metadata: row["display_metadata"], text: nil) else { return nil }
+        return Turn(rowID: rowID, text: words, timestamp: epochSeconds(row["timestamp"]))
     }
 
     /// A row's time as the epoch seconds Hermes' `undo_since` takes: a
@@ -6197,7 +6204,7 @@ enum MessageNormalizer {
             // multi-megabyte, so it is dropped before Markdown, compaction
             // scans, reasoning extraction, or tool interpretation — and
             // regardless of its physical role.
-            let displayKind = HermesDisplayKind(
+            var displayKind = HermesDisplayKind(
                 rawValue: (obj["display_kind"]?.stringValue ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines)
             )
@@ -6287,6 +6294,21 @@ enum MessageNormalizer {
             }
             if isSteerRow {
                 rawContent = steerText(fromMarker: rawContent)
+            }
+            // A note Hermes wrote into the chat between turns (a cron report
+            // the plugin just shows, a completion nobody was watching) is a
+            // `role=user` row typed `internal_notification`. A compaction
+            // that folds its summary into that row hands it back without
+            // the type: Hermes' display projection unwraps the note's text
+            // and drops the carrier's `display_kind`
+            // (agent/compaction_display.py), so a reopened chat drew the
+            // report as the user's own bubble. The note's metadata, or the
+            // cron report's first line where a projection dropped that too,
+            // still says what it is.
+            if displayKind == nil, rawRole == "user", !isToolResult, !isSteerRow, !isRefusedRow,
+               projectedContent == nil, isUntypedNote(metadata: obj["display_metadata"], text: rawContent) {
+                displayKind = .internalNotification
+                rawContent = rawContent.trimmingCharacters(in: .whitespacesAndNewlines)
             }
             // A reply that is only Hermes' silence marker is the model saying
             // it has nothing to tell the user (a Bot Chat's work update, a
@@ -6539,6 +6561,20 @@ enum MessageNormalizer {
                   !author.isEmpty else { return nil }
             return MessageReaction(emoji: emoji, author: author, at: object["at"]?.doubleValue)
         }
+    }
+
+    /// Whether an untyped user row is a note Hermes wrote between turns:
+    /// its metadata is a completion note's (`append_completion_note` stamps
+    /// the completions it stands for and its admission on each), or its
+    /// text is a cron report's, first line and all (the plugin's HEADER).
+    static func isUntypedNote(metadata: AnyCodable?, text: String?) -> Bool {
+        if let object = displayMetadataObject(metadata),
+           object["completion_note"]?.arrayValue != nil
+            || !(object["completion_admission"]?.descriptiveStringValue ?? "").isEmpty {
+            return true
+        }
+        guard let text else { return false }
+        return CronBotChatReport.parse(text.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
     }
 
     /// The one-line title Hermes stamps on a background completion's

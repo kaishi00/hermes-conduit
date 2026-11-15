@@ -603,12 +603,13 @@ extension AppState {
             // From the snapshot to the rewind, nothing else is sent in this
             // app (composerIsEnabled, sendMessage): a send between them
             // would be the turn the dashboard's `/undo N` counted.
-            let snapshot: SessionRewindSnapshot
-            if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
-                snapshot = try await rewindSnapshot(client, storedSessionID)
-            } else {
-                snapshot = try await client.rewindSnapshot(sessionId: storedSessionID, profile: profile)
+            let readSnapshot = { [chatResumeLifecycleOperations] () async throws -> SessionRewindSnapshot in
+                if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
+                    return try await rewindSnapshot(client, storedSessionID)
+                }
+                return try await client.rewindSnapshot(sessionId: storedSessionID, profile: profile)
             }
+            let snapshot = try await readSnapshot()
             guard isCurrentComposerSubmission(context) else { return true }
             if let editing {
                 guard let turn = Self.rewindTurn(for: editing, in: messages, snapshot: snapshot) else {
@@ -646,6 +647,23 @@ extension AppState {
             if retry, target.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true {
                 appendSlashOutput(AppLocalization.string("/retry can only send a text message again."), context: context)
                 return true
+            }
+            // `hermes dashboard`'s `/undo N` has no fence: N is counted in
+            // the snapshot (issue 2431). The turns are read again just
+            // before it, so a chat another writer moved meanwhile (another
+            // device, a hidden follow-up, a call or a Shortcut's send) is
+            // refused, as the session authority refuses a moved one, rather
+            // than losing turns nobody named.
+            if !client.speaksSessionAuthority {
+                let live = try await readSnapshot()
+                guard isCurrentComposerSubmission(context) else { return true }
+                guard live.turns.map(\.rowID) == snapshot.turns.map(\.rowID) else {
+                    appendSlashOutput(
+                        AppLocalization.string("This chat changed while the message was being taken back, so nothing was taken back. Try again."),
+                        context: context
+                    )
+                    return true
+                }
             }
             if let rewindSession = chatResumeLifecycleOperations.rewindSession {
                 receipt = try await rewindSession(client, sessionID, target.rowID, snapshot)

@@ -38644,6 +38644,88 @@
           }
         }
       }
+    },
+    "Hermes, or the proxy in front of it, refused this. Check the token, and the Authorization header in Extra headers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes oder der Proxy davor hat das abgelehnt. Prüfe das Token und den Authorization-Header unter „Zusätzliche Header“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, o el proxy que tiene delante, lo rechazó. Revisa el token y el encabezado Authorization en Encabezados adicionales."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, ou le proxy placé devant, a refusé. Vérifiez le jeton, ainsi que l’en-tête Authorization dans En-têtes supplémentaires."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, atau proxy di depannya, menolak ini. Periksa token, serta header Authorization di Header tambahan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes, o il proxy davanti a esso, l’ha rifiutato. Controlla il token e l’intestazione Authorization in Intestazioni aggiuntive."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes、またはその前段のプロキシに拒否されました。トークンと、追加ヘッダの Authorization ヘッダを確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 또는 그 앞의 프록시가 거부했어요. 토큰과 추가 헤더의 Authorization 헤더를 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes albo serwer proxy przed nim odrzucił to żądanie. Sprawdź token oraz nagłówek Authorization w Dodatkowych nagłówkach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes, ou o proxy na frente dele, recusou isto. Confira o token e o cabeçalho Authorization em Cabeçalhos extras."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes или прокси перед ним отклонил запрос. Проверьте токен и заголовок Authorization в разделе «Доп. заголовки»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ya da önündeki proxy bunu reddetti. Belirteci ve Ek üstbilgilerdeki Authorization üstbilgisini kontrol edin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 或其前面的代理拒绝了此请求。请检查令牌，以及“额外请求头”中的 Authorization 请求头。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 或其前方的代理伺服器拒絕了此要求。請檢查權杖，以及「額外標頭」中的 Authorization 標頭。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -4,6 +4,12 @@ Conduit provides two Home Screen launcher widgets, **Native** and **Conduit-chan
 
 The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. **Done** and **Not now** (until later today) work in place, and **Do it** sends the card's message to Hermes with Conduit in the background: to the chat the card came from, or for a card from no chat, to a new chat or to the Bot Chat of the bot picked in Settings > Pulse > Do it. A tap on a card opens it on the Pulse screen. It needs no configuration: it shows the workspace in use, on a dashboard whose plugin serves Pulse.
 
+The small Pulse widget shows the top card with **Not now** and **Done** under it; **Do it** is on the medium and large sizes only.
+
+## Apple HomeView
+
+HomeView shows small widgets from a paired iPhone or iPad, and opens only CarPlay audio and video apps from the phone, so a tap that would open Conduit says **App Unavailable**. The small Pulse widget's **Not now** and **Done** are made to work there: HomeView sends a widget's button taps to the iPhone, which runs them (not yet tried on a HomeView). The launcher widgets show but can't open anything on HomeView; turn on **Hide conversation title** to keep a chat's title off a shared screen. In Night Mode, Conduit-chan's artwork is drawn light on dark (also untried on a device). HomeView is one screen the household shares, which is why **Do it** isn't on the small size (issue 2561).
+
 ## Add and configure a widget
 
 1. Keep Conduit installed and open it after adding or changing a workspace or conversation. The app publishes the local list used by the widget configuration picker.

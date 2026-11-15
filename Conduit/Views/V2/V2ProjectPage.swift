@@ -11,7 +11,11 @@
 import SwiftUI
 
 struct V2ProjectPage: View {
-    @EnvironmentObject private var appState: AppState
+    /// AppState's publishes, held as the Chats list holds them
+    /// (`V2ShownUpdates`): skipped while a chat covers the page, drawn
+    /// once a pop has slid, coalesced beside a chat.
+    @StateObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
@@ -37,6 +41,20 @@ struct V2ProjectPage: View {
     @State private var profileFilter: String?
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
+
+    init(project: ProjectSummary, appState: AppState) {
+        self.project = project
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    /// What shows the page: its tab, and no chat pushed over it.
+    private var visibility: V2ListVisibility { Self.visibility(in: shell) }
+
+    /// Covered while its column shows no chat rows: a chat pushed over it,
+    /// not one beside it on a wide window.
+    static func visibility(in shell: V2ShellContext) -> V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: !shell.showsChatRows, split: shell.isSplit)
+    }
 
     private var newConversationPath: String? {
         guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -224,6 +242,13 @@ struct V2ProjectPage: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             V2ListCallBar()
         }
+        .environmentObject(updates)
+        .onChange(of: visibility, initial: true) { was, now in
+            updates.follow(now, from: was)
+        }
+        .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
+            updates.coalesces = beside
+        }
         // Read again when the chats list's catalog changes: beside the open
         // chat on a wide window the page stays on screen (issue 1454).
         .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
@@ -376,18 +401,16 @@ struct V2ProjectPage: View {
         if !isCollapsed {
             // Two profiles' chats can share an id: each row is its profile's.
             ForEach(Array(lane.sessions.enumerated()), id: \.element.projectPageRowID) { index, session in
-                sessionRow(session)
-                    .v2ListRow(divider: index == lane.sessions.count - 1, dividerInset: 16)
-                    .sessionActions(
-                        appState: appState,
-                        session: session,
-                        nest: nil,
-                        excludingProjectID: project.id,
-                        onRename: { sessionPendingRename = session },
-                        onDelete: { sessionPendingDeletion = session },
-                        onChanged: { Task { await reload(force: true) } }
-                    )
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                V2ProjectSessionRow(
+                    session: session,
+                    projectID: project.id,
+                    isLast: index == lane.sessions.count - 1,
+                    profileBadge: profileBadge(for: session),
+                    onRename: { sessionPendingRename = $0 },
+                    onDelete: { sessionPendingDeletion = $0 },
+                    onChanged: { Task { await reload(force: true) } }
+                )
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
     }
@@ -401,44 +424,6 @@ struct V2ProjectPage: View {
             if raw.hasPrefix(prefix) { return String(raw.dropFirst(prefix.count)) }
         }
         return raw
-    }
-
-    private func sessionRow(_ session: SessionSummary) -> some View {
-        Button {
-            Haptics.light()
-            appState.dismissSidebarDrawer()
-            if appState.isOtherProfileRow(session) {
-                // The switch to its profile, then the chat, as All opens it.
-                appState.openListedSession(session)
-            } else {
-                appState.requestOpenSession(session.id)
-            }
-        } label: {
-            HStack(spacing: 0) {
-                Rectangle()
-                    .fill(Color.primary.opacity(0.16))
-                    .frame(width: 1.5)
-                    .padding(.leading, 21)
-                    .padding(.trailing, 4)
-                V2SessionRow(
-                    title: session.title,
-                    time: session.updatedLabel,
-                    preview: appState.v2RowPreview(for: session),
-                    status: appState.v2RowStatus(for: session),
-                    isUnread: appState.isSessionUnread(session),
-                    isPinned: appState.isSessionPinned(session),
-                    isStarred: appState.isSessionStarred(session),
-                    selection: .chat(isActive: appState.isOpenChatRow(session), beside: openBeside),
-                    leadingGlyph: true,
-                    profileBadge: profileBadge(for: session)
-                )
-            }
-        }
-        .buttonStyle(.plain)
-        // Its saved copy comes into memory as it shows (issue 1725).
-        .onAppear { appState.warmSavedCopy(of: session) }
-        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
-        .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
     }
 
     /// Each row's profile picture while the page shows two or more
@@ -653,5 +638,115 @@ struct ProjectProfileLabel: View {
             Text(verbatim: name)
                 .lineLimit(1)
         }
+    }
+}
+
+/// A chat's row on a project's page: its list traits and actions around
+/// its content, which compares on what it shows (the Chats list's rows,
+/// `V2ChatsRow`, are built the same way). The page re-runs its body as a
+/// chat is pushed over it or popped off it, with new closures each time;
+/// inside an `EquatableView` the traits never reached the List, so they
+/// stay out here.
+struct V2ProjectSessionRow: View {
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
+    let session: SessionSummary
+    let projectID: String
+    let isLast: Bool
+    let profileBadge: V2ProfileBadge?
+    let onRename: (SessionSummary) -> Void
+    let onDelete: (SessionSummary) -> Void
+    let onChanged: () -> Void
+
+    init(
+        session: SessionSummary,
+        projectID: String,
+        isLast: Bool,
+        profileBadge: V2ProfileBadge?,
+        onRename: @escaping (SessionSummary) -> Void,
+        onDelete: @escaping (SessionSummary) -> Void,
+        onChanged: @escaping () -> Void
+    ) {
+        self.session = session
+        self.projectID = projectID
+        self.isLast = isLast
+        self.profileBadge = profileBadge
+        self.onRename = onRename
+        self.onDelete = onDelete
+        self.onChanged = onChanged
+    }
+
+    var body: some View {
+        V2ProjectSessionRowContent(session: session, profileBadge: profileBadge)
+            .equatable()
+            .v2ListRow(divider: isLast, dividerInset: 16)
+            .sessionActions(
+                appState: appState,
+                session: session,
+                nest: nil,
+                excludingProjectID: projectID,
+                onRename: { onRename(session) },
+                onDelete: { onDelete(session) },
+                onChanged: onChanged
+            )
+    }
+}
+
+/// What a project page's row shows. Compared on its chat and badge, it
+/// redraws for those or a draw of the page's updates, which it observes
+/// itself, never because the page re-ran.
+struct V2ProjectSessionRowContent: View, Equatable {
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
+    @Environment(\.v2OpenBeside) private var openBeside
+    let session: SessionSummary
+    let profileBadge: V2ProfileBadge?
+
+    init(session: SessionSummary, profileBadge: V2ProfileBadge?) {
+        self.session = session
+        self.profileBadge = profileBadge
+    }
+
+    nonisolated static func == (lhs: V2ProjectSessionRowContent, rhs: V2ProjectSessionRowContent) -> Bool {
+        lhs.session == rhs.session && lhs.profileBadge == rhs.profileBadge
+    }
+
+    var body: some View {
+        let _ = TranscriptPerf.note(.chatsListRowBody)
+        Button {
+            Haptics.light()
+            appState.dismissSidebarDrawer()
+            if appState.isOtherProfileRow(session) {
+                // The switch to its profile, then the chat, as All opens it.
+                appState.openListedSession(session)
+            } else {
+                appState.requestOpenSession(session.id)
+            }
+        } label: {
+            HStack(spacing: 0) {
+                Rectangle()
+                    .fill(Color.primary.opacity(0.16))
+                    .frame(width: 1.5)
+                    .padding(.leading, 21)
+                    .padding(.trailing, 4)
+                V2SessionRow(
+                    title: session.title,
+                    time: session.updatedLabel,
+                    preview: appState.v2RowPreview(for: session),
+                    status: appState.v2RowStatus(for: session),
+                    isUnread: appState.isSessionUnread(session),
+                    isPinned: appState.isSessionPinned(session),
+                    isStarred: appState.isSessionStarred(session),
+                    selection: .chat(isActive: appState.isOpenChatRow(session), beside: openBeside),
+                    leadingGlyph: true,
+                    profileBadge: profileBadge
+                )
+            }
+        }
+        .buttonStyle(.plain)
+        // Its saved copy comes into memory as it shows (issue 1725).
+        .onAppear { appState.warmSavedCopy(of: session) }
+        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
     }
 }

@@ -364,6 +364,25 @@ extension SidebarLayoutTests {
         XCTAssertEqual(layout.bar(selected: .chats, without: [.pulse]), [.chats, .bots, .tasks, .settings])
         // A chat opened from it is still showing: the tab stays until it's left.
         XCTAssertEqual(layout.bar(selected: .pulse, without: [.pulse]).first, .pulse)
+        // Its switch can't turn it on there, but can turn it off.
+        XCTAssertTrue(layout.canSwitch(.pulse, without: [.pulse]))
+        var off = layout
+        off.setHidden(.pulse, true)
+        XCTAssertFalse(off.canSwitch(.pulse, without: [.pulse]))
+        XCTAssertTrue(off.canSwitch(.pulse, without: []))
+    }
+
+    /// Five shown with a Pulse this dashboard lacks: Artifacts waits for a
+    /// place, and Pulse's switch here gives it one (issue 2432).
+    func testAPulseThisDashboardLacksCanGiveBackItsPlace() {
+        var layout = V2TabLayout(stored: ["bots", "chats", "tasks", "pulse", "-artifacts", "settings"])
+        XCTAssertFalse(layout.canSwitch(.artifacts, without: [.pulse]))
+        XCTAssertTrue(layout.canSwitch(.pulse, without: [.pulse]))
+        XCTAssertFalse(layout.canSwitch(.settings, without: [.pulse]))
+        layout.setHidden(.pulse, true)
+        XCTAssertTrue(layout.canSwitch(.artifacts, without: [.pulse]))
+        layout.setHidden(.artifacts, false)
+        XCTAssertEqual(layout.bar(selected: .chats, without: [.pulse]), [.bots, .chats, .tasks, .artifacts, .settings])
     }
 
     func testAChatOpenedFromAPageTabStaysInIt() {

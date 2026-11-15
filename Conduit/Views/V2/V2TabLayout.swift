@@ -145,6 +145,17 @@ struct V2TabLayout: Equatable {
 
     func isHidden(_ tab: V2Tab) -> Bool { hidden.contains(tab) }
 
+    /// Whether Edit Tabs' switch for `tab` can be flipped on a dashboard
+    /// without the `unavailable` tabs. A hidden tab goes on only when the
+    /// bar has room and this dashboard has the page; a shown one comes off
+    /// anywhere, so a Pulse this dashboard lacks can give back its place
+    /// (issue 2432).
+    func canSwitch(_ tab: V2Tab, without unavailable: Set<V2Tab>) -> Bool {
+        guard canHide(tab) else { return false }
+        guard hidden.contains(tab) else { return true }
+        return canShow(tab) && !unavailable.contains(tab)
+    }
+
     mutating func move(fromOffsets source: IndexSet, toOffset destination: Int) {
         order.move(fromOffsets: source, toOffset: destination)
     }
@@ -291,11 +302,15 @@ struct V2TabsOrderSheet: View {
                 Text(AppLocalization.string("Opens first", table: .settings))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
+            } else if store.unavailable.contains(tab) {
+                Text(AppLocalization.string("Not on this dashboard", table: .settings))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
         if layout.canHide(tab) {
             Toggle(isOn: Binding(
-                get: { !store.layout.isHidden(tab) && !store.unavailable.contains(tab) },
+                get: { !store.layout.isHidden(tab) },
                 set: { shown in
                     Haptics.selection()
                     var next = store.layout
@@ -306,10 +321,10 @@ struct V2TabsOrderSheet: View {
                 .tint(.conduitAccent)
                 // The bar is full: one comes off before another goes on.
                 // Or this dashboard doesn't have the page (Pulse without
-                // the plugin serving it): its switch reads off and dimmed,
-                // and a layout that shows it keeps it for the dashboards
-                // that do.
-                .disabled((layout.isHidden(tab) && !layout.canShow(tab)) || store.unavailable.contains(tab))
+                // the plugin serving it): it can't go on here, and a layout
+                // that shows it keeps it for the dashboards that do, unless
+                // it's turned off here to free its place (issue 2432).
+                .disabled(!layout.canSwitch(tab, without: store.unavailable))
                 .accessibilityIdentifier("settings.tabs.show.\(tab.rawValue)")
         } else {
             label

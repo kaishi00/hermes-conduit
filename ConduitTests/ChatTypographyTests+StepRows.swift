@@ -264,6 +264,21 @@ extension ChatTypographyTests {
         XCTAssertEqual(github.kind, .named("GitHub"))
         XCTAssertEqual(github.action, "list issues")
         XCTAssertEqual(ChatStepStyle(toolName: "connectors__github__list_issues").symbol, "puzzlepiece.extension")
+        XCTAssertEqual(notion.subjectLine, "create page")
+        // What the call was about follows its action.
+        let image = ChatStepLabel(
+            toolName: "mcp__image__generate_image",
+            input: #"{"preset": "generate-balanced", "prompt": "A red fox in the snow"}"#
+        )
+        XCTAssertEqual(image.kind, .named("Image"))
+        XCTAssertEqual(image.subjectLine, "generate image · A red fox in the snow")
+        XCTAssertEqual(ChatStepLabel(toolName: "mcp__notion__search", input: #"{"query": "search"}"#).subjectLine, "search")
+        // An input too large to parse keeps the bare action, never a raw fragment.
+        let edit = ChatStepLabel(
+            toolName: "mcp__image__generate_image",
+            input: #"{"prompt": "make it red", "image": ""# + String(repeating: "A", count: 5000) + #""}"#
+        )
+        XCTAssertEqual(edit.subjectLine, "generate image")
         // An older single-underscore MCP name keeps the connector words.
         XCTAssertEqual(ChatStepLabel(toolName: "mcp_notion_create_page").kind, .category(.connector))
     }

@@ -165,6 +165,18 @@ private struct LauncherWidgetView: View {
                 .scaledToFit()
                 .frame(width: width, height: height)
                 .accessibilityHidden(true)
+        } else if renderingMode == .vibrant {
+            // Vibrant (StandBy and HomeView's Night Mode) draws brightness
+            // as light: the cream backdrop would glow as a solid square
+            // around a dark figure. Inverted, the figure is the light part
+            // and the backdrop falls away (the mark is light on black
+            // already, so it needs nothing).
+            Image("WidgetCharacter")
+                .resizable()
+                .colorInvert()
+                .scaledToFit()
+                .frame(width: width, height: height)
+                .accessibilityHidden(true)
         } else {
             Image("WidgetCharacter")
                 .resizable()

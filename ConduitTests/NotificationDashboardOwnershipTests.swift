@@ -757,5 +757,15 @@ extension NotificationDashboardOwnershipTests {
         appState.switchEndingCall(to: "Mac", pending: &pending) { switches += 1 }
         XCTAssertEqual(switches, 2)
         XCTAssertNotNil(pending)
+
+        // The call asked about ends while the question is open: it closes
+        // with nothing switched, so a call that starts next isn't ended by
+        // the old answer (issue 2460).
+        appState.closeCallEndingSwitchOnceCallsEnd(&pending)
+        XCTAssertNotNil(pending, "the call still runs: the question stays")
+        appState.minimisedLiveVoice = nil
+        appState.closeCallEndingSwitchOnceCallsEnd(&pending)
+        XCTAssertNil(pending)
+        XCTAssertEqual(switches, 2)
     }
 }

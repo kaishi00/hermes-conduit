@@ -186,6 +186,14 @@ enum PendingDecisionPayload: Equatable, Codable {
     /// batch model as native clarifies — no separate push card exists.
     case clarifyBatch(requestId: String, questions: [ClarifyQuestion])
 
+    /// A question's request id; nil for an approval.
+    var requestID: String? {
+        switch self {
+        case .approval: return nil
+        case .clarify(let requestId, _, _), .clarifyBatch(let requestId, _): return requestId
+        }
+    }
+
     /// Request ids minted by the notifier plugin's clarify loop; answers to
     /// these route through the relay instead of `clarify.respond`.
     static let relayRequestPrefix = "conduit-push-"
@@ -2971,6 +2979,19 @@ final class PushNotificationService: ObservableObject {
         return nil
     }
 
+    /// A question's card from a row of the plugin's waiting list, which
+    /// carries it as the push did (`decision`, notifier 0.177.17; issue
+    /// 2556). Nil for an approval, which its chat's own card answers.
+    nonisolated static func waitingQuestionCard(from row: [String: Any]) -> PendingDecisionPayload? {
+        switch pendingDecision(from: row) {
+        case let card?:
+            if case .approval = card { return nil }
+            return card
+        case nil:
+            return nil
+        }
+    }
+
     /// Parses the structured decision content the relay forwards alongside a
     /// decision notification (see the background-arrival design doc). Returns
     /// nil for non-decision notifications or malformed/unknown payloads so the
@@ -2978,7 +2999,7 @@ final class PushNotificationService: ObservableObject {
     /// requires a session key to answer, a description to display, and at
     /// least one usable choice — otherwise a cached card could render the
     /// approval view's default action set, which the payload never promised.
-    private static func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
+    nonisolated private static func pendingDecision(from payload: [String: Any]) -> PendingDecisionPayload? {
         guard let decision = payload["decision"] as? [String: Any],
               let kind = (decision["kind"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
               !kind.isEmpty else {
@@ -3047,7 +3068,7 @@ final class PushNotificationService: ObservableObject {
     /// (qid/question/choices/multi_select); qids are preserved as identity —
     /// they are NOT synthetic, so per-question relay answers can address
     /// them.
-    private static func pushClarifyQuestion(from entry: [String: Any]) -> ClarifyQuestion? {
+    nonisolated private static func pushClarifyQuestion(from entry: [String: Any]) -> ClarifyQuestion? {
         guard let question = (entry["question"] as? String)?
             .trimmingCharacters(in: .whitespacesAndNewlines),
             !question.isEmpty else {

@@ -149,8 +149,20 @@ extension MessageNormalizerTests {
             "type": "tool.start", "session_id": "s1",
             "payload": ["name": "tool_call", "tool_id": "call-show", "args": envelope] as [String: Any]
         ]))
-        guard case .toolStart(_, let started, _, _) = start else { return XCTFail("Expected toolStart") }
+        guard case .toolStart(_, let started, let input, _) = start else { return XCTFail("Expected toolStart") }
         XCTAssertEqual(started, "conduit_show")
+        XCTAssertEqual(input, #"{"title":"Dinner"}"#, "the tool's own arguments, as saved history shows")
+
+        // A legacy envelope's `name` isn't read as what the call was about.
+        let legacy = StreamEventParser.parse(params: AnyCodable.from([
+            "type": "tool.start", "session_id": "s1",
+            "payload": ["name": "tool_call", "args": [
+                "name": "mcp__image__generate_image", "arguments": ["prompt": "A red fox"]
+            ]] as [String: Any]
+        ]))
+        guard case .toolStart(_, let legacyName, let legacyInput, _) = legacy else { return XCTFail("Expected toolStart") }
+        XCTAssertEqual(legacyName, "mcp__image__generate_image")
+        XCTAssertEqual(ChatStepLabel(toolName: legacyName, input: legacyInput).subjectLine, "generate image · A red fox")
 
         let complete = StreamEventParser.parse(params: AnyCodable.from([
             "type": "tool.complete", "session_id": "s1",

@@ -136,7 +136,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(flagChunks.joined(), flags)
     }
 
-    private func makeLocalLiveSession(readinessTimeout: Duration = .seconds(3_600)) -> (LocalLiveSession, () -> [FakeGeminiLiveSocket]) {
+    private func makeLocalLiveSession(
+        readinessTimeout: Duration = .seconds(3_600),
+        heldTurnLimit: Duration = .seconds(3_600)
+    ) -> (LocalLiveSession, () -> [FakeGeminiLiveSocket]) {
         var sockets: [FakeGeminiLiveSocket] = []
         let session = LocalLiveSession(
             client: FakeLocalLiveConnection(),
@@ -147,6 +150,7 @@ extension HermesVoiceGatewayTimeoutTests {
             },
             readinessTimeout: readinessTimeout,
             keepaliveInterval: .seconds(3_600),
+            heldTurnLimit: heldTurnLimit,
             reconnectDelay: { _ in }
         )
         return (session, { sockets })
@@ -208,6 +212,8 @@ extension HermesVoiceGatewayTimeoutTests {
                      "the call's own session.update names no tool: the plugin adds them for a server whose model answers")
         socket.deliver(["type": "session.updated"])
         try await passLocalLiveReadiness(socket, session: session)
+        // The check's response ends, so an asked turn can go (issue 2524).
+        socket.deliver(["type": "response.done"])
 
         socket.deliver(["type": "conduit.tool.call", "call_id": "ll1", "name": "list_jobs", "arguments": "{}"])
         await localLiveSettle(until: { !events.isEmpty })
@@ -273,6 +279,8 @@ extension HermesVoiceGatewayTimeoutTests {
         var notesSent = 0
         session.send(.contextNote("typed in the chat"), onSent: { notesSent += 1 }, onFailure: nil)
         XCTAssertEqual(notesSent, 1, "Hermes has the chat: the note is settled without going out")
+        // The check's response ends, so the typed turn can go (issue 2524).
+        socket.deliver(["type": "response.done"])
         session.send(.textTurn("Remind me at five"))
         await localLiveSettle(until: { socket.sent.count >= 5 })
         XCTAssertEqual(socket.sent.dropFirst(3).map { $0["type"] as? String }, ["conversation.item.create", "response.create"])
@@ -481,6 +489,155 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = try await localLiveReadinessMarker(socket)
         await localLiveSettle(until: { if case .failed = session.state { return true }; return false })
         XCTAssertEqual(session.state, .failed(LocalLiveProtocol.readinessTimedOutReason))
+    }
+
+    // MARK: Asked turns wait for the server's response (issue 2524)
+
+    /// The text of each conversation item the call asked the server to answer.
+    private func localLiveAskedTexts(_ socket: FakeGeminiLiveSocket) -> [String] {
+        socket.sent.compactMap { frame in
+            guard frame["type"] as? String == "conversation.item.create",
+                  let item = frame["item"] as? [String: Any],
+                  let content = (item["content"] as? [[String: Any]])?.first else { return nil }
+            return content["text"] as? String
+        }
+    }
+
+    /// The call's own response.create frames (the readiness check's carries
+    /// its input in `response`).
+    private func localLiveResponseCreates(_ socket: FakeGeminiLiveSocket) -> Int {
+        socket.sent.filter { $0["type"] as? String == "response.create" && $0["response"] == nil }.count
+    }
+
+    /// A call from Hermes' opening is asked as the call goes ready, while the
+    /// readiness check's response is still open: speech-to-speech refuses a
+    /// second response.create then, so the opening waits for response.done.
+    func testLocalLiveSessionHoldsAnOpeningAskedBeforeTheChecksResponseEnded() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        await localLiveSettle(until: { socket.sent.contains { $0["type"] as? String == "conduit.turn.done" } })
+
+        var sent = 0
+        session.send(.textTurn("Hermes called: the build finished."), onSent: { sent += 1 }, onFailure: nil)
+        await localLiveSettle(until: { false }, limit: .milliseconds(100))
+        XCTAssertEqual(localLiveAskedTexts(socket), [], "held while the check's response is open")
+        XCTAssertEqual(sent, 0)
+
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { sent == 1 })
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Hermes called: the build finished."])
+        XCTAssertEqual(socket.sent.last?["type"] as? String, "response.create")
+
+        // A second ask before the first one's response even started waits
+        // for that response to end too (the reporter's 50 ms repro).
+        session.send(.textTurn("Second"))
+        await localLiveSettle(until: { false }, limit: .milliseconds(100))
+        XCTAssertEqual(localLiveAskedTexts(socket).count, 1)
+        socket.deliver(["type": "response.created"])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+        XCTAssertEqual(localLiveAskedTexts(socket).count, 1, "the first ask's reply is still going")
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 2 })
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Hermes called: the build finished.", "Second"])
+        session.stop()
+    }
+
+    func testLocalLiveSessionAsksAgainWhenTheServerRefusesTheTurnForAnActiveResponse() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+
+        session.send(.textTurn("Opening"))
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 1 })
+        // A response the session never heard of was going.
+        socket.deliver(["type": "error", "error": [
+            "code": "conversation_already_has_active_response",
+            "message": "Conversation already has an active response",
+        ]])
+        await localLiveSettle(until: { false }, limit: .milliseconds(100))
+        XCTAssertEqual(localLiveAskedTexts(socket).count, 1, "waits for the response going to end")
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 2 })
+        XCTAssertEqual(localLiveResponseCreates(socket), 2, "asked once more, not dropped")
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening"], "the server kept the item: the words go once")
+
+        // A refusal for another reason isn't asked again, and doesn't hold
+        // the next turn.
+        socket.deliver(["type": "response.created"])
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+        session.send(.textTurn("Bad"))
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 2 })
+        socket.deliver(["type": "error", "error": ["message": "Invalid item"]])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+        session.send(.textTurn("Next"))
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 3 })
+        XCTAssertEqual(Array(localLiveAskedTexts(socket).suffix(2)), ["Bad", "Next"])
+        session.stop()
+    }
+
+    /// The server starts a response on the user's speech while the asked
+    /// turn is on its way: that response.created isn't the turn's, and the
+    /// refusal that follows still asks again.
+    func testLocalLiveSessionAsksAgainWhenTheUsersOwnResponseStartedFirst() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { false }, limit: .milliseconds(50))
+
+        session.send(.textTurn("Opening"))
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 1 })
+        socket.deliver(["type": "response.created"])
+        socket.deliver(["type": "error", "error": ["code": "conversation_already_has_active_response"]])
+        await localLiveSettle(until: { false }, limit: .milliseconds(100))
+        XCTAssertEqual(localLiveResponseCreates(socket), 1, "waits for the user's reply to end")
+        socket.deliver(["type": "response.done"])
+        await localLiveSettle(until: { localLiveResponseCreates(socket) == 2 })
+        XCTAssertEqual(localLiveResponseCreates(socket), 2)
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening"])
+        session.stop()
+    }
+
+    func testLocalLiveSessionSendsAHeldTurnWhenTheServerNeverEndsItsResponse() async throws {
+        let (session, sockets) = makeLocalLiveSession(heldTurnLimit: .milliseconds(50))
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let socket = try XCTUnwrap(sockets().first)
+        socket.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(socket, session: session)
+        session.send(.textTurn("Opening"))
+        await localLiveSettle(until: { localLiveAskedTexts(socket).count == 1 })
+        XCTAssertEqual(localLiveAskedTexts(socket), ["Opening"], "tried anyway after the limit")
+        session.stop()
+    }
+
+    func testLocalLiveSessionFailsAHeldTurnWhenItsConnectionEnds() async throws {
+        let (session, sockets) = makeLocalLiveSession()
+        session.start()
+        await localLiveSettle(until: { sockets().first?.sent.isEmpty == false })
+        let first = try XCTUnwrap(sockets().first)
+        first.deliver(["type": "session.updated"])
+        try await passLocalLiveReadiness(first, session: session)
+        var failed = 0
+        session.send(.textTurn("Opening"), onSent: nil, onFailure: { failed += 1 })
+        first.serverClose(nil)
+        await localLiveSettle(until: { failed == 1 })
+        XCTAssertEqual(failed, 1, "its sender asks again on the next connection")
+        XCTAssertEqual(localLiveAskedTexts(first), [])
+        session.stop()
     }
 
     func testLocalLiveSessionGoesReadyWhenTheServerCantTakeTheCheck() async throws {

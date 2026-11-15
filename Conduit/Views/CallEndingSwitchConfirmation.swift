@@ -40,6 +40,16 @@ extension AppState {
         }
         pending = CallEndingSwitch(destination: destination, perform: perform)
     }
+
+    /// The question in `pending` asked about the call running then. Once
+    /// no call runs it no longer applies: it closes and nothing switches,
+    /// so a call that starts afterwards is never ended by an answer about
+    /// the one before (issue 2460). The user picks again, and a call
+    /// running then asks again.
+    func closeCallEndingSwitchOnceCallsEnd(_ pending: inout CallEndingSwitch?) {
+        guard pending != nil, !isVoiceCallInProgress else { return }
+        pending = nil
+    }
 }
 
 extension View {
@@ -50,10 +60,15 @@ extension View {
 }
 
 private struct CallEndingSwitchConfirmationModifier: ViewModifier {
+    @EnvironmentObject private var appState: AppState
     @Binding var pending: CallEndingSwitch?
 
     func body(content: Content) -> some View {
-        content.confirmationDialog(
+        content
+        .onChange(of: appState.isVoiceCallInProgress) { _, _ in
+            appState.closeCallEndingSwitchOnceCallsEnd(&pending)
+        }
+        .confirmationDialog(
             AppLocalization.string("End the call and switch?", table: .voice),
             isPresented: Binding(
                 get: { pending != nil },

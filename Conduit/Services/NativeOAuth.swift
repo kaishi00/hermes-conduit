@@ -533,7 +533,7 @@ final class NativeOAuthSession {
                 guard !isInvalidated else { throw CancellationError() }
                 return response
             } catch DashboardTicketBridgeError.signInRequired {
-                if !isInvalidated {
+                if !isInvalidated, !tokens.isSessionToken {
                     KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
                 }
                 throw DashboardTicketBridgeError.signInRequired
@@ -585,8 +585,9 @@ final class NativeOAuthSession {
 
     /// Forgets a grant the server rejected again right after a refresh, as
     /// `requestJSON`'s replay does.
+    /// A session token is kept, as `refresh` keeps it (issue 2481).
     func discardRejectedGrant() {
-        guard !isInvalidated else { return }
+        guard !isInvalidated, !tokens.isSessionToken else { return }
         KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
     }
 
@@ -614,7 +615,13 @@ final class NativeOAuthSession {
             return
         }
         guard !tokens.refreshToken.isEmpty else {
-            KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+            // A session token is kept through a 401 (issue 2481): Conduit
+            // can't tell Hermes' refusal from a proxy's in front of it, the
+            // token never rotates and the host's environment is the only
+            // other copy. The next connect mints a ticket with it again.
+            if !tokens.isSessionToken {
+                KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+            }
             throw DashboardTicketBridgeError.signInRequired
         }
         let current = tokens
@@ -1158,6 +1165,15 @@ struct SessionTokenSignInForm: View {
 
     private var trimmedToken: String { token.trimmingCharacters(in: .whitespacesAndNewlines) }
 
+    /// What a refused token says. Behind a proxy that checks
+    /// `Authorization`, the proxy may be what refused it: its 401 reads the
+    /// same as Hermes' (issue 2481).
+    nonisolated static func refusalProblem(behindProxy: Bool) -> String {
+        behindProxy
+            ? AppLocalization.string("Hermes, or the proxy in front of it, refused this. Check the token, and the Authorization header in Extra headers.", table: .connection)
+            : AppLocalization.string("Hermes didn’t accept this token. Check it and try again.", table: .connection)
+    }
+
     /// What can't go in a header value, or nil.
     nonisolated static func problem(with token: String) -> String? {
         guard token.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }) else {
@@ -1241,7 +1257,7 @@ struct SessionTokenSignInForm: View {
             onSuccess(result)
         } catch DashboardTicketBridgeError.signInRequired {
             guard !Task.isCancelled else { return }
-            problem = AppLocalization.string("Hermes didn’t accept this token. Check it and try again.", table: .connection)
+            problem = Self.refusalProblem(behindProxy: CustomHeaderStore.shared.sendsAuthorization(toServerURL: baseURL))
         } catch {
             guard !Task.isCancelled else { return }
             onError(error)

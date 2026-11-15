@@ -439,6 +439,41 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         XCTAssertEqual(harness.store.snapshot(for: otherKey), .latest)
     }
 
+    /// A superseded sync that fails late leaves the newer sync's staged
+    /// chat and its freeze alone, so the newer one still publishes its
+    /// restoration (issue 2461). Its own failure still retires them.
+    func testASupersededSyncsFailureLeavesTheNewerSyncsStagedChat() throws {
+        let harness = makeHarness()
+        let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
+        let otherKey = ChatScrollSessionKey(profile: "default", sessionID: "other")
+        let older = UUID()
+        let newer = UUID()
+        harness.coordinator.prepareDirectTarget(sessionID: "stored-a", profile: "default", purpose: .automaticReturn, owner: older)
+        _ = harness.coordinator.selectTarget(
+            in: [session("stored-a")],
+            profile: "default",
+            purpose: .automaticReturn,
+            currentSessionID: "stored-a",
+            owner: newer
+        )
+
+        harness.coordinator.abandonPendingAutomaticSync(ownedBy: older)
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertNil(harness.store.snapshot(for: otherKey), "the newer sync's restore stays frozen")
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
+        // Published and still restoring: the older sync's failure leaves
+        // the freeze on.
+        harness.coordinator.abandonPendingAutomaticSync(ownedBy: older)
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertNil(harness.store.snapshot(for: otherKey), "the published restore stays frozen")
+        harness.coordinator.completeRestoration(generation: request.generation)
+
+        harness.coordinator.prepareDirectTarget(sessionID: "stored-a", profile: "default", purpose: .automaticReturn, owner: newer)
+        harness.coordinator.abandonPendingAutomaticSync(ownedBy: newer)
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertEqual(harness.store.snapshot(for: otherKey), .latest)
+    }
+
     func testReconciliationSettledWithMismatchedKeyClearsPendingViaCaller() {
         let harness = makeHarness()
         let wrongKey = ChatScrollSessionKey(profile: "default", sessionID: "stored-b")

@@ -129,6 +129,18 @@ struct ChatStepLabel: Equatable {
     var action: String?
     /// The catalog's line about the toolset, for the opened row.
     var detail: String?
+    /// What an MCP or connector call was about, from its own arguments
+    /// (the prompt, query or page it was given).
+    var about: String?
+
+    /// The line under the row's words: an MCP or connector call's action and
+    /// what it was about ("generate image · a fox in the snow"), so the row
+    /// says more than the tool's name.
+    var subjectLine: String? {
+        guard let action else { return about }
+        guard let about, about.caseInsensitiveCompare(action) != .orderedSame else { return action }
+        return "\(action) · \(about)"
+    }
 
     init(toolName: String, input: String? = nil, catalog: ToolCatalog = ToolCatalog()) {
         let name = toolName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -172,6 +184,7 @@ struct ChatStepLabel: Equatable {
         if let call = Self.appCall(name) {
             kind = .named(call.app)
             action = call.action.isEmpty ? nil : call.action
+            about = ChatStepSubject.argument(from: input)
             return
         }
         let category = HermesToolCategory(toolName: name)
@@ -295,6 +308,16 @@ enum ChatStepSubject {
             return value.flatMap(oneLine)
         }
         return oneLine(trimmed)
+    }
+
+    /// What a call was about, from its own arguments only: nil for a JSON
+    /// object too large to parse, so a row never shows a raw fragment
+    /// (an image call's inline base64) after its action.
+    static func argument(from input: String?) -> String? {
+        guard let input else { return nil }
+        let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{"), trimmed.utf8.count > parseLimit { return nil }
+        return line(from: trimmed)
     }
 
     private static func oneLine(_ text: String) -> String? {

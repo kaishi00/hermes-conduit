@@ -123,7 +123,158 @@ extension ChatTypographyTests {
         }
     }
 
+    /// A reply of only prose draws as one text view (the flow text, not a
+    /// run): its list items and quote lines hang their marker in a gutter,
+    /// and every wrapped line starts under the text, not at the left edge
+    /// under the marker.
+    @MainActor
+    func testFlowReplyHangsListAndQuoteMarkers() throws {
+        let source = """
+        Alpha paragraph.
+
+        - Bravo item is long enough that it wraps onto another line in the chat column at this width, and onto a third line as well if it can
+        - Charlie item
+
+        3. Delta item is long enough that it wraps onto another line in the chat column at this width as well, then some more words
+        4. Echo item
+
+        > Foxtrot quote is long enough that it wraps onto another line in the chat column at this width as well, and then a few words more
+        """
+        let window = proseRunWindow(source, joinsProseRuns: false)
+        defer { window.isHidden = true }
+        let textViews = proseTextViews(in: window)
+        XCTAssertEqual(textViews.count, 1, "a prose-only reply is one text view")
+        let textView = try XCTUnwrap(textViews.first)
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let delta = try XCTUnwrap(origins["Delta"])
+        let foxtrot = try XCTUnwrap(origins["Foxtrot"])
+        XCTAssertGreaterThan(bravo.x, alpha.x + 10, "a bullet's text starts past its gutter")
+        XCTAssertEqual(try XCTUnwrap(origins["Charlie"]).x, bravo.x, accuracy: 1)
+        XCTAssertGreaterThan(delta.x, bravo.x, "a number's gutter is wider than a bullet's")
+        XCTAssertEqual(try XCTUnwrap(origins["Echo"]).x, delta.x, accuracy: 1)
+
+        // Each wrapped line starts where its item's text does.
+        for (landmark, origin) in [("Bravo", bravo), ("Delta", delta), ("Foxtrot", foxtrot)] {
+            let wrapped = try XCTUnwrap(
+                firstWrappedLineOrigin(after: landmark, in: textView),
+                "\(landmark) never wrapped at this width"
+            )
+            XCTAssertEqual(wrapped.x, origin.x, accuracy: 1, "\(landmark)'s wrapped line went back to the edge")
+        }
+
+        // Copy keeps the markers' spaces.
+        let copied = MarkdownProseRun.copyableText(try XCTUnwrap(textView.attributedText)).string
+        XCTAssertTrue(copied.contains("• Bravo item"), copied)
+        XCTAssertTrue(copied.contains("\n• Charlie item\n\n3. Delta"), copied)
+    }
+
+    /// Drawn as block views (a rich answer under VoiceOver, or with prose
+    /// runs off), a nested list moves in a level, sits a list item's gap
+    /// under its parent list and copies on the next line.
+    @MainActor
+    func testBlockViewsNestAnOutline() throws {
+        let source = """
+        - Alpha item
+          - Bravo sub-item
+          - Charlie sub-item
+
+        ```
+        code keeps these block views
+        ```
+        """
+        let blocks = MarkdownParser.parse(source)
+        let descriptors = MarkdownSelectionSegmentPlan.descriptors(for: blocks, joiningRuns: [])
+        XCTAssertEqual(descriptors.map(\.separatorBefore).prefix(3), ["", "\n", "\n"], "the sub-list copies a line under its parent")
+
+        let window = proseRunWindow(source, joinsProseRuns: false)
+        defer { window.isHidden = true }
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let charlie = try XCTUnwrap(origins["Charlie"])
+        XCTAssertEqual(bravo.x - alpha.x, MarkdownProseRun.nestedListIndent(chatTextSize: .default), accuracy: 1, "a level in")
+        XCTAssertEqual(bravo.y - alpha.y, charlie.y - bravo.y, accuracy: 1, "an item's gap, not a block's")
+    }
+
+    /// A long reply's flow chunk keeps its lists' hanging indents and
+    /// nesting (it draws its text with keepsParagraphStyles).
+    @MainActor
+    func testLargeFlowChunkKeepsListIndents() throws {
+        let blocks = MarkdownParser.parse("- Alpha item\n  - Bravo sub-item")
+        let host = UIHostingController(rootView: VStack(spacing: 0) {
+            LargeFlowChunkView(
+                blocks: blocks,
+                references: .empty,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                selectionCoordinator: nil,
+                selectionSegment: nil
+            )
+            Spacer(minLength: 0)
+        }
+        .frame(width: 390))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        host.view.layoutIfNeeded()
+
+        let origins = landmarkOrigins(["Alpha", "Bravo"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let step = MarkdownProseRun.nestedListIndent(chatTextSize: .default)
+        XCTAssertGreaterThan(alpha.x, 10, "the bullet hangs in a gutter")
+        XCTAssertEqual(bravo.x - alpha.x, step, accuracy: 1, "the sub-list a level in")
+    }
+
+    /// A task list keeps its own view; its sub-list joins a prose run and
+    /// still sits an item's gap under it, as the rest of the outline does.
+    @MainActor
+    func testProseRunUnderATaskListSitsAnItemsGapBelow() throws {
+        // The divider keeps the reply off the flow path, which would draw
+        // it all as one text.
+        let source = "- [ ] Alpha task\n  - Bravo sub-item\n  - Charlie sub-item\n\n---\n\nZulu after the divider."
+        let window = proseRunWindow(source, joinsProseRuns: true)
+        defer { window.isHidden = true }
+        XCTAssertEqual(proseTextViews(in: window).count, 3, "the task's own view, the sub-list's run and the paragraph after the divider")
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let charlie = try XCTUnwrap(origins["Charlie"])
+        XCTAssertEqual(bravo.y - alpha.y, charlie.y - bravo.y, accuracy: 1.5, "an item's gap, not a block's")
+    }
+
     // MARK: - Helpers
+
+    /// Where the first line after the one `landmark` starts on begins, in
+    /// window points, within the same paragraph.
+    @MainActor
+    private func firstWrappedLineOrigin(after landmark: String, in textView: UITextView) -> CGPoint? {
+        textView.layoutIfNeeded()
+        let text = (textView.text ?? "") as NSString
+        let location = text.range(of: landmark).location
+        guard location != NSNotFound,
+              let start = textView.position(from: textView.beginningOfDocument, offset: location)
+        else { return nil }
+        let firstLine = textView.caretRect(for: start).minY
+        let paragraphEnd = NSMaxRange(text.paragraphRange(for: NSRange(location: location, length: 0)))
+        for offset in (location + 1)..<paragraphEnd {
+            guard let position = textView.position(from: textView.beginningOfDocument, offset: offset),
+                  let end = textView.position(from: position, offset: 1),
+                  let glyph = textView.textRange(from: position, to: end),
+                  text.character(at: offset) != 0x20
+            else { continue }
+            let rect = textView.firstRect(for: glyph)
+            if rect.minY > firstLine + 4 {
+                return textView.convert(CGPoint(x: rect.minX, y: rect.minY), to: nil)
+            }
+        }
+        return nil
+    }
 
     @MainActor
     private func proseRunWindow(_ source: String, joinsProseRuns: Bool) -> UIWindow {

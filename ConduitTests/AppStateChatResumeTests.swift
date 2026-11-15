@@ -2131,6 +2131,53 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    func testOpeningAListedChatNamesItBeforeTheOpenRuns() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "m1", role: .assistant, content: "Earlier", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.sessions = [
+            session("open-chat", title: "Trip plans"),
+            session("next-chat", title: "Chesapeake Virginia restaurant recommendations"),
+        ]
+        _ = await harness.appState.openSession("open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Trip plans")
+
+        // The header sizes its title as the tap pushes the chat, before the
+        // open's task runs: the title is the tapped chat's by then.
+        let task = harness.appState.requestOpenSession("next-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Chesapeake Virginia restaurant recommendations")
+
+        // A chat the list doesn't have keeps the open one's title until its
+        // open names it.
+        task.cancel()
+        _ = harness.appState.requestOpenSession("unlisted-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Chesapeake Virginia restaurant recommendations")
+
+        // A saved row opens by its stored id.
+        harness.appState.sessions.append(session("runtime-3", title: "Garden plans", storedID: "stored-3"))
+        _ = harness.appState.requestOpenSession("stored-3")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Garden plans")
+
+        // Without a client the open stops before it switches chats: the
+        // chat on screen keeps its title.
+        harness.appState.client = nil
+        _ = harness.appState.requestOpenSession("open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Garden plans")
+    }
+
     func testRapidExplicitSessionSwitchingSettlesTheLatestSession() async {
         let sessionIDs = (1...8).map { "stored-\($0)" }
         let gates = SessionOpenGates(sessionIDs: sessionIDs)
@@ -2972,6 +3019,96 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
     }
 
+    /// Issue 2556: a question Hermes drew no card for (the turn ran in
+    /// another Hermes process) gets the card its Needs you row carries, in
+    /// the chat on screen, once, and never beside Hermes' own.
+    func testAListedQuestionDrawsItsCardInTheOpenChat() throws {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        func wait(_ id: String, session: String, request: String, question: String) -> NeedsYouItem {
+            NeedsYouItem(
+                waitID: id, profile: "default", kind: .question, sessionIDs: [session],
+                card: .clarify(requestId: request, question: question, choices: ["staging", "production"])
+            )
+        }
+        let dashboard = appState.activeDashboardID
+        appState.needsYou.apply(
+            [wait("w1", session: "runtime-a", request: "conduit-push-abc", question: "Which environment?"),
+             wait("w2", session: "stored-b", request: "conduit-push-other", question: "Which branch?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "only the open chat's")
+        XCTAssertEqual(appState.messages.last?.clarify?.questions.first?.choices.map(\.value), ["staging", "production"])
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "one question is one card")
+
+        // Hermes' own card for the question keeps the copy out.
+        appState.messages = [ChatMessage(
+            id: "clarify-native-1", role: .clarify, content: "Which region?", timestamp: "1",
+            clarify: ClarifyActivity(requestId: "native-1", question: "Which region?", choices: [])
+        )]
+        appState.needsYou.apply(
+            [wait("w3", session: "runtime-a", request: "conduit-push-region", question: "Which region?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1"])
+        // Answered while the list still names the wait: the copy stays out.
+        var answered = try XCTUnwrap(appState.messages.first?.clarify)
+        answered.questions[0].status = .answered
+        appState.messages[0].clarify = answered
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1"])
+
+        // The same question asked again later, which Hermes draws no card
+        // for: the old answered card doesn't hide the new one.
+        appState.needsYou.apply(
+            [wait("w4", session: "runtime-a", request: "conduit-push-again", question: "Which region?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        // (The first copy, still saved with the chat, comes back with it:
+        // only the new question's card matters here.)
+        let ids = appState.messages.compactMap(\.clarify?.requestId)
+        XCTAssertEqual(ids.filter { $0 == "conduit-push-again" }.count, 1, "the question asked again gets one card")
+        XCTAssertTrue(ids.contains("native-1"))
+    }
+
+    /// Hermes' card with a failed answer, or one being sent, still holds
+    /// the question: the list's card stays out, so a second answer can't go
+    /// through the relay beside it.
+    func testAListedQuestionStaysOutBesideAnUnsettledHermesCard() {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        let dashboard = appState.activeDashboardID
+        for (index, status) in [ClarifyQuestion.Status.error, .submitting].enumerated() {
+            appState.messages = [ChatMessage(
+                id: "clarify-native-\(index)", role: .clarify, content: "Which region?", timestamp: "1",
+                clarify: ClarifyActivity(requestId: "native-\(index)", question: "Which region?", choices: [], status: status)
+            )]
+            appState.needsYou.apply(
+                [NeedsYouItem(
+                    waitID: "w-\(index)", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                    card: .clarify(requestId: "conduit-push-\(index)", question: "Which region?", choices: ["staging", "production"])
+                )],
+                profile: "default", dashboardID: dashboard
+            ) { _ in false }
+            appState.showWaitingQuestionCards()
+            XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-\(index)"], "\(status)")
+        }
+    }
+
     /// #789: an open Hermes refuses for good is final, so the route doesn't
     /// retry it; one that failed on the way can pass on the next try.
     private func notificationOpenOutcome(
@@ -3368,6 +3505,25 @@ final class AppStateChatResumeTests: XCTestCase {
 
         let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
         XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+
+        // Its Needs you row doesn't draw the copy again once Hermes' card
+        // is answered and the list still names the wait (issue 2556).
+        let appState = harness.appState
+        appState.needsYou.apply(
+            [NeedsYouItem(
+                waitID: "w1", profile: "default", kind: .question, sessionIDs: ["stored-a"],
+                card: .clarify(requestId: "conduit-push-abc123", question: "Which color?", choices: ["Red"])
+            )],
+            profile: "default", dashboardID: appState.activeDashboardID
+        ) { _ in false }
+        XCTAssertTrue(appState.needsYou.cardsHermesDrew.contains("conduit-push-abc123"))
+        if let index = appState.messages.firstIndex(where: { $0.clarify?.requestId == "gateway-rid-1" }),
+           var answered = appState.messages[index].clarify {
+            answered.questions[0].status = .answered
+            appState.messages[index].clarify = answered
+        }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["gateway-rid-1"])
     }
 
     func testAResumeDropsACachedPushCopyOfHermesCard() async {

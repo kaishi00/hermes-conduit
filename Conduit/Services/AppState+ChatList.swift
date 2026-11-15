@@ -574,6 +574,8 @@ extension AppState {
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
         HTMLPreviewDocuments.shared.removeAll(dashboardID: dashboardID)
+        // And the Artifacts page's thumbnails of the host's files.
+        ArtifactThumbnailCache.purge()
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }

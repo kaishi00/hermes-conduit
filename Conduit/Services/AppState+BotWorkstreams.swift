@@ -202,6 +202,17 @@ final class BotWorkStore: ObservableObject {
         }
         return nil
     }
+
+    /// The bot whose workstream a chat is, also for one known only by the
+    /// plugin's list of every workstream's chat (a resolved one whose
+    /// Resolved list wasn't read). Nil for any other chat.
+    func workstreamProfile(forSession ids: Set<String>) -> String? {
+        guard !ids.isEmpty else { return nil }
+        if let found = workstream(forSession: ids) { return found.profile }
+        return snapshots.keys.sorted().first { profile in
+            snapshots[profile].map { !$0.sessionIDs.isDisjoint(with: ids) } ?? false
+        }
+    }
 }
 
 

@@ -253,6 +253,11 @@ struct BotsHomeAskField: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(stroke, lineWidth: 1)
         }
+        // Return makes a new line in this field and the keyboard covers
+        // the tab bar, so Done puts it away; a scroll of Bots Home does too.
+        // Only while this field has focus: the new room's name field keeps
+        // Return as its Done.
+        .keyboardDoneButton(identifier: "bots.home.ask.done", isActive: focused) { focused = false }
     }
 
     private func send() {

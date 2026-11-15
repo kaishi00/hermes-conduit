@@ -1555,6 +1555,47 @@ extension BotModeTests {
         XCTAssertTrue(rows.isUserInteractionEnabled)
     }
 
+    /// A quick second swap: the Bot Chat's rows drawn while the
+    /// workstream's slide still waits come in from the leading edge once
+    /// the screen asks, not with the workstream's slide (issue 2513).
+    @MainActor
+    func testASecondSwapsRowsWaitForTheirOwnSlide() {
+        let stage = SwapStageRecorder()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+        motion.expect(.forward, conversation: "workstream")
+        XCTAssertEqual(stage.played, ["out forward"])
+        XCTAssertFalse(motion.waitsForAnotherChat(than: "workstream"))
+        // Back before the workstream drew: the Bot Chat's rows come first.
+        stage.shownConversation = "bot-chat"
+        stage.conversationJustChanged = true
+        stage.showsChatRows = true
+        XCTAssertTrue(motion.waitsForAnotherChat(than: "bot-chat"))
+        motion.expect(.back, conversation: "bot-chat")
+        XCTAssertEqual(stage.played, ["out forward", "in back"])
+        XCTAssertNil(motion.expected)
+        XCTAssertFalse(motion.waitsForAnotherChat(than: "bot-chat"))
+    }
+
+    /// The same with the workstream's welcome already on stage: the Bot
+    /// Chat's rows still slide in with their own swap, not the wait for
+    /// the workstream's.
+    func testASecondSwapsRowsSlideInPastTheFirstsWelcome() {
+        let stage = SwapStageRecorder()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+        stage.shownConversation = "workstream"
+        stage.conversationJustChanged = true
+        stage.showsChatRows = false
+        motion.expect(.forward, conversation: "workstream")
+        XCTAssertEqual(motion.expected, .forward)
+        stage.shownConversation = "bot-chat"
+        stage.showsChatRows = true
+        motion.expect(.back, conversation: "bot-chat")
+        XCTAssertEqual(stage.played.last, "in back")
+        XCTAssertNil(motion.expected)
+    }
+
     /// A wait whose sleep ended just as a newer swap stood it down ends
     /// nothing: the newer swap keeps its slide and the rows stay away.
     @MainActor
@@ -1573,6 +1614,115 @@ extension BotModeTests {
         XCTAssertEqual(stage.played, ["out back at once"], "the old wait brought nothing back")
         XCTAssertEqual(motion.expected, .back)
         XCTAssertEqual(motion.rowsDrawn(conversationChanged: true, chatRows: true), .back)
+    }
+
+    /// A sideways scroller scrolled away from its start takes a swipe
+    /// toward the trailing edge, so the swipe home waits; at its start, or
+    /// one that can't scroll, leaves the swipe home as it was.
+    @MainActor
+    func testASidewaysScrollerThatCanScrollBackHoldsTheSwipeHome() {
+        let root = UIViewController()
+        let page = UIViewController()
+        let navigation = UINavigationController()
+        navigation.setViewControllers([root, page], animated: false)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+
+        let cards = UIScrollView(frame: CGRect(x: 0, y: 200, width: 390, height: 300))
+        cards.contentSize = CGSize(width: 1000, height: 300)
+        let card = UIView(frame: CGRect(x: 0, y: 0, width: 300, height: 300))
+        cards.addSubview(card)
+        page.view.addSubview(cards)
+        let middle = CGPoint(x: 200, y: 300)
+
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(cards), "at its start")
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+
+        cards.contentOffset = CGPoint(x: 150, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(cards))
+        XCTAssertTrue(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+        XCTAssertFalse(
+            SidewaysScrollTouch.holdsBackSwipe(under: card, at: CGPoint(x: 10, y: 300), in: window),
+            "from the leading edge it's still the swipe back"
+        )
+
+        cards.isScrollEnabled = false
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(cards), "one that can't scroll")
+        cards.isScrollEnabled = true
+
+        let narrow = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 100))
+        narrow.contentSize = CGSize(width: 390, height: 800)
+        narrow.contentOffset = CGPoint(x: 0, y: 200)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(narrow), "a scroller that only scrolls down")
+
+        // A pager the stack sits in isn't the page's scroller.
+        let pager = UIScrollView(frame: window.bounds)
+        pager.contentSize = CGSize(width: 1170, height: 844)
+        pager.contentOffset = CGPoint(x: 390, y: 0)
+        let pagerRoot = UIViewController()
+        let pagerPage = UIViewController()
+        let pagerStack = UINavigationController()
+        pagerStack.setViewControllers([pagerRoot, pagerPage], animated: false)
+        // The page's own view straight in the pager, standing in for the
+        // stack's views between them.
+        pagerPage.view.frame = window.bounds
+        pager.addSubview(pagerPage.view)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(pager))
+        let bubble = UIView(frame: CGRect(x: 50, y: 300, width: 200, height: 40))
+        pagerPage.view.addSubview(bubble)
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: bubble, at: middle, in: window))
+        pager.removeFromSuperview()
+
+        // The probe puts one watcher on its window, and each finger landing
+        // sets what the swipe home reads: over the scrolled cards, then not.
+        let probe = SidewaysScrollTouchProbe.ProbeView()
+        page.view.addSubview(probe)
+        page.view.addSubview(SidewaysScrollTouchProbe.ProbeView())
+        XCTAssertEqual(window.gestureRecognizers?.filter { $0 is SidewaysScrollTouchRecognizer }.count, 1)
+        cards.contentOffset = CGPoint(x: 150, y: 0)
+        SidewaysScrollTouch.touchBegan(at: middle, in: window)
+        XCTAssertTrue(SidewaysScrollTouch.lastTouchCouldScrollBack)
+        SidewaysScrollTouch.touchBegan(at: CGPoint(x: 200, y: 700), in: window)
+        XCTAssertFalse(SidewaysScrollTouch.lastTouchCouldScrollBack, "a finger off the cards")
+
+        // Right to left: SwiftUI flips its scroller by a transform, so the
+        // offset still counts from its leading end; a native one starts at
+        // its right end, the highest offset.
+        let flippedCards = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 300))
+        flippedCards.contentSize = CGSize(width: 1000, height: 300)
+        flippedCards.transform = CGAffineTransform(scaleX: -1, y: 1)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(flippedCards, rightToLeft: true))
+        flippedCards.contentOffset = CGPoint(x: 150, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(flippedCards, rightToLeft: true))
+        let nativeCards = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 300))
+        nativeCards.contentSize = CGSize(width: 1000, height: 300)
+        nativeCards.contentOffset = CGPoint(x: 610, y: 0)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true), "at its right-hand start")
+        nativeCards.contentOffset = CGPoint(x: 300, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true))
+
+        // In a right-to-left window the edge swipe starts at the right; a
+        // left-to-right scroller in it still starts at its left end.
+        window.semanticContentAttribute = .forceRightToLeft
+        cards.semanticContentAttribute = .forceLeftToRight
+        XCTAssertEqual(window.effectiveUserInterfaceLayoutDirection, .rightToLeft)
+        XCTAssertTrue(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+        XCTAssertFalse(
+            SidewaysScrollTouch.holdsBackSwipe(under: card, at: CGPoint(x: 380, y: 300), in: window),
+            "from the right-hand leading edge it's the swipe back"
+        )
+        cards.contentOffset = .zero
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window), "at its left-hand start")
+        window.semanticContentAttribute = .unspecified
+
+        // Only the first finger down sets the flag.
+        let first = UITouch()
+        let second = UITouch()
+        XCTAssertTrue(SidewaysScrollTouchRecognizer.isFirstFinger([first], among: [first]))
+        XCTAssertFalse(SidewaysScrollTouchRecognizer.isFirstFinger([second], among: [first, second]))
     }
 
     /// A workstream's screen holds back the zoom's own dismissals by their
@@ -1760,6 +1910,11 @@ extension BotModeTests {
         }
         let roster = [bot("atlas", 10), bot("rei", nil), bot("furina", 30), bot("kai", 50, hidden: true), bot("nia", nil)]
         XCTAssertEqual(V2VoiceButton.botsToCall(roster).map(\.name), ["furina", "atlas", "rei", "nia"])
+        // A tap reads the bot from the roster as it is then: its row now,
+        // and none once the bot has gone, so the list can say so.
+        let choice = V2VoiceBotChoice(id: "furina", label: "Furina")
+        XCTAssertEqual(V2VoiceButton.bot(choice, in: [bot("atlas", 10), bot("furina", 70)])?.lastActive, 70)
+        XCTAssertNil(V2VoiceButton.bot(choice, in: [bot("atlas", 10)]))
     }
 
     /// Bots Home's Group Chats probe and the roster ask again on their own

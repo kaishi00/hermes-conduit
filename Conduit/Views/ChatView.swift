@@ -807,8 +807,12 @@ struct ChatView: View {
 
     /// A waiting chat opened from the Needs you list or banner: its newest
     /// question, approval or input card, the one the jump button goes to,
-    /// once its chat shows and has the card.
+    /// once its chat shows and has the card. Also what draws a waiting
+    /// question's card in a chat as it opens or its transcript changes.
     private func revealPendingNeedsYou() {
+        // A listed question whose card this chat lacks gets it first
+        // (issue 2556), so there is a card to go to.
+        appState.showWaitingQuestionCards()
         guard let reveal = appState.pendingNeedsYouReveal else { return }
         guard reveal.expires > Date() else {
             appState.pendingNeedsYouReveal = nil
@@ -3832,7 +3836,7 @@ private struct SettledToolCardContent: View, Equatable {
                                                     fallback: label.action ?? ChatStepSubject.line(from: tool.input))
                                     .transition(.rowFoldSwap)
                             } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
-                                ?? label.action
+                                ?? label.subjectLine
                                 ?? ChatStepSubject.line(from: tool.input)
                                 ?? ChatStepSubject.line(from: tool.output) {
                                 Text(subject)

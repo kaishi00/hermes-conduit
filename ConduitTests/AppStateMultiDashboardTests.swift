@@ -2418,6 +2418,20 @@ extension AppStateMultiDashboardTests {
         for _ in 0..<3 { _ = await explorer.change(refreshing: false) { _, _ in } }
         XCTAssertEqual(listings(), listedBefore, "no refresh per file")
 
+        // A change the host stopped waiting on (504) may still land there,
+        // so the folder is read again; a refusal changed nothing
+        // (notifier issue 834).
+        let givenUp = Task {
+            await explorer.change { _, _ in throw DashboardTicketBridgeError.http(status: 504, detail: "") }
+        }
+        try await held.answer(["entries": files.map { ["name": $0.name, "path": $0.path, "isDirectory": false] }],
+                              toPathEnding: "/api/fs/list")
+        let unknown = await givenUp.value
+        XCTAssertNotNil(unknown, "the failure is still shown")
+        XCTAssertEqual(listings(), listedBefore + 1, "the folder is read again after a change nobody saw end")
+        _ = await explorer.change { _, _ in throw DashboardTicketBridgeError.http(status: 409, detail: "") }
+        XCTAssertEqual(listings(), listedBefore + 1, "a refusal reads nothing again")
+
         explorer.closeTab(files[1].path)
         XCTAssertFalse(explorer.keepsPreview(of: files[1].path), "a closed tab's text goes")
         explorer.close()

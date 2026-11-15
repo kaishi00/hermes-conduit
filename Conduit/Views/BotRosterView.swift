@@ -973,6 +973,9 @@ struct BotRosterView: View {
             .environment(\.rosterRowsInScroll, true)
         }
         .scrollContentBackground(.hidden)
+        // A drag of the page puts the keyboard away (the lone bot's Ask
+        // field), as a drag of a chat does.
+        .scrollDismissesKeyboard(.immediately)
         .onAppear { BotsHomeGesturesTip.hasBotsToArrange = visibleBots.count >= 2 }
         .onChange(of: visibleBots.count) { _, count in BotsHomeGesturesTip.hasBotsToArrange = count >= 2 }
         // Reorder Bots, or a room begun from a menu or a drop: the person

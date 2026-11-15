@@ -128,7 +128,9 @@ struct MarkdownText: View {
                     font: ChatTypography.font(for: .body, appearance: chatTextSize),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
-                    linkColor: usesAccentSurface ? .white : .link
+                    linkColor: usesAccentSurface ? .white : .link,
+                    // Lists and quotes carry their hanging indents.
+                    keepsParagraphStyles: true
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if rendering.needsRichBounding {
@@ -173,7 +175,10 @@ struct MarkdownText: View {
                                     usesAccentSurface: usesAccentSurface,
                                     chatTextSize: chatTextSize
                                 ),
-                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index]),
+                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index])
+                                    + (index > 0 && MarkdownProseRun.continuesOutline(rendering.blocks[index], after: rendering.blocks[index - 1])
+                                        ? MarkdownProseRun.Spacing.betweenListItems - MarkdownProseRun.Spacing.betweenBlocks
+                                        : 0),
                                 foregroundStyle: foregroundStyle,
                                 usesAccentSurface: usesAccentSurface,
                                 selectionCoordinator: selectionCoordinator,
@@ -193,6 +198,11 @@ struct MarkdownText: View {
                                     : [],
                                 isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
                             )
+                            // A nested list sits a list item's gap under the
+                            // list it belongs to, as in the text views.
+                            .padding(.top, index > 0 && MarkdownProseRun.continuesOutline(rendering.blocks[index], after: rendering.blocks[index - 1])
+                                ? MarkdownProseRun.Spacing.betweenListItems - MarkdownProseRun.Spacing.betweenBlocks
+                                : 0)
                         }
                     }
                 }
@@ -597,10 +607,12 @@ enum MarkdownBlock: Equatable {
     case heading(level: Int, text: String)
     case paragraph(String)
     case quote([MarkdownQuoteLine])
-    case unorderedList([String])
+    /// `depth` is how far the list is nested: 0 at the left edge, 1 for a
+    /// sub-list indented under an item of the list above it, and so on.
+    case unorderedList([String], depth: Int = 0)
     /// `start` is the number written on the first item, as CommonMark
     /// numbers a list, so one split by a code block carries on.
-    case orderedList([String], start: Int = 1)
+    case orderedList([String], start: Int = 1, depth: Int = 0)
     case table(headers: [String], alignments: [MarkdownTableAlignment], rows: [[String]])
     case image(url: String, alt: String)
     case math(String)
@@ -654,8 +666,11 @@ enum MarkdownSelectionFormatter {
             }
 
             if index > 0 {
+                // A nested list goes on the next line, as an outline's items
+                // do; other blocks are a blank line apart.
+                let inOutline = MarkdownProseRun.continuesOutline(block, after: blocks[index - 1])
                 result.append(NSAttributedString(
-                    string: "\n\n",
+                    string: inOutline ? "\n" : "\n\n",
                     attributes: [
                         .font: bodyFont,
                         .foregroundColor: textColor
@@ -692,10 +707,11 @@ enum MarkdownSelectionFormatter {
         case .paragraph(let text):
             return inline(text, references: references, font: bodyFont, textColor: textColor, linkColor: linkColor)
 
-        case .unorderedList(let items):
+        case .unorderedList(let items, let depth):
             return list(
                 items,
                 ordered: false,
+                depth: depth,
                 references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
@@ -704,11 +720,12 @@ enum MarkdownSelectionFormatter {
                 chatTextSize: chatTextSize
             )
 
-        case .orderedList(let items, let start):
+        case .orderedList(let items, let start, let depth):
             return list(
                 items,
                 ordered: true,
                 start: start,
+                depth: depth,
                 references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
@@ -728,15 +745,24 @@ enum MarkdownSelectionFormatter {
                 if index > 0 {
                     result.append(NSAttributedString(string: "\n"))
                 }
+                let lineStart = result.length
                 let marker = String(repeating: "│ ", count: max(line.depth, 1))
-                result.append(NSAttributedString(
-                    string: marker,
-                    attributes: [
-                        .font: bodyFont,
-                        .foregroundColor: quoteColor
-                    ]
-                ))
+                let markerAttributes: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont,
+                    .foregroundColor: quoteColor
+                ]
+                result.append(NSAttributedString(string: marker, attributes: markerAttributes))
                 result.append(inline(line.text, references: references, font: quoteFont, textColor: quoteColor, linkColor: linkColor))
+                // A quote line's wrapped lines start under its text, as a
+                // list item's do, not under its bar.
+                let style = NSMutableParagraphStyle()
+                style.lineSpacing = MarkdownProseRun.Spacing.paragraphLineSpacing
+                style.headIndent = ceil((marker as NSString).size(withAttributes: markerAttributes).width)
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: style,
+                    range: NSRange(location: lineStart, length: result.length - lineStart)
+                )
             }
             return result
 
@@ -749,6 +775,7 @@ enum MarkdownSelectionFormatter {
         _ items: [String],
         ordered: Bool,
         start: Int = 1,
+        depth: Int,
         references: MarkdownReferenceContext,
         bodyFont: UIFont,
         textColor: UIColor,
@@ -757,27 +784,34 @@ enum MarkdownSelectionFormatter {
         chatTextSize: ChatTextAppearance
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let markerFont = bodyFont.withTraits(.traitBold)
+        let markerFont = MarkdownProseRun.listMarkerFont(chatTextSize: chatTextSize)
 
         for (index, item) in items.enumerated() {
             if index > 0 {
                 result.append(NSAttributedString(string: "\n"))
             }
+            let itemStart = result.length
 
+            // A hanging indent, as a prose run draws its lists: the marker
+            // in a gutter, and the item's wrapped lines under its text
+            // rather than back at the left edge.
             let task = MarkdownParser.taskItem(item)
             let marker: String
             if let task {
-                marker = task.complete ? "☑ " : "☐ "
+                marker = task.complete ? "☑" : "☐"
             } else {
-                marker = ordered ? "\(start + index). " : "• "
+                marker = ordered ? "\(start + index)." : "•"
             }
-            result.append(NSAttributedString(
-                string: marker,
-                attributes: [
-                    .font: markerFont,
-                    .foregroundColor: markerColor
-                ]
-            ))
+            let (prefix, style) = MarkdownProseRun.listItemLayout(
+                marker: marker,
+                ordered: ordered,
+                depth: depth,
+                markerFont: markerFont,
+                markerColor: markerColor,
+                lineSpacing: MarkdownProseRun.Spacing.paragraphLineSpacing,
+                chatTextSize: chatTextSize
+            )
+            result.append(prefix)
             result.append(inline(
                 task?.text ?? item,
                 references: references,
@@ -785,6 +819,11 @@ enum MarkdownSelectionFormatter {
                 textColor: textColor,
                 linkColor: linkColor
             ))
+            result.addAttribute(
+                .paragraphStyle,
+                value: style,
+                range: NSRange(location: itemStart, length: result.length - itemStart)
+            )
         }
         return result
     }
@@ -837,6 +876,14 @@ enum MarkdownSelectionFormatter {
 }
 
 extension MarkdownBlock {
+    /// A list's nesting depth, or nil for any other block.
+    var listDepth: Int? {
+        switch self {
+        case .unorderedList(_, let depth), .orderedList(_, _, let depth): depth
+        default: nil
+        }
+    }
+
     var isSelectableFlowBlock: Bool {
         switch self {
         case .heading, .paragraph, .quote, .unorderedList, .orderedList:
@@ -945,10 +992,11 @@ struct MarkdownBlockView: View {
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
-        case .unorderedList(let items):
+        case .unorderedList(let items, let depth):
             MarkdownList(
                 items: items,
                 ordered: false,
+                depth: depth,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 selectionCoordinator: selectionCoordinator,
@@ -956,11 +1004,12 @@ struct MarkdownBlockView: View {
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
-        case .orderedList(let items, let start):
+        case .orderedList(let items, let start, let depth):
             MarkdownList(
                 items: items,
                 ordered: true,
                 start: start,
+                depth: depth,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 selectionCoordinator: selectionCoordinator,
@@ -1439,6 +1488,8 @@ private struct MarkdownList: View {
     let items: [String]
     let ordered: Bool
     var start = 1
+    /// A nested list moves in a level per depth, as the text views do.
+    var depth = 0
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
@@ -1492,6 +1543,7 @@ private struct MarkdownList: View {
                 }
             }
         }
+        .padding(.leading, CGFloat(depth) * MarkdownProseRun.nestedListIndent(chatTextSize: chatTextSize))
     }
 }
 
@@ -3546,6 +3598,18 @@ enum MarkdownParser {
     private static func parseBlocks(_ lines: [String], recognizesGatewayMedia: Bool) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         var index = 0
+        // The indents of the lists open around the current one, outermost
+        // first, for nesting a list under the item above it.
+        var listIndents: [Int] = []
+        // The next number of the numbered list open at each depth of the
+        // outline, so a parent list picks up after its sub-list.
+        // A "1." list and a "1)" list are different lists, so the
+        // delimiter rides along.
+        var outlineNumbers: [Int: (next: Int, delimiter: Character?)] = [:]
+        func noteOutline(depth: Int, next: (next: Int, delimiter: Character?)?) {
+            outlineNumbers = outlineNumbers.filter { $0.key < depth }
+            outlineNumbers[depth] = next
+        }
 
         while index < lines.count {
             let line = lines[index]
@@ -3582,6 +3646,8 @@ enum MarkdownParser {
                     index += 1
                 }
                 if index < lines.count { index += 1 }
+                // The block appended here ends the outline: the next list
+                // sees no list above it and starts over.
                 if directive == "columns" { blocks.append(.columns(sections.map { $0.joined(separator: "\n") }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })) }
                 else { blocks.append(.callout(kind: directive, text: sections.flatMap { $0 }.joined(separator: "\n"))) }
                 continue
@@ -3609,6 +3675,11 @@ enum MarkdownParser {
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: recognizesGatewayMedia))
                     }
                 }
+                // A directive ends the outline, the plugin's hidden board
+                // line too, which adds no block: the lists after it start
+                // at the left edge from their written number.
+                listIndents = []
+                outlineNumbers = [:]
                 index += 1
                 continue
             }
@@ -3616,6 +3687,7 @@ enum MarkdownParser {
             // A line holding `MEDIA:` tags splits into media and the text
             // around them (#439); a line of only Hermes directives drops.
             if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
+                let blocksBefore = blocks.count
                 for segment in segments {
                     switch segment {
                     case .media(let mediaPath, let alt):
@@ -3625,6 +3697,14 @@ enum MarkdownParser {
                         // recurse back into this branch.
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: false))
                     }
+                }
+                // A line of only Hermes directives adds no block, and ends
+                // the outline as the hidden board line does. A line that
+                // still draws an item keeps it (a list's later items never
+                // reach here: the list takes them, tags and all).
+                if blocks.count == blocksBefore {
+                    listIndents = []
+                    outlineNumbers = [:]
                 }
                 index += 1
                 continue
@@ -3652,18 +3732,35 @@ enum MarkdownParser {
             }
 
             if unorderedItem(trimmed) != nil {
+                let indent = listIndent(line)
+                if blocks.last?.listDepth == nil { outlineNumbers = [:] }
+                let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
                 var items: [String] = []
                 // An item that is a Desktop card or a preview is the block's (#1522).
+                // An item indented deeper or shallower is a nested list's.
                 while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      sameListLevel(lines[index], indent: indent),
                       items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
-                blocks.append(.unorderedList(items))
+                blocks.append(.unorderedList(items, depth: depth))
+                noteOutline(depth: depth, next: nil)
                 continue
             }
 
             if orderedItem(trimmed) != nil {
-                let start = orderedNumber(trimmed)
+                var start = orderedNumber(trimmed)
+                let indent = listIndent(line)
+                if blocks.last?.listDepth == nil { outlineNumbers = [:] }
+                let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
+                // Back out of a sub-list, the parent list goes on counting
+                // ("1. A", its sub-list, "1. B" numbers B 2), as one list
+                // with the sub-list inside an item would.
+                if let resumed = outlineNumbers[depth], resumed.delimiter == orderedDelimiter(trimmed),
+                   (blocks.last?.listDepth ?? -1) > depth {
+                    start = resumed.next
+                }
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      sameListLevel(lines[index], indent: indent),
                       items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) {
                     let itemLine = lines[index]
                     items.append(item); index += 1
@@ -3677,7 +3774,8 @@ enum MarkdownParser {
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
                     if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
-                blocks.append(.orderedList(items, start: start))
+                blocks.append(.orderedList(items, start: start, depth: depth))
+                noteOutline(depth: depth, next: (start + items.count, orderedDelimiter(trimmed)))
                 continue
             }
 
@@ -3829,6 +3927,33 @@ enum MarkdownParser {
         let characters = value.filter { !$0.isWhitespace }
         return characters.count >= 3 && Set(characters).count == 1 && ["-", "*", "_"].contains(characters.first ?? " ")
     }
+    /// A list item line's indent in columns, a tab counting as four.
+    private static func listIndent(_ line: String) -> Int {
+        var columns = 0
+        for character in line {
+            if character == " " { columns += 1 } else if character == "\t" { columns += 4 - columns % 4 } else { break }
+        }
+        return columns
+    }
+    /// Whether an item line belongs to the list whose items start at
+    /// `indent`: within a column of it. Two or more columns deeper is a
+    /// nested list, as a sub-list under "- " or "1. " is written; two or
+    /// more shallower goes back out to an outer list.
+    private static func sameListLevel(_ line: String, indent: Int) -> Bool {
+        abs(listIndent(line) - indent) < 2
+    }
+    /// How deep a list starting at `indent` is nested. Lists nest only
+    /// directly after another list (blank lines between allowed); anything
+    /// else in between starts over at the left edge. A list indented under
+    /// the one above goes a level in, and one back at an outer list's
+    /// indent goes back to that level.
+    private static func listDepth(indent: Int, after previous: MarkdownBlock?, stack: inout [Int]) -> Int {
+        if previous?.listDepth == nil { stack = [] }
+        while let last = stack.last, indent <= last - 2 { stack.removeLast() }
+        if let last = stack.last, abs(indent - last) < 2 { return stack.count - 1 }
+        stack.append(indent)
+        return stack.count - 1
+    }
     private static func unorderedItem(_ value: String) -> String? {
         guard value.count > 2, ["-", "*", "+"].contains(value.first ?? " "), value.dropFirst().first == " " else { return nil }
         return String(value.dropFirst(2))
@@ -3843,10 +3968,10 @@ enum MarkdownParser {
         Int(value.prefix { $0.isASCII && $0.isNumber }) ?? 1
     }
     /// Whether `line` carries on the ordered list after its item `previous`:
-    /// the same leading whitespace and the same "." or ")" after the number.
+    /// the same list level (see `sameListLevel`) and the same "." or ")"
+    /// after the number.
     private static func continuesOrderedList(_ line: String, from previous: String) -> Bool {
-        let indent = line.prefix { $0 == " " || $0 == "\t" }
-        guard indent == previous.prefix(while: { $0 == " " || $0 == "\t" }) else { return false }
+        guard sameListLevel(line, indent: listIndent(previous)) else { return false }
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         guard orderedItem(trimmed) != nil else { return false }
         return orderedDelimiter(trimmed) == orderedDelimiter(previous.trimmingCharacters(in: .whitespaces))

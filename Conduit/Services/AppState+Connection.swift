@@ -1039,6 +1039,7 @@ extension AppState {
                 baseURL: connection?.baseUrl ?? savedDashboardRegistry.dashboard(with: dashboardID)?.normalizedURL
             )
             KeychainHelper.clearConnection(dashboardID: dashboardID)
+            forgetLocationHostPass(dashboardID: dashboardID)
             keepUsernameForNextSignIn(dashboardID: dashboardID)
             clearSavedPassword(dashboardID: dashboardID)
             // Log to Hermes events waiting for it belong to the signed-out user.

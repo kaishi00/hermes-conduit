@@ -5,7 +5,8 @@
 //  Hermes is waiting on you (issue 1705): reads every profile's waits from
 //  the plugin (NeedsYouStore), and opens a waiting chat at its card. The
 //  list, the banner and the chips only open: an approval is answered on its
-//  chat's own card, which shows the whole command.
+//  chat's own card, which shows the whole command. A question whose chat
+//  has no card gets the one its row carries (issue 2556).
 //
 
 import Foundation
@@ -53,6 +54,51 @@ extension AppState {
             }
         }
         needsYou.forget(profilesOtherThan: Set(needsYouProfiles))
+        showWaitingQuestionCards()
+    }
+
+    /// Draws a listed question's card in the chat on screen when it has
+    /// none (issue 2556). Hermes draws no card when the turn runs in
+    /// another Hermes process than the one Conduit is attached to (a
+    /// scheduled job's turn in a Bot Chat), and the plugin's card reached
+    /// the chat only from a tapped notification, which an open Conduit
+    /// never gets. The card is the notification's, answered through the
+    /// relay; Hermes' own card waiting on the same question, or the same
+    /// card already there (answered too), keeps it out: one question is one
+    /// card. An older card of Hermes', answered or run out, that asked the
+    /// same thing doesn't: the question asked again needs its card.
+    func showWaitingQuestionCards() {
+        guard needsYou.items.contains(where: { $0.card != nil }),
+              // A transcript still being restored takes it afterwards.
+              chatResumeRestorationRequest == nil,
+              let openID = activeSessionId, !openID.isEmpty else { return }
+        for item in needsYou.items where item.roomID == nil {
+            guard let card = item.card,
+                  let key = Self.pendingDecisionEvictionKey(for: card),
+                  let pushed = Self.notificationClarifyActivity(for: card),
+                  !needsYou.cardsHermesDrew.contains(pushed.requestId),
+                  isOpenChat(item),
+                  !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
+            if Self.hermesCardHoldsQuestion(pushed, in: messages) {
+                // Its answer leaves the wait listed until the next read.
+                needsYou.noteHermesDrewCard(for: pushed.requestId)
+                continue
+            }
+            let openIDs = presentationCacheSessionIDs(for: openID)
+            let profile = presentationProfile(for: openID)
+            recordNotificationDecision(
+                card,
+                sessionIDs: item.sessionIDs + openIDs,
+                cacheSessionIDs: openIDs,
+                profile: profile
+            )
+            messages = sessionPresentationCache.merge(
+                messages,
+                profile: profile,
+                sessionIDs: openIDs,
+                includePendingClarifications: true
+            )
+        }
     }
 
     /// Reads while Conduit is on screen, every `pollInterval` seconds. The
@@ -70,7 +116,8 @@ extension AppState {
         Task { @MainActor [weak self] in await self?.refreshNeedsYou() }
     }
 
-    /// Whether a wait is in the chat on screen, whose card is there, or in
+    /// Whether a wait is in the chat on screen, whose card is there (a
+    /// question's drawn from its row when Hermes drew none), or in
     /// the group room on screen, whose card answers it (issue 2064).
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
         if let roomID = item.roomID {

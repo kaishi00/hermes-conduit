@@ -10,6 +10,15 @@
 import Foundation
 
 extension AppState {
+    /// The profile whose store keeps the open chat's checklist ticks and
+    /// card taps: where its turns run, so its next turn hears them. A Bot
+    /// Chat runs in its bot's profile whatever profile is in use (issue
+    /// 2520); every other chat, a workstream's included, in the one in use.
+    var activeChatStoreProfile: String {
+        guard let sessionID = activeSessionId, !sessionID.isEmpty else { return activeProfile }
+        return botChatStoreProfile(forSessionID: sessionID) ?? activeProfile
+    }
+
     /// The open chat's checklists on the host, or nil where they stay on
     /// this phone: a plugin without the route, the saved copy, a chat on
     /// its way.
@@ -17,7 +26,7 @@ extension AppState {
         guard notifierPlugin.reports(RichChecklistContext.capability), offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty else { return nil }
-        let profile = activeProfile
+        let profile = activeChatStoreProfile
         let dashboardID = activeDashboardID
         let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
         return RichChecklistContext(
@@ -54,7 +63,7 @@ extension AppState {
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty,
               let chat = richCardChat else { return nil }
-        let profile = activeProfile
+        let profile = activeChatStoreProfile
         let dashboardID = activeDashboardID
         let tap: (@MainActor ([String: Any], String) async throws -> Void)?
         if notifierPlugin.reports(RichCardActionContext.capability) {
