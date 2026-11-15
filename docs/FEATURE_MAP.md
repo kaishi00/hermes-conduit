@@ -6850,7 +6850,7 @@ rule that every job of a candidate's dispatched Nightly passes
 **Code**
 - Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
 - Nightly: `.github/workflows/nightly.yml`, `scripts/tests/test_nightly_rerun.py` (NightlyOvernightTests: the backup cron's skip, the title, the cron after the timer)
-- Overnight timer: `scripts/nightly-timer/README.md`, `scripts/nightly-timer/conduit-nightly-dispatch.sh`, `scripts/nightly-timer/conduit-nightly.timer`, `scripts/nightly-timer/conduit-nightly.service`, installed on the Hermes host 10.1.10.52
+- Overnight timer: `scripts/nightly-timer/README.md`, `scripts/nightly-timer/conduit-nightly-dispatch.sh`, `scripts/nightly-timer/conduit-nightly.timer`, `scripts/nightly-timer/conduit-nightly.service`, installed on the Hermes host 10.1.10.52; `scripts/tests/test_nightly_rerun.py` (NightlyDispatchScriptTests: the token reaches curl on stdin, one 000 per failed attempt, the response temp file is removed)
 - Docs: `docs/CI.md`, `docs/RELEASE_WORKFLOW.md`
 
 **Rulings**

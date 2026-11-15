@@ -248,8 +248,9 @@ systemd timer on the Hermes host, with `nightly: true`, which titles the run
 The cron moved to 09:47 UTC, after the timer in EDT and EST alike, as a
 backup: its plan job skips the run when a dispatched Nightly ran on `main` in
 the last 20 hours (cron runs don't count, so yesterday's skipped backup can't
-hide a missed timer), and otherwise runs with a warning: that the timer
-missed (host down or token expired), or, when the run lookup itself fails,
+hide a missed timer), and otherwise runs with a warning: that no dispatch
+reached GitHub (the timer's journal says why: host down, token expired, or
+the dispatch refused), or, when the run lookup itself fails,
 that it's unknown whether the timer ran.
 
 When macOS arm64 capacity runs short, GitHub gives up on a queued job after
