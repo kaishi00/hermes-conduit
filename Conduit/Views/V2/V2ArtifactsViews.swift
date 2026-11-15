@@ -204,8 +204,13 @@ private struct ArtifactsList: View {
     @State private var savedGeneration = 0
     /// The artifact whose note is being written, and the note.
     @State private var noting: ArtifactItem?
+    /// The store the note editor was opened on, so a profile or dashboard
+    /// switch while it's up can't write the note somewhere else.
+    @State private var notingStore: (profile: String, dashboard: UUID?)?
     @State private var noteText = ""
     @State private var saveFailure: String?
+    /// Whether `saveFailure` is from Remove from Saved.
+    @State private var removeFailed = false
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -292,14 +297,20 @@ private struct ArtifactsList: View {
                 set: { noteText = String($0.prefix(ArtifactPinsClient.maxNoteLength)) }
             ))
             Button("Save") {
-                if let item = noting { Task { await save(item, note: noteText) } }
+                if let item = noting, let store = notingStore {
+                    if store.dashboard == appState.activeDashboardID {
+                        Task { await save(item, note: noteText, profile: store.profile) }
+                    } else {
+                        noting = nil
+                    }
+                }
             }
             Button("Cancel", role: .cancel) { noting = nil }
         } message: {
             Text("A few words that show under it in Saved.")
         }
         .alert(
-            Text("Couldn't Save"),
+            removeFailed ? Text("Couldn't Remove from Saved") : Text("Couldn't Save"),
             isPresented: Binding(get: { saveFailure != nil }, set: { if !$0 { saveFailure = nil } })
         ) {
             Button("OK", role: .cancel) { saveFailure = nil }
@@ -512,6 +523,14 @@ private struct ArtifactsList: View {
                 Button("Try Again") { Task { await reloadSaved() } }
             }
             .frame(maxWidth: .infinity, minHeight: 280)
+        } else if items.isEmpty, savedKey == nil, !appState.supportsArtifactPins, !appState.isConnected,
+                  !appState.isRecoveringConnection {
+            // Nothing kept, and nothing can be read until Conduit connects.
+            unavailable(
+                title: Text("Saved artifacts couldn't load"),
+                detail: Text("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment."),
+                symbol: "wifi.slash"
+            )
         } else if items.isEmpty, savedKey?.sameStores(as: currentSavedKey) != true {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 200)
@@ -729,6 +748,7 @@ private struct ArtifactsList: View {
             if let saved = savedItem(item) {
                 Button {
                     noteText = saved.note ?? ""
+                    notingStore = (saved.otherProfile ?? appState.activeProfile, appState.activeDashboardID)
                     noting = saved
                 } label: {
                     if saved.note == nil {
@@ -1120,32 +1140,29 @@ private struct ArtifactsList: View {
         savedFailure = nil
     }
 
-    /// The saved row for `item`, from the profile its store reads.
+    /// The saved row for `item`, as Saved lists it: tagged with the store
+    /// that holds the pin, so Edit Note and Remove act there even when the
+    /// list showed it from another profile.
     private func savedItem(_ item: ArtifactItem) -> ArtifactItem? {
-        guard savedIDs.contains(item.id) else { return nil }
-        let profile = item.otherProfile ?? appState.activeProfile
-        for (index, source) in currentKey.sources.enumerated() where source.profile == profile {
-            if index < savedRows.count, let found = savedRows[index]?.first(where: { $0.id == item.id }) {
-                var found = found
-                found.otherProfile = item.otherProfile
-                found.otherProfileLabel = item.otherProfileLabel
-                found.isBotChat = item.isBotChat
-                return found
-            }
-        }
-        return nil
+        guard savedKey?.sameStores(as: currentSavedKey) == true else { return nil }
+        return ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).first { $0.id == item.id }
     }
 
     /// Saves `item` in the profile its store reads (or changes its note),
     /// then reads Saved again so every list shows it.
-    private func save(_ item: ArtifactItem, note: String?) async {
-        let profile = item.otherProfile ?? appState.activeProfile
+    private func save(_ item: ArtifactItem, note: String?, profile store: String? = nil) async {
+        let profile = store ?? item.otherProfile ?? appState.activeProfile
         let dashboard = appState.activeDashboardID
         noting = nil
         do {
-            _ = try await appState.artifactPinsClient.save(item, note: note, profile: profile)
+            let saved = try await appState.artifactPinsClient.save(item, note: note, profile: profile)
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.success()
+            // Shown at once, and kept if reading Saved again fails.
+            changeSavedRows(profile: profile) { rows in
+                rows.removeAll { $0.id == saved.id }
+                rows.insert(saved, at: 0)
+            }
             appState.screenAnswers(profile: profile).noteWrite(ArtifactPinsClient.listPath(profile: profile))
             await reloadSaved()
         } catch is CancellationError {
@@ -1153,6 +1170,7 @@ private struct ArtifactsList: View {
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.error()
+            removeFailed = false
             saveFailure = UserFacingError.message(for: error)
         }
     }
@@ -1164,6 +1182,7 @@ private struct ArtifactsList: View {
             try await appState.artifactPinsClient.remove(item, profile: profile)
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.success()
+            changeSavedRows(profile: profile) { rows in rows.removeAll { $0.id == item.id } }
             appState.screenAnswers(profile: profile).noteWrite(ArtifactPinsClient.listPath(profile: profile))
             await reloadSaved()
         } catch is CancellationError {
@@ -1171,7 +1190,19 @@ private struct ArtifactsList: View {
         } catch {
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.error()
+            removeFailed = true
             saveFailure = UserFacingError.message(for: error)
+        }
+    }
+
+    /// A save or removal the host took, applied to every read store of
+    /// `profile` before Saved is read again.
+    private func changeSavedRows(profile: String, _ change: (inout [ArtifactItem]) -> Void) {
+        guard savedKey?.sameStores(as: currentSavedKey) == true else { return }
+        for (index, source) in currentKey.sources.enumerated() where source.profile == profile && index < savedRows.count {
+            guard var rows = savedRows[index] else { continue }
+            change(&rows)
+            savedRows[index] = rows
         }
     }
 

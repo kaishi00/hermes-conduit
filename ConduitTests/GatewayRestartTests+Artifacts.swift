@@ -363,8 +363,9 @@ extension GatewayRestartTests {
     }
 
     /// Saved lists what each store covers: a store read for some chats
-    /// only theirs. The one saved last comes first, each artifact once,
-    /// another profile's under its name, and the search reads notes too.
+    /// only theirs. The one saved last comes first, each artifact once (its
+    /// newest pin, from the store that holds it), another profile's under
+    /// its name, and the search reads notes too.
     func testSavedListsWhatTheListsStoresCover() throws {
         func saved(_ path: String, session: String, at: Double, note: String? = nil,
                    kind: String = "image") throws -> ArtifactItem {
@@ -374,15 +375,19 @@ extension GatewayRestartTests {
         }
         let work = [try saved("/a.png", session: "s1", at: 10), try saved("/b.png", session: "s2", at: 30, note: "wedding")]
         let atlas = [try saved("/c.png", session: "bot", at: 20), try saved("/d.png", session: "other", at: 40),
-                     try saved("/a.png", session: "bot", at: 50)]
+                     try saved("/a.png", session: "bot", at: 50, note: "lisbon")]
         let sources = [
             ArtifactSource(profile: "work", sessionIDs: []),
             ArtifactSource(profile: "atlas", sessionIDs: ["bot"], label: "Atlas", isBotChat: true),
         ]
         let items = ArtifactPinsClient.items(sources: sources, saved: [work, atlas])
-        XCTAssertEqual(items.map(\.path), ["/b.png", "/c.png", "/a.png"])
+        XCTAssertEqual(items.map(\.path), ["/a.png", "/b.png", "/c.png"])
         XCTAssertEqual(items.first { $0.path == "/c.png" }?.otherProfile, "atlas")
-        XCTAssertEqual(items.first { $0.path == "/a.png" }?.otherProfile, nil, "the first store's, once")
+        let both = try XCTUnwrap(items.first { $0.path == "/a.png" })
+        XCTAssertEqual(both.otherProfile, "atlas", "the newest pin, from the store that holds it")
+        XCTAssertEqual(both.note, "lisbon")
+        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "LISBON").map(\.path),
+                       ["/a.png"], "the search reads the newest pin's note")
         XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "WEDD").map(\.path),
                        ["/b.png"])
         XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [nil, atlas]).map(\.path), ["/a.png", "/c.png"],
@@ -393,6 +398,35 @@ extension GatewayRestartTests {
                        [["/1.png"], ["/2.pdf"], ["/3.png", "/4.png"]], "drawn in the order saved")
         let chat = [ArtifactSource(profile: "work", sessionIDs: ["s1"])]
         XCTAssertEqual(ArtifactPinsClient.items(sources: chat, saved: [work]).map(\.path), ["/a.png"])
+    }
+
+    /// Saved opens on the set it read last time, offline too: a readable
+    /// answer is kept per profile and read back, a malformed one isn't.
+    func testSavedKeepsTheSetItReadLast() async throws {
+        var store: [String: [String: Any]] = [:]
+        let answers = KeptAnswers(
+            kept: { store[$0] },
+            keep: { route, _, read in
+                let answer = try await read()
+                store[route] = answer
+                return answer
+            }
+        )
+        var answer: [String: Any] = ["ok": true, "pins": [artifactRow(["note": "trip map", "pinned_at": 1_760_000_500.0])]]
+        let client = ArtifactPinsClient { _, _, _ in answer }
+        XCTAssertNil(ArtifactPinsClient.kept(profile: "work", in: answers))
+
+        _ = try await client.list(profile: "work", keptIn: answers)
+        XCTAssertEqual(ArtifactPinsClient.kept(profile: "work", in: answers)?.map(\.note), ["trip map"])
+        XCTAssertNil(ArtifactPinsClient.kept(profile: "atlas", in: answers), "another profile's set is its own")
+
+        answer = ["ok": true]
+        do {
+            _ = try await client.list(profile: "atlas", keptIn: answers)
+            XCTFail("a malformed answer is refused")
+        } catch {}
+        XCTAssertNil(ArtifactPinsClient.kept(profile: "atlas", in: answers), "and never kept")
+        XCTAssertEqual(ArtifactPinsClient.kept(profile: "work", in: answers)?.count, 1)
     }
 
     /// Saving sends the row as the list gave it, in the store's profile,
@@ -422,6 +456,7 @@ extension GatewayRestartTests {
 
         try await client.remove(item, profile: "default")
         XCTAssertEqual(asked[1].1, "DELETE")
-        XCTAssertEqual(asked[1].0, "\(ArtifactPinsClient.path)?id=\(DashboardPath.encodedQueryComponent("/root/out/a b.png")!)")
+        let encoded = try XCTUnwrap(DashboardPath.encodedQueryComponent("/root/out/a b.png"))
+        XCTAssertEqual(asked[1].0, "\(ArtifactPinsClient.path)?id=\(encoded)")
     }
 }
