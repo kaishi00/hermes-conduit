@@ -2165,6 +2165,17 @@ final class AppStateChatResumeTests: XCTestCase {
         task.cancel()
         _ = harness.appState.requestOpenSession("unlisted-chat")
         XCTAssertEqual(harness.appState.activeSessionTitle, "Chesapeake Virginia restaurant recommendations")
+
+        // A saved row opens by its stored id.
+        harness.appState.sessions.append(session("runtime-3", title: "Garden plans", storedID: "stored-3"))
+        _ = harness.appState.requestOpenSession("stored-3")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Garden plans")
+
+        // Without a client the open stops before it switches chats: the
+        // chat on screen keeps its title.
+        harness.appState.client = nil
+        _ = harness.appState.requestOpenSession("open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Garden plans")
     }
 
     func testRapidExplicitSessionSwitchingSettlesTheLatestSession() async {

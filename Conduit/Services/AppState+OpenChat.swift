@@ -929,13 +929,18 @@ extension AppState {
     /// new one cut to that width until the push ended (iPhone 16 Pro Max,
     /// 2026-11-15). Only a listed chat of this profile that isn't a bot's,
     /// the ones the open itself names the same way.
+    /// Without a client the open stops before it switches chats, so the
+    /// chat on screen keeps its title. A saved row opens by its stored id,
+    /// found the way the open finds it.
     private func nameChatBeingOpened(_ sessionId: String) {
-        guard botConversationProfile(for: sessionId) == nil,
-              let listed = (sessions + cronSessions).first(where: {
+        let listedChats = sessions + cronSessions
+        guard client != nil,
+              botConversationProfile(for: sessionId) == nil,
+              let listed = listedChats.first(where: {
                   $0.id == sessionId || $0.alternateIds.contains(sessionId)
-              }),
+              }) ?? listedChats.first(where: { $0.storedSessionId == sessionId }),
               sessionBelongsToProfile(listed, profile: activeProfile) else { return }
-        updateActiveSessionTitle(for: sessionId)
+        updateActiveSessionTitle(for: listed.id)
     }
 
     /// `onFailure` runs when the open failed (not when a newer navigation

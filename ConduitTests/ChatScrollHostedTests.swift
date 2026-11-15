@@ -74,7 +74,7 @@ final class ChatScrollHostedTests: XCTestCase {
         }
     }
 
-    private func mount(_ messages: [ChatMessage], composerRests: Bool = false) throws -> Mounted {
+    private func mount(_ messages: [ChatMessage], composerRests: Bool = false, inNavigationStack: Bool = false) throws -> Mounted {
         let suiteName = "chat-scroll-hosted"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
@@ -85,7 +85,7 @@ final class ChatScrollHostedTests: XCTestCase {
             rootView: Self.chat(appState, composerRests: composerRests, textSize: DormancyHarnessEnvironment.pinnedChatTextSize)
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
-        window.rootViewController = host
+        window.rootViewController = inNavigationStack ? UINavigationController(rootViewController: host) : host
         window.makeKeyAndVisible()
         self.window = window
         self.host = host
@@ -352,6 +352,19 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertGreaterThan(mounted.scrollView.contentSize.height, mounted.scrollView.bounds.height * 3)
         assertAtLatest(mounted, "a long chat opens on its latest message")
         XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+
+    /// The header finds the scroll view under it by itself only once a
+    /// push has ended; named by the transcript, it has its soft edge from
+    /// the push's first frame (V2, the floating composer).
+    func testTheTranscriptNamesItselfToTheHeaderOnlyUnderAFloatingComposer() throws {
+        guard #available(iOS 26.0, *) else { throw XCTSkip("The soft edge is iOS 26's") }
+        let floating = try mount(Self.transcript(0..<6), composerRests: true, inNavigationStack: true)
+        XCTAssertTrue(floating.host.contentScrollView(for: .top) === floating.scrollView)
+        window?.isHidden = true
+
+        let classic = try mount(Self.transcript(0..<6), composerRests: false, inNavigationStack: true)
+        XCTAssertFalse(classic.host.contentScrollView(for: .top) === classic.scrollView)
     }
 
     func testNewMessagesAndStreamingStayOnTheLatestMessage() throws {
