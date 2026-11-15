@@ -209,14 +209,16 @@ class WorkflowContractTests(unittest.TestCase):
         and its plan job cancels the PR's older runs first, so the new run
         never waits for a cancelled Smoke job to wind down (Eric, 2026-11-02).
         A fork PR, whose token can't cancel, keeps cancel-in-progress per PR;
-        a push keeps a group per commit, so every merge gets a full run."""
+        a branch's pushes share a group by ref without cancelling, so one run
+        goes on and only the newest push waits (Eric, 2026-11-15)."""
         text = self._workflow_text()
         same_repo = ("github.event_name == 'pull_request' && "
                      "github.event.pull_request.head.repo.full_name == github.repository")
         self.assertIn(
             f"group: ci-${{{{ github.workflow }}}}-${{{{ ({same_repo}) && format('run-{{0}}', github.run_id)"
-            " || github.event.pull_request.number || github.sha }}", text)
-        self.assertIn("cancel-in-progress: true", text)
+            " || github.event.pull_request.number || github.ref }}", text)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", text,
+                      "a fork PR cancels its older run; a push's run under way finishes")
         plan = self._job_text("plan")
         self.assertIn("actions: write", plan)
         first_step = plan.index("- name: Cancel this PR's older runs")

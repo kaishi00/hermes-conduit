@@ -35,8 +35,9 @@ name: CI
 # and runner queueing, not test time, was what made the three-job CI v4 shape
 # slow. A PR's superseded runs are cancelled: a same-repository PR's by the
 # newer run's plan job, so it doesn't wait for them to wind down, a fork PR's
-# by its concurrency group. A newer push never cancels an
-# older one's run, so back-to-back merges overlap and each adds one macOS job.
+# by its concurrency group. A branch's pushes share one group without
+# cancelling: one run goes on, the newest push waits, and a push between them
+# gets no run of its own (Eric, 2026-11-15).
 
 on:
   push:
@@ -47,10 +48,14 @@ on:
     # at once), on its own TestFlight builds until Eric has tested each stage.
     branches: [main, linked-rooms, all-live]
 
-# A PR's newer push supersedes its older run. A push is grouped by its own
-# commit instead, so every merge gets a full run: branch protection does not
-# require PRs to be up to date with main, so this run is what catches two PRs
-# that pass alone but break together.
+# A PR's newer push supersedes its older run. A branch's pushes share a group
+# by its ref, without cancel-in-progress: the run under way finishes, the
+# newest push waits, and GitHub cancels a waiting push's run when a newer one
+# arrives. Branch protection does not require PRs to be up to date with main,
+# so the waiting run, which holds every merge since the last one, is what
+# catches two PRs that pass alone but break together. A run per merge held
+# up to 6 of the 5 macOS runners on a busy evening, queueing 85 minutes, and
+# the build cache PRs restore fell 14 merges behind (Eric, 2026-11-15).
 #
 # A PR from this repository gets a group of its own run, and its plan job
 # cancels the older runs (Cancel this PR's older runs): in a shared group the
@@ -58,8 +63,8 @@ on:
 # (Eric, 2026-11-02). A fork's token can't cancel runs, so a fork PR keeps the
 # shared group and cancel-in-progress.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && format('run-{0}', github.run_id) || github.event.pull_request.number || github.sha }}
-  cancel-in-progress: true
+  group: ci-${{ github.workflow }}-${{ (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository) && format('run-{0}', github.run_id) || github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read

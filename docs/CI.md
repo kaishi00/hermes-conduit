@@ -226,13 +226,19 @@ cancelled Smoke job takes to wind down (2026-11-02). It cancels only runs
 whose one PR is this one (number and base), so a branch with PRs into both
 `main` and `linked-rooms` (or `all-live`) never cancels the other PR's run. A fork PR, whose
 token can't cancel runs, keeps one group per PR with `cancel-in-progress`.
-A newer push to main never cancels an older one's run: each merge
-gets its own run, because branch protection does not require PRs to be up to
-date with main, and the main run is what catches two PRs that are green alone
-but break together (within the smoke set; the nightly run catches the rest).
-Whoever merged the breaking PR fixes main forward. Any run on main that
-overlaps another run adds one macOS job, so up to five PR or push runs can run
-side by side before anything queues. "Require branches to be up to date
+Pushes to a branch share one concurrency group without cancelling (Eric,
+2026-11-15): the run under way finishes, the newest push waits, and GitHub
+cancels a waiting push's run when a newer push arrives, so main has at most
+one run going and one waiting. Branch protection does not require PRs to be up
+to date with main, and main's run is what catches two PRs that are green alone
+but break together (within the smoke set; the nightly run catches the rest);
+the waiting run holds every merge since the last one, so a break shows there,
+named by a range of merges rather than one. Whoever merged the breaking PR
+fixes main forward. Before, every merge got its own run: on 2026-11-14 twenty
+merges in five hours held up to 6 of the 5 macOS runners, main's Smoke jobs
+queued 83-86 minutes with PRs behind them, and the build cache PRs restore fell
+14 merges behind. So up to five PR or push runs can run side by side before
+anything queues, and main takes at most one of them. "Require branches to be up to date
 before merging" is a repository setting (Settings > Branches > main) that this
 workflow assumes is off; if it is turned back on, PRs must update again. Grow
 the smoke set or add a macOS job to ci.yml only with that ceiling in mind.
