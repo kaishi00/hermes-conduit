@@ -229,11 +229,23 @@ struct LargeMarkdownPreparedDocument {
         var specializedByChunk: [Int: LargeSpecializedRichContent] = [:]
         for (chunkIndex, chunk) in chunks.enumerated() {
             switch chunk {
-            case .flow:
+            case .flow(let blocks):
+                // A chunk that starts with a list nested under the list
+                // ending the chunk before copies on the next line, as an
+                // outline does in one view.
+                let previousBlock: MarkdownBlock? = chunkIndex > 0
+                    ? {
+                        switch chunks[chunkIndex - 1] {
+                        case .flow(let previous): previous.last
+                        case .block(let previous, _): previous
+                        }
+                    }()
+                    : nil
+                let inOutline = blocks.first.map { MarkdownProseRun.continuesOutline($0, after: previousBlock) } ?? false
                 let descriptor = MarkdownSelectionSegmentDescriptor(
                     id: "lmd-flow-\(chunkIndex)",
                     order: all.count,
-                    separatorBefore: all.isEmpty ? "" : "\n\n"
+                    separatorBefore: all.isEmpty ? "" : (inOutline ? "\n" : "\n\n")
                 )
                 descriptorsByChunk.append([descriptor])
                 all.append(descriptor)

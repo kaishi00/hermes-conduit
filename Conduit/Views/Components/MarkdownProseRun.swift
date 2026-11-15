@@ -229,9 +229,10 @@ enum MarkdownProseRun {
         )
     }
 
-    /// How far each level of a nested list moves in: a bullet's text
-    /// column, so a sub-list's marker sits under its parent item's text.
-    /// The same in every view that draws a list.
+    /// How far each level of a nested list moves in: a fixed step of a
+    /// bullet's text column, so a sub-list's marker sits under a bullet
+    /// parent's text (a little left of a numbered parent's). The same in
+    /// every view that draws a list.
     static func nestedListIndent(chatTextSize: ChatTextAppearance) -> CGFloat {
         ChatTypography.dimension(12, appearance: chatTextSize) + Spacing.listMarkerToText
     }

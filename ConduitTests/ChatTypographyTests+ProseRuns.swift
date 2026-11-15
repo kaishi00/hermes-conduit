@@ -198,6 +198,39 @@ extension ChatTypographyTests {
         XCTAssertEqual(bravo.y - alpha.y, charlie.y - bravo.y, accuracy: 1, "an item's gap, not a block's")
     }
 
+    /// A long reply's flow chunk keeps its lists' hanging indents and
+    /// nesting (it draws its text with keepsParagraphStyles).
+    @MainActor
+    func testLargeFlowChunkKeepsListIndents() throws {
+        let blocks = MarkdownParser.parse("- Alpha item\n  - Bravo sub-item")
+        let host = UIHostingController(rootView: VStack(spacing: 0) {
+            LargeFlowChunkView(
+                blocks: blocks,
+                references: .empty,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                selectionCoordinator: nil,
+                selectionSegment: nil
+            )
+            Spacer(minLength: 0)
+        }
+        .frame(width: 390))
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 600))
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        host.view.layoutIfNeeded()
+        RunLoop.current.run(until: Date().addingTimeInterval(0.05))
+        host.view.layoutIfNeeded()
+
+        let origins = landmarkOrigins(["Alpha", "Bravo"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let step = MarkdownProseRun.nestedListIndent(chatTextSize: .default)
+        XCTAssertGreaterThan(alpha.x, 10, "the bullet hangs in a gutter")
+        XCTAssertEqual(bravo.x - alpha.x, step, accuracy: 1, "the sub-list a level in")
+    }
+
     // MARK: - Helpers
 
     /// Where the first line after the one `landmark` starts on begins, in

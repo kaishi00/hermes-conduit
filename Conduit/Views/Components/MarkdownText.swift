@@ -175,7 +175,10 @@ struct MarkdownText: View {
                                     usesAccentSurface: usesAccentSurface,
                                     chatTextSize: chatTextSize
                                 ),
-                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index]),
+                                topPadding: MarkdownProseRun.topPadding(for: rendering.blocks[index])
+                                    + (index > 0 && MarkdownProseRun.continuesOutline(rendering.blocks[index], after: rendering.blocks[index - 1])
+                                        ? MarkdownProseRun.Spacing.betweenListItems - MarkdownProseRun.Spacing.betweenBlocks
+                                        : 0),
                                 foregroundStyle: foregroundStyle,
                                 usesAccentSurface: usesAccentSurface,
                                 selectionCoordinator: selectionCoordinator,
