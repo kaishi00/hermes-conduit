@@ -48,7 +48,11 @@ struct V2ProjectPage: View {
     }
 
     /// What shows the page: its tab, and no chat pushed over it.
-    private var visibility: V2ListVisibility {
+    private var visibility: V2ListVisibility { Self.visibility(in: shell) }
+
+    /// Covered while its column shows no chat rows: a chat pushed over it,
+    /// not one beside it on a wide window.
+    static func visibility(in shell: V2ShellContext) -> V2ListVisibility {
         V2ListVisibility(tabActive: shell.isTabActive, covered: !shell.showsChatRows, split: shell.isSplit)
     }
 
@@ -642,7 +646,7 @@ struct ProjectProfileLabel: View {
 /// new closures each time: compared on what it shows, a row redraws only
 /// for its own values or a draw of the page's updates, which it observes
 /// itself (the Chats list's rows, `V2ChatsRow`, do the same).
-private struct V2ProjectSessionRow: View, Equatable {
+struct V2ProjectSessionRow: View, Equatable {
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
     @Environment(\.v2OpenBeside) private var openBeside
@@ -653,6 +657,24 @@ private struct V2ProjectSessionRow: View, Equatable {
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
     let onChanged: () -> Void
+
+    init(
+        session: SessionSummary,
+        projectID: String,
+        isLast: Bool,
+        profileBadge: V2ProfileBadge?,
+        onRename: @escaping (SessionSummary) -> Void,
+        onDelete: @escaping (SessionSummary) -> Void,
+        onChanged: @escaping () -> Void
+    ) {
+        self.session = session
+        self.projectID = projectID
+        self.isLast = isLast
+        self.profileBadge = profileBadge
+        self.onRename = onRename
+        self.onDelete = onDelete
+        self.onChanged = onChanged
+    }
 
     nonisolated static func == (lhs: V2ProjectSessionRow, rhs: V2ProjectSessionRow) -> Bool {
         lhs.session == rhs.session && lhs.projectID == rhs.projectID && lhs.isLast == rhs.isLast

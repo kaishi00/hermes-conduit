@@ -267,10 +267,11 @@ struct V2ListVisibility: Equatable {
     var isShown: Bool { tabActive && !covered }
 
     /// Uncovered by a pop on the shown tab: the chat slides off it. A tab
-    /// switch, or the window widening or the list's toggle putting it
-    /// beside the chat, shows it with nothing sliding.
+    /// switch (a pop landing on another tab included), or the window
+    /// widening or the list's toggle putting it beside the chat, shows it
+    /// with nothing sliding.
     func isPop(from was: V2ListVisibility) -> Bool {
-        was.covered && !covered && tabActive && was.split == split
+        was.covered && !covered && was.tabActive && tabActive && was.split == split
     }
 }
 

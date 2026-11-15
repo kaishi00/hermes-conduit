@@ -259,6 +259,34 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertNotEqual(row(.leaf(parent)), row(.leaf(pinnedTestSession("parent", title: "Renamed"))))
     }
 
+    /// A project page is covered by a chat pushed over it, not by one
+    /// beside it; its rows compare on what they show.
+    @MainActor
+    func testProjectPageFollowsTheChatsListsGate() {
+        var shell = V2ShellContext()
+        shell.values.showsChatRows = false
+        let covered = V2ProjectPage.visibility(in: shell)
+        XCTAssertFalse(covered.isShown)
+        shell.values.showsChatRows = true
+        XCTAssertTrue(V2ProjectPage.visibility(in: shell).isPop(from: covered))
+        shell.values.isSplit = true
+        shell.values.hasChatBeside = true
+        XCTAssertTrue(V2ProjectPage.visibility(in: shell).isShown, "a chat beside the page covered it")
+        XCTAssertFalse(V2ProjectPage.visibility(in: shell).isPop(from: covered))
+
+        func row(_ session: SessionSummary, isLast: Bool = false, badge: V2ProfileBadge? = nil,
+                 renamed: @escaping (SessionSummary) -> Void = { _ in }) -> V2ProjectSessionRow {
+            V2ProjectSessionRow(session: session, projectID: "p", isLast: isLast, profileBadge: badge,
+                                onRename: renamed, onDelete: { _ in }, onChanged: {})
+        }
+        let session = pinnedTestSession("chat")
+        var renames = 0
+        XCTAssertEqual(row(session), row(session, renamed: { _ in renames += 1 }), "new closures redrew the row")
+        XCTAssertNotEqual(row(session), row(session, isLast: true))
+        XCTAssertNotEqual(row(session), row(session, badge: V2ProfileBadge(profile: "work", name: "Work", url: nil)))
+        XCTAssertNotEqual(row(session), row(pinnedTestSession("chat", title: "Renamed")))
+    }
+
     /// Only a pop on the shown tab waits out a slide: a tab switch, or the
     /// window or the list's toggle putting the list beside the chat,
     /// slides nothing.
@@ -273,6 +301,9 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(Visibility(tabActive: true, covered: false, split: false)
             .isPop(from: Visibility(tabActive: false, covered: false, split: false)),
                        "a tab switch waited for a slide")
+        XCTAssertFalse(Visibility(tabActive: true, covered: false, split: false)
+            .isPop(from: Visibility(tabActive: false, covered: true, split: false)),
+                       "a pop landing from another tab waited for a slide")
     }
 
     /// Beside a chat on a wide iPad the list shows, but a burst of publishes

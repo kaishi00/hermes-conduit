@@ -414,6 +414,10 @@ struct V2RowDivider: View {
 extension View {
     /// Plain V2 list chrome: no background, no system separator, the row's
     /// own hairline, full-width insets.
+    /// The traits reach the List only from the row's own view, so a
+    /// row that sets them in its body is never wrapped in `.equatable()`
+    /// (the rows drew black with system insets, #2500); an Equatable row
+    /// is compared with its `==` without the wrapper.
     func v2ListRow(divider: Bool = true, dividerInset: CGFloat = 32) -> some View {
         self
             .overlay(alignment: .bottom) {
