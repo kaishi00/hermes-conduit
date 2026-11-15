@@ -212,8 +212,9 @@ enum TranscriptPerf {
         case transcriptChanged
         case chatViewBody
         case composerBarBody
-        /// A Chats list or project page row's body (`V2ChatsRow`,
-        /// `V2ProjectSessionRow`).
+        /// A Chats list or project page row's content body
+        /// (`V2ChatsRowContent`, `V2ProjectSessionRowContent`), the part
+        /// behind `.equatable()`.
         case chatsListRowBody
         case composerUpdateUIView
         case composerProgrammaticTextAssignment

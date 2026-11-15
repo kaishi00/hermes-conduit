@@ -8409,7 +8409,7 @@ covers it) · Bots Home (gap: it redraws on every publish, see its entry) ·
 text: none (no caption or doc describes it)
 
 **Code**
-- `Conduit/Views/V2/V2Shell.swift` (V2ListVisibility and isPop; V2ShownUpdates: follow, isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ProjectPage.swift` (the page's updates and visibility; V2ProjectSessionRow and its content), `Conduit/Views/V2/V2ChatsView.swift` (the list's visibility; V2ChatsRow and V2ChatsRowContent, compared on its item)
+- `Conduit/Views/V2/V2Shell.swift` (V2ListVisibility and isPop; V2ShownUpdates: follow, isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ProjectPage.swift` (the page's updates and visibility; V2ProjectSessionRow and its content), `Conduit/Views/V2/V2ChatsView.swift` (the list's visibility; V2ChatsRow and V2ChatsRowContent, compared on its item; V2SessionActions and the menu and swipe views it reads when they show)
 - Tests: `ConduitTests/SidebarLayoutTests.swift` (testCoveredChatsListWaitsUntilItShowsAgain, testChatsListBesideAChatDrawsABurstOnce, testScrollingChatsListDrawsHeldPublishesOnceItRests, testOnlyAPopUncoveringTheChatsListCountsAsAPop, testChatsRowComparesOnWhatItShows, testChatsListReRunLeavesUnchangedRowsAlone, testProjectPageFollowsTheChatsListsGate)
 
 **Rulings**
@@ -8417,9 +8417,10 @@ text: none (no caption or doc describes it)
 - A pop starts the wait even when the list missed nothing, so a publish during the slide waits too. Uncovered by the window widening or the list's toggle putting it beside the chat, nothing slides: it draws at once, and such a change during a pop's wait ends the wait (#2500).
 - The project page takes the same gate (#2500): its re-read on a catalog change and its reload on reconnecting follow its draws, so under a chat they wait for it to show again; its 20 s reads keep their own rule (Reads while a screen shows).
 - A row redraws for its own item or a draw of the list's updates, never because the list's body re-ran: the list re-runs as a chat covers or uncovers it (the shell's covered flag), and every row re-running with it held the pop's first frame (#2500). A row's content sits behind `.equatable()` (`V2ChatsRowContent`, `V2ProjectSessionRowContent`) and its list traits and actions stay outside it, on the row: inside an `EquatableView` they never reached the List and the rows drew black with system insets. SwiftUI didn't compare an Equatable row without the wrapper (the mounted test counted every row).
+- The row's actions only place the menu and the swipes on each re-run; what they say (Pin or Unpin, Star, the read toggle and a nest's read state, Archive's busy state) is worked out in their own views when the menu or a swipe shows (`V2SessionMenuItems`, `V2SessionLeadingSwipes`, `V2SessionTrailingSwipes`). Built with every row, they cost a pop about 8 ms at finger lift (#PR).
 
 **Open gaps**
-- Pushing or popping a chat still re-runs the list's own body (its sections and the top bar), and the project page's, as the covered flag changes; since #2500 their rows no longer re-run with it.
+- Pushing or popping a chat still re-runs the list's own body (its sections and the top bar), and the project page's, as the covered flag changes; since #2500 their rows' content no longer re-runs with it.
 
 **Checked:** 2026-11-15, #2500 (rows compared on their item; a pop always waits out the slide; a split change draws at once, mid-wait too; the project page joins the gate; Bots Home's gap unchanged)
 

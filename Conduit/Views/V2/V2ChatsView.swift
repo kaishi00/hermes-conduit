@@ -2422,17 +2422,21 @@ struct V2ChatsRow: View {
         switch item.kind {
         case .session(let node):
             let session = node.session
-            let signals = SessionNesting.signals(
-                node,
-                isUnread: appState.isSessionUnread,
-                liveStatus: appState.sessionLiveStatus
-            )
             content
                 .v2ListRow(divider: node.children.isEmpty, dividerInset: V2SessionRow.iconTextInset)
                 .sessionActions(
                     appState: appState,
                     session: session,
-                    nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
+                    // Worked out when an action shows, not on every re-run
+                    // of the list (2 ms a pop at finger lift).
+                    nest: SessionNesting.readToggleInputs(
+                        for: node,
+                        aggregateIsUnread: SessionNesting.signals(
+                            node,
+                            isUnread: appState.isSessionUnread,
+                            liveStatus: appState.sessionLiveStatus
+                        ).isUnread
+                    ),
                     isSavedRow: appState.isSavedChatRow(session),
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) },
@@ -2651,7 +2655,7 @@ extension View {
     func sessionActions(
         appState: AppState,
         session: SessionSummary,
-        nest: NestReadToggle?,
+        nest: @autoclosure @escaping () -> NestReadToggle?,
         excludingProjectID: String? = nil,
         isSavedRow: Bool = false,
         onRename: @escaping () -> Void,
@@ -2673,12 +2677,18 @@ extension View {
     }
 }
 
+/// The row's actions. Its body runs with every row each time the list
+/// re-runs (a chat pushed or popped over it), so it only places the
+/// menu and the swipes: what they say (Pin or Unpin, the localized
+/// labels, the nest's read state) is worked out in their own views,
+/// which draw when the menu or a swipe shows (6 ms a pop at finger lift
+/// on an iPhone 16 Pro Max, 2026-11-15).
 private struct V2SessionActions: ViewModifier {
     /// Not followed here: the row redraws its actions, so a Chats row
     /// under a pushed chat waits with its list.
     let appState: AppState
     let session: SessionSummary
-    let nest: NestReadToggle?
+    let nest: () -> NestReadToggle?
     let excludingProjectID: String?
     let isSavedRow: Bool
     let onRename: () -> Void
@@ -2690,7 +2700,7 @@ private struct V2SessionActions: ViewModifier {
         content
             .contextMenu {
                 if !isSavedRow {
-                    SessionActionMenuItems(
+                    V2SessionMenuItems(
                         session: session,
                         excludingProjectID: excludingProjectID,
                         nest: nest,
@@ -2703,58 +2713,107 @@ private struct V2SessionActions: ViewModifier {
             }
             .swipeActions(edge: .leading, allowsFullSwipe: false) {
                 if !isSavedRow {
-                    Button {
-                        Haptics.light()
-                        appState.toggleSessionPinned(session)
-                    } label: {
-                        Label(
-                            appState.isSessionPinned(session) ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
-                            systemImage: appState.isSessionPinned(session) ? "pin.slash" : "pin"
-                        )
-                    }
-                    .tint(.conduitAccent)
-
-                    Button {
-                        Haptics.light()
-                        appState.toggleSessionStarred(session)
-                    } label: {
-                        Label(
-                            appState.isSessionStarred(session) ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat),
-                            systemImage: appState.isSessionStarred(session) ? "star.slash" : "star"
-                        )
-                    }
-                    .tint(.yellow)
-
-                    ReadStateToggleButton(session: session, nest: nest)
-                        .tint(.blue)
+                    V2SessionLeadingSwipes(appState: appState, session: session, nest: nest)
                 }
             }
             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                 if !isSavedRow {
-                    Button {
-                        Task {
-                            let archived = await appState.archiveSession(session)
-                            Haptics.mutationCompleted(archived)
-                            if archived { onChanged() }
-                        }
-                    } label: {
-                        Label("Archive", systemImage: "archivebox")
-                    }
-                    .tint(.orange)
-                    .disabled(appState.isSessionMutationInFlight(session))
-
-                    // Not a destructive role: that removes the row before the
-                    // confirmation is answered, and on a Mac it can blank the list (#1364).
-                    Button {
-                        Haptics.warning()
-                        onDelete()
-                    } label: {
-                        Label("Delete", systemImage: "trash")
-                    }
-                    .tint(.red)
-                    .disabled(appState.isSessionMutationInFlight(session))
+                    V2SessionTrailingSwipes(appState: appState, session: session, onDelete: onDelete, onChanged: onChanged)
                 }
             }
+    }
+}
+
+/// The row's touch-and-hold menu, read when it opens.
+private struct V2SessionMenuItems: View {
+    let session: SessionSummary
+    let excludingProjectID: String?
+    let nest: () -> NestReadToggle?
+    let onRename: () -> Void
+    let onDelete: () -> Void
+    let onChanged: () -> Void
+    let onReorderPinned: (() -> Void)?
+
+    var body: some View {
+        SessionActionMenuItems(
+            session: session,
+            excludingProjectID: excludingProjectID,
+            nest: nest(),
+            onRename: onRename,
+            onDelete: onDelete,
+            onChanged: onChanged,
+            onReorderPinned: onReorderPinned
+        )
+    }
+}
+
+/// Swiping right: Pin, Star, and the read toggle.
+private struct V2SessionLeadingSwipes: View {
+    let appState: AppState
+    let session: SessionSummary
+    let nest: () -> NestReadToggle?
+
+    var body: some View {
+        let pinned = appState.isSessionPinned(session)
+        let starred = appState.isSessionStarred(session)
+        Button {
+            Haptics.light()
+            appState.toggleSessionPinned(session)
+        } label: {
+            Label(
+                pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                systemImage: pinned ? "pin.slash" : "pin"
+            )
+        }
+        .tint(.conduitAccent)
+
+        Button {
+            Haptics.light()
+            appState.toggleSessionStarred(session)
+        } label: {
+            Label(
+                starred ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat),
+                systemImage: starred ? "star.slash" : "star"
+            )
+        }
+        .tint(.yellow)
+
+        ReadStateToggleButton(session: session, nest: nest())
+            .tint(.blue)
+    }
+}
+
+/// Swiping left: Archive and Delete.
+private struct V2SessionTrailingSwipes: View {
+    let appState: AppState
+    let session: SessionSummary
+    let onDelete: () -> Void
+    let onChanged: () -> Void
+
+    var body: some View {
+        let busy = appState.isSessionMutationInFlight(session)
+        Button {
+            Task {
+                let archived = await appState.archiveSession(session)
+                Haptics.mutationCompleted(archived)
+                if archived { onChanged() }
+            }
+        } label: {
+            Label("Archive", systemImage: "archivebox")
+        }
+        .tint(.orange)
+        .disabled(busy)
+
+        // Not a destructive role: that removes the row before the
+        // confirmation is answered, and on a Mac it can blank the list (#1364).
+        Button {
+            Haptics.warning()
+            onDelete()
+        } label: {
+            Label("Delete", systemImage: "trash")
+        }
+        .tint(.red)
+        .disabled(busy)
     }
 }
 
