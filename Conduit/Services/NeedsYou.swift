@@ -7,7 +7,9 @@
 //  plugin's list of them (GET /waiting, one profile at a time). It feeds the
 //  count on each profile's chip, the banner when another chat starts
 //  waiting, and the Needs you list. None of them answers anything: each
-//  opens the chat at its card (AppState+NeedsYou).
+//  opens the chat at its card (AppState+NeedsYou). A question Hermes drew no
+//  card for in the chat (the turn ran in another Hermes process) brings its
+//  card with its row, and the chat draws that one (issue 2556).
 //
 
 import Foundation
@@ -37,6 +39,10 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// 0.150.1+): its row opens the room, whose card answers it, not the
     /// bot's hidden chat there (issue 2064). Nil for a chat's wait.
     let roomID: String?
+    /// A question's card as its push carried it (notifier 0.177.17+): the
+    /// chat draws it when Hermes drew none there, since an open Conduit gets
+    /// no notification to tap (issue 2556). Nil for an approval.
+    let card: PendingDecisionPayload?
 
     var id: String { "\(profile)\u{1F}\(waitID)" }
 
@@ -49,7 +55,8 @@ struct NeedsYouItem: Identifiable, Equatable {
         summary: String = "",
         questions: Int = 0,
         since: Date = Date(),
-        roomID: String? = nil
+        roomID: String? = nil,
+        card: PendingDecisionPayload? = nil
     ) {
         self.waitID = waitID
         self.profile = profile
@@ -60,6 +67,7 @@ struct NeedsYouItem: Identifiable, Equatable {
         self.questions = questions
         self.since = since
         self.roomID = roomID
+        self.card = card
     }
 
     /// One row of the plugin's `waiting` list; nil when it names no chat.
@@ -84,7 +92,8 @@ struct NeedsYouItem: Identifiable, Equatable {
             since: at.map { Date(timeIntervalSince1970: $0) } ?? .distantPast,
             roomID: (host["room"] as? String)
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .flatMap { $0.isEmpty ? nil : $0 }
+                .flatMap { $0.isEmpty ? nil : $0 },
+            card: kind == .question ? PushNotificationService.waitingQuestionCard(from: host) : nil
         )
     }
 
@@ -152,6 +161,14 @@ final class NeedsYouStore: ObservableObject {
     private var seen: Set<String> = []
     private var reading = false
     private var readAgain = false
+    /// Questions whose card Hermes drew itself: the row's copy stays out of
+    /// the chat for good, even once Hermes' card is answered and the list,
+    /// read a moment before, still names the wait (issue 2556).
+    private(set) var cardsHermesDrew: Set<String> = []
+
+    func noteHermesDrewCard(for requestID: String) {
+        cardsHermesDrew.insert(requestID)
+    }
 
     /// Runs `read`, or, while one runs, has it run once more after: a
     /// burst of asks makes at most one more read, and reads never overlap
@@ -192,6 +209,8 @@ final class NeedsYouStore: ObservableObject {
         seen.formUnion(read.map(\.id))
         let merged = (items.filter { $0.profile != profile } + read).sorted { $0.since > $1.since }
         if merged != items { items = merged }
+        // A wait that left the list needs no remembering.
+        cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
         if let banner, !merged.contains(where: { $0.id == banner.id }) { self.banner = nil }
         guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
@@ -216,6 +235,7 @@ final class NeedsYouStore: ObservableObject {
         self.dashboardID = dashboardID
         readProfiles = []
         seen = []
+        cardsHermesDrew = []
         if !items.isEmpty { items = [] }
         banner = nil
     }
