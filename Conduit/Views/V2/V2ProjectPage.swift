@@ -249,9 +249,6 @@ struct V2ProjectPage: View {
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
         }
-        .onChange(of: shell.isSplit, initial: true) { _, split in
-            updates.coversOnOpen = !split
-        }
         // Read again when the chats list's catalog changes: beside the open
         // chat on a wide window the page stays on screen (issue 1454).
         .task(id: "\(project.id)|\(appState.chatListCatalogGeneration)") { await reload() }
@@ -718,7 +715,6 @@ struct V2ProjectSessionRowContent: View, Equatable {
         let _ = TranscriptPerf.note(.chatsListRowBody)
         Button {
             Haptics.light()
-            updates.chatOpening()
             appState.dismissSidebarDrawer()
             if appState.isOtherProfileRow(session) {
                 // The switch to its profile, then the chat, as All opens it.
