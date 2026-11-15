@@ -390,6 +390,179 @@ extension AppState {
         return reconciliation.acceptedSessionIDs.contains(sessionId)
     }
 
+    /// A tool's start: its running card, after the reasoning and words
+    /// before it. On a chat left mid-reply too (all-live stage 2), without
+    /// what the start asks of the screen.
+    func applyToolStart(name: String, input: String?, eventToolID: String?, streamSessionId: String) {
+        if actingOnChatOnScreen, name.lowercased() == "conduit_present" {
+            // The tool may wait for the answer: show it once stored.
+            Task {
+                try? await Task.sleep(for: .seconds(1))
+                await syncPresentedScreens()
+            }
+        }
+        if name.lowercased() == "clarify" { return }
+        let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stableToolID = toolID?.isEmpty == false ? toolID : nil
+        // Tool lifecycle events can be replayed after a resume. A stable
+        // gateway id makes a repeated start idempotent without splitting
+        // the current reasoning or text projection. For legacy events
+        // without a tool ID, avoid duplicating an active running card for
+        // the same tool and input.
+        if let stableToolID {
+            if messages.contains(where: { $0.tool?.id == stableToolID }) {
+                return
+            }
+        } else if let lastRunningTool = messages.last(where: { $0.role == .tool && $0.tool?.status == .running })?.tool,
+                  lastRunningTool.name == name,
+                  lastRunningTool.input == input {
+            return
+        }
+        // The tool card must land after a complete reasoning card; commit
+        // the coalesced segment before the boundary reorders the
+        // transcript. A tool ends the reasoning SEGMENT only — the turn
+        // flag survives so completion-carried reasoning cannot duplicate
+        // this segment.
+        settleReasoningSegmentIntoTranscript()
+        resetReasoningSegment()
+        flushStreamingPartial()
+        let message = ChatMessage(
+            id: "tool-start-\(Date().timeIntervalSince1970)",
+            role: .tool,
+            content: "",
+            timestamp: Self.localTimestamp(),
+            tool: ToolActivity(id: stableToolID, name: name, input: input, output: nil, status: .running)
+        )
+        messages.append(message)
+        // A left chat's card is saved with its copy as its reply ends.
+        guard actingOnChatOnScreen else { return }
+        sessionPresentationCache.recordPendingToolStart(
+            message,
+            profile: presentationProfile(for: streamSessionId),
+            sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+        )
+    }
+
+    /// A tool's result: its card completes in place. On a chat left
+    /// mid-reply too, without what the result asks of the screen.
+    func applyToolComplete(name: String, output: String?, eventToolID: String?, streamSessionId: String) {
+        if name.lowercased() == "clarify" { return }
+        // What a result asks of the screen, only for the chat on screen, as
+        // before a left chat followed its tools.
+        if actingOnChatOnScreen {
+            // Hermes may have changed files an open Folder tab shows.
+            noteWorkspaceToolCompleted(name)
+            // Hermes just read or asked to change Conduit's settings.
+            if name.lowercased() == "conduit_settings" { Task { await syncAgentSettings() } }
+            // A confirmation Hermes just asked for shows without waiting on the push.
+            if name.lowercased() == "conduit_present" { Task { await syncPresentedScreens() } }
+            // Hermes asked to open Apple Maps from the chat on screen.
+            // Only a result seen for the first time: a replay after a
+            // reconnect finds its card already complete.
+            if name.lowercased() == "conduit_maps", let promptID = Self.mapsNavigatePromptID(output),
+               let callID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines), !callID.isEmpty,
+               !messages.contains(where: { $0.role == .tool && $0.tool?.id == callID && $0.tool?.status == .complete }) {
+                noteMapsNavigateExpected(promptID)
+            }
+        }
+        settleReasoningSegmentIntoTranscript()
+        resetReasoningSegment()
+        let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let stableToolID = toolID?.isEmpty == false ? toolID : nil
+        let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        // Update the matching running tool card in place instead of
+        // appending a duplicate. This keeps input + output together in
+        // one chronological entry, matching how the HTTP API returns
+        // stored messages on reload.
+        let matchingIndex: Int?
+        var resolvedCacheToolID = stableToolID
+        var adoptedMessageID: String? = nil
+        if let stableToolID {
+            if let exactIndex = messages.lastIndex(where: {
+                $0.role == .tool && $0.tool?.id == stableToolID
+            }) {
+                matchingIndex = exactIndex
+                adoptedMessageID = messages[exactIndex].id
+            } else {
+                // No exact tool-ID match. Check if there is an unambiguous
+                // running card for the same tool name — regardless of whether
+                // the card already carries a different stable tool ID or none.
+                // If exactly one exists, adopt it; if multiple, do not guess.
+                let candidates = messages.indices.filter { idx in
+                    guard messages[idx].role == .tool,
+                          let tool = messages[idx].tool,
+                          tool.status == .running,
+                          tool.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName else {
+                        return false
+                    }
+                    return true
+                }
+                if candidates.count == 1 {
+                    matchingIndex = candidates[0]
+                    adoptedMessageID = messages[candidates[0]].id
+                    // Preserve the card's existing tool ID when the
+                    // completion's stableToolID didn't match any card.
+                    resolvedCacheToolID = messages[candidates[0]].tool?.id
+                } else {
+                    matchingIndex = nil
+                }
+            }
+        } else {
+            // ID-less completion: gather ALL running same-name transcript
+            // candidates regardless of whether they carry a stable tool ID.
+            // If exactly one exists, adopt it (preserving its existing tool
+            // ID). If multiple exist (or none), do not guess.
+            let candidates = messages.indices.filter { idx in
+                guard messages[idx].role == .tool,
+                      let tool = messages[idx].tool,
+                      tool.status == .running,
+                      tool.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName else {
+                    return false
+                }
+                return true
+            }
+            if candidates.count == 1 {
+                matchingIndex = candidates[0]
+                adoptedMessageID = messages[candidates[0]].id
+            } else {
+                matchingIndex = nil
+            }
+        }
+        if let index = matchingIndex {
+            let existing = messages[index].tool
+            // A completion that names no tool, or only Tool Search's
+            // wrapper, keeps the tool its start named.
+            let keepsName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                || (ToolSearchBridge.isWrapper(name) && ToolSearchBridge.isConcrete(existing?.name))
+            messages[index].tool = ToolActivity(
+                id: stableToolID ?? existing?.id,
+                name: keepsName ? (existing?.name ?? "") : name,
+                input: existing?.input,
+                output: output,
+                status: .complete,
+                // The card was stamped when the call started.
+                duration: existing?.duration
+                    ?? ChatStepTiming.elapsed(from: messages[index].timestamp, to: Date())
+            )
+        } else {
+            messages.append(ChatMessage(
+                id: "tool-complete-\(Date().timeIntervalSince1970)",
+                role: .tool,
+                content: "",
+                timestamp: Self.localTimestamp(),
+                tool: ToolActivity(id: stableToolID, name: name, input: nil, output: output, status: .complete)
+            ))
+        }
+        guard actingOnChatOnScreen else { return }
+        sessionPresentationCache.resolvePendingTool(
+            named: name,
+            toolID: resolvedCacheToolID,
+            messageID: adoptedMessageID,
+            profile: presentationProfile(for: streamSessionId),
+            sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+        )
+    }
+
     func applyStreamEvent(
         _ event: StreamEvent,
         authoritativeYolo: Bool? = nil,
@@ -513,163 +686,10 @@ extension AppState {
             break
 
         case .toolStart(_, let name, let input, let eventToolID):
-            if name.lowercased() == "conduit_present" {
-                // The tool may wait for the answer: show it once stored.
-                Task {
-                    try? await Task.sleep(for: .seconds(1))
-                    await syncPresentedScreens()
-                }
-            }
-            if name.lowercased() == "clarify" { break }
-            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let stableToolID = toolID?.isEmpty == false ? toolID : nil
-            // Tool lifecycle events can be replayed after a resume. A stable
-            // gateway id makes a repeated start idempotent without splitting
-            // the current reasoning or text projection. For legacy events
-            // without a tool ID, avoid duplicating an active running card for
-            // the same tool and input.
-            if let stableToolID {
-                if messages.contains(where: { $0.tool?.id == stableToolID }) {
-                    break
-                }
-            } else if let lastRunningTool = messages.last(where: { $0.role == .tool && $0.tool?.status == .running })?.tool,
-                      lastRunningTool.name == name,
-                      lastRunningTool.input == input {
-                break
-            }
-            // The tool card must land after a complete reasoning card; commit
-            // the coalesced segment before the boundary reorders the
-            // transcript. A tool ends the reasoning SEGMENT only — the turn
-            // flag survives so completion-carried reasoning cannot duplicate
-            // this segment.
-            settleReasoningSegmentIntoTranscript()
-            resetReasoningSegment()
-            flushStreamingPartial()
-            let message = ChatMessage(
-                id: "tool-start-\(Date().timeIntervalSince1970)",
-                role: .tool,
-                content: "",
-                timestamp: Self.localTimestamp(),
-                tool: ToolActivity(id: stableToolID, name: name, input: input, output: nil, status: .running)
-            )
-            messages.append(message)
-            sessionPresentationCache.recordPendingToolStart(
-                message,
-                profile: presentationProfile(for: streamSessionId),
-                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
-            )
+            applyToolStart(name: name, input: input, eventToolID: eventToolID, streamSessionId: streamSessionId)
 
         case .toolComplete(_, let name, let output, let eventToolID):
-            if name.lowercased() == "clarify" { break }
-            // Hermes may have changed files an open Folder tab shows.
-            noteWorkspaceToolCompleted(name)
-            // Hermes just read or asked to change Conduit's settings.
-            if name.lowercased() == "conduit_settings" { Task { await syncAgentSettings() } }
-            // A confirmation Hermes just asked for shows without waiting on the push.
-            if name.lowercased() == "conduit_present" { Task { await syncPresentedScreens() } }
-            // Hermes asked to open Apple Maps from the chat on screen.
-            // Only a result seen for the first time: a replay after a
-            // reconnect finds its card already complete.
-            if name.lowercased() == "conduit_maps", let promptID = Self.mapsNavigatePromptID(output),
-               let callID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines), !callID.isEmpty,
-               !messages.contains(where: { $0.role == .tool && $0.tool?.id == callID && $0.tool?.status == .complete }) {
-                noteMapsNavigateExpected(promptID)
-            }
-            settleReasoningSegmentIntoTranscript()
-            resetReasoningSegment()
-            let toolID = eventToolID?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let stableToolID = toolID?.isEmpty == false ? toolID : nil
-            let normalizedName = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            // Update the matching running tool card in place instead of
-            // appending a duplicate. This keeps input + output together in
-            // one chronological entry, matching how the HTTP API returns
-            // stored messages on reload.
-            let matchingIndex: Int?
-            var resolvedCacheToolID = stableToolID
-            var adoptedMessageID: String? = nil
-            if let stableToolID {
-                if let exactIndex = messages.lastIndex(where: {
-                    $0.role == .tool && $0.tool?.id == stableToolID
-                }) {
-                    matchingIndex = exactIndex
-                    adoptedMessageID = messages[exactIndex].id
-                } else {
-                    // No exact tool-ID match. Check if there is an unambiguous
-                    // running card for the same tool name — regardless of whether
-                    // the card already carries a different stable tool ID or none.
-                    // If exactly one exists, adopt it; if multiple, do not guess.
-                    let candidates = messages.indices.filter { idx in
-                        guard messages[idx].role == .tool,
-                              let tool = messages[idx].tool,
-                              tool.status == .running,
-                              tool.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName else {
-                            return false
-                        }
-                        return true
-                    }
-                    if candidates.count == 1 {
-                        matchingIndex = candidates[0]
-                        adoptedMessageID = messages[candidates[0]].id
-                        // Preserve the card's existing tool ID when the
-                        // completion's stableToolID didn't match any card.
-                        resolvedCacheToolID = messages[candidates[0]].tool?.id
-                    } else {
-                        matchingIndex = nil
-                    }
-                }
-            } else {
-                // ID-less completion: gather ALL running same-name transcript
-                // candidates regardless of whether they carry a stable tool ID.
-                // If exactly one exists, adopt it (preserving its existing tool
-                // ID). If multiple exist (or none), do not guess.
-                let candidates = messages.indices.filter { idx in
-                    guard messages[idx].role == .tool,
-                          let tool = messages[idx].tool,
-                          tool.status == .running,
-                          tool.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == normalizedName else {
-                        return false
-                    }
-                    return true
-                }
-                if candidates.count == 1 {
-                    matchingIndex = candidates[0]
-                    adoptedMessageID = messages[candidates[0]].id
-                } else {
-                    matchingIndex = nil
-                }
-            }
-            if let index = matchingIndex {
-                let existing = messages[index].tool
-                // A completion that names no tool, or only Tool Search's
-                // wrapper, keeps the tool its start named.
-                let keepsName = name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                    || (ToolSearchBridge.isWrapper(name) && ToolSearchBridge.isConcrete(existing?.name))
-                messages[index].tool = ToolActivity(
-                    id: stableToolID ?? existing?.id,
-                    name: keepsName ? (existing?.name ?? "") : name,
-                    input: existing?.input,
-                    output: output,
-                    status: .complete,
-                    // The card was stamped when the call started.
-                    duration: existing?.duration
-                        ?? ChatStepTiming.elapsed(from: messages[index].timestamp, to: Date())
-                )
-            } else {
-                messages.append(ChatMessage(
-                    id: "tool-complete-\(Date().timeIntervalSince1970)",
-                    role: .tool,
-                    content: "",
-                    timestamp: Self.localTimestamp(),
-                    tool: ToolActivity(id: stableToolID, name: name, input: nil, output: output, status: .complete)
-                ))
-            }
-            sessionPresentationCache.resolvePendingTool(
-                named: name,
-                toolID: resolvedCacheToolID,
-                messageID: adoptedMessageID,
-                profile: presentationProfile(for: streamSessionId),
-                sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
-            )
+            applyToolComplete(name: name, output: output, eventToolID: eventToolID, streamSessionId: streamSessionId)
 
         case .reviewSummary(let sessionId, let activity):
             let id = "review-summary-\(sessionId)-\(UUID().uuidString)"

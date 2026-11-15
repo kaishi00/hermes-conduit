@@ -124,7 +124,7 @@ extension AppState {
                 role: .reasoning,
                 content: content,
                 timestamp: timestamp,
-                author: activeProfile
+                author: actingProfile
             )
             settled.stepDuration = ChatStepTiming.elapsed(from: timestamp, to: Date())
             messages.append(settled)
@@ -261,6 +261,12 @@ extension AppState {
         // The gateway turn is complete immediately; only its final visual tail
         // remains buffered. This keeps Send/Stop/Steer state truthful.
         setRunning(false)
+        // A chat left mid-reply shows no tail to drain: its reply settles
+        // now, in its own state.
+        guard actingOnChatOnScreen else {
+            finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false)
+            return
+        }
 
         // Completed streams use StreamingText's fast reveal batch. Keep enough
         // time for its per-character fade while capping the visual tail.
@@ -287,7 +293,7 @@ extension AppState {
         cancelResponseHapticConclusion: Bool = true
     ) {
         guard let pendingStreamingCompletion = shownChat.pendingStreamingCompletion else { return }
-        if cancelResponseHapticConclusion {
+        if cancelResponseHapticConclusion, actingOnChatOnScreen {
             cancelPendingResponseHapticConclusion()
         }
         shownChat.streamingCompletionTask?.cancel()
@@ -358,12 +364,14 @@ extension AppState {
                 content: displayContent,
                 rawContent: systemNotice == nil ? nil : finalContent,
                 timestamp: Self.localTimestamp(),
-                author: activeProfile
+                author: actingProfile
             ))
         }
 
-        // A reply read aloud as it streamed: the button under its row shows Stop.
-        if let rowID = (trimmedMessageID.flatMap { id in messages.last(where: { $0.id == id })?.id })
+        // A reply read aloud as it streamed: the button under its row shows
+        // Stop. Only on screen: a left chat's reply isn't read aloud.
+        if actingOnChatOnScreen,
+           let rowID = (trimmedMessageID.flatMap { id in messages.last(where: { $0.id == id })?.id })
             ?? shownRowID.flatMap({ id in messages.contains { $0.id == id } ? id : nil })
             ?? messages.last(where: { $0.role == .assistant })?.id {
             messageReadAloudController.adoptLiveReply(sessionID: sessionId, messageID: rowID)
@@ -372,6 +380,10 @@ extension AppState {
         shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         setRunning(false)
+        // What follows a settled reply on screen: the step summary,
+        // suggested replies, the saved presentation and the title. A left
+        // chat's copy is saved as its reply ends (saveBackgroundChatCopy).
+        guard actingOnChatOnScreen else { return }
         // The turn has settled, its reply in place.
         requestStepSummaryIfWanted(sessionId: sessionId)
         // Suggested replies and the follow-up clock for the new reply; a
@@ -438,7 +450,7 @@ extension AppState {
             role: .assistant,
             content: content,
             timestamp: Self.localTimestamp(),
-            author: activeProfile
+            author: actingProfile
         ))
         shownChat.interimRowID = id
         shownChat.runningTurnNoteIDs.insert(id)

@@ -3,13 +3,107 @@
 //  Conduit
 //
 //  A chat left while its reply was still coming keeps following that reply
-//  (all-live stage 2, BackgroundChat.swift): its rows grow as the reply
-//  streams on the shared socket, and going back to it shows them at once.
+//  (all-live stage 2, BackgroundChat.swift): its own state takes the rest of
+//  its turn as it streams on the shared socket, and going back to it shows
+//  its rows at once.
 //
 
 import Foundation
 
+/// The left chat the app acts on while one of its events applies
+/// (`AppState.act(on:)`): who it is, in place of the chat on screen's ids
+/// and profile.
+struct LiveChatScope: Equatable {
+    let sessionIDs: Set<String>
+    let profile: String
+}
+
 extension AppState {
+    /// Whether the app acts on the chat on screen, as it does except while
+    /// a left chat's event applies to that chat (`act(on:)`). What a turn
+    /// does to the screen, rather than to its chat, checks this: Voice,
+    /// haptics, Read Aloud, suggested replies, the saved presentation, the
+    /// viewport, the message waiting to send.
+    var actingOnChatOnScreen: Bool { liveChatScope == nil }
+
+    /// The profile of the chat acted on, which a left chat's rows are
+    /// written by: a profile switch can leave one in another profile.
+    var actingProfile: String { liveChatScope?.profile ?? activeProfile }
+
+    /// Runs `body` with `chat`'s own state as the chat acted on, so the
+    /// stream handling written for the chat on screen applies to it.
+    /// Nothing awaits inside, so nothing on screen draws in between.
+    func act(on chat: BackgroundChat, _ body: () -> Void) {
+        let screen = shownChat
+        let scope = liveChatScope
+        shownChat = chat.state
+        liveChatScope = LiveChatScope(sessionIDs: chat.sessionIDs, profile: chat.profile)
+        defer {
+            shownChat = screen
+            liveChatScope = scope
+        }
+        body()
+    }
+
+    /// Applies a left chat's event to its own state (inside `act(on:)`):
+    /// its reply's words, thinking and tool steps, through the same steps
+    /// as the chat on screen. The model, context and other runtime events
+    /// are the chat on screen's, and decision cards show once Hermes' rows
+    /// land.
+    private func applyLeftChatEvent(_ event: StreamEvent, sessionID: String) {
+        switch event {
+        case .messageStart:
+            finalizePendingStreamingCompletion()
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningTurn()
+            setRunning(true)
+        case .messageDelta(_, let text):
+            finalizePendingStreamingCompletion()
+            shownChat.streamingBuffer += text
+            setRunning(true)
+        case .messageInterim(_, let text, let alreadyStreamed):
+            finalizePendingStreamingCompletion()
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningSegment()
+            sealInterimCommentary(text, alreadyStreamed: alreadyStreamed)
+            setRunning(true)
+        case .reasoningDelta(_, let text):
+            finalizePendingStreamingCompletion()
+            shownChat.receivedReasoningForCurrentTurn = true
+            appendReasoning(text)
+            setRunning(true)
+        case .messageComplete(_, let messageId, let content, let reasoning, let alreadyShown):
+            // Settles at once off screen: no tail to drain.
+            scheduleStreamingCompletion(
+                sessionId: sessionID,
+                messageId: messageId,
+                content: content,
+                reasoning: reasoning,
+                alreadyShown: alreadyShown
+            )
+        case .messageError, .messageInterrupted:
+            // A reply that never finished keeps the words that came.
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningTurn()
+            flushStreamingPartial()
+            clearStreamingText()
+            setRunning(false)
+        case .sessionBusy(_, let busy):
+            // Only the end of its turn: a left chat's turn only ever ends.
+            guard !busy, shownChat.turnState.isRunning else { break }
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningTurn()
+            flushStreamingPartial()
+            setRunning(false)
+        case .toolStart(_, let name, let input, let eventToolID):
+            applyToolStart(name: name, input: input, eventToolID: eventToolID, streamSessionId: sessionID)
+        case .toolComplete(_, let name, let output, let eventToolID):
+            applyToolComplete(name: name, output: output, eventToolID: eventToolID, streamSessionId: sessionID)
+        default:
+            break
+        }
+    }
+
     /// The chat on screen is being left for `newID` (setActiveSessionState).
     /// While its reply is still coming, its rows and the reply so far are
     /// kept and follow the rest of the reply. A chat being opened stays
@@ -119,10 +213,37 @@ extension AppState {
             dashboardID: dashboardID,
             profile: activeProfile,
             isBotChat: isBotChat,
-            rows: messages,
-            streamingText: shownChat.streamingBuffer
+            state: leftChatState(turnRunning: turnRunning)
         )
         backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats())
+        // A reply that finished while its last words drained on screen
+        // settles in the left chat's own rows.
+        if chat.state.pendingStreamingCompletion != nil {
+            act(on: chat) { finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false) }
+        }
+    }
+
+    /// A state of its own for the chat on screen as it's left mid-reply:
+    /// its rows and its turn as far as it got, the reply streaming, the
+    /// thinking card live, the interim notes and a completion still
+    /// draining. The screen's own state then goes on to the next chat.
+    private func leftChatState(turnRunning: Bool) -> ChatState {
+        let screen = shownChat
+        let left = ChatState()
+        left.messages = screen.messages
+        left.streamingBuffer = screen.streamingBuffer
+        left.activeAssistantMessageId = screen.activeAssistantMessageId
+        left.interimRowID = screen.interimRowID
+        left.runningTurnNoteIDs = screen.runningTurnNoteIDs
+        left.receivedReasoningForCurrentTurn = screen.receivedReasoningForCurrentTurn
+        left.reasoningBuffer = screen.reasoningBuffer
+        left.activeReasoningMessageId = screen.activeReasoningMessageId
+        left.liveTurn.reasoningSegment = screen.liveTurn.reasoningSegment
+        left.pendingStreamingCompletion = screen.pendingStreamingCompletion
+        // Its reply is still coming, whether or not it has words yet; one
+        // only draining its last words has finished.
+        left.turnState = turnRunning || screen.pendingStreamingCompletion == nil ? .running : .idle
+        return left
     }
 
     /// The followed chats of the dashboard on screen, any of its profiles
@@ -146,17 +267,20 @@ extension AppState {
         // ids do, so the copy is current if the open is overtaken.
         guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
             ?? followedChatIndex(reboundTo: id) else { return false }
+        let chat = backgroundChats[index]
         if onScreen {
             // The chat on screen saves its own copy.
-            _ = backgroundChats[index].apply(event)
+            act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
             return false
         }
-        guard backgroundChats[index].dashboardID == activeDashboardID else {
+        guard chat.dashboardID == activeDashboardID else {
             backgroundChats.remove(at: index)
             return false
         }
-        if backgroundChats[index].apply(event) == .ended {
-            saveBackgroundChatCopy(backgroundChats[index])
+        let wasRunning = chat.isRunning
+        act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
+        if wasRunning, !chat.isRunning {
+            saveBackgroundChatCopy(chat)
         }
         return true
     }

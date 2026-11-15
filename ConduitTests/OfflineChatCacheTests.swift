@@ -3481,46 +3481,75 @@ final class OfflineChatCacheTests: XCTestCase {
     /// streamed is sealed in place, a failure ends it, and five left
     /// chats keep four, letting go of a finished one first.
     func testABackgroundChatFollowsTheReplyEventByEvent() {
-        let dashboard = UUID()
+        let (state, _, dashboard) = makeAppState(store: makeStore())
+        state.sessions = [session("a"), session("b"), session("c"), session("e")]
+        state.isConnected = true
+        // Leaves chat `id` mid-turn, the words a tool step cut off on
+        // screen, for chat b, which opens empty and idle.
+        func leave(_ id: String) {
+            state.setActiveSessionState(id: id)
+            state.messages = [ChatMessage(id: "p-\(id)", role: .partial, content: "Looking", timestamp: "1")]
+            state.turnState = .running
+            state.setActiveSessionState(id: "b")
+            state.messages = []
+            state.clearStreamingText()
+            state.turnState = .idle
+        }
+        func rows(_ id: String) -> [ChatMessage] { state.followedChat(answering: [id])?.rows ?? [] }
+
+        leave("a")
+        XCTAssertEqual(rows("a").first?.role, .assistant, "A partial reads as the reply's words")
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Checking the map"))
+        state.handleStreamEvent(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true))
+        XCTAssertEqual(rows("a").last?.content, "Checking the map.")
+        // Its tool steps and thinking follow it too, through the chat's own
+        // stream handling.
+        state.handleStreamEvent(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil, toolID: "t1"))
+        XCTAssertEqual(rows("a").last?.tool?.status, .running)
+        state.handleStreamEvent(.toolComplete(sessionId: "a", toolName: "maps", toolOutput: "Found", toolID: "t1"))
+        XCTAssertEqual(rows("a").last?.tool?.status, .complete, "The card completes in place")
+        XCTAssertEqual(rows("a").filter { $0.role == .tool }.count, 1)
+        state.handleStreamEvent(.reasoningDelta(sessionId: "a", text: "The cafe is close"))
+        XCTAssertEqual(rows("a").last?.role, .reasoning)
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Found it"))
+        XCTAssertEqual(rows("a").last?.content, "Found it")
+        state.handleStreamEvent(.messageError(sessionId: "a", message: "boom"))
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.isRunning, false)
+        XCTAssertEqual(rows("a").map(\.content), ["Looking", "Checking the map.", "", "The cafe is close", "Found it"],
+                       "A reply that never finished keeps the words that came")
+        XCTAssertNotEqual(state.errorMessage, "boom", "A left chat's error isn't the chat on screen's")
+        state.handleStreamEvent(.sessionBusy(sessionId: "a", busy: true))
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.isRunning, false, "A left chat's turn only ever ends")
+
+        // An interim note Hermes didn't stream cuts the reply off: the
+        // reply so far shows until the final row takes its place.
+        leave("c")
+        state.handleStreamEvent(.messageDelta(sessionId: "c", text: "Let me look"))
+        state.handleStreamEvent(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false))
+        XCTAssertEqual(rows("c").map(\.content), ["Looking", "Let me look", "Checking the map."])
+        state.handleStreamEvent(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil))
+        XCTAssertEqual(rows("c").map(\.content), ["Checking the map.", "Let me look. Found it."],
+                       "The reply's opening words show once, whether cut off before or after it was left")
+        XCTAssertEqual(state.followedChat(answering: ["c"])?.isRunning, false)
+        // A completion with no words still lets go of the cut-off words,
+        // as the screen removes its partials.
+        leave("e")
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Let me look"))
+        state.handleStreamEvent(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
+        state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil))
+        XCTAssertEqual(rows("e").map(\.content), ["Checking the map."])
+        XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes a left chat's events")
+
         func chat(_ id: String, running: Bool = true) -> BackgroundChat {
-            var chat = BackgroundChat(
+            let chat = BackgroundChat(
                 sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
                 profile: "default", isBotChat: false,
                 rows: [ChatMessage(id: "p", role: .partial, content: "Looking", timestamp: "1")],
                 streamingText: ""
             )
-            if !running { _ = chat.apply(.messageInterrupted(sessionId: id)) }
+            if !running { chat.state.turnState = .idle }
             return chat
         }
-        var left = chat("a")
-        XCTAssertEqual(left.rows.first?.role, .assistant, "A partial reads as the reply's words")
-        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Checking the map")), .updated)
-        XCTAssertEqual(left.apply(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true)), .updated)
-        XCTAssertEqual(left.rows.last?.content, "Checking the map.")
-        XCTAssertEqual(left.apply(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil)), .ignored)
-        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Found it")), .updated)
-        XCTAssertEqual(left.rows.count, 3)
-        XCTAssertEqual(left.apply(.messageError(sessionId: "a", message: "boom")), .ended)
-        XCTAssertFalse(left.isRunning)
-        XCTAssertEqual(left.apply(.sessionBusy(sessionId: "a", busy: false)), .ignored)
-
-        // An interim note Hermes didn't stream cuts the reply off: the
-        // reply so far shows until the final row takes its place.
-        var cut = chat("c")
-        _ = cut.apply(.messageDelta(sessionId: "c", text: "Let me look"))
-        XCTAssertEqual(cut.apply(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false)), .updated)
-        XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Let me look", "Checking the map."])
-        XCTAssertEqual(cut.apply(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil)), .ended)
-        XCTAssertEqual(cut.rows.map(\.content), ["Checking the map.", "Let me look. Found it."],
-                       "The reply's opening words show once, whether cut off before or after it was left")
-        // A completion with no words still lets go of the cut-off words,
-        // as the screen removes its partials.
-        var empty = chat("e")
-        _ = empty.apply(.messageDelta(sessionId: "e", text: "Let me look"))
-        _ = empty.apply(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
-        XCTAssertEqual(empty.apply(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil)), .ended)
-        XCTAssertEqual(empty.rows.map(\.content), ["Checking the map."])
-
         var list: [BackgroundChat] = []
         list = BackgroundChat.adding(chat("1"), to: list)
         list = BackgroundChat.adding(chat("2", running: false), to: list)
