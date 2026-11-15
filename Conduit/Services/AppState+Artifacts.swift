@@ -83,7 +83,7 @@ extension AppState {
         }
         guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
               let sessionID = activeSessionId, !sessionID.isEmpty else { return [] }
-        guard let profile = botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID) else {
+        guard let profile = botChatStoreProfile(forSessionID: sessionID) else {
             return activeWorkstreamChatIDs(sessionID)
         }
         // The open id is the runtime one; its store keeps the durable id,
@@ -161,9 +161,16 @@ extension AppState {
         }
     }
 
+    /// The bot whose Bot Chat the open id is, by the store that keeps it or
+    /// the roster's chat it was rebound to; nil for any other chat. Its ids
+    /// and the store its ticks and taps go to both ask here, so they agree.
+    func botChatStoreProfile(forSessionID sessionID: String) -> String? {
+        botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID)
+    }
+
     /// The bot whose Bot Chat a runtime id was rebound to (a shortcut
     /// reopening a dead runtime records only its durable id).
-    func reboundBotChatProfile(_ sessionID: String) -> String? {
+    private func reboundBotChatProfile(_ sessionID: String) -> String? {
         botRoster.first { bot in
             guard let durable = confirmedDurableSessionID(forRuntime: sessionID, profile: bot.name) else { return false }
             return Self.botChatIDs(bot).contains(durable)
