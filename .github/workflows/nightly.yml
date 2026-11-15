@@ -95,10 +95,9 @@ jobs:
           # running one twice.
           if ! others=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&created=%3E%3D$since&per_page=20" \
             --jq "[.workflow_runs[] | select(.id != $RUN_ID and .event != \"schedule\")] | length"); then
-            echo "::warning::Couldn't list Nightly runs; the backup cron runs."
-            others=0
-          fi
-          if [ "$others" -gt 0 ]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Couldn't list Nightly runs, so it's unknown whether the overnight timer ran; the backup cron runs."
+          elif [ "$others" -gt 0 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "::notice::A dispatched Nightly ran on main since $since; the backup cron skips."
           else

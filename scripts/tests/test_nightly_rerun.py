@@ -163,6 +163,7 @@ class NightlyOvernightTests(unittest.TestCase):
         skip, stdout = self._backup("fail")
         self.assertEqual(skip, "skip=false")
         self.assertIn("Couldn't list Nightly runs", stdout)
+        self.assertNotIn("timer on the Hermes host missed", stdout)
 
     def test_skip_gates_every_macos_job_and_only_the_cron_checks(self):
         nightly = self._nightly()
