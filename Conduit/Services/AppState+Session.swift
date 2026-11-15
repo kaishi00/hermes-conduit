@@ -700,7 +700,10 @@ extension AppState {
                         // before the next.
                         self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !changedByThisRead)
                     } else if !listed {
-                        self.catalogChangeSignal.noteReadFailed()
+                        // Tried again 5 s from now, with or without
+                        // another signal or poll.
+                        self.catalogChangeSignal.noteReadFailed(at: self.chatSyncNow())
+                        self.readPendingCatalogChange()
                     }
                 }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled

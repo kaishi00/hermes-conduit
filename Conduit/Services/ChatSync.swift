@@ -169,11 +169,12 @@ struct CatalogChangeSignal {
         return true
     }
 
-    /// A signal's read failed: the change stays pending, tried again
-    /// after the shortest wait.
-    mutating func noteReadFailed() {
+    /// A signal's read failed: the change stays pending, tried again the
+    /// shortest wait after the failure.
+    mutating func noteReadFailed(at now: Date) {
         isPending = true
         lastReadFailed = true
+        lastReadAt = now
     }
 
     /// Whether a pending change is held past its wait, by a turn here or

@@ -446,14 +446,14 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertTrue(signal.isHeld(now: at(10), turnRunningHere: true), "Held by a turn here")
 
         XCTAssertTrue(signal.takeRead(now: at(60), turnRunningHere: false))
-        signal.noteReadFailed()
+        signal.noteReadFailed(at: at(63))
         XCTAssertTrue(signal.isPending)
-        XCTAssertTrue(signal.isHeld(now: at(61), turnRunningHere: false), "Held by the failure")
-        XCTAssertEqual(signal.delayUntilDue(now: at(62)), 3, "Tried again 5 s after the failed read")
-        XCTAssertTrue(signal.takeRead(now: at(65), turnRunningHere: false))
+        XCTAssertTrue(signal.isHeld(now: at(64), turnRunningHere: false), "Held by the failure")
+        XCTAssertEqual(signal.delayUntilDue(now: at(64)), 4, "Tried again 5 s after the read failed")
+        XCTAssertTrue(signal.takeRead(now: at(68), turnRunningHere: false))
         XCTAssertFalse(signal.lastReadFailed)
         signal.noteChanged()
-        XCTAssertEqual(signal.delayUntilDue(now: at(65)), 60, "The quiet wait again once a read went out")
+        XCTAssertEqual(signal.delayUntilDue(now: at(68)), 60, "The quiet wait again once a read went out")
     }
 
     /// The same through the app: a change read that lists the same rows
@@ -978,6 +978,8 @@ final class ChatSyncTests: XCTestCase {
         await appState.leaveCatalogRefreshTask?.value
         XCTAssertEqual(box.loads, 2, "The change is read")
         XCTAssertTrue(appState.catalogChangeSignal.isPending, "and stays pending when the read fails")
+        XCTAssertNotNil(appState.catalogChangeReadTask, "its retry is set for 5 s, with or without a poll")
+        XCTAssertEqual(appState.catalogChangeSignal.delayUntilDue(now: box.now), 5, "timed from the failure")
 
         box.fails = false
         box.now += 6
