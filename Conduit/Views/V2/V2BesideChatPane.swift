@@ -70,14 +70,26 @@ private struct V2BesideChatRows: View {
     @ObservedObject var live: BesideChatLive
     let chat: BackgroundChat
     let gatewayResolver: GatewayMediaDataURLResolver
+    @Environment(\.v2Shell) private var shell
 
     /// The newest rows it draws: Swap shows the whole chat.
     private static let rowLimit = 60
 
     var body: some View {
+        // Behind another tab the pane stays mounted: it draws no rows
+        // there, so a reply streaming into it costs nothing until the tab
+        // shows again, with the rows as they then stand.
+        if shell.isTabActive {
+            rows
+        } else {
+            Color.clear
+        }
+    }
+
+    private var rows: some View {
         let state = chat.state
         let isRunning = chat.isRunning
-        ScrollView {
+        return ScrollView {
             LazyVStack(alignment: .leading, spacing: 16) {
                 ForEach(chat.newestSettledRows(Self.rowLimit)) { row in
                     MessageBubble(message: row, gatewayResolver: gatewayResolver)

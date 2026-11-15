@@ -91,10 +91,11 @@ extension AppState {
             setRunning(false)
         case .sessionBusy(_, let busy):
             if busy {
-                // A turn starting in a chat kept beside the one on screen,
+                // A turn starting in the chat kept beside the one on screen,
                 // before any word of it: the pane says it works, and
-                // closing the pane goes on following the reply.
-                if !shownChat.turnState.isRunning { setRunning(true) }
+                // closing the pane goes on following the reply. Any other
+                // left chat's turn only ever ends.
+                if actingOnBesideChat, !shownChat.turnState.isRunning { setRunning(true) }
                 break
             }
             // The end of its turn.

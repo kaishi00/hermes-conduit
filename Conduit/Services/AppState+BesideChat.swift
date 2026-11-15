@@ -35,6 +35,37 @@ extension AppState {
         }
     }
 
+    /// Whether the chat acted on (`act(on:)`) is the one kept beside.
+    var actingOnBesideChat: Bool {
+        guard let ids = besideChatIDs, let scope = liveChatScope else { return false }
+        return !scope.sessionIDs.isDisjoint(with: ids)
+    }
+
+    /// A message another device or process sent to the pane's chat shows
+    /// there as it's sent, ahead of its reply: once, by Hermes' row id, or
+    /// by its words where the event has none.
+    func noteUserMessageInBesideChat(sessionId: String, rowId: Int?, text: String) {
+        guard let chat = besideChat, chat.answers(to: sessionId), !eventBelongsToActiveSession(sessionId),
+              text.contains(where: { !$0.isWhitespace }) else { return }
+        let rows = chat.state.messages
+        if let rowId {
+            guard !rows.contains(where: { $0.rowId == rowId }) else { return }
+        } else if let latest = rows.last(where: { $0.role == .user }),
+                  OpenChatSync.squashed(latest.content) == OpenChatSync.squashed(text) {
+            return
+        }
+        var row = ChatMessage(
+            id: rowId.map { "user-row-\($0)" } ?? "user-\(Date().timeIntervalSince1970)",
+            role: .user,
+            content: text,
+            timestamp: Self.localTimestamp(),
+            author: nil
+        )
+        row.rowId = rowId
+        chat.state.messages.append(row)
+        besideChatLive.moved()
+    }
+
     /// Whether the chat on screen can stay beside another: an ordinary
     /// chat, live from Hermes, with rows to show. A Bot Chat, a group room
     /// and a saved copy still opening can't.

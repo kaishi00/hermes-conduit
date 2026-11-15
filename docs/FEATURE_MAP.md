@@ -3232,7 +3232,7 @@ pane and no Open Beside · the drawer shell (V2 off): not offered · a second
 window: not built yet (open gap) · README.md's feature list
 
 **Code**
-- `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
+- `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, noteUserMessageInBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
 - The followed copy: `Conduit/Services/AppState+BackgroundChats.swift` (followChatOnScreen's staysBeside, followLeftChatIfItsReplyRuns, applyBackgroundChatEvent telling the pane), `Conduit/Models/BackgroundChat.swift` (newestSettledRows, liveThinkingRow, adding's keeping)
 - The pane: `Conduit/Views/V2/V2BesideChatPane.swift`, its rows' state `Conduit/Views/ChatRowState.swift` (ChatRowState.beside, chatRowsBeside)
 - The layout: `Conduit/Views/V2/V2Shell.swift` (splitColumns, V2SplitLayout.besideChatWidth, showsBesideChat, v2BesideChatFits)
@@ -3247,12 +3247,13 @@ window: not built yet (open gap) · README.md's feature list
 - The pane's chat is an ordinary chat of the profile on screen, live from Hermes. A Bot Chat, a group room and a saved copy still opening can't be kept beside; another profile's row and a saved row don't offer it. Where the chat on screen can't be kept, Open Beside opens the row as a tap does (2026-11-15, #2557).
 - The pane takes half of what the list leaves, less where the open chat would fall under its 430 pt, and needs 340 pt itself: the window less the list must leave 771 pt. An 11-inch iPad on its side (1194 pt) gets a 387 pt pane with the list at its standard width; an iPhone and a portrait iPad get none (2026-11-15, #2557).
 - The pane draws its chat's newest 60 rows: Swap shows the whole chat. Counted from the end, so a long chat costs no more on each word of a reply (2026-11-15, #2557).
+- A turn that starts in the pane's chat counts from Hermes' busy report, before its first word, so the pane says it works and closing it goes on following the reply; any other left chat's turn only ever ends. A message another device or process sends to the pane's chat shows there as it's sent, once, by Hermes' row id (2026-11-15, #2557, from review).
+- Behind another tab the pane draws no rows, so a reply streaming into it costs nothing until its tab shows again (2026-11-15, #2557, from review).
 - Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. A profile switch closes the pane, and so does opening its chat in the chat's own column, deleting it, or leaving the dashboard (2026-11-15, #2557).
 
 **Open gaps**
 - Not seen on a device yet: the pane's rows, its scroll and its width on an iPad and a Mac from TestFlight.
 - A second window on an iPad or a Mac: next, as its own PRs (each window needs its own navigation; `ConduitWindowClaimKeeper` closes a second one today).
-- A message sent to the pane's chat from another device shows in the pane only as its reply does: the pane follows the turn's events, and Hermes' rows land on Swap.
 - With the chat list hidden, a wide window has one column and no pane.
 
 **Checked:** 2026-11-15, #2557 (new: Open Beside, the pane, Swap and Close; the drawer shell, iPhone, the Watch, CarPlay, the voice modes and the notifier needed no change)

@@ -3451,6 +3451,12 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertGreaterThan(state.besideChatLive.revision, before)
         XCTAssertTrue(state.messages.isEmpty)
 
+        // A message another device sends to it shows in the pane once.
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
+        XCTAssertEqual(beside.state.messages.filter { $0.rowId == 7 }.map(\.content), ["From my Mac"])
+        XCTAssertTrue(state.messages.isEmpty)
+
         // Chats left after it never push it out, finished or not.
         var list = state.backgroundChats
         for index in 0..<BackgroundChat.limit {
