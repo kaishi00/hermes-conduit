@@ -453,7 +453,8 @@ extension AppState {
         requiredViewportTransitionGeneration: UInt64?,
         reportsFailure: Bool = true,
         yieldsToNewerReads: Bool = false,
-        deferringOlderPages: Bool = false
+        deferringOlderPages: Bool = false,
+        listedChange: (_ changed: Bool) -> Void = { _ in }
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -510,7 +511,11 @@ extension AppState {
             let owner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
             let listChanged = listedSessions != sessions || listedCron != cronSessions
             let sameListAgain = !listChanged && catalogCommitOwner == owner
-            if listChanged { chatListCatalogGeneration &+= 1 }
+            if listChanged {
+                chatListCatalogGeneration &+= 1
+                catalogChangeSignal.noteListChanged()
+            }
+            listedChange(listChanged)
             if listedSessions != sessions { sessions = listedSessions }
             if listedCron != cronSessions { cronSessions = listedCron }
             catalogCommitOwner = owner
@@ -679,12 +684,25 @@ extension AppState {
                 self.leaveCatalogRefreshReportsFailure = false
                 let readsChange = self.leaveCatalogRefreshReadsChange
                 self.leaveCatalogRefreshReadsChange = false
+                // Only this read's own listing counts: one a newer read
+                // overtook lists nothing, and that read speaks for itself.
+                var changedByThisRead: Bool?
                 let listed = await self.loadSessions(
                     forceRefresh: false,
                     requiredViewportTransitionGeneration: nil,
-                    reportsFailure: reportsFailure
+                    reportsFailure: reportsFailure,
+                    listedChange: { changedByThisRead = $0 }
                 )
-                if readsChange, !listed { self.catalogChangeSignal.noteChanged() }
+                if readsChange {
+                    if let changedByThisRead {
+                        // Hermes signals every profile's changes: a read
+                        // that finds this list as it was waits longer
+                        // before the next.
+                        self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !changedByThisRead)
+                    } else if !listed {
+                        self.catalogChangeSignal.noteChanged()
+                    }
+                }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
             self.leaveCatalogRefreshTask = nil
         }
