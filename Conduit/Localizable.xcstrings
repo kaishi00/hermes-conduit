@@ -195877,6 +195877,88 @@
           }
         }
       }
+    },
+    "This chat changed while the message was being taken back, so nothing was taken back. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat hat sich geändert, während die Nachricht zurückgenommen wurde, deshalb wurde nichts zurückgenommen. Versuche es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat cambió mientras se retiraba el mensaje, así que no se retiró nada. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce chat a changé pendant le retrait du message, donc rien n’a été retiré. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat ini berubah saat pesan sedang ditarik kembali, jadi tidak ada yang ditarik. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa chat è cambiata mentre il messaggio veniva ritirato, quindi non è stato ritirato nulla. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージを取り消している間にこのチャットが変わったため、何も取り消していません。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 되돌리는 동안 이 채팅이 바뀌어서 아무것도 되돌리지 않았어요. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten czat zmienił się podczas cofania wiadomości, więc nic nie zostało cofnięte. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este chat mudou enquanto a mensagem era desfeita, então nada foi desfeito. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чат изменился, пока сообщение отзывалось, поэтому ничего не отозвано. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesaj geri alınırken bu sohbet değişti, bu yüzden hiçbir şey geri alınmadı. Yeniden deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回消息时此聊天发生了变化，因此没有撤回任何内容。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收回訊息時此聊天有了變動，因此沒有收回任何內容。請再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

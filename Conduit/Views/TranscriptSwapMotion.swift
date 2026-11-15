@@ -23,6 +23,8 @@ final class TranscriptSwapMotion {
     weak var stage: TranscriptSwapStage?
     /// The slide the chat being opened comes in with.
     private(set) var expected: BotChatSwap?
+    /// The chat `expected` was asked for, as the transcript names it.
+    private(set) var expectedConversation: String?
     /// The chat being opened is the one the transcript draws, and only
     /// its rows are still to come (Hermes hasn't sent them, and it has no
     /// saved ones).
@@ -43,6 +45,7 @@ final class TranscriptSwapMotion {
         // A chat left while its own rows were still waited for no longer
         // has a slide to come in with.
         expected = nil
+        expectedConversation = nil
         chatIsOnStage = false
         stage?.slideOut(swap, atOnce: true)
         wait(patience)
@@ -60,6 +63,7 @@ final class TranscriptSwapMotion {
     func expect(_ swap: BotChatSwap, conversation: String) {
         guard let stage else {
             expected = swap
+            expectedConversation = conversation
             chatIsOnStage = false
             wait(patience)
             return
@@ -70,6 +74,7 @@ final class TranscriptSwapMotion {
         // in): the wait goes on, so the rows still slide in.
         if onStage, expected != nil, chatIsOnStage {
             expected = swap
+            expectedConversation = conversation
             return
         }
         let justDrawn = onStage && stage.conversationJustChanged
@@ -83,6 +88,7 @@ final class TranscriptSwapMotion {
             return
         }
         expected = swap
+        expectedConversation = conversation
         chatIsOnStage = onStage
         if !stage.rowsAreAway { stage.slideOut(swap, atOnce: false) }
         wait(onStage ? rowsPatience : patience)
@@ -103,8 +109,19 @@ final class TranscriptSwapMotion {
         return nil
     }
 
+    /// Whether the swap still to come was asked for another chat than
+    /// `conversation`, whose rows the transcript just drew: a second swap
+    /// the screen hasn't heard of yet (issue 2513). Those rows wait for
+    /// the screen to ask their own slide in this pass, rather than come in
+    /// with the first swap's.
+    func waitsForAnotherChat(than conversation: String?) -> Bool {
+        guard expected != nil, let expectedConversation else { return false }
+        return expectedConversation != conversation
+    }
+
     private func settle() {
         expected = nil
+        expectedConversation = nil
         chatIsOnStage = false
         waiting?.cancel()
         waiting = nil
@@ -119,6 +136,7 @@ final class TranscriptSwapMotion {
             guard let self, !Task.isCancelled else { return }
             waiting = nil
             expected = nil
+            expectedConversation = nil
             chatIsOnStage = false
             stage?.comeBack()
         }

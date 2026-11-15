@@ -221,7 +221,8 @@ extension AppState {
                 chatResumeCoordinator.prepareDirectTarget(
                     sessionID: savedChat.sessionID,
                     profile: profile,
-                    purpose: purpose
+                    purpose: purpose,
+                    owner: automaticOperationID
                 )
                 noteConnectionStep("Chat resume before the chat list")
                 earlyResumeLogger.notice("Chat resume goes out before the chat list")
@@ -503,7 +504,8 @@ extension AppState {
                 chatResumeCoordinator.prepareDirectTarget(
                     sessionID: missingSavedSessionID,
                     profile: profile,
-                    purpose: purpose
+                    purpose: purpose,
+                    owner: automaticOperationID
                 )
             }
             let target = missingSavedSessionID == nil
@@ -549,7 +551,7 @@ extension AppState {
                 // (its flags are still set) instead of asking again.
                 var succeeded = false
                 if let refused = refusedBeforeList, target.nestingIDs.contains(refused) {
-                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                    chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticOperationID)
                 } else {
                     succeeded = await reconcile(
                         sessionId: target.id,
@@ -637,7 +639,7 @@ extension AppState {
                 )
                 var succeeded = false
                 if refusedBeforeList == missingSavedSessionID {
-                    chatResumeCoordinator.abandonPendingAutomaticSync()
+                    chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticOperationID)
                 } else {
                     succeeded = await reconcile(
                         sessionId: missingSavedSessionID,
@@ -1527,7 +1529,9 @@ extension AppState {
             // Read at the moment of selection too: a bot's work read that
             // lands mid-sync names its workstreams for this pick, and a feed
             // read names Pulse's chat.
-            unlistedSessionIDs: Set(catalog.lazy.filter { self.isUnlistedChat($0) }.map(\.id))
+            unlistedSessionIDs: Set(catalog.lazy.filter { self.isUnlistedChat($0) }.map(\.id)),
+            // The sync that stages the pick retires it if it fails (issue 2461).
+            owner: automaticSyncOperationID
         )
     }
 
@@ -1882,7 +1886,7 @@ extension AppState {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                chatResumeCoordinator.abandonPendingAutomaticSync()
+                chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
                 return false
             }
             // The compact resume refused nothing but brought no rows: the
@@ -1941,7 +1945,7 @@ extension AppState {
                 }
                 chatSyncErrorMessage = AppLocalization.string("Hermes returned a different conversation while resuming this one. Try reopening it.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                chatResumeCoordinator.abandonPendingAutomaticSync()
+                chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
                 return false
             case .success:
                 context?.resolvedSessionId = result.sessionId
@@ -2435,7 +2439,7 @@ extension AppState {
             // A later restore of the chat that works takes it down again.
             shownChat.chatRestoreFailureShown = chatSyncErrorMessage
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-            chatResumeCoordinator.abandonPendingAutomaticSync()
+            chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
             return false
         }
     }
@@ -2689,7 +2693,7 @@ extension AppState {
                   let activeClient = self.client,
                   activeClient === client else {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                chatResumeCoordinator.abandonPendingAutomaticSync()
+                chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
                 return nil
             }
             if let returnedProfile = created.profile,
@@ -2697,7 +2701,7 @@ extension AppState {
                 turnState = .idle
                 errorMessage = AppLocalization.string("Hermes created this conversation in \(profileDisplayName(returnedProfile)), not \(profileDisplayName(profile)). It was not opened.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                chatResumeCoordinator.abandonPendingAutomaticSync()
+                chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
                 await loadSessions(forceRefresh: true)
                 return nil
             }
@@ -2706,7 +2710,7 @@ extension AppState {
                 turnState = .idle
                 errorMessage = AppLocalization.string("Hermes didn't finish creating the conversation. Try again.")
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-                chatResumeCoordinator.abandonPendingAutomaticSync()
+                chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
                 return nil
             }
 
@@ -2844,7 +2848,7 @@ extension AppState {
             turnState = .idle
             chatSyncErrorMessage = AppLocalization.string("Failed to create session: \(UserFacingError.message(for: error))")
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
-            chatResumeCoordinator.abandonPendingAutomaticSync()
+            chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
             if resumePurpose == .automaticReturn {
                 scheduleReconnectAfterFailedSync()
             }

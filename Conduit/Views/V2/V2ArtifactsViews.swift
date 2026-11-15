@@ -1401,18 +1401,32 @@ private struct ArtifactThumbnail: View {
             return UIImage(cgImage: cgImage)
         }.value
         guard let thumbnail, !Task.isCancelled else { return }
-        ArtifactThumbnailCache.shared.setObject(thumbnail, forKey: cacheKey)
+        ArtifactThumbnailCache.store(thumbnail, forKey: cacheKey)
         image = thumbnail
     }
 }
 
 /// Thumbnails by host path, so scrolling back doesn't read them again.
-private enum ArtifactThumbnailCache {
+/// They go with the chats' pictures at Sign Out and Remove Dashboard
+/// (`wipeOfflineChatCache`, issue 2512): the next sign-in may be another
+/// account.
+enum ArtifactThumbnailCache {
     static let shared: NSCache<NSString, UIImage> = {
         let cache = NSCache<NSString, UIImage>()
         cache.countLimit = 300
+        // About 50 thumbnails of 360 pixels at full size.
+        cache.totalCostLimit = 32 * 1024 * 1024
         return cache
     }()
+
+    static func store(_ image: UIImage, forKey key: NSString) {
+        let pixels = image.size.width * image.scale * image.size.height * image.scale
+        shared.setObject(image, forKey: key, cost: Int(pixels) * 4)
+    }
+
+    /// Every dashboard's: NSCache can't list its keys, as
+    /// TranscriptImageCache can't tell its files apart by server.
+    static func purge() { shared.removeAllObjects() }
 }
 
 /// The list's search and its Show Missing Files toggle: in the navigation

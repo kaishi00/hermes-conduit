@@ -1966,7 +1966,9 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         await harness.appState.editAndResend(earlier, confirmedLaterTurns: true)
 
-        XCTAssertEqual(reads, ["stored-1"], "Hermes' resume finds a chat by its stored id, never the runtime id")
+        // Read twice on `hermes dashboard`: again just before its unfenced
+        // `/undo N` (issue 2431).
+        XCTAssertEqual(reads, ["stored-1", "stored-1"], "Hermes' resume finds a chat by its stored id, never the runtime id")
         XCTAssertEqual(rewinds, [11])
         XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
     }
@@ -2338,6 +2340,40 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         XCTAssertEqual(rewinds, [])
         XCTAssertEqual(harness.appState.messages.last?.content, "There's no message to undo.")
+    }
+
+    /// `hermes dashboard`'s `/undo N` counts N in the snapshot and has no
+    /// fence: a turn another writer added between the snapshot and the
+    /// undo would shift what it takes back. The turns are read again just
+    /// before it, and a chat that moved is refused (issue 2431).
+    func testADashboardUndoIsRefusedWhenTheChatMovedSinceItsSnapshot() async throws {
+        var rewinds: [Int] = []
+        var reads = 0
+        var operations = ChatResumeLifecycleOperations()
+        operations.rewindSnapshot = { _, _ in
+            reads += 1
+            let moved: [SessionRewindSnapshot.Turn] = reads == 1 ? [] : [.init(rowID: 20, text: "from another device")]
+            return SessionRewindSnapshot(turns: Self.rewindTurns.turns + moved, revision: nil, generation: nil)
+        }
+        operations.rewindSession = { _, _, target, _ in
+            rewinds.append(target)
+            return SessionRewindReceipt(rewoundCount: 2, text: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo 2")
+
+        XCTAssertEqual(reads, 2)
+        XCTAssertEqual(rewinds, [], "nothing is taken back from a chat that moved")
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "This chat changed while the message was being taken back, so nothing was taken back. Try again."
+        )
+        XCTAssertFalse(harness.appState.isRewindingTurns)
     }
 
     func testUndoWithAWordShowsUsage() async throws {

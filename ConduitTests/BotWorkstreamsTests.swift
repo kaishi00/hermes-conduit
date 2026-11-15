@@ -1555,6 +1555,28 @@ extension BotModeTests {
         XCTAssertTrue(rows.isUserInteractionEnabled)
     }
 
+    /// A quick second swap: the Bot Chat's rows drawn while the
+    /// workstream's slide still waits come in from the leading edge once
+    /// the screen asks, not with the workstream's slide (issue 2513).
+    @MainActor
+    func testASecondSwapsRowsWaitForTheirOwnSlide() {
+        let stage = SwapStageRecorder()
+        let motion = TranscriptSwapMotion()
+        motion.stage = stage
+        motion.expect(.forward, conversation: "workstream")
+        XCTAssertEqual(stage.played, ["out forward"])
+        XCTAssertFalse(motion.waitsForAnotherChat(than: "workstream"))
+        // Back before the workstream drew: the Bot Chat's rows come first.
+        stage.shownConversation = "bot-chat"
+        stage.conversationJustChanged = true
+        stage.showsChatRows = true
+        XCTAssertTrue(motion.waitsForAnotherChat(than: "bot-chat"))
+        motion.expect(.back, conversation: "bot-chat")
+        XCTAssertEqual(stage.played, ["out forward", "in back"])
+        XCTAssertNil(motion.expected)
+        XCTAssertFalse(motion.waitsForAnotherChat(than: "bot-chat"))
+    }
+
     /// A wait whose sleep ended just as a newer swap stood it down ends
     /// nothing: the newer swap keeps its slide and the rows stay away.
     @MainActor
