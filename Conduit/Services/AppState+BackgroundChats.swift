@@ -24,13 +24,20 @@ extension AppState {
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running)
     }
 
-    /// A profile switch leaves the chat on screen for the target profile's.
-    /// Called before the profile changes, so the chat is followed under the
-    /// profile it belongs to. The switch has already set the turn to
-    /// synchronizing, so it says whether the chat's turn was running.
-    func followChatLeftForProfileSwitch(turnWasRunning: Bool) {
-        guard let oldID = activeSessionId else { return }
-        followChatOnScreen(answering: knownSessionIDs(for: oldID).union([oldID]), openAs: oldID, turnRunning: turnWasRunning)
+    /// A profile switch, or New Chat, leaves the chat on screen. Called
+    /// before either changes anything, so the chat is followed under the
+    /// profile it belongs to. Both set the turn to synchronizing first, so
+    /// the caller says whether the chat's turn was running: one that hasn't
+    /// streamed words yet (just sent, or a tool step) is followed too.
+    /// Returns the ids it followed, so a New Chat that starts nothing can
+    /// let go of them.
+    @discardableResult
+    func followChatBeingLeft(turnWasRunning: Bool) -> Set<String>? {
+        guard let oldID = activeSessionId else { return nil }
+        let ids = knownSessionIDs(for: oldID).union([oldID])
+        let before = backgroundChats
+        followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnWasRunning)
+        return backgroundChats == before ? nil : ids
     }
 
     /// The chat a profile switch opens on, when it's one a switch left
@@ -45,10 +52,11 @@ extension AppState {
         guard let left = followedChat(answering: knownSessionIDs(for: sessionID).union([sessionID])) else {
             return false
         }
+        guard presentBackgroundChat(left, openedAs: sessionID) else { return false }
         // Released by its own ids: the switch's resume can move the chat on
         // screen to a runtime id the entry never knew.
         followedChatShownBySwitch = left.sessionIDs
-        return presentBackgroundChat(left, openedAs: sessionID)
+        return true
     }
 
     /// The chat a profile switch showed from a followed copy, once the
@@ -132,9 +140,11 @@ extension AppState {
     func applyBackgroundChatEvent(_ event: StreamEvent) -> Bool {
         guard !backgroundChats.isEmpty else { return false }
         let id = sessionID(for: event)
-        guard !id.isEmpty,
-              let index = backgroundChats.firstIndex(where: { $0.answers(to: id) }) else { return false }
-        if eventBelongsToActiveSession(id) {
+        guard !id.isEmpty else { return false }
+        let onScreen = eventBelongsToActiveSession(id)
+        guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
+            ?? (onScreen ? nil : followedChatIndex(reboundTo: id)) else { return false }
+        if onScreen {
             // The chat on screen saves its own copy.
             _ = backgroundChats[index].apply(event)
             return false
@@ -147,6 +157,19 @@ extension AppState {
             saveBackgroundChatCopy(backgroundChats[index])
         }
         return true
+    }
+
+    /// The followed chat a runtime id Hermes bound while it was away
+    /// belongs to (another device resumed it, say), by the conversation
+    /// index. It answers to that id from then on.
+    private func followedChatIndex(reboundTo id: String) -> Int? {
+        let index = conversationIdentityIndex
+        guard let found = backgroundChats.firstIndex(where: { chat in
+            guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }
+            return chat.sessionIDs.contains(durableID) || chat.durableSessionID == durableID
+        }) else { return nil }
+        backgroundChats[found].answer(to: id)
+        return found
     }
 
     /// A finished reply's rows become the chat's saved copy, so it shows

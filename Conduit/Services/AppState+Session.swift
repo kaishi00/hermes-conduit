@@ -962,6 +962,11 @@ extension AppState {
         recordOfflineChatCopy()
         keepBotChatCopy()
         keepLeftBackfilledTranscript()
+        // And its reply, while one is still coming (all-live stage 2), even
+        // before any words: the turn reads synchronizing from here on, so
+        // adopting the new chat can't tell it was running. Before the title
+        // changes, so the followed chat keeps its own.
+        let followedIDs = followChatBeingLeft(turnWasRunning: turnState == .running)
         outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
@@ -976,6 +981,11 @@ extension AppState {
             widgetLease: widgetLease,
             listsBeforeHermes: true
         )
+        // No chat started: the one still open is on screen, not left. A
+        // New Chat tapped again meanwhile still leaves it, so it stays.
+        if let followedIDs, activeSessionId == previousSessionID, newSessionCreationsInFlight == 1 {
+            releaseFollowedChat(answering: followedIDs)
+        }
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
         if widgetLease?.isCurrent == false, token == shownChat.reconciliationToken,
