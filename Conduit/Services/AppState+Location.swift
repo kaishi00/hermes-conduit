@@ -150,7 +150,11 @@ extension AppState {
     /// Sharing stays bound, and the next sign-in's connect saves a new one.
     /// What wasn't sent yet goes too: it would go under the next sign-in.
     func forgetLocationHostPass(dashboardID: UUID) {
-        locationHostPassGeneration &+= 1
+        // Only a save for this dashboard is stood down: the pass is saved
+        // only for the dashboard sharing is bound to.
+        if LocationSharingController.shared.binding?.dashboardID == dashboardID {
+            locationHostPassGeneration &+= 1
+        }
         LocationSharingController.shared.dropUnsent(boundTo: dashboardID)
         guard LocationKeychain.loadHostPass()?.dashboardID == dashboardID else { return }
         LocationKeychain.clearHostPass()

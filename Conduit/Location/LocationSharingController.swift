@@ -281,6 +281,9 @@ final class LocationSharingController: ObservableObject {
     /// Shop entries waiting to be sent.
     var unsentSpotEntryCount: Int { unsent.spotEntries.count }
     var hasUnsent: Bool { !unsent.isEmpty }
+    /// Moves on at each `dropUnsent`, so a fix or event taken before it
+    /// isn't kept after a wait that outlasted it.
+    private var unsentDrops = 0
 
     /// Sign Out of the dashboard sharing is bound to drops the fix, visits
     /// and shop entries not sent yet: the next sign-in there may be another
@@ -288,6 +291,7 @@ final class LocationSharingController: ObservableObject {
     /// bound, so what's recorded after Sign Out goes with the next sign-in.
     func dropUnsent(boundTo dashboardID: UUID) {
         guard readConfigIfNeeded(), config.binding?.dashboardID == dashboardID else { return }
+        unsentDrops &+= 1
         lastTalkingUpload = nil
         guard !unsent.isEmpty else { return }
         unsent.fix = nil
@@ -434,6 +438,7 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = []) async -> Bool {
         guard let bound = config.binding, settings.shares(source, at: now()) else { return false }
+        let drops = unsentDrops
         // A background relaunch gets a few seconds: the fix, place name and
         // send run inside an assertion, and an arrive/leave is kept before
         // the fix so a suspension can't lose it.
@@ -458,7 +463,8 @@ final class LocationSharingController: ObservableObject {
         // Sharing ended or moved to another dashboard while the fix came:
         // it and these events were taken for the old one, so the events
         // kept above leave too, or a rebind's flush would send them there.
-        guard config.binding == bound else {
+        // So do they when a Sign Out dropped what wasn't sent meanwhile.
+        guard config.binding == bound, drops == unsentDrops else {
             if !events.isEmpty {
                 unsent.remove(fixID: nil, eventIDs: Set(events.map(\.id)))
                 saveUnsent()
@@ -514,6 +520,7 @@ final class LocationSharingController: ObservableObject {
         let endBackground = beginBackgroundWork(for: source)
         defer { endBackground() }
         let bound = config.binding
+        let drops = unsentDrops
         var record: LocationFixRecord?
         if let location {
             // Any fix may move the shops watched along (walking past).
@@ -521,8 +528,9 @@ final class LocationSharingController: ObservableObject {
             let precision = settings.precision(for: source)
             let area = precision == .places ? nil : await fixes.area(for: location)
             // Sharing ended or moved to another dashboard during the lookup:
-            // this fix and its events were taken for the old one.
-            guard config.binding == bound, settings.shares(source, at: now()) else { return false }
+            // this fix and its events were taken for the old one. A Sign Out
+            // meanwhile dropped what wasn't sent, these with it.
+            guard config.binding == bound, drops == unsentDrops, settings.shares(source, at: now()) else { return false }
             record = LocationFixRecord(source: source, raw: LocationRawFix(location), area: area)
         }
         guard record != nil || !events.isEmpty else { return false }
