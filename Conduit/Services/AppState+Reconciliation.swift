@@ -310,7 +310,7 @@ extension AppState {
                 if listedSessions != sessions || listedCron != cronSessions {
                     chatListCatalogGeneration &+= 1
                     // A changed list brings the change signal's wait back to 5 s.
-                    catalogChangeSignal.noteListChanged()
+                    catalogChangeSignal.noteListChanged(at: chatSyncNow())
                 }
                 sessions = listedSessions
                 cronSessions = listedCron
@@ -2815,7 +2815,11 @@ extension AppState {
                       self.activeProfile == profile,
                       self.activeSessionId == runtimeSessionID else { return }
                 await self.loadSlashCommands()
-                await self.loadSessions()
+                await self.loadSessions(
+                    forceRefresh: false,
+                    requiredViewportTransitionGeneration: nil,
+                    joinsReadInFlight: true
+                )
             }
             settleReconciliationAndPublish(
                 token,

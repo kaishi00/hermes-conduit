@@ -6619,6 +6619,11 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         let harness = makeHarness(lifecycleOperations: operations)
         harness.appState.setChatResumeBehavior(.latestActivity)
+        // Two quiet change reads before: the sync's changed list brings the
+        // change signal's wait back to 5 s.
+        harness.appState.catalogChangeSignal.noteSignalRead(listedTheSameRows: true)
+        harness.appState.catalogChangeSignal.noteSignalRead(listedTheSameRows: true)
+        XCTAssertEqual(harness.appState.catalogChangeSignal.interval, 20)
         let appState = harness.appState
         keepList = { [weak self, weak appState] in
             guard let self, let appState else { return }
@@ -6635,6 +6640,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(openedSessionIDs, [kept.id], "the list agrees: nothing opens again")
         XCTAssertEqual(shortReads, 0, "no short read")
         XCTAssertEqual(harness.appState.activeSessionId, kept.id)
+        XCTAssertEqual(harness.appState.catalogChangeSignal.interval, 5, "the sync's changed list reset the wait")
         // Once the live list is in, a list kept only for its pinned rows
         // names no pick.
         keepChatList([kept, older], in: harness.appState)
@@ -6677,6 +6683,63 @@ final class AppStateChatResumeTests: XCTestCase {
         await connecting.value
         XCTAssertEqual(openedSessionIDs, [kept.id, started.id])
         XCTAssertEqual(harness.appState.activeSessionId, started.id)
+    }
+
+    /// A full catalog read asked for while one is under way (the older
+    /// pages after a chat sync, a live chat not listed yet, the read after
+    /// opening a chat) takes that read's answer instead of sending its own;
+    /// a change's read, which needs rows from after the change, still sends
+    /// its own.
+    func testAFullReadAskedForWhileOneIsUnderWayTakesItsAnswer() async {
+        let rows = [session("a"), session("b")]
+        var loads = 0
+        var holds = false
+        let gate = ControlledSuspension()
+        var operations = savedChatFirstOperations(catalog: rows, gate: gate, catalogLoads: {}, opened: { _ in })
+        operations.loadCatalog = { _, _ in
+            loads += 1
+            if holds {
+                holds = false
+                await gate.suspend()
+            }
+            return rows
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        for _ in 0..<100 { await Task.yield() }
+        let appState = harness.appState
+        let before = loads
+
+        holds = true
+        let leading = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
+        }
+        await gate.waitUntilSuspended()
+        let joining = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
+        }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(loads, before + 1, "the second read joined the first")
+        // A pull to refresh: forced, so it never joins nor is joined.
+        let ownRead = await appState.loadSessions(forceRefresh: true, requiredViewportTransitionGeneration: nil)
+        XCTAssertTrue(ownRead)
+        XCTAssertEqual(loads, before + 2, "a read that doesn't join sends its own")
+        let afterTheNewerRead = await appState.loadSessions(
+            forceRefresh: false,
+            requiredViewportTransitionGeneration: nil,
+            joinsReadInFlight: true
+        )
+        XCTAssertTrue(afterTheNewerRead)
+        XCTAssertEqual(loads, before + 3, "a read asked for after a newer one started doesn't take the older one's answer")
+
+        gate.resume()
+        let leadingListed = await leading.value
+        let joiningListed = await joining.value
+        XCTAssertTrue(leadingListed)
+        XCTAssertTrue(joiningListed, "the joined read answers with the first one's rows")
+        XCTAssertEqual(loads, before + 3)
+        XCTAssertNil(appState.catalogReadInFlight)
+        XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
     }
 
     /// A chat already on screen is the list's to keep or replace.
