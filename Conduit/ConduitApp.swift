@@ -368,6 +368,25 @@ struct ConduitApp: App {
         // The menu bar and ⌘-held shortcuts on an iPad and a Mac: ⌘N is
         // New Chat here, not a second window (issue 2219).
         .commands { ConduitKeyboardCommands() }
+
+        // A chat in a window of its own, opened from the pane beside the
+        // open chat (all-live stage 2, AppState+ChatWindows.swift). The
+        // first-window guard is RootView's, so it never closes these.
+        WindowGroup(id: V2ChatWindow.sceneID, for: String.self) { key in
+            chatWindowContent(key.wrappedValue)
+        }
+    }
+
+    /// A chat window's view, with what the main window's root gives every
+    /// view under it: the app's state, language, theme and accent.
+    private func chatWindowContent(_ key: String?) -> some View {
+        V2ChatWindow(key: key)
+            .environmentObject(appState)
+            .environment(\.locale, appLanguage.resolvedLocale)
+            .preferredColorScheme(appState.themePreference.colorScheme)
+            .tint(.conduitAccent)
+            .environment(\.conduitAccent, accentChoice)
+            .background(WindowAccentTint(choice: accentChoice))
     }
 
     private var rootContent: some View {

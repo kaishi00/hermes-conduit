@@ -3457,7 +3457,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(beside.state.messages.filter { $0.rowId == 7 }.map(\.content), ["From my Mac"])
         XCTAssertTrue(state.messages.isEmpty)
 
-        // Chats left after it never push it out, finished or not.
+        // Chats left after it never push it out, finished or not, and it
+        // takes none of their places.
         var list = state.backgroundChats
         for index in 0..<BackgroundChat.limit {
             list = BackgroundChat.adding(
@@ -3466,13 +3467,93 @@ final class OfflineChatCacheTests: XCTestCase {
                 to: list, keeping: state.besideChatIDs
             )
         }
-        XCTAssertEqual(list.count, BackgroundChat.limit)
+        XCTAssertEqual(list.count, BackgroundChat.limit + 1)
         XCTAssertTrue(list.contains { $0.answers(to: "a") })
 
         // Opened in the chat's own column, it's beside no longer.
         state.releaseFollowedChat(answering: ["a"])
         XCTAssertNil(state.besideChatIDs)
         XCTAssertNil(state.besideChat)
+    }
+
+    /// The pane's chat moves to a window of its own and is followed there
+    /// with no reply running, its events telling the window; closing the
+    /// window lets go of it; and the window closes once its chat opens in
+    /// the main window, or on a profile or dashboard switch.
+    func testAChatMovesFromThePaneToAWindowOfItsOwn() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        func keepABesideB() {
+            state.setActiveSessionState(id: "a")
+            state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+            state.turnState = .idle
+            state.besideChatIDs = ["a"]
+            state.setActiveSessionState(id: "b")
+            state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        }
+        keepABesideB()
+        XCTAssertTrue(state.canMoveBesideChatToWindow)
+        let key = try XCTUnwrap(state.moveBesideChatToWindow())
+        XCTAssertNil(state.besideChatIDs, "The pane closes")
+        XCTAssertNil(state.besideChat)
+        XCTAssertFalse(state.canMoveBesideChatToWindow)
+        XCTAssertEqual(state.windowChat(key)?.answers(to: "a"), true)
+        XCTAssertEqual(state.windowChat(key)?.isRunning, false)
+        XCTAssertNil(state.windowChat("b"))
+
+        // A message another device sends to it shows in the window.
+        let before = state.besideChatLive.revision
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 9, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.last?.content, "From my Mac")
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        // Hermes' word of a message whose row is here already adds none;
+        // the same words again after a reply are a new message.
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 2)
+        state.windowChat(key)?.state.messages.append(ChatMessage(id: "r9", role: .assistant, content: "Done", timestamp: "3"))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.map(\.role), [.user, .user, .assistant, .user])
+        // One that only starts with the same words is another message.
+        let long = String(repeating: "Same opening words. ", count: 12)
+        state.windowChat(key)?.state.messages[3].content = long + "Then one thing."
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 12, text: long + "Then another.", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.last?.rowId, 12)
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
+        state.windowChat(key)?.state.messages.removeLast(3)
+
+        // The app is in the background only once every window is.
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .active]), .active)
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .inactive]), .inactive)
+        XCTAssertEqual(AppState.mergedScenePhase([.background]), .background)
+        XCTAssertNil(AppState.mergedScenePhase([]))
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+        state.noteScenePhase(.active, scene: "chat-window:\(key)")
+        state.noteScenePhase(.background, scene: AppState.mainWindowScene)
+        XCTAssertTrue(state.isSceneActive, "A chat window on screen keeps the app active")
+        state.noteScenePhase(nil, scene: "chat-window:\(key)")
+        XCTAssertFalse(state.isSceneActive)
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+
+        // Closing the window lets go of a chat with no reply running.
+        state.closeChatWindow(key)
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        // Opened in the main window, the chat has its window no longer.
+        keepABesideB()
+        let second = try XCTUnwrap(state.moveBesideChatToWindow())
+        XCTAssertNotNil(state.windowChat(second))
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+
+        // A profile or dashboard switch closes the pane and every window.
+        keepABesideB()
+        XCTAssertNotNil(state.moveBesideChatToWindow())
+        state.closeKeptChats()
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
     }
 
     /// Closing the pane lets go of a chat with no reply running, and goes
