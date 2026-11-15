@@ -375,7 +375,7 @@ extension GatewayRestartTests {
         }
         let work = [try saved("/a.png", session: "s1", at: 10), try saved("/b.png", session: "s2", at: 30, note: "wedding")]
         let atlas = [try saved("/c.png", session: "bot", at: 20), try saved("/d.png", session: "other", at: 40),
-                     try saved("/a.png", session: "bot", at: 50, note: "trip")]
+                     try saved("/a.png", session: "bot", at: 50, note: "lisbon")]
         let sources = [
             ArtifactSource(profile: "work", sessionIDs: []),
             ArtifactSource(profile: "atlas", sessionIDs: ["bot"], label: "Atlas", isBotChat: true),
@@ -385,8 +385,8 @@ extension GatewayRestartTests {
         XCTAssertEqual(items.first { $0.path == "/c.png" }?.otherProfile, "atlas")
         let both = try XCTUnwrap(items.first { $0.path == "/a.png" })
         XCTAssertEqual(both.otherProfile, "atlas", "the newest pin, from the store that holds it")
-        XCTAssertEqual(both.note, "trip")
-        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "trip").map(\.path),
+        XCTAssertEqual(both.note, "lisbon")
+        XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "LISBON").map(\.path),
                        ["/a.png"], "the search reads the newest pin's note")
         XCTAssertEqual(ArtifactPinsClient.items(sources: sources, saved: [work, atlas], query: "WEDD").map(\.path),
                        ["/b.png"])
