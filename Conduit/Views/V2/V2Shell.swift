@@ -288,6 +288,9 @@ final class V2ShownUpdates: ObservableObject {
                 // Covered again before it drew: the next showing draws.
                 revealTask?.cancel()
                 revealTask = nil
+                // The chat a tap opened covers it: the hold is over.
+                openHoldTask?.cancel()
+                openHoldTask = nil
             }
             guard isShown, !oldValue else { return }
             // Shown by a pop, it waits out the slide even with nothing
@@ -323,6 +326,34 @@ final class V2ShownUpdates: ObservableObject {
             }
         }
         isShown = now.isShown
+    }
+
+    /// Set by the list: a chat opened from it covers it (no wide window
+    /// keeps the list beside the chat).
+    var coversOnOpen = false
+    /// How long a tapped row holds the list's draws, should the chat never
+    /// cover it (the open refused before the push).
+    var openHold: TimeInterval = 0.6
+    private var openHoldTask: Task<Void, Never>?
+
+    /// A row's tap is about to push its chat over the list. The tap's own
+    /// publishes (the drawer closing, the chat named) come before the list
+    /// counts as covered, and drawing them re-ran its rows and updated the
+    /// List inside the push's first commit, for a list on its way out
+    /// (an iPhone 16 Pro Max, 2026-11-15). They wait as a covered list's
+    /// do, and draw when it shows again.
+    func chatOpening() {
+        guard coversOnOpen, isShown, openHoldTask == nil else { return }
+        let hold = openHold
+        openHoldTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(hold)) } catch { return }
+            guard let self, !Task.isCancelled else { return }
+            openHoldTask = nil
+            // Never covered: what it held draws now.
+            guard missedUpdate, isShown, revealTask == nil else { return }
+            missedUpdate = false
+            passOn()
+        }
     }
 
     private func reveal() {
@@ -423,7 +454,7 @@ final class V2ShownUpdates: ObservableObject {
 
     private func passOn() {
         // Covered, or shown again and still sliding in: it waits.
-        guard isShown, revealTask == nil else { missedUpdate = true; return }
+        guard isShown, revealTask == nil, openHoldTask == nil else { missedUpdate = true; return }
         guard !holdsForScroll() else { holdForScroll(); return }
         guard coalesces else { draw(); return }
         guard !drawScheduled else { return }
@@ -436,7 +467,7 @@ final class V2ShownUpdates: ObservableObject {
             // Covered meanwhile, it waits for the list to show again (and
             // shown again, for the slide in); scrolling, for the scroll to
             // rest.
-            if !isShown || revealTask != nil {
+            if !isShown || revealTask != nil || openHoldTask != nil {
                 missedUpdate = true
             } else if holdsForScroll() {
                 holdForScroll()

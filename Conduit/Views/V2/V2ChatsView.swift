@@ -583,6 +583,9 @@ struct V2ChatsView: View, Equatable {
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
         }
+        .onChange(of: shell.isSplit, initial: true) { _, split in
+            updates.coversOnOpen = !split
+        }
         // Projects hidden, from the Settings tap or from a preference another
         // device or window wrote: clear the stored page once it's seen, so
         // showing Projects again doesn't resurrect a page the user was moved
@@ -1871,6 +1874,7 @@ struct V2ChatsView: View, Equatable {
     private func contentSearchRow(_ row: SessionContentSearchRow) -> some View {
         let button = Button {
             Haptics.light()
+            updates.chatOpening()
             appState.dismissSidebarDrawer()
             if let session = row.session, appState.isOtherProfileRow(session) {
                 appState.openListedSession(session)
@@ -2516,6 +2520,7 @@ struct V2ChatsRowContent: View, Equatable {
         )
         return Button {
             Haptics.light()
+            updates.chatOpening()
             appState.dismissSidebarDrawer()
             appState.openListedSession(session)
         } label: {
@@ -2584,6 +2589,7 @@ struct V2ChatsRowContent: View, Equatable {
         let rowSelection = selection(session, faintAlone: false)
         return Button {
             Haptics.light()
+            updates.chatOpening()
             appState.dismissSidebarDrawer()
             appState.openListedSession(session)
         } label: {

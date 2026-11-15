@@ -154,6 +154,48 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(state.showSidebar)
     }
 
+    /// A row's tap holds the list's draws from the tap itself: its publishes
+    /// come before the chat covers the list, and wait as a covered list's do.
+    @MainActor
+    func testATappedRowHoldsTheChatsListUntilItsChatCoversIt() {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        updates.openHold = 0.05
+        var sent = 0
+        let watch = updates.objectWillChange.sink { sent += 1 }
+        defer { watch.cancel() }
+
+        // Beside the chat on a wide window nothing covers the list: no hold.
+        updates.chatOpening()
+        state.sessions = [pinnedTestSession("beside")]
+        XCTAssertGreaterThan(sent, 0)
+
+        // On a phone the tap's publishes wait, and the cover keeps them
+        // until the list shows again.
+        updates.coversOnOpen = true
+        sent = 0
+        updates.chatOpening()
+        state.sessions = [pinnedTestSession("tapped")]
+        XCTAssertEqual(sent, 0, "the list drew inside the tap")
+        updates.isShown = false
+        settle()
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+
+        // The chat never covered it: what it held draws once the hold ends.
+        sent = 0
+        updates.chatOpening()
+        state.sessions = [pinnedTestSession("refused")]
+        XCTAssertEqual(sent, 0)
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
+        // And the list draws at once again.
+        state.sessions = [pinnedTestSession("after")]
+        XCTAssertEqual(sent, 2)
+    }
+
     /// The V2 Chats list kept under a pushed chat doesn't redraw with every
     /// publish: it waits, then draws once with what it missed.
     @MainActor
