@@ -8,7 +8,7 @@ The small Pulse widget shows the top card with **Not now** and **Done** under it
 
 ## Apple HomeView
 
-HomeView shows small widgets from a paired iPhone or iPad, and opens only CarPlay audio and video apps from the phone, so a tap that would open Conduit says **App Unavailable**. The small Pulse widget's **Not now** and **Done** are sent to the iPhone and work there. The launcher widgets show but can't open anything on HomeView; turn on **Hide conversation title** to keep a chat's title off a shared screen. In Night Mode, Conduit-chan's artwork is drawn light on dark. HomeView is one screen the household shares, which is why **Do it** isn't on the small size (issue 2561).
+HomeView shows small widgets from a paired iPhone or iPad, and opens only CarPlay audio and video apps from the phone, so a tap that would open Conduit says **App Unavailable**. The small Pulse widget's **Not now** and **Done** are made to work there: HomeView sends a widget's button taps to the iPhone, which runs them (not yet tried on a HomeView). The launcher widgets show but can't open anything on HomeView; turn on **Hide conversation title** to keep a chat's title off a shared screen. In Night Mode, Conduit-chan's artwork is drawn light on dark (also untried on a device). HomeView is one screen the household shares, which is why **Do it** isn't on the small size (issue 2561).
 
 ## Add and configure a widget
 
