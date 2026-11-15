@@ -76,7 +76,8 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
 - **The full app on every PR, from main's latest build.** The smoke job
   builds `project.yml`, the app as shipped with its Watch app and
-  extensions, on every PR and push. From 2026-10-15 to 10-29 a PR that
+  extensions, on every PR and push that builds (a docs-only one skips,
+  see CI Gate). From 2026-10-15 to 10-29 a PR that
   didn't touch those targets built `project-tests.yml` instead, an xcodegen
   overlay of `project.yml` whose only change is that the Conduit target no
   longer embeds the Watch app and the app extensions. But the only cache of
@@ -90,7 +91,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 - **Incremental builds from an earlier build.** Builds on `main` save their
   DerivedData to the Actions cache after the tests, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
-  smoke job of every push to `main` saves the full app, and nightly unit
+  smoke job of every push to `main` that builds saves the full app, and nightly unit
   shard 1 saves the app-only (slim) build when it runs on `main`. A push to
   `linked-rooms` or `all-live` saves its full app as well, for that branch's
   later pushes and the PRs into it (GitHub gives a run its own branch's
@@ -357,7 +358,8 @@ test.
 ### The smoke selection
 
 `scripts/smoke-suite.json` is the checked-in selection the `smoke` job runs on
-every PR (its unit tests) and every push to `main`, `linked-rooms` or `all-live` (CI v5), and
+every PR (its unit tests) and every push to `main`, `linked-rooms` or `all-live` (CI v5) that
+builds, and
 `plan-tests.py smoke` validates it
 against the discovered inventory on every run:
 

@@ -391,33 +391,65 @@ class WorkflowContractTests(unittest.TestCase):
             self.skipTest("git not installed")
         script = self._needs_build_script()
 
-        def smoke_for(paths, before="parent", event="push", before_runs="1"):
+        if not shutil.which("jq"):
+            self.skipTest("jq not installed")
+
+        def smoke_for(paths, before="parent", event="push", before_runs=("success",), shape="squash"):
+            """before_runs: the conclusions of the push runs GitHub lists for
+            the previous commit (None: the lookup fails). shape: "squash" (one
+            commit), "two" (two commits pushed at once, PUSH_BEFORE the older
+            parent) or "merge" (a merge commit whose second parent holds paths)."""
             with tempfile.TemporaryDirectory() as tmp:
-                # A stub gh answers the previous commit's passing push runs.
+                # A stub gh logs its arguments and runs the step's own --jq on
+                # a runs listing, as the API would answer the query.
                 bindir = os.path.join(tmp, ".bin")
                 os.makedirs(bindir)
+                fixture = os.path.join(tmp, ".runs.json")
+                with open(fixture, "w") as f:
+                    json.dump({"workflow_runs": [{"conclusion": c} for c in (before_runs or ())]}, f)
+                calls = os.path.join(tmp, ".gh-calls")
                 with open(os.path.join(bindir, "gh"), "w") as f:
-                    f.write("#!/usr/bin/env bash\n" + (
-                        "exit 1\n" if before_runs is None else f"echo '{before_runs}'\n"))
+                    f.write(textwrap.dedent(f"""\
+                        #!/usr/bin/env bash
+                        printf '%s\\n' "$*" >> {calls}
+                        {"exit 1" if before_runs is None else ""}
+                        while [ $# -gt 0 ]; do
+                          if [ "$1" = --jq ]; then jq -r "$2" {fixture}; exit; fi
+                          shift
+                        done
+                        exit 1
+                        """))
                 os.chmod(os.path.join(bindir, "gh"), 0o755)
+
                 def git(*args):
                     return subprocess.run(["git", "-C", tmp, *args], check=True,
                                           capture_output=True, text=True).stdout.strip()
-                git("init", "-q")
+
+                def commit(files, message):
+                    for path in files:
+                        full = os.path.join(tmp, path)
+                        os.makedirs(os.path.dirname(full) or tmp, exist_ok=True)
+                        with open(full, "a") as f:
+                            f.write(message)
+                    git("add", "-A")
+                    git("commit", "-qm", message)
+                    return git("rev-parse", "HEAD")
+
+                git("init", "-q", "-b", "main")
                 git("config", "user.email", "ci@example.com")
                 git("config", "user.name", "ci")
-                with open(os.path.join(tmp, "seed"), "w") as f:
-                    f.write("seed")
-                git("add", "-A")
-                git("commit", "-qm", "seed")
-                parent = git("rev-parse", "HEAD")
-                for path in paths:
-                    full = os.path.join(tmp, path)
-                    os.makedirs(os.path.dirname(full) or tmp, exist_ok=True)
-                    with open(full, "w") as f:
-                        f.write(path)
-                git("add", "-A")
-                git("commit", "-qm", "change")
+                parent = commit(["seed"], "seed")
+                if shape == "two":
+                    commit(["docs/first.md"], "first")
+                    commit(paths, "change")
+                elif shape == "merge":
+                    git("checkout", "-q", "-b", "topic")
+                    commit(paths, "change")
+                    git("checkout", "-q", "main")
+                    parent = commit(["docs/base.md"], "base")
+                    git("merge", "-q", "--no-ff", "-m", "merge", "topic")
+                else:
+                    commit(paths, "change")
                 output = os.path.join(tmp, ".out")
                 env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", GITHUB_REPOSITORY="k/conduit",
                            EVENT=event, PR_HEAD="", PR_NUMBER="", BASE_REF="",
@@ -426,20 +458,34 @@ class WorkflowContractTests(unittest.TestCase):
                 result = subprocess.run(["bash", "-c", script], cwd=tmp, env=env,
                                         capture_output=True, text=True)
                 self.assertEqual(result.returncode, 0, result.stderr)
+                if os.path.exists(calls):
+                    with open(calls) as f:
+                        for call in f.read().splitlines():
+                            self.assertIn("repos/k/conduit/actions/workflows/ci.yml/runs", call)
+                            self.assertIn("-f event=push", call)
+                            self.assertIn(f"-f head_sha={parent}", call, "the previous commit's runs")
                 with open(output) as f:
                     return f.read().strip()
 
         self.assertEqual(smoke_for(["docs/FEATURE_MAP.md", "README.md"]), "smoke=false")
         self.assertEqual(smoke_for([".github/workflows/nightly.yml"]), "smoke=false")
+        # Any passing run of the previous commit counts, beside failed reruns.
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=("failure", "success")), "smoke=false")
         for paths in (["Conduit/App.swift"], ["docs/x.md", "scripts/ci-gate.py"],
                       [".github/workflows/ci.yml"], ["Conduit/Resources/Help.md"]):
             self.assertEqual(smoke_for(paths), "smoke=true", paths)
         # The previous commit's push run was cancelled while it waited (no
-        # passing run), or GitHub can't say: that commit was never built.
-        self.assertEqual(smoke_for(["docs/x.md"], before_runs="0"), "smoke=true")
+        # passing run), failed, or GitHub can't say: that commit was never built.
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=("cancelled",)), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=("failure",)), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=()), "smoke=true")
         self.assertEqual(smoke_for(["docs/x.md"], before_runs=None), "smoke=true")
-        self.assertEqual(smoke_for(["docs/x.md"], before_runs="junk"), "smoke=true")
-        # Several commits pushed at once, or a new branch, build.
+        # A merge commit into linked-rooms or all-live reads everything it
+        # brings in: docs only skips, code from the second parent builds.
+        self.assertEqual(smoke_for(["docs/x.md"], shape="merge"), "smoke=false")
+        self.assertEqual(smoke_for(["Conduit/App.swift"], shape="merge"), "smoke=true")
+        # Several commits pushed at once (even all docs), or a new branch, build.
+        self.assertEqual(smoke_for(["docs/x.md"], shape="two"), "smoke=true")
         self.assertEqual(smoke_for(["docs/x.md"], before="other"), "smoke=true")
         self.assertEqual(smoke_for(["docs/x.md"], before="none"), "smoke=true")
         # A PR event with no merge commit of this PR builds.

@@ -161,8 +161,9 @@ jobs:
         # against the branch's tip before it, and only when that tip's own
         # push run passed (a run GitHub cancelled while it waited was never
         # built), since a docs merge to main held a macOS runner for half an
-        # hour while PRs queued (2026-11-15). A PR also skips when its change (scripts/pr-change-id.py) is the
-        # same as at an earlier commit of it whose smoke job passed: merging
+        # hour while PRs queued (2026-11-15). A PR also skips when its change
+        # (scripts/pr-change-id.py) is the same as at an earlier commit of it
+        # whose smoke job passed: merging
         # main, or resolving a feature map conflict, doesn't rebuild (Eric,
         # 2026-10-29, #1467). So a merge commit can pass without being built,
         # as a PR that isn't up to date with main always could; main's own run
