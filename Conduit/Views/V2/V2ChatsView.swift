@@ -2427,6 +2427,7 @@ struct V2ChatsRow: View, Equatable {
     }
 
     var body: some View {
+        let _ = TranscriptPerf.note(.chatsListRowBody)
         switch item.kind {
         case .session(let node):
             sessionRow(node)

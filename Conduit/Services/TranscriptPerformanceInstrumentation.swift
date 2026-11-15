@@ -37,6 +37,7 @@ enum TranscriptPerf {
         case .transcriptChanged: storage.transcriptChanged += 1
         case .chatViewBody: storage.chatViewBody += 1
         case .composerBarBody: storage.composerBarBody += 1
+        case .chatsListRowBody: storage.chatsListRowBody += 1
         case .composerUpdateUIView: storage.composerUpdateUIView += 1
         case .composerProgrammaticTextAssignment: storage.composerProgrammaticTextAssignment += 1
         case .composerSelectionWrite: storage.composerSelectionWrite += 1
@@ -211,6 +212,9 @@ enum TranscriptPerf {
         case transcriptChanged
         case chatViewBody
         case composerBarBody
+        /// A Chats list or project page row's body (`V2ChatsRow`,
+        /// `V2ProjectSessionRow`).
+        case chatsListRowBody
         case composerUpdateUIView
         case composerProgrammaticTextAssignment
         case composerSelectionWrite
@@ -326,6 +330,12 @@ enum TranscriptPerf {
 
     static var composerBarBodyEvaluations: Int {
         get { read(\.composerBarBody) }
+    }
+
+    /// Chats list and project page row bodies: a list re-run with the same
+    /// rows leaves it at zero (the rows compare equal).
+    static var chatsListRowBodyEvaluations: Int {
+        get { read(\.chatsListRowBody) }
     }
 
     /// `ComposerPasteTextView.updateUIView` invocations. Unrelated AppState
@@ -579,6 +589,7 @@ enum TranscriptPerf {
         var transcriptChanged = 0
         var chatViewBody = 0
         var composerBarBody = 0
+        var chatsListRowBody = 0
         var composerUpdateUIView = 0
         var composerProgrammaticTextAssignment = 0
         var composerSelectionWrite = 0

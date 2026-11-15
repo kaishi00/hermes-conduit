@@ -682,6 +682,7 @@ struct V2ProjectSessionRow: View, Equatable {
     }
 
     var body: some View {
+        let _ = TranscriptPerf.note(.chatsListRowBody)
         Button {
             Haptics.light()
             appState.dismissSidebarDrawer()

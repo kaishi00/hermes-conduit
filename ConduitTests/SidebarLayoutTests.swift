@@ -259,6 +259,63 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertNotEqual(row(.leaf(parent)), row(.leaf(pinnedTestSession("parent", title: "Renamed"))))
     }
 
+    /// Mounted in a List: the list re-running with the same rows (as it does
+    /// when a chat is pushed or popped) leaves their bodies alone, without
+    /// `.equatable()`, which hid the rows' list traits; a changed item
+    /// redraws its row.
+    @MainActor
+    func testChatsListReRunLeavesUnchangedRowsAlone() throws {
+        let state = makeAppState()
+        let updates = V2ShownUpdates(state)
+        let parent = ChatsRowsParentModel(items: [.leaf(pinnedTestSession("a")), .leaf(pinnedTestSession("b"))])
+        let host = UIHostingController(rootView: ChatsRowsParent(model: parent).environmentObject(updates))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        TranscriptPerf.reset()
+        waitUntil { TranscriptPerf.chatsListRowBodyEvaluations >= 2 }
+        XCTAssertGreaterThanOrEqual(TranscriptPerf.chatsListRowBodyEvaluations, 2, "the rows never drew")
+        settle()
+
+        TranscriptPerf.reset()
+        parent.covered.toggle()
+        waitUntil { parent.parentBodies >= 2 }
+        settle()
+        XCTAssertGreaterThanOrEqual(parent.parentBodies, 2, "the list never re-ran")
+        XCTAssertEqual(TranscriptPerf.chatsListRowBodyEvaluations, 0, "the list's re-run redrew unchanged rows")
+
+        parent.items[1] = .leaf(pinnedTestSession("b", title: "Renamed"))
+        waitUntil { TranscriptPerf.chatsListRowBodyEvaluations > 0 }
+        XCTAssertGreaterThan(TranscriptPerf.chatsListRowBodyEvaluations, 0, "a changed item left its row as it was")
+    }
+
+    @MainActor
+    private final class ChatsRowsParentModel: ObservableObject {
+        @Published var covered = false
+        @Published var items: [V2ChatsListItem]
+        var parentBodies = 0
+        init(items: [V2ChatsListItem]) { self.items = items }
+    }
+
+    /// Re-runs on its model's every change with new closures for each row,
+    /// as V2ChatsView does when the shell's covered flag flips.
+    private struct ChatsRowsParent: View {
+        @ObservedObject var model: ChatsRowsParentModel
+        var body: some View {
+            let _ = model.parentBodies += 1
+            List {
+                Text(model.covered ? "covered" : "shown")
+                ForEach(model.items) { item in
+                    V2ChatsRow(item: item, projectTitle: nil, profileBadge: { _ in nil }, onRename: { _ in },
+                               onDelete: { _ in }, onReorderPinned: { _ in }, setExpanded: { _, _ in })
+                }
+            }
+        }
+    }
+
     /// A project page is covered by a chat pushed over it, not by one
     /// beside it; its rows compare on what they show.
     @MainActor
