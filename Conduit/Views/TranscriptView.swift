@@ -281,6 +281,26 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// rows, so a chat still waiting for them (its welcome showing) slides
     /// in when they land. Any other chat just shows.
     private func rowsWereDrawn(conversationChanged: Bool) {
+        if conversationChanged, let swapMotion, swapMotion.waitsForAnotherChat(than: appliedConversation) {
+            // Another chat's rows than the swap waiting was asked for (a
+            // quick second swap the screen hears of after this pass, issue
+            // 2513): they don't come in with the first swap's slide. The
+            // screen asks theirs before this pass ends; asked for nothing
+            // (the same chat drawn under its open id), the waiting swap
+            // brings them in as before.
+            conversationJustChanged = true
+            let drawn = appliedConversation
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.conversationJustChanged = false
+                guard self.appliedConversation == drawn, let motion = self.swapMotion,
+                      motion.waitsForAnotherChat(than: drawn) else { return }
+                if let swap = motion.rowsDrawn(conversationChanged: true, chatRows: self.showsChatRows) {
+                    self.slideIn(swap)
+                }
+            }
+            return
+        }
         guard let swapMotion, swapMotion.expected != nil else {
             guard conversationChanged else { return }
             // The screen may hear of the open after the transcript: until
