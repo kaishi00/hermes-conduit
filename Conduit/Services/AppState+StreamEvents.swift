@@ -55,6 +55,7 @@ extension AppState {
             noteCatalogChanged()
             return
         case .userMessage(let sessionId, let rowId, let text, _):
+            noteUserMessageInBesideChat(sessionId: sessionId, rowId: rowId, text: text)
             noteUserMessageElsewhere(sessionId: sessionId, rowId: rowId, text: text)
             return
         case .sessionControl(let sessionId, let snapshot):

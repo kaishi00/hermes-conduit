@@ -252,6 +252,8 @@ extension AppState {
             recordSavedChatList()
             // And its chat, when Load earlier brought in older rows.
             keepLeftBackfilledTranscript()
+            // The chat beside it is the outgoing profile's: its pane closes.
+            closeBesideChat()
             // And its reply, while one is still coming (all-live stage 2):
             // followed under the outgoing profile, shown on switching back.
             followChatBeingLeft(turnWasRunning: previousTurnState == .running)
