@@ -6835,25 +6835,27 @@ notifier's copies of both · CONTRIBUTING.md's Fork PRs section in both repos
 
 ## Nightly reruns
 
-A scheduled Nightly whose only losses are jobs GitHub never gave a macOS runner reruns
+A nightly Nightly (the overnight timer's or the backup cron's) whose only losses are jobs GitHub never gave a macOS runner reruns
 those jobs by itself.
 
-**Siblings:** the Nightly workflow it follows (its name and its matrices) ·
-docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
+**Siblings:** the Nightly workflow it follows (its name, its matrices, its `nightly` input and "Nightly (overnight)" title) ·
+the overnight timer on the Hermes host (`scripts/nightly-timer/README.md`) · docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
 rule that every job of a candidate's dispatched Nightly passes
 
 **Code**
 - Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
-- Nightly: `.github/workflows/nightly.yml`
+- Nightly: `.github/workflows/nightly.yml`, `scripts/tests/test_nightly_rerun.py` (NightlyOvernightTests: the backup cron's skip, the title, the cron after the timer)
+- Overnight timer: `scripts/nightly-timer/README.md`, `scripts/nightly-timer/conduit-nightly-dispatch.sh`, `scripts/nightly-timer/conduit-nightly.timer`, `scripts/nightly-timer/conduit-nightly.service`, installed on the Hermes host 10.1.10.52
 - Docs: `docs/CI.md`, `docs/RELEASE_WORKFLOW.md`
 
 **Rulings**
 - A job counts as never placed when it is `cancelled` with no runner and no steps (GitHub's "not acquired by Runner of type hosted"). The run reruns its failed jobs only when every job that didn't pass is one of those, at most twice, so a test that ran and failed is never retried. Only scheduled runs rerun: a dispatched run, such as a release candidate's, keeps its own result, so the release rule is unchanged (2026-10-29, #1506, after Nightly lost 2 jobs on 10-28 and 3 on 10-29 to macOS arm64 capacity).
+- The nightly run starts at 3:17 AM ET from a timer on the Hermes host, which dispatches Nightly on `main` with `nightly: true` (titled "Nightly (overnight)"); that run reruns like the cron's did, and any other dispatch, a release candidate's, still keeps its result. GitHub's cron moved to 09:47 UTC as a backup that skips when a dispatched Nightly (never a cron run) ran on `main` in the last 20 hours and warns when it runs instead; a missed timer start isn't made up later. Nightly mustn't hold the runners while Eric is likely active (Eric, 2026-11-15, #2493, after the cron's runs started at 15:07-18:50 UTC on 2026-11-09..14).
 
 **Open gaps**
 - The failure email for the first attempt still goes out. The two-rerun cap assumes GitHub fires `workflow_run` for each rerun attempt; the first live rerun shows it.
 
-**Checked:** 2026-10-29, #1506.
+**Checked:** 2026-11-15, #2493 (the overnight timer and the backup cron; the rerun follows the timer's title; CI.md and RELEASE_WORKFLOW.md updated); 2026-10-29, #1506.
 
 ## Smoke selection
 

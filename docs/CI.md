@@ -17,8 +17,8 @@ per account, waiting for a runner had become the main cost.
 | Workflow | When | What runs | Gates a merge? |
 |---|---|---|---|
 | `.github/workflows/ci.yml` | every PR and every push to `main`, `linked-rooms` or `all-live` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the pinned unit smoke tests on that build and simulator, and on a push the pinned UI smoke tests too | yes, through the single `CI Gate` check |
-| `.github/workflows/nightly.yml` | nightly on `main`, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a scheduled run's jobs that never got a runner) | no; a failed scheduled run emails the owner |
-| `.github/workflows/nightly-rerun.yml` | a scheduled Nightly run that failed (never a dispatched one, so a release candidate's run keeps its result) | reruns the run's failed jobs when every one of them was cancelled without ever getting a runner (macOS capacity), at most twice; a run with a job that ran and failed is left alone | no |
+| `.github/workflows/nightly.yml` | nightly on `main` at 3:17 AM ET, dispatched by a timer on the Hermes host ([scripts/nightly-timer/](../scripts/nightly-timer/README.md)) with its own cron as a backup that skips when that run happened, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a nightly run's jobs that never got a runner) | no; a failed nightly run emails the owner |
+| `.github/workflows/nightly-rerun.yml` | a nightly Nightly run that failed: the cron's or the timer's "Nightly (overnight)" (never another dispatched one, so a release candidate's run keeps its result) | reruns the run's failed jobs when every one of them was cancelled without ever getting a runner (macOS capacity), at most twice; a run with a job that ran and failed is left alone | no |
 | `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
 
 **Releases** have no workflow of their own: a release candidate is validated
@@ -239,11 +239,23 @@ overlaps a PR run slows both. That is accepted: nightly results are not
 time-critical. Each extra `unit_shards` or `nightly_ui_shards` shard adds one
 more build and one more queued job.
 
+They must not be in the day's way, though. GitHub created Nightly's cron
+events 7 to 10 hours late (2026-11-09..14: 15:07-18:50 UTC for a 08:17 UTC
+cron), so the run held the macOS runners through Eric's mornings and his PRs'
+Smoke jobs queued behind it. Nightly is now dispatched at 3:17 AM ET by a
+systemd timer on the Hermes host, with `nightly: true`, which titles the run
+"Nightly (overnight)" ([scripts/nightly-timer/](../scripts/nightly-timer/README.md)).
+The cron moved to 09:47 UTC, after the timer in EDT and EST alike, as a
+backup: its plan job skips the run when a dispatched Nightly ran on `main` in
+the last 20 hours (cron runs don't count, so yesterday's skipped backup can't
+hide a missed timer), and otherwise runs with a warning that the timer missed (host down or
+token expired).
+
 When macOS arm64 capacity runs short, GitHub gives up on a queued job after
 about 40 minutes: it ends `cancelled` with no runner and no steps ("The job was
 not acquired by Runner of type hosted even after multiple attempts"). Nightly
 lost 2 jobs that way on 2026-10-28 and 3 on 2026-10-29. `nightly-rerun.yml`
-reruns a scheduled run's failed jobs, up to twice, but only when every failed job
+reruns a nightly run's failed jobs (the cron's or the timer's), up to twice, but only when every failed job
 is one of these; those jobs never ran a test, so the rerun hides no flake.
 
 ## Hosted gate architecture
