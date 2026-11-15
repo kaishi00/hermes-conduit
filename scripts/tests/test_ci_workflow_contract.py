@@ -384,13 +384,22 @@ class WorkflowContractTests(unittest.TestCase):
         """A push runs the step against the branch's tip before it: one commit
         of only docs and config skips the macOS job, and anything else (code,
         this workflow, several commits, a new branch) builds (2026-11-15: docs
-        merges to main each held a macOS runner for half an hour)."""
+        merges to main each held a macOS runner for half an hour). A docs push
+        after a push whose run never passed (cancelled while it waited) builds,
+        since that push was never built."""
         if not shutil.which("git"):
             self.skipTest("git not installed")
         script = self._needs_build_script()
 
-        def smoke_for(paths, before="parent", event="push"):
+        def smoke_for(paths, before="parent", event="push", before_runs="1"):
             with tempfile.TemporaryDirectory() as tmp:
+                # A stub gh answers the previous commit's passing push runs.
+                bindir = os.path.join(tmp, ".bin")
+                os.makedirs(bindir)
+                with open(os.path.join(bindir, "gh"), "w") as f:
+                    f.write("#!/usr/bin/env bash\n" + (
+                        "exit 1\n" if before_runs is None else f"echo '{before_runs}'\n"))
+                os.chmod(os.path.join(bindir, "gh"), 0o755)
                 def git(*args):
                     return subprocess.run(["git", "-C", tmp, *args], check=True,
                                           capture_output=True, text=True).stdout.strip()
@@ -410,7 +419,8 @@ class WorkflowContractTests(unittest.TestCase):
                 git("add", "-A")
                 git("commit", "-qm", "change")
                 output = os.path.join(tmp, ".out")
-                env = dict(os.environ, EVENT=event, PR_HEAD="", PR_NUMBER="", BASE_REF="",
+                env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", GITHUB_REPOSITORY="k/conduit",
+                           EVENT=event, PR_HEAD="", PR_NUMBER="", BASE_REF="",
                            PUSH_BEFORE={"parent": parent, "other": "0" * 40, "none": ""}[before],
                            GITHUB_OUTPUT=output, GITHUB_STEP_SUMMARY=os.path.join(tmp, ".summary"))
                 result = subprocess.run(["bash", "-c", script], cwd=tmp, env=env,
@@ -424,6 +434,11 @@ class WorkflowContractTests(unittest.TestCase):
         for paths in (["Conduit/App.swift"], ["docs/x.md", "scripts/ci-gate.py"],
                       [".github/workflows/ci.yml"], ["Conduit/Resources/Help.md"]):
             self.assertEqual(smoke_for(paths), "smoke=true", paths)
+        # The previous commit's push run was cancelled while it waited (no
+        # passing run), or GitHub can't say: that commit was never built.
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs="0"), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=None), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs="junk"), "smoke=true")
         # Several commits pushed at once, or a new branch, build.
         self.assertEqual(smoke_for(["docs/x.md"], before="other"), "smoke=true")
         self.assertEqual(smoke_for(["docs/x.md"], before="none"), "smoke=true")

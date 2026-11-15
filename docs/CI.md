@@ -16,7 +16,7 @@ per account, waiting for a runner had become the main cost.
 
 | Workflow | When | What runs | Gates a merge? |
 |---|---|---|---|
-| `.github/workflows/ci.yml` | every PR and every push to `main`, `linked-rooms` or `all-live` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`) that builds once and runs the pinned unit smoke tests on that build and simulator, and on a push the pinned UI smoke tests too | yes, through the single `CI Gate` check |
+| `.github/workflows/ci.yml` | every PR and every push to `main`, `linked-rooms` or `all-live` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`, left out of a docs-only PR or one-commit docs-only push) that builds once and runs the pinned unit smoke tests on that build and simulator, and on a push the pinned UI smoke tests too | yes, through the single `CI Gate` check |
 | `.github/workflows/nightly.yml` | nightly on `main` at 3:17 AM ET, dispatched by a timer on the Hermes host ([scripts/nightly-timer/](../scripts/nightly-timer/README.md)) with its own cron as a backup that skips when that run happened, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a nightly run's jobs that never got a runner) | no; a failed nightly run emails the owner |
 | `.github/workflows/nightly-rerun.yml` | a nightly Nightly run that failed: the cron's or the timer's "Nightly (overnight)" (never another dispatched one, so a release candidate's run keeps its result) | reruns the run's failed jobs when every one of them was cancelled without ever getting a runner (macOS capacity), at most twice; a run with a job that ran and failed is left alone | no |
 | `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
@@ -229,7 +229,10 @@ token can't cancel runs, keeps one group per PR with `cancel-in-progress`.
 Pushes to a branch share one concurrency group without cancelling (Eric,
 2026-11-15): the run under way finishes, the newest push waits, and GitHub
 cancels a waiting push's run when a newer push arrives, so main has at most
-one run going and one waiting. Branch protection does not require PRs to be up
+one run going and one waiting. A docs-only push after a cancelled one builds
+anyway (see CI Gate), so a merge whose run was cancelled is always built by the
+next run. The change's own unit classes come from the newest commit only; a
+cancelled merge's classes ran on its PR before it merged. Branch protection does not require PRs to be up
 to date with main, and main's run is what catches two PRs that are green alone
 but break together (within the smoke set; the nightly run catches the rest);
 the waiting run holds every merge since the last one, so a break shows there,
@@ -309,7 +312,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 
 | Job | Runner | Purpose |
 |---|---|---|
-| `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
+| `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
 | `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `linked-rooms` or `all-live`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
@@ -443,7 +446,7 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
 
 ### Cost
 
-CI v5: one macOS job per PR run or push run (one build, one boot, and the
+CI v5: one macOS job per PR run or push run, none for a docs-only one (one build, one boot, and the
 unit invocation; a push adds the UI invocation and its retry when needed), against CI v4's three (each with
 its own build and boot, ~18 minutes of wall clock per run). The full unit
 suite's macOS minutes moved to the nightly run, which spends them once a day
@@ -576,8 +579,10 @@ counts for a PR into `main` from the same branch; Markdown under an app or
 test folder always builds, since the id counts Markdown only by its words.
 A push builds unless it is one commit (main's squash merge, or a merge commit
 into `linked-rooms` or `all-live`) of only docs and config, read against the
-branch's tip before it; the same-change skip is for PRs only, and every lookup
-that fails builds.
+branch's tip before it, and that tip's own push run passed: a push whose run
+GitHub cancelled while it waited (see Budget) was never built, so the next
+push builds even if it is docs. The same-change skip is for PRs only, and every
+lookup that fails builds.
 
 Branch protection must require **CI Gate** (and nothing else from this
 workflow): the jobs behind it are implementation detail, and any job that can

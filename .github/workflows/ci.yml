@@ -158,9 +158,10 @@ jobs:
         # tests never read (Markdown, docs/, LICENSE, review config, .github/
         # other than this workflow): a push only when it is one commit (main's
         # squash merges, or a merge commit into linked-rooms or all-live), read
-        # against the branch's tip before it, since a docs merge to main held
-        # a macOS runner for half an hour while PRs queued (2026-11-15). A PR
-        # also skips when its change (scripts/pr-change-id.py) is the
+        # against the branch's tip before it, and only when that tip's own
+        # push run passed (a run GitHub cancelled while it waited was never
+        # built), since a docs merge to main held a macOS runner for half an
+        # hour while PRs queued (2026-11-15). A PR also skips when its change (scripts/pr-change-id.py) is the
         # same as at an earlier commit of it whose smoke job passed: merging
         # main, or resolving a feature map conflict, doesn't rebuild (Eric,
         # 2026-10-29, #1467). So a merge commit can pass without being built,
@@ -196,6 +197,21 @@ jobs:
               && ! printf '%s\n' "$changed" | grep -E '^\.github/workflows/ci\.yml$|^(Conduit[^/]*|Shared)/' >/dev/null; then
               smoke=false
               why="the change is only docs and config"
+              # A push's run answers for every push since the last run that
+              # finished: a pushed run GitHub cancelled while it waited (see
+              # concurrency) was never built, so this run builds unless the
+              # previous commit's own push run passed.
+              if [ "$EVENT" = "push" ]; then
+                passed_before=$(gh api -X GET "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs" \
+                  -f event=push -f head_sha="$PUSH_BEFORE" \
+                  --jq '[.workflow_runs[] | select(.conclusion == "success")] | length') || passed_before=0
+                case "$passed_before" in ''|*[!0-9]*) passed_before=0 ;; esac
+                if [ "$passed_before" -lt 1 ]; then
+                  smoke=true
+                  why=''
+                  echo "- docs-only push, but $PUSH_BEFORE has no passing push run (cancelled while it waited, failed, or unknown): building" >> "$GITHUB_STEP_SUMMARY"
+                fi
+              fi
             fi
           fi
           # The change id counts Markdown by its words, so Markdown under an
