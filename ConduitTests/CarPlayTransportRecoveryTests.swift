@@ -552,6 +552,44 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertFalse(appState.isShortcutSendRunning)
     }
 
+    /// A run's step found its socket dead (issue 2473): Conduit still reads
+    /// as connected until the close reaches handleDisconnect. The run's
+    /// reconnect waits for that, then for the new socket, rather than hand
+    /// the step the dead one again.
+    func testShortcutSendReconnectAfterADropWaitsForTheNewSocket() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+        let dead = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.client = dead
+        appState.isConnected = true
+        let fresh = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket-2"),
+            profile: "default"
+        )
+        recorder.onExecute = {
+            appState.client = fresh
+            appState.isConnected = true
+        }
+
+        let reconnect = appState.makeShortcutSendBackend().reconnect
+        let run = Task { @MainActor in await reconnect?(Date().addingTimeInterval(20)) }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertTrue(recorder.scheduledDelays.isEmpty, "nothing to reconnect until the drop is seen")
+        // The close reaches handleDisconnect.
+        appState.isConnected = false
+        for _ in 0..<500 where recorder.operations.isEmpty { await Task.yield() }
+        await recorder.operations.first?()
+
+        let connected = await run.value
+        XCTAssertEqual(connected, true)
+        XCTAssertTrue(appState.client === fresh, "the step goes on over the new socket")
+    }
+
     /// A socket that still looks open after the suspension, and has been
     /// quiet, is checked before the run sends, as a call's request is.
     func testShortcutSendChecksAQuietSocketOffScreen() async {

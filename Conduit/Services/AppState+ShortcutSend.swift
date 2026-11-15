@@ -41,6 +41,19 @@ extension AppState {
         return client != nil
     }
 
+    /// Connects again for a run whose step found the connection dropped
+    /// (issue 2473). The socket's close reaches handleDisconnect a moment
+    /// after the step failed: until then Conduit still reads as connected,
+    /// and waiting on that would hand the step back the dead socket. The
+    /// client's own gate is read, since `rpc` refuses a closed socket before
+    /// the receive loop clears the client's connected flag.
+    func reconnectForBackgroundRun(deadline: Date) async -> Bool {
+        if isConnected, client?.canSend != true {
+            await awaitConnectionDropped(timeout: .seconds(2))
+        }
+        return await connectForBackgroundRun(deadline: deadline)
+    }
+
     /// With `dashboardID`, every chat it makes and every send stops with
     /// `chatOnAnotherDashboard` once that dashboard is no longer the active
     /// one, checked again after each wait before it picks the chat or sends.
@@ -56,6 +69,9 @@ extension AppState {
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
                 await self?.connectForBackgroundRun(deadline: deadline) ?? false
+            },
+            reconnect: { [weak self] deadline in
+                await self?.reconnectForBackgroundRun(deadline: deadline) ?? false
             },
             activeProfile: { [weak self] in self?.activeProfile ?? "default" },
             pickedChat: { [weak self] picked in
@@ -77,6 +93,9 @@ extension AppState {
                     // current one before calling the bot gone.
                     if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
                     guard let bot = self.shownBotRoster.first(where: isPicked) else {
+                        // A read the connection dropped under says nothing
+                        // about the bot: the run waits out the drop (issue 2473).
+                        if !self.isConnected { throw HermesError.notConnected }
                         throw ShortcutSendError.chatUnavailable
                     }
                     let rows = try await self.botChatLookupRows(client, profile: bot.name)
