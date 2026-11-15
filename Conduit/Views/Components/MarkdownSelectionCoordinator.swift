@@ -49,7 +49,11 @@ enum MarkdownSelectionSegmentPlan {
 
         for (blockIndex, block) in blocks.enumerated() {
             guard blockIndex >= skipsBefore else { continue }
-            let blockSeparator = blockIndex == 0 ? "" : "\n\n"
+            // A nested list copies on the next line, as the text views copy
+            // an outline; other blocks are a blank line apart.
+            let blockSeparator = blockIndex == 0
+                ? ""
+                : (MarkdownProseRun.continuesOutline(block, after: blocks[blockIndex - 1]) ? "\n" : "\n\n")
 
             if let runEnd = runEnds[blockIndex] {
                 append("block-\(blockIndex)", separatorBefore: blockSeparator)
@@ -76,7 +80,7 @@ enum MarkdownSelectionSegmentPlan {
                     }
                 }
 
-            case .unorderedList(let items), .orderedList(let items, _):
+            case .unorderedList(let items, _), .orderedList(let items, _, _):
                 for (itemIndex, item) in items.enumerated() {
                     let id = items.count == 1
                         ? "block-\(blockIndex)"
@@ -142,7 +146,7 @@ enum MarkdownSelectionSegmentPlan {
         case .quote(let lines):
             if let first = lines.first, MarkdownParser.calloutMarker(first.text) != nil { return 1 }
             return lines.count
-        case .unorderedList(let items), .orderedList(let items, _):
+        case .unorderedList(let items, _), .orderedList(let items, _, _):
             return items.count
         case .table(let headers, _, let rows):
             return ([headers] + rows).reduce(0) { $0 + $1.count }

@@ -41,14 +41,87 @@ extension MarkdownRichContentPolicyTests {
         ])
     }
 
-    func testOrderedListDrawsFromItsStart() {
-        let drawn = MarkdownSelectionFormatter.attributedText(
+    func testOrderedListDrawsFromItsStart() throws {
+        let drawn = try XCTUnwrap(MarkdownSelectionFormatter.attributedText(
             for: MarkdownParser.parse("7. seven\n8. eight"),
             foregroundStyle: .primary,
             usesAccentSurface: false,
             newestCharacterOpacities: []
-        )?.string ?? ""
-        XCTAssertEqual(drawn, "7. seven\n8. eight")
+        ))
+        // The marker hangs in its gutter, a tab from the text, and copies
+        // with a space.
+        XCTAssertEqual(drawn.string, "7.\tseven\n8.\teight")
+        XCTAssertEqual(MarkdownProseRun.copyableText(drawn).string, "7. seven\n8. eight")
+    }
+
+    func testNestedListsKeepTheirDepth() {
+        let blocks = MarkdownParser.parse("""
+        1. Install
+           - brew install foo
+           - or build it
+             1. clone
+             2. make
+        2. Run
+        - after
+        """)
+        XCTAssertEqual(blocks, [
+            .orderedList(["Install"]),
+            .unorderedList(["brew install foo", "or build it"], depth: 1),
+            .orderedList(["clone", "make"], depth: 2),
+            .orderedList(["Run"], start: 2),
+            .unorderedList(["after"])
+        ])
+        // Two-space bullets and tabs nest too; one space is the same list.
+        XCTAssertEqual(MarkdownParser.parse("- a\n  - b\n\t- c\n- d"), [
+            .unorderedList(["a"]),
+            .unorderedList(["b"], depth: 1),
+            .unorderedList(["c"], depth: 2),
+            .unorderedList(["d"])
+        ])
+        XCTAssertEqual(MarkdownParser.parse("- a\n - b"), [.unorderedList(["a", "b"])])
+        // A paragraph between starts over at the left edge.
+        XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
+            .unorderedList(["a"]),
+            .paragraph("Text"),
+            .unorderedList(["b"])
+        ])
+    }
+
+    func testNestedListDrawsAsAnOutline() throws {
+        let blocks = MarkdownParser.parse("1. Install\n   - brew\n2. Run\n\nAfter.")
+        let drawn = try XCTUnwrap(MarkdownSelectionFormatter.attributedText(
+            for: blocks,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            newestCharacterOpacities: []
+        ))
+        // One line apart inside the outline, a blank line after it.
+        XCTAssertEqual(MarkdownProseRun.copyableText(drawn).string, "1. Install\n• brew\n2. Run\n\nAfter.")
+        func style(at text: String) -> NSParagraphStyle? {
+            drawn.attribute(.paragraphStyle, at: (drawn.string as NSString).range(of: text).location, effectiveRange: nil) as? NSParagraphStyle
+        }
+        let outer = try XCTUnwrap(style(at: "Install"))
+        let inner = try XCTUnwrap(style(at: "brew"))
+        let step = MarkdownProseRun.nestedListIndent(chatTextSize: .default)
+        // A bullet's text is a step in at the left edge, so two steps a level in.
+        XCTAssertEqual(inner.headIndent, 2 * step, accuracy: 0.5, "the sub-list's text sits a level in")
+        XCTAssertGreaterThan(inner.firstLineHeadIndent, outer.firstLineHeadIndent, "and its marker past the outer one's")
+        XCTAssertEqual(try XCTUnwrap(style(at: "Run")).headIndent, outer.headIndent, "back out to the outer list's column")
+    }
+
+    @MainActor
+    func testProseRunNestsAnOutline() {
+        let run = MarkdownProseRun.attributedText(
+            for: MarkdownParser.parse("- a\n  - b\n- c")[...],
+            references: .empty,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            chatTextSize: .default
+        )
+        XCTAssertEqual(MarkdownProseRun.copyableText(run).string, "• a\n• b\n• c")
+        let a = run.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let b = run.attribute(.paragraphStyle, at: (run.string as NSString).range(of: "b").location, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual((b?.headIndent ?? 0) - (a?.headIndent ?? 0), MarkdownProseRun.nestedListIndent(chatTextSize: .default), accuracy: 0.5)
     }
 
     @MainActor
@@ -68,23 +141,28 @@ extension MarkdownRichContentPolicyTests {
         let items = (0..<900).map { "item \($0) \(String(repeating: "text ", count: 12))" }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(items, start: 7)])
         XCTAssertGreaterThan(chunks.count, 1, "the list must split across chunks")
-        var firstGroup: [String] = []
-        var bakedOrdinals: [Int] = []
+        var groups: [(start: Int, count: Int)] = []
         for case .flow(let blocks) in chunks {
             for block in blocks {
                 switch block {
-                case .orderedList(let group, let start):
-                    XCTAssertEqual(start, 7)
-                    firstGroup = group
+                case .orderedList(let group, let start, _):
+                    groups.append((start, group.count))
                 case .paragraph(let text):
-                    if let ordinal = Int(text.prefix { $0.isNumber }) { bakedOrdinals.append(ordinal) }
+                    XCTFail("a continuation is a list, not a paragraph: \(text.prefix(20))")
                 default: break
                 }
             }
         }
-        XCTAssertFalse(firstGroup.isEmpty)
-        // Continuations carry on from 7 + the first group, one by one.
-        XCTAssertEqual(bakedOrdinals, Array((7 + firstGroup.count)..<(7 + items.count)))
+        XCTAssertGreaterThan(groups.count, 1)
+        XCTAssertEqual(groups.first?.start, 7)
+        // Each continuation starts where the chunk before it stopped, so the
+        // list keeps its marker column and counts on one by one.
+        var next = 7
+        for group in groups {
+            XCTAssertEqual(group.start, next)
+            next += group.count
+        }
+        XCTAssertEqual(next, 7 + items.count)
     }
 
     func testOversizedFirstItemBakesItsStart() {
@@ -95,6 +173,11 @@ extension MarkdownRichContentPolicyTests {
             return blocks.compactMap { if case .paragraph(let text) = $0 { return text }; return nil }
         }
         XCTAssertTrue(texts.first?.hasPrefix("7. ") == true, "\(texts.first ?? "")")
-        XCTAssertTrue(texts.contains { $0.hasPrefix("8. normal") }, "\(texts)")
+        // The items after it carry on as a list from the next number.
+        let lists = chunks.flatMap { chunk -> [MarkdownBlock] in
+            guard case .flow(let blocks) = chunk else { return [] }
+            return blocks.filter { if case .orderedList = $0 { return true }; return false }
+        }
+        XCTAssertEqual(lists, [.orderedList(["normal"], start: 8)])
     }
 }

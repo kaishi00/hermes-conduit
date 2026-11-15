@@ -62,7 +62,7 @@ extension MarkdownRichContentPolicyTests {
 
     func testLooseOrderedListEndsAtADifferentIndent() {
         let blocks = MarkdownParser.parse("1. first\n\n   1. nested")
-        XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["nested"])])
+        XCTAssertEqual(blocks, [.orderedList(["first"]), .orderedList(["nested"], depth: 1)])
     }
 
     func testBlankLinesStillSplitAnOrderedListFromABulletList() {
@@ -77,7 +77,7 @@ extension MarkdownRichContentPolicyTests {
 
     func testLooseOrderedListDrawsSequentialNumbers() {
         let blocks = MarkdownParser.parse((1...15).map { "\($0). Reference \($0)" }.joined(separator: "\n\n"))
-        guard blocks.count == 1, case .orderedList(let items, _) = blocks[0] else {
+        guard blocks.count == 1, case .orderedList(let items, _, _) = blocks[0] else {
             return XCTFail("Expected one ordered list, got \(blocks)")
         }
         XCTAssertEqual(items.count, 15)
@@ -86,7 +86,7 @@ extension MarkdownRichContentPolicyTests {
             foregroundStyle: .primary,
             usesAccentSurface: false,
             newestCharacterOpacities: []
-        )?.string ?? ""
+        ).map { MarkdownProseRun.copyableText($0).string } ?? ""
         XCTAssertTrue(drawn.hasPrefix("1. Reference 1\n2. Reference 2"), drawn)
         XCTAssertTrue(drawn.hasSuffix("15. Reference 15"), drawn)
     }

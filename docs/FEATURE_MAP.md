@@ -3014,18 +3014,22 @@ chat's file card) and the Folder's Markdown preview
 
 ## Markdown lists in messages
 
-How a reply's lists read: numbering, loose lists, and the same list in every
-view that draws Markdown.
+How a reply's lists read: numbering, loose lists, the marker's hanging
+indent, and the same list in every view that draws Markdown.
 
-**Siblings:** chat bubbles (block views and prose runs) · very long replies
-(chunked) · selection and Copy · group rooms · tool results · call job cards ·
-Read Aloud and live voice read-back · chat list previews and quotes
+**Siblings:** chat bubbles (a prose-only reply drawn as one text, block
+views, and prose runs) · very long replies (chunked) · selection and Copy ·
+group rooms · Bot Chat · tool results · call job cards · scheduled job and
+delegation report cards (opened) · the Markdown reader and the Folder's
+preview · the Mac (same views) · quotes in a prose-only reply (the same
+hanging indent) · nested sub-lists · Read Aloud and live voice read-back · chat list previews
+and quotes · folded previews (cron card, Work panel, briefs)
 
 **Code**
-- Parser and block views: `Conduit/Views/Components/MarkdownText.swift` (MarkdownParser, MarkdownList, MarkdownSelectionFormatter)
-- Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift`
+- Parser and block views: `Conduit/Views/Components/MarkdownText.swift` (MarkdownParser with listDepth and sameListLevel, MarkdownBlock.listDepth, MarkdownList; MarkdownSelectionFormatter.list and its quote lines for a prose-only reply, drawn with keepsParagraphStyles)
+- Prose runs and the shared marker gutter: `Conduit/Views/Components/MarkdownProseRun.swift` (listItemLayout, nestedListIndent, continuesOutline)
 - Long replies: `Conduit/Views/Components/MarkdownLargeDocument.swift` (splitListItems; LargeStreamPromotion while streaming), `Conduit/Views/Components/MarkdownLargeDocumentView.swift`, `Conduit/Views/Components/StreamingText.swift` (largeStableChunks)
-- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift`
+- Selection: `Conduit/Views/Components/MarkdownSelectionCoordinator.swift` (MarkdownSelectionSegmentPlan's separators)
 - Copy response (copies the source): `Conduit/Views/ChatView.swift` (copyResponse)
 - Other surfaces drawing MarkdownText: `Conduit/Views/GroupChatView.swift`, `Conduit/Views/ToolResultViews.swift`, `Conduit/Views/LiveVoiceCallJobs.swift`
 - Spoken text (source lines, not parsed blocks): `Conduit/Voice/VoiceReadBack.swift`, `Conduit/Voice/SpokenTextFilter.swift`
@@ -3033,20 +3037,23 @@ Read Aloud and live voice read-back · chat list previews and quotes
 
 **Rulings**
 - Ordered lists number as CommonMark and Hermes Desktop do: blank lines between items keep one list (2026-10-23, #1168), and a list starts at its first item's number, so steps split by a code block carry on; a marker is one to nine ASCII digits, anything else is text (2026-10-23, #1175, Eric).
-- Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; long replies bake ordinals into continuation chunks (#1168).
+- Every view that draws a list reads the parsed block, so a numbering change is a parser change plus each renderer's marker; a long reply's continuation chunk is a list starting at its first item's number (#1168, #2574).
+- A list item's marker hangs in a gutter beside its text: the marker right-aligned in its column (wider for numbers), the text a tab past it, and every wrapped line starting under the text, not back at the left edge under the marker. The block view (marker column), a prose run and a prose-only reply's one text (MarkdownProseRun.listItemLayout, one paragraph style for both) draw it the same; a quote line in that text wraps under its text past the bar the same way. The tab copies as the space after the marker (Eric 2026-11-15, #2574).
+- A sub-list indented under an item (two or more columns deeper than its list, a tab counting as four; one column is the same list) is its own list block one `depth` in, bullets and numbers mixed freely; a line back at an outer list's indent returns to that level, and its numbering carries on from the number written. Lists nest only straight after another list, blank lines allowed; any other block starts over at the left edge. Each level moves the whole gutter in by a bullet's text column (MarkdownProseRun.nestedListIndent), in the block view, a prose run and a reply's one text alike, and the lists of one outline sit a list item's gap apart and copy a line apart, not a blank line, in selection across block views too (MarkdownSelectionSegmentPlan) (Eric 2026-11-15, #2574).
 - An item that is a Hermes Desktop card, or a preview where previews draw (`holdsDirective`), ends the list: the block draws on its own, and the items after it start a new list from the number written on the first of them (2026-10-30, #1524, see Cards made for Hermes Desktop). An item that is only the plugin's hidden `::conduit-board` line ends it the same way, with nothing drawn between, so the next items carry on from their written number (2026-11-04, #1751).
 
 **Open gaps**
-- Nested lists are flattened: an indented sub-list draws as its own list at the left edge.
 - Read Aloud and live read-back speak the numbers as written, so "1. 1. 1." is spoken 1, 1, 1 while the screen draws 1, 2, 3.
 - Copy response under a reply copies the Markdown source, so "1. 1. 1." copies as written while the screen draws 1, 2, 3; selection Copy matches the screen where the list is selectable text (prose runs, one text view).
 - A list drawn as a block view (outside a prose run, e.g. under VoiceOver or next to a task list) keeps its number outside the selectable text, so selection Copy leaves the number out.
 - A reply that grows past 16 KB (two chunks) while streaming is parsed per promoted slice, so a list cut at a slice boundary carries on from the number written on the slice's first item (right when numbered 1, 2, 3; restarts for "1. 1. 1."). It was the large-document size (100 KB) until issue 1720: a 50 KB reply paid 45 to 160 ms a tick, up to 30 ticks a second. The settled reply still parses whole below 100 KB, and a streaming reply's slices draw diagrams and formulas in place below it too (2026-11-04, #1734).
 - A marker past two digits ("100.") can crowd its column in the block view.
-- A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number.
-- A long reply's continuation chunks draw list items as paragraphs with the number baked in, so they lose the list's styled marker column.
+- A streaming reply past 16 KB parses each promoted slice on its own, so a sub-list cut from its parent at a slice boundary (a blank line inside the outline) draws at the left edge until the reply settles, as a cut list carries on from its written number.
+- In an answer big enough for the bounded or chunked views, the lists of an outline drawn as block views stay a block's gap (10 pt) apart rather than an item's (7 pt); the ordinary block stack, prose runs and one-text replies use the item's gap, and selection copies the outline a line apart everywhere, across a long reply's chunks too.
+- A single list item too big for one long-reply chunk is split into paragraphs that each repeat its number; they draw at the left edge, so a nested one loses its depth, and a bullet item's pieces have no bullet.
+- Folded previews (a scheduled job report or brief before it opens, the Work panel's lines and its question) draw a reply's dashes as an inline "• " in one SwiftUI Text, which can't hang an indent; the opened card draws the list with its gutter. Not changed here (#2574).
 
-**Checked:** 2026-11-13, #2349 (a list item's own line break draws as a break, through the shared inline parse; see Line breaks in messages); 2026-11-04, #1751 (an item that is only the hidden board line ends a list, as a card does); 2026-11-04, #1734 (a streaming reply is promoted into slices from 16 KB rather than the large-document size, issue 1720; the settled reply unchanged); 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
+**Checked:** 2026-11-15, #2574 (Eric: a prose-only reply drew "• " inline and wrapped lines went back to the left edge; its lists and quote lines now hang their marker, as prose runs already did, through one shared gutter; long-reply continuation chunks are lists from their first number, closing the baked-ordinal gap; nested sub-lists keep their depth and indent a level each, closing the flattened-nesting gap); 2026-11-13, #2349 (a list item's own line break draws as a break, through the shared inline parse; see Line breaks in messages); 2026-11-04, #1751 (an item that is only the hidden board line ends a list, as a card does); 2026-11-04, #1734 (a streaming reply is promoted into slices from 16 KB rather than the large-document size, issue 1720; the settled reply unchanged); 2026-10-30, #1524 (a Desktop card ends a list; previews and quotes name it); 2026-10-28, #1449 (speech leaves Hermes' file tags out, see Files Hermes attaches); 2026-10-28, #1430 (speech no longer takes a `* ` item marker for the start of a narrated action); 2026-10-23, at #1175.
 
 ## Tables in messages
 
