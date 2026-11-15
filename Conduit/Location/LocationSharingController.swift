@@ -408,6 +408,7 @@ final class LocationSharingController: ObservableObject {
         Task { @MainActor in
             let endBackground = beginBackgroundWork(for: .place)
             defer { endBackground() }
+            let drops = unsentDrops
             let location = await fixes.currentFix(accuracy: kCLLocationAccuracyBest, maxAge: 15, timeout: .seconds(15))
             // Nothing from inside a private place: without a fresh fix the last
             // known one decides, and with neither nothing is sent.
@@ -421,8 +422,8 @@ final class LocationSharingController: ObservableObject {
                 speed: location.flatMap { $0.speed >= 0 ? $0.speed : nil },
                 radius: spot.radius)
             // Walking past may have been turned off, or the shop dropped,
-            // while the fix came.
-            guard watchesSpots, spots.state.watches.contains(where: { $0.id == spot.watchID }),
+            // while the fix came, or a Sign Out dropped what wasn't sent.
+            guard drops == unsentDrops, watchesSpots, spots.state.watches.contains(where: { $0.id == spot.watchID }),
                   spots.state.spots.contains(where: { $0.id == spot.id }) else { return }
             unsent.keep(spotEntry: entry)
             saveUnsent()

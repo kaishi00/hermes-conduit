@@ -71,8 +71,8 @@ final class AppState: ObservableObject {
     /// apart from the backoff's attempts, which a network change resets, so
     /// a link that keeps changing still surfaces the failure.
     var quietRenewalFailures = 0
-    /// Moves on at each Sign Out, so a location host pass read before it
-    /// isn't saved after it (issue 2482).
+    /// Moves on at a Sign Out of the dashboard location sharing is bound
+    /// to, so a host pass read before it isn't saved after it (issue 2482).
     var locationHostPassGeneration = 0
     /// A Reconnect someone asked for (the button, Settings, a gateway
     /// restart) shows its failure at once, as before #1624: it is an
