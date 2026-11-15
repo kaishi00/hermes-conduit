@@ -75,13 +75,17 @@ extension AppState {
     /// Opens a window's chat in the chat's own column, where it can be
     /// written to, and shows it there, whatever the main window showed
     /// (Tasks, Settings, the list alone). Landing there lets go of the
-    /// followed copy, and the window closes.
-    func openWindowChatInMainWindow(_ key: String) {
+    /// followed copy, and the window closes. True when no main window is
+    /// open, so the caller opens one first: closing the chat window would
+    /// otherwise leave nothing showing the chat.
+    @discardableResult
+    func openWindowChatInMainWindow(_ key: String) -> Bool {
         guard let chat = windowChat(key),
-              let target = chat.durableSessionID ?? chat.sessionIDs.sorted().first else { return }
+              let target = chat.durableSessionID ?? chat.sessionIDs.sorted().first else { return false }
         requestOpenSession(target)
         // Uncovering the chat pushes it in the shell (V2Shell's showSidebar).
         showSidebar = false
+        return windowScenePhases[Self.mainWindowScene] == nil
     }
 
     /// A profile or dashboard switch: the pane and every chat window

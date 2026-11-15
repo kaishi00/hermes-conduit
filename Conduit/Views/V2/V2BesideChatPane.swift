@@ -51,7 +51,10 @@ struct V2BesideChatPane: View {
             if let windowKey {
                 Button {
                     Haptics.selection()
-                    appState.openWindowChatInMainWindow(windowKey)
+                    if appState.openWindowChatInMainWindow(windowKey) {
+                        // The main window was closed: open it to show the chat.
+                        openWindow(id: "conduit-primary")
+                    }
                 } label: {
                     Image(systemName: "arrow.down.left.square")
                         .frame(width: 40, height: 40)

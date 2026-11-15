@@ -3607,8 +3607,11 @@ final class OfflineChatCacheTests: XCTestCase {
         // Open in Main Window shows the chat whatever the main window
         // showed; its window closes once the open lands.
         state.showSidebar = true
-        state.openWindowChatInMainWindow(second)
+        state.windowScenePhases[AppState.mainWindowScene] = .background
+        XCTAssertFalse(state.openWindowChatInMainWindow(second), "a main window is open, behind or not")
         XCTAssertFalse(state.showSidebar)
+        state.windowScenePhases.removeValue(forKey: AppState.mainWindowScene)
+        XCTAssertTrue(state.openWindowChatInMainWindow(second), "with the main window closed, one opens to show the chat")
         XCTAssertNotNil(state.windowChat(second), "Shown until the open lands")
         state.releaseFollowedChat(answering: ["a"])
         XCTAssertTrue(state.windowChatIDs.isEmpty)
