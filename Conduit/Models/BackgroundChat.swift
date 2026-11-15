@@ -12,8 +12,9 @@ import Foundation
 /// cards that come while the chat is away show when Hermes' rows land.
 struct BackgroundChat: Equatable {
     /// Every id the chat answers to. A runtime id Hermes binds to it while
-    /// it's away joins them (`answer(to:)`).
-    private(set) var sessionIDs: Set<String>
+    /// it's away is looked up in the identity index on each event instead,
+    /// since a runtime id can be reassigned to another chat.
+    let sessionIDs: Set<String>
     /// The id its saved copy is kept under, when its row is listed.
     let durableSessionID: String?
     let title: String
@@ -77,13 +78,6 @@ struct BackgroundChat: Equatable {
         !sessionID.isEmpty && sessionIDs.contains(sessionID)
     }
 
-    /// A runtime id the chat was bound to while away, so the rest of its
-    /// reply under that id still reaches it.
-    mutating func answer(to sessionID: String) {
-        guard !sessionID.isEmpty else { return }
-        sessionIDs.insert(sessionID)
-    }
-
     /// What applying an event did, so the app knows whether to save it.
     enum Outcome: Equatable {
         /// Not a reply event this copy follows.
@@ -125,7 +119,8 @@ struct BackgroundChat: Equatable {
             return .updated
         case .messageComplete(_, let messageId, let content, _, _):
             let final = (content ?? replyText).trimmingCharacters(in: .whitespacesAndNewlines)
-            if !final.isEmpty, !cutOffReplyRowIDs.isEmpty {
+            // As the screen removes its partials at any completion.
+            if !cutOffReplyRowIDs.isEmpty {
                 rows.removeAll { cutOffReplyRowIDs.contains($0.id) }
             }
             cutOffReplyRowIDs = []

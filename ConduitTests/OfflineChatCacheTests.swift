@@ -3442,7 +3442,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
     /// A runtime id Hermes binds to a followed chat while it's away
     /// (another device resumed it), as the identity index knows it, still
-    /// reaches the followed chat, which answers to it from then on.
+    /// reaches the followed chat, only while the index maps it there.
     func testAFollowedChatTakesARuntimeIDBoundWhileItsAway() {
         let (state, _, _) = makeAppState()
         state.sessions = [session("a"), session("b")]
@@ -3461,8 +3461,12 @@ final class OfflineChatCacheTests: XCTestCase {
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "a", profile: state.activeProfile, source: .resume)
         XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " a time")))
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
-        XCTAssertEqual(state.backgroundChats.first?.answers(to: "rt-elsewhere"), true)
         XCTAssertTrue(state.messages.isEmpty)
+
+        // Hermes binds the id to another chat: it no longer reaches this one.
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "z", profile: state.activeProfile, source: .resume)
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " Not ours")))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
     }
 
     /// The reply's events, one by one: an interim note Hermes already
@@ -3501,6 +3505,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(cut.apply(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil)), .ended)
         XCTAssertEqual(cut.rows.map(\.content), ["Checking the map.", "Let me look. Found it."],
                        "The reply's opening words show once, whether cut off before or after it was left")
+        // A completion with no words still lets go of the cut-off words,
+        // as the screen removes its partials.
+        var empty = chat("e")
+        _ = empty.apply(.messageDelta(sessionId: "e", text: "Let me look"))
+        _ = empty.apply(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
+        XCTAssertEqual(empty.apply(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil)), .ended)
+        XCTAssertEqual(empty.rows.map(\.content), ["Checking the map."])
 
         var list: [BackgroundChat] = []
         list = BackgroundChat.adding(chat("1"), to: list)

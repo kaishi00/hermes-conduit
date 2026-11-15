@@ -582,10 +582,12 @@ final class SessionRenameTests: XCTestCase {
         appState.savedDashboardRegistry.activeDashboardID = UUID()
         appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
         var createFails = true
-        let creator = appState.widgetSessionCreatorOverride
+        guard let creator = appState.widgetSessionCreatorOverride else {
+            return XCTFail("The harness creates chats through the override")
+        }
         appState.widgetSessionCreatorOverride = { client, cwd in
             if createFails { throw URLError(.notConnectedToInternet) }
-            return try await creator!(client, cwd)
+            return try await creator(client, cwd)
         }
         appState.setActiveSessionState(id: "a")
         appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
@@ -604,6 +606,43 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.backgroundChats.first?.rows.last?.content, "Once upon a time")
         XCTAssertFalse(appState.messages.contains { $0.content == "Once upon a time" },
                        "The new chat never takes the left chat's words")
+    }
+
+    /// Two New Chats that overlap (a widget's beside the button's) and
+    /// start nothing: the first to finish keeps the follow, since the other
+    /// still leaves the chat, and the last lets go of it, though it followed
+    /// nothing itself (the turn already read synchronizing).
+    func testOverlappingNewChatsThatStartNothingLetGoOfTheFollowTogether() async {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.savedDashboardRegistry.activeDashboardID = UUID()
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await withCheckedContinuation { waiting.append($0) }
+            throw URLError(.notConnectedToInternet)
+        }
+        appState.setActiveSessionState(id: "a")
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        appState.turnState = .running
+
+        func waitForCreations(_ count: Int) async {
+            for _ in 0..<2000 where waiting.count < count { await Task.yield() }
+            XCTAssertEqual(waiting.count, count, "Both creations reach Hermes")
+        }
+        let first = Task { await appState.createNewSession() }
+        await waitForCreations(1)
+        let second = Task { await appState.createNewSession() }
+        await waitForCreations(2)
+        guard waiting.count == 2 else { return }
+        XCTAssertEqual(appState.backgroundChats.count, 1)
+
+        waiting[0].resume()
+        _ = await first.value
+        XCTAssertEqual(appState.backgroundChats.count, 1, "Another New Chat still leaves it")
+        waiting[1].resume()
+        _ = await second.value
+        XCTAssertEqual(appState.activeSessionId, "a")
+        XCTAssertTrue(appState.backgroundChats.isEmpty, "No chat started: the one on screen isn't left")
     }
 
     // MARK: - A new chat in the list (issue 1454)
