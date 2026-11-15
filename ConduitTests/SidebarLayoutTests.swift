@@ -200,6 +200,43 @@ final class SidebarLayoutTests: XCTestCase {
         updates.isShown = true
         settle()
         XCTAssertEqual(sent, 0)
+
+        // Shown by a pop with nothing missed, a publish during the slide
+        // still waits it out.
+        updates.isShown = false
+        updates.isShown = true
+        state.sessions = [pinnedTestSession("during a pop with nothing missed")]
+        XCTAssertEqual(sent, 0, "a publish during the slide drew at once")
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
+
+        // Shown by a tab switch, nothing slides: what it missed draws at
+        // once, and so does a publish after.
+        sent = 0
+        updates.revealDelay = 0
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("behind another tab")]
+        updates.isShown = true
+        XCTAssertEqual(sent, 1)
+        state.sessions = [pinnedTestSession("after the switch")]
+        XCTAssertEqual(sent, 2)
+    }
+
+    /// Only a pop on the shown tab waits out a slide: a tab switch, or the
+    /// window or the list's toggle putting the list beside the chat,
+    /// slides nothing.
+    @MainActor
+    func testOnlyAPopUncoveringTheChatsListCountsAsAPop() {
+        typealias Visibility = V2ChatsView.Visibility
+        let covered = Visibility(tabActive: true, covered: true, split: false)
+        XCTAssertTrue(Visibility(tabActive: true, covered: false, split: false).isPop(from: covered))
+        XCTAssertFalse(Visibility(tabActive: true, covered: false, split: true).isPop(from: covered),
+                       "the list put beside the chat waited for a slide")
+        XCTAssertFalse(Visibility(tabActive: false, covered: false, split: false).isPop(from: covered))
+        XCTAssertFalse(Visibility(tabActive: true, covered: false, split: false)
+            .isPop(from: Visibility(tabActive: false, covered: false, split: false)),
+                       "a tab switch waited for a slide")
     }
 
     /// Beside a chat on a wide iPad the list shows, but a burst of publishes

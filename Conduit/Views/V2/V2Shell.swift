@@ -270,7 +270,15 @@ final class V2ShownUpdates: ObservableObject {
                 revealTask?.cancel()
                 revealTask = nil
             }
-            if isShown, !oldValue, missedUpdate { reveal() }
+            guard isShown, !oldValue else { return }
+            // Shown by a pop, it waits out the slide even with nothing
+            // missed, so a publish during the slide waits too.
+            if revealDelay > 0 {
+                reveal()
+            } else if missedUpdate {
+                missedUpdate = false
+                draw()
+            }
         }
     }
     /// How long a list shown again waits to draw what it missed: the list
@@ -281,7 +289,6 @@ final class V2ShownUpdates: ObservableObject {
     private var revealTask: Task<Void, Never>?
 
     private func reveal() {
-        guard revealDelay > 0 else { missedUpdate = false; draw(); return }
         let delay = revealDelay
         revealTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }

@@ -458,14 +458,24 @@ struct V2ChatsView: View, Equatable {
     private var isShown: Bool { visibility.isShown }
 
     /// What shows the list: its tab, and nothing pushed over it.
-    private struct Visibility: Equatable {
+    struct Visibility: Equatable {
         var tabActive: Bool
         var covered: Bool
+        /// The list beside the chat (a wide window, the list not hidden):
+        /// a change uncovers or covers it without a slide.
+        var split: Bool
         var isShown: Bool { tabActive && !covered }
+
+        /// Uncovered by a pop on the shown tab: the chat slides off it.
+        /// A tab switch, or the window widening or the list's toggle
+        /// putting it beside the chat, shows it with nothing sliding.
+        func isPop(from was: Visibility) -> Bool {
+            was.covered && !covered && tabActive && was.split == split
+        }
     }
 
     private var visibility: Visibility {
-        Visibility(tabActive: shell.isTabActive, covered: shell.isRootCovered)
+        Visibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
     }
 
     /// No chat covers the list: none is open, or a wide window shows the
@@ -601,8 +611,8 @@ struct V2ChatsView: View, Equatable {
         .onChange(of: visibility, initial: true) { was, now in
             let shown = now.isShown
             // Shown by a pop, the list waits out the slide; by a tab
-            // switch, nothing slides, so it draws at once.
-            updates.revealDelay = was.covered && !now.covered && now.tabActive ? V2ShownUpdates.popSlide : 0
+            // switch or a split change, nothing slides, so it draws at once.
+            updates.revealDelay = now.isPop(from: was) ? V2ShownUpdates.popSlide : 0
             updates.isShown = shown
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
@@ -2080,6 +2090,7 @@ struct V2ChatsView: View, Equatable {
                 onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile($0)) },
                 setExpanded: setExpanded
             )
+            .equatable()
             .moveDisabled(!movableIDs.contains(item.id))
         }
         .onMove(perform: move)
@@ -2320,8 +2331,8 @@ struct V2ChatsView: View, Equatable {
 /// number of rows (the row, its "3 jobs" line, its open children), so on
 /// every redraw the List built every row of the list just to count them.
 /// With one List row per item it builds only the rows on screen.
-struct V2ChatsListItem: Identifiable {
-    enum Kind {
+struct V2ChatsListItem: Identifiable, Equatable {
+    enum Kind: Equatable {
         /// A conversation at the top of its nest, or on its own.
         case session(SessionNesting.Node)
         /// The "3 jobs · 1 running" line under a parent: its expander.
@@ -2384,9 +2395,9 @@ struct V2ChatsListItem: Identifiable {
 
 /// One Chats list row. It works out its own dot, status and preview, so
 /// only the rows on screen do.
-private struct V2ChatsRow: View {
+private struct V2ChatsRow: View, Equatable {
     /// The list's updates (`V2ShownUpdates`): a row under a pushed chat
-    /// waits with the list.
+    /// waits with the list, and redraws with it whatever its parent does.
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -2402,6 +2413,17 @@ private struct V2ChatsRow: View {
     let onReorderPinned: (SessionSummary) -> Void
     /// Opens or closes the nest with this key.
     let setExpanded: (String, Bool) -> Void
+
+    /// The list re-runs its body as a chat is pushed over it or popped off
+    /// it (the shell's covered flag), and the closures are new each time:
+    /// compared on what it shows, a row redraws only for its own item or
+    /// a draw of the list's updates, which it observes itself. Drawn
+    /// as the pop's finger lifted, the rows held its first frame
+    /// (iPhone 16 Pro Max, 2026-11-15). The closures write the list's own
+    /// state, the same storage whichever render made them.
+    nonisolated static func == (lhs: V2ChatsRow, rhs: V2ChatsRow) -> Bool {
+        lhs.item == rhs.item && lhs.projectTitle == rhs.projectTitle
+    }
 
     var body: some View {
         switch item.kind {
