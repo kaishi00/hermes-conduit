@@ -263,6 +263,56 @@ extension AppState {
         return outcome == .opened
     }
 
+    /// Bots Home opens a bot's Bot Chat (a portrait, its name, a lone bot's
+    /// last reply): marked at once, so the shell pushes the chat's screen
+    /// as the tap lands, and grown out of the portrait unless it opens
+    /// beside the list (`zooms`). `opened` hears whether it opened.
+    func openBotChatFromHome(
+        _ bot: BotProfile,
+        zooms: Bool,
+        then opened: @escaping @MainActor (Bool) -> Void = { _ in }
+    ) {
+        beginOpeningBotChat(bot.name)
+        if zooms { botZoom.tap(bot.name) }
+        Task { @MainActor in
+            let didOpen = await openBotChatFromList(bot)
+            if !didOpen, zooms { botZoom.openFailed(bot.name) }
+            opened(didOpen)
+        }
+    }
+
+    /// Bots Home's field for a lone bot: its Bot Chat opens as a tap opens
+    /// it and the words are sent there as the user's message, through the
+    /// composer's own path (a running turn gets the profile's Steer or
+    /// Queue). A send that doesn't go leaves them in that chat's composer.
+    /// `handed` is false only when the chat didn't open, so the field
+    /// keeps them.
+    func askBotFromHome(
+        _ bot: BotProfile,
+        text: String,
+        zooms: Bool,
+        then handed: @escaping @MainActor (Bool) -> Void
+    ) {
+        openBotChatFromHome(bot, zooms: zooms) { [weak self] opened in
+            guard let self, opened, self.activeBotChatProfile == bot.name else {
+                handed(false)
+                return
+            }
+            Task { @MainActor in
+                if await !self.submitComposer(text: text) {
+                    // Into its composer only while it's still this bot's
+                    // chat on screen; elsewhere the field keeps them.
+                    guard self.activeBotChatProfile == bot.name else {
+                        handed(false)
+                        return
+                    }
+                    self.prefillComposer(text)
+                }
+                handed(true)
+            }
+        }
+    }
+
     /// A bot open spans several awaited RPCs. Every step re-validates that
     /// the server identity this flight captured is still current; a server
     /// switch mid-flight (invalidation cancels the task AND bumps the epoch)
