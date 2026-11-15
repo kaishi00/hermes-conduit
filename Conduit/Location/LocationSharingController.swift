@@ -584,7 +584,10 @@ final class LocationSharingController: ObservableObject {
         var pending = unsent
         if pending.isEmpty, !settingsOnly { return true }
         let forgotten = spotsForgotten
+        let drops = unsentDrops
         guard let request = await requestProvider?(binding) else { return false }
+        // A Sign Out while the connection came dropped this batch's copy.
+        guard drops == unsentDrops else { return false }
         // Walking past turned off, a pause, or Location settings changed
         // while the connection came: this batch carries no shops.
         if spotsForgotten != forgotten || !watchesSpots {
