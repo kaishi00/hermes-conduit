@@ -109,9 +109,11 @@ extension AppState {
             return true
         } catch {
             // A send that failed after Hermes took it: its echo gave the row
-            // Hermes' id, rows came after it, or its reply streams. Keep it.
+            // Hermes' id, or its reply streams. Keep it. A row from
+            // elsewhere landing after it (a job's post, another device's
+            // message) is no word of this one.
             if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
-               chat.state.messages[at].rowId != nil || at < chat.state.messages.count - 1
+               chat.state.messages[at].rowId != nil
                 || (replyWasSettled && !chat.state.streamingBuffer.isEmpty) {
                 return true
             }

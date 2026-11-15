@@ -529,6 +529,9 @@ extension AppState {
            (try? ConnectionURLPolicy.normalizedBaseURL(previousClient.connection.baseUrl)) == normalizedBaseURL {
             client.inheritSessionProfiles(from: previousClient)
         }
+        // A live call's sessions name its profile on this client too (a
+        // silent re-auth after a failed switch has no client that knew).
+        keepCallSessionsOnTheirProfile(afterReconnect: client)
         self.client = client
         previousClient?.disconnect()
 
@@ -1183,6 +1186,7 @@ extension AppState {
     func handleDisconnect() {
         let wasRunning = isBusy
         isConnected = false
+        settleKeptChatTurnsAfterDisconnect()
         // Gateway compaction lifecycle state is unverifiable across a socket
         // loss (the orphan reaper may have torn the compressing session
         // down, and a `compacted` edge may never arrive): never keep a

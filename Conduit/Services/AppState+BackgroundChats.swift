@@ -111,9 +111,35 @@ extension AppState {
             applyToolStart(name: name, input: input, eventToolID: eventToolID, streamSessionId: sessionID)
         case .toolComplete(_, let name, let output, let eventToolID):
             applyToolComplete(name: name, output: output, eventToolID: eventToolID, streamSessionId: sessionID)
+        case .sessionInfo(_, let snapshot):
+            // Hermes says the turn isn't running: it ended where no event
+            // of its end reached here.
+            guard snapshot.running == false, shownChat.turnState.isRunning else { break }
+            settleKeptChatTurn()
         default:
             break
         }
+    }
+
+    /// Ends a left chat's turn as far as this phone knows: its words so far
+    /// stay, its flag goes.
+    private func settleKeptChatTurn() {
+        settleReasoningSegmentIntoTranscript()
+        resetReasoningSegment()
+        flushStreamingPartial()
+        clearStreamingText()
+        setRunning(false)
+    }
+
+    /// The socket closed: a left chat's turn is followed no more (a new
+    /// socket isn't attached to it, and Hermes doesn't replay its end), so
+    /// it stops counting as running and its message box sends again. Its
+    /// words so far stay; opening it reads the rest.
+    func settleKeptChatTurnsAfterDisconnect() {
+        for chat in backgroundChats where chat.isRunning {
+            act(on: chat) { settleKeptChatTurn() }
+        }
+        besideChatLive.moved()
     }
 
     /// The chat on screen is being left for `newID` (setActiveSessionState).

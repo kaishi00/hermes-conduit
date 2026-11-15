@@ -3703,6 +3703,16 @@ final class OfflineChatCacheTests: XCTestCase {
         fails = true
         outcome = .accepted
 
+        // A row from elsewhere landing during a failed send is no word of
+        // it: the send still comes off.
+        hermesWordFirst = {
+            kept.state.messages.append(ChatMessage(id: "job-post", role: .assistant, content: "A job's post", timestamp: "9"))
+        }
+        let elsewhere = await state.sendInKeptChat(kept, text: "Fourth")
+        XCTAssertFalse(elsewhere)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Fourth" })
+        XCTAssertFalse(kept.isRunning)
+
         // One whose word from Hermes came before the failure stays, its
         // turn running.
         hermesWordFirst = {
@@ -3715,6 +3725,12 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(kept.isRunning)
         // The seam's closure holds this one, which holds the state.
         hermesWordFirst = nil
+
+        // A socket that closes mid-turn ends the turn as far as this phone
+        // knows: Hermes doesn't replay its end, and the box sends again.
+        state.handleDisconnectForTesting()
+        XCTAssertFalse(kept.isRunning)
+        XCTAssertTrue(kept.state.messages.contains { $0.content == "Third" })
         state.besideChatIDs = nil
     }
 
