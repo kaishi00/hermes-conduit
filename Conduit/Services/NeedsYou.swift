@@ -161,6 +161,14 @@ final class NeedsYouStore: ObservableObject {
     private var seen: Set<String> = []
     private var reading = false
     private var readAgain = false
+    /// Questions whose card Hermes drew itself: the row's copy stays out of
+    /// the chat for good, even once Hermes' card is answered and the list,
+    /// read a moment before, still names the wait (issue 2556).
+    private(set) var cardsHermesDrew: Set<String> = []
+
+    func noteHermesDrewCard(for requestID: String) {
+        cardsHermesDrew.insert(requestID)
+    }
 
     /// Runs `read`, or, while one runs, has it run once more after: a
     /// burst of asks makes at most one more read, and reads never overlap
@@ -225,6 +233,7 @@ final class NeedsYouStore: ObservableObject {
         self.dashboardID = dashboardID
         readProfiles = []
         seen = []
+        cardsHermesDrew = []
         if !items.isEmpty { items = [] }
         banner = nil
     }

@@ -3059,6 +3059,21 @@ final class AppStateChatResumeTests: XCTestCase {
         ) { _ in false }
         appState.showWaitingQuestionCards()
         XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1"])
+        // Answered while the list still names the wait: the copy stays out.
+        var answered = try XCTUnwrap(appState.messages.first?.clarify)
+        answered.questions[0].status = .answered
+        appState.messages[0].clarify = answered
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1"])
+
+        // The same question asked again later, which Hermes draws no card
+        // for: the old answered card doesn't hide the new one.
+        appState.needsYou.apply(
+            [wait("w4", session: "runtime-a", request: "conduit-push-again", question: "Which region?")],
+            profile: "default", dashboardID: dashboard
+        ) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["native-1", "conduit-push-again"])
     }
 
     /// #789: an open Hermes refuses for good is final, so the route doesn't

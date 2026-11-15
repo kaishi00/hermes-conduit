@@ -63,8 +63,10 @@ extension AppState {
     /// scheduled job's turn in a Bot Chat), and the plugin's card reached
     /// the chat only from a tapped notification, which an open Conduit
     /// never gets. The card is the notification's, answered through the
-    /// relay; Hermes' own card for the question, or the same card already
-    /// there (answered too), keeps it out: one question is one card.
+    /// relay; Hermes' own card waiting on the same question, or the same
+    /// card already there (answered too), keeps it out: one question is one
+    /// card. An older card of Hermes', answered or run out, that asked the
+    /// same thing doesn't: the question asked again needs its card.
     func showWaitingQuestionCards() {
         guard needsYou.items.contains(where: { $0.card != nil }),
               // A transcript still being restored takes it afterwards.
@@ -74,14 +76,20 @@ extension AppState {
             guard let card = item.card,
                   let key = Self.pendingDecisionEvictionKey(for: card),
                   let pushed = Self.notificationClarifyActivity(for: card),
+                  !needsYou.cardsHermesDrew.contains(pushed.requestId),
                   isOpenChat(item),
                   !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
             let hermesCardIsThere = messages.contains { message in
                 guard let live = message.clarify,
-                      !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return false }
+                      !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                      live.presentationStatus == .pending else { return false }
                 return Self.pushCardSupersededBy(pushed, live: live)
             }
-            guard !hermesCardIsThere else { continue }
+            if hermesCardIsThere {
+                // Its answer leaves the wait listed until the next read.
+                needsYou.noteHermesDrewCard(for: pushed.requestId)
+                continue
+            }
             let openIDs = presentationCacheSessionIDs(for: openID)
             let profile = presentationProfile(for: openID)
             recordNotificationDecision(

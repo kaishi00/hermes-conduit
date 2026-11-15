@@ -632,6 +632,8 @@ extension AppState {
             reconciliation?.resolvedSessionId
         ].compactMap { $0 }
         for requestId in supersededRequestIds {
+            // Nor does its Needs you row draw it again (issue 2556).
+            needsYou.noteHermesDrewCard(for: requestId)
             sessionPresentationCache.removePendingDecision(
                 key: "clarify:\(requestId)",
                 profile: presentationProfile(for: activeSessionId),
