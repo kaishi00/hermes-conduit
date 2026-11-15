@@ -33,7 +33,9 @@ struct V2BesideChatPane: View {
                     chat: chat,
                     gatewayResolver: appState.gatewayMediaResolver(for: chat.profile)
                 )
+                // Its draft is this chat's: Swap empties the box.
                 V2KeptChatComposer(live: appState.besideChatLive, chat: chat)
+                    .id(chat.sessionIDs)
             }
         }
     }
@@ -138,6 +140,9 @@ private struct V2KeptChatComposer: View {
                     .padding(.vertical, 8)
                     .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .onSubmit(send)
+                    // Kept as typed until the send settles, so a failed
+                    // message comes back whole.
+                    .disabled(sending)
                 Button(action: send) {
                     Group {
                         if sending {
@@ -171,7 +176,7 @@ private struct V2KeptChatComposer: View {
             sending = false
             if !sent {
                 failed = true
-                if draft.isEmpty { draft = words }
+                draft = words
             }
         }
     }

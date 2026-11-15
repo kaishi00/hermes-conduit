@@ -3523,11 +3523,14 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
         state.windowChat(key)?.state.messages.removeLast(3)
 
-        // It takes a message by the runtime id Hermes bound to it, only
-        // between turns and connected (with a client to send through).
+        // It takes a message by its own id, only between turns and
+        // connected (with a client to send through), and never by an id
+        // Hermes has since bound to another chat.
         let windowed = try XCTUnwrap(state.windowChat(key))
-        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "a", durableID: "st-a", profile: state.activeProfile, source: .resume)
         XCTAssertEqual(state.keptChatSendTarget(windowed), "a")
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "a", durableID: "other", profile: state.activeProfile, source: .resume)
+        XCTAssertNil(state.keptChatSendTarget(windowed), "Its id now goes to another chat")
+        state.conversationIdentityIndex.removeSessionIDs(["other"], profile: state.activeProfile)
         XCTAssertFalse(state.canSendInKeptChat(windowed), "No client to send through here")
         let sent = await state.sendInKeptChat(windowed, text: "Hello there")
         XCTAssertFalse(sent)

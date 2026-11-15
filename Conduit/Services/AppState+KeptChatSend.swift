@@ -22,15 +22,26 @@ extension AppState {
     }
 
     /// The id the chat's turns run under on this connection: the runtime id
-    /// Hermes bound it to, else the id it was left as.
+    /// Hermes bound it to, else the id it was left as. An id Hermes has
+    /// since bound to another chat is never a target: nil sends nothing.
     func keptChatSendTarget(_ chat: BackgroundChat) -> String? {
         let index = conversationIdentityIndex
-        let runtime = chat.sessionIDs.sorted().first {
-            index.durableID(forRuntime: $0, profile: chat.profile) != nil
+        func isThisChat(_ durable: String) -> Bool {
+            chat.sessionIDs.contains(durable) || chat.durableSessionID == durable
+        }
+        var runtime: String?
+        var free: [String] = []
+        for id in chat.sessionIDs.sorted() {
+            guard let durable = index.durableID(forRuntime: id, profile: chat.profile) else {
+                free.append(id)
+                continue
+            }
+            guard isThisChat(durable) else { continue }
+            if durable != id, runtime == nil { runtime = id } else { free.append(id) }
         }
         return runtime
-            ?? chat.sessionIDs.sorted().first { $0 != chat.durableSessionID }
-            ?? chat.durableSessionID
+            ?? free.first { $0 != chat.durableSessionID }
+            ?? free.first
     }
 
     /// Sends `text` to the kept chat. The message shows in it at once and
@@ -51,6 +62,12 @@ extension AppState {
             _ = try await client.sendPrompt(target, text: words)
             return true
         } catch {
+            // A send that timed out after Hermes took it: its echo gave the
+            // row Hermes' id, or the reply has started under it. Keep both.
+            if let at = chat.state.messages.firstIndex(where: { $0.id == rowID }),
+               chat.state.messages[at].rowId != nil || at < chat.state.messages.count - 1 {
+                return true
+            }
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
             besideChatLive.moved()
