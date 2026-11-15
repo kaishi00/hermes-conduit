@@ -524,6 +524,9 @@ final class AppState: ObservableObject {
     /// The chats shown in windows of their own (AppState+ChatWindows.swift),
     /// each by the ids it answers to. Followed like the pane's chat.
     @Published var windowChatIDs: [Set<String>] = []
+    /// The id each kept chat's events came under last, by its key
+    /// (AppState+KeptChatSend.swift): where its next message goes.
+    var keptChatEventIDs: [String: String] = [:]
     /// Each window's scene phase, the main window's and each chat window's
     /// (AppState+ChatWindows.swift, noteScenePhase).
     var windowScenePhases: [String: ScenePhase] = [:]

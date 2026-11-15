@@ -50,6 +50,8 @@ extension AppState {
     func noteUserMessageInBesideChat(sessionId: String, rowId: Int?, text: String) {
         guard let chat = keptChat(answering: sessionId), !eventBelongsToActiveSession(sessionId),
               text.contains(where: { !$0.isWhitespace }) else { return }
+        // Its next message from the box goes where this one came.
+        noteKeptChatEvent(chat, sessionID: sessionId)
         let rows = chat.state.messages
         if let rowId, rows.contains(where: { $0.rowId == rowId }) { return }
         if let latest = rows.lastIndex(where: { $0.role == .user }),

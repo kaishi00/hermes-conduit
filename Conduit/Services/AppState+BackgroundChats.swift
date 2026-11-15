@@ -344,7 +344,12 @@ extension AppState {
         }
         let wasRunning = chat.isRunning
         act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
-        if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true { besideChatLive.moved() }
+        if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
+            besideChatLive.moved()
+            // A turn sent from its message box has a Live Activity too.
+            LiveTurnActivities.shared?.observe(event, sessionID: id)
+            noteKeptChatEvent(chat, sessionID: id)
+        }
         // Saved as its turn ends, and again for a completion that lands
         // after the turn's end (sessionBusy came first), whose final row
         // takes the cut-off words' place.

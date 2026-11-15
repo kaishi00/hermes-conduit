@@ -9,6 +9,7 @@
 //
 //  On an iPad and a Mac the pane's chat can move to a window of its own
 //  (V2ChatWindow, AppState+ChatWindows.swift), drawn by this same view.
+//  Both take a plain message under the rows (AppState+KeptChatSend.swift).
 //
 
 import SwiftUI
@@ -32,6 +33,9 @@ struct V2BesideChatPane: View {
                     chat: chat,
                     gatewayResolver: appState.gatewayMediaResolver(for: chat.profile)
                 )
+                // Its draft is this chat's: Swap empties the box.
+                V2KeptChatComposer(live: appState.besideChatLive, chat: chat)
+                    .id(chat.sessionIDs)
             }
         }
     }
@@ -101,6 +105,79 @@ struct V2BesideChatPane: View {
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(AppLocalization.string("Close Chat Beside", table: .chat))
+    }
+}
+
+/// A plain message box under a kept chat's rows: words only, sent to the
+/// chat's own session while it's between turns. Attachments, commands and
+/// answers to cards stay with the chat's own column (Swap).
+private struct V2KeptChatComposer: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var live: BesideChatLive
+    let chat: BackgroundChat
+    @State private var draft = ""
+    @State private var sending = false
+    @State private var failed = false
+
+    private var canSend: Bool {
+        !sending && appState.canSendInKeptChat(chat)
+            && draft.contains(where: { !$0.isWhitespace })
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            if failed {
+                Text(AppLocalization.string("Couldn't send here. Try again, or open the chat to send from there.", table: .chat))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField(AppLocalization.string("Message"), text: $draft, axis: .vertical)
+                    .lineLimit(1...5)
+                    .scaledFont(.body)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    // Kept as typed until the send settles, so a failed
+                    // message comes back whole.
+                    .disabled(sending)
+                Button(action: send) {
+                    Group {
+                        if sending {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.up")
+                                .scaledFont(.system(.body, weight: .semibold))
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .contentShape(Circle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(canSend ? Color.conduitAccent : Color.secondary)
+                .disabled(!canSend)
+                .accessibilityLabel(sending ? AppLocalization.string("Sending…") : AppLocalization.string("Send"))
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+    }
+
+    private func send() {
+        guard canSend else { return }
+        let words = draft
+        draft = ""
+        failed = false
+        sending = true
+        Task { @MainActor in
+            let sent = await appState.sendInKeptChat(chat, text: words)
+            sending = false
+            if !sent {
+                failed = true
+                draft = words
+            }
+        }
     }
 }
 
