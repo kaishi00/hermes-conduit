@@ -116,14 +116,6 @@ extension AppState {
     func keepCallSessionsOnTheirProfile(afterReconnect client: HermesClient) {
         guard isLiveCallUp || callProfileHandingBack != nil else { return }
         keepCallSessionsOnTheirProfile(voiceCallProfile, for: client)
-        // And a job's or a Bot Chat's own profile for theirs.
-        for named in voiceBackgroundJobSupervisor.sessionIDsNamingAProfile {
-            client.noteSessionProfile(named.profile, for: named.ids)
-        }
-        // Local Live's own chat in place of a deleted Bot Chat is its bot's.
-        if let own = localLiveOwnChat, let profile = own.profile {
-            client.noteSessionProfile(profile, for: [own.runtimeSessionID, own.storedSessionID])
-        }
     }
 
     /// The call's own sessions as a switch changes the profile on screen:
@@ -132,6 +124,15 @@ extension AppState {
     /// when the switch goes back to the call's profile, its own).
     func keepCallSessionsOnTheirProfile(_ profile: String, for nextClient: HermesClient) {
         nextClient.noteSessionProfile(profile, for: callSessionIDsOnActiveProfile)
+        // And a job's or a Bot Chat's own profile for theirs: the client
+        // that held them forgot the ones naming its own profile.
+        for named in voiceBackgroundJobSupervisor.sessionIDsNamingAProfile {
+            nextClient.noteSessionProfile(named.profile, for: named.ids)
+        }
+        // Local Live's own chat in place of a deleted Bot Chat is its bot's.
+        if let own = localLiveOwnChat, let ownProfile = own.profile {
+            nextClient.noteSessionProfile(ownProfile, for: [own.runtimeSessionID, own.storedSessionID])
+        }
     }
 
     /// The call's sessions that name no profile of their own (its jobs',

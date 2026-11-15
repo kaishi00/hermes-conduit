@@ -554,7 +554,8 @@ extension AppState {
                 tool: ToolActivity(id: stableToolID, name: name, input: nil, output: output, status: .complete)
             ))
         }
-        guard actingOnChatOnScreen else { return }
+        // Off screen too: the record keys on the message and tool, and a
+        // chat left mid-tool would otherwise restore it as still running.
         sessionPresentationCache.resolvePendingTool(
             named: name,
             toolID: resolvedCacheToolID,

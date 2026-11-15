@@ -52,12 +52,15 @@ extension AppState {
         return hermesCallsStatus
     }
 
-    /// Whether Hermes can call the user when a live call's work is done.
-    /// Settings not read yet count as on: the host refuses the watch if
-    /// they're off, and the call hears so.
+    /// Whether Hermes can call the user when a live call's work is done,
+    /// by the call's own profile's settings (a call kept across a switch
+    /// is on another profile than the screen's). Settings not read yet
+    /// count as on: the host refuses the watch if they're off, and the
+    /// call hears so.
     var hermesCallbackAvailability: VoiceCallbackAvailability {
         guard supportsHermesCalls else { return .unsupported }
-        return activeHermesCallsStatus?.callbackAvailability ?? .available
+        guard hermesCallsStatusKey == hermesCallsKey(profile: voiceCallProfile) else { return .available }
+        return hermesCallsStatus?.callbackAvailability ?? .available
     }
 
     private func hermesCallsKey(profile: String) -> String {

@@ -1417,12 +1417,14 @@ extension AppState {
         // The chat's own resume already moved it off the dead runtime: its
         // runtime is the live one, and a second resume would only mint another.
         if isOpenChat(thread), let current = activeSessionId, current != deadRuntimeID { return current }
+        // Read before the resume: the call can end during it, and its
+        // profile go with it.
+        let profile = thread.profile ?? voiceCallProfile
         let resumed = try await openChatResumeSession(storedID, using: client, compact: true, profile: callThreadProfile(thread))
         let recoveredID = resumed.sessionId
         guard !recoveredID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HermesError.invalidResponse
         }
-        let profile = thread.profile ?? voiceCallProfile
         // The identity check the compression recovery runs: the resume must
         // answer for this conversation, never move the chat to another one.
         let selected = ConversationIdentity(

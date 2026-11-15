@@ -155,7 +155,8 @@ struct LiveVoiceCallSheet: View {
                 case .job(let jobID):
                     LiveVoiceJobResultSheet(jobs: jobs, jobID: jobID) { chatID in
                         pendingJobChat = chatID
-                        pendingJobProfile = jobs.jobs.first { $0.id == jobID }?.profile
+                        // A job naming no profile is the call's.
+                        pendingJobProfile = jobs.jobs.first { $0.id == jobID }?.profile ?? appState.voiceCallProfile
                         selection = nil
                     }
                 case .screen(let card, _):

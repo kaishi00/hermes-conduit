@@ -5641,6 +5641,19 @@ extension HermesClientTests {
         // profile for the call's chat.
         let incoming = makeClient(transport: transport, profile: "work")
         appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: incoming)
+        // A Bot Chat thread naming its bot's profile keeps that profile on
+        // the next client too, not only on a reconnect's.
+        let botThreadSupervisor = appState.voiceBackgroundJobSupervisor
+        botThreadSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "bot-1", storedSessionID: "bot-stored-1", title: "Furina", profile: "furina")
+        )
+        let afterSwitch = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: afterSwitch)
+        XCTAssertEqual(afterSwitch.sessionProfile(for: "bot-1"), "furina")
+        XCTAssertEqual(afterSwitch.sessionProfile(for: "bot-stored-1"), "furina")
+        botThreadSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
+        )
         XCTAssertTrue(outgoing.handOffSocket(to: incoming))
         outgoing.disconnect()
         appState.client = incoming
