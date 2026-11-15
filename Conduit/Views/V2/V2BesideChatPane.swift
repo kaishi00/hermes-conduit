@@ -135,6 +135,9 @@ struct V2ChatWindow: View {
         }
         .onDisappear {
             if let key {
+                // Gone to the background first, as the main window does, so
+                // the last window closing still runs the background steps.
+                appState.noteScenePhase(.background, scene: "chat-window:\(key)")
                 appState.noteScenePhase(nil, scene: "chat-window:\(key)")
                 appState.closeChatWindow(key)
             }
