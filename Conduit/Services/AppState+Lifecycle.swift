@@ -267,9 +267,13 @@ extension AppState {
         }
 
         func finish(_ result: Result<ProfileCatalogLoad, Error>) {
-            let waiting = waiters.values
-            waiters.removeAll()
-            for waiter in waiting { waiter.resume(with: result) }
+            // Take the whole dictionary and never read `.values` off the
+            // stored property: a Release build (Swift 6.4.2, whole-module)
+            // fails SIL verification on `waiters.values` followed by a write,
+            // even through `Array(waiters.values)`.
+            let waiting = waiters
+            waiters = [:]
+            for (_, waiter) in waiting { waiter.resume(with: result) }
         }
     }
 
