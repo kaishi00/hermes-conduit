@@ -346,7 +346,7 @@ extension AppState {
     /// belongs to (another device resumed it, say), by the conversation
     /// index. Looked up on every event and never kept, so an id the index
     /// later binds to another chat stops reaching this one.
-    private func followedChatIndex(reboundTo id: String) -> Int? {
+    func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
         return backgroundChats.firstIndex { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }

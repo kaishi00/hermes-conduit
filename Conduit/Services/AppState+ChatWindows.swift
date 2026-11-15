@@ -26,13 +26,17 @@ extension AppState {
     }
 
     /// The chat on show in the pane or a window that answers to
-    /// `sessionID`, of this dashboard and profile.
+    /// `sessionID`, of this dashboard and profile: by its own ids, or by
+    /// a runtime id Hermes has since bound to it (another device resumed
+    /// it), as its reply's events find it.
     func keptChat(answering sessionID: String) -> BackgroundChat? {
-        guard let kept = keptChatIDs else { return nil }
-        return backgroundChats.first {
-            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
-                && $0.answers(to: sessionID) && !$0.sessionIDs.isDisjoint(with: kept)
-        }
+        guard let kept = keptChatIDs,
+              let index = backgroundChats.firstIndex(where: { $0.answers(to: sessionID) })
+                ?? followedChatIndex(reboundTo: sessionID) else { return nil }
+        let chat = backgroundChats[index]
+        guard chat.dashboardID == activeDashboardID, chat.profile == activeProfile,
+              !chat.sessionIDs.isDisjoint(with: kept) else { return nil }
+        return chat
     }
 
     /// The chat the window opened as `key` draws. Nil once its chat is

@@ -41,21 +41,26 @@ extension AppState {
         return !scope.sessionIDs.isDisjoint(with: ids)
     }
 
-    /// A message another device or process sent to the pane's chat shows
-    /// there as it's sent, ahead of its reply: once, by Hermes' row id, or
-    /// by its words where the event has none.
+    /// A message another device or process sent to the pane's chat, or a
+    /// chat window's, shows there as it's sent, ahead of its reply: once,
+    /// by Hermes' row id. Hermes also announces the message this device
+    /// sent just before the chat was left, whose row is here already
+    /// without Hermes' id: the same words with no reply after them yet are
+    /// that row. The same words again after a reply are a new message.
     func noteUserMessageInBesideChat(sessionId: String, rowId: Int?, text: String) {
         guard let chat = keptChat(answering: sessionId), !eventBelongsToActiveSession(sessionId),
               text.contains(where: { !$0.isWhitespace }) else { return }
         let rows = chat.state.messages
-        if let rowId {
-            guard !rows.contains(where: { $0.rowId == rowId }) else { return }
-        } else if let latest = rows.last(where: { $0.role == .user }),
-                  OpenChatSync.squashed(latest.content) == OpenChatSync.squashed(text) {
+        if let rowId, rows.contains(where: { $0.rowId == rowId }) { return }
+        if let latest = rows.lastIndex(where: { $0.role == .user }),
+           rowId == nil || rows[latest].rowId == nil,
+           !rows[(latest + 1)...].contains(where: { $0.role == .assistant }),
+           OpenChatSync.squashed(rows[latest].content) == OpenChatSync.squashed(text) {
+            if rows[latest].rowId == nil, let rowId { chat.state.messages[latest].rowId = rowId }
             return
         }
         var row = ChatMessage(
-            id: rowId.map { "user-row-\($0)" } ?? "user-\(Date().timeIntervalSince1970)",
+            id: rowId.map { "user-row-\($0)" } ?? "user-\(UUID().uuidString)",
             role: .user,
             content: text,
             timestamp: Self.localTimestamp(),

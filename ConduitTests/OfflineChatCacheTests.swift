@@ -3507,6 +3507,15 @@ final class OfflineChatCacheTests: XCTestCase {
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 9, text: "From my Mac", origin: nil))
         XCTAssertEqual(state.windowChat(key)?.state.messages.last?.content, "From my Mac")
         XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        // Hermes' word of a message whose row is here already adds none;
+        // the same words again after a reply are a new message.
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 2)
+        state.windowChat(key)?.state.messages.append(ChatMessage(id: "r9", role: .assistant, content: "Done", timestamp: "3"))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.map(\.role), [.user, .user, .assistant, .user])
+        state.windowChat(key)?.state.messages.removeLast(2)
 
         // Closing the window lets go of a chat with no reply running.
         state.closeChatWindow(key)
