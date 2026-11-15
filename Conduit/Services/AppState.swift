@@ -2479,7 +2479,7 @@ final class AppState: ObservableObject {
     var chatListCatalogFreshness = ChatListCatalogFreshness()
     var openChatSync = OpenChatSync()
     /// Hermes' `sessions.changed` waiting for its catalog read, and the
-    /// wait for one held back by the 5 s spacing.
+    /// wait for one held back by the quiet-read wait (5 s, up to 60 s).
     var catalogChangeSignal = CatalogChangeSignal()
     var catalogChangeReadTask: Task<Void, Never>?
     /// The registry read before reading rows a catalog read found moved.

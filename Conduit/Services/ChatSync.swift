@@ -129,22 +129,25 @@ struct NewChatAwaitingListing: Equatable {
 /// process wrote it. A turn run in the TUI on the gateway's computer, or
 /// through another gateway on the same Hermes home, shows only here and in
 /// the stored rows: this gateway's live registry never lists it (#1026).
-/// Each signal reads the catalog again, at most every 5 s, and never while
-/// a turn runs here (its own rows move the catalog the whole time); one
-/// held back is read once the wait or the turn is over.
+/// Each signal reads the catalog again, never while a turn runs here (its
+/// own rows move the catalog the whole time); one held back is read once
+/// the wait or the turn is over.
 ///
 /// Hermes sends the signal for every profile the gateway serves and names
 /// none, so a busy bot in another profile signals every few seconds while
-/// this profile's list stays the same. Each read that lists the same rows
-/// again doubles the wait before the next, up to `maximumInterval`; a read
-/// that changes the list, from a signal or anything else, starts it over
-/// at 5 s.
+/// this profile's list stays the same. Reads are at least 5 s apart, and
+/// each one that lists the same rows again doubles the wait before the
+/// next, up to `maximumInterval`; a read that changes the list, from a
+/// signal or anything else, starts it over at 5 s from that read. A failed
+/// read is tried again after 5 s, whatever the wait.
 struct CatalogChangeSignal {
     static let minimumInterval: TimeInterval = 5
     static let maximumInterval: TimeInterval = 60
 
     private(set) var isPending = false
     private var lastReadAt: Date?
+    /// The pending change's last read failed.
+    private(set) var lastReadFailed = false
     /// Signal reads in a row that listed the same rows.
     private(set) var quietReads = 0
 
@@ -161,8 +164,24 @@ struct CatalogChangeSignal {
     mutating func takeRead(now: Date, turnRunningHere: Bool) -> Bool {
         guard isPending, !turnRunningHere, delayUntilDue(now: now) == 0 else { return false }
         isPending = false
+        lastReadFailed = false
         lastReadAt = now
         return true
+    }
+
+    /// A signal's read failed: the change stays pending, tried again
+    /// after the shortest wait.
+    mutating func noteReadFailed() {
+        isPending = true
+        lastReadFailed = true
+    }
+
+    /// Whether a pending change is held past its wait, by a turn here or
+    /// a failed read, rather than only spaced out by the wait: the list's
+    /// quick backstop still reads it.
+    func isHeld(now: Date, turnRunningHere: Bool) -> Bool {
+        guard isPending else { return false }
+        return turnRunningHere || lastReadFailed || delayUntilDue(now: now) == 0
     }
 
     /// A signal's read landed: one that listed the same rows lengthens the
@@ -177,8 +196,9 @@ struct CatalogChangeSignal {
 
     /// Any catalog read changed the list: the next signal is read after
     /// the shortest wait again.
-    mutating func noteListChanged() {
+    mutating func noteListChanged(at now: Date) {
         quietReads = 0
+        lastReadAt = now
     }
 
     /// How long until a pending change may be read: nil when none is
@@ -186,7 +206,8 @@ struct CatalogChangeSignal {
     func delayUntilDue(now: Date) -> TimeInterval? {
         guard isPending else { return nil }
         guard let lastReadAt else { return 0 }
-        return max(0, interval - now.timeIntervalSince(lastReadAt))
+        let wait = lastReadFailed ? Self.minimumInterval : interval
+        return max(0, wait - now.timeIntervalSince(lastReadAt))
     }
 }
 

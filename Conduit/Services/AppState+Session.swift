@@ -513,7 +513,7 @@ extension AppState {
             let sameListAgain = !listChanged && catalogCommitOwner == owner
             if listChanged {
                 chatListCatalogGeneration &+= 1
-                catalogChangeSignal.noteListChanged()
+                catalogChangeSignal.noteListChanged(at: chatSyncNow())
             }
             listedChange(listChanged)
             if listedSessions != sessions { sessions = listedSessions }
@@ -700,7 +700,7 @@ extension AppState {
                         // before the next.
                         self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !changedByThisRead)
                     } else if !listed {
-                        self.catalogChangeSignal.noteChanged()
+                        self.catalogChangeSignal.noteReadFailed()
                     }
                 }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled

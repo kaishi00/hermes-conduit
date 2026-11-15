@@ -6619,6 +6619,11 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         let harness = makeHarness(lifecycleOperations: operations)
         harness.appState.setChatResumeBehavior(.latestActivity)
+        // Two quiet change reads before: the sync's changed list brings the
+        // change signal's wait back to 5 s.
+        harness.appState.catalogChangeSignal.noteSignalRead(listedTheSameRows: true)
+        harness.appState.catalogChangeSignal.noteSignalRead(listedTheSameRows: true)
+        XCTAssertEqual(harness.appState.catalogChangeSignal.interval, 20)
         let appState = harness.appState
         keepList = { [weak self, weak appState] in
             guard let self, let appState else { return }
@@ -6635,6 +6640,7 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(openedSessionIDs, [kept.id], "the list agrees: nothing opens again")
         XCTAssertEqual(shortReads, 0, "no short read")
         XCTAssertEqual(harness.appState.activeSessionId, kept.id)
+        XCTAssertEqual(harness.appState.catalogChangeSignal.interval, 5, "the sync's changed list reset the wait")
         // Once the live list is in, a list kept only for its pinned rows
         // names no pick.
         keepChatList([kept, older], in: harness.appState)
