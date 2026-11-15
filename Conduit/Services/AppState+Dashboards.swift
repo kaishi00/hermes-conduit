@@ -775,6 +775,8 @@ extension AppState {
         liveTurnActivitiesEndDashboard(id.uuidString, false)
         endServerSignIn(dashboardID: id, baseURL: dashboard.normalizedURL)
         KeychainHelper.clearConnection(dashboardID: id)
+        // Location's host pass made from its sign-in goes too (issue 2482).
+        forgetLocationHostPass(dashboardID: id)
         keepUsernameForNextSignIn(dashboardID: id)
         clearSavedPassword(dashboardID: id)
         wipeOfflineChatCache(dashboardID: id)

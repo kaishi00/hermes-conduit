@@ -442,7 +442,7 @@ final class ChatResumeCoordinatorTests: XCTestCase {
     /// A superseded sync that fails late leaves the newer sync's staged
     /// chat and its freeze alone, so the newer one still publishes its
     /// restoration (issue 2461). Its own failure still retires them.
-    func testASupersededSyncsFailureLeavesTheNewerSyncsStagedChat() {
+    func testASupersededSyncsFailureLeavesTheNewerSyncsStagedChat() throws {
         let harness = makeHarness()
         let key = ChatScrollSessionKey(profile: "default", sessionID: "stored-a")
         let otherKey = ChatScrollSessionKey(profile: "default", sessionID: "other")
@@ -460,7 +460,13 @@ final class ChatResumeCoordinatorTests: XCTestCase {
         harness.coordinator.abandonPendingAutomaticSync(ownedBy: older)
         harness.coordinator.recordViewport(.latest, for: otherKey)
         XCTAssertNil(harness.store.snapshot(for: otherKey), "the newer sync's restore stays frozen")
-        XCTAssertNotNil(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
+        let request = try XCTUnwrap(harness.coordinator.reconciliationSettled(sessionKey: key, pendingClarifyMessageID: nil))
+        // Published and still restoring: the older sync's failure leaves
+        // the freeze on.
+        harness.coordinator.abandonPendingAutomaticSync(ownedBy: older)
+        harness.coordinator.recordViewport(.latest, for: otherKey)
+        XCTAssertNil(harness.store.snapshot(for: otherKey), "the published restore stays frozen")
+        harness.coordinator.completeRestoration(generation: request.generation)
 
         harness.coordinator.prepareDirectTarget(sessionID: "stored-a", profile: "default", purpose: .automaticReturn, owner: newer)
         harness.coordinator.abandonPendingAutomaticSync(ownedBy: newer)

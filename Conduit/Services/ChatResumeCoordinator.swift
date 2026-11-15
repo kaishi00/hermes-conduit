@@ -283,7 +283,9 @@ final class ChatResumeCoordinator {
     /// sync staged, and the freeze that keeps its restore from recording
     /// transitional rows, stay (issue 2461).
     func abandonPendingAutomaticSync(ownedBy owner: UUID? = nil) {
-        if pendingSessionKey != nil, let pendingOwner, pendingOwner != owner { return }
+        // Through its published restoration too, which keeps the freeze
+        // until the scroll place is restored.
+        if pendingSessionKey != nil || pendingRestoration != nil, let pendingOwner, pendingOwner != owner { return }
         pendingSessionKey = nil
         pendingFallbackSelection = false
         viewportIsFrozen = false
