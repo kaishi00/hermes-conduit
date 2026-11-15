@@ -98,6 +98,8 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         let marker = try XCTUnwrap(content["text"] as? String)
         socket.deliver(["type": "conduit.turn", "turn_id": "ready", "text": marker])
         await settle(until: { session.state == .ready })
+        // The check's response ends, so the call's own turns can go (issue 2524).
+        socket.deliver(["type": "response.done"])
     }
 
     /// The call's own turns that carry `text`.
