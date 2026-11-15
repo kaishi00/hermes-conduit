@@ -227,8 +227,13 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             } else if request.trigger is UNPushNotificationTrigger {
                 PushNotificationService.shared.receiveNotificationPayload(request.content.userInfo)
             } else {
-                // Conduit posts only "Hermes wants to talk" itself (#449).
-                PushNotificationService.shared.receiveLocalCallNotification(request.content.userInfo)
+                // Conduit posts only "Hermes wants to talk" and missed calls
+                // itself (#449). A missed call's Open Chat opens its chat
+                // with no call; its Call Back and a tap call back.
+                PushNotificationService.shared.receiveLocalCallNotification(
+                    request.content.userInfo,
+                    opensChatOnly: response.actionIdentifier == HermesCallNotifications.openChatActionIdentifier
+                )
             }
             completionHandler()
         }
@@ -268,7 +273,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list, .sound])
             return
         }
-        if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
+        if HermesCallNotifications.isCallCategory(notification.request.content.categoryIdentifier) {
             completionHandler([.banner, .list, .sound])
             return
         }
