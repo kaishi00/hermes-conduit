@@ -196,14 +196,24 @@ extension ComposerDraftStoreTests {
                 // Notes a compaction's projection handed back untyped
                 // (their row carried the summary): nobody typed them.
                 .object(["role": .string("user"), "row_id": .number(8),
-                         "content": .string("[Cron job \"Backups\" report: shown in the chat, no reply asked for]\n\nAll green")]),
+                         "content": .string("[Cron job \"Backups\" report: shown in the chat, no reply asked for]\n\nAll green"),
+                         "display_metadata": .object(["completion_note": .array([.string("cron:1")])])]),
                 .object(["role": .string("user"), "row_id": .number(9), "content": .string("Agent finished"),
-                         "display_metadata": .object(["completion_note": .array([.string("delegation:1")])])])
+                         "display_metadata": .object(["completion_admission": .string("a1")])]),
+                // A null admission is no stamp, and a report the user
+                // pasted as their own message is their turn.
+                .object(["role": .string("user"), "row_id": .number(10), "content": .string("mine"),
+                         "display_metadata": .object(["completion_admission": .null])]),
+                .object(["role": .string("user"), "row_id": .number(11),
+                         "content": .string("[Cron job \"Backups\" report: shown in the chat, no reply asked for]\n\nlook at this")])
             ])
         ]
         let snapshot = SessionRewindSnapshot(resume: resume)
-        XCTAssertEqual(snapshot.turns.map(\.rowID), [1, 5, 6])
-        XCTAssertEqual(snapshot.turns.map(\.text), ["hello", "go left", nil])
+        XCTAssertEqual(snapshot.turns.map(\.rowID), [1, 5, 6, 10, 11])
+        XCTAssertEqual(snapshot.turns.map(\.text), [
+            "hello", "go left", nil, "mine",
+            "[Cron job \"Backups\" report: shown in the chat, no reply asked for]\n\nlook at this"
+        ])
         XCTAssertEqual(snapshot.revision, 9)
         XCTAssertEqual(snapshot.generation, 3)
     }

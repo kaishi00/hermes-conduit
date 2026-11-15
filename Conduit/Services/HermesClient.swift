@@ -707,8 +707,11 @@ struct SessionRewindSnapshot: Equatable {
         }
         let words = text(of: row["content"])
         // A note whose type a compaction's projection dropped (a cron
-        // report folded into the summary's row) was never typed by anyone.
-        guard !MessageNormalizer.isUntypedNote(metadata: row["display_metadata"], text: words) else { return nil }
+        // report folded into the summary's row) was never typed by anyone,
+        // and Hermes' own count of the turns leaves it out. By its
+        // metadata alone: a report the user pasted as their own message
+        // is a turn of theirs.
+        guard !MessageNormalizer.isUntypedNote(metadata: row["display_metadata"], text: nil) else { return nil }
         return Turn(rowID: rowID, text: words, timestamp: epochSeconds(row["timestamp"]))
     }
 
@@ -6511,22 +6514,23 @@ enum MessageNormalizer {
         }
     }
 
-    /// The one-line title Hermes stamps on a background completion's
-    /// `display_metadata.display_text` (Desktop's `timelineDisplayText`).
-    /// Blank or non-string values degrade to nil.
     /// Whether an untyped user row is a note Hermes wrote between turns:
     /// its metadata is a completion note's (`append_completion_note` stamps
     /// the completions it stands for and its admission on each), or its
     /// text is a cron report's, first line and all (the plugin's HEADER).
     static func isUntypedNote(metadata: AnyCodable?, text: String?) -> Bool {
         if let object = displayMetadataObject(metadata),
-           object["completion_note"]?.arrayValue != nil || object["completion_admission"] != nil {
+           object["completion_note"]?.arrayValue != nil
+            || !(object["completion_admission"]?.descriptiveStringValue ?? "").isEmpty {
             return true
         }
         guard let text else { return false }
         return CronBotChatReport.parse(text.trimmingCharacters(in: .whitespacesAndNewlines)) != nil
     }
 
+    /// The one-line title Hermes stamps on a background completion's
+    /// `display_metadata.display_text` (Desktop's `timelineDisplayText`).
+    /// Blank or non-string values degrade to nil.
     private static func timelineDisplayText(metadata: AnyCodable?) -> String? {
         guard let text = displayMetadataObject(metadata)?["display_text"]?.stringValue?
             .trimmingCharacters(in: .whitespacesAndNewlines),
