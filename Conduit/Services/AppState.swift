@@ -2572,6 +2572,9 @@ final class AppState: ObservableObject {
     // MARK: - Persistence (AppState+Persistence.swift, AppState+PinSync.swift, AppState+Notices.swift, AppState+Voice.swift)
 
     let defaults: UserDefaults
+    /// Each profile's Voice preferences as last decoded, beside the stored
+    /// bytes they came from (`loadVoiceProfilePreferences`).
+    var decodedVoicePreferences: [String: (data: Data, preferences: VoiceProfilePreferences)] = [:]
     let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     let pinnedRepliesByProfileKey = "conduit.pinnedRepliesByProfile.v1"
