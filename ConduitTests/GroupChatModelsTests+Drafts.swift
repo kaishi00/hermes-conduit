@@ -314,6 +314,51 @@ extension GroupChatModelsTests {
         XCTAssertFalse(GroupCreateLimits.offersNewGroup(visibleBots: 0, invitesPeople: true))
     }
 
+    // MARK: - Your other Hermes' bots
+
+    func testBotsOfYourOtherHermesComeFromOneHermesWithNobodyInvited() {
+        // One bot here and one of your other Hermes make a room.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 1], people: 0))
+        // This Hermes hosts it: at least one of its bots.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 0, far: ["own1": 2], people: 0))
+        // The other Hermes may fill every place this one leaves.
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 5], people: 0))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 5], people: 0))
+        // Its Hermes joins them by itself only for an invite that names
+        // nobody else: no person, and no second Hermes, beside them.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 2], people: 1))
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 2, far: ["own1": 1, "own2": 1], people: 0))
+        // No far bots: the rules of your own and people's rooms.
+        XCTAssertFalse(GroupCreateLimits.canCreate(bots: 1, far: [:], people: 0))
+        XCTAssertTrue(GroupCreateLimits.canCreate(bots: 1, far: ["own1": 0], people: 1))
+        // A far bot is pickable while the room stays that shape, counting at
+        // least one bot here.
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 0, far: [:], link: "own1", people: 0))
+        XCTAssertTrue(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own1", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 2], link: "own2", people: 0))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: [:], link: "own1", people: 1))
+        XCTAssertFalse(GroupCreateLimits.canPickFar(bots: 1, far: ["own1": 5], link: "own1", people: 0))
+    }
+
+    @MainActor
+    func testADraftBringsYourOtherHermesBotsByLink() async throws {
+        var sent: [String: Any]?
+        let client = RoomDraftsClient { _, _, body, _ in
+            sent = body
+            return ["ok": true, "draft": self.draftsDraft("conduit-9")]
+        }
+        let agents = try XCTUnwrap(RoomDraftAgent.agents(for: [draftsBot("default")]))
+        _ = try await client.create(name: "Both", agents: agents, links: ["own1"], bring: ["own1": ["yelan", "nahida"]],
+                                    profile: "default")
+        let body = try XCTUnwrap(sent)
+        XCTAssertEqual(Set(body.keys), ["name", "agents", "links", "bring"])
+        XCTAssertEqual(body["links"] as? [String], ["own1"])
+        XCTAssertEqual(body["bring"] as? [String: [String]], ["own1": ["yelan", "nahida"]])
+        // Nothing to bring: the body an older plugin takes.
+        _ = try await client.create(name: "Both", agents: agents, links: ["lk1"], profile: "default")
+        XCTAssertEqual(Set(try XCTUnwrap(sent).keys), ["name", "agents", "links"])
+    }
+
     // MARK: - The profile
 
     @MainActor
@@ -638,6 +683,43 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.draftsReads, 1)
     }
 
+    /// Your other Hermes shows in New Group Chat as its bots, not as a
+    /// person to invite, only where the plugin brings them (0.171).
+    @MainActor
+    func testYourOtherHermesShowsAsItsBotsNotAPerson() async {
+        let words = ["amber", "birch", "cedar", "delta"]
+        let routes = DraftsRoutes(drafts: [])
+        routes.links = [
+            ["id": "own1", "name": "Lab", "status": "linked", "words": words, "own": true, "their_own": true, "own_link": true],
+            ["id": "lk-mona", "name": "Mona", "status": "linked", "words": words],
+        ]
+        routes.ownBots = ["own1": ["name": "Lab", "brings": true, "bots": [
+            ["profile": "yelan", "handle": "yelan", "display_name": "Yelan", "ready": true],
+        ]]]
+        let appState = draftsAppState(routes)
+        draftsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.171.0", "capabilities": [
+            RoomDraftsClient.capability, RoomLinksClient.capability, RoomLinksClient.ownCapability,
+            RoomLinksClient.ownBotsCapability,
+        ]])
+        await appState.refreshLinkedRoomDrafts()
+        await draftsWait("the bots read", until: { !appState.invitableOwnBots.isEmpty })
+        XCTAssertEqual(appState.invitableOwnBots.map(\.id), ["own1/yelan"])
+        XCTAssertEqual(appState.invitableLinkedPeople.map(\.id), ["lk-mona"], "Lab is offered as its bots")
+
+        // A plugin that doesn't bring them leaves Lab a person to invite.
+        let older = draftsAppState(routes)
+        draftsConnect(older)
+        await older.refreshGroupChatSupport()
+        older.applyNotifierPluginReport(["ok": true, "version": "0.170.0", "capabilities": [
+            RoomDraftsClient.capability, RoomLinksClient.capability, RoomLinksClient.ownCapability,
+        ]])
+        await older.refreshLinkedRoomDrafts()
+        await draftsWait("the people read", until: { older.invitableLinkedPeople.count == 2 })
+        XCTAssertEqual(older.invitableOwnBots, [])
+    }
+
     /// A drafts read made before a Block that answers after it is dropped:
     /// it would bring back the blocked host's rows (issue 2347).
     @MainActor
@@ -705,6 +787,9 @@ private final class DraftsRoutes {
     /// it was made.
     var drafts: [[String: Any]]
     private(set) var unlinks = 0
+    /// `GET /rooms/links` and `GET /rooms/own-bots`, when set.
+    var links: [[String: Any]]?
+    var ownBots: [String: Any]?
     /// The first drafts read waits until `answerHeldRead()`.
     var holdsFirstRead = false
     /// Drafts reads after the first fail.
@@ -721,6 +806,12 @@ private final class DraftsRoutes {
         if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
             unlinks += 1
             return ["ok": true, "removed": true]
+        }
+        if path == "\(RoomLinksClient.path)/links", method == "GET", let links {
+            return ["ok": true, "links": links, "invites": [[String: Any]]()]
+        }
+        if path == "\(RoomLinksClient.path)/own-bots", method == "GET", let ownBots {
+            return ["ok": true, "links": ownBots]
         }
         guard path == RoomDraftsClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         draftsReads += 1

@@ -58,6 +58,9 @@ struct RoomLooks: Equatable, Sendable {
     /// The host's name as your Link gives it, in a room someone else hosts
     /// (`GET /rooms/people`'s `home`), which finds `home` by name.
     var hostName: String?
+    /// Every Hermes in the open room is yours (`GET /rooms/people`'s
+    /// `own_hermes`): its bots are drawn as yours, with no owner chip.
+    var ownHermes = false
 
     static let empty = RoomLooks()
 
@@ -191,6 +194,7 @@ extension AppState {
     var activeRoomLooksShown: RoomLooks {
         var looks = activeRoomLooks
         looks.hostName = activeRoomHomeName
+        looks.ownHermes = activeRoomOwnHermes == true
         return looks
     }
 

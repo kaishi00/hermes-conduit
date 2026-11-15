@@ -94,8 +94,12 @@ extension AppState {
                     if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
                     guard let bot = self.shownBotRoster.first(where: isPicked) else {
                         // A read the connection dropped under says nothing
-                        // about the bot: the run waits out the drop (issue 2473).
-                        if !self.isConnected { throw HermesError.notConnected }
+                        // about the bot: the run waits out the drop (issue 2473),
+                        // also in the moment before the close reaches
+                        // handleDisconnect, when the socket already refuses.
+                        if !self.isConnected || self.client.map({ $0.isConnected && !$0.canSend }) == true {
+                            throw HermesError.notConnected
+                        }
                         throw ShortcutSendError.chatUnavailable
                     }
                     let rows = try await self.botChatLookupRows(client, profile: bot.name)

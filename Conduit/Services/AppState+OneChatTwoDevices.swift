@@ -96,12 +96,11 @@ extension AppState {
         }
         // A gateway that pushes `sessions.changed` has each change read as
         // it comes: the timed read is only its backstop (issue 851). One
-        // held back by a turn here keeps the 30 s read, so a chat deleted
-        // elsewhere during a long reply leaves as it did before. One only
-        // spaced out (the quiet-read wait, up to 60 s) is read when its wait
-        // ends, so it keeps the slow backstop.
-        let changeHeldByTurnOrFailure = catalogChangeSignal.isPending
-            && catalogChangeSignal.delayUntilDue(now: chatSyncNow()) == 0
+        // held back by a turn here or a failed read keeps the 30 s read, so
+        // a chat deleted elsewhere during a long reply leaves as it did
+        // before. One only spaced out (the quiet-read wait, up to 60 s) is
+        // read when its wait ends, so it keeps the slow backstop.
+        let changeHeldByTurnOrFailure = catalogChangeSignal.isHeld(turnRunningHere: turnState.isRunning)
         let fallback = followsChanges && !changeHeldByTurnOrFailure
             ? ChatListCatalogFreshness.fallbackIntervalFollowingChanges
             : ChatListCatalogFreshness.fallbackInterval
@@ -332,9 +331,9 @@ extension AppState {
     }
 
     /// Reads the catalog for a pending `sessions.changed` when it may: not
-    /// while a turn runs here, at most every 5 s. One held back by the
-    /// spacing is read when the wait is over; one held back by a turn, at
-    /// the open chat's or the list's next check.
+    /// while a turn runs here, and after the change signal's wait (5 s, up
+    /// to 60 s). One held back by the wait is read when the wait is over;
+    /// one held back by a turn, at the open chat's or the list's next check.
     func readPendingCatalogChange() {
         guard isSceneActive, isConnected else { return }
         let now = chatSyncNow()
@@ -346,9 +345,10 @@ extension AppState {
               let delay = catalogChangeSignal.delayUntilDue(now: now), delay > 0 else { return }
         catalogChangeReadTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard let self else { return }
+            // A cancelled wait was replaced (a failed read times its retry
+            // from the failure): the newer one is in the slot.
+            guard !Task.isCancelled, let self else { return }
             self.catalogChangeReadTask = nil
-            guard !Task.isCancelled else { return }
             self.readPendingCatalogChange()
         }
     }

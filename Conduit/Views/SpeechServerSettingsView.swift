@@ -17,6 +17,11 @@ struct SpeechServerSettingsView: View {
     @State private var urlDraft = ""
     @State private var keyDraft = ""
     @State private var isSaving = false
+    /// Live > Local's own model switch changed during a save: the page
+    /// reads again once the save is done.
+    @State private var statusOwed = false
+    /// Counts saves, so a read that a whole save happened during is asked again.
+    @State private var saves = 0
     @State private var isTesting = false
     @State private var testResult: SpeechServerTestResult?
     /// Why the last save or read failed, shown here rather than only at the
@@ -207,25 +212,15 @@ struct SpeechServerSettingsView: View {
         // banner should say: the status follows it.
         .onChange(of: service.speechServerVoice?.ownModel) { _, _ in
             guard answered else { return }
-            let profile = draftsProfile
-            Task {
-                let loaded = await service.speechServerStatus()
-                guard draftsProfile == profile else { return }
-                // A save on the way reads the status itself when it lands,
-                // against what it sent: a field typed meanwhile stays.
-                guard !isSaving else { return }
-                // A read that fails is asked again on the page's next check.
-                readFailed = loaded.readFailed
-                guard !loaded.readFailed else {
-                    if errorMessage == nil { errorMessage = loaded.reason }
-                    return
-                }
-                // A read that answers takes away an older read's error.
-                errorMessage = nil
-                let before = status
-                status = loaded
-                follow(from: before, to: loaded)
-            }
+            Task { await followOwnModel(clearingError: true) }
+        }
+        // A switch that landed during a save reads again once it's done.
+        .onChange(of: isSaving) { _, saving in
+            if saving { saves += 1 }
+            guard !saving, statusOwed else { return }
+            statusOwed = false
+            // The save's own error, if it had one, stays.
+            Task { await followOwnModel(clearingError: false) }
         }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.
@@ -233,6 +228,47 @@ struct SpeechServerSettingsView: View {
             guard !loading, readFailed else { return }
             Task { await read() }
         }
+    }
+
+    /// Reads the status after Live > Local's own model switch changed.
+    private func followOwnModel(clearingError: Bool) async {
+        // A save on the way reconciles the drafts against what it sent, so
+        // a field typed meanwhile stays; the page reads again once it's
+        // done, in case the save's own read came before the switch. Checked
+        // before the read too: one asked mid-save could land after the save
+        // with an answer from before it.
+        guard !isSaving else {
+            statusOwed = true
+            return
+        }
+        let profile = draftsProfile
+        let savesBefore = saves
+        let loaded = await service.speechServerStatus()
+        guard draftsProfile == profile else { return }
+        // A save that started while this read was out, even one already
+        // done, may have changed what it answered: read again after it.
+        guard !isSaving, saves == savesBefore else {
+            if isSaving {
+                statusOwed = true
+            } else {
+                // The save's own error, if it had one, stays.
+                Task { await followOwnModel(clearingError: false) }
+            }
+            return
+        }
+        // A read that fails is asked again on the page's next check; one
+        // that answers takes away the error a failed read left.
+        let errorWasRead = readFailed
+        readFailed = loaded.readFailed
+        guard !loaded.readFailed else {
+            if errorMessage == nil { errorMessage = loaded.reason }
+            return
+        }
+        // A save's own error stays when this read was owed to it.
+        if clearingError || errorWasRead { errorMessage = nil }
+        let before = status
+        status = loaded
+        follow(from: before, to: loaded)
     }
 
     private var savedURL: String { status?.url ?? "" }
@@ -312,6 +348,7 @@ struct SpeechServerSettingsView: View {
     private func load() async {
         draftsProfile = service.profile
         driveTurnsDraft = nil
+        statusOwed = false
         pickedPreset = nil
         pickedURL = nil
         status = service.speechServer

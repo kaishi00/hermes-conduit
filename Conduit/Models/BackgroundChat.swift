@@ -11,7 +11,9 @@ import Foundation
 /// Only the reply's words are followed. Tool steps, reasoning and decision
 /// cards that come while the chat is away show when Hermes' rows land.
 struct BackgroundChat: Equatable {
-    /// Every id the chat answers to.
+    /// Every id the chat answers to. A runtime id Hermes binds to it while
+    /// it's away is looked up in the identity index on each event instead,
+    /// since a runtime id can be reassigned to another chat.
     let sessionIDs: Set<String>
     /// The id its saved copy is kept under, when its row is listed.
     let durableSessionID: String?
@@ -24,6 +26,10 @@ struct BackgroundChat: Equatable {
     /// The reply streaming now, and its row while it has one.
     private(set) var replyText = ""
     private(set) var replyRowID: String?
+    /// Reply rows an unstreamed interim note cut off. They read as the
+    /// reply's words until it finishes, then the final row takes their
+    /// place, as the screen removes its partials at completion.
+    private(set) var cutOffReplyRowIDs: Set<String> = []
     private(set) var isRunning = true
     /// When the chat was left. The list keeps the newest first by when each
     /// joined it.
@@ -50,8 +56,10 @@ struct BackgroundChat: Equatable {
         self.dashboardID = dashboardID
         self.profile = profile
         self.isBotChat = isBotChat
-        // Partials are the streamed text a tool step cut off: they read as
-        // the reply's own words in a saved copy.
+        // Partials are the streamed text a tool step or an interim note cut
+        // off: they read as the reply's own words in a saved copy, until
+        // the final row takes their place, as it does on screen.
+        cutOffReplyRowIDs = Set(rows.filter { $0.role == .partial }.map(\.id))
         self.rows = rows.map { row in
             guard row.role == .partial else { return row }
             var copy = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author)
@@ -99,13 +107,23 @@ struct BackgroundChat: Equatable {
             let content = text.trimmingCharacters(in: .whitespacesAndNewlines)
             if alreadyStreamed, let replyRowID, let index = rows.lastIndex(where: { $0.id == replyRowID }) {
                 if !content.isEmpty { rows[index].content = content }
-            } else if !content.isEmpty {
-                rows.append(Self.row(id: "background-interim-\(UUID().uuidString)", content: content, author: profile))
+            } else {
+                // The reply so far wasn't the note: it stays until the
+                // final row replaces it (sealInterimCommentary on screen).
+                if !alreadyStreamed, let replyRowID { cutOffReplyRowIDs.insert(replyRowID) }
+                if !content.isEmpty {
+                    rows.append(Self.row(id: "background-interim-\(UUID().uuidString)", content: content, author: profile))
+                }
             }
             closeReply()
             return .updated
         case .messageComplete(_, let messageId, let content, _, _):
             let final = (content ?? replyText).trimmingCharacters(in: .whitespacesAndNewlines)
+            // As the screen removes its partials at any completion.
+            if !cutOffReplyRowIDs.isEmpty {
+                rows.removeAll { cutOffReplyRowIDs.contains($0.id) }
+            }
+            cutOffReplyRowIDs = []
             if let replyRowID, let index = rows.lastIndex(where: { $0.id == replyRowID }) {
                 if !final.isEmpty { rows[index].content = final }
             } else if !final.isEmpty, rows.last?.content != final {
@@ -116,12 +134,15 @@ struct BackgroundChat: Equatable {
             isRunning = false
             return .ended
         case .messageError, .messageInterrupted:
+            // A reply that never finished keeps the words that came.
+            cutOffReplyRowIDs = []
             closeReply()
             isRunning = false
             return .ended
         case .sessionBusy(_, let busy):
             guard !busy else { return .ignored }
             guard isRunning else { return .ignored }
+            cutOffReplyRowIDs = []
             closeReply()
             isRunning = false
             return .ended

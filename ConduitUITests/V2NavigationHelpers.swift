@@ -67,6 +67,7 @@ extension XCUIElement {
             }
             Thread.sleep(forTimeInterval: 0.25)
         }
-        XCTFail("\(identifier) never got keyboard focus", file: file, line: line)
+        let name = identifier.isEmpty ? label : identifier
+        XCTFail("\(name.isEmpty ? "The field" : name) never got keyboard focus", file: file, line: line)
     }
 }

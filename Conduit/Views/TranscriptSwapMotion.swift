@@ -214,12 +214,26 @@ enum TranscriptSwapSlide {
         // Quick off the mark and slow to finish: it answers the finger at
         // once and is still moving when the open's rows come in, a few
         // hundred milliseconds later on a long chat.
-        group.duration = 0.35
+        group.duration = outDuration
         group.timingFunction = CAMediaTimingFunction(name: .easeOut)
         // Away until the new rows come in, or these come back.
         group.fillMode = .forwards
         group.isRemovedOnCompletion = false
         return group
+    }
+
+    static let outDuration: TimeInterval = 0.35
+
+    /// The rows themselves while a picture of them slides out: unseen
+    /// where they are, until the new chat's slide in or they come back.
+    static func unseen() -> CAAnimation {
+        let hide = CABasicAnimation(keyPath: "opacity")
+        hide.fromValue = 0
+        hide.toValue = 0
+        hide.duration = 1
+        hide.fillMode = .forwards
+        hide.isRemovedOnCompletion = false
+        return hide
     }
 
     static func `in`(from distance: CGFloat, opacity: Float) -> CAAnimation {

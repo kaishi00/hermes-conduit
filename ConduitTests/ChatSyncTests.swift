@@ -427,8 +427,47 @@ final class ChatSyncTests: XCTestCase {
 
         signal.noteSignalRead(listedTheSameRows: true)
         signal.noteSignalRead(listedTheSameRows: true)
-        signal.noteListChanged()
-        XCTAssertEqual(signal.delayUntilDue(now: at(now)), 5, "So does any other read that changed it")
+        signal.noteListChanged(at: at(now + 2))
+        XCTAssertEqual(signal.delayUntilDue(now: at(now + 3)), 4, "So does any other read that changed it, from that read")
+    }
+
+    /// A failed read is tried again after 5 s, whatever the quiet wait, and
+    /// a change held by a failure or a turn here counts as held (the list's
+    /// quick backstop reads it); one only spaced out by the wait doesn't.
+    func testAFailedChangeReadRetriesAfterFiveSecondsAndCountsAsHeld() {
+        var signal = CatalogChangeSignal()
+        signal.noteChanged()
+        XCTAssertTrue(signal.takeRead(now: at(0), turnRunningHere: false))
+        for _ in 0..<4 { signal.noteSignalRead(listedTheSameRows: true) }
+        XCTAssertEqual(signal.interval, 60)
+
+        signal.noteChanged()
+        XCTAssertFalse(signal.isHeld(turnRunningHere: false), "Only spaced out")
+        XCTAssertTrue(signal.isHeld(turnRunningHere: true), "Held by a turn here")
+        XCTAssertEqual(signal.delayUntilDue(now: at(60)), 0)
+        XCTAssertFalse(signal.isHeld(turnRunningHere: false), "Due, but read by its own wait, not the backstop")
+
+        XCTAssertTrue(signal.takeRead(now: at(60), turnRunningHere: false))
+        signal.noteReadFailed(at: at(63))
+        XCTAssertTrue(signal.isPending)
+        XCTAssertTrue(signal.isHeld(turnRunningHere: false), "Held by the failure")
+        XCTAssertEqual(signal.delayUntilDue(now: at(64)), 4, "Tried again 5 s after the read failed")
+        var now: TimeInterval = 68
+        for _ in 0..<2 {
+            XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+            signal.noteReadFailed(at: at(now + 1))
+            XCTAssertEqual(signal.delayUntilDue(now: at(now + 1)), 5)
+            now += 6
+        }
+        XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+        signal.noteReadFailed(at: at(now + 1))
+        XCTAssertEqual(signal.delayUntilDue(now: at(now + 1)), 60, "After three quick retries, the quiet wait")
+
+        XCTAssertTrue(signal.takeRead(now: at(now + 61), turnRunningHere: false))
+        signal.noteSignalRead(listedTheSameRows: true)
+        XCTAssertFalse(signal.lastReadFailed, "A read that lands ends the failures")
+        signal.noteChanged()
+        XCTAssertEqual(signal.delayUntilDue(now: at(now + 61)), 60, "The quiet wait again")
     }
 
     /// The same through the app: a change read that lists the same rows
@@ -953,6 +992,8 @@ final class ChatSyncTests: XCTestCase {
         await appState.leaveCatalogRefreshTask?.value
         XCTAssertEqual(box.loads, 2, "The change is read")
         XCTAssertTrue(appState.catalogChangeSignal.isPending, "and stays pending when the read fails")
+        XCTAssertNotNil(appState.catalogChangeReadTask, "its retry is set for 5 s, with or without a poll")
+        XCTAssertEqual(appState.catalogChangeSignal.delayUntilDue(now: box.now), 5, "timed from the failure")
 
         box.fails = false
         box.now += 6

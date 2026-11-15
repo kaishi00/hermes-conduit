@@ -62,7 +62,7 @@ class ChatsSearchCommandSourceContractTests(unittest.TestCase):
     def test_a_cover_clears_the_pending_focus_as_well_as_the_field(self):
         # A chat pushed over the list puts the keyboard away; a request set
         # in the same transaction must not be waiting when the list returns.
-        shown = self.source[self.source.index(".onChange(of: isShown, initial: true)"):]
+        shown = self.source[self.source.index(".onChange(of: visibility, initial: true)"):]
         shown = shown[:shown.index(".onChange(of: appState.activeSessionId)")]
         self.assertIn("if !shown {", shown)
         self.assertIn("searchFocused = false", shown)

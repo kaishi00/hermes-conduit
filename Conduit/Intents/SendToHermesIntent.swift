@@ -381,7 +381,9 @@ struct ShortcutSender {
             do {
                 return try await step()
             } catch let error where unsent ? Self.isUnsentDrop(error) : Self.isDrop(error) {
-                guard drops.reconnects < Self.maximumReconnects, backend.now() < deadline else { throw error }
+                // Out of time: nothing was sent, as when the wait below uses it up.
+                guard backend.now() < deadline else { throw ShortcutSendError.outOfTime }
+                guard drops.reconnects < Self.maximumReconnects else { throw error }
                 drops.reconnects += 1
                 try Task.checkCancellation()
                 guard await (backend.reconnect ?? backend.connect)(deadline) else { throw ShortcutSendError.notConnected }

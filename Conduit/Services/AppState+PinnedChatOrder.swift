@@ -255,8 +255,13 @@ extension AppState {
     /// Drops a dashboard's stars, saved orders and hidden projects (Sign
     /// Out, Remove, or a connection to a server outside the saved
     /// dashboards), and empties the ones in use when it's the selected one.
+    /// Its sync ledgers forget them too, so the next sign-in takes the
+    /// host's copy rather than sending the empty one there.
     func forgetDashboardLists(dashboardID: UUID?) {
         let scope = Self.dashboardPreferenceBucket(dashboardID)
+        if let dashboardID {
+            syncedPreferences.forgetLedgerValues(keys: Self.dashboardScopedSyncKeys, onlyDashboard: dashboardID.uuidString)
+        }
         for key in [
             SessionStars.storageKey(scope: scope),
             PinnedChatOrder.storageKey(scope: scope),

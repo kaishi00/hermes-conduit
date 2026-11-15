@@ -347,6 +347,7 @@ extension AppState {
             // them yet belong to the first one (same rule as launch).
             profileAppearanceStore.adoptLegacyAppearance(into: id)
             adoptLegacyProfilePreferences(into: id)
+            adoptLegacyDashboardLists(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }

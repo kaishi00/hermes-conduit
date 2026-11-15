@@ -219,6 +219,60 @@ extension AppState {
         let olderPagesDeferred: Bool
     }
 
+    /// Which catalog a full read reads: the same profile, dashboard and
+    /// client.
+    struct CatalogReadKey: Equatable {
+        let profile: String
+        let dashboardID: UUID?
+        let client: ObjectIdentifier
+    }
+
+    /// A full catalog read under way. A read asked for meanwhile, for the
+    /// same catalog, by a caller that doesn't need rows newer than the read
+    /// already going out (the older pages after a chat sync, a live chat
+    /// not listed yet, the read after opening a chat), waits for its answer
+    /// instead of sending its own: after a switch to a busy dashboard all
+    /// three went out within 1.5 s, each a 419-row list and a 200-row cron
+    /// read of 1 to 2.5 s.
+    @MainActor
+    final class CatalogReadInFlight {
+        let key: CatalogReadKey
+        private var waiters: [UUID: CheckedContinuation<ProfileCatalogLoad, Error>] = [:]
+
+        init(key: CatalogReadKey) {
+            self.key = key
+        }
+
+        var joinedReads: Int { waiters.count }
+
+        /// Waits for the read's answer. A cancelled joiner stops waiting
+        /// with CancellationError; the read goes on for the others.
+        func join() async throws -> ProfileCatalogLoad {
+            let id = UUID()
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        waiters[id] = continuation
+                    }
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.leave(id) }
+            }
+        }
+
+        private func leave(_ id: UUID) {
+            waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
+        }
+
+        func finish(_ result: Result<ProfileCatalogLoad, Error>) {
+            let waiting = waiters.values
+            waiters.removeAll()
+            for waiter in waiting { waiter.resume(with: result) }
+        }
+    }
+
     struct TitleGenerationSettings {
         let enabled: Bool
         let language: String?

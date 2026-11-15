@@ -159,6 +159,7 @@ final class SidebarLayoutTests: XCTestCase {
     func testCoveredChatsListWaitsUntilItShowsAgain() {
         let state = makeAppState()
         let updates = V2ShownUpdates(state)
+        updates.revealDelay = 0.05
         var sent = 0
         let watch = updates.objectWillChange.sink { sent += 1 }
         defer { watch.cancel() }
@@ -171,13 +172,33 @@ final class SidebarLayoutTests: XCTestCase {
         state.sessions = [pinnedTestSession("covered")]
         state.cronSessions = [pinnedTestSession("run", source: .cron)]
         XCTAssertEqual(sent, 0)
+        // Shown again by the pop, it draws once the pop has slid, with a
+        // publish during the slide.
         updates.isShown = true
+        XCTAssertEqual(sent, 0, "the list drew as the pop started")
+        state.sessions = [pinnedTestSession("during the pop")]
+        XCTAssertEqual(sent, 0)
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
+
+        // Covered again before it drew: the next showing draws.
+        sent = 0
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("covered again")]
+        updates.isShown = true
+        updates.isShown = false
+        settle()
+        XCTAssertEqual(sent, 0)
+        updates.isShown = true
+        waitUntil { sent > 0 }
         XCTAssertEqual(sent, 1)
 
         // Nothing missed, nothing to draw.
         sent = 0
         updates.isShown = false
         updates.isShown = true
+        settle()
         XCTAssertEqual(sent, 0)
     }
 
@@ -212,6 +233,20 @@ final class SidebarLayoutTests: XCTestCase {
         settle()
         XCTAssertEqual(sent, 0)
         updates.isShown = true
+        XCTAssertEqual(sent, 1)
+
+        // Shown again while a burst's draw waits, that draw waits for the
+        // slide in too, then the two draw once.
+        sent = 0
+        updates.revealDelay = 0.3
+        state.sessions = [pinnedTestSession("burst")]
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("covered")]
+        updates.isShown = true
+        settle()
+        XCTAssertEqual(sent, 0, "the burst's draw came during the slide in")
+        waitUntil { sent > 0 }
+        settle()
         XCTAssertEqual(sent, 1)
     }
 

@@ -454,6 +454,7 @@ extension AppState {
         reportsFailure: Bool = true,
         yieldsToNewerReads: Bool = false,
         deferringOlderPages: Bool = false,
+        joinsReadInFlight: Bool = false,
         listedChange: (_ changed: Bool) -> Void = { _ in }
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
@@ -476,7 +477,8 @@ extension AppState {
                     using: activeClient,
                     forceRefresh: forceRefresh,
                     deferringOlderPages: deferringOlderPages,
-                    yieldsToNewerReads: yieldsToNewerReads
+                    yieldsToNewerReads: yieldsToNewerReads,
+                    joinsReadInFlight: joinsReadInFlight
                 )
                 loadedSessions = catalogLoad.sessions
                 olderPagesDeferred = catalogLoad.olderPagesDeferred
@@ -513,7 +515,7 @@ extension AppState {
             let sameListAgain = !listChanged && catalogCommitOwner == owner
             if listChanged {
                 chatListCatalogGeneration &+= 1
-                catalogChangeSignal.noteListChanged()
+                catalogChangeSignal.noteListChanged(at: chatSyncNow())
             }
             listedChange(listChanged)
             if listedSessions != sessions { sessions = listedSessions }
@@ -691,6 +693,9 @@ extension AppState {
                     forceRefresh: false,
                     requiredViewportTransitionGeneration: nil,
                     reportsFailure: reportsFailure,
+                    // A change's read needs rows from after the change; any
+                    // other may take the answer of a read already going out.
+                    joinsReadInFlight: !readsChange,
                     listedChange: { changedByThisRead = $0 }
                 )
                 if readsChange {
@@ -700,7 +705,14 @@ extension AppState {
                         // before the next.
                         self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !changedByThisRead)
                     } else if !listed {
-                        self.catalogChangeSignal.noteChanged()
+                        // Tried again 5 s from now, with or without
+                        // another signal or poll.
+                        self.catalogChangeSignal.noteReadFailed(at: self.chatSyncNow())
+                        // A wait set while this read was out (a signal meanwhile)
+                        // counted from before the failure: time it from now.
+                        self.catalogChangeReadTask?.cancel()
+                        self.catalogChangeReadTask = nil
+                        self.readPendingCatalogChange()
                     }
                 }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
@@ -962,6 +974,11 @@ extension AppState {
         recordOfflineChatCopy()
         keepBotChatCopy()
         keepLeftBackfilledTranscript()
+        // And its reply, while one is still coming (all-live stage 2), even
+        // before any words: the turn reads synchronizing from here on, so
+        // adopting the new chat can't tell it was running. Before the title
+        // changes, so the followed chat keeps its own.
+        let followedIDs = followChatBeingLeft(turnWasRunning: turnState == .running)
         outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
@@ -976,6 +993,16 @@ extension AppState {
             widgetLease: widgetLease,
             listsBeforeHermes: true
         )
+        // No chat started: the one still open is on screen, not left. A
+        // New Chat tapped again meanwhile still leaves it, so it stays until
+        // the last one finishes. That one may have followed nothing itself
+        // (the first had already set the turn to synchronizing), so it lets
+        // go by the chat's own ids.
+        if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
+           followedIDs != nil || previousTurnState == .synchronizing,
+           let previousSessionID {
+            releaseFollowedChat(answering: followedIDs ?? knownSessionIDs(for: previousSessionID).union([previousSessionID]))
+        }
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
         if widgetLease?.isCurrent == false, token == shownChat.reconciliationToken,
@@ -1026,7 +1053,7 @@ extension AppState {
         if !succeeded || messages == previousMessages {
             finishChatViewportTransition(generation: transitionGeneration)
         }
-        await loadSessions()
+        await loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil, joinsReadInFlight: true)
     }
 
     // MARK: - Read state (#454)

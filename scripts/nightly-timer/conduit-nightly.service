@@ -1,0 +1,10 @@
+[Unit]
+Description=Start hermes-conduit Nightly on GitHub (overnight run)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+# Four attempts of at most 2 min each, 1+2+3 min apart, fit well inside this.
+TimeoutStartSec=20min
+ExecStart=/usr/local/bin/conduit-nightly-dispatch.sh
