@@ -6720,7 +6720,8 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         for _ in 0..<20 { await Task.yield() }
         XCTAssertEqual(loads, before + 1, "the second read joined the first")
-        let ownRead = await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil)
+        // A pull to refresh: forced, so it never joins nor is joined.
+        let ownRead = await appState.loadSessions(forceRefresh: true, requiredViewportTransitionGeneration: nil)
         XCTAssertTrue(ownRead)
         XCTAssertEqual(loads, before + 2, "a read that doesn't join sends its own")
         let afterTheNewerRead = await appState.loadSessions(
