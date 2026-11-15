@@ -69,19 +69,23 @@ extension AppState {
         })
     }
 
-    /// Every id the open chat is known by, for its own Artifacts sheet.
-    /// Empty when no chat with a row of its own is open (a room, a new chat).
-    /// A Bot Chat has no row in the workspace's list: it goes by its own ids
-    /// and the roster's registry id and lineage tip for it.
+    /// Every id the open chat is known by, for its own Artifacts sheet, its
+    /// checklists' ticks and its cards' taps. Empty when no chat with ids of
+    /// its own is open (a room, a new chat). A Bot Chat has no row in the
+    /// workspace's list: it goes by its own ids and the roster's registry id
+    /// and lineage tip for it. Nor does a workstream's chat (left out of
+    /// the list for its bot): it goes by its own ids, the durable one its
+    /// bot's profile confirmed and the plugin's id for it (issue 2520).
     var activeChatArtifactSessionIDs: [String] {
         if let session = activeChatSessionSummary {
             let seeds = [session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds
             return Array(chatOwnSessionIDs(for: session.id).union(seeds)).sorted()
         }
         guard activeRoomSurface == nil, offlineChatPresentation == nil, !showsPendingNewChat,
-              let sessionID = activeSessionId, !sessionID.isEmpty,
-              let profile = botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID)
-        else { return [] }
+              let sessionID = activeSessionId, !sessionID.isEmpty else { return [] }
+        guard let profile = botChatStoreProfile(forSessionID: sessionID) else {
+            return activeWorkstreamChatIDs(sessionID)
+        }
         // The open id is the runtime one; its store keeps the durable id,
         // confirmed under the bot's profile even when the registry hasn't
         // noted the chat yet (after a relaunch).
@@ -93,6 +97,23 @@ extension AppState {
         }
         if let bot = botRoster.first(where: { Self.profilesMatch($0.name, profile) }) {
             ids.formUnion(Self.botChatIDs(bot))
+        }
+        return ids.sorted()
+    }
+
+    /// A workstream's chat by its ids, when it's open on its bot's profile,
+    /// the store its checklists, taps and files are kept in; else none.
+    private func activeWorkstreamChatIDs(_ sessionID: String) -> [String] {
+        var ids = chatOwnSessionIDs(for: sessionID).union([sessionID])
+        guard let profile = botWork.workstreamProfile(forSession: ids),
+              Self.profilesMatch(profile, activeProfile) else { return [] }
+        if let durable = ChatScrollIdentityNormalization.sessionID(
+            confirmedDurableSessionID(forRuntime: sessionID, profile: profile)
+        ) {
+            ids.insert(durable)
+        }
+        if let item = botWork.workstream(forSession: ids)?.item, !item.sessionID.isEmpty {
+            ids.insert(item.sessionID)
         }
         return ids.sorted()
     }
@@ -138,6 +159,13 @@ extension AppState {
             }
             return sources
         }
+    }
+
+    /// The bot whose Bot Chat the open id is, by the store that keeps it or
+    /// the roster's chat it was rebound to; nil for any other chat. Its ids
+    /// and the store its ticks and taps go to both ask here, so they agree.
+    func botChatStoreProfile(forSessionID sessionID: String) -> String? {
+        botStoreProfile(forSessionIDs: [sessionID]) ?? reboundBotChatProfile(sessionID)
     }
 
     /// The bot whose Bot Chat a runtime id was rebound to (a shortcut

@@ -256,6 +256,25 @@ extension EnvironmentValues {
 /// the slide's first frame 158 to 175 ms (an iPhone 16 Pro Max,
 /// 2026-11-14), and the rows it shows meanwhile are the ones it showed as
 /// the chat opened.
+/// What shows a list the shell keeps under pushed screens (the Chats list,
+/// a project's page): its tab, and nothing pushed over it.
+struct V2ListVisibility: Equatable {
+    var tabActive: Bool
+    var covered: Bool
+    /// The list beside the chat (a wide window, the list not hidden): a
+    /// change uncovers or covers it without a slide.
+    var split: Bool
+    var isShown: Bool { tabActive && !covered }
+
+    /// Uncovered by a pop on the shown tab: the chat slides off it. A tab
+    /// switch (a pop landing on another tab included), or the window
+    /// widening or the list's toggle putting it beside the chat, shows it
+    /// with nothing sliding.
+    func isPop(from was: V2ListVisibility) -> Bool {
+        was.covered && !covered && was.tabActive && tabActive && was.split == split
+    }
+}
+
 @MainActor
 final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
@@ -270,7 +289,15 @@ final class V2ShownUpdates: ObservableObject {
                 revealTask?.cancel()
                 revealTask = nil
             }
-            if isShown, !oldValue, missedUpdate { reveal() }
+            guard isShown, !oldValue else { return }
+            // Shown by a pop, it waits out the slide even with nothing
+            // missed, so a publish during the slide waits too.
+            if revealDelay > 0 {
+                reveal()
+            } else if missedUpdate {
+                missedUpdate = false
+                draw()
+            }
         }
     }
     /// How long a list shown again waits to draw what it missed: the list
@@ -280,8 +307,25 @@ final class V2ShownUpdates: ObservableObject {
     static let popSlide: TimeInterval = 0.45
     private var revealTask: Task<Void, Never>?
 
+    /// The list's visibility changed: shown by a pop it waits out the
+    /// slide; by a tab switch or a split change, nothing slides, so it
+    /// draws at once.
+    func follow(_ now: V2ListVisibility, from was: V2ListVisibility) {
+        revealDelay = now.isPop(from: was) ? Self.popSlide : 0
+        // A split change during a pop's wait: nothing slides any more, so
+        // what it missed draws now.
+        if was.isShown, now.isShown, revealDelay == 0, revealTask != nil {
+            revealTask?.cancel()
+            revealTask = nil
+            if missedUpdate {
+                missedUpdate = false
+                passOn()
+            }
+        }
+        isShown = now.isShown
+    }
+
     private func reveal() {
-        guard revealDelay > 0 else { missedUpdate = false; draw(); return }
         let delay = revealDelay
         revealTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
@@ -1368,7 +1412,7 @@ struct V2Shell: View {
         case .conversation:
             V2ConversationScreen()
         case .project(let project):
-            listRoot(tabBarClearance(V2ProjectPage(project: project)), alone: alone)
+            listRoot(tabBarClearance(V2ProjectPage(project: project, appState: appState)), alone: alone)
         case .artifacts:
             listRoot(tabBarClearance(V2ArtifactsPage()), alone: alone)
         case .pulse:
