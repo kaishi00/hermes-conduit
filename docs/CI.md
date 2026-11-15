@@ -178,6 +178,15 @@ outside the smoke set. The same change started the smoke job beside the Linux
 checks instead of after them: `plan` holds only the smoke selection and the
 skip decision (about 20 seconds), and the checks moved to `self-test`.
 
+A push skips the smoke job as a PR does when it changes only docs and config
+(Markdown outside the app and test folders, docs/, LICENSE, review config,
+`.github/` other than ci.yml), read against the branch's tip before it. Only a
+one-commit push (main's squash merges, a merge commit into `linked-rooms` or
+`all-live`) is read that way; a push of several commits or a new branch builds.
+Nothing such a commit changes reaches the build or the smoke tests, and on
+2026-11-15 each feature-map merge to `main` still held a macOS runner for
+about half an hour (with UI smoke) while PRs queued behind it.
+
 Nightly unit shards run their classes as sequential `test-without-building`
 batches on the one booted simulator: the fewest batches of at most
 `UNIT_BATCH_SIZE` (45) classes, split evenly, so a shard of about 78 classes
@@ -535,7 +544,7 @@ protection. It passes only when:
 * `plan`, `smoke` and `self-test` all succeed (CI v5). `smoke` fails when
   its build, its unit smoke step or (on a push) its UI smoke step failed. The one
   legitimate skip is the plan job's: its `smoke` output is `false` on a PR
-  that doesn't need the macOS build, and the gate passes a skipped `smoke`
+  or push that doesn't need the macOS build, and the gate passes a skipped `smoke`
   only then. Otherwise `plan-tests.py smoke` fails closed on an empty curated
   selection and both smoke test steps refuse to run unfiltered, so a
   `skipped` job means an upstream failure cascade — which fails the gate.

@@ -366,6 +366,68 @@ class WorkflowContractTests(unittest.TestCase):
         # A Swift file moved to docs/ lists its old name too, so it builds.
         self.assertFalse(skips("Conduit/X.swift", "docs/X.md"))
 
+    def _needs_build_script(self):
+        step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
+        lines = step.splitlines()
+        run = next(i for i, l in enumerate(lines) if l.strip() == "run: |")
+        indent = len(lines[run]) - len(lines[run].lstrip())
+        body = []
+        for line in lines[run + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) <= indent:
+                break
+            body.append(line)
+        return textwrap.dedent("\n".join(body))
+
+    def test_a_one_commit_push_of_docs_skips_smoke(self):
+        """A push runs the step against the branch's tip before it: one commit
+        of only docs and config skips the macOS job, and anything else (code,
+        this workflow, several commits, a new branch) builds (2026-11-15: docs
+        merges to main each held a macOS runner for half an hour)."""
+        if not shutil.which("git"):
+            self.skipTest("git not installed")
+        script = self._needs_build_script()
+
+        def smoke_for(paths, before="parent", event="push"):
+            with tempfile.TemporaryDirectory() as tmp:
+                def git(*args):
+                    return subprocess.run(["git", "-C", tmp, *args], check=True,
+                                          capture_output=True, text=True).stdout.strip()
+                git("init", "-q")
+                git("config", "user.email", "ci@example.com")
+                git("config", "user.name", "ci")
+                with open(os.path.join(tmp, "seed"), "w") as f:
+                    f.write("seed")
+                git("add", "-A")
+                git("commit", "-qm", "seed")
+                parent = git("rev-parse", "HEAD")
+                for path in paths:
+                    full = os.path.join(tmp, path)
+                    os.makedirs(os.path.dirname(full) or tmp, exist_ok=True)
+                    with open(full, "w") as f:
+                        f.write(path)
+                git("add", "-A")
+                git("commit", "-qm", "change")
+                output = os.path.join(tmp, ".out")
+                env = dict(os.environ, EVENT=event, PR_HEAD="", PR_NUMBER="", BASE_REF="",
+                           PUSH_BEFORE={"parent": parent, "other": "0" * 40, "none": ""}[before],
+                           GITHUB_OUTPUT=output, GITHUB_STEP_SUMMARY=os.path.join(tmp, ".summary"))
+                result = subprocess.run(["bash", "-c", script], cwd=tmp, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with open(output) as f:
+                    return f.read().strip()
+
+        self.assertEqual(smoke_for(["docs/FEATURE_MAP.md", "README.md"]), "smoke=false")
+        self.assertEqual(smoke_for([".github/workflows/nightly.yml"]), "smoke=false")
+        for paths in (["Conduit/App.swift"], ["docs/x.md", "scripts/ci-gate.py"],
+                      [".github/workflows/ci.yml"], ["Conduit/Resources/Help.md"]):
+            self.assertEqual(smoke_for(paths), "smoke=true", paths)
+        # Several commits pushed at once, or a new branch, build.
+        self.assertEqual(smoke_for(["docs/x.md"], before="other"), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before="none"), "smoke=true")
+        # A PR event with no merge commit of this PR builds.
+        self.assertEqual(smoke_for(["docs/x.md"], event="pull_request"), "smoke=true")
+
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
         passes the PR's number and the base's map (HEAD^1 of the merge commit),
