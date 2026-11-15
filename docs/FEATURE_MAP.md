@@ -3226,7 +3226,9 @@ streams, the thinking card live, Swap and Close) · the chat's own column,
 which gives the pane its width · a chat left mid-reply (the same followed
 copy, see A chat while it opens) · a profile or dashboard switch (the pane
 closes) · a Bot Chat and a group room in the chat's column (the pane stays
-beside a Bot Chat, hides beside a room; neither can be kept beside) · an
+beside a Bot Chat, hides beside a room; neither can be kept beside) ·
+Settings in the chat's column (the pane hides, and is back when Settings
+closes) · New Chat (the pane stays, beside the new chat) · an
 iPhone, a portrait iPad and a window with the list hidden: no room, so no
 pane and no Open Beside · the drawer shell (V2 off): not offered · a second
 window: not built yet (open gap) · README.md's feature list
@@ -3237,7 +3239,7 @@ window: not built yet (open gap) · README.md's feature list
 - The pane: `Conduit/Views/V2/V2BesideChatPane.swift`, its rows' state `Conduit/Views/ChatRowState.swift` (ChatRowState.beside, chatRowsBeside)
 - The layout: `Conduit/Views/V2/V2Shell.swift` (splitColumns, V2SplitLayout.besideChatWidth, showsBesideChat, v2BesideChatFits)
 - The row's menu: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions)
-- A profile switch closes it: `Conduit/Services/AppState+Profiles.swift`
+- A profile switch closes it: `Conduit/Services/AppState+Profiles.swift`; a dashboard switch: `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift` (testAChatKeptBesideIsFollowedWithNoReplyRunning, testClosingThePaneKeepsFollowingOnlyAReplyStillComing), `ConduitTests/V2SplitLayoutTests.swift` (testAChatKeptBesideFitsOnlyWhereBothChatsKeepTheirWidth)
 
 **Rulings**
@@ -3249,7 +3251,7 @@ window: not built yet (open gap) · README.md's feature list
 - The pane draws its chat's newest 60 rows: Swap shows the whole chat. Counted from the end, so a long chat costs no more on each word of a reply (2026-11-15, #2557).
 - A turn that starts in the pane's chat counts from Hermes' busy report, before its first word, so the pane says it works and closing it goes on following the reply; any other left chat's turn only ever ends. A message another device or process sends to the pane's chat shows there as it's sent, once, by Hermes' row id (2026-11-15, #2557, from review).
 - Behind another tab the pane draws no rows, so a reply streaming into it costs nothing until its tab shows again (2026-11-15, #2557, from review).
-- Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. A profile switch closes the pane, and so does opening its chat in the chat's own column, deleting it, or leaving the dashboard (2026-11-15, #2557).
+- Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. A profile switch and a dashboard switch close the pane, and so does opening its chat in the chat's own column or deleting it. Settings in the chat's column and a group room only hide it, and New Chat keeps it beside the new chat (2026-11-15, #2557).
 
 **Open gaps**
 - Not seen on a device yet: the pane's rows, its scroll and its width on an iPad and a Mac from TestFlight.

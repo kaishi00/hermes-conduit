@@ -584,6 +584,9 @@ extension AppState {
         // what the next visit there opens to.
         recordOfflineChatCopy()
         keepBotChatCopy()
+        // A chat kept beside is the outgoing dashboard's: the pane closes,
+        // and only a reply still coming there goes on being followed.
+        closeBesideChat()
         // The owner taken for the chat on screen is this dashboard's.
         outgoingBotChatCopyOwner = nil
         recordSavedChatList()
