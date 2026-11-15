@@ -1,0 +1,137 @@
+//
+//  AppState+BesideChat.swift
+//  Conduit
+//
+//  A chat kept beside the one on screen in a wide window (all-live stage 2,
+//  slice 3). Open Beside on a chat's row opens that chat and keeps the one
+//  that was on screen in a pane beside it: a followed chat
+//  (AppState+BackgroundChats.swift) that stays followed with no reply
+//  running, so the pane shows its rows and any reply as it streams. The
+//  pane only shows: Swap opens its chat in the chat's own column, where it
+//  can be written to, and keeps the other beside in its place.
+//
+
+import Combine
+import Foundation
+
+/// Tells the pane beside the chat that its chat's rows or reply moved. Its
+/// own object, as the reply on screen has (`LiveTurnProjection`): a reply
+/// streaming in the pane redraws the pane, never every view of AppState.
+@MainActor
+final class BesideChatLive: ObservableObject {
+    @Published private(set) var revision: UInt64 = 0
+
+    func moved() { revision &+= 1 }
+}
+
+extension AppState {
+    /// The followed chat the pane draws: the one kept beside, of this
+    /// dashboard and profile. Nil with no pane.
+    var besideChat: BackgroundChat? {
+        guard let ids = besideChatIDs else { return nil }
+        return backgroundChats.first {
+            $0.dashboardID == activeDashboardID && $0.profile == activeProfile
+                && !$0.sessionIDs.isDisjoint(with: ids)
+        }
+    }
+
+    /// Whether the chat on screen can stay beside another: an ordinary
+    /// chat, live from Hermes, with rows to show. A Bot Chat, a group room
+    /// and a saved copy still opening can't.
+    var canKeepChatOnScreenBeside: Bool {
+        guard isConnected, activeRoomSurface == nil, offlineChatPresentation == nil,
+              activeBotChatProfile == nil, !messages.isEmpty,
+              let id = activeSessionId, !id.isEmpty else { return false }
+        return botStoreProfile(forSessionIDs: Array(knownSessionIDs(for: id).union([id]))) == nil
+    }
+
+    /// Whether a chat's row offers Open Beside: another chat of this
+    /// profile, in Hermes' own list, while the chat on screen can stay
+    /// beside it.
+    func canOpenBeside(_ session: SessionSummary) -> Bool {
+        guard canKeepChatOnScreenBeside, !isShowingSavedChatList, !isOtherProfileRow(session),
+              !isSavedChatRow(session), let active = activeSessionId else { return false }
+        let open = knownSessionIDs(for: active).union([active])
+        return open.isDisjoint(with: session.nestingIDs) && !open.contains(session.id)
+    }
+
+    /// Opens `session` and keeps the chat on screen beside it. Where that
+    /// chat can't stay beside, the row opens as a tap opens it.
+    func openBeside(_ session: SessionSummary) {
+        let previous = besideChatIDs
+        guard canOpenBeside(session), keepChatOnScreenBeside() else {
+            openListedSession(session)
+            return
+        }
+        let kept = besideChatIDs
+        // The chat that was beside until now gives up its place, unless
+        // it's the one opening: its open shows the copy, then lets go of it.
+        if let previous, previous.isDisjoint(with: session.nestingIDs), !previous.contains(session.id) {
+            letGoOfIdleFollowedChat(answering: previous)
+        }
+        requestOpenSession(session.id) { [weak self] _ in
+            self?.besideChatOpenFailed(kept: kept)
+        }
+    }
+
+    /// Opens the pane's chat in the chat's own column, and keeps the chat
+    /// that was there beside it. A chat that can't stay beside (a Bot
+    /// Chat, a group room) gives way: the pane's chat opens and the pane
+    /// closes.
+    func swapBesideChat() {
+        guard let beside = besideChat,
+              let target = beside.durableSessionID ?? beside.sessionIDs.sorted().first else { return }
+        guard keepChatOnScreenBeside() else {
+            // Landing on it lets go of the followed copy, and the pane.
+            requestOpenSession(target)
+            return
+        }
+        let kept = besideChatIDs
+        requestOpenSession(target) { [weak self] _ in
+            self?.besideChatOpenFailed(kept: kept)
+        }
+    }
+
+    /// Closes the pane. Its chat goes on being followed only while a reply
+    /// still runs in it, as any chat left mid-reply.
+    func closeBesideChat() {
+        guard let ids = besideChatIDs else { return }
+        besideChatIDs = nil
+        letGoOfIdleFollowedChat(answering: ids)
+    }
+
+    /// The pane closes once its chat is followed no longer: opened in the
+    /// chat's own column, deleted, or on a dashboard or profile left.
+    func closeBesideChatWithoutItsChat() {
+        if besideChatIDs != nil, besideChat == nil { besideChatIDs = nil }
+    }
+
+    /// Follows the chat on screen as the one kept beside, from now: what
+    /// comes for it reaches the copy too, and leaving it takes a fresh one.
+    /// False when it can't be followed, with the pane as it was.
+    private func keepChatOnScreenBeside() -> Bool {
+        guard canKeepChatOnScreenBeside, let id = activeSessionId else { return false }
+        let ids = knownSessionIDs(for: id).union([id])
+        let previous = besideChatIDs
+        besideChatIDs = ids
+        followChatOnScreen(answering: ids, openAs: id, turnRunning: turnState == .running, staysBeside: true)
+        guard besideChat != nil else {
+            besideChatIDs = previous
+            return false
+        }
+        return true
+    }
+
+    /// The open beside a kept chat failed and left that chat on screen:
+    /// it isn't also beside itself.
+    private func besideChatOpenFailed(kept: Set<String>?) {
+        guard let kept, besideChatIDs == kept,
+              let active = activeSessionId, kept.contains(active) else { return }
+        besideChatIDs = nil
+        backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: kept) }
+    }
+
+    private func letGoOfIdleFollowedChat(answering ids: Set<String>) {
+        backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
+    }
+}

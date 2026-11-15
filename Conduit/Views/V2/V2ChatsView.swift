@@ -2621,10 +2621,22 @@ private struct V2SessionActions: ViewModifier {
     let onDelete: () -> Void
     let onChanged: () -> Void
     let onReorderPinned: (() -> Void)?
+    @Environment(\.v2OpenBeside) private var openBeside
+    @Environment(\.v2BesideChatFits) private var besideChatFits
 
     func body(content: Content) -> some View {
         content
             .contextMenu {
+                // Beside a chat in a window with the room: this one opens
+                // and that one stays in a pane beside it (all-live stage 2).
+                if !isSavedRow, besideChatFits, openBeside == .chat {
+                    Button {
+                        Haptics.selection()
+                        appState.openBeside(session)
+                    } label: {
+                        Label(AppLocalization.string("Open Beside", table: .chat), systemImage: "rectangle.split.2x1")
+                    }
+                }
                 if !isSavedRow {
                     SessionActionMenuItems(
                         session: session,

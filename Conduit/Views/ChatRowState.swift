@@ -220,6 +220,50 @@ extension View {
     func chatRows(facts: ChatRowFacts? = nil) -> some View {
         modifier(ChatRowsEnvironment(facts: facts))
     }
+
+    /// Hands the rows of the chat kept beside the one on screen
+    /// (V2BesideChatPane) their state: its own profile's name and picture,
+    /// and nothing that acts on a chat, as a saved copy's rows have none.
+    /// `isBusy`: a reply runs in that chat.
+    func chatRowsBeside(profile: String, isBusy: Bool) -> some View {
+        modifier(BesideChatRowsEnvironment(profile: profile, isBusy: isBusy))
+    }
+}
+
+extension ChatRowState {
+    /// What the rows of the chat kept beside the one on screen show. The
+    /// chat on screen's own facts (its latest reply, its pins, its Pulse
+    /// cards, whether a send can go) aren't that chat's, so none carry over.
+    @MainActor
+    static func beside(_ appState: AppState, profile: String, isBusy: Bool) -> ChatRowState {
+        var state = ChatRowState()
+        state.activeProfile = profile
+        state.agentIdentity = ConversationAgentIdentity.workspace(
+            name: appState.profileDisplayName(profile),
+            photoURL: appState.profileAvatarURL(for: profile)
+        )
+        state.agentGlowTint = appState.profileGlowTint(profile)
+        state.isBusy = isBusy
+        state.isOffline = true
+        state.readAloudUnavailable = true
+        state.displayPreferences = appState.displayPreferences
+        state.botLabels = appState.shownBotRoster.map { "\($0.name)=\($0.displayLabel)" }
+        state.toolCatalog = appState.toolCatalog
+        return state
+    }
+}
+
+private struct BesideChatRowsEnvironment: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    @State private var last = LastChatRowState()
+    let profile: String
+    let isBusy: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .environment(\.chatRowState, last.keeping(ChatRowState.beside(appState, profile: profile, isBusy: isBusy)))
+            .environment(\.chatRowActions, ChatRowActions(appState: appState))
+    }
 }
 
 private struct ChatRowsEnvironment: ViewModifier {

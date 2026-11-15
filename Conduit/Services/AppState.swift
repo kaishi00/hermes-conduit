@@ -514,6 +514,13 @@ final class AppState: ObservableObject {
     /// Chats left while their reply was still coming, following the rest
     /// of it (all-live stage 2, AppState+BackgroundChats.swift).
     var backgroundChats: [BackgroundChat] = []
+    /// The chat kept beside the one on screen in a wide window (all-live
+    /// stage 2, AppState+BesideChat.swift), by the ids it answers to. Set
+    /// as Open Beside is picked; the chat is followed from the moment it
+    /// is left, and the pane draws it while it is.
+    @Published var besideChatIDs: Set<String>?
+    /// Tells the pane beside the chat that its chat's rows or reply moved.
+    let besideChatLive = BesideChatLive()
     /// The followed chat a profile switch shows while it lands, by the ids
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?

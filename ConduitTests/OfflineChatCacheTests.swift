@@ -3414,6 +3414,95 @@ final class OfflineChatCacheTests: XCTestCase {
                        "and its followed copy keeps up")
     }
 
+    // MARK: - A chat kept beside the one on screen (all-live stage 2, slice 3)
+
+    /// The chat picked to stay beside the next one is followed from the
+    /// moment it's left, with no reply running in it; a reply that starts
+    /// there later reaches it and tells the pane; and its pane closes once
+    /// the chat is opened in the chat's own column again.
+    func testAChatKeptBesideIsFollowedWithNoReplyRunning() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1"),
+            ChatMessage(id: "r1", role: .assistant, content: "Hello", timestamp: "2"),
+            ChatMessage(id: "c1", role: .approval, content: "Run it?", timestamp: "3")
+        ]
+        state.turnState = .idle
+        XCTAssertTrue(state.canKeepChatOnScreenBeside)
+        XCTAssertTrue(state.canOpenBeside(session("b")))
+        XCTAssertFalse(state.canOpenBeside(session("a")), "The open chat isn't beside itself")
+
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        let beside = try XCTUnwrap(state.besideChat)
+        XCTAssertFalse(beside.isRunning)
+        XCTAssertEqual(beside.newestSettledRows(10).map(\.id), ["u1", "r1"], "A card that waits for an answer isn't drawn where nothing acts")
+        XCTAssertEqual(beside.newestSettledRows(1).map(\.id), ["r1"])
+
+        let before = state.besideChatLive.revision
+        XCTAssertTrue(state.applyBackgroundChatEvent(.messageStart(sessionId: "a")))
+        XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: "More")))
+        XCTAssertTrue(beside.isRunning)
+        XCTAssertEqual(beside.state.streamingBuffer, "More")
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertTrue(state.messages.isEmpty)
+
+        // Chats left after it never push it out, finished or not.
+        var list = state.backgroundChats
+        for index in 0..<BackgroundChat.limit {
+            list = BackgroundChat.adding(
+                BackgroundChat(sessionIDs: ["x\(index)"], durableSessionID: nil, title: "", dashboardID: beside.dashboardID,
+                               profile: beside.profile, isBotChat: false, rows: [], streamingText: "…"),
+                to: list, keeping: state.besideChatIDs
+            )
+        }
+        XCTAssertEqual(list.count, BackgroundChat.limit)
+        XCTAssertTrue(list.contains { $0.answers(to: "a") })
+
+        // Opened in the chat's own column, it's beside no longer.
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertNil(state.besideChatIDs)
+        XCTAssertNil(state.besideChat)
+    }
+
+    /// Closing the pane lets go of a chat with no reply running, and goes
+    /// on following one whose reply still comes; a chat that couldn't be
+    /// followed as it was left (a saved copy still opening) isn't beside.
+    func testClosingThePaneKeepsFollowingOnlyAReplyStillComing() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        XCTAssertNotNil(state.besideChat)
+        state.closeBesideChat()
+        XCTAssertNil(state.besideChatIDs)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        state.turnState = .running
+        state.besideChatIDs = ["b"]
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        XCTAssertEqual(state.besideChat?.isRunning, true)
+        state.closeBesideChat()
+        XCTAssertEqual(state.backgroundChats.count, 1, "Its reply is followed as any left chat's")
+
+        // Disconnected, the chat being left isn't followed: no pane.
+        state.isConnected = false
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "c")
+        XCTAssertNil(state.besideChatIDs)
+    }
+
     /// A followed chat of another dashboard is let go on its next event,
     /// which reaches neither the chat on screen nor a saved copy.
     func testAnotherDashboardsFollowedChatIsLetGoOnItsNextEvent() {

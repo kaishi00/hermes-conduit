@@ -1282,6 +1282,13 @@ struct V2Shell: View {
     ) -> some View {
         let list = root()
         let showsSettings = hostsSettings && selectedTab == .settings
+        // The room for a chat kept beside the open one, and that chat
+        // while the column shows a chat for it to sit beside.
+        let besideWidth = V2SplitLayout.besideChatWidth(chatRoom: (layoutWidth ?? 0) - column.width - 1)
+        let besideChat = V2SplitLayout.showsBesideChat(
+            path: path.wrappedValue, showsSettings: showsSettings, inRoom: appState.activeRoomSurface != nil
+        ) ? appState.besideChat : nil
+        let besideShown = besideChat == nil ? nil : besideWidth
         return HStack(spacing: 0) {
             NavigationStack(path: V2SplitLayout.listPath(path)) {
                 list
@@ -1298,6 +1305,8 @@ struct V2Shell: View {
                     }
             }
             .frame(width: column.width)
+            // A chat's row offers Open Beside where the window has the room.
+            .environment(\.v2BesideChatFits, besideWidth != nil)
             // The list's screens take the window's leading inset, never
             // its trailing one (`leadingColumnContent`), and keep to the
             // column's width.
@@ -1354,9 +1363,23 @@ struct V2Shell: View {
             // trailing inset, never its leading one, and keeps to the room
             // the list and the line between them leave.
             .transformEnvironment(\.windowSideInsets) { insets in
-                insets = insets?.reaching(.trailing, width: insets?.width.map { $0 - column.width - 1 })
+                // With a chat kept beside it, that pane has the window's edge.
+                insets = insets?.reaching(besideShown == nil ? .trailing : [], width: insets?.width.map {
+                    $0 - column.width - 1 - (besideShown.map { $0 + 1 } ?? 0)
+                })
             }
             .v2ClippedToColumn(outerEdge: .trailing)
+            if let besideChat, let besideShown {
+                // The chat kept beside the open one (all-live stage 2).
+                Rectangle()
+                    .fill(Color.primary.opacity(0.08))
+                    .frame(width: 1)
+                    .ignoresSafeArea(edges: .vertical)
+                V2BesideChatPane(chat: besideChat)
+                    .frame(width: besideShown)
+                    .transformEnvironment(\.windowSideInsets) { $0 = $0?.reaching(.trailing, width: besideShown) }
+                    .v2ClippedToColumn(outerEdge: .trailing)
+            }
         }
     }
 
@@ -1795,6 +1818,24 @@ enum V2SplitLayout {
         width >= listWidth + 1 + minimumChatWidth
     }
 
+    /// The least width of a chat kept beside the open one.
+    static let minimumBesideChatWidth: CGFloat = 340
+
+    /// How wide a chat kept beside the open one is, in the room the list
+    /// leaves (`chatRoom`): half of it, less where the open chat would
+    /// fall under its own least width. Nil where the two don't both fit,
+    /// as on an iPhone or a narrow window.
+    static func besideChatWidth(chatRoom: CGFloat) -> CGFloat? {
+        let width = min((chatRoom - 1) / 2, chatRoom - 1 - minimumChatWidth).rounded(.down)
+        return width >= minimumBesideChatWidth ? width : nil
+    }
+
+    /// Whether the chat column shows a chat for another to sit beside: not
+    /// the placeholder, Settings in the column, or a group room.
+    static func showsBesideChat(path: [V2Route], showsSettings: Bool, inRoom: Bool) -> Bool {
+        path.contains(.conversation) && !showsSettings && !inRoom
+    }
+
     /// Split, unless the user hid the list: then a wide window keeps one
     /// column, the chat pushed over the list as on a phone.
     static func isSplit(width: CGFloat, showsList: Bool) -> Bool {
@@ -1872,6 +1913,19 @@ enum V2OpenBeside: Equatable {
     case chat
     /// A group room, by its id.
     case room(String)
+}
+
+private struct V2BesideChatFitsKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    /// A split window has the room for a chat kept beside the open one
+    /// (`V2SplitLayout.besideChatWidth`): a chat's row offers Open Beside.
+    var v2BesideChatFits: Bool {
+        get { self[V2BesideChatFitsKey.self] }
+        set { self[V2BesideChatFitsKey.self] = newValue }
+    }
 }
 
 private struct V2OpenBesideKey: EnvironmentKey {
