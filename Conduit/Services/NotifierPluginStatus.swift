@@ -341,8 +341,15 @@ struct NotifierPluginStatus: Equatable {
             restartNeeded: response["restart_needed"] as? Bool ?? false,
             bootID: response["boot_id"] as? String,
             roomChatsKept: response["room_chats_kept"] as? Bool == true,
-            degraded: (response["degraded"] as? [Any])?.compactMap { $0 as? String } ?? []
+            degraded: degraded(from: response)
         )
+    }
+
+    /// The plugin's `degraded` codes in its order, each once: they are
+    /// the rows' identities in Settings.
+    private static func degraded(from response: [String: Any]) -> [String] {
+        var seen = Set<String>()
+        return (response["degraded"] as? [Any] ?? []).compactMap { $0 as? String }.filter { seen.insert($0).inserted }
     }
 
     /// Who manages the plugin on each saved dashboard's host, as it last

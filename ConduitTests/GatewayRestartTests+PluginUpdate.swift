@@ -758,7 +758,7 @@ extension GatewayRestartTests {
         let base: [String: Any] = ["ok": true, "version": "0.177.16", "loaded_version": "0.177.16", "capabilities": []]
         XCTAssertEqual(NotifierPluginStatus.runtime(from: base)?.degraded, [])
         var limited = base
-        limited["degraded"] = ["workspace-files", 7, "workstream-recovery", "a-later-one"]
+        limited["degraded"] = ["workspace-files", 7, "workstream-recovery", "a-later-one", "workspace-files"]
         let codes = NotifierPluginStatus.runtime(from: limited)?.degraded ?? []
         XCTAssertEqual(codes, ["workspace-files", "workstream-recovery", "a-later-one"])
         let lines = codes.map(NotifierPluginStatus.degradedText)
