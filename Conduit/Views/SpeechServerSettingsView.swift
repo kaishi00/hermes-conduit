@@ -251,7 +251,8 @@ struct SpeechServerSettingsView: View {
             if isSaving {
                 statusOwed = true
             } else {
-                Task { await followOwnModel(clearingError: clearingError) }
+                // The save's own error, if it had one, stays.
+                Task { await followOwnModel(clearingError: false) }
             }
             return
         }
