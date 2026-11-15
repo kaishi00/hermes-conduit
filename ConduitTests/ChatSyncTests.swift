@@ -566,6 +566,8 @@ final class ChatSyncTests: XCTestCase {
         var now = Date(timeIntervalSince1970: 2_000_000)
         /// Runs while the registry read is on its way.
         var onProbe: (@MainActor () -> Void)?
+        /// Runs while a catalog read is on its way.
+        var onLoad: (@MainActor () -> Void)?
     }
 
     private func makeAppState(_ box: Box) -> AppState {
@@ -574,6 +576,7 @@ final class ChatSyncTests: XCTestCase {
             loadSavedConnection: false,
             sessionCatalogLoader: { _ in
                 box.loads += 1
+                box.onLoad?()
                 if box.fails { throw URLError(.timedOut) }
                 return box.catalog
             },
@@ -1001,6 +1004,67 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(box.loads, 3)
         XCTAssertEqual(appState.sessions.map(\.id), ["kept"])
         XCTAssertFalse(appState.catalogChangeSignal.isPending)
+    }
+
+    /// A signal while a change's read is out sets a wait timed from that
+    /// read; when the read then fails, that wait gives way to one timed
+    /// from the failure.
+    func testAChangeDuringAFailingReadRetriesFiveSecondsAfterTheFailure() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("a", profile: profile)]
+        await appState.loadSessions()
+
+        var staleWait: Task<Void, Never>?
+        box.fails = true
+        box.onLoad = { [weak appState] in
+            guard staleWait == nil, let appState else { return }
+            box.now += 2
+            appState.handleStreamEvent(.sessionsChanged)
+            staleWait = appState.catalogChangeReadTask
+        }
+        box.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        box.onLoad = nil
+
+        XCTAssertNotNil(staleWait, "the signal during the read set a wait")
+        XCTAssertTrue(staleWait?.isCancelled == true, "and it gave way once the read failed")
+        XCTAssertNotNil(appState.catalogChangeReadTask)
+        XCTAssertFalse(appState.catalogChangeReadTask?.isCancelled ?? true)
+        XCTAssertEqual(appState.catalogChangeSignal.delayUntilDue(now: box.now), 5, "timed from the failure")
+    }
+
+    /// A joiner cancelled while it waits stops with CancellationError; the
+    /// read still answers the others, once each.
+    func testACancelledJoinerStopsWaitingAndTheOthersGetTheAnswer() async {
+        let owner = NSObject()
+        let read = AppState.CatalogReadInFlight(
+            key: .init(profile: "default", dashboardID: nil, client: ObjectIdentifier(owner))
+        )
+        let cancelled = Task { @MainActor in try await read.join() }
+        let kept = Task { @MainActor in try await read.join() }
+        for _ in 0..<50 where read.joinedReads < 2 { await Task.yield() }
+        XCTAssertEqual(read.joinedReads, 2)
+
+        cancelled.cancel()
+        do {
+            _ = try await cancelled.value
+            XCTFail("a cancelled joiner doesn't get the answer")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        XCTAssertEqual(read.joinedReads, 1)
+
+        let listed = row("a", profile: "default")
+        read.finish(.success(.init(sessions: [listed], olderPagesDeferred: false)))
+        let load = try? await kept.value
+        XCTAssertEqual(load?.sessions.map(\.id), ["a"])
+        XCTAssertEqual(read.joinedReads, 0)
+        read.finish(.success(.init(sessions: [], olderPagesDeferred: false)))
+        withExtendedLifetime(owner) {}
     }
 
     func testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes() async {

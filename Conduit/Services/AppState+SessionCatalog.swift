@@ -64,10 +64,11 @@ extension AppState {
             return try await running.join()
         }
         // A read that yields to newer ones may end without rows, so none
-        // waits on it. Any read that doesn't join also ends joining the one
-        // before it: a read asked for after a newer one started (a pull's
-        // older pages) must not take an older read's answer, which after
-        // the newer commit is that commit's cache.
+        // waits on it. Any read that doesn't join also takes the one before
+        // it out of the slot, so nothing joins that one any more: a read
+        // asked for after a newer one started (a pull's older pages) must
+        // not take an older read's answer, which after the newer commit is
+        // that commit's cache.
         let leader = isFullRead && !yieldsToNewerReads ? CatalogReadInFlight(key: key) : nil
         catalogReadInFlight = leader
         do {

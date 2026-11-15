@@ -6736,7 +6736,7 @@ final class AppStateChatResumeTests: XCTestCase {
         let leadingListed = await leading.value
         let joiningListed = await joining.value
         XCTAssertTrue(leadingListed)
-        XCTAssertTrue(joiningListed, "the joined read answers with the first one's rows")
+        XCTAssertTrue(joiningListed, "the joined read ends without failing (the forced read, newer, already listed)")
         XCTAssertEqual(loads, before + 3)
         XCTAssertNil(appState.catalogReadInFlight)
         XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
