@@ -994,9 +994,14 @@ extension AppState {
             listsBeforeHermes: true
         )
         // No chat started: the one still open is on screen, not left. A
-        // New Chat tapped again meanwhile still leaves it, so it stays.
-        if let followedIDs, activeSessionId == previousSessionID, newSessionCreationsInFlight == 1 {
-            releaseFollowedChat(answering: followedIDs)
+        // New Chat tapped again meanwhile still leaves it, so it stays until
+        // the last one finishes. That one may have followed nothing itself
+        // (the first had already set the turn to synchronizing), so it lets
+        // go by the chat's own ids.
+        if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
+           followedIDs != nil || previousTurnState == .synchronizing,
+           let previousSessionID {
+            releaseFollowedChat(answering: followedIDs ?? knownSessionIDs(for: previousSessionID).union([previousSessionID]))
         }
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.

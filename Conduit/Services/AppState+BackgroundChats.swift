@@ -142,8 +142,10 @@ extension AppState {
         let id = sessionID(for: event)
         guard !id.isEmpty else { return false }
         let onScreen = eventBelongsToActiveSession(id)
+        // A rebound id reaches the followed copy on screen too, as its own
+        // ids do, so the copy is current if the open is overtaken.
         guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
-            ?? (onScreen ? nil : followedChatIndex(reboundTo: id)) else { return false }
+            ?? followedChatIndex(reboundTo: id) else { return false }
         if onScreen {
             // The chat on screen saves its own copy.
             _ = backgroundChats[index].apply(event)
@@ -161,15 +163,14 @@ extension AppState {
 
     /// The followed chat a runtime id Hermes bound while it was away
     /// belongs to (another device resumed it, say), by the conversation
-    /// index. It answers to that id from then on.
+    /// index. Looked up on every event and never kept, so an id the index
+    /// later binds to another chat stops reaching this one.
     private func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
-        guard let found = backgroundChats.firstIndex(where: { chat in
+        return backgroundChats.firstIndex { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }
             return chat.sessionIDs.contains(durableID) || chat.durableSessionID == durableID
-        }) else { return nil }
-        backgroundChats[found].answer(to: id)
-        return found
+        }
     }
 
     /// A finished reply's rows become the chat's saved copy, so it shows
