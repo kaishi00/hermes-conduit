@@ -180,7 +180,7 @@ enum GroupCreateLimits {
 
     /// Under your other Hermes' bots in New Group Chat.
     static var farText: String {
-        AppLocalization.string("A room can bring bots from one of your other Hermes, and then invites no one else. They join by themselves.", table: .rooms)
+        AppLocalization.string("A room can bring bots from one of your other Hermes beside at least one of your bots here, and then invites no one else. They join by themselves.", table: .rooms)
     }
 
     /// One bot is enough when there's someone to invite, or a bot of your

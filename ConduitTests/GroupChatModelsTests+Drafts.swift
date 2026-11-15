@@ -683,6 +683,43 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.draftsReads, 1)
     }
 
+    /// Your other Hermes shows in New Group Chat as its bots, not as a
+    /// person to invite, only where the plugin brings them (0.171).
+    @MainActor
+    func testYourOtherHermesShowsAsItsBotsNotAPerson() async {
+        let words = ["amber", "birch", "cedar", "delta"]
+        let routes = DraftsRoutes(drafts: [])
+        routes.links = [
+            ["id": "own1", "name": "Lab", "status": "linked", "words": words, "own": true, "their_own": true, "own_link": true],
+            ["id": "lk-mona", "name": "Mona", "status": "linked", "words": words],
+        ]
+        routes.ownBots = ["own1": ["name": "Lab", "brings": true, "bots": [
+            ["profile": "yelan", "handle": "yelan", "display_name": "Yelan", "ready": true],
+        ]]]
+        let appState = draftsAppState(routes)
+        draftsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.171.0", "capabilities": [
+            RoomDraftsClient.capability, RoomLinksClient.capability, RoomLinksClient.ownCapability,
+            RoomLinksClient.ownBotsCapability,
+        ]])
+        await appState.refreshLinkedRoomDrafts()
+        await draftsWait("the bots read", until: { !appState.invitableOwnBots.isEmpty })
+        XCTAssertEqual(appState.invitableOwnBots.map(\.id), ["own1/yelan"])
+        XCTAssertEqual(appState.invitableLinkedPeople.map(\.id), ["lk-mona"], "Lab is offered as its bots")
+
+        // A plugin that doesn't bring them leaves Lab a person to invite.
+        let older = draftsAppState(routes)
+        draftsConnect(older)
+        await older.refreshGroupChatSupport()
+        older.applyNotifierPluginReport(["ok": true, "version": "0.170.0", "capabilities": [
+            RoomDraftsClient.capability, RoomLinksClient.capability, RoomLinksClient.ownCapability,
+        ]])
+        await older.refreshLinkedRoomDrafts()
+        await draftsWait("the people read", until: { older.invitableLinkedPeople.count == 2 })
+        XCTAssertEqual(older.invitableOwnBots, [])
+    }
+
     /// A drafts read made before a Block that answers after it is dropped:
     /// it would bring back the blocked host's rows (issue 2347).
     @MainActor
@@ -750,6 +787,9 @@ private final class DraftsRoutes {
     /// it was made.
     var drafts: [[String: Any]]
     private(set) var unlinks = 0
+    /// `GET /rooms/links` and `GET /rooms/own-bots`, when set.
+    var links: [[String: Any]]?
+    var ownBots: [String: Any]?
     /// The first drafts read waits until `answerHeldRead()`.
     var holdsFirstRead = false
     /// Drafts reads after the first fail.
@@ -766,6 +806,12 @@ private final class DraftsRoutes {
         if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
             unlinks += 1
             return ["ok": true, "removed": true]
+        }
+        if path == "\(RoomLinksClient.path)/links", method == "GET", let links {
+            return ["ok": true, "links": links, "invites": [[String: Any]]()]
+        }
+        if path == "\(RoomLinksClient.path)/own-bots", method == "GET", let ownBots {
+            return ["ok": true, "links": ownBots]
         }
         guard path == RoomDraftsClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         draftsReads += 1
