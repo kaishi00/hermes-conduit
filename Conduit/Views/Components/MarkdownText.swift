@@ -3603,8 +3603,10 @@ enum MarkdownParser {
         var listIndents: [Int] = []
         // The next number of the numbered list open at each depth of the
         // outline, so a parent list picks up after its sub-list.
-        var outlineNumbers: [Int: Int] = [:]
-        func noteOutline(depth: Int, next: Int?) {
+        // A "1." list and a "1)" list are different lists, so the
+        // delimiter rides along.
+        var outlineNumbers: [Int: (next: Int, delimiter: Character?)] = [:]
+        func noteOutline(depth: Int, next: (next: Int, delimiter: Character?)?) {
             outlineNumbers = outlineNumbers.filter { $0.key < depth }
             outlineNumbers[depth] = next
         }
@@ -3671,6 +3673,11 @@ enum MarkdownParser {
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: recognizesGatewayMedia))
                     }
                 }
+                // A directive ends the outline, the plugin's hidden board
+                // line too, which adds no block: the lists after it start
+                // at the left edge from their written number.
+                listIndents = []
+                outlineNumbers = [:]
                 index += 1
                 continue
             }
@@ -3736,8 +3743,9 @@ enum MarkdownParser {
                 // Back out of a sub-list, the parent list goes on counting
                 // ("1. A", its sub-list, "1. B" numbers B 2), as one list
                 // with the sub-list inside an item would.
-                if let resumed = outlineNumbers[depth], (blocks.last?.listDepth ?? -1) > depth {
-                    start = resumed
+                if let resumed = outlineNumbers[depth], resumed.delimiter == orderedDelimiter(trimmed),
+                   (blocks.last?.listDepth ?? -1) > depth {
+                    start = resumed.next
                 }
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
@@ -3756,7 +3764,7 @@ enum MarkdownParser {
                     if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
                 blocks.append(.orderedList(items, start: start, depth: depth))
-                noteOutline(depth: depth, next: start + items.count)
+                noteOutline(depth: depth, next: (start + items.count, orderedDelimiter(trimmed)))
                 continue
             }
 

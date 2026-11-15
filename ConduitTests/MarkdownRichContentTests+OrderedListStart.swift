@@ -88,6 +88,19 @@ extension MarkdownRichContentPolicyTests {
             .orderedList(["x", "y"], depth: 1),
             .orderedList(["C"], start: 3)
         ])
+        // A ")" list is another list, and a hidden board line ends the
+        // outline: both start from their written number.
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n\n1) B"), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .orderedList(["B"])
+        ])
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n::conduit-board{id=\"cb-0123456789ab\"}\n1. B\n   - next"), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .orderedList(["B"]),
+            .unorderedList(["next"], depth: 1)
+        ])
         // A paragraph between starts over at the left edge.
         XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
             .unorderedList(["a"]),
