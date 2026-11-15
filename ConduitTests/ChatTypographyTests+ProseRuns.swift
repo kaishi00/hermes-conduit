@@ -235,10 +235,12 @@ extension ChatTypographyTests {
     /// still sits an item's gap under it, as the rest of the outline does.
     @MainActor
     func testProseRunUnderATaskListSitsAnItemsGapBelow() throws {
-        let source = "- [ ] Alpha task\n  - Bravo sub-item\n  - Charlie sub-item"
+        // The divider keeps the reply off the flow path, which would draw
+        // it all as one text.
+        let source = "- [ ] Alpha task\n  - Bravo sub-item\n  - Charlie sub-item\n\n---\n\nZulu after the divider."
         let window = proseRunWindow(source, joinsProseRuns: true)
         defer { window.isHidden = true }
-        XCTAssertEqual(proseTextViews(in: window).count, 2, "the task's own view and the sub-list's run")
+        XCTAssertEqual(proseTextViews(in: window).count, 3, "the task's own view, the sub-list's run and the paragraph after the divider")
         let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie"], in: window)
         let alpha = try XCTUnwrap(origins["Alpha"])
         let bravo = try XCTUnwrap(origins["Bravo"])
