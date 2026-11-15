@@ -107,6 +107,12 @@ extension MarkdownRichContentPolicyTests {
             .unorderedList(["child"], depth: 1),
             .orderedList(["B"])
         ])
+        // An item that keeps its text past the tag keeps the outline.
+        XCTAssertEqual(MarkdownParser.parse("- A\n- B [[as_document]]\n  - next", recognizesGatewayMedia: true), [
+            .unorderedList(["A"]),
+            .unorderedList(["B"]),
+            .unorderedList(["next"], depth: 1)
+        ])
         // A paragraph between starts over at the left edge.
         XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
             .unorderedList(["a"]),

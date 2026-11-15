@@ -3687,6 +3687,7 @@ enum MarkdownParser {
             // A line holding `MEDIA:` tags splits into media and the text
             // around them (#439); a line of only Hermes directives drops.
             if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
+                let blocksBefore = blocks.count
                 for segment in segments {
                     switch segment {
                     case .media(let mediaPath, let alt):
@@ -3697,10 +3698,13 @@ enum MarkdownParser {
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: false))
                     }
                 }
-                // Like a directive, this line ends the outline, a line of
-                // only Hermes directives too, which adds no block.
-                listIndents = []
-                outlineNumbers = [:]
+                // A line of only Hermes directives adds no block, and ends
+                // the outline as the hidden board line does. A line that
+                // still draws an item ("- B [[as_document]]") keeps it.
+                if blocks.count == blocksBefore {
+                    listIndents = []
+                    outlineNumbers = [:]
+                }
                 index += 1
                 continue
             }
