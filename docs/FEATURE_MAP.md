@@ -3224,8 +3224,8 @@ reply can be watched in one while writing in the other (all-live stage 2).
 menu's Open Beside) · the pane (its chat's newest rows, the reply as it
 streams, the thinking card live, Swap and Close) · the chat's own column,
 which gives the pane its width · a chat left mid-reply (the same followed
-copy, see A chat while it opens) · a profile or dashboard switch (the pane
-closes) · a Bot Chat and a group room in the chat's column (the pane stays
+copy, see A chat while it opens) · any change of profile or a dashboard switch
+(the pane and any chat windows close) · a Bot Chat and a group room in the chat's column (the pane stays
 beside a Bot Chat, hides beside a room; neither can be kept beside) ·
 Settings in the chat's column (the pane hides, and is back when Settings
 closes) · New Chat (the pane stays, beside the new chat) · an
@@ -3255,10 +3255,10 @@ first-window guard (never closes a chat window) · README.md's feature list
 - The pane draws its chat's newest 60 rows: Swap shows the whole chat. Counted from the end, so a long chat costs no more on each word of a reply (2026-11-15, #2557).
 - A turn that starts in the pane's chat counts from Hermes' busy report, before its first word, so the pane says it works and closing it goes on following the reply; any other left chat's turn only ever ends. A message another device or process sends to the pane's chat shows there as it's sent, once, by Hermes' row id (2026-11-15, #2557, from review); also when it comes under a runtime id Hermes bound to the chat since, and the same words again after a reply, or words that only start the same, are a new message (2026-11-15, #2565, from #2557's review).
 - Behind another tab the pane draws no rows, so a reply streaming into it costs nothing until its tab shows again (2026-11-15, #2557, from review).
-- Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. A profile switch and a dashboard switch close the pane, and so does opening its chat in the chat's own column or deleting it. Settings in the chat's column and a group room only hide it, and New Chat keeps it beside the new chat (2026-11-15, #2557).
+- Closing the pane lets go of a chat with no reply running; one whose reply still comes is followed as any chat left mid-reply. Any change of profile (#2572) and a dashboard switch close the pane, and so does opening its chat in the chat's own column or deleting it. Settings in the chat's column and a group room only hide it, and New Chat keeps it beside the new chat (2026-11-15, #2557).
 - A chat gets a window of its own from the pane: Open in New Window in the pane's header, where the device opens windows (an iPad, a Mac). Hermes streams a chat's turns only to a connection that opened it, and the pane's chat has been on screen, so its window is live; a row's menu doesn't offer a window, since a chat that was never opened here would show a copy nothing updates. The window shows as the pane does and nothing in it acts: Open in Main Window opens its chat in the chat's own column, showing it there whatever the main window showed, and the window closes. Up to three chat windows at once (2026-11-15, #2565).
 - The pane's chat and each window's are followed whatever their age and take none of the four places chats left mid-reply have (2026-11-15, #2565; #2557 counted the pane's among the four).
-- The app counts as in the foreground while any of its windows is: a chat window on screen keeps the connection live with the main window behind it, and the app goes to the background once every window has, the main window too once it's closed; a main window reopened beside a chat window counts from its first frame, and the last window closing still runs the background steps (2026-11-15, #2565, #2572, from review).
+- The app counts as in the foreground while any of its windows is: a chat window on screen keeps the connection live with the main window behind it, and the app goes to the background once every window has, the main window too once it's closed; a main window reopened (beside a chat window, or after every window closed) counts from its first frame, and the last window closing still runs the background steps (2026-11-15, #2565, #2572, from review).
 - A chat window closes when its chat opens in the main window, is deleted, or on a dashboard switch or any change of profile (a switch, a profile Hermes no longer has, one a sign-in brings; #2572). Closing it lets go of a chat with no reply running. One the system brings back at a relaunch has no chat to show and closes (2026-11-15, #2565).
 
 **Open gaps**

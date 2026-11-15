@@ -112,10 +112,11 @@ struct RootView: View {
             if ConduitWindowClaimKeeper.claimPrimaryWindow() {
                 isPrimaryWindow = true
                 appState.startWakeListeningLifecycle()
-                // A main window reopened beside a chat window counts from
-                // its first frame, not from its next phase change. At launch
-                // nothing is recorded yet, and its phase changes come as before.
-                if !appState.windowScenePhases.isEmpty {
+                // A main window reopened (beside a chat window, or after
+                // every window closed) counts from its first frame, not from
+                // its next phase change. At launch nothing has been heard
+                // yet, and its phase changes come as before.
+                if appState.mergedScenePhase != nil {
                     appState.noteScenePhase(scenePhase, scene: AppState.mainWindowScene)
                 }
             } else {
