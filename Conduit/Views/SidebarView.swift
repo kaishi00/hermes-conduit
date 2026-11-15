@@ -2659,6 +2659,22 @@ enum SidebarSourceRows {
             return chats.filter { category($0) == source }
         }
     }
+
+    /// The chat sources (not Cron) whose filter lists any row: `rows` for
+    /// each is not empty. One walk, for the filter menu, which otherwise
+    /// listed every source's rows to see which had any.
+    static func sourcesWithRows(
+        sessions: [SessionSummary],
+        category: (SessionSummary) -> SessionSource,
+        hasVoiceCalls: (SessionSummary) -> Bool = { _ in false }
+    ) -> Set<SessionSource> {
+        var sources: Set<SessionSource> = []
+        for chat in sessions where !chat.isArchived {
+            sources.insert(category(chat))
+            if hasVoiceCalls(chat) { sources.insert(.voice) }
+        }
+        return sources
+    }
 }
 
 /// The Projects view's Pinned section (#338): every non-archived pinned chat

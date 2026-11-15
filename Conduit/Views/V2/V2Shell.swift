@@ -250,7 +250,12 @@ extension EnvironmentValues {
 /// don't each redraw it. While the list scrolls it waits too, and draws
 /// once when the scroll comes to rest: right after launch the connection,
 /// catalog, projects and live statuses publish many times a second, and a
-/// redraw of the whole list on each cost the scroll its frames.
+/// redraw of the whole list on each cost the scroll its frames. Shown
+/// again by a chat popping off it (not by a tab switch, where nothing
+/// slides), the list draws what it missed once the pop has slid: drawn as the finger lifted, the whole list's bodies held
+/// the slide's first frame 158 to 175 ms (an iPhone 16 Pro Max,
+/// 2026-11-14), and the rows it shows meanwhile are the ones it showed as
+/// the chat opened.
 @MainActor
 final class V2ShownUpdates: ObservableObject {
     let objectWillChange = ObservableObjectPublisher()
@@ -259,8 +264,32 @@ final class V2ShownUpdates: ObservableObject {
         didSet {
             // Covered, it isn't scrolling: what the scroll held waits for
             // the list to show again.
-            if !isShown { endScrolling() }
-            if isShown, !oldValue, missedUpdate { missedUpdate = false; draw() }
+            if !isShown {
+                endScrolling()
+                // Covered again before it drew: the next showing draws.
+                revealTask?.cancel()
+                revealTask = nil
+            }
+            if isShown, !oldValue, missedUpdate { reveal() }
+        }
+    }
+    /// How long a list shown again waits to draw what it missed: the list
+    /// sets `popSlide` when a pop shows it, zero (at once) otherwise.
+    var revealDelay: TimeInterval = 0
+    /// About a pop's slide.
+    static let popSlide: TimeInterval = 0.45
+    private var revealTask: Task<Void, Never>?
+
+    private func reveal() {
+        guard revealDelay > 0 else { missedUpdate = false; draw(); return }
+        let delay = revealDelay
+        revealTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self, !Task.isCancelled else { return }
+            revealTask = nil
+            guard missedUpdate else { return }
+            missedUpdate = false
+            passOn()
         }
     }
     /// Set by the list: a chat is open beside it.
@@ -349,7 +378,8 @@ final class V2ShownUpdates: ObservableObject {
     }
 
     private func passOn() {
-        guard isShown else { missedUpdate = true; return }
+        // Covered, or shown again and still sliding in: it waits.
+        guard isShown, revealTask == nil else { missedUpdate = true; return }
         guard !holdsForScroll() else { holdForScroll(); return }
         guard coalesces else { draw(); return }
         guard !drawScheduled else { return }
@@ -359,9 +389,10 @@ final class V2ShownUpdates: ObservableObject {
             do { try await Task.sleep(for: .seconds(delay)) } catch { self?.drawScheduled = false; return }
             guard let self else { return }
             drawScheduled = false
-            // Covered meanwhile, it waits for the list to show again;
-            // scrolling, for the scroll to rest.
-            if !isShown {
+            // Covered meanwhile, it waits for the list to show again (and
+            // shown again, for the slide in); scrolling, for the scroll to
+            // rest.
+            if !isShown || revealTask != nil {
                 missedUpdate = true
             } else if holdsForScroll() {
                 holdForScroll()

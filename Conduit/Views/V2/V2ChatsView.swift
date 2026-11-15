@@ -455,7 +455,18 @@ struct V2ChatsView: View, Equatable {
     }
 
     /// Nothing pushed over the list, on the selected tab.
-    private var isShown: Bool { shell.isTabActive && !shell.isRootCovered }
+    private var isShown: Bool { visibility.isShown }
+
+    /// What shows the list: its tab, and nothing pushed over it.
+    private struct Visibility: Equatable {
+        var tabActive: Bool
+        var covered: Bool
+        var isShown: Bool { tabActive && !covered }
+    }
+
+    private var visibility: Visibility {
+        Visibility(tabActive: shell.isTabActive, covered: shell.isRootCovered)
+    }
 
     /// No chat covers the list: none is open, or a wide window shows the
     /// list beside it.
@@ -587,7 +598,11 @@ struct V2ChatsView: View, Equatable {
                 sessionPresentationRaw = "sessions"
             }
         }
-        .onChange(of: isShown, initial: true) { _, shown in
+        .onChange(of: visibility, initial: true) { was, now in
+            let shown = now.isShown
+            // Shown by a pop, the list waits out the slide; by a tab
+            // switch, nothing slides, so it draws at once.
+            updates.revealDelay = was.covered && !now.covered && now.tabActive ? V2ShownUpdates.popSlide : 0
             updates.isShown = shown
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
@@ -1152,8 +1167,13 @@ struct V2ChatsView: View, Equatable {
     /// user's order.
     private var sourceFilters: [V2SessionFilter] {
         let fixed: [V2SessionFilter] = [.voice, .scheduled]
+        let listing = SidebarSourceRows.sourcesWithRows(
+            sessions: listed.sessions,
+            category: category,
+            hasVoiceCalls: hasVoiceCalls
+        )
         let others = appState.sessionFilterOrder.filter { source in
-            source != .voice && source != .cron && !sourceRows(source).isEmpty
+            source != .voice && source != .cron && listing.contains(source)
         }
         return fixed + others.map { V2SessionFilter.source($0) }
     }
