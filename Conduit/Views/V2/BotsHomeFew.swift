@@ -253,6 +253,9 @@ struct BotsHomeAskField: View {
             RoundedRectangle(cornerRadius: 30, style: .continuous)
                 .strokeBorder(stroke, lineWidth: 1)
         }
+        // Return makes a new line in this field and the keyboard covers
+        // the tab bar, so Done puts it away; a scroll of Bots Home does too.
+        .keyboardDoneButton(identifier: "bots.home.ask.done") { focused = false }
     }
 
     private func send() {
