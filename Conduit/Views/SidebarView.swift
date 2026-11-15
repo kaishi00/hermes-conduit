@@ -2190,15 +2190,20 @@ struct ProjectFolderPickerSheet: View {
     /// Made inside the folder shown, then opened, ready to choose.
     private func makeFolder(_ name: String) async {
         let folder = currentPath
+        let asked = opened
         do {
             if let made = try await appState.makeProjectFolder(named: name, in: folder, profile: profile) {
                 await open(made)
             }
         } catch {
+            // A folder tapped meanwhile counts as moved on even while its
+            // listing is still out (currentPath changes only when it's in).
+            guard opened == asked else { return }
             let after = Self.afterFailedNewFolder(error, in: folder, showing: currentPath)
             if after.relists { await open(folder) }
             // Again after the listing: the user may have moved on during it.
-            if after.saysSo, currentPath == folder { errorMessage = UserFacingError.message(for: error) }
+            let latest = after.relists ? asked + 1 : asked
+            if after.saysSo, opened == latest, currentPath == folder { errorMessage = UserFacingError.message(for: error) }
         }
     }
 }
