@@ -107,6 +107,12 @@ struct V2VoiceButton: View {
         }.map(\.element)
     }
 
+    /// The bot a menu's choice names, as the roster has it now: the menu
+    /// keeps only its name and label. Nil once it has left the roster.
+    static func bot(_ choice: V2VoiceBotChoice, in roster: [BotProfile]) -> BotProfile? {
+        roster.first { $0.name == choice.id }
+    }
+
     /// The project's folder for a new chat, as its page reads it.
     static func folder(of project: ProjectSummary) -> String? {
         guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -313,7 +319,7 @@ struct V2VoiceButtonContent: View, Equatable {
                 Menu {
                     ForEach(callableBots) { bot in
                         Button {
-                            call(bot.id)
+                            call(bot)
                         } label: {
                             Label {
                                 Text(verbatim: bot.label)
@@ -608,13 +614,12 @@ struct V2VoiceButtonContent: View, Equatable {
     }
 
     /// Opens a bot's Bot Chat and calls the bot in it.
-    private func call(_ name: String) {
-        // The bot as the roster has it now: the menu keeps only its name
-        // and label.
+    private func call(_ choice: V2VoiceBotChoice) {
         guard !isStarting else { return }
-        guard let bot = appState.shownBotRoster.first(where: { $0.name == name }) else {
-            // Removed or renamed while the menu was open.
-            reportCouldNotOpen()
+        guard let bot = V2VoiceButton.bot(choice, in: appState.shownBotRoster) else {
+            // Removed or renamed while the menu was open. Bots Home shows
+            // its own notice, not a chat's error.
+            appState.botsListNotice = AppLocalization.string("Could not open \(choice.label)'s Bot Chat.")
             return
         }
         Haptics.medium()

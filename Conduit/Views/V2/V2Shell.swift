@@ -337,7 +337,7 @@ final class V2ShownUpdates: ObservableObject {
     private var openHoldTask: Task<Void, Never>?
 
     /// A row's tap is about to push its chat over the list. The tap's own
-    /// publishes (the drawer closing, the chat named) come before the list
+    /// publishes (the chat named and opened) come before the list
     /// counts as covered, and drawing them re-ran its rows and updated the
     /// List inside the push's first commit, for a list on its way out
     /// (an iPhone 16 Pro Max, 2026-11-15). They wait as a covered list's
