@@ -3646,6 +3646,8 @@ enum MarkdownParser {
                     index += 1
                 }
                 if index < lines.count { index += 1 }
+                // The block appended here ends the outline: the next list
+                // sees no list above it and starts over.
                 if directive == "columns" { blocks.append(.columns(sections.map { $0.joined(separator: "\n") }.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty })) }
                 else { blocks.append(.callout(kind: directive, text: sections.flatMap { $0 }.joined(separator: "\n"))) }
                 continue
@@ -3685,6 +3687,7 @@ enum MarkdownParser {
             // A line holding `MEDIA:` tags splits into media and the text
             // around them (#439); a line of only Hermes directives drops.
             if recognizesGatewayMedia, !isTableHeader(lines, at: index), let segments = GatewayMediaTags.segments(in: trimmed) {
+                let blocksBefore = blocks.count
                 for segment in segments {
                     switch segment {
                     case .media(let mediaPath, let alt):
@@ -3694,6 +3697,14 @@ enum MarkdownParser {
                         // recurse back into this branch.
                         blocks.append(contentsOf: parseBlocks([text], recognizesGatewayMedia: false))
                     }
+                }
+                // A line of only Hermes directives adds no block, and ends
+                // the outline as the hidden board line does. A line that
+                // still draws an item keeps it (a list's later items never
+                // reach here: the list takes them, tags and all).
+                if blocks.count == blocksBefore {
+                    listIndents = []
+                    outlineNumbers = [:]
                 }
                 index += 1
                 continue

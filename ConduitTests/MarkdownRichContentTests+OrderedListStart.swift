@@ -101,6 +101,20 @@ extension MarkdownRichContentPolicyTests {
             .orderedList(["B"]),
             .unorderedList(["next"], depth: 1)
         ])
+        // So does a line of only Hermes directives, which adds no block.
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n[[audio_as_voice]]\n1. B", recognizesGatewayMedia: true), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .orderedList(["B"])
+        ])
+        // A tagged item that starts a list after a sub-list still draws,
+        // so it keeps the outline and the sub-list under it stays nested.
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n- B [[as_document]]\n  - next", recognizesGatewayMedia: true), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .unorderedList(["B"]),
+            .unorderedList(["next"], depth: 1)
+        ])
         // A paragraph between starts over at the left edge.
         XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
             .unorderedList(["a"]),
