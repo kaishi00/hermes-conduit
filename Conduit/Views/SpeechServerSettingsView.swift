@@ -229,12 +229,19 @@ struct SpeechServerSettingsView: View {
 
     /// Reads the status after Live > Local's own model switch changed.
     private func followOwnModel(clearingError: Bool) async {
+        // A save on the way reconciles the drafts against what it sent, so
+        // a field typed meanwhile stays; the page reads again once it's
+        // done, in case the save's own read came before the switch. Checked
+        // before the read too: one asked mid-save could land after the save
+        // with an answer from before it.
+        guard !isSaving else {
+            statusOwed = true
+            return
+        }
         let profile = draftsProfile
         let loaded = await service.speechServerStatus()
         guard draftsProfile == profile else { return }
-        // A save on the way reconciles the drafts against what it sent, so
-        // a field typed meanwhile stays; the page reads again once it's
-        // done, in case the save's own read came before the switch.
+        // A save that started while this read was out reads again itself.
         guard !isSaving else {
             statusOwed = true
             return
@@ -329,6 +336,7 @@ struct SpeechServerSettingsView: View {
     private func load() async {
         draftsProfile = service.profile
         driveTurnsDraft = nil
+        statusOwed = false
         pickedPreset = nil
         pickedURL = nil
         status = service.speechServer
