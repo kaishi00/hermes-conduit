@@ -639,6 +639,7 @@ final class NativeOAuthTests: XCTestCase {
     /// token is kept, the request fails as sign-in required, and nothing
     /// is refreshed (issue 2481). A native grant with no refresh token is
     /// still cleared.
+    @MainActor
     func testASessionToken401KeepsTheSavedToken() async throws {
         let dashboardID = UUID()
         defer { KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID) }
