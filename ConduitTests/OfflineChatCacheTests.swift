@@ -3596,13 +3596,14 @@ final class OfflineChatCacheTests: XCTestCase {
     func testAKeptChatTakesAMessageFromItsBox() async throws {
         let sent = SentPrompts()
         var fails = false
+        var outcome = PromptSubmissionOutcome.accepted
         var hermesWordFirst: (() -> Void)?
         let (state, _, _) = makeAppState(
             lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
                 sent.prompts.append((sessionID, text))
                 hermesWordFirst?()
                 if fails { throw HermesError.timeout("prompt.submit") }
-                return .accepted
+                return outcome
             })
         )
         let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
@@ -3637,6 +3638,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(kept.state.messages.contains { $0.content == "Another" })
         XCTAssertFalse(kept.isRunning)
 
+        // The last turn's reply still settling is no word of this one.
+        kept.state.streamingBuffer = "The last reply's words"
+        let unsettled = await state.sendInKeptChat(kept, text: "Again")
+        XCTAssertFalse(unsettled)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Again" })
+        XCTAssertFalse(kept.isRunning)
+        kept.state.streamingBuffer = ""
+
+        // One Hermes queued behind a turn already running stays, running.
+        fails = false
+        outcome = .queued
+        let queued = await state.sendInKeptChat(kept, text: "After that")
+        XCTAssertTrue(queued)
+        XCTAssertEqual(kept.state.messages.last?.content, "After that")
+        XCTAssertTrue(kept.isRunning)
+        state.act(on: kept) { state.setRunning(false) }
+        fails = true
+        outcome = .accepted
+
         // One whose word from Hermes came before the failure stays, its
         // turn running.
         hermesWordFirst = {
@@ -3647,6 +3667,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(kept.state.messages.last?.content, "Third")
         XCTAssertEqual(kept.state.messages.last?.rowId, 30)
         XCTAssertTrue(kept.isRunning)
+        // The seam's closure holds this one, which holds the state.
+        hermesWordFirst = nil
         state.besideChatIDs = nil
     }
 
