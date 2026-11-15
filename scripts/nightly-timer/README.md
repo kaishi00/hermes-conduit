@@ -17,9 +17,10 @@ nightly run is dispatched from a timer on an always-on machine instead.
   kaishi00/hermes-conduit with Actions: Read and write and no other
   permission, in `/root/.config/conduit-nightly/token` (mode 600).
 - Backup: Nightly's own cron, at 09:47 UTC, skips itself when Nightly ran on
-  `main` in the last 20 hours by dispatch (its own cron runs don't count), and otherwise runs with a warning that the
-  timer missed. A run titled plain "Nightly" with that warning means the
-  timer is down or the token expired.
+  `main` in the last 20 hours by dispatch (its own cron runs don't count),
+  and otherwise runs with a warning. "The overnight timer ... missed" means
+  the timer is down or the token expired; "Couldn't list Nightly runs" means
+  GitHub's API failed and says nothing about the timer.
 
 ## Install (on the host, as root)
 

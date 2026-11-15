@@ -191,5 +191,70 @@ class NightlyOvernightTests(unittest.TestCase):
         self.assertGreater(int(m.group(2)) * 60 + int(m.group(1)), 8 * 60 + 17)
 
 
+# Records curl's argv and stdin, and answers like GitHub's dispatch route.
+FAKE_CURL = """#!/usr/bin/env bash
+printf '%s\\n' "$@" > "$FAKE_DIR/argv"
+cat > "$FAKE_DIR/stdin"
+out=""
+while [ $# -gt 0 ]; do
+  [ "$1" = "-o" ] && { out="$2"; shift; }
+  shift
+done
+printf '%s' "$out" > "$FAKE_DIR/out_path"
+if [ -n "$FAKE_FAIL" ]; then printf '000'; exit 7; fi
+printf '204'
+"""
+
+
+class NightlyDispatchScriptTests(unittest.TestCase):
+    def _run(self, **extra):
+        """Runs the script against the fake curl and a no-op sleep."""
+        tmp = self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, tmp)
+        bin_dir = os.path.join(tmp, "bin")
+        os.mkdir(bin_dir)
+        curl = os.path.join(bin_dir, "curl")
+        with open(curl, "w") as fh:
+            fh.write(FAKE_CURL)
+        os.chmod(curl, 0o755)
+        sleep = os.path.join(bin_dir, "sleep")
+        with open(sleep, "w") as fh:
+            fh.write("#!/bin/sh\nexit 0\n")
+        os.chmod(sleep, 0o755)
+        token = os.path.join(tmp, "token")
+        with open(token, "w") as fh:
+            fh.write("github_pat_fake123")
+        env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"],
+                   FAKE_DIR=tmp, CONDUIT_NIGHTLY_TOKEN_FILE=token, TMPDIR=tmp, **extra)
+        return subprocess.run(
+            ["sh", os.path.join(TIMER_DIR, "conduit-nightly-dispatch.sh")],
+            env=env, capture_output=True, text=True, timeout=30)
+
+    def test_a_curl_failure_reports_one_000_per_attempt_and_gives_up(self):
+        result = self._run(FAKE_FAIL="1")
+        self.assertEqual(result.returncode, 1)
+        failures = [line for line in result.stderr.splitlines() if "failed:" in line]
+        self.assertEqual(len(failures), 4, result.stderr)
+        for line in failures:
+            self.assertEqual(line.count("000"), 1, line)
+
+    def test_token_goes_to_curl_on_stdin_and_the_response_file_is_removed(self):
+        result = self._run()
+        tmp = self.tmp
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("HTTP 204", result.stdout)
+        with open(os.path.join(tmp, "argv")) as fh:
+            argv = fh.read()
+        with open(os.path.join(tmp, "stdin")) as fh:
+            stdin = fh.read()
+        with open(os.path.join(tmp, "out_path")) as fh:
+            out_path = fh.read()
+        self.assertNotIn("github_pat_fake123", argv)
+        self.assertIn("--config\n-\n", argv)
+        self.assertIn('header = "Authorization: Bearer github_pat_fake123"', stdin)
+        self.assertTrue(out_path)
+        self.assertFalse(os.path.exists(out_path))
+
+
 if __name__ == "__main__":
     unittest.main()
