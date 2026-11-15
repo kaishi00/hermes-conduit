@@ -56,6 +56,15 @@ extension BotModeTests {
         let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
         XCTAssertEqual(BotsHomeWork.preview(snapshot).map(\.ref), ["W2", "W1", "A1"])
         XCTAssertEqual(BotsHomeWork.preview(nil), [])
+        // Three at most, what waits on the user first.
+        var moreResponse = workResponse()
+        var rows = try XCTUnwrap(moreResponse["work"] as? [[String: Any]])
+        rows.append(["ref": "W4", "kind": "workstream", "status": "ready", "title": "Notes",
+                     "session_id": "20261101_w4", "actions": ["send"]])
+        moreResponse["work"] = rows
+        let more = try XCTUnwrap(BotWorkSnapshot(response: moreResponse, profile: "furina"))
+        XCTAssertEqual(more.active.count, 4)
+        XCTAssertEqual(BotsHomeWork.preview(more).map(\.ref), ["W2", "W1", "A1"])
         let off = BotWorkSnapshot(response: ["ok": true, "policy": "off", "work": []], profile: "furina")
         XCTAssertEqual(BotsHomeWork.preview(off), [])
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 1, accessibilitySize: false), .solo)
