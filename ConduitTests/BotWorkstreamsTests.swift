@@ -1039,6 +1039,9 @@ extension BotModeTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         defaults.set(["furina", "atlas"], forKey: BotOrder.storageKey)
+        // Registering saves the registry to the Keychain: keep it off the real one.
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
         let appState = AppState(defaults: defaults, loadSavedConnection: false, dashboardRegistry: SavedDashboardRegistry())
         let id = try XCTUnwrap(appState.resolveDashboardID(forURL: "https://conduit.example.test", registerIfMissing: true))
         XCTAssertEqual(defaults.stringArray(forKey: BotOrder.storageKey(scope: id.uuidString)), ["furina", "atlas"])

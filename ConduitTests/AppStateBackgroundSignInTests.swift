@@ -254,6 +254,33 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertTrue(appState.showLogin, "Nothing saved to sign in with")
     }
 
+    /// The saved dashboards a locked launch couldn't read come back with the
+    /// phone-wide bot order moved to the dashboard they open, as at launch.
+    func testRetryOnScreenMovesThePhoneWideListsToTheRestoredDashboard() {
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        var storedDefaults: UserDefaults?
+        let appState = makeSignedOutAppState(prepare: { defaults in
+            defaults.set(["furina", "atlas"], forKey: BotOrder.storageKey)
+            storedDefaults = defaults
+        })
+        XCTAssertTrue(appState.botOrder.isEmpty, "no dashboard to keep it yet")
+        SavedDashboardRegistryStore.save(SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]))
+        var away = true
+        appState.phoneScreenIsAway = { away }
+        appState.showLogin = true
+
+        away = false
+        appState.handleScenePhase(.background)
+        appState.handleScenePhase(.active)
+
+        XCTAssertEqual(appState.activeDashboardID, dashboard.id)
+        XCTAssertEqual(appState.botOrder.names, ["furina", "atlas"], "the selection's reload reads the moved order")
+        XCTAssertNil(storedDefaults?.object(forKey: BotOrder.storageKey))
+        XCTAssertEqual(
+            storedDefaults?.stringArray(forKey: BotOrder.storageKey(scope: dashboard.id.uuidString)), ["furina", "atlas"]
+        )
+    }
+
     /// An upgrade that ran on a locked phone left the old password unread:
     /// the retry on screen hands it to the dashboard and signs in with it.
     func testRetryOnScreenAdoptsThePasswordALockedUpgradeLeft() {
