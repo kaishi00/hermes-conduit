@@ -1760,6 +1760,11 @@ extension BotModeTests {
         }
         let roster = [bot("atlas", 10), bot("rei", nil), bot("furina", 30), bot("kai", 50, hidden: true), bot("nia", nil)]
         XCTAssertEqual(V2VoiceButton.botsToCall(roster).map(\.name), ["furina", "atlas", "rei", "nia"])
+        // A tap reads the bot from the roster as it is then: its row now,
+        // and none once the bot has gone, so the list can say so.
+        let choice = V2VoiceBotChoice(id: "furina", label: "Furina")
+        XCTAssertEqual(V2VoiceButton.bot(choice, in: [bot("atlas", 10), bot("furina", 70)])?.lastActive, 70)
+        XCTAssertNil(V2VoiceButton.bot(choice, in: [bot("atlas", 10)]))
     }
 
     /// Bots Home's Group Chats probe and the roster ask again on their own
