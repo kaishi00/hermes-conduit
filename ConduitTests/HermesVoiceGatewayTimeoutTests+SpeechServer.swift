@@ -239,6 +239,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(named.model, "gpt-realtime")
         XCTAssertEqual(named.voice, "marin")
         XCTAssertEqual(named.transcriptionModel, "gpt-4o-mini-transcribe")
+        XCTAssertNil(named.ownModel, "a plugin before the own model setting has no switch")
+        XCTAssertEqual(SpeechServerStatus(response: ["configured": true, "own_model": true]).ownModel, true)
 
         let presets = SpeechServerPreset.list(response: ["ok": true, "presets": [
             ["id": "openai-realtime", "name": "OpenAI Realtime", "url": "wss://api.openai.com/v1/realtime",
@@ -452,6 +454,21 @@ extension HermesVoiceGatewayTimeoutTests {
         ], dashboardBaseURL: nil)
         XCTAssertTrue(alone.answersAlone)
         XCTAssertFalse(alone.drivesTurns)
+        // Stage 3: the server's own model answers Live > Local. No switch
+        // from a plugin before the setting; with it on, the plugin runs
+        // every other call's turns, so the server asks for no words.
+        XCTAssertNil(status.ownModel)
+        XCTAssertEqual(alone.ownModel, nil)
+        let off = SpeechServerVoiceStatus(response: [
+            "available": true, "speech_server": ["drive_turns": false, "own_model": false],
+        ], dashboardBaseURL: nil)
+        XCTAssertEqual(off.ownModel, false)
+        XCTAssertFalse(off.drivesTurns)
+        let own = SpeechServerVoiceStatus(response: [
+            "available": true, "speech_server": ["drive_turns": false, "own_model": true],
+        ], dashboardBaseURL: nil)
+        XCTAssertEqual(own.ownModel, true)
+        XCTAssertTrue(own.drivesTurns)
     }
 
     func testSpeechServerSpeechRequestUsesSpeakMode() throws {

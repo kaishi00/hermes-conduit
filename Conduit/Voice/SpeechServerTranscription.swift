@@ -440,6 +440,10 @@ struct SpeechServerStatus: Equatable {
     /// the server only listens and reads aloud. Nil from a plugin before
     /// the setting (0.173.0), which has no switch to show.
     var driveTurns: Bool?
+    /// Whether the server's own model answers Live > Local calls
+    /// (voice.speech_server.own_model). Nil from a plugin before the
+    /// setting (0.175.0).
+    var ownModel: Bool?
     /// The model the address asks for, the voice each session is set to and
     /// the model the server transcribes with (voice.speech_server.model,
     /// .voice, .transcription_model), as set. `namesItsModel` is false from
@@ -492,6 +496,7 @@ struct SpeechServerStatus: Equatable {
         url = (response["url"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         hasKey = response["has_key"] as? Bool ?? false
         driveTurns = response["drive_turns"] as? Bool
+        ownModel = response["own_model"] as? Bool
         namesItsModel = response["model"] != nil
         model = (response["model"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         voice = (response["voice"] as? String).flatMap { $0.isEmpty ? nil : $0 }

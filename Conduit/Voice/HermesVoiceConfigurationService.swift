@@ -490,11 +490,18 @@ final class HermesVoiceConfigurationService: ObservableObject {
         await saveSpeechServer(names: [:], drivesTurns: enabled)
     }
 
+    /// Has the speech server's own model answer Live > Local calls
+    /// (`voice.speech_server.own_model`), written as a Boolean; off removes
+    /// the setting, which is its default.
+    func saveSpeechServerOwnModel(_ enabled: Bool) async -> Bool {
+        await saveSpeechServer(names: [:], drivesTurns: nil, ownModel: enabled)
+    }
+
     /// The speech server's names (`model`, `voice`, `transcription_model`
     /// under voice.speech_server; an empty one is removed) and, when given,
-    /// the Hermes answers switch, in one GET→PUT: a picked preset lands
-    /// whole or not at all.
-    func saveSpeechServer(names: [String: String], drivesTurns: Bool?) async -> Bool {
+    /// the Hermes answers and own model switches, in one GET→PUT: a picked
+    /// preset lands whole or not at all.
+    func saveSpeechServer(names: [String: String], drivesTurns: Bool?, ownModel: Bool? = nil) async -> Bool {
         await ProfileConfigWriteQueue.run { @MainActor [self] () -> Bool in
             let key = "voice.speech_server"
             guard var config = try? await requester.requestJSON(path: profilePath("/api/config"), method: "GET", body: nil) else {
@@ -509,6 +516,9 @@ final class HermesVoiceConfigurationService: ObservableObject {
             }
             if let drivesTurns {
                 server["drive_turns"] = drivesTurns ? true : nil
+            }
+            if let ownModel {
+                server["own_model"] = ownModel ? true : nil
             }
             voice["speech_server"] = server
             config["voice"] = voice

@@ -22,9 +22,10 @@ network.
   one on your network (an LXC, a GPU box, a Mac).
 - For Local Live, the speech server must be able to reach your Hermes
   dashboard the way your phone does (LAN, Tailscale or a public domain),
-  unless it only reads text aloud, or **Hermes answers** is on (see A
-  server with a model of its own): then the plugin runs each turn and the
-  server never asks the dashboard.
+  unless it only reads text aloud, **Hermes answers** is on (see A
+  server with a model of its own), or its own model answers Live > Local:
+  then the plugin runs each turn, or hands the server the call's tools, and
+  the server never asks the dashboard.
 
 ## Two ways to use it
 
@@ -57,6 +58,10 @@ voice:
     # api_key: ...       optional, written only when you set a key
     # api_key_file: ...  optional, added by hand: read the key from a file (plugin 0.47.1+)
     # drive_turns: true  the Hermes answers switch (plugin 0.173+)
+    # own_model: true    its own model answers Live > Local (plugin 0.175+)
+    # model: ...         optional: the model a hosted service is asked for (plugin 0.174+)
+    # voice: ...         optional: the voice it speaks in (plugin 0.174+)
+    # transcription_model: ...  optional: the model that writes its transcripts (plugin 0.174+)
 ```
 
 With only this step, Classic voice listens through your server.
@@ -79,7 +84,8 @@ speaks too** for Classic (step 2), or pick **Local Live** under **Voice mode**
 
 Enter the service's address with `wss://` and its key in step 1. With plugin
 0.174 or later, **Known servers** above the address fills the rest in for the
-services Conduit knows by name (OpenAI Realtime, Qwen Audio Realtime): the
+services Conduit knows by name (OpenAI Realtime, Qwen Audio Realtime, and
+Hugging Face speech-to-speech, which gets only an example address): the
 address, or an example of it to finish with your own workspace, the model,
 a voice, a transcription model and the Hermes answers switch. Tap **Save**
 to keep them. For any other service, type what it needs into **Model**
@@ -154,6 +160,25 @@ each turn itself, which is slower to start talking. On a server that only
 reads text aloud the fast model answers too, from plugin 0.153.0, and its
 replies are read back a sentence at a time like Hermes'. On the Apple
 Watch, Hermes still answers each turn itself.
+
+### The speech server's own model as the fast model
+
+A hosted realtime model can hold the call itself instead of a separate fast
+model, the way Grok Live's model does. With plugin 0.175 or later, turn on
+**The speech server's own model answers** in step 3 of **Live > Local**. The
+plugin then gives the server the call's instructions and tools when the call
+connects: its model listens, answers and speaks, and hands real work to
+Hermes as jobs, with their cards in the call's chat. The call's
+instructions go to that service, with the profile's SOUL.md when **Use
+Hermes personality** is on. It takes the place of the fast model, so none
+needs to be set, and of **Hermes answers** for these calls.
+
+Only Live > Local calls on the phone (and in CarPlay) are answered that way.
+Classic voice, Classic's hands-free option and Apple Watch calls on the same
+server still get Hermes' replies, read aloud by it, as with **Hermes
+answers** on. The server has to take tools and instructions on its session,
+as OpenAI Realtime and Qwen's realtime models do; one that only reads text
+aloud refuses the call and says why.
 
 Without agent mode (step 3 above), Local Live keeps every utterance a
 full Hermes turn. In CarPlay it is listed as Classic, and a call from Hermes

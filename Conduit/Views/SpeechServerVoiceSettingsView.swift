@@ -38,7 +38,13 @@ struct SpeechServerVoiceSettingsView: View {
             }
 
             if let status {
-                if status.drivesTurns, status.available {
+                if status.ownModel == true, status.available {
+                    Label(AppLocalization.string("This server's own model answers Live calls, and the Conduit plugin runs every other call's turns on it, so there's nothing to set up on it.", table: .voice), systemImage: "checkmark.circle.fill")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.green)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("voice.speechServerVoice.ownModel")
+                } else if status.drivesTurns, status.available {
                     Label(AppLocalization.string("Hermes answers on this server, so there's nothing to set up on it. The Conduit plugin runs each turn and has the server read the reply aloud.", table: .voice), systemImage: "checkmark.circle.fill")
                         .scaledFont(.caption)
                         .foregroundStyle(.green)
@@ -111,6 +117,12 @@ struct SpeechServerVoiceSettingsView: View {
         // The switch above (Hermes answers) changes what this section says.
         .onChange(of: service.speechServer?.driveTurns) { _, _ in
             Task { await read() }
+        }
+        // So does Live > Local's own model switch, whose save reads the
+        // status again.
+        .onChange(of: service.speechServerVoice?.ownModel) { _, _ in
+            guard let refreshed = service.speechServerVoice, !refreshed.readFailed else { return }
+            show(refreshed)
         }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.

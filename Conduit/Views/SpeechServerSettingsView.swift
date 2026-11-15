@@ -136,8 +136,9 @@ struct SpeechServerSettingsView: View {
                             set: { on in
                                 driveTurnsDraft = on
                                 // The switch as tapped wins over a picked server's.
+                                let picked = pickedPreset?.drivesTurns
                                 pickedPreset?.drivesTurns = on
-                                Task { await saveDriveTurns(on) }
+                                Task { await saveDriveTurns(on, pickedBefore: picked) }
                             }
                         ))
                         .disabled(!answered || isSaving)
@@ -184,7 +185,8 @@ struct SpeechServerSettingsView: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(testResult.connected ? .green : .orange)
                         .accessibilityIdentifier("voice.speechServer.testResult")
-                    if testResult.connected, testResult.answersAlone == true, status?.driveTurns == false {
+                    if testResult.connected, testResult.answersAlone == true, status?.driveTurns == false, status?.ownModel != true,
+                       presetDrivesTurns != true {
                         Label(AppLocalization.string("This server has a model of its own. Turn on Hermes answers to have Hermes answer your calls on it.", table: .voice), systemImage: "person.wave.2")
                             .scaledFont(.footnote)
                             .foregroundStyle(.orange)
@@ -201,6 +203,30 @@ struct SpeechServerSettingsView: View {
         }
         .onAppear(perform: showKept)
         .task(id: service.profile) { await load() }
+        // Live > Local's own model switch changes what the Test connection
+        // banner should say: the status follows it.
+        .onChange(of: service.speechServerVoice?.ownModel) { _, _ in
+            guard answered else { return }
+            let profile = draftsProfile
+            Task {
+                let loaded = await service.speechServerStatus()
+                guard draftsProfile == profile else { return }
+                // A save on the way reads the status itself when it lands,
+                // against what it sent: a field typed meanwhile stays.
+                guard !isSaving else { return }
+                // A read that fails is asked again on the page's next check.
+                readFailed = loaded.readFailed
+                guard !loaded.readFailed else {
+                    if errorMessage == nil { errorMessage = loaded.reason }
+                    return
+                }
+                // A read that answers takes away an older read's error.
+                errorMessage = nil
+                let before = status
+                status = loaded
+                follow(from: before, to: loaded)
+            }
+        }
         // After a read that failed, the page's next check (its Check again
         // too) asks the host again.
         .onChange(of: service.isLoading) { _, loading in
@@ -310,9 +336,16 @@ struct SpeechServerSettingsView: View {
             errorMessage = loaded.reason
             return
         }
+        let before = status
         status = loaded
-        urlDraft = loaded.url ?? ""
-        showNames(loaded)
+        // A read that answers a page already answered leaves what's typed,
+        // and moves a field nobody touched to the host's newer value.
+        if !answered {
+            urlDraft = loaded.url ?? ""
+            showNames(loaded)
+        } else {
+            follow(from: before, to: loaded)
+        }
         answered = true
         if loaded.namesItsModel, presets.isEmpty {
             let listed = await service.speechServerPresets()
@@ -384,7 +417,7 @@ struct SpeechServerSettingsView: View {
 
     /// The switch saves by itself, like Remove key: true, or the setting
     /// removed, which is off.
-    private func saveDriveTurns(_ on: Bool) async {
+    private func saveDriveTurns(_ on: Bool, pickedBefore: Bool? = nil) async {
         isSaving = true
         // Whatever happened, the switch goes back to what the host has.
         defer {
@@ -396,6 +429,9 @@ struct SpeechServerSettingsView: View {
         let profile = draftsProfile
         let saved = await service.saveSpeechServerDrivesTurns(on)
         if !saved, draftsProfile == profile {
+            // The picked server's setting goes back too, so the switch
+            // shows what the host still has.
+            if let pickedBefore { pickedPreset?.drivesTurns = pickedBefore }
             errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         await refreshStatus(submittedURL: nil, profile: profile)
@@ -423,6 +459,14 @@ struct SpeechServerSettingsView: View {
             errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         return saved
+    }
+
+    /// Every field still showing the old status takes the new one.
+    private func follow(from before: SpeechServerStatus?, to now: SpeechServerStatus) {
+        follow(&urlDraft, was: before?.url, sent: nil, now: now.url)
+        follow(&modelDraft, was: before?.model, sent: nil, now: now.model)
+        follow(&voiceDraft, was: before?.voice, sent: nil, now: now.voice)
+        follow(&transcriptionModelDraft, was: before?.transcriptionModel, sent: nil, now: now.transcriptionModel)
     }
 
     private func follow(_ draft: inout String, was: String?, sent: String?, now: String?) {

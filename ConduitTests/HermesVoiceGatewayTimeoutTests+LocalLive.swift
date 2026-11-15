@@ -202,9 +202,10 @@ extension HermesVoiceGatewayTimeoutTests {
         session.start()
         await localLiveSettle(until: { (sockets().first?.sent.count ?? 0) >= 2 })
         let socket = try XCTUnwrap(sockets().first)
-        XCTAssertEqual(socket.sent.prefix(2).map { $0["type"] as? String }, ["session.update", "conduit.agent"],
-                       "the plugin has the tools before the readiness check")
-        XCTAssertNil((socket.sent[0]["session"] as? [String: Any])?["tools"], "the speech server never sees a tool")
+        XCTAssertEqual(socket.sent.prefix(2).map { $0["type"] as? String }, ["conduit.agent", "session.update"],
+                       "the plugin has the tools before the session is set up and before the readiness check")
+        XCTAssertNil((socket.sent[1]["session"] as? [String: Any])?["tools"],
+                     "the call's own session.update names no tool: the plugin adds them for a server whose model answers")
         socket.deliver(["type": "session.updated"])
         try await passLocalLiveReadiness(socket, session: session)
 

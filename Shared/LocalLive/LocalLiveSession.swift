@@ -3,7 +3,9 @@
 //  Conduit and the Conduit Watch app
 //
 //  One Local Live call through the Hermes host's relay to the user's speech
-//  server. The first frame is the session.update. Once the server confirms
+//  server. The first frame is the session.update, after agent mode's
+//  conduit.agent (so the plugin can put its instructions and tools on a
+//  server whose own model answers). Once the server confirms
 //  it, a readiness check has the server ask for a reply the way every turn
 //  does; the call is ready when that ask reaches this socket as a turn, so
 //  it shows connecting until the whole path works (the server warmed up, its
@@ -371,10 +373,12 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         let socket = openSocket(request)
         let agent = agentSetup?()
         do {
-            try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.sessionUpdate))
-            // Before the readiness check, so the plugin answers every
-            // utterance after it with the fast model.
+            // Before the session.update: a speech server whose own model
+            // answers (voice.speech_server.own_model) gets the instructions
+            // and tools on it. And before the readiness check, so the
+            // plugin answers every utterance after it with the fast model.
             if let agent { try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.agentConfigure(agent))) }
+            try await socket.send(try LocalLiveProtocol.encode(LocalLiveProtocol.sessionUpdate))
         } catch {
             // A refused WebSocket upgrade surfaces here, on the first send.
             let close = await socket.serverClose(within: .milliseconds(400))

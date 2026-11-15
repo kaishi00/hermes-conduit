@@ -49171,6 +49171,252 @@
         }
       }
     },
+    "The speech server's own model answers" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das eigene Modell des Sprachservers antwortet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde el modelo propio del servidor de voz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle du serveur vocal répond lui-même"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model milik server suara yang menjawab"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risponde il modello del server vocale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声サーバー自身のモデルが応答"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 서버의 자체 모델이 응답"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiada własny model serwera mowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O modelo do próprio servidor de voz responde"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечает собственная модель речевого сервера"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucusunun kendi modeli yanıtlar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由语音服务器自己的模型回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由語音伺服器自己的模型回答"
+          }
+        }
+      }
+    },
+    "For a hosted realtime model, such as OpenAI Realtime or Qwen: it holds the call itself with Conduit's instructions and tools, and hands the work to Hermes as jobs. The call's instructions are sent to that server, with this profile's SOUL.md when the personality switch below is on. Classic voice and Apple Watch calls still get Hermes' replies, read aloud by it. Off, your fast model answers." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für ein gehostetes Echtzeitmodell wie OpenAI Realtime oder Qwen: Es führt das Gespräch selbst, mit den Anweisungen und Werkzeugen von Conduit, und gibt die Arbeit als Aufträge an Hermes weiter. Die Anweisungen des Gesprächs werden an diesen Server gesendet, zusammen mit der SOUL.md dieses Profils, wenn der Persönlichkeitsschalter unten an ist. Klassische Sprachanrufe und Anrufe von der Apple Watch erhalten weiterhin die Antworten von Hermes, von ihm vorgelesen. Ist der Schalter aus, antwortet dein schnelles Modell."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para un modelo en tiempo real alojado, como OpenAI Realtime o Qwen: lleva la llamada él mismo, con las instrucciones y herramientas de Conduit, y pasa el trabajo a Hermes como tareas. Las instrucciones de la llamada se envían a ese servidor, junto con el SOUL.md de este perfil cuando el interruptor de personalidad de abajo está activado. La voz clásica y las llamadas del Apple Watch siguen recibiendo las respuestas de Hermes, que el servidor lee en voz alta. Si está desactivado, responde tu modelo rápido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour un modèle temps réel hébergé, comme OpenAI Realtime ou Qwen : il mène l'appel lui-même, avec les instructions et les outils de Conduit, et confie le travail à Hermes sous forme de tâches. Les instructions de l'appel sont envoyées à ce serveur, avec le SOUL.md de ce profil lorsque le réglage de personnalité ci-dessous est activé. La voix classique et les appels depuis l'Apple Watch reçoivent toujours les réponses de Hermes, lues à voix haute par ce serveur. Désactivé, c'est votre modèle rapide qui répond."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk model realtime yang di-hosting, seperti OpenAI Realtime atau Qwen: model itu sendiri yang memegang panggilan, dengan instruksi dan alat dari Conduit, dan menyerahkan pekerjaan ke Hermes sebagai tugas. Instruksi panggilan dikirim ke server itu, beserta SOUL.md profil ini jika sakelar kepribadian di bawah menyala. Suara Klasik dan panggilan dari Apple Watch tetap mendapat balasan Hermes, yang dibacakan oleh server itu. Jika mati, model cepat Anda yang menjawab."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per un modello in tempo reale ospitato, come OpenAI Realtime o Qwen: gestisce la chiamata da sé, con le istruzioni e gli strumenti di Conduit, e passa il lavoro a Hermes sotto forma di attività. Le istruzioni della chiamata vengono inviate a quel server, insieme al SOUL.md di questo profilo quando l'interruttore della personalità qui sotto è attivo. La voce classica e le chiamate da Apple Watch continuano a ricevere le risposte di Hermes, lette ad alta voce dal server. Se è disattivato, risponde il tuo modello veloce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI RealtimeやQwenなどのホスト型リアルタイムモデル向けです。Conduitの指示とツールを使ってモデル自身が通話を進め、作業はジョブとしてHermesに渡します。通話の指示はそのサーバーに送信され、下のパーソナリティのスイッチがオンの場合はこのプロファイルのSOUL.mdも送信されます。クラシック音声とApple Watchの通話では、引き続きHermesの返答をこのサーバーが読み上げます。オフの場合は高速モデルが応答します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI Realtime이나 Qwen 같은 호스팅형 실시간 모델용입니다. Conduit의 지침과 도구로 모델이 직접 통화를 이끌고, 작업은 작업(job)으로 Hermes에 넘깁니다. 통화 지침은 해당 서버로 전송되며, 아래의 성격 스위치가 켜져 있으면 이 프로필의 SOUL.md도 함께 전송됩니다. 클래식 음성과 Apple Watch 통화는 계속 Hermes의 답변을 받고, 이 서버가 읽어 줍니다. 끄면 빠른 모델이 응답합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dla hostowanego modelu czasu rzeczywistego, takiego jak OpenAI Realtime lub Qwen: sam prowadzi rozmowę, korzystając z instrukcji i narzędzi Conduit, a pracę przekazuje Hermesowi jako zadania. Instrukcje rozmowy są wysyłane na ten serwer, razem z plikiem SOUL.md tego profilu, gdy przełącznik osobowości poniżej jest włączony. Głos klasyczny i połączenia z Apple Watch nadal otrzymują odpowiedzi Hermesa, czytane na głos przez ten serwer. Gdy przełącznik jest wyłączony, odpowiada twój szybki model."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para um modelo em tempo real hospedado, como OpenAI Realtime ou Qwen: ele conduz a chamada sozinho, com as instruções e ferramentas do Conduit, e passa o trabalho ao Hermes como tarefas. As instruções da chamada são enviadas a esse servidor, junto com o SOUL.md deste perfil quando a opção de personalidade abaixo está ativada. A voz clássica e as chamadas do Apple Watch continuam recebendo as respostas do Hermes, lidas em voz alta por ele. Desativado, seu modelo rápido responde."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для размещённой модели реального времени, такой как OpenAI Realtime или Qwen: она сама ведёт звонок с инструкциями и инструментами Conduit и передаёт работу Hermes в виде заданий. Инструкции звонка отправляются на этот сервер вместе с SOUL.md этого профиля, если переключатель личности ниже включён. Классический голос и звонки с Apple Watch по-прежнему получают ответы Hermes, которые сервер читает вслух. Если выключено, отвечает ваша быстрая модель."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "OpenAI Realtime veya Qwen gibi barındırılan bir gerçek zamanlı model için: aramayı Conduit'in talimatları ve araçlarıyla kendisi yürütür, işi de görev olarak Hermes'e devreder. Aramanın talimatları o sunucuya gönderilir; aşağıdaki kişilik anahtarı açıksa bu profilin SOUL.md dosyası da gönderilir. Klasik ses ve Apple Watch aramaları yine Hermes'in yanıtlarını alır; yanıtları bu sunucu sesli okur. Kapalıyken hızlı modeliniz yanıtlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "适用于托管的实时模型，例如 OpenAI Realtime 或 Qwen：它使用 Conduit 的指令和工具自行进行通话，并把工作作为任务交给 Hermes。通话的指令会发送到该服务器；如果下方的个性开关已打开，还会发送此配置文件的 SOUL.md。经典语音和 Apple Watch 通话仍由 Hermes 回答，并由它朗读。关闭时，由你的快速模型回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "適用於託管的即時模型，例如 OpenAI Realtime 或 Qwen：它使用 Conduit 的指令和工具自行進行通話，並把工作作為任務交給 Hermes。通話的指令會傳送到該伺服器；如果下方的個性開關已打開，還會傳送此設定檔的 SOUL.md。經典語音和 Apple Watch 通話仍由 Hermes 回答，並由它朗讀。關閉時，由你的快速模型回答。"
+          }
+        }
+      }
+    },
+    "This server's own model answers Live calls, and the Conduit plugin runs every other call's turns on it, so there's nothing to set up on it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bei Live-Anrufen antwortet das eigene Modell dieses Servers, und bei allen anderen Anrufen führt das Conduit-Plugin die Runden darauf aus, dort ist also nichts einzurichten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En las llamadas Live responde el modelo propio de este servidor, y el plugin de Conduit lleva los turnos de todas las demás llamadas en él, así que no hay nada que configurar en él."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le modèle de ce serveur répond aux appels Live, et le plugin Conduit gère les tours de tous les autres appels sur ce serveur, il n'y a donc rien à y configurer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model milik server ini yang menjawab panggilan Live, dan plugin Conduit menjalankan giliran semua panggilan lain di server ini, jadi tidak ada yang perlu diatur di sana."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alle chiamate Live risponde il modello di questo server, e il plugin Conduit gestisce i turni di tutte le altre chiamate su di esso, quindi non c'è nulla da configurare lì."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live通話にはこのサーバー自身のモデルが応答し、それ以外の通話ではConduitプラグインがこのサーバー上で各ターンを進めるため、サーバー側の設定は不要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live 통화에는 이 서버의 자체 모델이 응답하고, 그 밖의 통화는 Conduit 플러그인이 이 서버에서 각 턴을 진행하므로 서버에서 설정할 것이 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "W połączeniach Live odpowiada własny model tego serwera, a tury wszystkich pozostałych połączeń prowadzi na nim wtyczka Conduit, więc nie trzeba na nim niczego ustawiać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O modelo deste servidor responde às chamadas Live, e o plugin do Conduit conduz os turnos de todas as outras chamadas nele, então não há nada para configurar nele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На звонки Live отвечает собственная модель этого сервера, а ходы всех остальных звонков на нём ведёт плагин Conduit, поэтому настраивать на нём нечего."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live aramalarını bu sunucunun kendi modeli yanıtlar, diğer tüm aramaların turlarını ise bu sunucuda Conduit eklentisi yürütür; bu yüzden sunucuda ayarlanacak bir şey yok."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live 通话由此服务器自己的模型回答，其他通话的每一轮对话由 Conduit 插件在此服务器上负责，因此无需在服务器上进行任何设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Live 通話由此伺服器自己的模型回答，其他通話的每一輪對話由 Conduit 外掛在此伺服器上負責，因此無需在伺服器上進行任何設定。"
+          }
+        }
+      }
+    },
     "Ringtone" : {
       "localizations" : {
         "de" : {
