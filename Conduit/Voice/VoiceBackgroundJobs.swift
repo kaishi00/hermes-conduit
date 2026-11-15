@@ -835,6 +835,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private var callbackSyncTask: Task<Void, Never>?
     /// The callback pass still running (a hang-up's settles its watches).
     var callbackSyncInFlight: Task<Void, Never>? { callbackSyncTask }
+    #if DEBUG
+    /// A callback pass that a test holds open, as a hang-up's is on the wire.
+    func holdCallbackSyncForTesting(_ pass: Task<Void, Never>) { callbackSyncTask = pass }
+    #endif
     private var callbackSyncAgain = false
     private var callbackRenewTask: Task<Void, Never>?
     /// What classic voice says first when a call from Hermes opened it.
