@@ -310,6 +310,49 @@ extension GatewayRestartTests {
         XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["bot-runtime"])
         XCTAssertEqual(appState.artifactSources(for: .chat(appState.activeChatArtifactSessionIDs)).map(\.profile),
                        ["atlas"])
+        // Its checklist ticks and card taps go to the bot's store, where its
+        // turns hear them, not the profile in use's (issue 2520).
+        XCTAssertEqual(appState.activeChatStoreProfile, "atlas")
+        appState.activeSessionId = "unlisted"
+        XCTAssertEqual(appState.activeChatStoreProfile, appState.activeProfile)
+    }
+
+    /// A workstream's chat has no row in the chat list either (it's left to
+    /// its bot): open on its bot's profile it still goes by its ids, so its
+    /// checklists tick, its cards' taps go and its Artifacts open (issue
+    /// 2520). A resolved one known only by the plugin's list counts too;
+    /// on another profile it has none, as its store isn't the one in use.
+    func testAWorkstreamsChatFindsItsIDs() throws {
+        let suite = "Artifacts.AppState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let response: [String: Any] = [
+            "ok": true, "policy": "strict", "bot": "Furina",
+            "work": [["ref": "W1", "kind": "workstream", "status": "running", "title": "Login bug",
+                      "session_id": "20261101_w1", "actions": ["send", "stop"]]],
+            "workstream_sessions": ["20261101_w1", "20261031_old"],
+        ]
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")))
+        appState.setActiveProfileForTesting("furina")
+        appState.activeSessionId = "20261101_w1"
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["20261101_w1"])
+        XCTAssertEqual(appState.artifactSources(for: .chat(appState.activeChatArtifactSessionIDs)).map(\.profile),
+                       ["furina"])
+        XCTAssertEqual(appState.activeChatStoreProfile, "furina")
+        appState.activeSessionId = "20261031_old"
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, ["20261031_old"])
+        appState.activeSessionId = "unlisted"
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, [])
+
+        appState.setActiveProfileForTesting("default")
+        appState.activeSessionId = "20261101_w1"
+        XCTAssertEqual(appState.activeChatArtifactSessionIDs, [])
     }
 
     /// A Bot Overview's Artifacts read the bot's whole profile: labelled
