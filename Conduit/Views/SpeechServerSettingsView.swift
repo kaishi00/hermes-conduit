@@ -20,6 +20,8 @@ struct SpeechServerSettingsView: View {
     /// Live > Local's own model switch changed during a save: the page
     /// reads again once the save is done.
     @State private var statusOwed = false
+    /// Counts saves, so a read that a whole save happened during is asked again.
+    @State private var saves = 0
     @State private var isTesting = false
     @State private var testResult: SpeechServerTestResult?
     /// Why the last save or read failed, shown here rather than only at the
@@ -214,6 +216,7 @@ struct SpeechServerSettingsView: View {
         }
         // A switch that landed during a save reads again once it's done.
         .onChange(of: isSaving) { _, saving in
+            if saving { saves += 1 }
             guard !saving, statusOwed else { return }
             statusOwed = false
             // The save's own error, if it had one, stays.
@@ -239,21 +242,29 @@ struct SpeechServerSettingsView: View {
             return
         }
         let profile = draftsProfile
+        let savesBefore = saves
         let loaded = await service.speechServerStatus()
         guard draftsProfile == profile else { return }
-        // A save that started while this read was out reads again itself.
-        guard !isSaving else {
-            statusOwed = true
+        // A save that started while this read was out, even one already
+        // done, may have changed what it answered: read again after it.
+        guard !isSaving, saves == savesBefore else {
+            if isSaving {
+                statusOwed = true
+            } else {
+                Task { await followOwnModel(clearingError: clearingError) }
+            }
             return
         }
-        // A read that fails is asked again on the page's next check.
+        // A read that fails is asked again on the page's next check; one
+        // that answers takes away the error a failed read left.
+        let errorWasRead = readFailed
         readFailed = loaded.readFailed
         guard !loaded.readFailed else {
             if errorMessage == nil { errorMessage = loaded.reason }
             return
         }
-        // A read that answers takes away an older read's error.
-        if clearingError { errorMessage = nil }
+        // A save's own error stays when this read was owed to it.
+        if clearingError || errorWasRead { errorMessage = nil }
         let before = status
         status = loaded
         follow(from: before, to: loaded)
