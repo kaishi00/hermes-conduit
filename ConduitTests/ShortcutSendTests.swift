@@ -235,6 +235,18 @@ extension ScreenQuestionTests {
             XCTAssertEqual(error as? ShortcutSendError, .outOfTime)
         }
         XCTAssertTrue(hermes.submitted.isEmpty)
+
+        // Out of time when the drop is found: the same words, nothing waited for.
+        let late = FakeHermes()
+        late.createErrors = [HermesError.connectionClosed]
+        do {
+            _ = try await sender(late, shortcutChats())
+                .send(shortcutRequest("Buy milk"), deadline: late.now)
+            XCTFail("the run was out of time")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .outOfTime)
+        }
+        XCTAssertEqual(late.reconnects, 0)
     }
 
     /// The two reconnects are the run's, not each step's.
