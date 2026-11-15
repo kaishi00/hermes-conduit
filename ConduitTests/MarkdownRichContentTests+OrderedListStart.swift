@@ -79,6 +79,15 @@ extension MarkdownRichContentPolicyTests {
             .unorderedList(["d"])
         ])
         XCTAssertEqual(MarkdownParser.parse("- a\n - b"), [.unorderedList(["a", "b"])])
+        // Back out of a sub-list, the parent keeps counting even when every
+        // item is written "1.".
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n1. B\n   1. x\n   1. y\n1. C"), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
+            .orderedList(["B"], start: 2),
+            .orderedList(["x", "y"], depth: 1),
+            .orderedList(["C"], start: 3)
+        ])
         // A paragraph between starts over at the left edge.
         XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
             .unorderedList(["a"]),

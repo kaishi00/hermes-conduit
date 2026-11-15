@@ -3601,6 +3601,13 @@ enum MarkdownParser {
         // The indents of the lists open around the current one, outermost
         // first, for nesting a list under the item above it.
         var listIndents: [Int] = []
+        // The next number of the numbered list open at each depth of the
+        // outline, so a parent list picks up after its sub-list.
+        var outlineNumbers: [Int: Int] = [:]
+        func noteOutline(depth: Int, next: Int?) {
+            outlineNumbers = outlineNumbers.filter { $0.key < depth }
+            outlineNumbers[depth] = next
+        }
 
         while index < lines.count {
             let line = lines[index]
@@ -3708,6 +3715,7 @@ enum MarkdownParser {
 
             if unorderedItem(trimmed) != nil {
                 let indent = listIndent(line)
+                if blocks.last?.listDepth == nil { outlineNumbers = [:] }
                 let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
                 var items: [String] = []
                 // An item that is a Desktop card or a preview is the block's (#1522).
@@ -3716,13 +3724,21 @@ enum MarkdownParser {
                       sameListLevel(lines[index], indent: indent),
                       items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
                 blocks.append(.unorderedList(items, depth: depth))
+                noteOutline(depth: depth, next: nil)
                 continue
             }
 
             if orderedItem(trimmed) != nil {
-                let start = orderedNumber(trimmed)
+                var start = orderedNumber(trimmed)
                 let indent = listIndent(line)
+                if blocks.last?.listDepth == nil { outlineNumbers = [:] }
                 let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
+                // Back out of a sub-list, the parent list goes on counting
+                // ("1. A", its sub-list, "1. B" numbers B 2), as one list
+                // with the sub-list inside an item would.
+                if let resumed = outlineNumbers[depth], (blocks.last?.listDepth ?? -1) > depth {
+                    start = resumed
+                }
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
                       sameListLevel(lines[index], indent: indent),
@@ -3740,6 +3756,7 @@ enum MarkdownParser {
                     if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
                 blocks.append(.orderedList(items, start: start, depth: depth))
+                noteOutline(depth: depth, next: start + items.count)
                 continue
             }
 

@@ -231,6 +231,21 @@ extension ChatTypographyTests {
         XCTAssertEqual(bravo.x - alpha.x, step, accuracy: 1, "the sub-list a level in")
     }
 
+    /// A task list keeps its own view; its sub-list joins a prose run and
+    /// still sits an item's gap under it, as the rest of the outline does.
+    @MainActor
+    func testProseRunUnderATaskListSitsAnItemsGapBelow() throws {
+        let source = "- [ ] Alpha task\n  - Bravo sub-item\n  - Charlie sub-item"
+        let window = proseRunWindow(source, joinsProseRuns: true)
+        defer { window.isHidden = true }
+        XCTAssertEqual(proseTextViews(in: window).count, 2, "the task's own view and the sub-list's run")
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let charlie = try XCTUnwrap(origins["Charlie"])
+        XCTAssertEqual(bravo.y - alpha.y, charlie.y - bravo.y, accuracy: 1.5, "an item's gap, not a block's")
+    }
+
     // MARK: - Helpers
 
     /// Where the first line after the one `landmark` starts on begins, in

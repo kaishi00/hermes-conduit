@@ -263,6 +263,24 @@ final class MarkdownLargeDocumentTests: XCTestCase {
         }
     }
 
+    /// A nested list that starts a long reply's chunk copies a line under
+    /// the list it belongs to, as the outline does in one view.
+    func testNestedListStartingAChunkCopiesALineApart() async throws {
+        let paragraphs = (0..<15).map { "Paragraph \($0) " + String(repeating: "filler prose ", count: 600) }
+        let parent = "- Parent " + String(repeating: "long item words ", count: 490)
+        let child = "  - Child " + String(repeating: "short ", count: 80)
+        let source = (paragraphs + [parent + "\n" + child]).joined(separator: "\n\n")
+        guard let prepared = await LargeMarkdownPreparedDocument.prepare(source) else { return XCTFail("preparation failed") }
+        let childChunk = try XCTUnwrap(prepared.chunks.firstIndex { chunk in
+            if case .flow(let blocks) = chunk, blocks.first?.listDepth == 1 { return true }
+            return false
+        }, "the child list must start a chunk of its own")
+        XCTAssertEqual(prepared.chunks[childChunk - 1].lastBlock?.listDepth, 0)
+        XCTAssertEqual(prepared.descriptorsByChunk[childChunk].first?.separatorBefore, "\n")
+        // A paragraph's chunk after a paragraph's stays a blank line apart.
+        XCTAssertEqual(prepared.descriptorsByChunk[1].first?.separatorBefore, "\n\n")
+    }
+
     func testSegmentSlicingMatchesOrdinaryPlan() async throws {
         let source = mixedSoup(targetBytes: 150_000)
         let document = MarkdownParser.parseDocument(source)
