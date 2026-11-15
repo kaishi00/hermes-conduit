@@ -2320,7 +2320,7 @@ buttons) · docs/WIDGETS.md · README.md
 - The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them; two at accessibility text sizes, so the last row still fits. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#2264).
 - Titles and workspace labels are privacy-sensitive, so a locked StandBy redacts them (#550).
 - In the vibrant rendering mode (StandBy at night, HomeView's Night Mode) Conduit-chan's artwork is drawn inverted, so the figure is the light part and its cream backdrop falls away instead of glowing as a square; the Native mark, light on black, is drawn as it is (2026-11-15, #2587, issue 2561).
-- The small size stays one tap that opens Conduit; it shows no chat text, which on HomeView would be in front of the whole household (2026-11-15, #2587, issue 2561).
+- The small size stays one tap that opens Conduit and shows no message text, which on HomeView would be in front of the whole household. It shows the conversation's title unless Hide conversation title is on, which is the choice for a shared HomeView (2026-11-15, #2587, issue 2561).
 
 **Open gaps**
 - No Lock Screen (accessory) size, which issue 1532 called optional.
