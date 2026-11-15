@@ -3673,6 +3673,34 @@ final class OfflineChatCacheTests: XCTestCase {
                        "Once upon a time.")
     }
 
+    /// New Chat follows the chat on screen at the tap; a reply that ends
+    /// before the create's adoption reaches the copy through the on-screen
+    /// branch, which leaves the save to the screen. Leaving the chat keeps
+    /// that copy and saves it (issue 2523's follow-up).
+    func testAReplyEndingBeforeNewChatsAdoptionIsSavedFromTheFollowedCopy() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        XCTAssertNotNil(state.followChatBeingLeft(turnWasRunning: true))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        let settled = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertFalse(settled.isRunning)
+
+        // The create's adoption, while its New Chat is under way.
+        state.newSessionCreationsInFlight += 1
+        state.setActiveSessionState(id: "b")
+        state.newSessionCreationsInFlight -= 1
+        XCTAssertEqual(state.backgroundChats.count, 1, "The adoption keeps the one follow")
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
+    }
+
     /// A runtime id Hermes binds to a followed chat while it's away
     /// (another device resumed it), as the identity index knows it, still
     /// reaches the followed chat, only while the index maps it there.

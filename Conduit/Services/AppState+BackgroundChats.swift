@@ -130,7 +130,21 @@ extension AppState {
         // The chat picked to stay beside the next one is followed whether
         // or not a reply runs in it.
         let staysBeside = keptChatIDs.map { !$0.isDisjoint(with: ids) } == true
-        followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running, staysBeside: staysBeside)
+        // Followed already by a New Chat under way (it follows the chat
+        // before its create, and the create's adoption leaves it again):
+        // that copy has taken every event since and keeps the chat's own
+        // title, where the screen's rows stopped at the create (issue
+        // 2523). A reply that ended while the chat was still on screen took
+        // the on-screen branch, which leaves the save to the screen; the
+        // copy is the complete one, so it's saved now that the chat is
+        // left. Any other leave, and the chat kept beside, takes a fresh
+        // copy of what's on screen, since what was sent there reached only
+        // the screen.
+        if !staysBeside, newSessionCreationsInFlight > 0, let chat = followedChat(answering: ids) {
+            if !chat.isRunning { saveBackgroundChatCopy(chat) }
+        } else {
+            followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running, staysBeside: staysBeside)
+        }
         // One that couldn't be followed (a saved copy, a room) isn't beside.
         closeBesideChatWithoutItsChat()
     }
