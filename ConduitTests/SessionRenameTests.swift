@@ -645,6 +645,37 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertTrue(appState.backgroundChats.isEmpty, "No chat started: the one on screen isn't left")
     }
 
+    /// A lone New Chat that fails while a followed chat's open is still
+    /// landing (the turn reads synchronizing, the copy on screen) leaves the
+    /// follow alone: the open still relies on it if it fails or is overtaken.
+    func testAFailedNewChatDuringAnOpenKeepsTheFollow() async {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.savedDashboardRegistry.activeDashboardID = UUID()
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story"), makeSession(id: "b", alternateIDs: [], title: "Other")]
+        appState.widgetSessionCreatorOverride = { _, _ in throw URLError(.notConnectedToInternet) }
+        appState.setActiveSessionState(id: "a")
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        appState.turnState = .running
+        appState.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        appState.setActiveSessionState(id: "b")
+        appState.messages = []
+        appState.clearStreamingText()
+        appState.turnState = .idle
+        guard let followed = appState.followedChat(answering: ["a"]) else {
+            return XCTFail("Chat a is followed once left mid-reply")
+        }
+
+        // Opening a again: its copy shows while the open lands.
+        appState.setActiveSessionState(id: "a")
+        appState.messages = []
+        XCTAssertTrue(appState.presentBackgroundChat(followed, openedAs: "a"))
+        appState.turnState = .synchronizing
+
+        await appState.createNewSession()
+        XCTAssertEqual(appState.activeSessionId, "a")
+        XCTAssertNotNil(appState.followedChat(answering: ["a"]), "The open still landing keeps its follow")
+    }
+
     // MARK: - A new chat in the list (issue 1454)
 
     func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {
