@@ -221,6 +221,42 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
         state.sessions = [pinnedTestSession("after the switch")]
         XCTAssertEqual(sent, 2)
+
+        // The window crosses the split threshold during a pop's wait:
+        // nothing slides any more, so what it missed draws then.
+        sent = 0
+        let covered = V2ListVisibility(tabActive: true, covered: true, split: false)
+        let popped = V2ListVisibility(tabActive: true, covered: false, split: false)
+        updates.follow(covered, from: popped)
+        state.sessions = [pinnedTestSession("under the chat")]
+        updates.follow(popped, from: covered)
+        XCTAssertEqual(updates.revealDelay, V2ShownUpdates.popSlide)
+        XCTAssertEqual(sent, 0)
+        updates.follow(V2ListVisibility(tabActive: true, covered: false, split: true), from: popped)
+        XCTAssertEqual(sent, 1, "a split change during the wait kept waiting")
+        settle()
+        XCTAssertEqual(sent, 1)
+    }
+
+    /// A row compares on what it shows: the list's re-run with new
+    /// closures leaves it be; its item or project title changing redraws it.
+    @MainActor
+    func testChatsRowComparesOnWhatItShows() {
+        func row(_ item: V2ChatsListItem, project: String? = nil, renamed: @escaping (SessionSummary) -> Void = { _ in }) -> V2ChatsRow {
+            V2ChatsRow(item: item, projectTitle: project, profileBadge: { _ in nil }, onRename: renamed,
+                       onDelete: { _ in }, onReorderPinned: { _ in }, setExpanded: { _, _ in })
+        }
+        let parent = pinnedTestSession("parent")
+        let child = pinnedTestSession("child")
+        let nest = V2ChatsListItem(id: "parent", kind: .session(SessionNesting.Node(
+            session: parent, children: [SessionNesting.Node(session: child, children: [])])))
+        var renames = 0
+        XCTAssertEqual(row(nest), row(nest, renamed: { _ in renames += 1 }), "new closures redrew the row")
+        XCTAssertNotEqual(row(nest), row(nest, project: "Conduit"))
+        let retitledChild = V2ChatsListItem(id: "parent", kind: .session(SessionNesting.Node(
+            session: parent, children: [SessionNesting.Node(session: pinnedTestSession("child", title: "Renamed"), children: [])])))
+        XCTAssertNotEqual(row(nest), row(retitledChild), "a child's change left the row as it was")
+        XCTAssertNotEqual(row(.leaf(parent)), row(.leaf(pinnedTestSession("parent", title: "Renamed"))))
     }
 
     /// Only a pop on the shown tab waits out a slide: a tab switch, or the
@@ -228,7 +264,7 @@ final class SidebarLayoutTests: XCTestCase {
     /// slides nothing.
     @MainActor
     func testOnlyAPopUncoveringTheChatsListCountsAsAPop() {
-        typealias Visibility = V2ChatsView.Visibility
+        typealias Visibility = V2ListVisibility
         let covered = Visibility(tabActive: true, covered: true, split: false)
         XCTAssertTrue(Visibility(tabActive: true, covered: false, split: false).isPop(from: covered))
         XCTAssertFalse(Visibility(tabActive: true, covered: false, split: true).isPop(from: covered),

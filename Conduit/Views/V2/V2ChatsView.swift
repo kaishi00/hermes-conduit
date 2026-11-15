@@ -458,24 +458,8 @@ struct V2ChatsView: View, Equatable {
     private var isShown: Bool { visibility.isShown }
 
     /// What shows the list: its tab, and nothing pushed over it.
-    struct Visibility: Equatable {
-        var tabActive: Bool
-        var covered: Bool
-        /// The list beside the chat (a wide window, the list not hidden):
-        /// a change uncovers or covers it without a slide.
-        var split: Bool
-        var isShown: Bool { tabActive && !covered }
-
-        /// Uncovered by a pop on the shown tab: the chat slides off it.
-        /// A tab switch, or the window widening or the list's toggle
-        /// putting it beside the chat, shows it with nothing sliding.
-        func isPop(from was: Visibility) -> Bool {
-            was.covered && !covered && tabActive && was.split == split
-        }
-    }
-
-    private var visibility: Visibility {
-        Visibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
+    private var visibility: V2ListVisibility {
+        V2ListVisibility(tabActive: shell.isTabActive, covered: shell.isRootCovered, split: shell.isSplit)
     }
 
     /// No chat covers the list: none is open, or a wide window shows the
@@ -610,10 +594,7 @@ struct V2ChatsView: View, Equatable {
         }
         .onChange(of: visibility, initial: true) { was, now in
             let shown = now.isShown
-            // Shown by a pop, the list waits out the slide; by a tab
-            // switch or a split change, nothing slides, so it draws at once.
-            updates.revealDelay = now.isPop(from: was) ? V2ShownUpdates.popSlide : 0
-            updates.isShown = shown
+            updates.follow(now, from: was)
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
             // focus back to the field on the way back, over the results.
@@ -2395,7 +2376,7 @@ struct V2ChatsListItem: Identifiable, Equatable {
 
 /// One Chats list row. It works out its own dot, status and preview, so
 /// only the rows on screen do.
-private struct V2ChatsRow: View, Equatable {
+struct V2ChatsRow: View, Equatable {
     /// The list's updates (`V2ShownUpdates`): a row under a pushed chat
     /// waits with the list, and redraws with it whatever its parent does.
     @EnvironmentObject private var updates: V2ShownUpdates
@@ -2421,6 +2402,24 @@ private struct V2ChatsRow: View, Equatable {
     /// as the pop's finger lifted, the rows held its first frame
     /// (iPhone 16 Pro Max, 2026-11-15). The closures write the list's own
     /// state, the same storage whichever render made them.
+    init(
+        item: V2ChatsListItem,
+        projectTitle: String?,
+        profileBadge: @escaping (SessionSummary) -> V2ProfileBadge?,
+        onRename: @escaping (SessionSummary) -> Void,
+        onDelete: @escaping (SessionSummary) -> Void,
+        onReorderPinned: @escaping (SessionSummary) -> Void,
+        setExpanded: @escaping (String, Bool) -> Void
+    ) {
+        self.item = item
+        self.projectTitle = projectTitle
+        self.profileBadge = profileBadge
+        self.onRename = onRename
+        self.onDelete = onDelete
+        self.onReorderPinned = onReorderPinned
+        self.setExpanded = setExpanded
+    }
+
     nonisolated static func == (lhs: V2ChatsRow, rhs: V2ChatsRow) -> Bool {
         lhs.item == rhs.item && lhs.projectTitle == rhs.projectTitle
     }
