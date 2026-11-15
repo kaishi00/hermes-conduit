@@ -435,11 +435,10 @@ enum MarkdownLargeChunkPlanner {
     /// piece stays within the chunk target. Heading text is small by nature
     /// but shares the paragraph fallback for completeness.
     ///
-    /// Ordered lists: only the FIRST chunk of a split list keeps the real
-    /// `.orderedList` rendering; continuation groups render as paragraphs
-    /// with the ordinal baked into the text ("7. …") so numbering never
-    /// restarts at 1. The baked-number styling differs from the styled list
-    /// marker — a pathological-only formatting tradeoff.
+    /// Ordered lists: each chunk of a split list is a list starting at its
+    /// first item's number ("7."), so numbering never restarts at 1. Only a
+    /// single item too big for a chunk is split into paragraphs, its
+    /// ordinal written into the first one's text.
     private static func splitOversized(block: MarkdownBlock) -> [MarkdownLargeChunk] {
         switch block {
         case .unorderedList(let items):
@@ -463,20 +462,15 @@ enum MarkdownLargeChunkPlanner {
         var group: [String] = []
         var groupStartIndex = 0
         var groupBytes = 0
-        var emittedFirstGroup = false
 
         func flush() {
             guard !group.isEmpty else { return }
-            if ordered && emittedFirstGroup {
-                // Continuation of an ordered list: bake the real ordinals.
-                let paragraphs = group.enumerated().map { offset, item in
-                    MarkdownBlock.paragraph("\(start + groupStartIndex + offset). \(taskStripped(item))")
-                }
-                chunks.append(.flow(blocks: paragraphs))
-            } else {
-                chunks.append(.flow(blocks: [ordered ? .orderedList(group, start: start) : .unorderedList(group)]))
-                emittedFirstGroup = true
-            }
+            // A continuation of an ordered list starts at its first item's
+            // number, so numbering never restarts at 1 and every chunk keeps
+            // the list's marker column.
+            chunks.append(.flow(blocks: [
+                ordered ? .orderedList(group, start: start + groupStartIndex) : .unorderedList(group)
+            ]))
             group = []
             groupBytes = 0
         }
@@ -484,13 +478,9 @@ enum MarkdownLargeChunkPlanner {
         for (index, item) in items.enumerated() {
             let bytes = item.utf8.count + 32 // marker/separator allowance
             if bytes > target {
-                // One pathologically huge item: its first piece keeps the
-                // list semantics (or the baked ordinal); continuations are
-                // plain paragraphs. For ordered lists the oversized item
-                // consumes the "first group" slot so a later normal group
-                // bakes its ordinals instead of restarting at 1.
+                // One pathologically huge item: its pieces are paragraphs,
+                // each with its ordinal or task marker in the text.
                 flush()
-                if ordered { emittedFirstGroup = true }
                 groupStartIndex = index + 1
                 let task = MarkdownParser.taskItem(item)
                 let baseText = task?.text ?? item
@@ -514,10 +504,6 @@ enum MarkdownLargeChunkPlanner {
         }
         flush()
         return chunks
-    }
-
-    private static func taskStripped(_ item: String) -> String {
-        MarkdownParser.taskItem(item)?.text ?? item
     }
 
     private static func splitQuoteLines(_ lines: [MarkdownQuoteLine]) -> [MarkdownLargeChunk] {

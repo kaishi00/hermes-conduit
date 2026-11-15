@@ -822,7 +822,9 @@ struct LargeFlowChunkView: View {
                 lineSpacing: 4,
                 linkColor: usesAccentSurface ? .white : .link,
                 selectionCoordinator: selectionCoordinator,
-                selectionSegment: selectionSegment
+                selectionSegment: selectionSegment,
+                // Lists and quotes carry their hanging indents.
+                keepsParagraphStyles: true
             )
             .frame(maxWidth: .infinity, alignment: .leading)
         } else {

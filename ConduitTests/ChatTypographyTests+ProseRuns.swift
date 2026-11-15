@@ -123,7 +123,80 @@ extension ChatTypographyTests {
         }
     }
 
+    /// A reply of only prose draws as one text view (the flow text, not a
+    /// run): its list items and quote lines hang their marker in a gutter,
+    /// and every wrapped line starts under the text, not at the left edge
+    /// under the marker.
+    @MainActor
+    func testFlowReplyHangsListAndQuoteMarkers() throws {
+        let source = """
+        Alpha paragraph.
+
+        - Bravo item is long enough that it wraps onto another line in the chat column at this width, and onto a third line as well if it can
+        - Charlie item
+
+        3. Delta item is long enough that it wraps onto another line in the chat column at this width as well, then some more words
+        4. Echo item
+
+        > Foxtrot quote is long enough that it wraps onto another line in the chat column at this width as well, and then a few words more
+        """
+        let window = proseRunWindow(source, joinsProseRuns: false)
+        defer { window.isHidden = true }
+        let textViews = proseTextViews(in: window)
+        XCTAssertEqual(textViews.count, 1, "a prose-only reply is one text view")
+        let textView = try XCTUnwrap(textViews.first)
+        let origins = landmarkOrigins(["Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot"], in: window)
+        let alpha = try XCTUnwrap(origins["Alpha"])
+        let bravo = try XCTUnwrap(origins["Bravo"])
+        let delta = try XCTUnwrap(origins["Delta"])
+        let foxtrot = try XCTUnwrap(origins["Foxtrot"])
+        XCTAssertGreaterThan(bravo.x, alpha.x + 10, "a bullet's text starts past its gutter")
+        XCTAssertEqual(try XCTUnwrap(origins["Charlie"]).x, bravo.x, accuracy: 1)
+        XCTAssertGreaterThan(delta.x, bravo.x, "a number's gutter is wider than a bullet's")
+        XCTAssertEqual(try XCTUnwrap(origins["Echo"]).x, delta.x, accuracy: 1)
+
+        // Each wrapped line starts where its item's text does.
+        for (landmark, origin) in [("Bravo", bravo), ("Delta", delta), ("Foxtrot", foxtrot)] {
+            let wrapped = try XCTUnwrap(
+                firstWrappedLineOrigin(after: landmark, in: textView),
+                "\(landmark) never wrapped at this width"
+            )
+            XCTAssertEqual(wrapped.x, origin.x, accuracy: 1, "\(landmark)'s wrapped line went back to the edge")
+        }
+
+        // Copy keeps the markers' spaces.
+        let copied = MarkdownProseRun.copyableText(try XCTUnwrap(textView.attributedText)).string
+        XCTAssertTrue(copied.contains("• Bravo item"), copied)
+        XCTAssertTrue(copied.contains("\n• Charlie item\n\n3. Delta"), copied)
+    }
+
     // MARK: - Helpers
+
+    /// Where the first line after the one `landmark` starts on begins, in
+    /// window points, within the same paragraph.
+    @MainActor
+    private func firstWrappedLineOrigin(after landmark: String, in textView: UITextView) -> CGPoint? {
+        textView.layoutIfNeeded()
+        let text = (textView.text ?? "") as NSString
+        let location = text.range(of: landmark).location
+        guard location != NSNotFound,
+              let start = textView.position(from: textView.beginningOfDocument, offset: location)
+        else { return nil }
+        let firstLine = textView.caretRect(for: start).minY
+        let paragraphEnd = NSMaxRange(text.paragraphRange(for: NSRange(location: location, length: 0)))
+        for offset in (location + 1)..<paragraphEnd {
+            guard let position = textView.position(from: textView.beginningOfDocument, offset: offset),
+                  let end = textView.position(from: position, offset: 1),
+                  let glyph = textView.textRange(from: position, to: end),
+                  text.character(at: offset) != 0x20
+            else { continue }
+            let rect = textView.firstRect(for: glyph)
+            if rect.minY > firstLine + 4 {
+                return textView.convert(CGPoint(x: rect.minX, y: rect.minY), to: nil)
+            }
+        }
+        return nil
+    }
 
     @MainActor
     private func proseRunWindow(_ source: String, joinsProseRuns: Bool) -> UIWindow {

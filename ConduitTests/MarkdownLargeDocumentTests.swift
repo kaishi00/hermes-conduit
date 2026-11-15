@@ -1226,8 +1226,9 @@ extension MarkdownLargeDocumentTests {
                       "item text must survive splitting")
     }
 
-    // Ordered-list continuation keeps ordinals (baked) instead of
-    // restarting at 1.
+    // Ordered-list continuation keeps its ordinals instead of restarting
+    // at 1: each continuation chunk is a list starting at its first item's
+    // number.
     func testOrderedListContinuationPreservesOrdinals() async {
         let items = (1...900).map { "item \($0) \(String(repeating: "text ", count: 12))" }
         let source = items.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n")
@@ -1238,34 +1239,25 @@ extension MarkdownLargeDocumentTests {
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(parsed)])
         XCTAssertGreaterThan(chunks.count, 1, "the list must split across chunks")
 
-        var sawListMarker = false
-        var bakedOrdinals: [Int] = []
+        var starts: [Int] = []
+        var next = 1
         for chunk in chunks {
             guard case .flow(let blocks) = chunk else { continue }
             for block in blocks {
                 switch block {
-                case .orderedList:
-                    XCTAssertFalse(sawListMarker, "only the first chunk may render as a real ordered list")
-                    sawListMarker = true
-                case .paragraph(let text):
-                    if let ordinal = Int(text.prefix { $0.isNumber }) {
-                        bakedOrdinals.append(ordinal)
-                    }
+                case .orderedList(let group, let start):
+                    XCTAssertEqual(start, next, "a continuation starts where the last chunk stopped")
+                    starts.append(start)
+                    next = start + group.count
+                case .paragraph:
+                    XCTFail("continuations stay lists, keeping the marker column")
                 default: break
                 }
             }
         }
-        // Continuation ordinals MUST exist (the test cannot silently pass
-        // when the planner never bakes any) and must continue from where
-        // the list chunk stopped, never restarting at 1.
-        XCTAssertFalse(bakedOrdinals.isEmpty, "split ordered lists must bake continuation ordinals")
-        if let first = bakedOrdinals.first {
-            XCTAssertGreaterThan(first, 1, "continuation numbering must not restart at 1")
-        }
-        // Ordinals are strictly increasing across continuation chunks (no
-        // duplicates either — sorted-equality alone would accept "2, 2, 3").
-        XCTAssertEqual(bakedOrdinals, Array(Set(bakedOrdinals)).sorted())
-        XCTAssertEqual(bakedOrdinals.count, Set(bakedOrdinals).count, "ordinals must not repeat")
+        XCTAssertGreaterThan(starts.count, 1, "split ordered lists must continue in later chunks")
+        XCTAssertEqual(starts.first, 1)
+        XCTAssertEqual(next, 901)
     }
 
     // Case 4: many/large reference definitions -> per-chunk parse input
@@ -1897,24 +1889,22 @@ extension MarkdownLargeDocumentTests {
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(items)])
         XCTAssertGreaterThan(chunks.count, 1)
 
-        var orderedListBlocks = 0
+        var lists: [MarkdownBlock] = []
         var bakedOrdinals: [Int] = []
         for chunk in chunks {
             guard case .flow(let blocks) = chunk else { continue }
             for block in blocks {
-                if case .orderedList = block { orderedListBlocks += 1 }
+                if case .orderedList = block { lists.append(block) }
                 if case .paragraph(let text) = block,
                    let ordinal = Int(text.prefix { $0.isNumber }) {
                     bakedOrdinals.append(ordinal)
                 }
             }
         }
-        XCTAssertEqual(orderedListBlocks, 0,
-                       "an oversized FIRST item consumes the list slot; continuations must bake ordinals")
-        XCTAssertFalse(bakedOrdinals.isEmpty, "continuation ordinals must be baked")
+        XCTAssertFalse(bakedOrdinals.isEmpty, "the oversized item's pieces carry its ordinal")
         XCTAssertEqual(bakedOrdinals.first, 1, "the first item keeps its ordinal")
-        XCTAssertTrue(bakedOrdinals.contains(2) && bakedOrdinals.contains(3),
-                      "normal following items continue numbering (got \(bakedOrdinals))")
+        XCTAssertEqual(lists, [.orderedList(["normal one", "normal two"], start: 2)],
+                       "normal following items continue numbering as a list")
     }
 
     // Case 11: a source swap clears stale prepared content immediately.

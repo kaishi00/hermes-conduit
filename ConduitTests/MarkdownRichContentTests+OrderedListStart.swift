@@ -41,14 +41,17 @@ extension MarkdownRichContentPolicyTests {
         ])
     }
 
-    func testOrderedListDrawsFromItsStart() {
-        let drawn = MarkdownSelectionFormatter.attributedText(
+    func testOrderedListDrawsFromItsStart() throws {
+        let drawn = try XCTUnwrap(MarkdownSelectionFormatter.attributedText(
             for: MarkdownParser.parse("7. seven\n8. eight"),
             foregroundStyle: .primary,
             usesAccentSurface: false,
             newestCharacterOpacities: []
-        )?.string ?? ""
-        XCTAssertEqual(drawn, "7. seven\n8. eight")
+        ))
+        // The marker hangs in its gutter, a tab from the text, and copies
+        // with a space.
+        XCTAssertEqual(drawn.string, "7.\tseven\n8.\teight")
+        XCTAssertEqual(MarkdownProseRun.copyableText(drawn).string, "7. seven\n8. eight")
     }
 
     @MainActor
@@ -68,23 +71,28 @@ extension MarkdownRichContentPolicyTests {
         let items = (0..<900).map { "item \($0) \(String(repeating: "text ", count: 12))" }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: [.orderedList(items, start: 7)])
         XCTAssertGreaterThan(chunks.count, 1, "the list must split across chunks")
-        var firstGroup: [String] = []
-        var bakedOrdinals: [Int] = []
+        var groups: [(start: Int, count: Int)] = []
         for case .flow(let blocks) in chunks {
             for block in blocks {
                 switch block {
                 case .orderedList(let group, let start):
-                    XCTAssertEqual(start, 7)
-                    firstGroup = group
+                    groups.append((start, group.count))
                 case .paragraph(let text):
-                    if let ordinal = Int(text.prefix { $0.isNumber }) { bakedOrdinals.append(ordinal) }
+                    XCTFail("a continuation is a list, not a paragraph: \(text.prefix(20))")
                 default: break
                 }
             }
         }
-        XCTAssertFalse(firstGroup.isEmpty)
-        // Continuations carry on from 7 + the first group, one by one.
-        XCTAssertEqual(bakedOrdinals, Array((7 + firstGroup.count)..<(7 + items.count)))
+        XCTAssertGreaterThan(groups.count, 1)
+        XCTAssertEqual(groups.first?.start, 7)
+        // Each continuation starts where the chunk before it stopped, so the
+        // list keeps its marker column and counts on one by one.
+        var next = 7
+        for group in groups {
+            XCTAssertEqual(group.start, next)
+            next += group.count
+        }
+        XCTAssertEqual(next, 7 + items.count)
     }
 
     func testOversizedFirstItemBakesItsStart() {
@@ -95,6 +103,11 @@ extension MarkdownRichContentPolicyTests {
             return blocks.compactMap { if case .paragraph(let text) = $0 { return text }; return nil }
         }
         XCTAssertTrue(texts.first?.hasPrefix("7. ") == true, "\(texts.first ?? "")")
-        XCTAssertTrue(texts.contains { $0.hasPrefix("8. normal") }, "\(texts)")
+        // The items after it carry on as a list from the next number.
+        let lists = chunks.flatMap { chunk -> [MarkdownBlock] in
+            guard case .flow(let blocks) = chunk else { return [] }
+            return blocks.filter { if case .orderedList = $0 { return true }; return false }
+        }
+        XCTAssertEqual(lists, [.orderedList(["normal"], start: 8)])
     }
 }

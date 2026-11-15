@@ -128,7 +128,9 @@ struct MarkdownText: View {
                     font: ChatTypography.font(for: .body, appearance: chatTextSize),
                     textColor: usesAccentSurface ? .white : UIColor(foregroundStyle),
                     lineSpacing: 4,
-                    linkColor: usesAccentSurface ? .white : .link
+                    linkColor: usesAccentSurface ? .white : .link,
+                    // Lists and quotes carry their hanging indents.
+                    keepsParagraphStyles: true
                 )
                 .frame(maxWidth: .infinity, alignment: .leading)
             } else if rendering.needsRichBounding {
@@ -728,15 +730,24 @@ enum MarkdownSelectionFormatter {
                 if index > 0 {
                     result.append(NSAttributedString(string: "\n"))
                 }
+                let lineStart = result.length
                 let marker = String(repeating: "│ ", count: max(line.depth, 1))
-                result.append(NSAttributedString(
-                    string: marker,
-                    attributes: [
-                        .font: bodyFont,
-                        .foregroundColor: quoteColor
-                    ]
-                ))
+                let markerAttributes: [NSAttributedString.Key: Any] = [
+                    .font: bodyFont,
+                    .foregroundColor: quoteColor
+                ]
+                result.append(NSAttributedString(string: marker, attributes: markerAttributes))
                 result.append(inline(line.text, references: references, font: quoteFont, textColor: quoteColor, linkColor: linkColor))
+                // A quote line's wrapped lines start under its text, as a
+                // list item's do, not under its bar.
+                let style = NSMutableParagraphStyle()
+                style.lineSpacing = MarkdownProseRun.Spacing.paragraphLineSpacing
+                style.headIndent = ceil((marker as NSString).size(withAttributes: markerAttributes).width)
+                result.addAttribute(
+                    .paragraphStyle,
+                    value: style,
+                    range: NSRange(location: lineStart, length: result.length - lineStart)
+                )
             }
             return result
 
@@ -757,27 +768,33 @@ enum MarkdownSelectionFormatter {
         chatTextSize: ChatTextAppearance
     ) -> NSAttributedString {
         let result = NSMutableAttributedString()
-        let markerFont = bodyFont.withTraits(.traitBold)
+        let markerFont = MarkdownProseRun.listMarkerFont(chatTextSize: chatTextSize)
 
         for (index, item) in items.enumerated() {
             if index > 0 {
                 result.append(NSAttributedString(string: "\n"))
             }
+            let itemStart = result.length
 
+            // A hanging indent, as a prose run draws its lists: the marker
+            // in a gutter, and the item's wrapped lines under its text
+            // rather than back at the left edge.
             let task = MarkdownParser.taskItem(item)
             let marker: String
             if let task {
-                marker = task.complete ? "☑ " : "☐ "
+                marker = task.complete ? "☑" : "☐"
             } else {
-                marker = ordered ? "\(start + index). " : "• "
+                marker = ordered ? "\(start + index)." : "•"
             }
-            result.append(NSAttributedString(
-                string: marker,
-                attributes: [
-                    .font: markerFont,
-                    .foregroundColor: markerColor
-                ]
-            ))
+            let (prefix, style) = MarkdownProseRun.listItemLayout(
+                marker: marker,
+                ordered: ordered,
+                markerFont: markerFont,
+                markerColor: markerColor,
+                lineSpacing: MarkdownProseRun.Spacing.paragraphLineSpacing,
+                chatTextSize: chatTextSize
+            )
+            result.append(prefix)
             result.append(inline(
                 task?.text ?? item,
                 references: references,
@@ -785,6 +802,11 @@ enum MarkdownSelectionFormatter {
                 textColor: textColor,
                 linkColor: linkColor
             ))
+            result.addAttribute(
+                .paragraphStyle,
+                value: style,
+                range: NSRange(location: itemStart, length: result.length - itemStart)
+            )
         }
         return result
     }

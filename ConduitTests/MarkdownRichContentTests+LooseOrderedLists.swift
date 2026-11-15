@@ -86,7 +86,7 @@ extension MarkdownRichContentPolicyTests {
             foregroundStyle: .primary,
             usesAccentSurface: false,
             newestCharacterOpacities: []
-        )?.string ?? ""
+        ).map { MarkdownProseRun.copyableText($0).string } ?? ""
         XCTAssertTrue(drawn.hasPrefix("1. Reference 1\n2. Reference 2"), drawn)
         XCTAssertTrue(drawn.hasSuffix("15. Reference 15"), drawn)
     }
