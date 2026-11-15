@@ -122,8 +122,14 @@ extension AppState {
         // Followed already (New Chat follows the chat before its create,
         // and the create's adoption leaves it again): that copy has taken
         // every event since and keeps the chat's own title, where the
-        // screen's rows stopped at the create (issue 2523).
-        guard followedChat(answering: ids) == nil else { return }
+        // screen's rows stopped at the create (issue 2523). A reply that
+        // ended while the chat was still on screen took the on-screen
+        // branch, which leaves the save to the screen; the copy is the
+        // complete one, so it's saved now that the chat is left.
+        if let chat = followedChat(answering: ids) {
+            if !chat.isRunning { saveBackgroundChatCopy(chat) }
+            return
+        }
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running)
     }
 
