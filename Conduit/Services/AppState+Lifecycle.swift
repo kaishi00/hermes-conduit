@@ -237,7 +237,7 @@ extension AppState {
     @MainActor
     final class CatalogReadInFlight {
         let key: CatalogReadKey
-        private var waiters: [CheckedContinuation<ProfileCatalogLoad, Error>] = []
+        private var waiters: [UUID: CheckedContinuation<ProfileCatalogLoad, Error>] = [:]
 
         init(key: CatalogReadKey) {
             self.key = key
@@ -245,12 +245,29 @@ extension AppState {
 
         var joinedReads: Int { waiters.count }
 
+        /// Waits for the read's answer. A cancelled joiner stops waiting
+        /// with CancellationError; the read goes on for the others.
         func join() async throws -> ProfileCatalogLoad {
-            try await withCheckedThrowingContinuation { waiters.append($0) }
+            let id = UUID()
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        waiters[id] = continuation
+                    }
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.leave(id) }
+            }
+        }
+
+        private func leave(_ id: UUID) {
+            waiters.removeValue(forKey: id)?.resume(throwing: CancellationError())
         }
 
         func finish(_ result: Result<ProfileCatalogLoad, Error>) {
-            let waiting = waiters
+            let waiting = waiters.values
             waiters.removeAll()
             for waiter in waiting { waiter.resume(with: result) }
         }

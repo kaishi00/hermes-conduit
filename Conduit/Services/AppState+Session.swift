@@ -708,6 +708,10 @@ extension AppState {
                         // Tried again 5 s from now, with or without
                         // another signal or poll.
                         self.catalogChangeSignal.noteReadFailed(at: self.chatSyncNow())
+                        // A wait set while this read was out (a signal meanwhile)
+                        // counted from before the failure: time it from now.
+                        self.catalogChangeReadTask?.cancel()
+                        self.catalogChangeReadTask = nil
                         self.readPendingCatalogChange()
                     }
                 }

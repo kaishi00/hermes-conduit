@@ -6723,13 +6723,20 @@ final class AppStateChatResumeTests: XCTestCase {
         let ownRead = await appState.loadSessions(forceRefresh: false, requiredViewportTransitionGeneration: nil)
         XCTAssertTrue(ownRead)
         XCTAssertEqual(loads, before + 2, "a read that doesn't join sends its own")
+        let afterTheNewerRead = await appState.loadSessions(
+            forceRefresh: false,
+            requiredViewportTransitionGeneration: nil,
+            joinsReadInFlight: true
+        )
+        XCTAssertTrue(afterTheNewerRead)
+        XCTAssertEqual(loads, before + 3, "a read asked for after a newer one started doesn't take the older one's answer")
 
         gate.resume()
         let leadingListed = await leading.value
         let joiningListed = await joining.value
         XCTAssertTrue(leadingListed)
         XCTAssertTrue(joiningListed, "the joined read answers with the first one's rows")
-        XCTAssertEqual(loads, before + 2)
+        XCTAssertEqual(loads, before + 3)
         XCTAssertNil(appState.catalogReadInFlight)
         XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
     }

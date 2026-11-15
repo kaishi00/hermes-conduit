@@ -58,13 +58,18 @@ extension AppState {
             client: ObjectIdentifier(client)
         )
         if isFullRead, joinsReadInFlight, let running = catalogReadInFlight, running.key == key {
-            sessionCatalogLog.notice("Chat list read joins the one under way")
+            sessionCatalogLog.notice(
+                "Chat list read joins the one under way (\(running.joinedReads + 1, privacy: .public) joined)"
+            )
             return try await running.join()
         }
         // A read that yields to newer ones may end without rows, so none
-        // waits on it.
+        // waits on it. Any read that doesn't join also ends joining the one
+        // before it: a read asked for after a newer one started (a pull's
+        // older pages) must not take an older read's answer, which after
+        // the newer commit is that commit's cache.
         let leader = isFullRead && !yieldsToNewerReads ? CatalogReadInFlight(key: key) : nil
-        if let leader { catalogReadInFlight = leader }
+        catalogReadInFlight = leader
         do {
             let load = try await readProfileCatalog(
                 using: client,

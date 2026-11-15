@@ -139,7 +139,8 @@ struct NewChatAwaitingListing: Equatable {
 /// each one that lists the same rows again doubles the wait before the
 /// next, up to `maximumInterval`; a read that changes the list, from a
 /// signal or anything else, starts it over at 5 s from that read. A failed
-/// read is tried again after 5 s, whatever the wait.
+/// read is tried again after 5 s for the first three failures in a row,
+/// then after the quiet wait.
 struct CatalogChangeSignal {
     static let minimumInterval: TimeInterval = 5
     static let maximumInterval: TimeInterval = 60

@@ -345,9 +345,10 @@ extension AppState {
               let delay = catalogChangeSignal.delayUntilDue(now: now), delay > 0 else { return }
         catalogChangeReadTask = Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(delay))
-            guard let self else { return }
+            // A cancelled wait was replaced (a failed read times its retry
+            // from the failure): the newer one is in the slot.
+            guard !Task.isCancelled, let self else { return }
             self.catalogChangeReadTask = nil
-            guard !Task.isCancelled else { return }
             self.readPendingCatalogChange()
         }
     }
