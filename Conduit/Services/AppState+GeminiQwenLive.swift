@@ -139,13 +139,13 @@ extension AppState {
     }
 
     private func resolveGeminiLiveSearchSource() async -> GeminiLiveSearchSource {
-        let mode = geminiLiveSearchMode
+        let mode = callVoicePreferences.geminiLiveSearch ?? .automatic
         let hermesAvailable = mode == .automatic ? await geminiLiveTokenClient.webSearchAvailable() : false
         return mode.resolved(hermesAvailable: hermesAvailable)
     }
 
     private func resolveQwenLiveSearchSource() async -> GeminiLiveSearchSource {
-        guard qwenLiveSearchMode != .off else { return .none }
+        guard (callVoicePreferences.qwenLiveSearch ?? .automatic) != .off else { return .none }
         return await qwenLiveTokenClient.webSearchAvailable() ? .hermes : .none
     }
 
@@ -264,7 +264,7 @@ extension AppState {
                         jobApprovals: true
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     googleSearch: search == .google,
-                    voice: qwen ? self?.qwenLiveVoice : self?.geminiLiveVoice
+                    voice: qwen ? self?.callVoicePreferences.qwenLiveVoice : self?.callVoicePreferences.geminiLiveVoice
                 )
                 if qwen { session.onTrace = { LiveCallTrace.shared.note($0) } }
                 return session
@@ -275,8 +275,9 @@ extension AppState {
                 // a newly configured host backend applies on the next one.
                 // The host calls run together: one after another they
                 // stacked four round trips in front of every connection.
-                let wantsMemory = qwen ? self.qwenLiveMemoryEnabled : self.geminiLiveMemoryEnabled
-                let wantsPersonality = qwen ? self.qwenLivePersonalityEnabled : self.geminiLivePersonalityEnabled
+                let call = self.callVoicePreferences
+                let wantsMemory = (qwen ? call.qwenLiveMemory : call.geminiLiveMemory) ?? false
+                let wantsPersonality = (qwen ? call.qwenLivePersonality : call.geminiLivePersonality) ?? false
                 async let search = qwen ? self.resolveQwenLiveSearchSource() : self.resolveGeminiLiveSearchSource()
                 async let memory = wantsMemory ? tokens.memoryContext() : nil
                 async let loadedPersonality = wantsPersonality ? tokens.personality() : nil
@@ -329,6 +330,7 @@ extension AppState {
     /// modes never share the audio session.
     @discardableResult
     func openGeminiLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
+        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -360,6 +362,7 @@ extension AppState {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startGeminiLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }
@@ -446,6 +449,7 @@ extension AppState {
     /// modes never share the audio session.
     @discardableResult
     func openQwenLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
+        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -477,6 +481,7 @@ extension AppState {
     /// no phone sheet opens; the classic conversation and read aloud stop
     /// first, as on the phone.
     func startQwenLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }

@@ -1465,10 +1465,10 @@ final class AppState: ObservableObject {
                 let status = try await client.availability()
                 if status.isAvailable, let self {
                     // Off only when the user turned web lookups off.
-                    let wantsLookUps = self.geminiLiveSearchMode != .off
+                    let wantsLookUps = (self.callVoicePreferences.geminiLiveSearch ?? .automatic) != .off
                     async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
-                    self.gptLiveMemoryContext = self.gptLiveMemoryEnabled ? await hostContext.memoryContext() : nil
-                    self.gptLivePersonality = self.gptLivePersonalityEnabled ? await hostContext.personality() : nil
+                    self.gptLiveMemoryContext = self.callVoicePreferences.gptLiveMemory == true ? await hostContext.memoryContext() : nil
+                    self.gptLivePersonality = self.callVoicePreferences.gptLivePersonality == true ? await hostContext.personality() : nil
                     await self.prepareVoiceHostTools(for: .gptLive)
                     self.gptLiveWebLookUps = await lookUps
                 }
@@ -1572,8 +1572,9 @@ final class AppState: ObservableObject {
             },
             availability: { [weak self] in
                 guard let self else { throw GrokLiveClientError.socketUnavailable }
-                let wantsMemory = self.grokLiveMemoryEnabled
-                let wantsPersonality = self.grokLivePersonalityEnabled
+                let call = self.callVoicePreferences
+                let wantsMemory = call.grokLiveMemory ?? false
+                let wantsPersonality = call.grokLivePersonality ?? false
                 // The host calls run together, as Gemini Live's do.
                 async let memory = wantsMemory ? hostContext.memoryContext() : nil
                 async let personality = wantsPersonality ? hostContext.personality() : nil
@@ -1797,13 +1798,13 @@ final class AppState: ObservableObject {
                 if let reason = LocalLiveClient.unavailableReason(status) {
                     throw LocalLiveClientError.unavailable(reason)
                 }
-                if let self, self.isLocalLiveAgent {
+                if let self, self.callRunsLocalLiveAgent {
                     // The phone's own tools (calendar, reminders, alarms,
                     // maps, health, location) the user lets Local Live use.
                     async let hostTools: Void = self.prepareVoiceHostTools(for: .localLive)
-                    async let personality = self.localLivePersonalityEnabled ? hostContext.personality() : nil
+                    async let personality = self.callVoicePreferences.localLivePersonality == true ? hostContext.personality() : nil
                     // Off only when the user turned web lookups off.
-                    if self.geminiLiveSearchMode != .off {
+                    if (self.callVoicePreferences.geminiLiveSearch ?? .automatic) != .off {
                         self.localLiveWebLookUps = await hostContext.webSearchAvailable()
                     } else {
                         self.localLiveWebLookUps = false
@@ -1834,7 +1835,7 @@ final class AppState: ObservableObject {
             // Hermes called, as on the other live modes. Outside agent mode
             // a call from Hermes opens Classic voice instead.
             openingPrompt: { [weak self] in
-                guard let self, self.isLocalLiveAgent else { return nil }
+                guard let self, self.callRunsLocalLiveAgent else { return nil }
                 return self.liveHermesCall?.openingTurn
             }
         )
@@ -2097,7 +2098,7 @@ final class AppState: ObservableObject {
                 switch LocalLiveNoticeHandling.forCall(
                     runsAgentTurns: controller.sessionRunsAgentTurns,
                     sessionIsReady: controller.sessionIsReady,
-                    configuredAgent: self.isLocalLiveAgent
+                    configuredAgent: self.callRunsLocalLiveAgent
                 ) {
                 case .deliverAsUpdate:
                     controller.deliverPendingJobUpdates()
@@ -2984,6 +2985,12 @@ final class AppState: ObservableObject {
     /// stage 2). It stays the call's when another profile on the same
     /// dashboard opens, so the call goes on there: see `voiceCallProfile`.
     var liveCallProfile: String?
+    /// A call that ended off its profile hands its jobs back to the profile
+    /// on screen once its hang-up has let go of what it asked to be called
+    /// about (`callEndedOffItsProfile`); set while that waits.
+    var callEndedOffProfileHandBack: Task<Void, Never>?
+    /// The ended call's profile while its hand-back waits.
+    var callProfileHandingBack: String?
 
     // MARK: - Read state (#454) (AppState+Session.swift, AppState+ChatList.swift, AppState+PinSync.swift, AppState+Reconciliation.swift)
 

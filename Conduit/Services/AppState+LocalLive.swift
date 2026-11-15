@@ -68,7 +68,7 @@ extension AppState {
     /// instructions and Grok Live's tools, run here, with the phone's own
     /// tools the user lets Local Live use. Nil outside agent mode.
     func localLiveAgentSetup() -> LocalLiveProtocol.AgentSetup? {
-        guard isLocalLiveAgent else { return nil }
+        guard callRunsLocalLiveAgent else { return nil }
         let supervisor = voiceBackgroundJobSupervisor
         var tail: String = LocalLiveProtocol.agentInstructions
         tail += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
@@ -162,6 +162,7 @@ extension AppState {
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
     func openLocalLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
+        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -195,6 +196,7 @@ extension AppState {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startLocalLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }

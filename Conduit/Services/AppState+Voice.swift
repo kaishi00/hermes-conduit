@@ -2086,6 +2086,10 @@ extension AppState {
         // A Watch call to Gemini belongs to the outgoing connection too: it
         // ends here, before its jobs' news goes back to the supervisor.
         WatchVoiceLink.shared.direct.connectionRetiring(in: self)
+        // This reset hands an ended call's jobs back too.
+        callEndedOffProfileHandBack?.cancel()
+        callEndedOffProfileHandBack = nil
+        callProfileHandingBack = nil
         voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
         voiceBackgroundJobSupervisor.reset()
         scheduleVoiceJobLedgerRestore()

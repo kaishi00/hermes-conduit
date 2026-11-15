@@ -238,6 +238,7 @@ extension AppState {
     /// Aloud) are closed first so they never share the audio session.
     @discardableResult
     func openGPTLiveConversation(attachingTo thread: VoiceThreadTarget? = nil, initialCaptureAuthorization: WidgetInitialCaptureAuthorization? = nil) -> Bool {
+        handBackEndedCallJobsNow()
         guard isConnected else { return false }
         messageReadAloudController.stop()
         if showVoiceSheet { closeVoiceConversation() }
@@ -269,6 +270,7 @@ extension AppState {
     /// phone sheet opens; the other voice modes and read aloud stop first,
     /// as on the phone.
     func startGPTLiveForCarPlay(attachingTo thread: VoiceThreadTarget? = nil) async {
+        handBackEndedCallJobsNow()
         guard isConnected else { return }
         messageReadAloudController.stop()
         if showVoiceSheet || voiceConversationController.hasLiveVoiceSession { closeVoiceConversation() }

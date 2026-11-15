@@ -707,7 +707,7 @@ extension AppState {
     /// it runs on (nil for classic voice).
     func voiceModeSwitch(for engine: VoiceCallEngine?) -> VoiceModeSwitch {
         // Read only for Local Live: the call screens ask on every redraw.
-        let localAgent = engine == .localLive ? isLocalLiveAgent : true
+        let localAgent = engine == .localLive ? callRunsLocalLiveAgent : true
         let current = VoiceModeChoice(engine: engine, localAgent: localAgent)
         return VoiceModeSwitch(current: current, movesOnCurrent: current.engine != engine) { [weak self] choice in
             Task { @MainActor in await self?.switchVoiceMode(to: choice) }
@@ -866,6 +866,7 @@ extension AppState {
             return true
         }
         if intent.source != .hermesCall { keepVoiceFromHermesCallCleanup() }
+        handBackEndedCallJobsNow()
         voiceLaunchesInFlight += 1
         defer {
             voiceLaunchesInFlight -= 1

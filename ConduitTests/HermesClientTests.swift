@@ -5640,6 +5640,34 @@ extension HermesClientTests {
         XCTAssertNil(back.sessionProfile(for: "chat-1"))
     }
 
+    func testASwitchTheCallGoesOnAcrossKeepsTheCallsRequestsInFlight() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        // A spoken job's submit in flight, and the screen's list read.
+        let submit = Task { try await outgoing.sendPrompt("job-1", text: "Book it") }
+        try await sent.wait("the job's submit to be sent")
+        let submitID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+        let sentList = Gate()
+        socket.onSend = { sentList.signal() }
+        let list = Task { try await outgoing.sessions() }
+        try await sentList.wait("the screen's list read to be sent")
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming, carryingSessions: ["job-1"]))
+        outgoing.disconnect()
+        do {
+            _ = try await awaitResult(of: list, "the screen's request to fail")
+            XCTFail("The outgoing profile's own request still fails at the hand-off")
+        } catch HermesError.connectionClosed {}
+
+        // The submit's answer comes on the same socket: the job learns it started.
+        try deliverReply(["jsonrpc": "2.0", "id": submitID, "result": ["status": "streaming"]], on: socket)
+        let outcome = try await awaitResult(of: submit, "the carried submit to be answered")
+        XCTAssertEqual(outcome, .accepted)
+        incoming.disconnect()
+    }
+
     func testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let sent = Gate()

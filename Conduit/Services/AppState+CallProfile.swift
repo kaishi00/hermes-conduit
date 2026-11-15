@@ -14,17 +14,33 @@ extension AppState {
             || showQwenLiveSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet
     }
 
-    /// The profile voice runs on: the live call's own while one is up,
-    /// else the profile on screen.
+    /// The profile voice runs on: the live call's own while one is up, or
+    /// while a call that ended off its profile hands its jobs back, else
+    /// the profile on screen.
     var voiceCallProfile: String {
-        guard isLiveCallUp, let liveCallProfile, !liveCallProfile.isEmpty else { return activeProfile }
-        return liveCallProfile
+        if isLiveCallUp, let liveCallProfile, !liveCallProfile.isEmpty { return liveCallProfile }
+        if let callProfileHandingBack, !callProfileHandingBack.isEmpty { return callProfileHandingBack }
+        return activeProfile
     }
 
     /// The call's style (tone, answer length, greeting): the call's own
     /// profile's, where Settings shows the profile on screen's.
     var liveCallStyle: LiveVoiceStyle {
         loadVoiceProfilePreferences(profile: voiceCallProfile).liveVoiceStyle
+    }
+
+    /// The call's profile's voice settings. A running call reads its own
+    /// settings here (memory, persona, voice, look-ups, Local Live's agent
+    /// mode), as its reconnects run setup again: the settings getters read
+    /// the profile on screen, which Settings edits.
+    var callVoicePreferences: VoiceProfilePreferences {
+        loadVoiceProfilePreferences(profile: voiceCallProfile)
+    }
+
+    /// Local Live in agent mode on the call's profile (`isLocalLiveAgent`
+    /// for the call, the same outside one).
+    var callRunsLocalLiveAgent: Bool {
+        callVoicePreferences.localLiveAgent
     }
 
     /// `voiceCallProfile` when it isn't the profile on screen: what a call's
@@ -80,9 +96,14 @@ extension AppState {
     /// cancel or a read about one still reaches it (and forgets them again
     /// when the switch goes back to the call's profile, its own).
     func keepCallSessionsOnTheirProfile(_ profile: String, for nextClient: HermesClient) {
-        let ids = voiceBackgroundJobSupervisor.sessionIDsOnActiveProfile
-            + localLiveOwnChatSessionIDs
-        nextClient.noteSessionProfile(profile, for: ids)
+        nextClient.noteSessionProfile(profile, for: callSessionIDsOnActiveProfile)
+    }
+
+    /// The sessions a live call uses on the profile on screen: its jobs',
+    /// its thread's and Local Live's own chat. A switch the call goes on
+    /// across carries their requests in flight to the new client.
+    var callSessionIDsOnActiveProfile: [String?] {
+        voiceBackgroundJobSupervisor.sessionIDsOnActiveProfile + localLiveOwnChatSessionIDs
     }
 
     /// A Local Live call's own chat (one it made with no chat attached).
@@ -94,10 +115,42 @@ extension AppState {
     /// The call that kept its profile across a switch has ended: voice
     /// jobs go back to the profile on screen, as the switch would have
     /// done, once its ledger is saved under the call's.
+    ///
+    /// The hand-back waits for the hang-up's callback pass
+    /// (`finishCallbacks`): it releases the watches the call told, holds
+    /// the ones still to tell, and the reset would cancel it. Its ledger
+    /// isn't saved meanwhile, as the restored key is still the call's.
     func callEndedOffItsProfile() {
         guard !isLiveCallUp, let ended = liveCallProfile else { return }
         liveCallProfile = nil
         guard !Self.profilesMatch(ended, activeProfile) else { return }
+        guard let hangUp = voiceBackgroundJobSupervisor.callbackSyncInFlight else {
+            handBackCallJobs()
+            return
+        }
+        // Until then the jobs, their ledger and their requests stay the
+        // call's profile's.
+        callProfileHandingBack = ended
+        callEndedOffProfileHandBack?.cancel()
+        callEndedOffProfileHandBack = Task { @MainActor [weak self] in
+            await hangUp.value
+            guard !Task.isCancelled else { return }
+            self?.handBackCallJobs()
+        }
+    }
+
+    /// A voice start while a call's hand-back waits: it happens now, before
+    /// the new voice touches the jobs. (A boundary's reset,
+    /// `retireVoiceBackgroundJobs`, drops the wait itself.)
+    func handBackEndedCallJobsNow() {
+        guard callEndedOffProfileHandBack != nil || callProfileHandingBack != nil else { return }
+        handBackCallJobs()
+    }
+
+    private func handBackCallJobs() {
+        callEndedOffProfileHandBack?.cancel()
+        callEndedOffProfileHandBack = nil
+        callProfileHandingBack = nil
         voiceJobLedgerRestoredKey = nil
         voiceBackgroundJobSupervisor.reset()
         scheduleVoiceJobLedgerRestore()

@@ -833,6 +833,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
     private var callbackWatches: [UUID: CallbackWatch] = [:]
     private var callbackSyncTask: Task<Void, Never>?
+    /// The callback pass still running (a hang-up's settles its watches).
+    var callbackSyncInFlight: Task<Void, Never>? { callbackSyncTask }
     private var callbackSyncAgain = false
     private var callbackRenewTask: Task<Void, Never>?
     /// What classic voice says first when a call from Hermes opened it.
