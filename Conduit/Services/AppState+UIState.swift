@@ -30,8 +30,10 @@ extension AppState {
     /// thread drawing it, the whole growing reply on each publish, so iOS's
     /// watchdog killed Conduit when it couldn't finish going to the
     /// background or quitting (8BADF00D). The live buffers stay
-    /// authoritative and are republished once the rows show again.
-    var liveRowsHidden: Bool { showSidebar || sceneHidesLiveRows }
+    /// authoritative and are republished once the rows show again. A
+    /// chat left mid-reply has no rows on screen to publish to: its words
+    /// stay in its buffer, and its deferred publishes never run.
+    var liveRowsHidden: Bool { !actingOnChatOnScreen || showSidebar || sceneHidesLiveRows }
 
     /// Conduit's screens are in view: the scene is active, or on a Mac its
     /// window shows behind another app's. The Chats list's live reads keep

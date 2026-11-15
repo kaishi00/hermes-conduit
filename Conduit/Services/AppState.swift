@@ -497,9 +497,16 @@ final class AppState: ObservableObject {
     }
     @Published var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
     /// The chat on screen: its transcript and the reply streaming into it
-    /// (ChatState, stage 1 of the all-live rework). Its changes publish as
-    /// AppState's (`shownChatChanges`).
-    let shownChat = ChatState()
+    /// (ChatState, stage 1 of the all-live rework). Views draw it, and its
+    /// changes publish as AppState's (`shownChatChanges`).
+    let chatOnScreen = ChatState()
+    /// The chat the app acts on: the one on screen, except while an event
+    /// of a chat left mid-reply applies to that chat's own state
+    /// (`act(on:)`, all-live stage 2). Set only there.
+    lazy var shownChat: ChatState = chatOnScreen
+    /// The left chat `shownChat` is while one of its events applies; nil
+    /// while the app acts on the chat on screen.
+    var liveChatScope: LiveChatScope?
     /// Chats left while their reply was still coming, following the rest
     /// of it (all-live stage 2, AppState+BackgroundChats.swift).
     var backgroundChats: [BackgroundChat] = []
@@ -568,6 +575,8 @@ final class AppState: ObservableObject {
         get { shownChat.messages }
         set {
             shownChat.messages = newValue
+            // A left chat's rows aren't the ones on screen.
+            guard actingOnChatOnScreen else { return }
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // Hermes' rows take over from the saved copy's in the same
             // update: the chat view draws one or the other, never a mix, and
@@ -669,6 +678,8 @@ final class AppState: ObservableObject {
             let oldValue = shownChat.turnState
             shownChat.turnState = newValue
             guard oldValue != turnState else { return }
+            // A left chat's turn changes nothing on screen.
+            guard actingOnChatOnScreen else { return }
             // A message waiting for this chat goes once it takes one.
             schedulePendingComposerSendCheck()
             // A running turn keeps the backdrop drifting; only its edges
@@ -2756,7 +2767,7 @@ final class AppState: ObservableObject {
         }
         // The chat on screen's changes publish as AppState's, as they did
         // when its transcript and stream were AppState's own properties.
-        shownChatChanges = shownChat.objectWillChange.sink { [weak self] _ in
+        shownChatChanges = chatOnScreen.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
         shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
