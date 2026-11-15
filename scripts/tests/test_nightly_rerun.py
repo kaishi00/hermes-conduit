@@ -145,7 +145,7 @@ class NightlyOvernightTests(unittest.TestCase):
         with open(env["STUB_LOG"]) as fh:
             query = fh.read()
         self.assertIn("branch=main", query)
-        self.assertIn("select(.id != 43608496756)", query)
+        self.assertIn('select(.id != 43608496756 and .event != "schedule")', query)
         with open(out) as fh:
             return fh.read().strip(), result.stdout
 

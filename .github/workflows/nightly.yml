@@ -77,9 +77,11 @@ jobs:
       ui-shards: "${{ steps.hosted.outputs.ui-shards }}"
     steps:
       - name: Skip the backup cron when the overnight run happened
-        # The cron is the timer's backup (see the top of this file). Any other
-        # Nightly run on main in the last 20 hours, the timer's or a manual
-        # one, covers today; without one the backup runs and says why.
+        # The cron is the timer's backup (see the top of this file). A
+        # dispatched Nightly run on main in the last 20 hours, the timer's or a
+        # manual one, covers today; without one the backup runs and says why.
+        # Cron runs never count: yesterday's late backup that skipped itself
+        # would otherwise hide a timer that missed today.
         id: backup
         if: github.event_name == 'schedule'
         env:
@@ -90,13 +92,13 @@ jobs:
           set -euo pipefail
           since=$(date -u -d '20 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           others=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&created=%3E%3D$since&per_page=20" \
-            --jq "[.workflow_runs[] | select(.id != $RUN_ID)] | length")
+            --jq "[.workflow_runs[] | select(.id != $RUN_ID and .event != \"schedule\")] | length")
           if [ "$others" -gt 0 ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::Nightly already ran on main since $since; the backup cron skips."
+            echo "::notice::A dispatched Nightly ran on main since $since; the backup cron skips."
           else
             echo "skip=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::No Nightly run on main since $since: the overnight timer on the Hermes host missed (scripts/nightly-timer/README.md). The backup cron runs instead."
+            echo "::warning::No dispatched Nightly run on main since $since: the overnight timer on the Hermes host missed (scripts/nightly-timer/README.md). The backup cron runs instead."
           fi
 
       - uses: actions/checkout@v7

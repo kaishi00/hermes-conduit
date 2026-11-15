@@ -12,7 +12,7 @@ token=$(cat "$token_file")
 
 attempt=1
 while :; do
-  status=$(curl -sS -o /tmp/conduit-nightly-dispatch.out -w '%{http_code}' \
+  status=$(curl -sS --connect-timeout 30 --max-time 120 -o /tmp/conduit-nightly-dispatch.out -w '%{http_code}' \
     -X POST \
     -H "Authorization: Bearer $token" \
     -H "Accept: application/vnd.github+json" \
