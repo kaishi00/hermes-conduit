@@ -18,17 +18,34 @@ name: Nightly
 #
 # Runs on main every night and on demand (Actions > Nightly > Run workflow).
 # A release is validated by dispatching it on the release ref before a
-# TestFlight upload. A failed scheduled run emails the repository owner.
+# TestFlight upload. A failed nightly run emails the repository owner.
+#
+# The nightly run starts at 3:17 AM ET from a systemd timer on the Hermes host
+# (scripts/nightly-timer/), which dispatches this workflow on main with
+# `nightly: true`. GitHub's own cron created its events 7 to 10 hours late
+# (2026-11-09..14: 15:07-18:50 UTC), so the run held the macOS runners through
+# Eric's mornings and his PRs' Smoke jobs queued behind it. The cron stays as
+# a backup, an hour after the timer: it skips itself when Nightly already ran
+# on main in the last 20 hours, and warns when it has to run instead.
 #
 # A run schedules 8 macOS jobs (2 unit shards + 3 timing repeats + 3 UI
 # shards) against GitHub's 5-concurrent-macOS-jobs-per-account ceiling, so
 # some queue behind the others. That is accepted at night: nothing waits on
 # these results.
 
+run-name: "${{ inputs.nightly && 'Nightly (overnight)' || 'Nightly' }}"
+
 on:
   schedule:
-    - cron: "17 8 * * *"
+    # 09:47 UTC: after the timer's 3:17 AM ET in both EDT (07:17 UTC) and EST
+    # (08:17 UTC), so even an on-time cron finds the overnight run and skips.
+    - cron: "47 9 * * *"
   workflow_dispatch:
+    inputs:
+      nightly:
+        description: "The overnight nightly run (the Hermes host's timer sets this; leave it off for a release candidate, whose result must not be rerun)"
+        type: boolean
+        default: false
 
 concurrency:
   group: nightly-${{ github.ref }}
@@ -50,15 +67,44 @@ jobs:
     name: Plan
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: read
+      actions: read
     outputs:
+      skip: "${{ steps.backup.outputs.skip }}"
       unit-shards: "${{ steps.hosted.outputs.unit-shards }}"
       timing-csv: "${{ steps.hosted.outputs.timing-csv }}"
       ui-shards: "${{ steps.hosted.outputs.ui-shards }}"
     steps:
+      - name: Skip the backup cron when the overnight run happened
+        # The cron is the timer's backup (see the top of this file). Any other
+        # Nightly run on main in the last 20 hours, the timer's or a manual
+        # one, covers today; without one the backup runs and says why.
+        id: backup
+        if: github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          since=$(date -u -d '20 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          others=$(gh api "repos/$REPO/actions/workflows/nightly.yml/runs?branch=main&created=%3E%3D$since&per_page=20" \
+            --jq "[.workflow_runs[] | select(.id != $RUN_ID)] | length")
+          if [ "$others" -gt 0 ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Nightly already ran on main since $since; the backup cron skips."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::No Nightly run on main since $since: the overnight timer on the Hermes host missed (scripts/nightly-timer/README.md). The backup cron runs instead."
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.backup.outputs.skip != 'true'
 
       - name: Select the nightly classes
         id: hosted
+        if: steps.backup.outputs.skip != 'true'
         run: |
           set -euo pipefail
           mkdir -p ci-artifacts
@@ -82,6 +128,7 @@ jobs:
     # families, in balanced shards.
     name: Unit suite (shard ${{ matrix.shard }})
     needs: plan
+    if: needs.plan.outputs.skip != 'true'
     runs-on: xcode-27
     # A shard that builds clean on Xcode 27 spends about 31 minutes before
     # its first test (shard 2 on 2026-11-13 was cancelled at 45 minutes
@@ -331,6 +378,7 @@ jobs:
     # a sane ceiling, and a cancelled job loses which pass failed.
     name: Timing families (repeat ${{ matrix.repeat }})
     needs: plan
+    if: needs.plan.outputs.skip != 'true'
     runs-on: xcode-27
     # Setup (~5 min), an 1800 s build, then the tests (~6 min on 2026-11-13):
     # the unit and UI shards' hour. A clean retry after a failed incremental
@@ -422,6 +470,7 @@ jobs:
   ui:
     name: UI suite (shard ${{ matrix.shard }})
     needs: plan
+    if: needs.plan.outputs.skip != 'true'
     runs-on: xcode-27
     timeout-minutes: 60
     strategy:

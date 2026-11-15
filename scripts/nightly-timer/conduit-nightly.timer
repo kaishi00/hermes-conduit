@@ -1,0 +1,12 @@
+[Unit]
+Description=Start hermes-conduit Nightly at 3:17 AM ET
+
+[Timer]
+OnCalendar=*-*-* 03:17:00 America/New_York
+# A missed start (host down at 3:17) is not made up later: a late start would
+# tie up the macOS runners in the day, and the GitHub cron backs it up.
+Persistent=false
+AccuracySec=1min
+
+[Install]
+WantedBy=timers.target

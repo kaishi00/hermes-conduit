@@ -1,0 +1,8 @@
+[Unit]
+Description=Start hermes-conduit Nightly on GitHub (overnight run)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/conduit-nightly-dispatch.sh
