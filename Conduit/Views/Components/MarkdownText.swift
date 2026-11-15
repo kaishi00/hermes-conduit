@@ -3700,7 +3700,8 @@ enum MarkdownParser {
                 }
                 // A line of only Hermes directives adds no block, and ends
                 // the outline as the hidden board line does. A line that
-                // still draws an item ("- B [[as_document]]") keeps it.
+                // still draws an item keeps it (a list's later items never
+                // reach here: the list takes them, tags and all).
                 if blocks.count == blocksBefore {
                     listIndents = []
                     outlineNumbers = [:]

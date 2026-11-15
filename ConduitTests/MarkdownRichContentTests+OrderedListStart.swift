@@ -107,9 +107,11 @@ extension MarkdownRichContentPolicyTests {
             .unorderedList(["child"], depth: 1),
             .orderedList(["B"])
         ])
-        // An item that keeps its text past the tag keeps the outline.
-        XCTAssertEqual(MarkdownParser.parse("- A\n- B [[as_document]]\n  - next", recognizesGatewayMedia: true), [
-            .unorderedList(["A"]),
+        // A tagged item that starts a list after a sub-list still draws,
+        // so it keeps the outline and the sub-list under it stays nested.
+        XCTAssertEqual(MarkdownParser.parse("1. A\n   - child\n- B [[as_document]]\n  - next", recognizesGatewayMedia: true), [
+            .orderedList(["A"]),
+            .unorderedList(["child"], depth: 1),
             .unorderedList(["B"]),
             .unorderedList(["next"], depth: 1)
         ])
