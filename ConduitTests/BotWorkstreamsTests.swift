@@ -1703,6 +1703,26 @@ extension BotModeTests {
         XCTAssertFalse(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true), "at its right-hand start")
         nativeCards.contentOffset = CGPoint(x: 300, y: 0)
         XCTAssertTrue(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true))
+
+        // In a right-to-left window the edge swipe starts at the right; a
+        // left-to-right scroller in it still starts at its left end.
+        window.semanticContentAttribute = .forceRightToLeft
+        cards.semanticContentAttribute = .forceLeftToRight
+        XCTAssertEqual(window.effectiveUserInterfaceLayoutDirection, .rightToLeft)
+        XCTAssertTrue(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window))
+        XCTAssertFalse(
+            SidewaysScrollTouch.holdsBackSwipe(under: card, at: CGPoint(x: 380, y: 300), in: window),
+            "from the right-hand leading edge it's the swipe back"
+        )
+        cards.contentOffset = .zero
+        XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: card, at: middle, in: window), "at its left-hand start")
+        window.semanticContentAttribute = .unspecified
+
+        // Only the first finger down sets the flag.
+        let first = UITouch()
+        let second = UITouch()
+        XCTAssertTrue(SidewaysScrollTouchRecognizer.isFirstFinger([first], among: [first]))
+        XCTAssertFalse(SidewaysScrollTouchRecognizer.isFirstFinger([second], among: [first, second]))
     }
 
     /// A workstream's screen holds back the zoom's own dismissals by their

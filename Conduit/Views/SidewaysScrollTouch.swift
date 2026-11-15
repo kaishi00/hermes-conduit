@@ -43,7 +43,10 @@ enum SidewaysScrollTouch {
         guard fromLeadingEdge > edgeWidth else { return false }
         var view = hit
         while let current = view {
-            if let scrollView = current as? UIScrollView, canScrollBack(scrollView, rightToLeft: rightToLeft) {
+            // Each scroller by its own direction: a left-to-right code
+            // block in a right-to-left chat starts at its left end.
+            if let scrollView = current as? UIScrollView,
+               canScrollBack(scrollView, rightToLeft: scrollView.effectiveUserInterfaceLayoutDirection == .rightToLeft) {
                 return true
             }
             // Only scrollers on the pushed page itself: a pager the stack
@@ -127,9 +130,15 @@ final class SidewaysScrollTouchRecognizer: UIGestureRecognizer, UIGestureRecogni
         // change what the swipe started on.
         guard let window = view as? UIWindow ?? view?.window,
               let touch = touches.first,
-              !Self.fingerStillDown(besides: [], among: (event.touches(for: self) ?? []).subtracting(touches))
+              Self.isFirstFinger(touches, among: event.touches(for: self) ?? [])
         else { return }
         SidewaysScrollTouch.touchBegan(at: touch.location(in: window), in: window)
+    }
+
+    /// Whether `began` are the only fingers down: none of the watcher's
+    /// other touches is still on the screen.
+    static func isFirstFinger(_ began: Set<UITouch>, among touches: Set<UITouch>) -> Bool {
+        !fingerStillDown(besides: [], among: touches.subtracting(began))
     }
 
     override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent) {
