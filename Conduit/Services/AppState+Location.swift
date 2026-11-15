@@ -144,6 +144,15 @@ extension AppState {
         }
     }
 
+    /// Sign Out of a dashboard ends the host pass made from its sign-in
+    /// too (issue 2482): a session token's pass has no expiry and nothing
+    /// to revoke on the host, so it would keep background sends signed in.
+    /// Sharing stays bound, and the next sign-in's connect saves a new one.
+    func forgetLocationHostPass(dashboardID: UUID) {
+        guard LocationKeychain.loadHostPass()?.dashboardID == dashboardID else { return }
+        LocationKeychain.clearHostPass()
+    }
+
     /// Saves the host pass for the dashboard in use, when location sharing
     /// is bound to it: at each connect, and when a native sign-in rotates
     /// its tokens.

@@ -1,5 +1,6 @@
 import XCTest
 import Combine
+import UIKit
 @testable import Conduit
 
 /// Read-only offline chat copy (#99): what is stored, how it is protected,
@@ -1296,11 +1297,34 @@ final class OfflineChatCacheTests: XCTestCase {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        // The Artifacts page's thumbnails go with the chats' pictures
+        // (issue 2512), and location's host pass with the sign-in it was
+        // made from (issue 2482).
+        let thumbnailKey = ArtifactsListKey.thumbnailCacheKey(dashboard: dashboard, profile: "default", path: "/root/out/map.png")
+        ArtifactThumbnailCache.store(UIImage(), forKey: thumbnailKey)
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://one.example", headers: ["X-Hermes-Session-Token": "t"], expiresAt: nil, savedAt: Date())
+        let passSaved = LocationKeychain.saveHostPass(pass)
+        defer { LocationKeychain.clearHostPass() }
 
         appState.disconnect()
 
         XCTAssertNil(store.load(dashboardID: dashboard, profile: "default"))
         XCTAssertNil(appState.offlineChatPresentation)
+        XCTAssertNil(ArtifactThumbnailCache.shared.object(forKey: thumbnailKey))
+        if passSaved { XCTAssertNil(LocationKeychain.loadHostPass()) }
+    }
+
+    /// Another dashboard's host pass (the one sharing is bound to) stays
+    /// through this one's Sign Out (issue 2482).
+    func testSignOutKeepsAnotherDashboardsHostPass() throws {
+        let (appState, _, _) = makeAppState()
+        let pass = LocationHostPass(dashboardID: UUID(), baseURL: "https://two.example", headers: [:], expiresAt: nil, savedAt: Date())
+        guard LocationKeychain.saveHostPass(pass) else { throw XCTSkip("No App Group Keychain in this test host") }
+        defer { LocationKeychain.clearHostPass() }
+
+        appState.disconnect()
+
+        XCTAssertEqual(LocationKeychain.loadHostPass()?.dashboardID, pass.dashboardID)
     }
 
     /// Deleting a chat takes its saved copy off the phone and off the

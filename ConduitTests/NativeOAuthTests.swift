@@ -635,6 +635,50 @@ final class NativeOAuthTests: XCTestCase {
         session.invalidate()
     }
 
+    /// A 401 behind a proxy reads the same as Hermes' own: the session
+    /// token is kept, the request fails as sign-in required, and nothing
+    /// is refreshed (issue 2481). A native grant with no refresh token is
+    /// still cleared.
+    func testASessionToken401KeepsTheSavedToken() async throws {
+        let dashboardID = UUID()
+        defer { KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID) }
+        let token = NativeOAuthTokenSet.sessionToken("deployment-token")
+        XCTAssertTrue(KeychainHelper.saveNativeOAuthTokens(token, dashboardID: dashboardID))
+        var calls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            calls += 1
+            XCTAssertNotEqual(request.url?.path, "/auth/native/refresh")
+            return (401, ["detail": "proxy"])
+        }
+        let session = NativeOAuthSession(tokens: token, dashboardID: dashboardID, client: makeClient())
+        do {
+            _ = try await session.requestJSON(path: "/api/status")
+            XCTFail("A 401 must fail the request")
+        } catch DashboardTicketBridgeError.signInRequired {
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), token)
+        session.discardRejectedGrant()
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), token)
+        session.invalidate()
+
+        let noRefresh = NativeOAuthTokenSet(
+            accessToken: "old-access", refreshToken: "", expiresAt: 4_000_000_000, provider: "google", userID: "user"
+        )
+        XCTAssertTrue(KeychainHelper.saveNativeOAuthTokens(noRefresh, dashboardID: dashboardID))
+        let native = NativeOAuthSession(tokens: noRefresh, dashboardID: dashboardID, client: makeClient())
+        _ = try? await native.requestJSON(path: "/api/status")
+        XCTAssertNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID))
+        native.invalidate()
+
+        XCTAssertNotEqual(
+            SessionTokenSignInForm.refusalProblem(behindProxy: true),
+            SessionTokenSignInForm.refusalProblem(behindProxy: false)
+        )
+    }
+
     /// Location's host pass copies the access token; it's saved again on
     /// this notice, which comes only once the rotated tokens are stored
     /// (issue 2028).
