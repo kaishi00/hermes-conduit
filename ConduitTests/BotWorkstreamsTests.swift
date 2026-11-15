@@ -1445,6 +1445,9 @@ extension BotModeTests {
         window.isHidden = false
         defer { window.isHidden = true }
         window.layoutIfNeeded()
+        // Drawn once: UIKit makes no picture of a view never rendered.
+        CATransaction.flush()
+        try await Task.sleep(for: .milliseconds(100))
         let rows = controller.collectionView
         let motion = TranscriptSwapMotion()
         controller.swapMotion = motion
