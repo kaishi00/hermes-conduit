@@ -114,6 +114,7 @@ BACKUP_STEP = "Skip the backup cron when the overnight run happened"
 # `gh api <runs url> --jq <count>` prints how many other runs the fixture has.
 STUB_GH_RUNS = """#!/usr/bin/env bash
 printf '%s\\n' "$*" >> "$STUB_LOG"
+[ "$STUB_OTHERS" = fail ] && exit 1
 echo "$STUB_OTHERS"
 """
 
@@ -157,6 +158,12 @@ class NightlyOvernightTests(unittest.TestCase):
         skip, stdout = self._backup(0)
         self.assertEqual(skip, "skip=false")
         self.assertIn("::warning::", stdout)
+
+    def test_backup_cron_runs_when_the_lookup_fails(self):
+        skip, stdout = self._backup("fail")
+        self.assertEqual(skip, "skip=false")
+        self.assertIn("Couldn't list Nightly runs", stdout)
+        self.assertNotIn("timer on the Hermes host missed", stdout)
 
     def test_skip_gates_every_macos_job_and_only_the_cron_checks(self):
         nightly = self._nightly()
