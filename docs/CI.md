@@ -574,7 +574,10 @@ passing Smoke counts whatever PR it ran for (GitHub can't say which PR a run
 belonged to), so a commit that passed in a PR into `linked-rooms` or `all-live`
 counts for a PR into `main` from the same branch; Markdown under an app or
 test folder always builds, since the id counts Markdown only by its words.
-Pushes always build, and every lookup that fails builds too.
+A push builds unless it is one commit (main's squash merge, or a merge commit
+into `linked-rooms` or `all-live`) of only docs and config, read against the
+branch's tip before it; the same-change skip is for PRs only, and every lookup
+that fails builds.
 
 Branch protection must require **CI Gate** (and nothing else from this
 workflow): the jobs behind it are implementation detail, and any job that can
