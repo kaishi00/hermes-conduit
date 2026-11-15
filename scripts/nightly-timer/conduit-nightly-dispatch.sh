@@ -22,7 +22,9 @@ while :; do
     -H "Accept: application/vnd.github+json" \
     -H "X-GitHub-Api-Version: 2022-11-28" \
     "https://api.github.com/repos/$repo/actions/workflows/nightly.yml/dispatches" \
-    -d '{"ref":"main","inputs":{"nightly":true}}' || echo 000)
+    -d '{"ref":"main","inputs":{"nightly":true}}' || true)
+  # curl prints 000 itself when it gets no response.
+  status=${status:-000}
   # 204 (older API) or 200 with the run's id (newer API) both mean started.
   case "$status" in
     200|204) echo "Nightly dispatched on main (HTTP $status)"; exit 0 ;;
