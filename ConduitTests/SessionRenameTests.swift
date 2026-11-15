@@ -632,8 +632,12 @@ final class SessionRenameTests: XCTestCase {
 
         let create = Task { await appState.createNewSession() }
         for _ in 0..<2000 where waiting == nil { await Task.yield() }
+        guard let barrier = waiting else {
+            create.cancel()
+            return XCTFail("The create reaches Hermes")
+        }
         appState.handleStreamEvent(.messageDelta(sessionId: "a", text: " a time"))
-        waiting?.resume()
+        barrier.resume()
         let created = await create.value
         XCTAssertEqual(created, "created-runtime")
 
