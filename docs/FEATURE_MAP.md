@@ -6200,7 +6200,7 @@ caption or doc describes it
 **Open gaps**
 - Not checked on a device: whether the report's blank list came from the swipe or the context menu Delete.
 
-**Checked:** 2026-10-27, #1372.
+**Checked:** 2026-11-15, #2536 (the Delete swipe moved into V2SessionTrailingSwipes in #2532, behavior unchanged).  Earlier: 2026-10-27, #1372.
 
 ## Plan card
 
