@@ -257,7 +257,7 @@ final class MarkdownReferenceLinkTests: XCTestCase {
             "[id]: https://example.com/real",
             "A definition-looking list item is item content, not a definition line"
         )
-        guard case .unorderedList(let items) = document.blocks.first else {
+        guard case .unorderedList(let items, _) = document.blocks.first else {
             return XCTFail("Expected an unordered list, got \(document.blocks)")
         }
         XCTAssertEqual(items.count, 2)

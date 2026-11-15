@@ -195,6 +195,11 @@ struct MarkdownText: View {
                                     : [],
                                 isStreamingTail: lastBlockMayBePartial && index == rendering.blocks.count - 1
                             )
+                            // A nested list sits a list item's gap under the
+                            // list it belongs to, as in the text views.
+                            .padding(.top, index > 0 && MarkdownProseRun.continuesOutline(rendering.blocks[index], after: rendering.blocks[index - 1])
+                                ? MarkdownProseRun.Spacing.betweenListItems - MarkdownProseRun.Spacing.betweenBlocks
+                                : 0)
                         }
                     }
                 }
@@ -599,10 +604,12 @@ enum MarkdownBlock: Equatable {
     case heading(level: Int, text: String)
     case paragraph(String)
     case quote([MarkdownQuoteLine])
-    case unorderedList([String])
+    /// `depth` is how far the list is nested: 0 at the left edge, 1 for a
+    /// sub-list indented under an item of the list above it, and so on.
+    case unorderedList([String], depth: Int = 0)
     /// `start` is the number written on the first item, as CommonMark
     /// numbers a list, so one split by a code block carries on.
-    case orderedList([String], start: Int = 1)
+    case orderedList([String], start: Int = 1, depth: Int = 0)
     case table(headers: [String], alignments: [MarkdownTableAlignment], rows: [[String]])
     case image(url: String, alt: String)
     case math(String)
@@ -656,8 +663,11 @@ enum MarkdownSelectionFormatter {
             }
 
             if index > 0 {
+                // A nested list goes on the next line, as an outline's items
+                // do; other blocks are a blank line apart.
+                let inOutline = MarkdownProseRun.continuesOutline(block, after: blocks[index - 1])
                 result.append(NSAttributedString(
-                    string: "\n\n",
+                    string: inOutline ? "\n" : "\n\n",
                     attributes: [
                         .font: bodyFont,
                         .foregroundColor: textColor
@@ -694,10 +704,11 @@ enum MarkdownSelectionFormatter {
         case .paragraph(let text):
             return inline(text, references: references, font: bodyFont, textColor: textColor, linkColor: linkColor)
 
-        case .unorderedList(let items):
+        case .unorderedList(let items, let depth):
             return list(
                 items,
                 ordered: false,
+                depth: depth,
                 references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
@@ -706,11 +717,12 @@ enum MarkdownSelectionFormatter {
                 chatTextSize: chatTextSize
             )
 
-        case .orderedList(let items, let start):
+        case .orderedList(let items, let start, let depth):
             return list(
                 items,
                 ordered: true,
                 start: start,
+                depth: depth,
                 references: references,
                 bodyFont: bodyFont,
                 textColor: textColor,
@@ -760,6 +772,7 @@ enum MarkdownSelectionFormatter {
         _ items: [String],
         ordered: Bool,
         start: Int = 1,
+        depth: Int,
         references: MarkdownReferenceContext,
         bodyFont: UIFont,
         textColor: UIColor,
@@ -789,6 +802,7 @@ enum MarkdownSelectionFormatter {
             let (prefix, style) = MarkdownProseRun.listItemLayout(
                 marker: marker,
                 ordered: ordered,
+                depth: depth,
                 markerFont: markerFont,
                 markerColor: markerColor,
                 lineSpacing: MarkdownProseRun.Spacing.paragraphLineSpacing,
@@ -859,6 +873,14 @@ enum MarkdownSelectionFormatter {
 }
 
 extension MarkdownBlock {
+    /// A list's nesting depth, or nil for any other block.
+    var listDepth: Int? {
+        switch self {
+        case .unorderedList(_, let depth), .orderedList(_, _, let depth): depth
+        default: nil
+        }
+    }
+
     var isSelectableFlowBlock: Bool {
         switch self {
         case .heading, .paragraph, .quote, .unorderedList, .orderedList:
@@ -967,10 +989,11 @@ struct MarkdownBlockView: View {
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
-        case .unorderedList(let items):
+        case .unorderedList(let items, let depth):
             MarkdownList(
                 items: items,
                 ordered: false,
+                depth: depth,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 selectionCoordinator: selectionCoordinator,
@@ -978,11 +1001,12 @@ struct MarkdownBlockView: View {
                 trailingCharacterOpacities: newestCharacterOpacities
             )
 
-        case .orderedList(let items, let start):
+        case .orderedList(let items, let start, let depth):
             MarkdownList(
                 items: items,
                 ordered: true,
                 start: start,
+                depth: depth,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 selectionCoordinator: selectionCoordinator,
@@ -1461,6 +1485,8 @@ private struct MarkdownList: View {
     let items: [String]
     let ordered: Bool
     var start = 1
+    /// A nested list moves in a level per depth, as the text views do.
+    var depth = 0
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let selectionCoordinator: MarkdownSelectionCoordinator?
@@ -1514,6 +1540,7 @@ private struct MarkdownList: View {
                 }
             }
         }
+        .padding(.leading, CGFloat(depth) * MarkdownProseRun.nestedListIndent(chatTextSize: chatTextSize))
     }
 }
 
@@ -3568,6 +3595,9 @@ enum MarkdownParser {
     private static func parseBlocks(_ lines: [String], recognizesGatewayMedia: Bool) -> [MarkdownBlock] {
         var blocks: [MarkdownBlock] = []
         var index = 0
+        // The indents of the lists open around the current one, outermost
+        // first, for nesting a list under the item above it.
+        var listIndents: [Int] = []
 
         while index < lines.count {
             let line = lines[index]
@@ -3674,18 +3704,25 @@ enum MarkdownParser {
             }
 
             if unorderedItem(trimmed) != nil {
+                let indent = listIndent(line)
+                let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
                 var items: [String] = []
                 // An item that is a Desktop card or a preview is the block's (#1522).
+                // An item indented deeper or shallower is a nested list's.
                 while index < lines.count, let item = unorderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      sameListLevel(lines[index], indent: indent),
                       items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) { items.append(item); index += 1 }
-                blocks.append(.unorderedList(items))
+                blocks.append(.unorderedList(items, depth: depth))
                 continue
             }
 
             if orderedItem(trimmed) != nil {
                 let start = orderedNumber(trimmed)
+                let indent = listIndent(line)
+                let depth = listDepth(indent: indent, after: blocks.last, stack: &listIndents)
                 var items: [String] = []
                 while index < lines.count, let item = orderedItem(lines[index].trimmingCharacters(in: .whitespaces)),
+                      sameListLevel(lines[index], indent: indent),
                       items.isEmpty || !holdsDirective(lines[index], recognizesGatewayMedia: recognizesGatewayMedia) {
                     let itemLine = lines[index]
                     items.append(item); index += 1
@@ -3699,7 +3736,7 @@ enum MarkdownParser {
                     while next < lines.count, lines[next].trimmingCharacters(in: .whitespaces).isEmpty { next += 1 }
                     if next > index, next < lines.count, continuesOrderedList(lines[next], from: itemLine), !isTableHeader(lines, at: next), !(recognizesGatewayMedia && claimsGatewayMedia(lines[next])), !holdsDirective(lines[next], recognizesGatewayMedia: recognizesGatewayMedia) { index = next }
                 }
-                blocks.append(.orderedList(items, start: start))
+                blocks.append(.orderedList(items, start: start, depth: depth))
                 continue
             }
 
@@ -3850,6 +3887,33 @@ enum MarkdownParser {
     private static func isDivider(_ value: String) -> Bool {
         let characters = value.filter { !$0.isWhitespace }
         return characters.count >= 3 && Set(characters).count == 1 && ["-", "*", "_"].contains(characters.first ?? " ")
+    }
+    /// A list item line's indent in columns, a tab counting as four.
+    private static func listIndent(_ line: String) -> Int {
+        var columns = 0
+        for character in line {
+            if character == " " { columns += 1 } else if character == "\t" { columns += 4 - columns % 4 } else { break }
+        }
+        return columns
+    }
+    /// Whether an item line belongs to the list whose items start at
+    /// `indent`: within a column of it. Two or more columns deeper is a
+    /// nested list, as a sub-list under "- " or "1. " is written; two or
+    /// more shallower goes back out to an outer list.
+    private static func sameListLevel(_ line: String, indent: Int) -> Bool {
+        abs(listIndent(line) - indent) < 2
+    }
+    /// How deep a list starting at `indent` is nested. Lists nest only
+    /// directly after another list (blank lines between allowed); anything
+    /// else in between starts over at the left edge. A list indented under
+    /// the one above goes a level in, and one back at an outer list's
+    /// indent goes back to that level.
+    private static func listDepth(indent: Int, after previous: MarkdownBlock?, stack: inout [Int]) -> Int {
+        if previous?.listDepth == nil { stack = [] }
+        while let last = stack.last, indent <= last - 2 { stack.removeLast() }
+        if let last = stack.last, abs(indent - last) < 2 { return stack.count - 1 }
+        stack.append(indent)
+        return stack.count - 1
     }
     private static func unorderedItem(_ value: String) -> String? {
         guard value.count > 2, ["-", "*", "+"].contains(value.first ?? " "), value.dropFirst().first == " " else { return nil }

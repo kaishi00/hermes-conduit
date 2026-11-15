@@ -37,7 +37,7 @@ enum MarkdownProseRun {
         switch block {
         case .heading, .paragraph:
             true
-        case .unorderedList(let items), .orderedList(let items, _):
+        case .unorderedList(let items, _), .orderedList(let items, _, _):
             !items.contains { MarkdownParser.taskItem($0) != nil }
         default:
             false
@@ -154,7 +154,7 @@ enum MarkdownProseRun {
     private static func textViewCount(_ blocks: ArraySlice<MarkdownBlock>) -> Int {
         blocks.reduce(0) { count, block in
             switch block {
-            case .unorderedList(let items), .orderedList(let items, _):
+            case .unorderedList(let items, _), .orderedList(let items, _, _):
                 count + items.count
             default:
                 count + 1
@@ -229,6 +229,21 @@ enum MarkdownProseRun {
         )
     }
 
+    /// How far each level of a nested list moves in: a bullet's text
+    /// column, so a sub-list's marker sits under its parent item's text.
+    /// The same in every view that draws a list.
+    static func nestedListIndent(chatTextSize: ChatTextAppearance) -> CGFloat {
+        ChatTypography.dimension(12, appearance: chatTextSize) + Spacing.listMarkerToText
+    }
+
+    /// Whether `block` is a list nested directly under the list `previous`
+    /// (or the way back out of one): the two read as one outline, a list
+    /// item's gap apart rather than a block's.
+    static func continuesOutline(_ block: MarkdownBlock, after previous: MarkdownBlock?) -> Bool {
+        guard let depth = block.listDepth, let previousDepth = previous?.listDepth else { return false }
+        return depth > 0 || previousDepth > 0
+    }
+
     /// A list item's marker and paragraph style, for a list drawn in a
     /// text view (a prose run, or a reply drawn as one selectable text):
     /// the marker sits right-aligned in its gutter, as the list view's
@@ -238,25 +253,30 @@ enum MarkdownProseRun {
     /// its first line. A marker wider than its gutter ("10." at a large
     /// text size) moves its item's text along rather than past the next
     /// tab interval. The tab copies as the space after the marker.
+    ///
+    /// A nested list (`depth` 1 and in) moves its whole gutter in by
+    /// `nestedListIndent` a level.
     static func listItemLayout(
         marker: String,
         ordered: Bool,
+        depth: Int = 0,
         markerFont: UIFont,
         markerColor: UIColor,
         lineSpacing: CGFloat,
         chatTextSize: ChatTextAppearance
     ) -> (prefix: NSAttributedString, style: NSMutableParagraphStyle) {
+        let leading = CGFloat(max(depth, 0)) * nestedListIndent(chatTextSize: chatTextSize)
         let markerAttributes: [NSAttributedString.Key: Any] = [
             .font: markerFont,
             .foregroundColor: markerColor
         ]
         let markerColumn = ChatTypography.dimension(ordered ? 24 : 12, appearance: chatTextSize)
         let markerWidth = (marker as NSString).size(withAttributes: markerAttributes).width
-        let textStart = max(markerColumn, markerWidth) + Spacing.listMarkerToText
+        let textStart = leading + max(markerColumn, markerWidth) + Spacing.listMarkerToText
 
         let style = NSMutableParagraphStyle()
         style.lineSpacing = lineSpacing
-        style.firstLineHeadIndent = max(0, markerColumn - markerWidth)
+        style.firstLineHeadIndent = leading + max(0, markerColumn - markerWidth)
         style.headIndent = textStart
         style.tabStops = [NSTextTab(textAlignment: .natural, location: textStart, options: [:])]
         style.defaultTabInterval = textStart
@@ -303,12 +323,13 @@ enum MarkdownProseRun {
             return style
         }
 
-        func listItems(_ items: [String], ordered: Bool, start: Int = 1) -> [Paragraph] {
+        func listItems(_ items: [String], ordered: Bool, start: Int = 1, depth: Int) -> [Paragraph] {
             let markerFont = listMarkerFont(chatTextSize: chatTextSize)
             return items.enumerated().map { (index, item) -> Paragraph in
                 let (prefix, style) = listItemLayout(
                     marker: ordered ? "\(start + index)." : "•",
                     ordered: ordered,
+                    depth: depth,
                     markerFont: markerFont,
                     markerColor: markerColor,
                     lineSpacing: Spacing.listItemLineSpacing,
@@ -328,9 +349,12 @@ enum MarkdownProseRun {
         }
 
         var paragraphs: [Paragraph] = []
+        var previousBlock: MarkdownBlock?
         for block in blocks {
             let blockParagraphs: [Paragraph]
-            var gapAbove = Spacing.betweenBlocks
+            let inOutline = continuesOutline(block, after: previousBlock)
+            previousBlock = block
+            var gapAbove = inOutline ? Spacing.betweenListItems : Spacing.betweenBlocks
             switch block {
             case .heading(let level, let text):
                 blockParagraphs = [Paragraph(
@@ -343,10 +367,10 @@ enum MarkdownProseRun {
                     content: inline(text, font: bodyFont),
                     style: lineStyle(Spacing.paragraphLineSpacing)
                 )]
-            case .unorderedList(let items):
-                blockParagraphs = listItems(items, ordered: false)
-            case .orderedList(let items, let start):
-                blockParagraphs = listItems(items, ordered: true, start: start)
+            case .unorderedList(let items, let depth):
+                blockParagraphs = listItems(items, ordered: false, depth: depth)
+            case .orderedList(let items, let start, let depth):
+                blockParagraphs = listItems(items, ordered: true, start: start, depth: depth)
             default:
                 assertionFailure("only blocks that join a prose run reach its text")
                 blockParagraphs = []
@@ -354,7 +378,8 @@ enum MarkdownProseRun {
             guard let first = blockParagraphs.first else { continue }
             if let above = paragraphs.indices.last {
                 paragraphs[above].spacingAfter = gap(gapAbove, above: first.style.lineSpacing)
-                paragraphs[above].endsBlock = true
+                // A nested list copies on the next line, as its items do.
+                paragraphs[above].endsBlock = !inOutline
             }
             paragraphs.append(contentsOf: blockParagraphs)
         }

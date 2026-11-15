@@ -54,6 +54,76 @@ extension MarkdownRichContentPolicyTests {
         XCTAssertEqual(MarkdownProseRun.copyableText(drawn).string, "7. seven\n8. eight")
     }
 
+    func testNestedListsKeepTheirDepth() {
+        let blocks = MarkdownParser.parse("""
+        1. Install
+           - brew install foo
+           - or build it
+             1. clone
+             2. make
+        2. Run
+        - after
+        """)
+        XCTAssertEqual(blocks, [
+            .orderedList(["Install"]),
+            .unorderedList(["brew install foo", "or build it"], depth: 1),
+            .orderedList(["clone", "make"], depth: 2),
+            .orderedList(["Run"], start: 2),
+            .unorderedList(["after"])
+        ])
+        // Two-space bullets and tabs nest too; one space is the same list.
+        XCTAssertEqual(MarkdownParser.parse("- a\n  - b\n\t- c\n- d"), [
+            .unorderedList(["a"]),
+            .unorderedList(["b"], depth: 1),
+            .unorderedList(["c"], depth: 2),
+            .unorderedList(["d"])
+        ])
+        XCTAssertEqual(MarkdownParser.parse("- a\n - b"), [.unorderedList(["a", "b"])])
+        // A paragraph between starts over at the left edge.
+        XCTAssertEqual(MarkdownParser.parse("- a\n\nText\n\n  - b"), [
+            .unorderedList(["a"]),
+            .paragraph("Text"),
+            .unorderedList(["b"])
+        ])
+    }
+
+    func testNestedListDrawsAsAnOutline() throws {
+        let blocks = MarkdownParser.parse("1. Install\n   - brew\n2. Run\n\nAfter.")
+        let drawn = try XCTUnwrap(MarkdownSelectionFormatter.attributedText(
+            for: blocks,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            newestCharacterOpacities: []
+        ))
+        // One line apart inside the outline, a blank line after it.
+        XCTAssertEqual(MarkdownProseRun.copyableText(drawn).string, "1. Install\n• brew\n2. Run\n\nAfter.")
+        func style(at text: String) -> NSParagraphStyle? {
+            drawn.attribute(.paragraphStyle, at: (drawn.string as NSString).range(of: text).location, effectiveRange: nil) as? NSParagraphStyle
+        }
+        let outer = try XCTUnwrap(style(at: "Install"))
+        let inner = try XCTUnwrap(style(at: "brew"))
+        let step = MarkdownProseRun.nestedListIndent(chatTextSize: .default)
+        // A bullet's text is a step in at the left edge, so two steps a level in.
+        XCTAssertEqual(inner.headIndent, 2 * step, accuracy: 0.5, "the sub-list's text sits a level in")
+        XCTAssertGreaterThan(inner.firstLineHeadIndent, outer.firstLineHeadIndent, "and its marker past the outer one's")
+        XCTAssertEqual(try XCTUnwrap(style(at: "Run")).headIndent, outer.headIndent, "back out to the outer list's column")
+    }
+
+    @MainActor
+    func testProseRunNestsAnOutline() {
+        let run = MarkdownProseRun.attributedText(
+            for: MarkdownParser.parse("- a\n  - b\n- c")[...],
+            references: .empty,
+            foregroundStyle: .primary,
+            usesAccentSurface: false,
+            chatTextSize: .default
+        )
+        XCTAssertEqual(MarkdownProseRun.copyableText(run).string, "• a\n• b\n• c")
+        let a = run.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        let b = run.attribute(.paragraphStyle, at: (run.string as NSString).range(of: "b").location, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual((b?.headIndent ?? 0) - (a?.headIndent ?? 0), MarkdownProseRun.nestedListIndent(chatTextSize: .default), accuracy: 0.5)
+    }
+
     @MainActor
     func testProseRunDrawsAnOrderedListFromItsStart() {
         let run = MarkdownProseRun.attributedText(
@@ -75,7 +145,7 @@ extension MarkdownRichContentPolicyTests {
         for case .flow(let blocks) in chunks {
             for block in blocks {
                 switch block {
-                case .orderedList(let group, let start):
+                case .orderedList(let group, let start, _):
                     groups.append((start, group.count))
                 case .paragraph(let text):
                     XCTFail("a continuation is a list, not a paragraph: \(text.prefix(20))")
