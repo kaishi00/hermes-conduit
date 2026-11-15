@@ -88,6 +88,8 @@ struct V2ListNavigationBar: UIViewRepresentable {
                     DispatchQueue.main.asyncAfter(deadline: .now() + SystemBackSwipeGate.GateView.retryDelay) { [weak self] in
                         self?.attach(retriesLeft: retriesLeft - 1)
                     }
+                } else {
+                    ChatViewportTrace.shared.log("list bar keeper found no page in a stack after \(SystemBackSwipeGate.GateView.retries) looks: its bar stays shown over the list")
                 }
                 return
             }
