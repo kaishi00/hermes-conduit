@@ -1154,7 +1154,8 @@ extension AppState {
         if showGPTLiveSheet { showGPTLiveSheet = false }
         if showGrokLiveSheet { showGrokLiveSheet = false }
         if showLocalLiveSheet { showLocalLiveSheet = false }
-        openAppLink(.session(id: sessionID))
+        // A call on another profile opens the chat on its own profile.
+        openAppLink(callChatLink(.session(id: sessionID)))
         return true
     }
 

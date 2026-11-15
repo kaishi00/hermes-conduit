@@ -558,8 +558,10 @@ extension AppState {
         // text only), so a chat that can't come on screen (a Bot Chat, which
         // opens in the bot's profile, or a failed open) leaves the
         // screenshot in the chat that is, sent with its next message, and
-        // the call is told so.
-        if !switchedProfile, isLiveVoiceCallActive,
+        // the call is told so. A call on another profile than the one on
+        // screen (it went on across a switch) leaves it there too: its chat
+        // would open by switching back.
+        if !switchedProfile, isLiveVoiceCallActive, callProfileOffScreen == nil,
            let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
             guard isConnected else { return false }

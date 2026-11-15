@@ -144,7 +144,7 @@ struct LiveVoiceCallSheet: View {
             guard let chatID = pendingJobChat else { return }
             pendingJobChat = nil
             dismiss()
-            openURL(ConduitAppLink.session(id: chatID).url)
+            openURL(appState.callChatLink(ConduitAppLink.session(id: chatID)).url)
         }) { selected in
             Group {
                 switch selected {

@@ -468,7 +468,7 @@ extension AppState {
         case .failed:
             // Gone only once the route reached the chat's profile and Hermes refused it there: a dashboard
             // that couldn't be reached, or a call that started meanwhile, is no answer about the chat.
-            guard !isVoiceCallInProgress, profilesMatch(profile, activeProfile) else { return .failed }
+            guard !isCallEndingProfileSwitch, profilesMatch(profile, activeProfile) else { return .failed }
             errorMessage = shownError
             return .gone
         case .retry, .unverified, .afterCall: return .failed

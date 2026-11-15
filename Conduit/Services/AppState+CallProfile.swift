@@ -124,13 +124,13 @@ extension AppState {
         guard !isLiveCallUp, let ended = liveCallProfile else { return }
         liveCallProfile = nil
         guard !Self.profilesMatch(ended, activeProfile) else { return }
+        // Until the hand-back the jobs, their ledger and their requests stay
+        // the call's profile's.
+        callProfileHandingBack = ended
         guard let hangUp = voiceBackgroundJobSupervisor.callbackSyncInFlight else {
             handBackCallJobs()
             return
         }
-        // Until then the jobs, their ledger and their requests stay the
-        // call's profile's.
-        callProfileHandingBack = ended
         callEndedOffProfileHandBack?.cancel()
         callEndedOffProfileHandBack = Task { @MainActor [weak self] in
             await hangUp.value
@@ -150,6 +150,10 @@ extension AppState {
     private func handBackCallJobs() {
         callEndedOffProfileHandBack?.cancel()
         callEndedOffProfileHandBack = nil
+        // The hang-up's last changes (the thread let go, outcomes settled)
+        // go into the call's ledger now: the save it scheduled would come
+        // after the reset, under the profile on screen's key, and be refused.
+        saveVoiceJobLedger(voiceBackgroundJobSupervisor.savedLedger())
         callProfileHandingBack = nil
         voiceJobLedgerRestoredKey = nil
         voiceBackgroundJobSupervisor.reset()
