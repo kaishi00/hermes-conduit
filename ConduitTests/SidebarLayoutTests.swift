@@ -738,7 +738,8 @@ final class SidebarLayoutTests: XCTestCase {
     @MainActor
     func testListKeepsItsShownBarOutOfTheWayOnlyWhileItsOnTop() {
         let list = UIViewController()
-        let navigation = UINavigationController(rootViewController: list)
+        let navigation = UINavigationController(navigationBarClass: SizableNavigationBar.self, toolbarClass: nil)
+        navigation.setViewControllers([list], animated: false)
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
         window.rootViewController = navigation
         window.isHidden = false
@@ -781,10 +782,35 @@ final class SidebarLayoutTests: XCTestCase {
         }
         XCTAssertEqual(list.additionalSafeAreaInsets.top, -bar.bounds.height)
 
+        // The bar's height changes with the window (a turned phone, a
+        // resized iPad window): the list's inset follows it, each time.
+        for height in [CGFloat(70), 32] {
+            (bar as? SizableNavigationBar)?.height = height
+            navigation.view.setNeedsLayout()
+            navigation.view.layoutIfNeeded()
+            // Where the system lays the bar out by its own height, set it.
+            if bar.bounds.height != height { bar.bounds.size.height = height }
+            waitUntil("the list's inset follows a \(height) pt bar") {
+                bar.bounds.height == height && list.additionalSafeAreaInsets.top == -height
+            }
+        }
+
         V2ListNavigationBar.dismantleUIView(keeper, coordinator: ())
-        keeper.removeFromSuperview()
         XCTAssertEqual(list.additionalSafeAreaInsets.top, 0)
         XCTAssertTrue(bar.isUserInteractionEnabled)
         XCTAssertFalse(bar.accessibilityElementsHidden)
+        keeper.removeFromSuperview()
+    }
+}
+
+/// A navigation bar whose height a test sets, standing in for the bar's
+/// height changing with the window.
+private final class SizableNavigationBar: UINavigationBar {
+    var height: CGFloat?
+
+    override func sizeThatFits(_ size: CGSize) -> CGSize {
+        var fits = super.sizeThatFits(size)
+        if let height { fits.height = height }
+        return fits
     }
 }
