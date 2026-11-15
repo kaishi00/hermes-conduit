@@ -116,6 +116,10 @@ extension AppState {
         for named in voiceBackgroundJobSupervisor.sessionIDsNamingAProfile {
             client.noteSessionProfile(named.profile, for: named.ids)
         }
+        // Local Live's own chat in place of a deleted Bot Chat is its bot's.
+        if let own = localLiveOwnChat, let profile = own.profile {
+            client.noteSessionProfile(profile, for: [own.runtimeSessionID, own.storedSessionID])
+        }
     }
 
     /// The call's own sessions as a switch changes the profile on screen:
