@@ -110,20 +110,9 @@ struct BackgroundChat: Equatable {
     /// of their own.
     @MainActor
     var rows: [ChatMessage] {
-        var rows = state.messages.map { row -> ChatMessage in
-            guard row.role == .partial else { return row }
-            var copy = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author)
-            copy.reasoning = row.reasoning
-            return copy
-        }
-        if let segment = state.liveTurn.reasoningSegment, !state.reasoningBuffer.isEmpty {
-            rows.append(ChatMessage(
-                id: segment.id,
-                role: .reasoning,
-                content: state.reasoningBuffer,
-                timestamp: segment.timestamp,
-                author: profile
-            ))
+        var rows = state.messages.map(Self.settled)
+        if let thinking = liveThinkingRow {
+            rows.append(thinking)
         }
         let reply = state.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
         if !reply.isEmpty {
@@ -138,17 +127,63 @@ struct BackgroundChat: Equatable {
         return rows
     }
 
+    /// The newest `limit` of its rows that a saved copy keeps, oldest
+    /// first, as the pane beside the chat on screen draws them (the reply
+    /// streaming and the thinking card live are drawn after them, from
+    /// `state`). Counted from the end, so a long chat costs no more than a
+    /// short one on each word of a reply. A question or an approval isn't
+    /// among them: nothing in the pane acts on its chat.
+    @MainActor
+    func newestSettledRows(_ limit: Int) -> [ChatMessage] {
+        var rows: [ChatMessage] = []
+        for row in state.messages.reversed() {
+            guard row.role == .partial || OfflineCachedMessage.storableRoles.contains(row.role) else { continue }
+            rows.append(Self.settled(row))
+            if rows.count == limit { break }
+        }
+        rows.reverse()
+        return rows
+    }
+
+    /// The thinking card live now, as a row.
+    @MainActor
+    var liveThinkingRow: ChatMessage? {
+        guard let segment = state.liveTurn.reasoningSegment, !state.reasoningBuffer.isEmpty else { return nil }
+        return ChatMessage(
+            id: segment.id,
+            role: .reasoning,
+            content: state.reasoningBuffer,
+            timestamp: segment.timestamp,
+            author: profile
+        )
+    }
+
+    /// Words a tool step or an interim note cut off read as the reply's.
+    private static func settled(_ row: ChatMessage) -> ChatMessage {
+        guard row.role == .partial else { return row }
+        var copy = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author)
+        copy.reasoning = row.reasoning
+        return copy
+    }
+
     private static let rowTimestampFormatter = ISO8601DateFormatter()
 
     /// The list after `chat` joins it: one entry per chat, newest first,
     /// at most `limit`, letting go of finished replies before running ones.
+    /// `keeping`: the ids of the chat shown beside the one on screen, which
+    /// stays whatever its age and whether or not a reply runs in it.
     @MainActor
-    static func adding(_ chat: BackgroundChat, to list: [BackgroundChat]) -> [BackgroundChat] {
+    static func adding(_ chat: BackgroundChat, to list: [BackgroundChat], keeping: Set<String>? = nil) -> [BackgroundChat] {
         var kept = list.filter { $0.sessionIDs.isDisjoint(with: chat.sessionIDs) }
         kept.insert(chat, at: 0)
+        func isKept(_ chat: BackgroundChat) -> Bool {
+            keeping.map { !chat.sessionIDs.isDisjoint(with: $0) } == true
+        }
         while kept.count > limit {
-            if let finished = kept.lastIndex(where: { !$0.isRunning }) {
+            if let finished = kept.lastIndex(where: { !$0.isRunning && !isKept($0) }) {
                 kept.remove(at: finished)
+            } else if let oldest = kept.lastIndex(where: { !isKept($0) }) {
+                kept.remove(at: oldest)
             } else {
                 kept.removeLast()
             }

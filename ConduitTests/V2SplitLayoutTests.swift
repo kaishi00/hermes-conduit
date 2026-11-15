@@ -24,6 +24,28 @@ extension SidebarLayoutTests {
         }
     }
 
+    /// A chat kept beside the open one (all-live stage 2) takes half of
+    /// what the list leaves, less where the open chat would fall under its
+    /// least width, and no pane at all where the two don't fit.
+    func testAChatKeptBesideFitsOnlyWhereBothChatsKeepTheirWidth() {
+        // An 11-inch iPad on its side: 1194 pt, less the list and its line.
+        XCTAssertEqual(V2SplitLayout.besideChatWidth(chatRoom: 818), 387)
+        // A 13-inch iPad: half of the room.
+        XCTAssertEqual(V2SplitLayout.besideChatWidth(chatRoom: 1000), 499)
+        // The least room, and one point short of it.
+        let least = V2SplitLayout.minimumChatWidth + 1 + V2SplitLayout.minimumBesideChatWidth
+        XCTAssertEqual(V2SplitLayout.besideChatWidth(chatRoom: least), V2SplitLayout.minimumBesideChatWidth)
+        XCTAssertNil(V2SplitLayout.besideChatWidth(chatRoom: least - 1))
+        // An iPhone on its side, a portrait iPad.
+        XCTAssertNil(V2SplitLayout.besideChatWidth(chatRoom: 580))
+        XCTAssertNil(V2SplitLayout.besideChatWidth(chatRoom: 0))
+
+        XCTAssertTrue(V2SplitLayout.showsBesideChat(path: [.conversation], showsSettings: false, inRoom: false))
+        XCTAssertFalse(V2SplitLayout.showsBesideChat(path: [], showsSettings: false, inRoom: false), "The placeholder has no chat to sit beside")
+        XCTAssertFalse(V2SplitLayout.showsBesideChat(path: [.conversation], showsSettings: true, inRoom: false))
+        XCTAssertFalse(V2SplitLayout.showsBesideChat(path: [.conversation], showsSettings: false, inRoom: true))
+    }
+
     func testV2SplitHiddenListKeepsOneColumn() {
         // #1164: the list hidden, a wide window keeps one column (the chat's
         // readable column scales on its own, #1320).
