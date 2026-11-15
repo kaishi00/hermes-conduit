@@ -2176,6 +2176,12 @@ struct ProjectFolderPickerSheet: View {
                 await open(made)
             }
         } catch {
+            // The host stopped waiting (504) and the folder may still be
+            // made: the folder shown is listed again, so a made one shows
+            // rather than being asked for twice (notifier issue 834).
+            if case DashboardTicketBridgeError.http(status: 504, _) = error, currentPath == folder {
+                await open(folder)
+            }
             errorMessage = UserFacingError.message(for: error)
         }
     }

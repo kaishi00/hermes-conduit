@@ -575,7 +575,6 @@ final class WorkspaceExplorer: ObservableObject {
             return nil
         } catch {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
-            Haptics.error()
             // The host stopped waiting (504), but the change may still land
             // there: the folders are read again, so what shows is what the
             // host has rather than a guess to repeat (notifier issue 834).
@@ -585,6 +584,7 @@ final class WorkspaceExplorer: ObservableObject {
                 // Another folder opened meanwhile: this failure isn't its.
                 guard isCurrent(ticket, owner, scope.profile) else { return nil }
             }
+            Haptics.error()
             return error
         }
     }
