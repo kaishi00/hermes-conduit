@@ -558,7 +558,8 @@ final class WorkspaceExplorer: ObservableObject {
     // MARK: - Changing
 
     /// Runs a change through the plugin and reads the folders again. A
-    /// refusal is shown, and returned for the caller (a stale save).
+    /// refusal is shown, and returned for the caller (a stale save); one
+    /// the host gave up waiting on reads the folders again too.
     /// With `refreshing` false the caller reads them once its changes are
     /// done (an upload of several files, issue 2355).
     @discardableResult
@@ -575,6 +576,11 @@ final class WorkspaceExplorer: ObservableObject {
         } catch {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
             Haptics.error()
+            // The host stopped waiting (504), but the change may still land
+            // there: the folders are read again, so what shows is what the
+            // host has rather than a guess to repeat (notifier issue 834).
+            // A refusal changed nothing, and a stale save keeps its date.
+            if refreshing, case DashboardTicketBridgeError.http(status: 504, _) = error { await refresh() }
             return error
         }
     }
