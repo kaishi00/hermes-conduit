@@ -136,6 +136,26 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     private var responseHadTranscript = false
     /// Frames go out one after another, in order, with bounded audio.
     private var writer: LiveVoiceSocketWriter?
+    /// A turn Conduit asks the server to answer (an opening, a typed turn,
+    /// a late tool answer): its item and response.create.
+    private struct AskedTurn {
+        let texts: [String]
+        let onSent: (@MainActor () -> Void)?
+        let onFailure: (@MainActor () -> Void)?
+    }
+    /// The server has a response going (the readiness check's included):
+    /// it refuses another response.create until that one is done
+    /// (`conversation_already_has_active_response`, issue 2524).
+    private var serverResponseActive = false
+    /// The turn whose response.create went out and hasn't started yet: if
+    /// the server refuses it for a response already going, it waits again.
+    private var unstartedTurn: AskedTurn?
+    /// Turns waiting for the server's response to end, oldest first.
+    private var heldTurns: [AskedTurn] = []
+    /// A server that never says its response ended mustn't hold the
+    /// call's turns for good: after this, the first one is tried anyway.
+    private let heldTurnLimit: Duration
+    private var heldTurnTask: Task<Void, Never>?
 
     init(
         client: LocalLiveConnecting,
@@ -143,6 +163,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         setupTimeout: Duration = .seconds(15),
         readinessTimeout: Duration = LocalLiveProtocol.readinessTimeout,
         keepaliveInterval: Duration = LocalLiveProtocol.keepaliveInterval,
+        heldTurnLimit: Duration = .seconds(10),
         reconnectDelay: @escaping @MainActor @Sendable (Int) async throws -> Void = { attempt in
             try await Task.sleep(for: .seconds(min(8, 1 << attempt)))
         }
@@ -152,6 +173,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         self.setupTimeout = setupTimeout
         self.readinessTimeout = readinessTimeout
         self.keepaliveInterval = keepaliveInterval
+        self.heldTurnLimit = heldTurnLimit
         self.reconnectDelay = reconnectDelay
     }
 
@@ -226,8 +248,86 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         // plugin, which sends it here as the call's next turn.
         if wantsResponse, let create = try? LocalLiveProtocol.encode(GrokLiveProtocol.responseCreate) {
             texts.append(create)
+            ask(AskedTurn(texts: texts, onSent: onSent, onFailure: onFailure))
+            return
         }
         enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
+    }
+
+    // MARK: Asked turns
+
+    /// One response at a time: a turn asked while the server's response
+    /// (the readiness check's, a reply, or the last asked turn's) is going
+    /// waits for it to end, as the server would refuse it and nothing would
+    /// say it again (issue 2524: a call from Hermes' opening, asked as the
+    /// call went ready, was never spoken).
+    private func ask(_ turn: AskedTurn) {
+        guard serverResponseActive || unstartedTurn != nil || !heldTurns.isEmpty else {
+            sendAsked(turn)
+            return
+        }
+        heldTurns.append(turn)
+        armHeldTurnLimit()
+    }
+
+    private func sendAsked(_ turn: AskedTurn) {
+        unstartedTurn = turn
+        serverResponseActive = true
+        enqueue(turn.texts, onSent: turn.onSent, onFailure: { [weak self] in
+            // Never reached the server: nothing is going on its account.
+            if let self, self.unstartedTurn?.texts == turn.texts {
+                self.unstartedTurn = nil
+                self.serverResponseActive = false
+            }
+            turn.onFailure?()
+        })
+    }
+
+    /// The server's response ended: the next held turn goes.
+    private func serverResponseEnded() {
+        serverResponseActive = false
+        unstartedTurn = nil
+        sendNextHeldTurn()
+    }
+
+    private func sendNextHeldTurn() {
+        guard !serverResponseActive, unstartedTurn == nil, !heldTurns.isEmpty else {
+            if heldTurns.isEmpty { cancelHeldTurnLimit() }
+            return
+        }
+        let next = heldTurns.removeFirst()
+        sendAsked(next)
+        if heldTurns.isEmpty { cancelHeldTurnLimit() } else { armHeldTurnLimit(restart: true) }
+    }
+
+    private func armHeldTurnLimit(restart: Bool = false) {
+        if heldTurnTask != nil, !restart { return }
+        heldTurnTask?.cancel()
+        let id = connectionID
+        let limit = heldTurnLimit
+        heldTurnTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: limit)
+            guard !Task.isCancelled, let self, self.connectionID == id else { return }
+            self.heldTurnTask = nil
+            localLiveLogger.notice("The speech server's response didn't end: trying the next turn anyway")
+            self.serverResponseEnded()
+        }
+    }
+
+    private func cancelHeldTurnLimit() {
+        heldTurnTask?.cancel()
+        heldTurnTask = nil
+    }
+
+    /// The connection ended: held turns can't go on it, and fail so their
+    /// sender can ask again (the opening, on the next connection).
+    private func dropAskedTurns() {
+        let held = heldTurns
+        heldTurns = []
+        unstartedTurn = nil
+        serverResponseActive = false
+        cancelHeldTurnLimit()
+        for turn in held { turn.onFailure?() }
     }
 
     /// The user stopped the reply: the server stops it, and one that shuts
@@ -352,6 +452,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         connectionID = UUID()
         inputUpsampler.reset()
         dropTurns()
+        dropAskedTurns()
     }
 
     private func dropTurns() {
@@ -405,6 +506,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         awaitingSetup = (id, attempt)
         readinessCheck = nil
         readinessResponseOpen = false
+        dropAskedTurns()
         responseHadTranscript = false
         turnTrace.reset()
         tracedAudioDrop = false
@@ -530,11 +632,24 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             if readinessCheck?.id == id {
                 localLiveLogger.notice("The speech server refused the readiness check")
                 readinessResponseOpen = false
+                serverResponseActive = false
                 becomeReady()
                 return
             }
             // A refused response.create or similar: the call goes on.
             localLiveLogger.notice("Local Live error event: \(message, privacy: .private)")
+            guard let refused = unstartedTurn else { return }
+            unstartedTurn = nil
+            if Self.isActiveResponseRefusal(message) {
+                // A response the session didn't know of is going: the turn
+                // waits for it, first in line.
+                heldTurns.insert(refused, at: 0)
+                serverResponseActive = true
+                armHeldTurnLimit()
+            } else {
+                // Refused for itself: nothing is going on its account.
+                serverResponseEnded()
+            }
         case .turnDetection(let summary):
             onTrace?("Turn detection: \(summary)")
         case .speechStarted:
@@ -542,10 +657,14 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         case .speechStopped:
             if let onTrace { onTrace(turnTrace.speechStopped()) }
         case .responseStarted:
+            serverResponseActive = true
+            unstartedTurn = nil
             if readinessResponseOpen { return }
             onTrace?("Reply started")
             responseHadTranscript = false
         case .responseDone:
+            // Its end lets the next asked turn go, whoever's response it was.
+            defer { if id == connectionID { serverResponseEnded() } }
             guard readinessResponseOpen else { return }
             readinessResponseOpen = false
             readinessResponseEnding = true
@@ -588,6 +707,8 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             return
         }
         readinessCheck = (id, marker)
+        // The check is a response of its own: an asked turn waits for it.
+        serverResponseActive = true
         // However late its ask comes, even after an error let the call go
         // ready, it never reaches Hermes.
         answeredMarkers.insert(marker)
@@ -646,6 +767,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         connectionID = UUID()
         inputUpsampler.reset()
         dropTurns()
+        dropAskedTurns()
         if let serverClose, GrokLiveSession.isRefusal(serverClose) {
             fail(Self.refusalMessage(serverClose))
             return
@@ -681,6 +803,14 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         }
         guard !Task.isCancelled, state != .stopped, !isFailed else { return }
         await connect(attempt: attempt + 1)
+    }
+
+    /// The server refused a response.create because another response is
+    /// going (speech-to-speech's `conversation_already_has_active_response`,
+    /// OpenAI's "already has an active response").
+    nonisolated static func isActiveResponseRefusal(_ message: String) -> Bool {
+        let lowered = message.lowercased()
+        return lowered.contains("active_response") || lowered.contains("active response")
     }
 
     nonisolated static func refusalMessage(_ close: GeminiLiveServerClose) -> String {
