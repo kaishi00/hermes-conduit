@@ -170,8 +170,9 @@ struct BackgroundChat: Equatable {
 
     /// The list after `chat` joins it: one entry per chat, newest first,
     /// at most `limit`, letting go of finished replies before running ones.
-    /// `keeping`: the ids of the chat shown beside the one on screen, which
-    /// stays whatever its age and whether or not a reply runs in it.
+    /// `keeping`: the ids of the chats on show (the pane's, and each chat
+    /// window's), which stay whatever their age and whether or not a reply
+    /// runs in them, and take none of the `limit` places.
     @MainActor
     static func adding(_ chat: BackgroundChat, to list: [BackgroundChat], keeping: Set<String>? = nil) -> [BackgroundChat] {
         var kept = list.filter { $0.sessionIDs.isDisjoint(with: chat.sessionIDs) }
@@ -179,13 +180,11 @@ struct BackgroundChat: Equatable {
         func isKept(_ chat: BackgroundChat) -> Bool {
             keeping.map { !chat.sessionIDs.isDisjoint(with: $0) } == true
         }
-        while kept.count > limit {
+        while kept.filter({ !isKept($0) }).count > limit {
             if let finished = kept.lastIndex(where: { !$0.isRunning && !isKept($0) }) {
                 kept.remove(at: finished)
             } else if let oldest = kept.lastIndex(where: { !isKept($0) }) {
                 kept.remove(at: oldest)
-            } else {
-                kept.removeLast()
             }
         }
         return kept

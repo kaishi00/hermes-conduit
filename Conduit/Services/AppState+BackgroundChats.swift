@@ -129,7 +129,7 @@ extension AppState {
         guard !isSameConversation(ids, as: newID) else { return }
         // The chat picked to stay beside the next one is followed whether
         // or not a reply runs in it.
-        let staysBeside = besideChatIDs.map { !$0.isDisjoint(with: ids) } == true
+        let staysBeside = keptChatIDs.map { !$0.isDisjoint(with: ids) } == true
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running, staysBeside: staysBeside)
         // One that couldn't be followed (a saved copy, a room) isn't beside.
         closeBesideChatWithoutItsChat()
@@ -236,7 +236,7 @@ extension AppState {
             isBotChat: isBotChat,
             state: leftChatState(turnRunning: turnRunning)
         )
-        backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats(), keeping: besideChatIDs)
+        backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats(), keeping: keptChatIDs)
         if staysBeside { besideChatLive.moved() }
         // A reply that finished while its last words drained on screen
         // settles in the left chat's own rows.
@@ -330,7 +330,7 @@ extension AppState {
         }
         let wasRunning = chat.isRunning
         act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
-        if besideChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true { besideChatLive.moved() }
+        if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true { besideChatLive.moved() }
         // Saved as its turn ends, and again for a completion that lands
         // after the turn's end (sessionBusy came first), whose final row
         // takes the cut-off words' place.
@@ -346,7 +346,7 @@ extension AppState {
     /// belongs to (another device resumed it, say), by the conversation
     /// index. Looked up on every event and never kept, so an id the index
     /// later binds to another chat stops reaching this one.
-    private func followedChatIndex(reboundTo id: String) -> Int? {
+    func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
         return backgroundChats.firstIndex { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }

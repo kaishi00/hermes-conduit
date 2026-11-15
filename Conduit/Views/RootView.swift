@@ -98,9 +98,10 @@ struct RootView: View {
         .onChange(of: scenePhase) { _, newPhase in
             // Only the primary window drives the process-wide lifecycle: a
             // transient duplicate window's .background must never suspend a
-            // conversation the primary window still presents.
+            // conversation the primary window still presents. A chat
+            // window's phase counts too (AppState.noteScenePhase).
             if isPrimaryWindow {
-                appState.handleScenePhase(newPhase)
+                appState.noteScenePhase(newPhase, scene: AppState.mainWindowScene)
             }
         }
         .onAppear {
