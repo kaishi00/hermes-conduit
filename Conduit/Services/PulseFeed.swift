@@ -1492,7 +1492,7 @@ extension AppState {
         if case .bot(let name) = picked {
             return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
-        if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
+        if !profilesMatch(activeProfile, pulseHomeProfile), isCallEndingProfileSwitch {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
         guard isConnected || isConnecting else {

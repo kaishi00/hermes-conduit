@@ -85,8 +85,9 @@ extension AppState {
             }
             guard !isProfileSwitching, target != activeProfile, connection == savedConnection else { return false }
             // A call that rang in meanwhile says so, whether or not the
-            // ticket came: the call alone stops the switch.
-            guard !isVoiceCallInProgress else {
+            // ticket came: the call alone stops the switch. A live call that
+            // goes on across it (all-live stage 2) doesn't.
+            guard !isCallEndingProfileSwitch else {
                 showCallRefusal(callRefusal)
                 return false
             }
@@ -171,6 +172,10 @@ extension AppState {
             // here and the hand-off, so the socket checked here is the one
             // handed on.
             let keptSocketClient = socketToKeepForProfileSwitch(within: savedConnection)
+            // A live call on the phone goes on through the kept socket, on
+            // its own profile (all-live stage 2, issue 2390). Read in the
+            // same step as the socket, so the two can't disagree.
+            let keepsCall = keptSocketClient != nil && callSurvivesProfileSwitch
             let ticket: String
             if keptSocketClient != nil {
                 ticket = savedConnection.ticket
@@ -211,23 +216,33 @@ extension AppState {
             client = nextClient
             clearPendingDecisionRestorationGuard()
             // A profile switch ends any live or suspended Voice conversation
-            // from the outgoing profile. Persist the outgoing mute and tear
-            // down BEFORE the identity flip: the sheet's deferred onDismiss
-            // re-enters closeVoiceConversation after the switch, and its
+            // from the outgoing profile, but a live call that goes on across
+            // it. Persist the outgoing mute and tear down BEFORE the identity
+            // flip: the sheet's deferred onDismiss re-enters
+            // closeVoiceConversation after the switch, and its
             // hasLiveVoiceSession guard makes that a no-op so the outgoing
-            // mute can never be persisted under the target profile.
-            if showVoiceSheet {
-                var preferences = loadVoiceProfilePreferences(profile: activeProfile)
-                preferences.outputMuted = voiceConversationController.isOutputMuted
-                saveVoiceProfilePreferences(preferences, profile: activeProfile)
+            // mute can never be persisted under the target profile. A live
+            // call that goes on keeps its jobs and its chat on its own
+            // profile: the next client names that profile for each of their
+            // sessions (all-live stage 2).
+            if keepsCall {
+                // The call's own profile, which may be the one this switch
+                // goes back to.
+                keepCallSessionsOnTheirProfile(voiceCallProfile, for: nextClient)
+            } else {
+                if showVoiceSheet {
+                    var preferences = loadVoiceProfilePreferences(profile: activeProfile)
+                    preferences.outputMuted = voiceConversationController.isOutputMuted
+                    saveVoiceProfilePreferences(preferences, profile: activeProfile)
+                }
+                voiceConversationController.stop()
+                stopQwenLiveConversation()
+                stopGeminiLiveConversation()
+                stopGPTLiveConversation()
+                stopGrokLiveConversation()
+                stopLocalLiveConversation()
+                retireVoiceBackgroundJobs()
             }
-            voiceConversationController.stop()
-            stopQwenLiveConversation()
-        stopGeminiLiveConversation()
-            stopGPTLiveConversation()
-            stopGrokLiveConversation()
-            stopLocalLiveConversation()
-            retireVoiceBackgroundJobs()
             showVoiceSheet = false
             clearClassicVoiceCards()
             suspendedVoiceConversation = nil
@@ -263,7 +278,10 @@ extension AppState {
             // plus that nextClient is new, so with nothing awaited between
             // them it can't refuse here; the fallback below is for a switch
             // that kept no socket and so holds a fresh ticket.
-            if let keptSocketClient, keptSocketClient.handOffSocket(to: nextClient) {
+            // A call that goes on across the switch keeps its requests in flight.
+            if let keptSocketClient, keptSocketClient.handOffSocket(
+                to: nextClient, carryingSessions: keepsCall ? callSessionIDs : [], carryingCallRequests: keepsCall
+            ) {
                 noteConnectionStep("Socket kept for the switch")
             } else {
                 try await connectChatResumeClient(nextClient)

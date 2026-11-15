@@ -833,6 +833,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
     private var callbackWatches: [UUID: CallbackWatch] = [:]
     private var callbackSyncTask: Task<Void, Never>?
+    /// The callback pass still running (a hang-up's settles its watches).
+    var callbackSyncInFlight: Task<Void, Never>? { callbackSyncTask }
     private var callbackSyncAgain = false
     private var callbackRenewTask: Task<Void, Never>?
     /// What classic voice says first when a call from Hermes opened it.
@@ -2056,6 +2058,26 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The chat the call was attached to until it was deleted: the call's
     /// new chat is made on its bot. Cleared when the call leaves.
     private(set) var deletedLiveThread: VoiceThreadTarget?
+
+    /// The ids of the sessions made on the profile in use (the jobs and the
+    /// call's chat that name no profile), for a call that keeps its profile
+    /// across a switch (all-live stage 2).
+    var sessionIDsOnActiveProfile: [String?] {
+        var ids = jobs.filter { $0.profile == nil }.flatMap { [$0.runtimeSessionID, $0.storedSessionID] }
+        for thread in [liveThread, deletedLiveThread].compactMap({ $0 }) where thread.profile == nil {
+            ids += [thread.runtimeSessionID, thread.storedSessionID]
+        }
+        return ids
+    }
+
+    /// Every session the call's jobs and thread use, whatever their profile.
+    var callSessionIDs: [String?] {
+        var ids = jobs.flatMap { [$0.runtimeSessionID, $0.storedSessionID] }
+        for thread in [liveThread, deletedLiveThread].compactMap({ $0 }) {
+            ids += [thread.runtimeSessionID, thread.storedSessionID]
+        }
+        return ids
+    }
 
     /// Whether `chat` was deleted (`noteChatDeleted`).
     func isDeletedChat(_ chat: VoiceThreadTarget) -> Bool {

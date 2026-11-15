@@ -390,8 +390,10 @@ extension AppState {
     /// Resume Call makes it continue that row.
     func beginVoiceCallRecording(engine: VoiceCallEngine) {
         finishVoiceCallRecording()
+        // The call's profile, which a switch to another profile leaves it on.
+        liveCallProfile = activeProfile
         // The call screen shows the jobs this call starts, saved or not.
-        voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveVoiceStyle.asksBeforeSending)
+        voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveCallStyle.asksBeforeSending)
         let resume = pendingVoiceResume
         pendingVoiceResume = nil
         liveVoiceResumeContext = resume?.context
@@ -1152,7 +1154,8 @@ extension AppState {
         if showGPTLiveSheet { showGPTLiveSheet = false }
         if showGrokLiveSheet { showGrokLiveSheet = false }
         if showLocalLiveSheet { showLocalLiveSheet = false }
-        openAppLink(.session(id: sessionID))
+        // A call on another profile opens the chat on its own profile.
+        openAppLink(callChatLink(.session(id: sessionID)))
         return true
     }
 
@@ -1356,7 +1359,7 @@ extension AppState {
     func liveVoiceThreadIsBusy(_ thread: VoiceThreadTarget) async -> Bool {
         if isOpenChat(thread) { return isBusy }
         guard let client = try? await clientForVoiceRequest(),
-              let rows = try? await client.activeSessions(inProfile: thread.profile) else { return false }
+              let rows = try? await client.activeSessions(inProfile: callThreadProfile(thread)) else { return false }
         return rows.contains { row in
             (thread.owns(sessionID: row.runtimeSessionId) || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
         }
@@ -1367,11 +1370,11 @@ extension AppState {
     func liveVoiceThreadRuntime(_ thread: VoiceThreadTarget) async throws -> String {
         let client = try await clientForVoiceRequest()
         if isOpenChat(thread), let sessionID = activeSessionId { return sessionID }
-        let rows = (try? await client.activeSessions(inProfile: thread.profile)) ?? []
+        let rows = (try? await client.activeSessions(inProfile: callThreadProfile(thread))) ?? []
         if let live = rows.first(where: { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }) {
             return live.runtimeSessionId
         }
-        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: thread.profile).sessionId
+        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: callThreadProfile(thread)).sessionId
     }
 
     /// The runtime a Local Live call's next turn runs on in `chat`, or nil
@@ -1395,7 +1398,7 @@ extension AppState {
     func noteCallChatIfGone(_ thread: VoiceThreadTarget) {
         let ids = knownSessionIDs(for: thread.runtimeSessionID)
             .union([thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 })
-        guard conversationIsGone(sessionIDs: ids, dashboardID: activeDashboardID, profile: thread.profile ?? activeProfile) else { return }
+        guard conversationIsGone(sessionIDs: ids, dashboardID: activeDashboardID, profile: thread.profile ?? voiceCallProfile) else { return }
         voiceBackgroundJobSupervisor.noteChatDeleted(ids)
     }
 
@@ -1414,12 +1417,12 @@ extension AppState {
         // The chat's own resume already moved it off the dead runtime: its
         // runtime is the live one, and a second resume would only mint another.
         if isOpenChat(thread), let current = activeSessionId, current != deadRuntimeID { return current }
-        let resumed = try await openChatResumeSession(storedID, using: client, compact: true, profile: thread.profile)
+        let resumed = try await openChatResumeSession(storedID, using: client, compact: true, profile: callThreadProfile(thread))
         let recoveredID = resumed.sessionId
         guard !recoveredID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw HermesError.invalidResponse
         }
-        let profile = thread.profile ?? activeProfile
+        let profile = thread.profile ?? voiceCallProfile
         // The identity check the compression recovery runs: the resume must
         // answer for this conversation, never move the chat to another one.
         let selected = ConversationIdentity(
@@ -1516,7 +1519,7 @@ extension AppState {
             // Re-read right before the send: a turn running there (typed on
             // another device) is waited for. A failed read fails the send rather
             // than risk steering it.
-            let rows = try await client.activeSessions(inProfile: thread.profile)
+            let rows = try await client.activeSessions(inProfile: callThreadProfile(thread))
             if rows.contains(where: { row in
                 (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
                     || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
@@ -1526,7 +1529,7 @@ extension AppState {
             await surfaceReport?.value
             outcome = try await sendCallPromptTakingOver(
                 runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
-                profile: thread.profile,
+                profile: callThreadProfile(thread),
                 stillWanted: stillWanted
             ) {
                 try await client.sendPrompt(target, text: text)
@@ -1650,10 +1653,11 @@ extension AppState {
         }
         guard let bridge = dashboardTicketBridge else { return nil }
         // One profile for every read: a reply from another profile's history
-        // is never read out. A Bot Chat's history is in the bot's profile.
-        let workspace = activeProfile
+        // is never read out. A Bot Chat's history is in the bot's profile,
+        // and a call that went on across a switch reads its own profile's.
+        let workspace = voiceCallProfile
         guard let turn = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
-              workspace == activeProfile else { return nil }
+              workspace == voiceCallProfile else { return nil }
         return (turn.reply, false, turn.prompt)
     }
 
@@ -2038,7 +2042,8 @@ extension AppState {
             match = bot.name
         }
         guard let match else { return .unknown }
-        return profilesMatch(match, activeProfile) ? .active : .other(match)
+        // The call's own profile is "this one", a call that went on across a switch included.
+        return profilesMatch(match, voiceCallProfile) ? .active : .other(match)
     }
 
     /// The names a Watch call's job may give the user's profiles, in the
@@ -2082,6 +2087,14 @@ extension AppState {
         // A Watch call to Gemini belongs to the outgoing connection too: it
         // ends here, before its jobs' news goes back to the supervisor.
         WatchVoiceLink.shared.direct.connectionRetiring(in: self)
+        // This reset hands an ended call's jobs back too: its hang-up's
+        // last changes go into its own ledger first, as the hand-back saves.
+        if callProfileHandingBack != nil {
+            saveVoiceJobLedger(voiceBackgroundJobSupervisor.savedLedger())
+        }
+        callEndedOffProfileHandBack?.cancel()
+        callEndedOffProfileHandBack = nil
+        callProfileHandingBack = nil
         voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
         voiceBackgroundJobSupervisor.reset()
         scheduleVoiceJobLedgerRestore()

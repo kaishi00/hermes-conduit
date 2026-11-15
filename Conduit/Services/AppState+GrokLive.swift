@@ -118,6 +118,9 @@ extension AppState {
         showGrokLiveSheet = true
         if !grokLiveController.isActive {
             grokLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // An ended call's jobs go back first (the modes stopped above may
+            // have just ended one off its profile).
+            handBackEndedCallJobsNow()
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -148,6 +151,7 @@ extension AppState {
         stopGPTLiveConversation()
         stopLocalLiveConversation()
         guard !grokLiveController.isActive else { return }
+        handBackEndedCallJobsNow()
         // A call started from CarPlay's chat list is attached to that chat,
         // as one started from a chat on the phone is.
         if let thread {
@@ -165,6 +169,8 @@ extension AppState {
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGrokLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showGrokLiveSheet || minimisedLiveVoice == .grokLive)) else { return }
         if isGrokLiveActive {
             closeGrokLiveConversation()
@@ -180,6 +186,8 @@ extension AppState {
     }
 
     func closeGrokLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.grokLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .grokLive)
@@ -202,6 +210,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     func stopGrokLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
         guard showGrokLiveSheet || minimisedLiveVoice == .grokLive || isGrokLiveActive else {

@@ -5577,6 +5577,135 @@ extension HermesClientTests {
         XCTAssertTrue(socket.cancelled)
     }
 
+    /// A live call on the phone goes on across a switch to another profile
+    /// (all-live stage 2, issue 2390) only through a socket the switch can
+    /// keep, and the next client names the call's profile for its chat, so
+    /// the call's next turn still reaches it.
+    func testALiveCallGoesOnAcrossAProfileSwitchThroughTheKeptSocket() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let appState = AppState(defaults: makeScratchDefaults("LiveCallAcrossSwitch"), loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://test.example", ticket: "ticket")
+        appState.client = outgoing
+        appState.isConnected = true
+        // A GPT-Live call on "default", minimised, attached to a chat.
+        appState.liveCallProfile = "default"
+        appState.minimisedLiveVoice = .gptLive
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
+        )
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertTrue(appState.callSurvivesProfileSwitch, "The socket can be kept, so the call goes on")
+        XCTAssertFalse(appState.isCallEndingProfileSwitch, "A profile pick doesn't ask")
+        var asked: CallEndingSwitch?
+        var switched = false
+        appState.switchEndingCall(to: "Work", profileOnly: true, pending: &asked) { switched = true }
+        XCTAssertTrue(switched)
+        XCTAssertNil(asked)
+        appState.switchEndingCall(to: "Other dashboard", pending: &asked) { XCTFail("A dashboard switch still ends the call") }
+        XCTAssertNotNil(asked, "A dashboard pick still asks first")
+
+        // A client made by a reconnect (a failed switch dropped the one
+        // that knew) names the call's profile for its chat again.
+        let reconnected = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(afterReconnect: reconnected)
+        XCTAssertEqual(reconnected.sessionProfile(for: "chat-1"), "default")
+        XCTAssertEqual(reconnected.sessionProfile(for: "stored-1"), "default")
+        // A live start for the call's own profile keeps the call.
+        appState.endLiveCallOnAnotherProfile(than: "Default")
+        XCTAssertTrue(appState.isLiveCallUp)
+
+        // Classic voice can't go on: the pick asks first, as before.
+        appState.showVoiceSheet = true
+        XCTAssertFalse(appState.callSurvivesProfileSwitch)
+        XCTAssertTrue(appState.isCallEndingProfileSwitch)
+        appState.showVoiceSheet = false
+
+        // The switch hands the socket on; the next client names the call's
+        // profile for the call's chat.
+        let incoming = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: incoming)
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        outgoing.disconnect()
+        appState.client = incoming
+        appState.setActiveProfileForTesting("work")
+        XCTAssertEqual(incoming.sessionProfile(for: "chat-1"), "default")
+        XCTAssertEqual(incoming.sessionProfile(for: "stored-1"), "default")
+        XCTAssertEqual(appState.voiceCallProfile, "default", "The call keeps its profile")
+        XCTAssertEqual(appState.callProfileOffScreen, "default")
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let turn = Task { try await incoming.sendPrompt("chat-1", text: "And the hotel?") }
+        try await sent.wait("the call's turn to be sent")
+        let request = try lastRequest(on: socket)
+        XCTAssertEqual((request["params"] as? [String: Any])?["profile"] as? String, "default",
+                       "The call's turn goes to its own profile, not the one on screen")
+        incoming.disconnect()
+        _ = try? await turn.value
+
+        // Switching back to the call's profile makes them the client's own again.
+        let back = makeClient(transport: transport, profile: "default")
+        back.inheritSessionProfiles(from: incoming)
+        appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: back)
+        XCTAssertNil(back.sessionProfile(for: "chat-1"))
+
+        // A live call asked for on the profile on screen (Siri, a Shortcut)
+        // isn't the one running on "default": that one ends and hands its
+        // jobs back, so the new call starts as its own.
+        appState.endLiveCallOnAnotherProfile(than: "work")
+        XCTAssertFalse(appState.isLiveCallUp)
+        XCTAssertNil(appState.liveCallProfile)
+        XCTAssertEqual(appState.voiceCallProfile, "work")
+    }
+
+    func testASwitchTheCallGoesOnAcrossKeepsTheCallsRequestsInFlight() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        // A spoken job's submit in flight, and the screen's list read.
+        let submit = Task { try await outgoing.sendPrompt("job-1", text: "Book it") }
+        try await sent.wait("the job's submit to be sent")
+        let submitID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+        let sentList = Gate()
+        socket.onSend = { sentList.signal() }
+        let list = Task { try await outgoing.sessions() }
+        try await sentList.wait("the screen's list read to be sent")
+
+        // Another job's chat still being made: it names no session yet.
+        let sentCreate = Gate()
+        socket.onSend = { sentCreate.signal() }
+        let create = Task {
+            try await CallRequestScope.$isCallRequest.withValue(true) { try await outgoing.createSession() }
+        }
+        try await sentCreate.wait("the job's chat create to be sent")
+        let createID = try XCTUnwrap(try lastRequest(on: socket)["id"] as? Int)
+
+        // Two switches: the requests follow the socket to whoever holds it.
+        let between = makeClient(transport: transport, profile: "work")
+        XCTAssertTrue(outgoing.handOffSocket(to: between, carryingSessions: ["job-1"], carryingCallRequests: true))
+        outgoing.disconnect()
+        do {
+            _ = try await awaitResult(of: list, "the screen's request to fail")
+            XCTFail("The outgoing profile's own request still fails at the hand-off")
+        } catch HermesError.connectionClosed {}
+        let incoming = makeClient(transport: transport, profile: "home")
+        XCTAssertTrue(between.handOffSocket(to: incoming, carryingSessions: ["job-1"], carryingCallRequests: true))
+        between.disconnect()
+
+        try deliverReply([
+            "jsonrpc": "2.0", "id": createID,
+            "result": ["session_id": "job-2", "stored_session_id": "stored-2"]
+        ], on: socket)
+        let created = try await awaitResult(of: create, "the carried create to be answered")
+        XCTAssertEqual(created.sessionId, "job-2")
+
+        // The submit's answer comes on the same socket: the job learns it started.
+        try deliverReply(["jsonrpc": "2.0", "id": submitID, "result": ["status": "streaming"]], on: socket)
+        let outcome = try await awaitResult(of: submit, "the carried submit to be answered")
+        XCTAssertEqual(outcome, .accepted)
+        incoming.disconnect()
+    }
+
     func testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let sent = Gate()

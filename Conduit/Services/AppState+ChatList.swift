@@ -139,8 +139,8 @@ extension AppState {
         // the switch to its profile, then the chat.
         let owner = rowProfile(session)
         if owner != activeProfile {
-            // A switch ends a call: say so here, where the tap was.
-            guard !isVoiceCallInProgress else {
+            // A switch ends a call (but a live call that goes on across it): say so here, where the tap was.
+            guard !isCallEndingProfileSwitch else {
                 showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
                 return
             }

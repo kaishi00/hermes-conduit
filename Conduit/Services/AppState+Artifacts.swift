@@ -173,7 +173,7 @@ extension AppState {
     func showArtifactInChat(_ item: ArtifactItem, chatIsOpen: Bool) {
         // Another profile's chat doesn't open during a call (it says so),
         // so nothing waits to scroll.
-        let refused = !chatIsOpen && item.otherProfile != nil && !item.isBotChat && isVoiceCallInProgress
+        let refused = !chatIsOpen && item.otherProfile != nil && !item.isBotChat && isCallEndingProfileSwitch
         if !refused {
             pendingArtifactReveal = ArtifactReveal(messageID: item.messageID, opening: chatIsOpen ? nil : item.sessionID)
         }

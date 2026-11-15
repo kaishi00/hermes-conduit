@@ -228,7 +228,7 @@ extension AppState {
                                 call: String? = nil) {
         guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
         else { return }
-        let bot = profile ?? activeProfile
+        let bot = profile ?? voiceCallProfile
         let client = botWorkClient(profile: bot)
         let dashboard = activeDashboardID
         Task { @MainActor [weak self] in
@@ -253,7 +253,7 @@ extension AppState {
     /// chat, so this is its only end). Best effort, on the dashboard in use.
     func voiceCallLeftChat(profile: String?, chat: String, call: String? = nil) {
         guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
-        let client = botWorkClient(profile: profile ?? activeProfile)
+        let client = botWorkClient(profile: profile ?? voiceCallProfile)
         let dashboard = activeDashboardID
         Task { @MainActor [weak self] in
             _ = await AppState.adoptOnce(
@@ -276,7 +276,7 @@ extension AppState {
     /// nil when the chat isn't a workstream's.
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
-        let bot = thread.profile ?? activeProfile
+        let bot = thread.profile ?? voiceCallProfile
         if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,
            botWork.callPreReads[bot].map({ Date().timeIntervalSince($0) >= BotWorkStore.callPreReadRetry }) ?? true {
             botWork.callPreReads[bot] = Date()

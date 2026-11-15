@@ -337,25 +337,25 @@ extension AppState {
                 return try await self.hermesCallsClient.watch(
                     sessionIDs: target.sessionIDs,
                     title: target.title,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     holdSeconds: holdSeconds,
                     endedWithinSeconds: endedWithinSeconds
                 )
             },
             hold: { [weak self] watchID, profile, seconds in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.activeProfile, seconds: seconds)
+                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.voiceCallProfile, seconds: seconds)
             },
             cancel: { [weak self] watchID, profile in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.activeProfile)
+                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.voiceCallProfile)
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
                 await HermesCallNotifications.post(HermesCallNotifications.localRequest(
                     for: target,
                     kind: kind,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     dashboardID: self.activeDashboardID
                 ))
             }
@@ -388,6 +388,8 @@ extension AppState {
             HermesCallTrace.shared.note("Voice not opened (connected: \(isConnected), voice in use: \(isVoiceInUse))")
             return false
         }
+        // An ended call's jobs go back before this one notes anything.
+        handBackEndedCallJobsNow()
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)

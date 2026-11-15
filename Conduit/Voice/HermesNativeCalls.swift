@@ -63,8 +63,12 @@ enum HermesNativeCallPlan: Equatable {
         case none
         /// "Missed call from Hermes", answered like the call.
         case missed
-        /// "Hermes wants to talk": the user is busy in voice.
+        /// "Hermes wants to talk": voice couldn't open for an answered call.
         case talk
+        /// A missed call: the user was already in a call (another bot's
+        /// included, all-live stage 2), so it didn't ring. Its buttons call
+        /// back or open the chat it was about (Eric 2026-11-15).
+        case busy
         /// A call Conduit couldn't read.
         case unreadable
     }
@@ -76,14 +80,14 @@ enum HermesNativeCallPlan: Equatable {
         guard call.target != nil else { return .endAtOnce(.unreadable) }
         guard !call.replayed else { return .endAtOnce(.none) }
         if let sentAt = call.sentAt, now.timeIntervalSince(sentAt) > lateAfter { return .endAtOnce(.missed) }
-        return voiceInUse ? .endAtOnce(.talk) : .ring
+        return voiceInUse ? .endAtOnce(.busy) : .ring
     }
 
     /// Whether the push is a call of its own, with its own trace: a replay
     /// or a push Conduit couldn't read leaves the last call's trace alone.
     var startsTrace: Bool {
         switch self {
-        case .ring, .endAtOnce(.missed), .endAtOnce(.talk): return true
+        case .ring, .endAtOnce(.missed), .endAtOnce(.talk), .endAtOnce(.busy): return true
         case .endAtOnce(.none), .endAtOnce(.unreadable): return false
         }
     }
@@ -95,6 +99,7 @@ enum HermesNativeCallPlan: Equatable {
         case .endAtOnce(.none): return "end at once, nothing posted"
         case .endAtOnce(.missed): return "end at once, missed call"
         case .endAtOnce(.talk): return "end at once, wants to talk"
+        case .endAtOnce(.busy): return "end at once, busy in a call: missed call"
         case .endAtOnce(.unreadable): return "end at once, unreadable"
         }
     }
@@ -407,7 +412,7 @@ final class HermesNativeCalls: NSObject {
     /// the car, while a call answered on the wrist talks through the Watch.
     nonisolated static func stopsWatchRing(plan: HermesNativeCallPlan, inCar: Bool) -> Bool {
         switch plan {
-        case .endAtOnce(.talk): return true
+        case .endAtOnce(.talk), .endAtOnce(.busy): return true
         case .ring: return inCar
         default: return false
         }
@@ -1209,6 +1214,7 @@ final class HermesNativeCalls: NSObject {
         case .none: request = nil
         case .missed: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true, callerName: Self.profileName($0)) }
         case .talk: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: false) }
+        case .busy: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true, callerName: Self.profileName($0)) }
         case .unreadable: request = HermesCallNotifications.unreadableMissedCallRequest()
         }
         guard let request else { return }

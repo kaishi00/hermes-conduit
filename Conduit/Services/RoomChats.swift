@@ -255,7 +255,7 @@ extension AppState {
             return RoomLinksClient.message(for: HermesError.notConnected)
         }
         // Another profile's chat opens after a switch to it, which would end the call.
-        if !profilesMatch(agent.profile, activeProfile), isVoiceCallInProgress {
+        if !profilesMatch(agent.profile, activeProfile), isCallEndingProfileSwitch {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
         let roomID = surface.room.roomID
