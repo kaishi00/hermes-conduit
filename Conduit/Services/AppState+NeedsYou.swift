@@ -79,13 +79,7 @@ extension AppState {
                   !needsYou.cardsHermesDrew.contains(pushed.requestId),
                   isOpenChat(item),
                   !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
-            let hermesCardIsThere = messages.contains { message in
-                guard let live = message.clarify,
-                      !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                      live.presentationStatus == .pending else { return false }
-                return Self.pushCardSupersededBy(pushed, live: live)
-            }
-            if hermesCardIsThere {
+            if Self.hermesCardHoldsQuestion(pushed, in: messages) {
                 // Its answer leaves the wait listed until the next read.
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
