@@ -1692,8 +1692,11 @@ final class AppState: ObservableObject {
         },
         submit: { [weak self] chat, text in
             guard let self else { throw HermesError.notConnected }
+            // Before the on-screen check: the wait for a dropped transport
+            // can outlast the chat on screen.
+            let waited = try await self.clientForVoiceRequest()
             if chat.runtimeID == self.activeSessionId {
-                let client = try await self.clientForVoiceRequest()
+                let client = waited
                 // On screen it goes through the composer, so the chat shows
                 // and streams it like Classic voice's turns.
                 var foundBusy = self.isBusy
