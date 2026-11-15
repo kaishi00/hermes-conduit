@@ -37,7 +37,7 @@ extension AppState {
 
     /// Whether the chat acted on (`act(on:)`) is the one kept beside.
     var actingOnBesideChat: Bool {
-        guard let ids = besideChatIDs, let scope = liveChatScope else { return false }
+        guard let ids = keptChatIDs, let scope = liveChatScope else { return false }
         return !scope.sessionIDs.isDisjoint(with: ids)
     }
 
@@ -45,7 +45,7 @@ extension AppState {
     /// there as it's sent, ahead of its reply: once, by Hermes' row id, or
     /// by its words where the event has none.
     func noteUserMessageInBesideChat(sessionId: String, rowId: Int?, text: String) {
-        guard let chat = besideChat, chat.answers(to: sessionId), !eventBelongsToActiveSession(sessionId),
+        guard let chat = keptChat(answering: sessionId), !eventBelongsToActiveSession(sessionId),
               text.contains(where: { !$0.isWhitespace }) else { return }
         let rows = chat.state.messages
         if let rowId {
@@ -135,6 +135,7 @@ extension AppState {
     /// chat's own column, deleted, or on a dashboard or profile left.
     func closeBesideChatWithoutItsChat() {
         if besideChatIDs != nil, besideChat == nil { besideChatIDs = nil }
+        closeChatWindowsWithoutTheirChats()
     }
 
     /// Follows the chat on screen as the one kept beside, from now: what
@@ -162,7 +163,7 @@ extension AppState {
         backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: kept) }
     }
 
-    private func letGoOfIdleFollowedChat(answering ids: Set<String>) {
+    func letGoOfIdleFollowedChat(answering ids: Set<String>) {
         backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
     }
 }

@@ -521,6 +521,9 @@ final class AppState: ObservableObject {
     @Published var besideChatIDs: Set<String>?
     /// Tells the pane beside the chat that its chat's rows or reply moved.
     let besideChatLive = BesideChatLive()
+    /// The chats shown in windows of their own (AppState+ChatWindows.swift),
+    /// each by the ids it answers to. Followed like the pane's chat.
+    @Published var windowChatIDs: [Set<String>] = []
     /// The followed chat a profile switch shows while it lands, by the ids
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?
