@@ -580,7 +580,11 @@ final class WorkspaceExplorer: ObservableObject {
             // there: the folders are read again, so what shows is what the
             // host has rather than a guess to repeat (notifier issue 834).
             // A refusal changed nothing, and a stale save keeps its date.
-            if refreshing, case DashboardTicketBridgeError.http(status: 504, _) = error { await refresh() }
+            if refreshing, case DashboardTicketBridgeError.http(status: 504, _) = error {
+                await refresh()
+                // Another folder opened meanwhile: this failure isn't its.
+                guard isCurrent(ticket, owner, scope.profile) else { return nil }
+            }
             return error
         }
     }
