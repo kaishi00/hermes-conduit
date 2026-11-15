@@ -1107,7 +1107,16 @@ private struct ArtifactsList: View {
                 savedKey = nil
             }
         }
-        guard key.served else { return }
+        guard key.served else {
+            // Connected, and the plugin never said what it serves: asked
+            // again, as the feed's refresh asks, so pulling Saved isn't a
+            // no-op until the next connect.
+            if appState.isConnected, appState.notifierPlugin.state == .unknown {
+                await appState.refreshNotifierPluginStatus()
+                if ticket == savedGeneration, currentSavedKey.served { await reloadSaved() }
+            }
+            return
+        }
         var read: [String: [ArtifactItem]] = [:]
         var rows: [[ArtifactItem]?] = []
         for (index, profile) in profiles.enumerated() {
@@ -1159,7 +1168,7 @@ private struct ArtifactsList: View {
             guard appState.activeDashboardID == dashboard else { return }
             Haptics.success()
             // Shown at once, and kept if reading Saved again fails.
-            changeSavedRows(profile: profile) { rows in
+            changeSavedRows(profile: profile, seeding: true) { rows in
                 rows.removeAll { $0.id == saved.id }
                 rows.insert(saved, at: 0)
             }
@@ -1195,12 +1204,22 @@ private struct ArtifactsList: View {
         }
     }
 
-    /// A save or removal the host took, applied to every read store of
-    /// `profile` before Saved is read again.
-    private func changeSavedRows(profile: String, _ change: (inout [ArtifactItem]) -> Void) {
-        guard savedKey?.sameStores(as: currentSavedKey) == true else { return }
+    /// A save or removal the host took, applied to every store of
+    /// `profile` before Saved is read again. A save also lands in a store
+    /// Saved hasn't read yet (its read failed or hasn't answered), so it
+    /// shows at once and stays if reading again fails; a removal there
+    /// has nothing to take out.
+    private func changeSavedRows(profile: String, seeding: Bool = false,
+                                 _ change: (inout [ArtifactItem]) -> Void) {
+        let key = currentSavedKey
+        if savedKey?.sameStores(as: key) != true {
+            guard seeding else { return }
+            savedRows = Array(repeating: nil, count: currentKey.sources.count)
+            savedKey = key
+            savedFailure = nil
+        }
         for (index, source) in currentKey.sources.enumerated() where source.profile == profile && index < savedRows.count {
-            guard var rows = savedRows[index] else { continue }
+            guard var rows = savedRows[index] ?? (seeding ? [] : nil) else { continue }
             change(&rows)
             savedRows[index] = rows
         }
