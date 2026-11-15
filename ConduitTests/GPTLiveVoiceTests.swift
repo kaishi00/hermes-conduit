@@ -2624,6 +2624,60 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.callProfileOffScreen)
     }
 
+    /// A call that ended off its profile while its hang-up's callback pass
+    /// is on the wire: its jobs stay its profile's until the pass ends, a
+    /// new voice start takes them back at once, and a boundary drops the
+    /// wait (all-live stage 2).
+    func testACallEndedOffItsProfileHandsItsJobsBackAfterTheHangUpsCallbackPass() async {
+        func endedOffProfile() -> (AppState, String, AsyncStream<Void>.Continuation, Task<Void, Never>) {
+            let appState = makeGPTLiveAppState()
+            appState.setGPTLiveEnabled(true)
+            appState.liveCallProfile = "default"
+            appState.showGPTLiveSheet = true
+            let homeLedger = appState.voiceJobLedgerKey
+            appState.setActiveProfileForTesting("work")
+            let (stream, release) = AsyncStream<Void>.makeStream()
+            let pass = Task { for await _ in stream { break } }
+            appState.voiceBackgroundJobSupervisor.holdCallbackSyncForTesting(pass)
+            appState.closeGPTLiveConversation()
+            XCTAssertNil(appState.liveCallProfile)
+            XCTAssertEqual(appState.callProfileHandingBack, "default")
+            XCTAssertEqual(appState.voiceCallProfile, "default", "Its jobs are still its profile's while the pass runs")
+            XCTAssertEqual(appState.voiceJobLedgerKey, homeLedger)
+            return (appState, homeLedger, release, pass)
+        }
+
+        // The pass ends: the jobs go back to the profile on screen.
+        let (waited, homeLedger, release, pass) = endedOffProfile()
+        release.yield()
+        await pass.value
+        for _ in 0..<50 where waited.callProfileHandingBack != nil { await Task.yield() }
+        XCTAssertNil(waited.callProfileHandingBack)
+        XCTAssertNil(waited.callEndedOffProfileHandBack)
+        XCTAssertEqual(waited.voiceCallProfile, "work")
+        XCTAssertNotEqual(waited.voiceJobLedgerKey, homeLedger)
+        XCTAssertNil(waited.voiceBackgroundJobSupervisor.callbackSyncInFlight)
+
+        // A new voice start doesn't wait for the pass.
+        let (started, _, releaseStarted, _) = endedOffProfile()
+        started.handBackEndedCallJobsNow()
+        XCTAssertNil(started.callProfileHandingBack)
+        XCTAssertNil(started.callEndedOffProfileHandBack, "Nothing is left to reset the new call's jobs later")
+        XCTAssertEqual(started.voiceCallProfile, "work")
+        releaseStarted.yield()
+
+        // A boundary drops the wait with the jobs.
+        let (retired, _, releaseRetired, retiredPass) = endedOffProfile()
+        retired.retireVoiceBackgroundJobs()
+        XCTAssertNil(retired.callProfileHandingBack)
+        XCTAssertNil(retired.callEndedOffProfileHandBack)
+        XCTAssertEqual(retired.voiceCallProfile, "work")
+        releaseRetired.yield()
+        await retiredPass.value
+        await Task.yield()
+        XCTAssertNil(retired.callProfileHandingBack)
+    }
+
     func testDisconnectDropsTheHostTextOfALiveCallThatAlreadyFailed() {
         let appState = makeGPTLiveAppState()
         appState.installLiveVoiceHostContextForTesting()

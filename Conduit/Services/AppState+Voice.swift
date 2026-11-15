@@ -1515,11 +1515,16 @@ extension AppState {
         let reportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
         let outcome: PromptSubmissionOutcome
+        let sender: HermesClient
         do {
             // Re-read right before the send: a turn running there (typed on
             // another device) is waited for. A failed read fails the send rather
             // than risk steering it.
-            let rows = try await client.activeSessions(inProfile: callThreadProfile(thread))
+            // The call's own read: a profile switch the call goes on across
+            // carries it to the new client.
+            let rows = try await CallRequestScope.$isCallRequest.withValue(true) {
+                try await client.activeSessions(inProfile: callThreadProfile(thread))
+            }
             if rows.contains(where: { row in
                 (row.runtimeSessionId == target || thread.owns(sessionID: row.runtimeSessionId)
                     || thread.owns(sessionID: row.storedSessionId)) && row.isRunning
@@ -1527,12 +1532,15 @@ extension AppState {
                 throw VoiceThreadBusyError()
             }
             await surfaceReport?.value
+            // The client as of now: a profile switch during the read or the
+            // report handed the socket to a new one, and the call goes on there.
+            sender = try await clientForVoiceRequest()
             outcome = try await sendCallPromptTakingOver(
                 runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
                 profile: callThreadProfile(thread),
                 stillWanted: stillWanted
-            ) {
-                try await client.sendPrompt(target, text: text)
+            ) { [sender] in
+                try await sender.sendPrompt(target, text: text)
             }
         } catch {
             // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
@@ -1541,7 +1549,7 @@ extension AppState {
             throw error
         }
         switch outcome {
-        case .accepted where client.chatIsHeldByLostTurn(target):
+        case .accepted where sender.chatIsHeldByLostTurn(target):
             // Admitted behind a turn a restart cut off: nothing runs until
             // it's discarded in the chat.
             throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
