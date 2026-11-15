@@ -26,8 +26,26 @@ enum V2VoiceContext: Equatable {
     /// The open conversation: voice in it (a Bot Chat calls its bot, a
     /// saved call's row resumes the call).
     case conversation
+
+    /// The same button: a project's page is told apart by its folder, all
+    /// the button reads of it, so the page's other changes (its chats, its
+    /// count) don't redraw the button.
+    func isSameVoiceButton(as other: V2VoiceContext) -> Bool {
+        switch (self, other) {
+        case (.home, .home), (.bots, .bots), (.conversation, .conversation): return true
+        case (.project(let mine), .project(let theirs)):
+            return V2VoiceButton.folder(of: mine) == V2VoiceButton.folder(of: theirs)
+        default: return false
+        }
+    }
 }
 
+/// The gold circle or its top-bar glyph. This outer view reads AppState, so
+/// it runs with every publish, and hands what the button shows to
+/// `V2VoiceButtonContent`, which redraws only when that changes: several
+/// buttons stay alive under a pushed chat (the tabs', a top bar's, a
+/// project page's), and none of them should redraw during a push or a
+/// swipe back.
 struct V2VoiceButton: View {
     /// The button's look: the gold circle, or a plain glyph in a top bar
     /// when the gold circle starts new chats instead.
@@ -44,10 +62,154 @@ struct V2VoiceButton: View {
     /// Faded out (the expanded composer): its bars stop redrawing unseen.
     var isHidden = false
     @EnvironmentObject private var appState: AppState
-    @Environment(\.v2MainButtonDiameter) private var mainButtonDiameter
     /// What the big button beside a chat does, app-wide (Settings >
     /// Appearance); a profile can override it.
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
+
+    /// How long a press lasts before it records while held.
+    static let holdToRecordDelay: TimeInterval = 0.3
+    /// How far the finger slides away before letting go cancels.
+    static let slideToCancelDistance: CGFloat = 80
+
+    static let diameter: CGFloat = 56
+
+    var body: some View {
+        V2VoiceButtonContent(
+            context: context,
+            style: style,
+            isHidden: isHidden,
+            inputs: V2VoiceButtonInputs(appState: appState, context: context, style: style, appChatVoiceButton: appChatVoiceButton),
+            appState: appState
+        )
+        .equatable()
+    }
+
+    /// The `limit` most recently active of `sessions`, newest first, ties
+    /// in list order. One pass rather than a sort: the button reads them
+    /// with every AppState publish.
+    static func mostRecent(_ sessions: [SessionSummary], limit: Int) -> [SessionSummary] {
+        var recent: [SessionSummary] = []
+        for session in sessions {
+            let activity = session.lastActivityAt ?? 0
+            let index = recent.firstIndex { ($0.lastActivityAt ?? 0) < activity } ?? recent.count
+            guard index < limit else { continue }
+            recent.insert(session, at: index)
+            if recent.count > limit { recent.removeLast() }
+        }
+        return recent
+    }
+
+    static func botsToCall(_ roster: [BotProfile]) -> [BotProfile] {
+        let shown = roster.filter { !$0.isHiddenByMeta }
+        return shown.enumerated().sorted { a, b in
+            let left = a.element.lastActive ?? 0, right = b.element.lastActive ?? 0
+            return left != right ? left > right : a.offset < b.offset
+        }.map(\.element)
+    }
+
+    /// The project's folder for a new chat, as its page reads it.
+    static func folder(of project: ProjectSummary) -> String? {
+        guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !path.isEmpty else { return nil }
+        return path
+    }
+}
+
+/// A bot in Bots Home's voice menu: what the menu shows of it. The tap
+/// reads the bot itself from the roster.
+struct V2VoiceBotChoice: Identifiable, Equatable {
+    /// The bot's profile name.
+    let id: String
+    let label: String
+}
+
+/// A recent conversation in the voice button's menu.
+struct V2VoiceRecentChat: Identifiable, Equatable {
+    let id: String
+    let title: String
+}
+
+/// What a voice button shows, read from AppState once per publish. The
+/// button redraws when one of these changes, and not otherwise.
+struct V2VoiceButtonInputs: Equatable {
+    /// A minimised call: the button is the way back to it.
+    let returnsToCall: Bool
+    /// Voice is off for this profile: the button opens its setup instead.
+    let needsSetup: Bool
+    /// What a tap does here. Only the chat's big button follows the
+    /// setting; a top-bar button is always the call.
+    let chatAction: ChatVoiceButtonAction
+    /// The composer takes a dictation or a voice message now.
+    let composerTakesVoice: Bool
+    /// A call can start here now, but for a start of this button's own
+    /// still in flight.
+    let canStartCall: Bool
+    /// Why a call can't start, for VoiceOver.
+    let unavailableReason: String?
+    /// Home's menu: the three most recently active conversations of this
+    /// profile, but Pulse's own chat, which the Pulse screen stands in for.
+    let recentChats: [V2VoiceRecentChat]
+    /// Bots Home's menu: the bots shown there, the one that talked last
+    /// first.
+    let callableBots: [V2VoiceBotChoice]
+    /// The call's label in the chat, whatever the button's tap does.
+    let conversationCallLabel: String
+    /// The App Language its labels were made in.
+    let language: AppLanguage
+
+    @MainActor
+    init(appState: AppState, context: V2VoiceContext, style: V2VoiceButton.Style, appChatVoiceButton: String) {
+        language = AppLanguage.current
+        returnsToCall = appState.minimisedLiveVoice != nil
+        needsSetup = !appState.showsComposerVoiceButton
+        chatAction = context == .conversation && style == .circle
+            ? ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton)
+            : .liveCall
+        let voiceInUse = appState.isVoiceInUse
+        let composerIsEnabled = appState.composerIsEnabled
+        composerTakesVoice = composerIsEnabled && !voiceInUse
+        unavailableReason = appState.phoneVoiceUnavailableReason
+        if appState.isPreparingVoiceResume || unavailableReason != nil || voiceInUse {
+            canStartCall = false
+        } else if context == .conversation {
+            // In a chat, like the composer's voice button: not mid-sync, and a
+            // running reply only holds back classic voice.
+            canStartCall = composerIsEnabled && !appState.voiceWaitsForRunningTurn
+        } else {
+            canStartCall = true
+        }
+        if context == .home {
+            let sessions = appState.activeProfileSessions
+            let listed = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
+            recentChats = V2VoiceButton.mostRecent(listed, limit: 3).map { V2VoiceRecentChat(id: $0.id, title: $0.title) }
+        } else {
+            recentChats = []
+        }
+        callableBots = context == .bots
+            ? V2VoiceButton.botsToCall(appState.shownBotRoster).map { V2VoiceBotChoice(id: $0.name, label: $0.displayLabel) }
+            : []
+        if context != .conversation {
+            conversationCallLabel = ""
+        } else if appState.openChatCallToResume != nil {
+            conversationCallLabel = AppLocalization.string("Resume call")
+        } else if appState.activeBotChatProfile != nil {
+            conversationCallLabel = AppLocalization.string("Call \(appState.conversationAgentIdentity.name)", table: .voice)
+        } else {
+            conversationCallLabel = AppLocalization.string("Talk in this conversation", table: .voice)
+        }
+    }
+}
+
+/// The button itself, behind `.equatable()`: AppState is held for its
+/// actions only, never observed here.
+struct V2VoiceButtonContent: View, Equatable {
+    let context: V2VoiceContext
+    let style: V2VoiceButton.Style
+    /// Faded out (the expanded composer): its bars stop redrawing unseen.
+    let isHidden: Bool
+    let inputs: V2VoiceButtonInputs
+    let appState: AppState
+    @Environment(\.v2MainButtonDiameter) private var mainButtonDiameter
     /// A start in flight: a second tap doesn't make a second chat or call.
     @State private var isStarting = false
     @ObservedObject private var voiceMessages = VoiceMessageRecorder.shared
@@ -61,28 +223,19 @@ struct V2VoiceButton: View {
     /// Down on the button; resets on release and on a cancelled press.
     @GestureState private var isPressing = false
 
-    /// How long a press lasts before it records while held.
-    static let holdToRecordDelay: TimeInterval = 0.3
-    /// How far the finger slides away before letting go cancels.
-    static let slideToCancelDistance: CGFloat = 80
+    nonisolated static func == (lhs: V2VoiceButtonContent, rhs: V2VoiceButtonContent) -> Bool {
+        lhs.context.isSameVoiceButton(as: rhs.context) && lhs.style == rhs.style && lhs.isHidden == rhs.isHidden
+            && lhs.inputs == rhs.inputs && lhs.appState === rhs.appState
+    }
 
-    static let diameter: CGFloat = 56
-
-    /// A minimised call: the button is the way back to it.
-    private var returnsToCall: Bool { appState.minimisedLiveVoice != nil }
-    /// Voice is off for this profile: the button opens its setup instead.
-    private var needsSetup: Bool { !appState.showsComposerVoiceButton }
+    private var returnsToCall: Bool { inputs.returnsToCall }
+    private var needsSetup: Bool { inputs.needsSetup }
 
     /// The big button beside a chat's composer: its tap is the chosen
     /// action, and touch and hold offers the others.
     private var isChatButton: Bool { context == .conversation && style == .circle }
 
-    /// What a tap does here. Only the chat's big button follows the
-    /// setting; a top-bar button is always the call.
-    private var chatAction: ChatVoiceButtonAction {
-        guard isChatButton else { return .liveCall }
-        return ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton)
-    }
+    private var chatAction: ChatVoiceButtonAction { inputs.chatAction }
 
     /// A tap dictates into the draft. A minimised call still comes first:
     /// the button is the way back to it.
@@ -92,47 +245,18 @@ struct V2VoiceButton: View {
     private var recordsMessage: Bool { chatAction == .voiceMessage && !returnsToCall }
 
     private var canAct: Bool {
-        if dictates { return appState.composerIsEnabled && !appState.isVoiceInUse }
+        if dictates { return inputs.composerTakesVoice }
         if recordsMessage {
-            return appState.composerIsEnabled && !appState.isVoiceInUse
-                && (!voiceMessages.isActive || voiceMessages.isHeld)
+            return inputs.composerTakesVoice && (!voiceMessages.isActive || voiceMessages.isHeld)
         }
         if returnsToCall || needsSetup { return true }
-        guard !isStarting, !appState.isPreparingVoiceResume,
-              appState.canStartPhoneVoiceConversation, !appState.isVoiceInUse else { return false }
-        // In a chat, like the composer's voice button: not mid-sync, and a
-        // running reply only holds back classic voice.
-        if context == .conversation {
-            return appState.composerIsEnabled && !appState.voiceWaitsForRunningTurn
-        }
-        return true
+        return !isStarting && inputs.canStartCall
     }
 
-    /// The three most recently active conversations of this profile, but
-    /// Pulse's own chat, which the Pulse screen stands in for.
-    private var recentSessions: [SessionSummary] {
-        let sessions = appState.activeProfileSessions
-        guard appState.pulseHomeChat != nil else { return Self.mostRecent(sessions, limit: 3) }
-        return Self.mostRecent(sessions.filter { !appState.isPulseHomeChat($0) }, limit: 3)
-    }
-
-    /// The `limit` most recently active of `sessions`, newest first, ties
-    /// in list order. One pass rather than a sort: the button redraws with
-    /// every AppState publish.
-    static func mostRecent(_ sessions: [SessionSummary], limit: Int) -> [SessionSummary] {
-        var recent: [SessionSummary] = []
-        for session in sessions {
-            let activity = session.lastActivityAt ?? 0
-            let index = recent.firstIndex { ($0.lastActivityAt ?? 0) < activity } ?? recent.count
-            guard index < limit else { continue }
-            recent.insert(session, at: index)
-            if recent.count > limit { recent.removeLast() }
-        }
-        return recent
-    }
+    private var recentChats: [V2VoiceRecentChat] { inputs.recentChats }
 
     private var showsRecentMenu: Bool {
-        context == .home && !returnsToCall && !needsSetup && !recentSessions.isEmpty
+        context == .home && !returnsToCall && !needsSetup && !recentChats.isEmpty
     }
 
     /// Bots Home's button: which bot to call, never a call of its own.
@@ -140,31 +264,13 @@ struct V2VoiceButton: View {
         context == .bots && !returnsToCall && !needsSetup && !callableBots.isEmpty
     }
 
-    /// The bots shown on Bots Home, the one that talked last first.
-    private var callableBots: [BotProfile] {
-        Self.botsToCall(appState.shownBotRoster)
-    }
-
-    static func botsToCall(_ roster: [BotProfile]) -> [BotProfile] {
-        let shown = roster.filter { !$0.isHiddenByMeta }
-        return shown.enumerated().sorted { a, b in
-            let left = a.element.lastActive ?? 0, right = b.element.lastActive ?? 0
-            return left != right ? left > right : a.offset < b.offset
-        }.map(\.element)
-    }
+    private var callableBots: [V2VoiceBotChoice] { inputs.callableBots }
 
     /// Touch and hold on the chat's big button: a live call or dictation,
     /// whichever the tap doesn't do.
     private var showsChatMenu: Bool { isChatButton && !returnsToCall && !recordsMessage }
 
-    /// The call's label in the chat, whatever the button's tap does.
-    private var conversationCallLabel: String {
-        if appState.openChatCallToResume != nil { return AppLocalization.string("Resume call") }
-        if appState.activeBotChatProfile != nil {
-            return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)", table: .voice)
-        }
-        return AppLocalization.string("Talk in this conversation", table: .voice)
-    }
+    private var conversationCallLabel: String { inputs.conversationCallLabel }
 
     private var label: String {
         if returnsToCall { return AppLocalization.string("Return to call", table: .voice) }
@@ -176,7 +282,7 @@ struct V2VoiceButton: View {
         case .bots:
             return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot", table: .voice)
         case .project(let project):
-            return Self.folder(of: project) == nil
+            return V2VoiceButton.folder(of: project) == nil
                 ? AppLocalization.string("New voice call")
                 : AppLocalization.string("Talk in this project", table: .voice)
         case .conversation:
@@ -195,7 +301,7 @@ struct V2VoiceButton: View {
                 ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.", table: .voice)
                 : nil
         }
-        if !canAct { return appState.phoneVoiceUnavailableReason }
+        if !canAct { return inputs.unavailableReason }
         if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead", table: .voice) }
         if showsBotMenu { return AppLocalization.string("Lists your bots to call one", table: .voice) }
         return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations", table: .voice) : nil
@@ -207,10 +313,10 @@ struct V2VoiceButton: View {
                 Menu {
                     ForEach(callableBots) { bot in
                         Button {
-                            call(bot)
+                            call(bot.id)
                         } label: {
                             Label {
-                                Text(verbatim: bot.displayLabel)
+                                Text(verbatim: bot.label)
                             } icon: {
                                 Image(systemName: "waveform")
                             }
@@ -230,7 +336,7 @@ struct V2VoiceButton: View {
                         Label("New voice call", systemImage: "waveform")
                     }
                     Section("Recent") {
-                        ForEach(recentSessions) { session in
+                        ForEach(recentChats) { session in
                             Button {
                                 talk(in: session.id)
                             } label: {
@@ -260,7 +366,7 @@ struct V2VoiceButton: View {
                     } label: {
                         Label(AppLocalization.string("Dictate"), systemImage: "mic")
                     }
-                    .disabled(!appState.composerIsEnabled || appState.isVoiceInUse)
+                    .disabled(!inputs.composerTakesVoice)
                 } label: {
                     face
                 } primaryAction: {
@@ -324,13 +430,6 @@ struct V2VoiceButton: View {
         .contentShape(Circle())
     }
 
-    /// The project's folder for a new chat, as its page reads it.
-    static func folder(of project: ProjectSummary) -> String? {
-        guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !path.isEmpty else { return nil }
-        return path
-    }
-
     // MARK: - Actions
 
     private func tap() {
@@ -357,7 +456,7 @@ struct V2VoiceButton: View {
                     pressBegan = began
                     releaseCancels = false
                     Task { @MainActor in
-                        try? await Task.sleep(for: .seconds(Self.holdToRecordDelay))
+                        try? await Task.sleep(for: .seconds(V2VoiceButton.holdToRecordDelay))
                         // Still the same press, and still down.
                         guard pressBegan == began, !voiceMessages.isActive else { return }
                         Haptics.medium()
@@ -367,7 +466,7 @@ struct V2VoiceButton: View {
                     }
                 }
                 let distance = hypot(value.translation.width, value.translation.height)
-                let cancels = distance > Self.slideToCancelDistance
+                let cancels = distance > V2VoiceButton.slideToCancelDistance
                 if voiceMessages.isHeld, cancels != releaseCancels {
                     releaseCancels = cancels
                     Haptics.selection()
@@ -467,7 +566,7 @@ struct V2VoiceButton: View {
             // A new chat in the project's folder, then voice in it. Without a
             // folder (the page offers no New conversation either) it's a call
             // of its own rather than a chat outside the project.
-            guard let path = Self.folder(of: project) else {
+            guard let path = V2VoiceButton.folder(of: project) else {
                 Task { @MainActor in
                     defer { isStarting = false }
                     await startVoice(
@@ -509,8 +608,10 @@ struct V2VoiceButton: View {
     }
 
     /// Opens a bot's Bot Chat and calls the bot in it.
-    private func call(_ bot: BotProfile) {
-        guard !isStarting else { return }
+    private func call(_ name: String) {
+        // The bot as the roster has it now: the menu keeps only its name
+        // and label.
+        guard !isStarting, let bot = appState.shownBotRoster.first(where: { $0.name == name }) else { return }
         Haptics.medium()
         isStarting = true
         Task { @MainActor in
