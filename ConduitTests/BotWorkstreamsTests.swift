@@ -1674,6 +1674,19 @@ extension BotModeTests {
         let bubble = UIView(frame: CGRect(x: 50, y: 300, width: 200, height: 40))
         pagerPage.view.addSubview(bubble)
         XCTAssertFalse(SidewaysScrollTouch.holdsBackSwipe(under: bubble, at: middle, in: window))
+        pager.removeFromSuperview()
+
+        // The probe puts one watcher on its window, and each finger landing
+        // sets what the swipe home reads: over the scrolled cards, then not.
+        let probe = SidewaysScrollTouchProbe.ProbeView()
+        page.view.addSubview(probe)
+        page.view.addSubview(SidewaysScrollTouchProbe.ProbeView())
+        XCTAssertEqual(window.gestureRecognizers?.filter { $0 is SidewaysScrollTouchRecognizer }.count, 1)
+        cards.contentOffset = CGPoint(x: 150, y: 0)
+        SidewaysScrollTouch.touchBegan(at: middle, in: window)
+        XCTAssertTrue(SidewaysScrollTouch.lastTouchCouldScrollBack)
+        SidewaysScrollTouch.touchBegan(at: CGPoint(x: 200, y: 700), in: window)
+        XCTAssertFalse(SidewaysScrollTouch.lastTouchCouldScrollBack, "a finger off the cards")
     }
 
     /// A workstream's screen holds back the zoom's own dismissals by their
