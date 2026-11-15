@@ -2970,7 +2970,7 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// A question's card from a row of the plugin's waiting list, which
-    /// carries it as the push did (`decision`, notifier 0.177.16; issue
+    /// carries it as the push did (`decision`, notifier 0.177.17; issue
     /// 2556). Nil for an approval, which its chat's own card answers.
     nonisolated static func waitingQuestionCard(from row: [String: Any]) -> PendingDecisionPayload? {
         switch pendingDecision(from: row) {

@@ -39,7 +39,7 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// 0.150.1+): its row opens the room, whose card answers it, not the
     /// bot's hidden chat there (issue 2064). Nil for a chat's wait.
     let roomID: String?
-    /// A question's card as its push carried it (notifier 0.177.16+): the
+    /// A question's card as its push carried it (notifier 0.177.17+): the
     /// chat draws it when Hermes drew none there, since an open Conduit gets
     /// no notification to tap (issue 2556). Nil for an approval.
     let card: PendingDecisionPayload?
