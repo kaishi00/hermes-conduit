@@ -960,6 +960,9 @@ extension AppState {
             closeRoomSurface(handingTo: .newChat)
         }
         let transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
+        // Another New Chat already under way set the turn to synchronizing
+        // and may have followed the chat this one leaves too.
+        let joinsAnotherCreation = newSessionCreationsInFlight > 0
         newSessionCreationsInFlight += 1
         defer {
             newSessionCreationsInFlight -= 1
@@ -997,9 +1000,10 @@ extension AppState {
         // New Chat tapped again meanwhile still leaves it, so it stays until
         // the last one finishes. That one may have followed nothing itself
         // (the first had already set the turn to synchronizing), so it lets
-        // go by the chat's own ids.
+        // go by the chat's own ids. A lone New Chat that followed nothing
+        // leaves any follow alone: an open still landing relies on it.
         if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
-           followedIDs != nil || previousTurnState == .synchronizing,
+           followedIDs != nil || (joinsAnotherCreation && previousTurnState == .synchronizing),
            let previousSessionID {
             releaseFollowedChat(answering: followedIDs ?? knownSessionIDs(for: previousSessionID).union([previousSessionID]))
         }
