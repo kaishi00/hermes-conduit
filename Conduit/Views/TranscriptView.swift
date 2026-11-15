@@ -196,6 +196,11 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// Saves a chat trace when rows on screen aren't drawn (issue 1942).
     private lazy var blankWatch = TranscriptBlankWatch(controller: self)
 
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        nameScrollViewToHeader()
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         blankWatch.start()
@@ -459,6 +464,27 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         guard #available(iOS 26.0, *) else { return }
         collectionView.topEdgeEffect.style = composerFloats ? .soft : .automatic
         collectionView.bottomEdgeEffect.style = composerFloats && V2SystemScrollEdge.isUsed ? .soft : .automatic
+        namesHeaderScrollView = composerFloats
+        nameScrollViewToHeader()
+    }
+
+    /// Whether the header's soft edge belongs to this transcript (V2).
+    private var namesHeaderScrollView = false
+
+    /// The header finds the scroll view under it by itself only once a
+    /// push has ended: until then the transcript's text showed sharp
+    /// through the header and the status bar, and the soft edge came in
+    /// at once 0.4 s after the chat started sliding in (iPhone 16 Pro Max,
+    /// 2026-11-15). Named to the screen the navigation stack holds, it has
+    /// its edge from the push's first frame.
+    private func nameScrollViewToHeader() {
+        guard #available(iOS 26.0, *), namesHeaderScrollView else { return }
+        var screen = parent
+        while let current = screen, !(current.parent is UINavigationController) {
+            screen = current.parent
+        }
+        guard let screen, screen.contentScrollView(for: .top) !== collectionView else { return }
+        screen.setContentScrollView(collectionView, for: .top)
     }
 
     private func configure(_ cell: TranscriptCell, id: String) {

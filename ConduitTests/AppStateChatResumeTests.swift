@@ -2131,6 +2131,42 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNotNil(harness.appState.errorMessage)
     }
 
+    func testOpeningAListedChatNamesItBeforeTheOpenRuns() async {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [ChatMessage(id: "m1", role: .assistant, content: "Earlier", timestamp: "1")],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                refreshContext: { _, _ in }
+            )
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.connection = connection
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.isConnected = true
+        harness.appState.sessions = [
+            session("open-chat", title: "Trip plans"),
+            session("next-chat", title: "Chesapeake Virginia restaurant recommendations"),
+        ]
+        _ = await harness.appState.openSession("open-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Trip plans")
+
+        // The header sizes its title as the tap pushes the chat, before the
+        // open's task runs: the title is the tapped chat's by then.
+        let task = harness.appState.requestOpenSession("next-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Chesapeake Virginia restaurant recommendations")
+
+        // A chat the list doesn't have keeps the open one's title until its
+        // open names it.
+        task.cancel()
+        _ = harness.appState.requestOpenSession("unlisted-chat")
+        XCTAssertEqual(harness.appState.activeSessionTitle, "Chesapeake Virginia restaurant recommendations")
+    }
+
     func testRapidExplicitSessionSwitchingSettlesTheLatestSession() async {
         let sessionIDs = (1...8).map { "stored-\($0)" }
         let gates = SessionOpenGates(sessionIDs: sessionIDs)

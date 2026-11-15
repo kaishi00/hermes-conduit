@@ -923,6 +923,21 @@ extension AppState {
         await performSessionOpen(sessionId, reusing: nil)
     }
 
+    /// The header names the chat as the tap pushes it: the bar sizes its
+    /// title as the push starts, and the open below names the chat a turn
+    /// later, so the pushed header showed the last chat's name, then the
+    /// new one cut to that width until the push ended (iPhone 16 Pro Max,
+    /// 2026-11-15). Only a listed chat of this profile that isn't a bot's,
+    /// the ones the open itself names the same way.
+    private func nameChatBeingOpened(_ sessionId: String) {
+        guard botConversationProfile(for: sessionId) == nil,
+              let listed = (sessions + cronSessions).first(where: {
+                  $0.id == sessionId || $0.alternateIds.contains(sessionId)
+              }),
+              sessionBelongsToProfile(listed, profile: activeProfile) else { return }
+        updateActiveSessionTitle(for: sessionId)
+    }
+
     /// `onFailure` runs when the open failed (not when a newer navigation
     /// superseded it), told whether this open's own reconcile heard the
     /// resume's not found (4007) for a chat that isn't a Kanban worker.
@@ -940,6 +955,7 @@ extension AppState {
             return Task { true }
         }
         cancelExplicitSessionOpen()
+        nameChatBeingOpened(sessionId)
         let requestID = UUID()
         explicitSessionOpenRequestID = requestID
         let task = Task { @MainActor [weak self] in
