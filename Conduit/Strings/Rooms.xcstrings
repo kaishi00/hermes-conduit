@@ -83,84 +83,84 @@
         }
       }
     },
-    "A room can bring bots from one of your other Hermes, and then invites no one else. They join by themselves." : {
+    "A room can bring bots from one of your other Hermes beside at least one of your bots here, and then invites no one else. They join by themselves." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ein Raum kann Bots von einem deiner anderen Hermes mitbringen und lädt dann niemanden sonst ein. Sie treten von selbst bei."
+            "value" : "Ein Raum kann neben mindestens einem deiner Bots hier Bots von einem deiner anderen Hermes mitbringen und lädt dann niemanden sonst ein. Sie treten von selbst bei."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Una sala puede traer bots de uno de tus otros Hermes y entonces no invita a nadie más. Se unen por sí solos."
+            "value" : "Una sala puede traer bots de uno de tus otros Hermes junto a al menos uno de tus bots de aquí y entonces no invita a nadie más. Se unen por sí solos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Un salon peut accueillir les bots de l'un de vos autres Hermes, et n'invite alors personne d'autre. Ils rejoignent d'eux-mêmes."
+            "value" : "Un salon peut accueillir les bots de l'un de vos autres Hermes avec au moins un de vos bots d'ici, et n'invite alors personne d'autre. Ils rejoignent d'eux-mêmes."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Satu ruang bisa membawa bot dari salah satu Hermes Anda yang lain, lalu tidak mengundang orang lain. Mereka bergabung sendiri."
+            "value" : "Satu ruang bisa membawa bot dari salah satu Hermes Anda yang lain di samping setidaknya satu bot Anda di sini, lalu tidak mengundang orang lain. Mereka bergabung sendiri."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Una stanza può portare i bot di uno dei tuoi altri Hermes, e allora non invita nessun altro. Entrano da soli."
+            "value" : "Una stanza può portare i bot di uno dei tuoi altri Hermes insieme ad almeno uno dei tuoi bot di qui, e allora non invita nessun altro. Entrano da soli."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ルームにはほかの Hermes のうち 1 つからボットを連れてこられます。その場合はほかの誰も招待しません。ボットは自動で参加します。"
+            "value" : "ルームには、ここにある自分のボットを少なくとも 1 体入れたうえで、ほかの Hermes のうち 1 つからボットを連れてこられます。その場合はほかの誰も招待しません。ボットは自動で参加します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "룸에는 다른 Hermes 중 하나의 봇을 데려올 수 있으며, 이때는 다른 누구도 초대하지 않습니다. 봇은 알아서 참여합니다."
+            "value" : "룸에는 여기 있는 내 봇을 하나 이상 넣고, 다른 Hermes 중 하나의 봇을 데려올 수 있습니다. 이때는 다른 누구도 초대하지 않습니다. 봇은 알아서 참여합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pokój może wnieść boty z jednego z Twoich pozostałych Hermesów i wtedy nie zaprasza nikogo innego. Dołączają same."
+            "value" : "Pokój może wnieść boty z jednego z Twoich pozostałych Hermesów obok co najmniej jednego Twojego bota stąd i wtedy nie zaprasza nikogo innego. Dołączają same."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Uma sala pode trazer bots de um dos seus outros Hermes e, nesse caso, não convida mais ninguém. Eles entram sozinhos."
+            "value" : "Uma sala pode trazer bots de um dos seus outros Hermes junto com pelo menos um dos seus bots daqui e, nesse caso, não convida mais ninguém. Eles entram sozinhos."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Комната может взять ботов одного из ваших других Hermes и тогда никого больше не приглашает. Они присоединяются сами."
+            "value" : "Комната может взять ботов одного из ваших других Hermes вместе хотя бы с одним вашим ботом отсюда и тогда никого больше не приглашает. Они присоединяются сами."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir oda diğer Hermes'lerinizden birinin botlarını getirebilir ve o zaman başka kimseyi davet etmez. Botlar kendiliğinden katılır."
+            "value" : "Bir oda, buradaki botlarınızdan en az biriyle birlikte diğer Hermes'lerinizden birinin botlarını getirebilir ve o zaman başka kimseyi davet etmez. Botlar kendiliğinden katılır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一个房间可以带上你另一个 Hermes 的机器人，这时不会再邀请其他人。它们会自动加入。"
+            "value" : "一个房间可以在至少一个你在这里的机器人之外，带上你另一个 Hermes 的机器人，这时不会再邀请其他人。它们会自动加入。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "一個房間可以帶上你另一個 Hermes 的機器人，這時不會再邀請其他人。它們會自動加入。"
+            "value" : "一個房間可以在至少一個你在這裡的機器人之外，帶上你另一個 Hermes 的機器人，這時不會再邀請其他人。它們會自動加入。"
           }
         }
       }
@@ -528,13 +528,13 @@
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ 上 · 先にそちらでルームを有効にしてください"
+            "value" : "%@ 上 · 先にそちらでこのボットのルームを有効にしてください"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@에서 · 먼저 그곳에서 룸을 켜세요"
+            "value" : "%@에서 · 먼저 그곳에서 이 봇의 룸을 켜세요"
           }
         },
         "pl" : {
