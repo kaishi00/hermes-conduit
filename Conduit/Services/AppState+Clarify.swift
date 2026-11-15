@@ -1005,6 +1005,22 @@ extension AppState {
             : AppLocalization.string("This question is no longer active — Hermes timed it out and continued.")
     }
 
+    /// Whether one of Hermes' own cards in `messages` still holds the
+    /// question `pushed` asks: not answered and not run out. One waiting,
+    /// mid-answer or with a failed answer to retry is still the question's
+    /// card, so the relay's copy stays out (one question is one card). An
+    /// answered or run-out card that asked the same thing doesn't hold it:
+    /// the question asked again needs its card (issue 2556).
+    static func hermesCardHoldsQuestion(_ pushed: ClarifyActivity, in messages: [ChatMessage]) -> Bool {
+        messages.contains { message in
+            guard let live = message.clarify,
+                  !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+                  live.presentationStatus != .answered,
+                  live.presentationStatus != .expired else { return false }
+            return pushCardSupersededBy(pushed, live: live)
+        }
+    }
+
     /// Whether a still-pending push-delivered card describes the same logical
     /// clarify as a live gateway event and must be superseded by it.
     ///
@@ -1022,22 +1038,6 @@ extension AppState {
     ///   set. Two unrelated requests that merely share a first question —
     ///   or a genuine single-question push against a bigger live batch —
     ///   never cross-supersede.
-    /// Whether one of Hermes' own cards in `messages` still holds the
-    /// question `pushed` asks: not answered and not run out. One waiting,
-    /// mid-answer or with a failed answer to retry is still the question's
-    /// card, so the relay's copy stays out (one question is one card). An
-    /// answered or run-out card that asked the same thing doesn't hold it:
-    /// the question asked again needs its card (issue 2556).
-    static func hermesCardHoldsQuestion(_ pushed: ClarifyActivity, in messages: [ChatMessage]) -> Bool {
-        messages.contains { message in
-            guard let live = message.clarify,
-                  !live.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
-                  live.presentationStatus != .answered,
-                  live.presentationStatus != .expired else { return false }
-            return pushCardSupersededBy(pushed, live: live)
-        }
-    }
-
     static func pushCardSupersededBy(_ pushed: ClarifyActivity, live: ClarifyActivity) -> Bool {
         func normalized(_ text: String) -> String {
             text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
