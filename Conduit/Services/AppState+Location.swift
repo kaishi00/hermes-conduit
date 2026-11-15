@@ -148,7 +148,9 @@ extension AppState {
     /// too (issue 2482): a session token's pass has no expiry and nothing
     /// to revoke on the host, so it would keep background sends signed in.
     /// Sharing stays bound, and the next sign-in's connect saves a new one.
+    /// What wasn't sent yet goes too: it would go under the next sign-in.
     func forgetLocationHostPass(dashboardID: UUID) {
+        LocationSharingController.shared.dropUnsent(boundTo: dashboardID)
         guard LocationKeychain.loadHostPass()?.dashboardID == dashboardID else { return }
         LocationKeychain.clearHostPass()
     }

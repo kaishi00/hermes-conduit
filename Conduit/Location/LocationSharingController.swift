@@ -280,6 +280,21 @@ final class LocationSharingController: ObservableObject {
 
     /// Shop entries waiting to be sent.
     var unsentSpotEntryCount: Int { unsent.spotEntries.count }
+    var hasUnsent: Bool { !unsent.isEmpty }
+
+    /// Sign Out of the dashboard sharing is bound to drops the fix, visits
+    /// and shop entries not sent yet: the next sign-in there may be another
+    /// account, and they'd go under it (issue 2482). Sharing stays on and
+    /// bound, so what's recorded after Sign Out goes with the next sign-in.
+    func dropUnsent(boundTo dashboardID: UUID) {
+        guard readConfigIfNeeded(), config.binding?.dashboardID == dashboardID else { return }
+        lastTalkingUpload = nil
+        guard !unsent.isEmpty else { return }
+        unsent.fix = nil
+        unsent.events = []
+        unsent.spotEntries = []
+        saveUnsent()
+    }
 
     func reconfigureMonitors() {
         monitor.configure(settings: settings, places: places, bound: config.binding != nil && !configUnreadable)

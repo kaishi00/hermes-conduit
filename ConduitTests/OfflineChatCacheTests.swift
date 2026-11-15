@@ -1327,6 +1327,22 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(LocationKeychain.loadHostPass()?.dashboardID, pass.dashboardID)
     }
 
+    /// Sign Out of a dashboard that isn't the one in use takes its own
+    /// host pass too (issue 2482).
+    func testSigningOutAnInactiveDashboardForgetsItsHostPass() throws {
+        let active = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let other = SavedDashboard(id: UUID(), label: "Two", normalizedURL: "https://two.example")
+        let (appState, _, _) = makeAppState(
+            registry: SavedDashboardRegistry(activeDashboardID: active.id, dashboards: [active, other])
+        )
+        let pass = LocationHostPass(dashboardID: other.id, baseURL: other.normalizedURL, headers: ["X-Hermes-Session-Token": "t"], expiresAt: nil, savedAt: Date())
+        guard LocationKeychain.saveHostPass(pass) else { throw XCTSkip("No App Group Keychain in this test host") }
+        defer { LocationKeychain.clearHostPass() }
+
+        appState.signOutDashboard(other.id)
+        XCTAssertNil(LocationKeychain.loadHostPass())
+    }
+
     /// Deleting a chat takes its saved copy off the phone and off the
     /// screen, so the next launch can't show it as the saved copy (#1040).
     func testDeletingAChatRemovesItsSavedCopy() async throws {

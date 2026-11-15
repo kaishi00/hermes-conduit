@@ -1165,7 +1165,6 @@ struct SessionTokenSignInForm: View {
 
     private var trimmedToken: String { token.trimmingCharacters(in: .whitespacesAndNewlines) }
 
-    /// What can't go in a header value, or nil.
     /// What a refused token says. Behind a proxy that checks
     /// `Authorization`, the proxy may be what refused it: its 401 reads the
     /// same as Hermes' (issue 2481).
@@ -1175,6 +1174,7 @@ struct SessionTokenSignInForm: View {
             : AppLocalization.string("Hermes didn’t accept this token. Check it and try again.", table: .connection)
     }
 
+    /// What can't go in a header value, or nil.
     nonisolated static func problem(with token: String) -> String? {
         guard token.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }) else {
             return AppLocalization.string("Enter the token exactly as it is set on the Hermes host, with no spaces or line breaks.", table: .connection)
