@@ -99,8 +99,9 @@ extension AppState {
         nextClient.noteSessionProfile(profile, for: callSessionIDsOnActiveProfile)
     }
 
-    /// The sessions a live call uses on the profile on screen: its jobs',
-    /// its thread's and Local Live's own chat.
+    /// The call's sessions that name no profile of their own (its jobs',
+    /// its thread's and Local Live's own chat): the ones a switch names the
+    /// call's profile for. `callSessionIDs` is all of them.
     var callSessionIDsOnActiveProfile: [String?] {
         voiceBackgroundJobSupervisor.sessionIDsOnActiveProfile + localLiveOwnChatSessionIDs
     }
