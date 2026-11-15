@@ -2065,7 +2065,10 @@ call's (one that goes on across a profile switch): the running call ends
 first and hands its jobs back, then the new one starts, so the start still
 replaces it (`endLiveCallOnAnotherProfile`, #2538; a start for the call's own
 profile comes back to the running call, and a widget's new call refuses
-instead, see Starting a call) · not needed: a Siri, Shortcut or
+instead, see Starting a call; CarPlay's voice start in the same engine
+comes back to the running call instead and unmutes it for the driver, as it
+does for any call running on the phone, and in another engine replaces it;
+slice 2b decides CarPlay across a switch) · not needed: a Siri, Shortcut or
 Action-button call naming another profile during any other call (it starts
 a new call, which replaces the running one in any profile, its own
 included) · CarPlay's
