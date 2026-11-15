@@ -590,3 +590,118 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
         }
     }
 }
+
+// MARK: - Combined dashboards (multi-instance stage 3)
+
+extension CrossProfilePresentationCacheTests {
+    /// Two combined dashboards with the first one connected, over a socket
+    /// that stays open until the test closes it.
+    private func combinedDashboards(
+        operations: ChatResumeLifecycleOperations
+    ) async throws -> (appState: AppState, mac: SavedDashboard, vps: SavedDashboard, outgoing: HermesClient, socket: ClarifyFakeSocket) {
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let harness = makeHarness(lifecycleOperations: operations) { _ in }
+        let appState = harness.appState
+        let mac = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
+        let vps = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
+        appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        let connection = HermesConnection(baseUrl: mac.normalizedURL, ticket: "saved-ticket")
+        seedOutgoingTranscript(in: appState, connection: connection, sessionID: "session-a")
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        transport.nextSocket = { socket }
+        let outgoing = HermesClient(connection: connection, profile: "default", transportFactory: { transport })
+        transport.open(socket)
+        try await outgoing.connect()
+        appState.client = outgoing
+        appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
+        addTeardownBlock { @MainActor in
+            appState.dropAllKeptDashboardRuntimes()
+            appState.client?.disconnect()
+        }
+        return (appState, mac, vps, outgoing, socket)
+    }
+
+    /// A registry saved before Combine Dashboards loads with nothing
+    /// combined, and one dashboard switched on alone is no group.
+    func testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone() throws {
+        let id = UUID()
+        let saved = #"{"schemaVersion":1,"activeDashboardID":"\#(id.uuidString)","dashboards":[{"id":"\#(id.uuidString)","label":"Mac","normalizedURL":"https://mac.example"}]}"#
+        let registry = try JSONDecoder().decode(SavedDashboardRegistry.self, from: Data(saved.utf8))
+        XCTAssertFalse(try XCTUnwrap(registry.dashboards.first).isCombined)
+        XCTAssertTrue(registry.combinedGroupIDs.isEmpty)
+
+        var two = registry
+        two.dashboards.append(SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://vps.example"))
+        two.dashboards[0].combined = true
+        XCTAssertTrue(two.combinedGroupIDs.isEmpty, "one alone is no group")
+        two.dashboards[1].combined = true
+        XCTAssertEqual(two.combinedGroupIDs, Set(two.dashboards.map(\.id)))
+    }
+
+    /// Leaving a combined dashboard keeps its socket open, and coming back
+    /// takes it up again: no ticket minted, no socket opened.
+    func testACombinedDashboardStaysConnectedWhileAnotherIsUsed() async throws {
+        final class Counts { var connects = 0; var mints = 0 }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        XCTAssertNil(appState.client)
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing)
+        XCTAssertTrue(outgoing.isConnected)
+        XCTAssertEqual(socket.closeCode, .invalid, "the kept socket stays open")
+
+        await appState.switchDashboard(to: mac.id)
+
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertTrue(appState.client === outgoing, "the kept client is taken up again")
+        XCTAssertTrue(appState.isConnected)
+        XCTAssertTrue(appState.keptDashboardRuntimes.isEmpty)
+        XCTAssertEqual(counts.connects, 0, "no socket is opened")
+        XCTAssertEqual(counts.mints, 0, "no ticket is minted")
+    }
+
+    /// A kept socket that dropped is let go, and the switch back signs in
+    /// as before. Leaving the group lets a kept one go too.
+    func testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+
+        await appState.switchDashboard(to: vps.id)
+        outgoing.disconnect()
+        await appState.switchDashboard(to: mac.id)
+
+        XCTAssertNil(appState.client, "nothing saved to sign in with, so no connection")
+        XCTAssertTrue(appState.showLogin)
+        XCTAssertTrue(appState.keptDashboardRuntimes.isEmpty)
+
+        // Kept again from a fresh connection, then the group falls to one.
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        let again = HermesClient(connection: HermesConnection(baseUrl: mac.normalizedURL, ticket: "t"), profile: "default", transportFactory: { transport })
+        transport.open(socket)
+        try await again.connect()
+        appState.client = again
+        appState.connection = again.connection
+        appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+
+        appState.setDashboardCombined(vps.id, false)
+
+        XCTAssertTrue(appState.keptDashboardRuntimes.isEmpty)
+        XCTAssertFalse(again.isConnected)
+        XCTAssertFalse(appState.savedDashboardRegistry.dashboard(with: vps.id)?.isCombined ?? true)
+    }
+}

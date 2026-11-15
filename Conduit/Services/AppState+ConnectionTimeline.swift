@@ -409,6 +409,9 @@ extension AppState {
             return task
 
         case .background:
+            // Combined dashboards kept connected let go: iOS suspends their
+            // sockets anyway, and the next switch signs in as before.
+            dropAllKeptDashboardRuntimes()
             // A shared draft whose chat was still opening waits on disk for
             // the next time Conduit is on screen.
             sharedDraftLaunch = nil
