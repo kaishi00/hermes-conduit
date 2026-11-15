@@ -707,8 +707,11 @@ struct SessionRewindSnapshot: Equatable {
         }
         let words = text(of: row["content"])
         // A note whose type a compaction's projection dropped (a cron
-        // report folded into the summary's row) was never typed by anyone.
-        guard !MessageNormalizer.isUntypedNote(metadata: row["display_metadata"], text: words) else { return nil }
+        // report folded into the summary's row) was never typed by anyone,
+        // and Hermes' own count of the turns leaves it out. By its
+        // metadata alone: a report the user pasted as their own message
+        // is a turn of theirs.
+        guard !MessageNormalizer.isUntypedNote(metadata: row["display_metadata"], text: nil) else { return nil }
         return Turn(rowID: rowID, text: words, timestamp: epochSeconds(row["timestamp"]))
     }
 
