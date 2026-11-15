@@ -273,6 +273,77 @@ extension SidebarLayoutTests {
         XCTAssertTrue(V2VoiceButton.mostRecent([], limit: 3).isEmpty)
     }
 
+    /// What a voice button shows is read once per AppState publish; the
+    /// button redraws only when it differs, so a publish that changes
+    /// nothing it shows (a chat opening under a push) leaves it alone.
+    @MainActor
+    func testVoiceButtonInputsChangeOnlyWithWhatTheButtonShows() {
+        let state = AppState(
+            defaults: makeScratchDefaults("VoiceButtonInputs"),
+            loadSavedConnection: false,
+            chatResumeLifecycleOperations: .live
+        )
+        state.sessions = [
+            filterRow("old", source: .chat, at: 10),
+            filterRow("newest", source: .chat, at: 90),
+            filterRow("middle", source: .chat, at: 20),
+            filterRow("oldest", source: .chat, at: 5)
+        ]
+        func inputs(_ context: V2VoiceContext, _ style: V2VoiceButton.Style = .circle) -> V2VoiceButtonInputs {
+            V2VoiceButtonInputs(
+                appState: state, context: context, style: style,
+                appChatVoiceButton: ChatVoiceButtonAction.dictation.rawValue
+            )
+        }
+        let home = inputs(.home)
+        XCTAssertEqual(home.recentChats.map(\.id), ["newest", "middle", "old"])
+        XCTAssertEqual(home.chatAction, .liveCall, "only the chat's big button follows the setting")
+        XCTAssertTrue(home.callableBots.isEmpty)
+        XCTAssertEqual(home.conversationCallLabel, "")
+        // Only Home lists recents; only the chat names its call.
+        let chat = inputs(.conversation)
+        XCTAssertTrue(chat.recentChats.isEmpty)
+        XCTAssertEqual(chat.chatAction, .dictation)
+        XCTAssertFalse(chat.conversationCallLabel.isEmpty)
+        XCTAssertEqual(inputs(.conversation, .toolbar).chatAction, .liveCall)
+
+        // A publish that changes nothing the button shows.
+        state.errorMessage = "Something else went wrong"
+        XCTAssertEqual(inputs(.home), home)
+        // A new most recent chat is shown.
+        state.sessions.append(filterRow("brand-new", source: .chat, at: 120))
+        XCTAssertNotEqual(inputs(.home), home)
+        XCTAssertEqual(inputs(.home).recentChats.map(\.id), ["brand-new", "newest", "middle"])
+
+        // Bots Home's menu keeps a bot's name and label, not what else its
+        // row carries (its preview, when it last talked).
+        func bot(_ name: String, _ lastActive: Double?, preview: String? = nil) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: lastActive, lastPreview: preview)
+        }
+        state.botRoster = [bot("atlas", 10), bot("furina", 30)]
+        let bots = inputs(.bots)
+        XCTAssertEqual(bots.callableBots.map(\.id), ["furina", "atlas"])
+        XCTAssertTrue(bots.recentChats.isEmpty)
+        state.botRoster = [bot("atlas", 10, preview: "On it."), bot("furina", 35)]
+        XCTAssertEqual(inputs(.bots), bots)
+        state.botRoster = [bot("atlas", 40), bot("furina", 35)]
+        XCTAssertEqual(inputs(.bots).callableBots.map(\.id), ["atlas", "furina"])
+
+        // A project's page: the button reads its folder only.
+        func project(_ path: String?, count: Int) -> V2VoiceContext {
+            .project(ProjectSummary(
+                id: "p1", title: "Site", primaryPath: path, icon: nil, colorHex: nil,
+                isHome: false, sessionCount: count, previewSessions: []
+            ))
+        }
+        XCTAssertTrue(project("/srv/site", count: 2).isSameVoiceButton(as: project(" /srv/site ", count: 9)))
+        XCTAssertFalse(project("/srv/site", count: 2).isSameVoiceButton(as: project(nil, count: 2)))
+        XCTAssertFalse(project("/srv/site", count: 2).isSameVoiceButton(as: .home))
+        XCTAssertEqual(inputs(project("/srv/site", count: 2)), inputs(project("/srv/other", count: 3)))
+    }
+
     func testChatsListGivesEveryRowOfANestItsOwnItem() {
         func node(_ id: String, _ children: [SessionNesting.Node] = []) -> SessionNesting.Node {
             SessionNesting.Node(session: filterRow(id, source: .chat), children: children)
