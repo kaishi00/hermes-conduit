@@ -9342,6 +9342,252 @@
           }
         }
       }
+    },
+    "A workstream that a Hermes restart stops stays interrupted instead of picking up again, because the plugin couldn't find how this Hermes stops its turns." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Workstream, den ein Hermes-Neustart anhält, bleibt unterbrochen und wird nicht fortgesetzt, weil das Plugin nicht finden konnte, wie dieses Hermes seine Durchgänge anhält."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un flujo de trabajo que un reinicio de Hermes detiene queda interrumpido en lugar de retomarse, porque el plugin no encontró cómo este Hermes detiene sus turnos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un flux de travail arrêté par un redémarrage de Hermes reste interrompu au lieu de reprendre, car le plugin n'a pas trouvé comment ce Hermes arrête ses tours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alur kerja yang dihentikan oleh mulai ulang Hermes tetap terhenti dan tidak dilanjutkan lagi, karena plugin tidak menemukan cara Hermes ini menghentikan gilirannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un flusso di lavoro fermato da un riavvio di Hermes resta interrotto invece di riprendere, perché il plugin non ha trovato come questo Hermes ferma i suoi turni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes の再起動で止まったワークストリームは、再開されず中断されたままになります。この Hermes がターンを止める仕組みをプラグインが見つけられなかったためです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 재시작으로 멈춘 작업 스트림은 다시 이어지지 않고 중단된 상태로 남습니다. 이 Hermes가 턴을 멈추는 방식을 플러그인이 찾지 못했기 때문입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wątek pracy zatrzymany przez restart Hermesa pozostaje przerwany i nie jest wznawiany, bo wtyczka nie znalazła sposobu, w jaki ten Hermes zatrzymuje swoje tury."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um fluxo de trabalho que uma reinicialização do Hermes interrompe fica interrompido em vez de ser retomado, porque o plugin não encontrou como este Hermes para seus turnos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Рабочий поток, остановленный перезапуском Hermes, остаётся прерванным и не возобновляется: плагин не нашёл, как этот Hermes останавливает свои ходы."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes yeniden başlatıldığında duran bir iş akışı kaldığı yerden devam etmez, yarıda kalır; çünkü eklenti bu Hermes'in turlarını nasıl durdurduğunu bulamadı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被 Hermes 重启停下的工作流会保持中断，不会自动接着做，因为插件没找到这个 Hermes 停止回合的方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "被 Hermes 重新啟動停下的工作流程會維持中斷，不會自動接著做，因為外掛找不到這個 Hermes 停止回合的方式。"
+          }
+        }
+      }
+    },
+    "The Folder is closed: Hermes couldn't say which folder it keeps files in. Check the files settings on the host." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Ordner ist geschlossen: Hermes konnte nicht sagen, in welchem Ordner es Dateien ablegt. Prüfe die Dateieinstellungen auf dem Host."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La Carpeta está cerrada: Hermes no pudo decir en qué carpeta guarda los archivos. Revisa los ajustes de archivos en el host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le Dossier est fermé : Hermes n'a pas pu dire dans quel dossier il garde les fichiers. Vérifiez les réglages des fichiers sur l'hôte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder ditutup: Hermes tidak bisa menyebutkan di folder mana ia menyimpan file. Periksa pengaturan file di host."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La Cartella è chiusa: Hermes non ha saputo dire in quale cartella tiene i file. Controlla le impostazioni dei file sull'host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "フォルダは閉じています。Hermes がファイルの保存先フォルダを答えられませんでした。ホストのファイル設定を確認してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "폴더가 닫혀 있습니다. Hermes가 파일을 보관하는 폴더를 알려 주지 못했습니다. 호스트의 파일 설정을 확인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Folder jest zamknięty: Hermes nie potrafił wskazać, w którym folderze trzyma pliki. Sprawdź ustawienia plików na hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Pasta está fechada: o Hermes não soube dizer em qual pasta guarda os arquivos. Confira os ajustes de arquivos no host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Папка закрыта: Hermes не смог сказать, в какой папке он хранит файлы. Проверьте настройки файлов на хосте."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klasör kapalı: Hermes dosyaları hangi klasörde tuttuğunu söyleyemedi. Sunucudaki dosya ayarlarını kontrol edin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "文件夹已关闭：Hermes 说不出它把文件放在哪个文件夹。请检查主机上的文件设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "檔案夾已關閉：Hermes 說不出它把檔案放在哪個檔案夾。請檢查主機上的檔案設定。"
+          }
+        }
+      }
+    },
+    "The plugin reports a limit on this host that this version of Conduit doesn't know (%@)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Plugin meldet auf diesem Host eine Einschränkung, die diese Conduit-Version nicht kennt (%@)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin informa de una limitación en este host que esta versión de Conduit no conoce (%@)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin signale sur cet hôte une limite que cette version de Conduit ne connaît pas (%@)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin melaporkan batasan di host ini yang tidak dikenal versi Conduit ini (%@)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin segnala su questo host un limite che questa versione di Conduit non conosce (%@)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "プラグインがこのホストで、このバージョンの Conduit が知らない制限を報告しています（%@）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "플러그인이 이 호스트에서 이 버전의 Conduit이 알지 못하는 제한을 보고했습니다(%@)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka zgłasza na tym hoście ograniczenie, którego ta wersja Conduit nie zna (%@)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin informa uma limitação neste host que esta versão do Conduit não conhece (%@)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин сообщает об ограничении на этом хосте, которое эта версия Conduit не знает (%@)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eklenti bu sunucuda, Conduit'in bu sürümünün bilmediği bir kısıtlama bildiriyor (%@)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "插件在此主机上报告了一项此版本 Conduit 不认识的限制（%@）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "外掛在此主機上回報了一項此版本 Conduit 不認識的限制（%@）。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
