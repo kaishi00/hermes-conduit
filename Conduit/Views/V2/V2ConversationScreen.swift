@@ -351,9 +351,13 @@ struct V2ConversationScreen: View {
         // A swipe back let go can leave the list's hidden bar over the
         // chat (a Bot Chat or room grown from its portrait, Eric
         // 2026-11-06): the chat's title, Back and ⋯ come back.
-        .background { NavigationBarKeeper() }
-        // Notes where each finger lands, for the swipe home above.
-        .background { SidewaysScrollTouchProbe() }
+        // With it, the probe that notes where each finger lands, for the
+        // swipe home (one modifier: a second tipped the body past the
+        // type checker's limit).
+        .background {
+            NavigationBarKeeper()
+            SidewaysScrollTouchProbe()
+        }
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }

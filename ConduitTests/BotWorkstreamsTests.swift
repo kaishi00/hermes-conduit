@@ -1687,6 +1687,22 @@ extension BotModeTests {
         XCTAssertTrue(SidewaysScrollTouch.lastTouchCouldScrollBack)
         SidewaysScrollTouch.touchBegan(at: CGPoint(x: 200, y: 700), in: window)
         XCTAssertFalse(SidewaysScrollTouch.lastTouchCouldScrollBack, "a finger off the cards")
+
+        // Right to left: SwiftUI flips its scroller by a transform, so the
+        // offset still counts from its leading end; a native one starts at
+        // its right end, the highest offset.
+        let flippedCards = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 300))
+        flippedCards.contentSize = CGSize(width: 1000, height: 300)
+        flippedCards.transform = CGAffineTransform(scaleX: -1, y: 1)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(flippedCards, rightToLeft: true))
+        flippedCards.contentOffset = CGPoint(x: 150, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(flippedCards, rightToLeft: true))
+        let nativeCards = UIScrollView(frame: CGRect(x: 0, y: 0, width: 390, height: 300))
+        nativeCards.contentSize = CGSize(width: 1000, height: 300)
+        nativeCards.contentOffset = CGPoint(x: 610, y: 0)
+        XCTAssertFalse(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true), "at its right-hand start")
+        nativeCards.contentOffset = CGPoint(x: 300, y: 0)
+        XCTAssertTrue(SidewaysScrollTouch.canScrollBack(nativeCards, rightToLeft: true))
     }
 
     /// A workstream's screen holds back the zoom's own dismissals by their
