@@ -126,6 +126,14 @@ enum MarkdownLargeDocumentPolicy {
 enum MarkdownLargeChunk: Equatable {
     case flow(blocks: [MarkdownBlock])
     case block(MarkdownBlock, originalIndex: Int)
+
+    /// The chunk's last block.
+    var lastBlock: MarkdownBlock? {
+        switch self {
+        case .flow(let blocks): blocks.last
+        case .block(let block, _): block
+        }
+    }
 }
 
 /// Pure slicer for large code blocks: contiguous source slices bounded by
