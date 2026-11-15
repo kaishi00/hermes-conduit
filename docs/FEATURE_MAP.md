@@ -6188,7 +6188,7 @@ the iPad and Mac list beside the open chat (same views) · text: no Settings
 caption or doc describes it
 
 **Code**
-- V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions, projectRow's swipe actions, the Delete alerts)
+- V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions and V2SessionTrailingSwipes, which holds the Delete swipe; projectRow's swipe actions, the Delete alerts)
 - Drawer shell: `Conduit/Views/SidebarView.swift` (SessionList's chat and project rows, ProjectSessionsSheet)
 - Bots: `Conduit/Views/BotRosterView.swift` (BotRosterRow, the Delete Bot dialog)
 - Scheduled jobs: `Conduit/Views/V2/V2TasksView.swift`
@@ -8421,7 +8421,7 @@ text: none (no caption or doc describes it)
 - A pop starts the wait even when the list missed nothing, so a publish during the slide waits too. Uncovered by the window widening or the list's toggle putting it beside the chat, nothing slides: it draws at once, and such a change during a pop's wait ends the wait (#2500).
 - The project page takes the same gate (#2500): its re-read on a catalog change and its reload on reconnecting follow its draws, so under a chat they wait for it to show again; its 20 s reads keep their own rule (Reads while a screen shows).
 - A row redraws for its own item or a draw of the list's updates, never because the list's body re-ran: the list re-runs as a chat covers or uncovers it (the shell's covered flag), and every row re-running with it held the pop's first frame (#2500). A row's content sits behind `.equatable()` (`V2ChatsRowContent`, `V2ProjectSessionRowContent`) and its list traits and actions stay outside it, on the row: inside an `EquatableView` they never reached the List and the rows drew black with system insets. SwiftUI didn't compare an Equatable row without the wrapper (the mounted test counted every row).
-- The row's actions only place the menu and the swipes on each re-run; what they say (Pin or Unpin, Star, the read toggle and a nest's read state, Archive's busy state) is worked out in their own views when the menu or a swipe shows (`V2SessionMenuItems`, `V2SessionLeadingSwipes`, `V2SessionTrailingSwipes`). Built with every row, they cost a pop about 8 ms at finger lift (#2532).
+- The row's actions only place the menu and the swipes on each re-run; what they say (Pin or Unpin, Star, the read toggle and a nest's read state, Archive's busy state) is worked out in their own views when the menu or a swipe shows (`V2SessionMenuItems`, `V2SessionLeadingSwipes`, `V2SessionTrailingSwipes`). Built with every row, they cost a pop about 6 ms at finger lift (#2532).
 
 **Open gaps**
 - Pushing or popping a chat still re-runs the list's own body (its sections and the top bar), and the project page's, as the covered flag changes; since #2500 their rows' content no longer re-runs with it.
