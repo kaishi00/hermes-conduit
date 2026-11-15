@@ -387,9 +387,10 @@ final class V2ShownUpdates: ObservableObject {
             do { try await Task.sleep(for: .seconds(delay)) } catch { self?.drawScheduled = false; return }
             guard let self else { return }
             drawScheduled = false
-            // Covered meanwhile, it waits for the list to show again;
-            // scrolling, for the scroll to rest.
-            if !isShown {
+            // Covered meanwhile, it waits for the list to show again (and
+            // shown again, for the slide in); scrolling, for the scroll to
+            // rest.
+            if !isShown || revealTask != nil {
                 missedUpdate = true
             } else if holdsForScroll() {
                 holdForScroll()

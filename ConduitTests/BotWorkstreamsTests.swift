@@ -1466,17 +1466,21 @@ extension BotModeTests {
         XCTAssertFalse(controller.rowsAreAway)
         XCTAssertTrue(rows.isUserInteractionEnabled)
         XCTAssertFalse(rows.accessibilityElementsHidden)
+        XCTAssertNil(controller.leaving)
+        XCTAssertTrue(picture.superview === controller.view, "the picture finishes its slide before it goes")
 
         // An open that draws nothing: they come back on their own, even
         // if UIKit dropped the layer's animations meanwhile.
         motion.patience = .milliseconds(20)
         motion.leave(.back)
+        let second = try XCTUnwrap(controller.leaving)
         rows.layer.removeAllAnimations()
         try await Task.sleep(for: .milliseconds(200))
         XCTAssertFalse(controller.rowsAreAway)
         XCTAssertTrue(rows.isUserInteractionEnabled)
         XCTAssertFalse(rows.accessibilityElementsHidden)
-        XCTAssertNil(controller.leaving, "the picture goes as the rows come back")
+        XCTAssertNil(controller.leaving)
+        XCTAssertNil(second.superview, "the picture goes as the rows come back")
         try await Task.sleep(for: .milliseconds(400))
         XCTAssertNil(picture.superview, "the slid-in picture went after its slide")
         XCTAssertEqual(controller.view.subviews.count, shown)

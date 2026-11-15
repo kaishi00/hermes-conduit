@@ -235,6 +235,20 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 0)
         updates.isShown = true
         XCTAssertEqual(sent, 1)
+
+        // Shown again while a burst's draw waits, that draw waits for the
+        // slide in too, then the two draw once.
+        sent = 0
+        updates.revealDelay = 0.3
+        state.sessions = [pinnedTestSession("burst")]
+        updates.isShown = false
+        state.sessions = [pinnedTestSession("covered")]
+        updates.isShown = true
+        settle()
+        XCTAssertEqual(sent, 0, "the burst's draw came during the slide in")
+        waitUntil { sent > 0 }
+        settle()
+        XCTAssertEqual(sent, 1)
     }
 
     /// Right after launch the connection and the catalog publish many
