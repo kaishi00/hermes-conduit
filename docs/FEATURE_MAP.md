@@ -705,7 +705,7 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
 **Code**
 - The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
-- Phone: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (sendOpeningIfNeeded, checkOpening), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (sendOpeningIfNeeded; Gemini, Qwen, Grok), `Shared/LocalLive/LocalLiveSession.swift` (greeting), `Conduit/Services/AppState+WatchCalls.swift` (openingPrompt: a call from Hermes' openingTurn, else the greeting)
+- Phone: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (sendOpeningIfNeeded, checkOpening), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (sendOpeningIfNeeded; Gemini, Qwen, Grok), `Shared/LocalLive/LocalLiveSession.swift` (greeting; ask, heldTurns: an asked turn waits for the server's response), `Conduit/Services/AppState+WatchCalls.swift` (openingPrompt: a call from Hermes' openingTurn, else the greeting)
 - Watch: `ConduitWatch/WatchBridgeCallModel.swift` (the opening at "started"), `Shared/WatchVoice/WatchAudioBridgeWire.swift` (sendsOpeningTurn), `ConduitWatch/WatchDirectCallModel.swift` (sendOpeningIfNeeded)
 - A call from Hermes' opening turn: `Conduit/Voice/HermesCalls.swift` (openingTurn, watchOpeningTurn)
 - Notifier: `notifier/dashboard/api/gpt_live.py` (create_gpt_live_session, GPT_LIVE_WAIT_FOR_USER), `notifier/dashboard/api/watch_audio.py`
@@ -714,11 +714,12 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 **Rulings**
 - Every live mode opens with a turn Conduit sends: the greeting, or a call from Hermes' reason, as a speakable first turn, once, never on a rejoin or reconnect. GPT-Live too: gpt-live-1-codex doesn't speak first from its instructions (it stays silent until the session idles out, checked 2026-11-04 on a real session), so the plugin no longer asks it to and always answers `greeting_applied: false`. Its only opening policy is "don't speak first", for a call with no greeting (Eric 2026-11-04, carried from notifier #541 by fasavard).
 - A GPT-Live call whose opening hasn't started 4 seconds after it was asked for asks once more, and holds Conduit's quiet notes until either side talks (#768).
+- Local Live asks its speech server for one response at a time: the opening (and any typed turn or late tool answer) asked while the readiness check's response or a reply is still going waits for its `response.done`, waits again if the server still refuses it for an active response, and goes anyway after 10 seconds when the server never ends its response. Speech-to-speech refuses a second `response.create` otherwise, and a call from Hermes' opening, asked as the call went ready, was never spoken (issue 2524, #2528).
 
 **Open gaps**
 - An older plugin still reports `greeting_applied: true` for a greeting or a call from Hermes, so a GPT-Live call there waits about 4 seconds for the phone's second ask; the Watch has no second ask and stays silent until the user speaks. Updating the plugin fixes both.
 
-**Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
+**Checked:** 2026-11-15, #2528 (Local Live holds the opening until the check's response ends, issue 2524; the Watch's Local Live opens with the check's own answer and needed no change; the other live modes run no readiness check; the notifier, CarPlay and the texts needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
 
 ## Showing a voice conversation a photo
 
