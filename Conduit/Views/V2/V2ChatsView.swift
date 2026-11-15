@@ -2373,15 +2373,12 @@ struct V2ChatsListItem: Identifiable, Equatable {
     }
 }
 
-/// One Chats list row. It works out its own dot, status and preview, so
-/// only the rows on screen do.
-struct V2ChatsRow: View, Equatable {
-    /// The list's updates (`V2ShownUpdates`): a row under a pushed chat
-    /// waits with the list, and redraws with it whatever its parent does.
+/// A Chats list row: its list traits (clear background, hidden separator,
+/// insets, its own hairline) and its swipe and menu actions, around the
+/// row's content, which compares on what it shows (`V2ChatsRowContent`).
+struct V2ChatsRow: View {
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @Environment(\.v2OpenBeside) private var openBeside
     let item: V2ChatsListItem
     /// The project a listed project chat sits in, named before its preview.
     let projectTitle: String?
@@ -2394,16 +2391,6 @@ struct V2ChatsRow: View, Equatable {
     /// Opens or closes the nest with this key.
     let setExpanded: (String, Bool) -> Void
 
-    /// The list re-runs its body as a chat is pushed over it or popped off
-    /// it (the shell's covered flag), and the closures are new each time:
-    /// compared on what it shows, a row redraws only for its own item or
-    /// a draw of the list's updates, which it observes itself. Drawn
-    /// as the pop's finger lifted, the rows held its first frame
-    /// (iPhone 16 Pro Max, 2026-11-15). The closures write the list's own
-    /// state, the same storage whichever render made them. SwiftUI compares
-    /// an Equatable row with this on its own; wrapped in `.equatable()`, the
-    /// row's list traits (its clear background, hidden separator, insets,
-    /// swipe actions) no longer reached the List and the rows drew black.
     init(
         item: V2ChatsListItem,
         projectTitle: String?,
@@ -2422,20 +2409,40 @@ struct V2ChatsRow: View, Equatable {
         self.setExpanded = setExpanded
     }
 
-    nonisolated static func == (lhs: V2ChatsRow, rhs: V2ChatsRow) -> Bool {
-        lhs.item == rhs.item && lhs.projectTitle == rhs.projectTitle
-    }
-
+    /// The list re-runs its body as a chat is pushed over it or popped off
+    /// it (the shell's covered flag), with new closures each time. Drawn as
+    /// the pop's finger lifted, every row's content held its first frame
+    /// (iPhone 16 Pro Max, 2026-11-15), so the content sits behind
+    /// `.equatable()`. The list traits and actions stay out here, on the
+    /// row itself: inside an `EquatableView` they never reached the List,
+    /// and the rows drew black with system insets.
     var body: some View {
-        let _ = TranscriptPerf.note(.chatsListRowBody)
+        let content = V2ChatsRowContent(item: item, projectTitle: projectTitle, profileBadge: profileBadge, setExpanded: setExpanded)
+            .equatable()
         switch item.kind {
         case .session(let node):
-            sessionRow(node)
-        case .nest(let node, let key, let isExpanded):
-            nestDisclosure(node, key: key, isExpanded: isExpanded)
+            let session = node.session
+            let signals = SessionNesting.signals(
+                node,
+                isUnread: appState.isSessionUnread,
+                liveStatus: appState.sessionLiveStatus
+            )
+            content
+                .v2ListRow(divider: node.children.isEmpty, dividerInset: V2SessionRow.iconTextInset)
+                .sessionActions(
+                    appState: appState,
+                    session: session,
+                    nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
+                    isSavedRow: appState.isSavedChatRow(session),
+                    onRename: { onRename(session) },
+                    onDelete: { onDelete(session) },
+                    onReorderPinned: { onReorderPinned(session) }
+                )
+        case .nest(_, _, let isExpanded):
+            content
                 .v2ListRow(divider: !isExpanded, dividerInset: V2SessionRow.iconTextInset)
-        case .child(let session, let depth, let parentTitle, let isLast):
-            childRow(session, depth: depth, parentTitle: parentTitle)
+        case .child(let session, _, _, let isLast):
+            content
                 .v2ListRow(divider: isLast, dividerInset: V2SessionRow.iconTextInset)
                 .sessionActions(
                     appState: appState,
@@ -2446,6 +2453,49 @@ struct V2ChatsRow: View, Equatable {
                     onDelete: { onDelete(session) }
                 )
                 .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+}
+
+/// What a Chats row shows. Compared on its item and project title, it
+/// redraws for those or a draw of the list's updates, which it observes
+/// itself, never because the list re-ran. The closures write the list's
+/// own state, the same storage whichever render made them.
+struct V2ChatsRowContent: View, Equatable {
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.v2OpenBeside) private var openBeside
+    let item: V2ChatsListItem
+    let projectTitle: String?
+    let profileBadge: (SessionSummary) -> V2ProfileBadge?
+    let setExpanded: (String, Bool) -> Void
+
+    init(
+        item: V2ChatsListItem,
+        projectTitle: String?,
+        profileBadge: @escaping (SessionSummary) -> V2ProfileBadge?,
+        setExpanded: @escaping (String, Bool) -> Void
+    ) {
+        self.item = item
+        self.projectTitle = projectTitle
+        self.profileBadge = profileBadge
+        self.setExpanded = setExpanded
+    }
+
+    nonisolated static func == (lhs: V2ChatsRowContent, rhs: V2ChatsRowContent) -> Bool {
+        lhs.item == rhs.item && lhs.projectTitle == rhs.projectTitle
+    }
+
+    var body: some View {
+        let _ = TranscriptPerf.note(.chatsListRowBody)
+        switch item.kind {
+        case .session(let node):
+            sessionRow(node)
+        case .nest(let node, let key, let isExpanded):
+            nestDisclosure(node, key: key, isExpanded: isExpanded)
+        case .child(let session, let depth, let parentTitle, _):
+            childRow(session, depth: depth, parentTitle: parentTitle)
         }
     }
 
@@ -2484,16 +2534,6 @@ struct V2ChatsRow: View, Equatable {
         .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2SelectedTrait(selection(session))
-        .v2ListRow(divider: !hasChildren, dividerInset: V2SessionRow.iconTextInset)
-        .sessionActions(
-            appState: appState,
-            session: session,
-            nest: SessionNesting.readToggleInputs(for: node, aggregateIsUnread: signals.isUnread),
-            isSavedRow: appState.isSavedChatRow(session),
-            onRename: { onRename(session) },
-            onDelete: { onDelete(session) },
-            onReorderPinned: { onReorderPinned(session) }
-        )
     }
 
     /// The parent's summary of what sits under it, and its expander.

@@ -641,15 +641,15 @@ struct ProjectProfileLabel: View {
     }
 }
 
-/// A chat's row on a project's page. The page re-runs its body as a chat
-/// is pushed over it or popped off it (the shell's chat rows flag), with
-/// new closures each time: compared on what it shows, a row redraws only
-/// for its own values or a draw of the page's updates, which it observes
-/// itself (the Chats list's rows, `V2ChatsRow`, do the same).
-struct V2ProjectSessionRow: View, Equatable {
+/// A chat's row on a project's page: its list traits and actions around
+/// its content, which compares on what it shows (the Chats list's rows,
+/// `V2ChatsRow`, are built the same way). The page re-runs its body as a
+/// chat is pushed over it or popped off it, with new closures each time;
+/// inside an `EquatableView` the traits never reached the List, so they
+/// stay out here.
+struct V2ProjectSessionRow: View {
     @EnvironmentObject private var updates: V2ShownUpdates
     private var appState: AppState { updates.appState }
-    @Environment(\.v2OpenBeside) private var openBeside
     let session: SessionSummary
     let projectID: String
     let isLast: Bool
@@ -676,9 +676,39 @@ struct V2ProjectSessionRow: View, Equatable {
         self.onChanged = onChanged
     }
 
-    nonisolated static func == (lhs: V2ProjectSessionRow, rhs: V2ProjectSessionRow) -> Bool {
-        lhs.session == rhs.session && lhs.projectID == rhs.projectID && lhs.isLast == rhs.isLast
-            && lhs.profileBadge == rhs.profileBadge
+    var body: some View {
+        V2ProjectSessionRowContent(session: session, profileBadge: profileBadge)
+            .equatable()
+            .v2ListRow(divider: isLast, dividerInset: 16)
+            .sessionActions(
+                appState: appState,
+                session: session,
+                nest: nil,
+                excludingProjectID: projectID,
+                onRename: { onRename(session) },
+                onDelete: { onDelete(session) },
+                onChanged: onChanged
+            )
+    }
+}
+
+/// What a project page's row shows. Compared on its chat and badge, it
+/// redraws for those or a draw of the page's updates, which it observes
+/// itself, never because the page re-ran.
+struct V2ProjectSessionRowContent: View, Equatable {
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
+    @Environment(\.v2OpenBeside) private var openBeside
+    let session: SessionSummary
+    let profileBadge: V2ProfileBadge?
+
+    init(session: SessionSummary, profileBadge: V2ProfileBadge?) {
+        self.session = session
+        self.profileBadge = profileBadge
+    }
+
+    nonisolated static func == (lhs: V2ProjectSessionRowContent, rhs: V2ProjectSessionRowContent) -> Bool {
+        lhs.session == rhs.session && lhs.profileBadge == rhs.profileBadge
     }
 
     var body: some View {
@@ -718,16 +748,5 @@ struct V2ProjectSessionRow: View, Equatable {
         .onAppear { appState.warmSavedCopy(of: session) }
         .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
         .v2SelectedTrait(.chat(isActive: appState.isOpenChatRow(session), beside: openBeside))
-        .v2ListRow(divider: isLast, dividerInset: 16)
-        .sessionActions(
-            appState: appState,
-            session: session,
-            nest: nil,
-            excludingProjectID: projectID,
-            onRename: { onRename(session) },
-            onDelete: { onDelete(session) },
-            onChanged: onChanged
-        )
     }
-
 }

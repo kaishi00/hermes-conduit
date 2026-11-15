@@ -7,6 +7,7 @@
 //
 
 import Combine
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -238,20 +239,20 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 1)
     }
 
-    /// A row compares on what it shows: the list's re-run with new
-    /// closures leaves it be; its item or project title changing redraws it.
+    /// A row's content compares on what it shows: the list's re-run with
+    /// new closures leaves it be; its item or project title changing
+    /// redraws it.
     @MainActor
     func testChatsRowComparesOnWhatItShows() {
-        func row(_ item: V2ChatsListItem, project: String? = nil, renamed: @escaping (SessionSummary) -> Void = { _ in }) -> V2ChatsRow {
-            V2ChatsRow(item: item, projectTitle: project, profileBadge: { _ in nil }, onRename: renamed,
-                       onDelete: { _ in }, onReorderPinned: { _ in }, setExpanded: { _, _ in })
+        func row(_ item: V2ChatsListItem, project: String? = nil, expand: @escaping (String, Bool) -> Void = { _, _ in }) -> V2ChatsRowContent {
+            V2ChatsRowContent(item: item, projectTitle: project, profileBadge: { _ in nil }, setExpanded: expand)
         }
         let parent = pinnedTestSession("parent")
         let child = pinnedTestSession("child")
         let nest = V2ChatsListItem(id: "parent", kind: .session(SessionNesting.Node(
             session: parent, children: [SessionNesting.Node(session: child, children: [])])))
-        var renames = 0
-        XCTAssertEqual(row(nest), row(nest, renamed: { _ in renames += 1 }), "new closures redrew the row")
+        var expansions = 0
+        XCTAssertEqual(row(nest), row(nest, expand: { _, _ in expansions += 1 }), "new closures redrew the row")
         XCTAssertNotEqual(row(nest), row(nest, project: "Conduit"))
         let retitledChild = V2ChatsListItem(id: "parent", kind: .session(SessionNesting.Node(
             session: parent, children: [SessionNesting.Node(session: pinnedTestSession("child", title: "Renamed"), children: [])])))
@@ -260,9 +261,9 @@ final class SidebarLayoutTests: XCTestCase {
     }
 
     /// Mounted in a List: the list re-running with the same rows (as it does
-    /// when a chat is pushed or popped) leaves their bodies alone, without
-    /// `.equatable()`, which hid the rows' list traits; a changed item
-    /// redraws its row.
+    /// when a chat is pushed or popped) leaves their content alone (behind
+    /// `.equatable()`, the traits outside it); a changed item redraws its
+    /// row.
     @MainActor
     func testChatsListReRunLeavesUnchangedRowsAlone() throws {
         let state = makeAppState()
@@ -331,15 +332,11 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertTrue(V2ProjectPage.visibility(in: shell).isShown, "a chat beside the page covered it")
         XCTAssertFalse(V2ProjectPage.visibility(in: shell).isPop(from: covered))
 
-        func row(_ session: SessionSummary, isLast: Bool = false, badge: V2ProfileBadge? = nil,
-                 renamed: @escaping (SessionSummary) -> Void = { _ in }) -> V2ProjectSessionRow {
-            V2ProjectSessionRow(session: session, projectID: "p", isLast: isLast, profileBadge: badge,
-                                onRename: renamed, onDelete: { _ in }, onChanged: {})
+        func row(_ session: SessionSummary, badge: V2ProfileBadge? = nil) -> V2ProjectSessionRowContent {
+            V2ProjectSessionRowContent(session: session, profileBadge: badge)
         }
         let session = pinnedTestSession("chat")
-        var renames = 0
-        XCTAssertEqual(row(session), row(session, renamed: { _ in renames += 1 }), "new closures redrew the row")
-        XCTAssertNotEqual(row(session), row(session, isLast: true))
+        XCTAssertEqual(row(session), row(session))
         XCTAssertNotEqual(row(session), row(session, badge: V2ProfileBadge(profile: "work", name: "Work", url: nil)))
         XCTAssertNotEqual(row(session), row(pinnedTestSession("chat", title: "Renamed")))
     }
