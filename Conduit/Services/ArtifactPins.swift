@@ -122,7 +122,7 @@ struct ArtifactPinsClient {
     /// the rest as rows.
     struct Run: Identifiable {
         let isVisual: Bool
-        let items: [ArtifactItem]
+        var items: [ArtifactItem]
         var id: String { "\(isVisual)|\(items.first?.id ?? "")" }
     }
 
@@ -132,7 +132,7 @@ struct ArtifactPinsClient {
         var runs: [Run] = []
         for item in items {
             if let last = runs.last, last.isVisual == item.isVisual {
-                runs[runs.count - 1] = Run(isVisual: last.isVisual, items: last.items + [item])
+                runs[runs.count - 1].items.append(item)
             } else {
                 runs.append(Run(isVisual: item.isVisual, items: [item]))
             }

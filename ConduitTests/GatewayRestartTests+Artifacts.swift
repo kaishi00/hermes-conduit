@@ -456,6 +456,7 @@ extension GatewayRestartTests {
 
         try await client.remove(item, profile: "default")
         XCTAssertEqual(asked[1].1, "DELETE")
-        XCTAssertEqual(asked[1].0, "\(ArtifactPinsClient.path)?id=\(DashboardPath.encodedQueryComponent("/root/out/a b.png")!)")
+        let encoded = try XCTUnwrap(DashboardPath.encodedQueryComponent("/root/out/a b.png"))
+        XCTAssertEqual(asked[1].0, "\(ArtifactPinsClient.path)?id=\(encoded)")
     }
 }
