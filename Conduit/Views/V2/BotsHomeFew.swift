@@ -87,14 +87,17 @@ struct BotLastReply: View {
     @State private var replyChatID: String?
 
     /// Read again when the roster says the chat moved, and, while that chat
-    /// is open beside Bots Home (a split window), as its newest message
-    /// changes, which the roster doesn't hear of until its next read. A
-    /// finished reply can replace its row's text under the same id, so the
-    /// text counts too (streamed tokens don't touch `messages`).
+    /// is open beside Bots Home (a split window), as its newest
+    /// reply changes, which the roster doesn't hear of until its next read.
+    /// That's the newest reply row, as `read()` takes it, not the newest
+    /// row (a tool step or a steer can follow it), and a finished reply can
+    /// replace its row's text under the same id, so the text counts too
+    /// (streamed tokens don't touch `messages`).
     private var readKey: String {
         let chat = bot.canonicalSession
         let openTail = appState.activeBotChatProfile == bot.name
-            ? (appState.messages.last.map { "\($0.id)\u{1E}\($0.content.hashValue)" } ?? "")
+            ? (appState.messages.last { $0.role == .assistant && $0.tool == nil }
+                .map { "\($0.id)\u{1E}\($0.content.hashValue)" } ?? "")
             : ""
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive)].joined(separator: "\u{1F}")
