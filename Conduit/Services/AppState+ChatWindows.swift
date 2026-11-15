@@ -85,7 +85,10 @@ extension AppState {
         requestOpenSession(target)
         // Uncovering the chat pushes it in the shell (V2Shell's showSidebar).
         showSidebar = false
-        return windowScenePhases[Self.mainWindowScene] == nil
+        let opensMainWindow = windowScenePhases[Self.mainWindowScene] == nil
+        // The window that opens starts on the list unless told otherwise.
+        mainWindowOpensChat = opensMainWindow
+        return opensMainWindow
     }
 
     /// A profile or dashboard switch: the pane and every chat window

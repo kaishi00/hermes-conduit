@@ -817,6 +817,13 @@ struct V2Shell: View {
         sizedTabs
             .callEndingSwitchConfirmation($pendingCallEndingSwitch)
             .onChange(of: conversationVisible, initial: true) { _, visible in
+                // A main window opened by a chat window's Open in Main
+                // Window shows that chat, not the list.
+                if !visible, appState.mainWindowOpensChat {
+                    appState.mainWindowOpensChat = false
+                    openConversation()
+                    return
+                }
                 // Covered means streaming rows needn't redraw and the chat
                 // doesn't count as seen (AppState.showSidebar).
                 if appState.showSidebar == visible {

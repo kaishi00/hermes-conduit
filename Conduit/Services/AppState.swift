@@ -533,6 +533,10 @@ final class AppState: ObservableObject {
     /// Each window's scene phase, the main window's and each chat window's
     /// (AppState+ChatWindows.swift, noteScenePhase).
     var windowScenePhases: [String: ScenePhase] = [:]
+    /// Open in Main Window with no main window open: the main window that
+    /// opens next shows the chat as it appears, not the list
+    /// (V2Shell's first sync).
+    var mainWindowOpensChat = false
     /// The app's phase across them, as handleScenePhase last heard it.
     var mergedScenePhase: ScenePhase?
     /// The followed chat a profile switch shows while it lands, by the ids
