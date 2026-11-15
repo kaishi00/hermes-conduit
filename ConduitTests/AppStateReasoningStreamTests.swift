@@ -78,6 +78,28 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.liveReasoningSegment?.content
     }
 
+    // MARK: - The chat on screen's state (all-live stage 1)
+
+    /// The transcript lives on `shownChat` now; AppState's views redraw on
+    /// its changes as they did when it was AppState's own published state,
+    /// and its derived values follow it as before.
+    func testShownChatChangesPublishAsAppStateChanges() {
+        let state = makeAppState()
+        var appStatePublications = 0
+        let cancellable = state.objectWillChange.sink { appStatePublications += 1 }
+        defer { cancellable.cancel() }
+
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        XCTAssertGreaterThan(appStatePublications, 0, "a transcript write redraws AppState's views")
+        XCTAssertEqual(state.shownChat.messages.map(\.id), ["u1"])
+        XCTAssertEqual(state.chatTranscriptRevision, state.shownChat.transcriptRevision)
+
+        appStatePublications = 0
+        state.shownChat.persistedTranscriptWindow = nil
+        XCTAssertGreaterThan(appStatePublications, 0, "a write straight to the chat publishes too")
+        XCTAssertTrue(state.liveTurn === state.shownChat.liveTurn)
+    }
+
     // MARK: - Coalescing
 
     func testRapidReasoningDeltasCoalesceTranscriptPublications() {
@@ -87,7 +109,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         let expectedTotal = chunks.joined()
 
         var burstPublications = 0
-        let cancellable = state.$messages.dropFirst().sink { _ in burstPublications += 1 }
+        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in burstPublications += 1 }
         feedReasoning(chunks, sessionId: "stored-a", state: state)
         cancellable.cancel()
 
@@ -118,7 +140,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // force-flush, no boundary event. The wait only needs to clear the
         // cadence interval, so generous slack keeps it stable on CI runners.
         var scheduledTranscriptPublications = 0
-        let cancellable = state.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
             scheduledTranscriptPublications += 1
         }
         try await Task.sleep(for: .milliseconds(500))
@@ -389,11 +411,11 @@ final class AppStateReasoningStreamTests: XCTestCase {
         installActiveSession(state, id: "stored-a")
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
         state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
-        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
-        let note = state.runningTurnNoteIDs.first
+        XCTAssertEqual(state.shownChat.runningTurnNoteIDs.count, 1)
+        let note = state.shownChat.runningTurnNoteIDs.first
         XCTAssertEqual(state.messages.first { $0.id == note }?.content, "Checking")
         state.handleStreamEvent(.messageComplete(sessionId: "stored-a", messageId: nil, content: "Done.", reasoning: nil))
-        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+        XCTAssertTrue(state.shownChat.runningTurnNoteIDs.isEmpty)
     }
 
     /// A resume that finds the turn idle forgets its notes too, so a
@@ -404,20 +426,20 @@ final class AppStateReasoningStreamTests: XCTestCase {
         installActiveSession(state, id: "stored-a")
         state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
         state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
-        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
+        XCTAssertEqual(state.shownChat.runningTurnNoteIDs.count, 1)
         _ = state.applyChatResume(SessionResumeResult(
             sessionId: "stored-a",
             messages: [],
             snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
         ))
-        XCTAssertEqual(state.runningTurnNoteIDs.count, 1, "a resume that finds it running keeps them")
+        XCTAssertEqual(state.shownChat.runningTurnNoteIDs.count, 1, "a resume that finds it running keeps them")
         _ = state.applyChatResume(SessionResumeResult(
             sessionId: "stored-a",
             messages: [],
             snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
         ))
         XCTAssertEqual(state.turnState, .idle)
-        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+        XCTAssertTrue(state.shownChat.runningTurnNoteIDs.isEmpty)
     }
 
     /// A turn Voice cancelled can stream a few words after its cancel; once
@@ -853,7 +875,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         // No coalesced publish may fire after the boundary: not the
         // transcript equality, and not even a single republication.
         var postBoundaryPublications = 0
-        let cancellable = state.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
             postBoundaryPublications += 1
         }
         try await Task.sleep(for: .milliseconds(250))
@@ -882,7 +904,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         )
 
         var postBoundaryPublications = 0
-        let cancellable = state.$messages.dropFirst().sink { _ in
+        let cancellable = state.shownChat.$messages.dropFirst().sink { _ in
             postBoundaryPublications += 1
         }
         try await Task.sleep(for: .milliseconds(250))

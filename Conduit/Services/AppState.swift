@@ -320,25 +320,9 @@ final class AppState: ObservableObject {
             updateSessionReferenceTitles()
         }
     }
-    @Published var projects: [ProjectSummary] = [] {
-        didSet {
-            projectPositionsBySessionID = nil
-            projectsSeededFromSavedList = false
-        }
-    }
-    /// The project pages came from the saved Chats list, not from Hermes:
-    /// they leave with it, and say nothing yet about whether this Hermes
-    /// takes new projects. Any later write to `projects` replaces them.
-    var projectsSeededFromSavedList = false
-    /// For each conversation id a project previews, the position of the
-    /// first project that lists it. Built once per `projects` change for
-    /// `knownProjectID(for:)`, which the chat list asks for every row on
-    /// every render.
-    var projectPositionsBySessionID: [String: Int]?
     /// The catalog's rows under every id they answer to, built once per
     /// `sessions` change for `catalogRow(answeringTo:)`.
     var catalogRowsByAnyID: [String: SessionSummary]?
-    @Published var supportsProjects = false
     /// The client whose gateway rejected `session.workspace.move` as an
     /// unknown method. Scoped to that client so any new connection (a
     /// reconnect, or a gateway upgraded in place) probes the RPC again.
@@ -352,11 +336,28 @@ final class AppState: ObservableObject {
     weak var projectEditingUnsupportedClient: HermesClient? {
         willSet { objectWillChange.send() }
     }
-    @Published var projectsLoading = false
-    /// The last projects load failed for a reason other than the host not
-    /// having projects (a dropped or timed-out request), so an empty list
-    /// isn't "no projects".
-    @Published var projectsLoadFailed = false
+    /// The bot on screen's projects, and whether its Hermes has them
+    /// (`BotState`).
+    var projects: [ProjectSummary] {
+        get { shownBot.projects }
+        set { shownBot.projects = newValue }
+    }
+    var projectsSeededFromSavedList: Bool {
+        get { shownBot.projectsSeededFromSavedList }
+        set { shownBot.projectsSeededFromSavedList = newValue }
+    }
+    var supportsProjects: Bool {
+        get { shownBot.supportsProjects }
+        set { shownBot.supportsProjects = newValue }
+    }
+    var projectsLoading: Bool {
+        get { shownBot.projectsLoading }
+        set { shownBot.projectsLoading = newValue }
+    }
+    var projectsLoadFailed: Bool {
+        get { shownBot.projectsLoadFailed }
+        set { shownBot.projectsLoadFailed = newValue }
+    }
     @Published var archivedSessions: [SessionSummary] = []
     @Published var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
@@ -460,8 +461,8 @@ final class AppState: ObservableObject {
                 workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
-                if let created = newChatOpenedSessionID, activeSessionId != created {
-                    newChatOpenedSessionID = nil
+                if let created = shownChat.newChatOpenedSessionID, activeSessionId != created {
+                    shownChat.newChatOpenedSessionID = nil
                 }
                 schedulePendingComposerSendCheck()
                 // The dock acts only on word this visit got (issue 2372):
@@ -495,13 +496,62 @@ final class AppState: ObservableObject {
         }
     }
     @Published var activeChatScrollSessionIdentity = ChatScrollSessionIdentity.none
-    @Published private(set) var chatTranscriptRevision: UInt64 = 0
+    /// The chat on screen: its transcript and the reply streaming into it
+    /// (ChatState, stage 1 of the all-live rework). Its changes publish as
+    /// AppState's (`shownChatChanges`).
+    let shownChat = ChatState()
+    /// Chats left while their reply was still coming, following the rest
+    /// of it (all-live stage 2, AppState+BackgroundChats.swift).
+    var backgroundChats: [BackgroundChat] = []
+    /// The followed chat a profile switch shows while it lands, by the ids
+    /// it's followed under (releaseFollowedChatOnScreen).
+    var followedChatShownBySwitch: Set<String>?
+    var shownChatChanges: AnyCancellable?
+    /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
+    /// the all-live rework). Its changes publish as AppState's.
+    let shownBot = BotState()
+    var shownBotChanges: AnyCancellable?
+    /// The chat on screen's own activity (`ChatState`): its title, plan
+    /// card, refresh, branch and rewind, its agents, and replies streaming
+    /// to another device.
+    var chatCards: ChatCardsModel { shownChat.chatCards }
+    var activeSessionTitle: String {
+        get { shownChat.activeSessionTitle }
+        set { shownChat.activeSessionTitle = newValue }
+    }
+    var isChatRefreshing: Bool {
+        get { shownChat.isChatRefreshing }
+        set { shownChat.isChatRefreshing = newValue }
+    }
+    var isBranchingChat: Bool {
+        get { shownChat.isBranchingChat }
+        set { shownChat.isBranchingChat = newValue }
+    }
+    var isRewindingTurns: Bool {
+        get { shownChat.isRewindingTurns }
+        set { shownChat.isRewindingTurns = newValue }
+    }
+    var slashPromptRefusedDuringRewind: Bool {
+        get { shownChat.slashPromptRefusedDuringRewind }
+        set { shownChat.slashPromptRefusedDuringRewind = newValue }
+    }
+    var activeAgents: Int {
+        get { shownChat.activeAgents }
+        set { shownChat.activeAgents = newValue }
+    }
+    var delegateAgents: [DelegateAgentActivity] {
+        get { shownChat.delegateAgents }
+        set { shownChat.delegateAgents = newValue }
+    }
+    var activeChatRepliesElsewhere: Bool {
+        get { shownChat.activeChatRepliesElsewhere }
+        set { shownChat.activeChatRepliesElsewhere = newValue }
+    }
+    /// Bumped on every write to `messages`.
+    var chatTranscriptRevision: UInt64 { shownChat.transcriptRevision }
     /// A message an Artifacts screen asked to show; the chat scrolls to it
     /// once its transcript has the row (AppState+Artifacts).
     @Published var pendingArtifactReveal: ArtifactReveal?
-    /// The open chat's plan card (AppState+ChatCards). Its own observable:
-    /// the card changing redraws the card alone.
-    let chatCards = ChatCardsModel()
     /// Every chat Hermes waits on the user in, every profile's (issue 1705;
     /// AppState+NeedsYou). Its own observable, as `chatCards`.
     let needsYou = NeedsYouStore()
@@ -509,21 +559,15 @@ final class AppState: ObservableObject {
     /// waiting card once its transcript has it.
     @Published var pendingNeedsYouReveal: NeedsYouReveal?
     /// Cached once per transcript mutation so view updates do not rescan the full history.
-    @Published private(set) var pendingClarifyMessageID: String?
+    var pendingClarifyMessageID: String? { shownChat.pendingClarifyMessageID }
     /// What that card is, for the jump button's words.
-    @Published private(set) var pendingDecisionKind = PendingDecisionKind.question
-    @Published var messages: [ChatMessage] = [] {
-        didSet {
-            chatTranscriptRevision &+= 1
-            let pendingClarify = ChatResumeCoordinator.pendingClarifyMessageID(in: messages)
-            if pendingClarifyMessageID != pendingClarify {
-                pendingClarifyMessageID = pendingClarify
-            }
-            let kind = pendingClarify.flatMap { id in messages.last { $0.id == id } }
-                .map(PendingDecisionKind.init(message:)) ?? .question
-            if pendingDecisionKind != kind {
-                pendingDecisionKind = kind
-            }
+    var pendingDecisionKind: PendingDecisionKind { shownChat.pendingDecisionKind }
+    /// The chat on screen's transcript (`ChatState.messages`, which also
+    /// keeps its revision and waiting card current).
+    var messages: [ChatMessage] {
+        get { shownChat.messages }
+        set {
+            shownChat.messages = newValue
             advanceChatViewportExpectedTranscriptRevisionIfNeeded()
             // Hermes' rows take over from the saved copy's in the same
             // update: the chat view draws one or the other, never a mix, and
@@ -533,15 +577,14 @@ final class AppState: ObservableObject {
             }
         }
     }
-    /// Read-only copy of a recently opened conversation, shown while the
-    /// server has not answered yet (#99): the chat view draws its rows as
-    /// the chat's, provisionally. It never feeds `messages`, `sessions`, or
-    /// any resume/selection/routing decision, and while it's up nothing
-    /// that needs Hermes' word acts on its rows (approvals, Load earlier,
-    /// Retry, Edit, reactions, pins).
-    @Published var offlineChatPresentation: OfflineChatPresentation? {
+    /// The chat on screen's saved copy, shown while the server has not
+    /// answered yet (`ChatState.offlineChatPresentation`).
+    var offlineChatPresentation: OfflineChatPresentation? {
+        get { shownChat.offlineChatPresentation }
         // A message waiting for the chat on screen follows what's shown.
-        didSet {
+        set {
+            let oldValue = shownChat.offlineChatPresentation
+            shownChat.offlineChatPresentation = newValue
             if (oldValue == nil) != (offlineChatPresentation == nil) { updateChatOnScreen() }
             guard pendingComposerSend != nil else { return }
             if (oldValue == nil) != (offlineChatPresentation == nil)
@@ -575,22 +618,12 @@ final class AppState: ObservableObject {
     /// The scope whose list in memory came from Hermes after the saved files
     /// were last wiped, and so may be saved.
     var savableChatListScope: WidgetWorkspaceID?
-    @Published var activeSessionTitle = AppLocalization.string("New conversation")
-    /// Persisted-history pagination window of the active conversation.
-    /// Drives the "Load earlier messages" affordance; nil means the current
-    /// transcript is either a legacy one-shot hydration or not persisted-
-    /// history-backed at all, and no older pages exist to fetch.
-    @Published var persistedTranscriptWindow: PersistedTranscriptWindowState?
-    /// Row ids POSITIVELY known to originate from validated persisted-
-    /// transcript hydration (raw rows carrying a durable `id`/`message_id`)
-    /// for the active conversation, adopted from the latest accepted
-    /// hydration and cleared whenever a reconcile begins or fails to adopt a
-    /// transcript. Consumed only by the ambiguous-delivery verifier as
-    /// ordering anchors — never populated from visible id shape, so local
-    /// optimistic / streaming / positional ids can never masquerade as
-    /// persisted anchors.
-    var durablePersistedRowIDs: Set<String> = []
-    @Published var isChatRefreshing = false
+    /// Persisted-history pagination window of the active conversation
+    /// (`ChatState.persistedTranscriptWindow`).
+    var persistedTranscriptWindow: PersistedTranscriptWindowState? {
+        get { shownChat.persistedTranscriptWindow }
+        set { shownChat.persistedTranscriptWindow = newValue }
+    }
     @Published var chatResumeBehavior: ChatResumeBehavior = .continueWhereLeftOff
     @Published var chatReturnSurface: ChatReturnSurface = .conversation
     /// One-shot request for MainView to present the sessions drawer as the
@@ -604,20 +637,6 @@ final class AppState: ObservableObject {
     /// Keeps the current transcript visible while a notification destination is
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published var isOpeningNotificationSession = false
-    @Published var isBranchingChat = false
-    /// An Edit and resend, /undo or /retry reading the chat's turns, taking
-    /// them back and reopening the chat. Another rewind is refused and the
-    /// composer and sends wait meanwhile: they would change the history its
-    /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
-    /// refuse a stale count), or land in the transcript the reopen replaces.
-    @Published var isRewindingTurns = false
-    /// A slash command's prompt or prefill refused while a rewind ran: the
-    /// rewind says so once it is done, after its reopen has replaced the
-    /// transcript a note added sooner would be in.
-    var slashPromptRefusedDuringRewind = false
-    /// Counts rewinds started: a rewind clears the flags above only while
-    /// no later one has started.
-    var rewindGeneration = 0
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE
@@ -642,8 +661,13 @@ final class AppState: ObservableObject {
     /// every authoritative terminal signal (`compacted` edges and terminal
     /// `session.compress` results).
     var serverCompactionTerminalGenerations: [String: Int] = [:]
-    @Published var turnState: TurnState = .idle {
-        didSet {
+    /// The chat on screen's turn (`ChatState.turnState`). What follows a
+    /// change outside the chat stays here.
+    var turnState: TurnState {
+        get { shownChat.turnState }
+        set {
+            let oldValue = shownChat.turnState
+            shownChat.turnState = newValue
             guard oldValue != turnState else { return }
             // A message waiting for this chat goes once it takes one.
             schedulePendingComposerSendCheck()
@@ -654,20 +678,12 @@ final class AppState: ObservableObject {
             updateChatOnScreen()
         }
     }
-    /// Whether `turnState` may have missed server-side turn edges. Set at
-    /// lifecycle boundaries where the socket can die or the gateway can change
-    /// state unobserved (scene dips, reconnects, ambiguous submissions);
-    /// cleared only when an authoritative source (the `session.active_list`
-    /// probe, a resume snapshot, or a typed prompt outcome) re-confirms the
-    /// state. A stale idle state must not route the next input as a new-turn
-    /// `prompt.submit` — Hermes would apply its busy policy to it and the
-    /// message would silently join a turn the user never saw start.
-    /// Publishes its flips: the chat list's Working marker reads it.
-    var turnStateIsStale = false {
-        willSet { if newValue != turnStateIsStale { objectWillChange.send() } }
+    /// Whether `turnState` may have missed server-side turn edges
+    /// (`ChatState.turnStateIsStale`).
+    var turnStateIsStale: Bool {
+        get { shownChat.turnStateIsStale }
+        set { shownChat.turnStateIsStale = newValue }
     }
-
-    var turnLifecycleEvidence = TurnLifecycleEvidence(revision: 0, running: false)
     /// Session identities with a locally-observed running turn at the last
     /// scene transition (empty = no continuity evidence). A foreground probe
     /// whose working/waiting row matches one of these ids continues a turn
@@ -685,21 +701,12 @@ final class AppState: ObservableObject {
     /// events keep flowing — so they observe but do not arm the freshness
     /// check.
     var foregroundFreshnessCheckArmed = false
-    /// Whether the visible persisted transcript may be MISSING rows —
-    /// conceptually disjoint from `turnStateIsStale`, which answers "do I
-    /// know whether Hermes is currently busy?". Set when a bounded
-    /// foreground freshness read failed transiently on a real background
-    /// return, and when a resume Hermes refused as too long for the whole
-    /// transcript kept the rows on screen while its history read failed for
-    /// now (issue 2025); a liveness answer (the registry probe) can never
-    /// clear it.
-    /// Cleared only when an authoritative transcript source proves
-    /// convergence: an unchanged bounded verdict, an advancement merge, or a
-    /// resume/reconcile hydration (`applyChatResume`).
-    var transcriptFreshnessIsStale = false
-    var pendingLocalOrderingDebt: PendingLocalOrderingDebt?
-    var locallyOwnedInFlightTurn: LocallyOwnedInFlightTurn?
-    var persistedOrderingFrontier = PersistedOrderingFrontier()
+    /// Whether the visible persisted transcript may be MISSING rows
+    /// (`ChatState.transcriptFreshnessIsStale`).
+    var transcriptFreshnessIsStale: Bool {
+        get { shownChat.transcriptFreshnessIsStale }
+        set { shownChat.transcriptFreshnessIsStale = newValue }
+    }
     @Published var busyInputMode: BusyInputMode = .steer
     @Published var displayPreferences = ProfileDisplayPreferences() {
         // Kept on the device too, so the saved chats draw as Settings says
@@ -709,11 +716,9 @@ final class AppState: ObservableObject {
     /// The profile's `timezone` config value ("" = the server's local time)
     /// and the profile it was read for. Hermes runs cron schedules in it.
     @Published var profileTimeZoneSetting: (profile: String, value: String)?
-    /// The running turn's live reply text and thinking card. They publish on
-    /// their own object, never on AppState: while a turn streams they change
-    /// 20 to 30 times a second, and an AppState publish re-renders every view
-    /// that observes it, so any open sheet re-rendered at that rate and lagged.
-    let liveTurn = LiveTurnProjection()
+    /// The running turn's live reply text and thinking card, on their own
+    /// object (`ChatState.liveTurn`).
+    var liveTurn: LiveTurnProjection { shownChat.liveTurn }
     /// An explicit user-send request lets ChatView scroll after SwiftUI has
     /// inserted the outgoing bubble, even if the user previously browsed up.
     @Published var chatScrollRequest = 0
@@ -730,10 +735,6 @@ final class AppState: ObservableObject {
     /// Each profile's archived calls as last read, which a catalog read
     /// within their lifetime takes again (issue 2357).
     var archivedCallsReads: [String: ArchivedCallsRead] = [:]
-    /// The projects as last read: for which profile, through which client,
-    /// and when. A catalog read that changed nothing reads them again only
-    /// past `projectsRereadInterval` (issue 2357).
-    var projectsRead: (profile: String, client: ObjectIdentifier, at: Date)?
     /// The scope the catalog last committed for: a read that lists the same
     /// rows for it again skips the work that follows a change (issue 2357).
     var catalogCommitOwner: SessionCatalogOwner?
@@ -877,12 +878,6 @@ final class AppState: ObservableObject {
     var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
 
     @Published var runtime = RuntimeState()
-    @Published var activeAgents = 0
-    @Published var delegateAgents: [DelegateAgentActivity] = []
-    /// When each delegate agent last sent an event. An event that changes
-    /// nothing its card shows renews this without publishing the cards, and
-    /// the roster check counts it as the card's latest news.
-    var delegateAgentSeenAt: [String: Date] = [:]
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
@@ -1020,12 +1015,27 @@ final class AppState: ObservableObject {
     /// and Wrap Up landed on Bots Home). Every close sets it, so it never
     /// outlives the close it describes.
     var roomHandedTo: RoomHandoff = .none
-    /// The restore error the open chat's last failed resume showed, which a
-    /// later resume of it that works clears (issue 2025).
-    var chatRestoreFailureShown: String?
-    /// A reasoning write is in flight, from the composer chip or the Model
-    /// sheet; both wait for it so picks land in order.
-    @Published var isWritingReasoningEffort = false
+    /// The chat on screen's composer requests (`ChatState`, composer).
+    var composerPrefillText: String {
+        get { shownChat.composerPrefillText }
+        set { shownChat.composerPrefillText = newValue }
+    }
+    var composerPrefillToken: UUID {
+        get { shownChat.composerPrefillToken }
+        set { shownChat.composerPrefillToken = newValue }
+    }
+    var composerPrefillDraftKey: ComposerDraftKey? {
+        get { shownChat.composerPrefillDraftKey }
+        set { shownChat.composerPrefillDraftKey = newValue }
+    }
+    var composerQuoteRequest: ComposerQuoteRequest? {
+        get { shownChat.composerQuoteRequest }
+        set { shownChat.composerQuoteRequest = newValue }
+    }
+    var pendingQuotedReplyJump: QuotedReplyJump? {
+        get { shownChat.pendingQuotedReplyJump }
+        set { shownChat.pendingQuotedReplyJump = newValue }
+    }
     /// A classified sign-in failure awaiting presentation on the login card.
     /// Typed (not a string) so LoginView renders the full presentation —
     /// title, actions, help routing — and delivered as a publisher so the
@@ -1143,25 +1153,23 @@ final class AppState: ObservableObject {
     /// makes them.
     lazy var pulseFoldedBriefs: [String: [String: [String: Double]]] =
         defaults.dictionary(forKey: Self.pulseFoldedBriefsKey) as? [String: [String: [String: Double]]] ?? [:]
-    @Published var composerPrefillText = ""
-    @Published var composerPrefillToken = UUID()
-    /// The draft the prefill is for, until ComposerBar puts it in. A new
-    /// chat's draft load can land in the same update as the prefill, so
-    /// the composer waits until this draft is the one loaded. Set only by
-    /// `prefillComposer`, with the text and then the token.
-    var composerPrefillDraftKey: ComposerDraftKey?
-    /// A quote waiting for the composer (#385). ComposerBar, which owns the
-    /// draft, applies it and then consumes it.
-    @Published var composerQuoteRequest: ComposerQuoteRequest?
-    /// A "Replying to" card's tap (issue 1420): the chat or room on screen
-    /// scrolls to the reply it quoted, then clears it.
-    @Published var pendingQuotedReplyJump: QuotedReplyJump?
+    /// Files dropped on the open chat (`ChatState.composerDropRequest`).
+    var composerDropRequest: AttachmentDropRequest? {
+        get { shownChat.composerDropRequest }
+        set { shownChat.composerDropRequest = newValue }
+    }
     /// The same for the open group room's composer, kept apart so a chat's
     /// composer never takes a quote meant for a room.
     @Published var roomQuoteRequest: ComposerQuoteRequest?
-    /// Files dropped on the open chat (#1408), waiting for its composer to
-    /// stage them, and the same for the open room's composer.
-    @Published var composerDropRequest: AttachmentDropRequest?
+    /// The open chat's composer focus and dictation asks (`ChatState`).
+    var composerFocusRequest: ComposerFocusRequest? {
+        get { shownChat.composerFocusRequest }
+        set { shownChat.composerFocusRequest = newValue }
+    }
+    var composerDictationRequest: ComposerDictationRequest? {
+        get { shownChat.composerDictationRequest }
+        set { shownChat.composerDictationRequest = newValue }
+    }
     @Published var roomDropRequest: AttachmentDropRequest?
     /// Words added to a room's kept draft from outside its composer (a
     /// dictation Retry). The open room's composer adds them to its field.
@@ -1169,63 +1177,39 @@ final class AppState: ObservableObject {
     /// A bot to add to the room composer's "To" row (its picture tapped, or
     /// its message replied to). The room composer applies and consumes it.
     @Published var roomRecipientRequest: RoomRecipientRequest?
-    /// Asks the composer to take focus (a screenshot chat opened with the
-    /// keyboard). ComposerBar focuses and then consumes it.
-    @Published var composerFocusRequest: ComposerFocusRequest?
-    /// Asks the open chat's composer to start dictating (its big button
-    /// set to Dictation, or Dictate in the button's menu). ComposerBar
-    /// starts and then consumes it.
-    @Published var composerDictationRequest: ComposerDictationRequest?
+    /// Words the composer puts back, and sends still checking (`ChatState`).
+    var composerRestoreRequests: [ComposerRestoreRequest] {
+        get { shownChat.composerRestoreRequests }
+        set { shownChat.composerRestoreRequests = newValue }
+    }
+    var composerSendChecks: [ComposerSendCheck] {
+        get { shownChat.composerSendChecks }
+        set { shownChat.composerSendChecks = newValue }
+    }
 
     // MARK: - Sending while connecting (AppState+PendingSend.swift)
 
-    /// A message sent before its chat was ready (#417): it shows in that
-    /// chat as "Sends when connected" and goes once the chat is ready. Its
-    /// file beside the dashboard's saved chats brings it back as a draft
-    /// if Conduit stops first.
-    @Published var pendingComposerSend: PendingComposerSend?
-    /// Words the composer puts back: a waiting message taken back to edit,
-    /// or one its chat never took. ComposerBar applies each, then consumes it.
-    @Published var composerRestoreRequests: [ComposerRestoreRequest] = []
-    /// A composer send still checking Hermes before its message shows: the
-    /// composer says it's sending meanwhile (#1401).
-    @Published var composerSendChecks: [ComposerSendCheck] = []
-    /// Sends whose chat was left while their reply was lost: Hermes may
-    /// have them, so their words come back without an "unsent" notice.
-    var composerSubmissionsOfUnknownDelivery: [ComposerSubmissionContext] = []
-    /// Why a waiting message went back to a draft, until it's dismissed or
-    /// the composer is used.
-    @Published var composerNotice: String? {
-        didSet {
-            // Each notice says what it is; a new one starts as a waiting
-            // message's until its writer says otherwise.
-            if composerNotice != oldValue { composerNoticeSystemImage = Self.composerReturnNoticeSystemImage }
-        }
+    /// A message sent before its chat was ready (#417), and the rest of
+    /// sending while connecting (`ChatState`).
+    var pendingComposerSend: PendingComposerSend? {
+        get { shownChat.pendingComposerSend }
+        set { shownChat.pendingComposerSend = newValue }
     }
-    /// The symbol beside the notice: a message that came back, or a draft
-    /// shared from another app (AppState+ShareDraft.swift).
-    @Published var composerNoticeSystemImage = AppState.composerReturnNoticeSystemImage
+    /// Why a waiting message went back to a draft, and its symbol (`ChatState`).
+    var composerNotice: String? {
+        get { shownChat.composerNotice }
+        set { shownChat.composerNotice = newValue }
+    }
+    var composerNoticeSystemImage: String {
+        get { shownChat.composerNoticeSystemImage }
+        set { shownChat.composerNoticeSystemImage = newValue }
+    }
+    /// A reasoning write is in flight (`ChatState.isWritingReasoningEffort`).
+    var isWritingReasoningEffort: Bool {
+        get { shownChat.isWritingReasoningEffort }
+        set { shownChat.isWritingReasoningEffort = newValue }
+    }
     static let composerReturnNoticeSystemImage = "arrow.uturn.backward.circle"
-    /// The chat Conduit last created, while it's the one open: it takes the
-    /// New Chat draft and a message that waited for it.
-    var newChatOpenedSessionID: String? {
-        didSet {
-            if newChatOpenedSessionID == nil { newChatOpenedDurableSessionID = nil }
-        }
-    }
-    var newChatOpenedDurableSessionID: String?
-    /// The ids of an empty chat Hermes lost and of the fresh chat Conduit
-    /// opened in its place (replaceLostEmptyNewChat): a draft typed in the
-    /// lost one is the fresh one's, as the New Chat draft is its chat's.
-    var lostChatReplacement: (lost: Set<String>, fresh: Set<String>)?
-    var pendingComposerSendCheckScheduled = false
-    /// A waiting message whose chat is ready but still settling is looked
-    /// at again shortly: not all of that settling is published.
-    var pendingComposerSendRecheckTask: Task<Void, Never>?
-    /// Waiting messages handed to the normal send and not back yet. Their
-    /// files stay until it goes, so a switch back to their dashboard
-    /// mustn't restore them meanwhile.
-    var deliveringPendingComposerSendIDs: Set<UUID> = []
     /// New Chats creating their chat right now: the transcript on screen
     /// until then is the one being left, so the composer doesn't wait on it.
     var newSessionCreationsInFlight = 0
@@ -1267,113 +1251,54 @@ final class AppState: ObservableObject {
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
     @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
-    @Published var skills: [CapabilitySkill] = []
-    @Published var toolsets: [CapabilityToolset] = []
-    /// The active profile's tools catalog, for step rows (`ChatStepLabel`).
-    @Published var toolCatalog = ToolCatalog()
+    /// The bot on screen's skills, toolsets, tools catalog and MCP servers,
+    /// and whose they are (`BotState`).
+    var skills: [CapabilitySkill] {
+        get { shownBot.skills }
+        set { shownBot.skills = newValue }
+    }
+    var toolsets: [CapabilityToolset] {
+        get { shownBot.toolsets }
+        set { shownBot.toolsets = newValue }
+    }
+    var toolCatalog: ToolCatalog {
+        get { shownBot.toolCatalog }
+        set { shownBot.toolCatalog = newValue }
+    }
+    var capabilitiesOwner: CapabilitySnapshotOwner? {
+        get { shownBot.capabilitiesOwner }
+        set { shownBot.capabilitiesOwner = newValue }
+    }
+    var capabilitiesAreKept: Bool {
+        get { shownBot.capabilitiesAreKept }
+        set { shownBot.capabilitiesAreKept = newValue }
+    }
+    var mcpServers: [CapabilityMcpServer] {
+        get { shownBot.mcpServers }
+        set { shownBot.mcpServers = newValue }
+    }
     /// A short summary per finished run of steps: by dashboard and profile
     /// (`toolCatalogKey`), then by the run's first tool call
     /// (AppState+StepSummaries.swift).
     @Published var stepSummaries: [String: [String: String]] = ChatStepSummaries.saved()
-    /// Summary questions Hermes accepted, by btw task id, to their run.
-    var stepSummaryTasks: [String: ChatStepSummaries.Run] = [:]
-    /// Summary questions sent whose task id hasn't come back yet.
-    var stepSummaryUnclaimed = 0
-    /// Answers that came before their question's task id did; cleared
-    /// once no question is waiting for its id.
-    var stepSummaryEarlyAnswers: [String: String] = [:]
-    /// Runs asked about and not answered yet, with when they were asked.
-    @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
     /// Test seam: answers `POST /side-question` in place of the dashboard.
     var stepSummarySender: (([String: Any]) async throws -> [String: Any])?
-    /// The suggestion row's guesses (AppState+Predictive.swift).
-    let predictive = PredictiveStore()
-    /// The open chat's queue on the session authority: messages waiting
-    /// their turn and turns a restart cut off (AppState+AuthorityQueue.swift).
-    let authorityQueue = AuthorityQueueStore()
-    /// The open chat's standing goal, loop and heartbeat, for the dock above
-    /// the composer (AppState+SessionControl.swift).
-    let sessionControl = SessionControlStore()
-    /// The user's own messages the authority queued, by their admission id
-    /// (the receipt's, which their queue row and their turn's start name):
-    /// their bubble waits in the dock above the composer and comes back to
-    /// the transcript when their turn starts. The newest few are kept.
-    var queuedSendRows: [String: ChatMessage] = [:]
-    var queuedSendOrder: [String] = []
-    /// The user's sends the authority took as a new turn, by admission id,
-    /// with their bubble's id: one Hermes then lists as waiting behind
-    /// another client's turn moves to the dock too. Cleared when it starts.
-    var ownSendRowIDs: [String: String] = [:]
-    /// Admissions whose turn this socket saw start, so a reply that comes
-    /// after its start never holds that bubble back.
-    var startedAdmissionIDs: Set<String> = []
-    /// For a started admission whose bubble wasn't held yet: the row its
-    /// turn began after (nil, an empty transcript), so a late bubble goes
-    /// above its reply.
-    var startedAdmissionAnchors: [String: String?] = [:]
-    /// What the row asks the composer to do: send, edit or insert a guess.
-    @Published var predictiveComposerRequest: PredictiveComposerRequest?
-    /// The reply suggested replies were last asked for (asked once each).
-    var predictiveRepliesAsked: PredictiveStore.Anchor?
-    /// The draft last asked about, and the wait for the next pause.
-    var predictiveDraftAsked: (sessionID: String, draft: String)?
-    var predictivePauseTask: Task<Void, Never>?
-    /// The follow-up checks for the reply on screen, and the next one.
-    var predictiveFollowUp = PredictiveFollowUpState()
-    var predictiveFollowUpTask: Task<Void, Never>?
-    /// The hidden turn sent for Hermes to follow up, until it settles.
-    /// `after` is the chat's last row when it was sent: only a reply
-    /// after it is the follow-up's.
-    var predictiveFollowUpTurn: (sessionID: String, why: String, after: String?)?
-    /// Advanced by forgetPredictiveState: an answer asked before it is
-    /// dropped, whatever is on screen when it comes.
-    var predictiveGeneration = 0
-    /// The hidden turn was queued behind a turn already running (another
-    /// client's): the next turn to end is that one, not the follow-up.
-    var predictiveFollowUpQueued = false
-    /// The hidden prompt is on its way and Hermes hasn't said how it took
-    /// it: a turn ending meanwhile is the one ahead, not the follow-up.
-    var predictiveFollowUpSending = false
-    /// A turn ended while the hidden prompt was on its way: when it comes
-    /// back queued, it was queued behind that one.
-    var predictiveFollowUpAheadEnded = false
-    /// Turns of messages sent before the hidden prompt was queued that
-    /// ran ahead of it, so a reply Conduit never sees end is stopped
-    /// waiting for.
-    var predictiveFollowUpTurnsAhead = 0
-    /// When the hidden prompt was sent, if Hermes queued it: only a message
-    /// sent before then can run ahead of it.
-    var predictiveFollowUpQueuedAt: Date?
-    /// Row ids of messages other clients sent while the follow-up waits;
-    /// a reply ending before one is read can't be told apart.
-    var predictiveFollowUpUnreadMessages: Set<Int> = []
-    /// Bumped by each follow-up sent and each stop: a send that returns
-    /// after either leaves the follow-up waiting now as it is.
-    var predictiveFollowUpSend = 0
-    /// When the last reply settled here, so a follow-up check can say how
-    /// long ago without reading timestamps.
-    var predictiveReplyEnded: (anchor: PredictiveStore.Anchor, at: Date)?
+    /// Runs asked about and not answered yet (`ChatState`).
+    var stepSummaryRequested: [ChatStepSummaries.Run: Date] {
+        get { shownChat.stepSummaryRequested }
+        set { shownChat.stepSummaryRequested = newValue }
+    }
+    /// The chat on screen's suggestion row, authority queue and session
+    /// controls, and what the row asks the composer to do (`ChatState`).
+    var predictive: PredictiveStore { shownChat.predictive }
+    var authorityQueue: AuthorityQueueStore { shownChat.authorityQueue }
+    var sessionControl: SessionControlStore { shownChat.sessionControl }
+    var predictiveComposerRequest: PredictiveComposerRequest? {
+        get { shownChat.predictiveComposerRequest }
+        set { shownChat.predictiveComposerRequest = newValue }
+    }
     /// Test seam: answers `POST /predict` in place of the dashboard.
     var predictiveSender: (([String: Any]) async throws -> [String: Any])?
-    /// Whose catalog `toolCatalog` is (dashboard and profile), and the
-    /// catalogs Hermes already sent this run, or is sending now.
-    var toolCatalogOwner: String?
-    var toolCatalogFetched: Set<String> = []
-    var toolCatalogLoading: Set<String> = []
-    /// The dashboard, bridge and profile the installed skills/toolsets were
-    /// read from. Rows are only presentable, and their switches only act,
-    /// while this equals `currentCapabilitiesOwner`: two dashboards can have
-    /// a profile of the same name.
-    @Published var capabilitiesOwner: CapabilitySnapshotOwner?
-    /// The installed skills and toolsets shown are the ones kept from
-    /// Hermes' last answer (#1533), drawn until it answers again.
-    @Published var capabilitiesAreKept = false
-    /// Monotonic request token for capability loads; older requests can never
-    /// commit over newer ones (protects the A -> B -> A race).
-    var capabilityLoadGeneration: UInt64 = 0
-    /// Skill and toolset switches, written in the order flipped.
-    let capabilityToggleWrites = CapabilityToggleWrites()
-    @Published var mcpServers: [CapabilityMcpServer] = []
     @Published var voiceCapabilitySnapshot = VoiceCapabilitySnapshot.unavailable
     @Published var isVoiceEnabled = false
     @Published var voiceTranscriptionMode: VoiceTranscriptionMode = .hermes
@@ -2362,44 +2287,40 @@ final class AppState: ObservableObject {
 
     // MARK: - Cron
 
-    @Published var cronJobs: [CronJob] = []
-    @Published var cronRuns: [CronRun] = []
-    /// The job `cronRuns` is the history of (#1707).
-    var cronRunsJobID: String?
-    /// The newest Run history read, so an older one that lands last is dropped.
-    var cronRunsLoad = 0
-    /// Whether `cronRuns` holds an answer for `cronRunsJobID` yet, so the
-    /// sheet says a job hasn't run only once it knows.
-    @Published var cronRunsLoaded = false
-    /// Why the open job's history couldn't be read, before any answer came:
-    /// the sheet says so rather than that the job hasn't run.
-    @Published var cronRunsFailure: String?
-    @Published var cronJobsLoading = false
-    @Published var cronJobActionID: String?
-    /// Bumped by a job delete so a list load that started before it can't
-    /// bring the deleted job back.
-    var cronJobsGeneration = 0
-    /// The read in flight and the list generation, profile and connection
-    /// it is for. A second ask for the same list joins it.
-    var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
-    /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
-    /// the dashboard and profile in `cronMutedJobsKey`.
-    @Published var cronMutedJobIDs: Set<String> = []
-    @Published var cronMutedJobsKey: String?
-    /// Cron jobs delivered to a Bot Chat whose report starts the bot's turn
-    /// (the rest just show it), read with `cronMutedJobIDs` and keyed by
-    /// the same `cronMutedJobsKey`.
-    @Published var cronActingJobIDs: Set<String> = []
-    /// Whether the host's Hermes shows a Bot Chat job's report without a
-    /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
-    @Published var cronShowsBotChatReports = false
-    @Published var cronNotificationsChangingJobID: String?
-    /// A notification read asked for while a save was in flight. The
-    /// capability report can land then, so the read is repeated when the
-    /// save ends instead of being dropped.
-    var cronNotificationsReadDeferred = false
-    /// Moves with every save, so a refresh that started before one drops its answer.
-    var cronNotificationsGeneration = 0
+    /// The bot on screen's scheduled jobs and their run history
+    /// (`BotState`).
+    var cronJobs: [CronJob] {
+        get { shownBot.cronJobs }
+        set { shownBot.cronJobs = newValue }
+    }
+    var cronRuns: [CronRun] {
+        get { shownBot.cronRuns }
+        set { shownBot.cronRuns = newValue }
+    }
+    var cronRunsJobID: String? {
+        get { shownBot.cronRunsJobID }
+        set { shownBot.cronRunsJobID = newValue }
+    }
+    var cronRunsLoaded: Bool {
+        get { shownBot.cronRunsLoaded }
+        set { shownBot.cronRunsLoaded = newValue }
+    }
+    var cronRunsFailure: String? {
+        get { shownBot.cronRunsFailure }
+        set { shownBot.cronRunsFailure = newValue }
+    }
+    var cronJobsLoading: Bool {
+        get { shownBot.cronJobsLoading }
+        set { shownBot.cronJobsLoading = newValue }
+    }
+    var cronJobActionID: String? {
+        get { shownBot.cronJobActionID }
+        set { shownBot.cronJobActionID = newValue }
+    }
+    var cronNotificationsChangingJobID: String? {
+        get { shownBot.cronNotificationsChangingJobID }
+        set { shownBot.cronNotificationsChangingJobID = newValue }
+    }
     lazy var cronNotificationsClient = CronNotificationsClient(request: { [weak self] path, method, body in
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
@@ -2412,66 +2333,18 @@ final class AppState: ObservableObject {
 
     // MARK: - Lifecycle coordination
 
-    var reconciliationToken = UUID()
-    /// Set by the resume admission gate when it rejects a contradictory or
-    /// foreign-owned identity. Automatic-return recovery treats ordinary
-    /// resume failures as retryable; a rejected identity is deterministic,
-    /// so reconnect scheduling skips it instead of looping on the same
-    /// contradiction. Main-actor state, valid for the current reconcile only.
-    var reconciliationWasIdentityRejected = false
-    /// Set only when the currently owned resume RPC definitively reports
-    /// that its requested session no longer exists. Callers use this to
-    /// retire a saved automatic-return target instead of retrying it forever.
-    var reconciliationSessionWasNotFound = false
-    /// Set when the resume RPC refused a Kanban worker's transcript (4132).
-    /// Hermes never reopens one as a chat, so it also counts as not found:
-    /// a saved automatic-return target is retired and a notification isn't
-    /// retried. This flag keeps its own message from being reworded.
-    var reconciliationWasKanbanWorker = false
     /// Catalog rows `session.resume` answered 4007 for during an automatic
     /// resume, per dashboard and profile, for this app run. The catalog can
     /// keep listing a conversation the gateway no longer resumes; without
     /// this, the retry after a failed fresh-chat create would select and
     /// probe the same dead rows again.
     var deadResumeRowIDs: [String: Set<String>] = [:]
-    var reconciliation: Reconciliation?
-    /// Side-agent answers that came in while a reconciliation was open.
-    /// Hermes keeps no copy of them, so unlike the buffered stream they
-    /// can't come back with a later transcript: they show once the boundary
-    /// closes, whether its reconcile committed or was dropped.
-    var heldSideAgentCompletions: [StreamEvent] = []
+    /// The chat on screen's open reconcile (`ChatState.reconciliation`).
+    var reconciliation: Reconciliation? {
+        get { shownChat.reconciliation }
+        set { shownChat.reconciliation = newValue }
+    }
     var activeClientEpoch = UUID()
-    var activeAssistantMessageId: String?
-    var activeReasoningMessageId: String?
-    var receivedReasoningForCurrentTurn = false
-    /// Authoritative merged reasoning for the live thinking card. Raw deltas
-    /// merge into this buffer immediately; the published transcript is only
-    /// republished at a coalesced cadence so an expanded ThinkingCard cannot
-    /// monopolize main-actor layout work during a live reasoning stream.
-    var reasoningBuffer = ""
-    var reasoningPublishTask: Task<Void, Never>?
-    var hasScheduledReasoningPublish = false
-    var streamingBuffer = ""
-    /// The last row a `message.interim` sealed in the running turn.
-    var interimRowID: String?
-    /// Every row `message.interim` sealed while the current turn runs: its
-    /// progress notes, which a call's chat seed leaves out (#1991). A
-    /// finished reply can keep an interim row's id, so the id alone doesn't
-    /// tell.
-    var runningTurnNoteIDs: Set<String> = []
-    /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
-    /// transcript. Keep the authoritative buffer intact, but publish at a
-    /// display-friendly cadence so an active response cannot monopolize the
-    /// main actor (and make sheets or session rows feel untappable).
-    var streamingPublishTask: Task<Void, Never>?
-    /// A fast gateway can emit its final delta and completion inside one
-    /// publish interval. Keep that final projection alive briefly so the UI's
-    /// character reveal can drain instead of jumping straight to the result.
-    var streamingCompletionTask: Task<Void, Never>?
-    var pendingStreamingCompletion: PendingStreamingCompletion?
-    var hasScheduledStreamingPublish = false
-    var lastStreamingPublishBurst = 0
-    var lastStreamingPublishDate: Date?
     var responseHapticConclusionTask: Task<Void, Never>?
     var responseHaptics = ResponseHapticState()
     var scenePhaseTask: Task<Void, Never>?
@@ -2622,9 +2495,6 @@ final class AppState: ObservableObject {
     /// opened since never wears them either.
     var notificationRouteFailure: NotificationRouteFailure?
     var openChatSyncReadID: UUID?
-    /// Another device is getting the reply of a turn in the open chat; its
-    /// working line says so.
-    @Published var activeChatRepliesElsewhere = false
     /// The clock of those checks; tests move it.
     var chatSyncNow: @MainActor () -> Date = { Date() }
     /// Low Power Mode and Low Data Mode, which stretch every poll
@@ -2672,7 +2542,6 @@ final class AppState: ObservableObject {
     /// beside the open chat wouldn't show it (issue 1454). The lists keep
     /// it while it is the open chat and the catalog doesn't list it.
     @Published var newChatAwaitingListing: NewChatAwaitingListing?
-    var projectsRequestGeneration = 0
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
     var pendingApprovalsRequestGeneration: UInt64 = 0
@@ -2703,6 +2572,9 @@ final class AppState: ObservableObject {
     // MARK: - Persistence (AppState+Persistence.swift, AppState+PinSync.swift, AppState+Notices.swift, AppState+Voice.swift)
 
     let defaults: UserDefaults
+    /// Each profile's Voice preferences as last decoded, beside the stored
+    /// bytes they came from (`loadVoiceProfilePreferences`).
+    var decodedVoicePreferences: [String: (data: Data, preferences: VoiceProfilePreferences)] = [:]
     let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     let pinnedRepliesByProfileKey = "conduit.pinnedRepliesByProfile.v1"
@@ -2878,6 +2750,14 @@ final class AppState: ObservableObject {
         if let data = defaults.data(forKey: voiceJobSessionIDsByProfileKey),
            let stored = try? JSONDecoder().decode([String: [String]].self, from: data) {
             voiceJobSessionIDsByProfile = stored
+        }
+        // The chat on screen's changes publish as AppState's, as they did
+        // when its transcript and stream were AppState's own properties.
+        shownChatChanges = shownChat.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+        shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
         }
         // Hydrate the visible profile list from the persisted known-profile
         // cache before any discovery runs. A cold launch must not present an
@@ -3084,12 +2964,11 @@ final class AppState: ObservableObject {
     var composerEditCancellationCount = 0
 #endif
 
-    /// Latch for `noteComposerUserEdit()`: set once an edit has invalidated
-    /// the current generation's automatic-return intent, cleared when the
-    /// next generation begins. Every automatic generation mints its token
-    /// here (a cancelled token is stale, so a new one is always minted), so
-    /// clearing at entry re-arms the composer for each new window.
-    var composerEditClaimedAutomaticWork = false
+    /// The failed send's error under the composer (`ChatState.sendFailureShown`).
+    var sendFailureShown: String? {
+        get { shownChat.sendFailureShown }
+        set { shownChat.sendFailureShown = newValue }
+    }
 
     // MARK: - Group Chats (hosted rooms) (AppState+GroupChats.swift, AppState+ProfileSettings.swift)
 
@@ -3437,7 +3316,7 @@ final class AppState: ObservableObject {
             guard oldValue != pendingNewChat else { return }
             // A chat an earlier New Chat created isn't this one: the New
             // Chat draft is this chat's from here.
-            if pendingNewChat != nil { newChatOpenedSessionID = nil }
+            if pendingNewChat != nil { shownChat.newChatOpenedSessionID = nil }
             schedulePendingComposerSendCheck()
             updateChatOnScreen()
         }
@@ -3450,12 +3329,6 @@ final class AppState: ObservableObject {
     /// Test seam for the `message.react` transport; production leaves it
     /// nil and uses the live client.
     var messageReactionSender: (@MainActor (_ sessionId: String, _ target: MessageReactionTarget, _ emoji: String?) async throws -> MessageReactionResult)?
-    /// Latest in-flight tapback per message id, so an older reply to a
-    /// quick re-tap can't overwrite the newer one. Generations come from one
-    /// counter that only grows, so a settled entry can be dropped without a
-    /// later tap reusing a number an older request still holds.
-    var reactionRequestGenerations: [String: Int] = [:]
-    var lastReactionRequestGeneration = 0
 
     // MARK: - Chat takeover (AppState+NotifierPlugin.swift, AppState+ChatTakeover.swift, AppState+SendMessage.swift, AppState+YoloAndReasoning.swift)
     //
@@ -3578,13 +3451,6 @@ final class AppState: ObservableObject {
     /// calls overlapping on another text keep their own marks.
     var callSubmissionTexts: [String] = []
 
-    /// The failed send's error under the composer, which leaving its chat
-    /// clears: the composer shows `errorMessage` unlocked too.
-    var sendFailureShown: String?
-    /// Counts the failed sends shown, so a send that went through clears
-    /// only the line it set out under, never a newer one in the same words
-    /// (issue 2115).
-    var sendFailureGeneration: UInt64 = 0
 
     // MARK: - Slash Commands (AppState+SlashCommands.swift)
 
@@ -3672,8 +3538,6 @@ final class AppState: ObservableObject {
 
     // MARK: - Chat support surfaces (AppState+StreamingText.swift, AppState+ChatSupport.swift, AppState+ResponseHaptics.swift, AppState+VoiceConversation.swift, AppState+WatchCalls.swift)
 
-    var inlineImageRowFetches: [String: Task<InlineImageRowFetch, Never>] = [:]
-    var inlineImageRowsUnavailable: Set<String> = []
 
     /// A mode switch from a call screen is under way.
     var isSwitchingVoiceMode = false

@@ -164,8 +164,11 @@ struct ChatView: View {
     /// The conversation the transcript draws, which its kept row heights
     /// go by: row ids repeat across conversations (Load earlier, the live
     /// rows) and dashboards.
-    private var drawnConversation: String {
-        let key = drawnOrFallbackScrollSessionKey
+    private var drawnConversation: String { Self.drawnConversation(in: appState) }
+
+    @MainActor
+    static func drawnConversation(in appState: AppState) -> String {
+        let key = drawnOrFallbackScrollSessionKey(in: appState)
         return "\(appState.activeDashboardID?.uuidString ?? "")|\(key.profile)|\(key.sessionID)"
     }
 
@@ -364,6 +367,9 @@ struct ChatView: View {
     /// leak into (or churn) a measured fixture. Production never sets it
     /// (nil) and the preference decides exactly as before.
     var chatTextSizeOverride: ChatTextSize? = nil
+    /// The slide between a Bot Chat and its workstream, from the screen
+    /// that shows both in place (V2's conversation screen).
+    var swapMotion: TranscriptSwapMotion? = nil
 
     /// The chat-only text-size preference (issue #85). Local, device-only
     /// @AppStorage like ComposerReturnKey — never synced to Hermes or the
@@ -532,7 +538,8 @@ struct ChatView: View {
                         receivedScopedPreference: true
                     )
                 },
-                pasteTarget: .chat
+                pasteTarget: .chat,
+                swapMotion: swapMotion
             )
             .ignoresSafeArea()
         }

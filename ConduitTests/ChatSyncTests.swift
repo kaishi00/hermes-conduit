@@ -400,6 +400,105 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertTrue(signal.takeRead(now: at(40), turnRunningHere: false))
     }
 
+    /// Hermes signals every served profile's changes, so a busy bot
+    /// elsewhere signals while this list stays the same: each read that
+    /// lists the same rows doubles the wait, up to 60 s, and a changed list
+    /// starts it over.
+    func testQuietChangeReadsWaitLongerUpToAMinute() {
+        var signal = CatalogChangeSignal()
+        var now: TimeInterval = 0
+        var waits: [TimeInterval] = []
+        signal.noteChanged()
+        XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+        for _ in 0..<6 {
+            signal.noteSignalRead(listedTheSameRows: true)
+            signal.noteChanged()
+            let wait = signal.delayUntilDue(now: at(now)) ?? -1
+            waits.append(wait)
+            XCTAssertFalse(signal.takeRead(now: at(now + wait - 1), turnRunningHere: false))
+            now += wait
+            XCTAssertTrue(signal.takeRead(now: at(now), turnRunningHere: false))
+        }
+        XCTAssertEqual(waits, [10, 20, 40, 60, 60, 60])
+
+        signal.noteSignalRead(listedTheSameRows: false)
+        signal.noteChanged()
+        XCTAssertEqual(signal.delayUntilDue(now: at(now)), 5, "A read that changed the list starts over")
+
+        signal.noteSignalRead(listedTheSameRows: true)
+        signal.noteSignalRead(listedTheSameRows: true)
+        signal.noteListChanged()
+        XCTAssertEqual(signal.delayUntilDue(now: at(now)), 5, "So does any other read that changed it")
+    }
+
+    /// The same through the app: a change read that lists the same rows
+    /// waits 10 s before the next, and one that moves the list is read 5 s
+    /// after the last again.
+    func testAChangeReadThatListsTheSameRowsWaitsLongerForTheNext() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("a", profile: profile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+
+        box.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 2, "The first change is read")
+
+        box.now += 6
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 2, "The list was the same: 10 s now, not 5")
+        box.now += 4
+        await poll(appState)
+        XCTAssertEqual(box.loads, 3, "Read at 10 s")
+
+        box.catalog = [row("b", profile: profile, minutesAgo: 1), row("a", profile: profile)]
+        box.now += 20
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 4)
+        XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
+        box.now += 5
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 5, "The list moved: 5 s again")
+    }
+
+    /// A change only spaced out by the quiet-read wait keeps the slow
+    /// backstop: the list's 30 s read doesn't read it halfway through a
+    /// 40 s wait.
+    func testAChangeSpacedOutByTheQuietWaitKeepsTheSlowBackstop() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("a", profile: profile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+        // Three change reads that list the same rows: the next waits 40 s.
+        for wait in [10.0, 10, 20] {
+            box.now += wait
+            appState.handleStreamEvent(.sessionsChanged)
+            await appState.leaveCatalogRefreshTask?.value
+        }
+        XCTAssertEqual(box.loads, 4)
+        XCTAssertEqual(appState.catalogChangeSignal.interval, 40)
+
+        box.now += 1
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        box.now += 34
+        await poll(appState)
+        XCTAssertEqual(box.loads, 4, "Not read by the 30 s backstop at 35 s")
+        box.now += 6
+        await poll(appState)
+        XCTAssertEqual(box.loads, 5, "Read when its 40 s wait ends")
+    }
+
     // MARK: - The Chats list reading the catalog
 
     private func row(_ id: String, profile: String, minutesAgo: Double = 60) -> SessionSummary {

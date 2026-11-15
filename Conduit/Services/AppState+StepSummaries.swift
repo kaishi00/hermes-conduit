@@ -68,7 +68,7 @@ extension AppState {
             try? await Task.sleep(for: .seconds(ChatStepSummaries.answerWait))
             guard let self, stepSummaryRequested[target] == asked else { return }
             stepSummaryRequested[target] = nil
-            stepSummaryTasks = stepSummaryTasks.filter { $0.value != target }
+            shownChat.stepSummaryTasks = shownChat.stepSummaryTasks.filter { $0.value != target }
         }
         if stepSummarySender != nil || notifierPlugin.reports(ChatStepSummaries.sideQuestionCapability) {
             askStepSummaryOfPlugin(question, for: target, asked: asked, sessionId: sessionId)
@@ -78,13 +78,13 @@ extension AppState {
             stepSummaryRequested[target] = nil
             return
         }
-        stepSummaryUnclaimed += 1
+        shownChat.stepSummaryUnclaimed += 1
         Task { [weak self] in
             // A gateway without prompt.btw just leaves "7 steps".
             let taskId = try? await client.startSideAgent(.btw, sessionId: sessionId, text: question)
             guard let self else { return }
-            stepSummaryUnclaimed = max(0, stepSummaryUnclaimed - 1)
-            let early = taskId.flatMap { self.stepSummaryEarlyAnswers.removeValue(forKey: $0) }
+            shownChat.stepSummaryUnclaimed = max(0, shownChat.stepSummaryUnclaimed - 1)
+            let early = taskId.flatMap { self.shownChat.stepSummaryEarlyAnswers.removeValue(forKey: $0) }
             // Only while this is still the run's question: forgotten
             // meanwhile (waited too long, or its dashboard signed out), or
             // asked again since, its answer is just taken from the stream.
@@ -92,12 +92,12 @@ extension AppState {
                 if let early, Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
                     recordStepSummary(early, for: target)
                 } else if early == nil, let taskId {
-                    stepSummaryTasks[taskId] = target
+                    shownChat.stepSummaryTasks[taskId] = target
                 } else {
                     stepSummaryRequested[target] = nil
                 }
             }
-            if stepSummaryUnclaimed == 0 { stepSummaryEarlyAnswers = [:] }
+            if shownChat.stepSummaryUnclaimed == 0 { shownChat.stepSummaryEarlyAnswers = [:] }
         }
     }
 
@@ -148,7 +148,7 @@ extension AppState {
     /// own /btw never asks that exact question.
     func takeStepSummaryAnswer(_ event: StreamEvent) -> Bool {
         guard case .sideAgentComplete(_, .btw, let taskId, let text, let question) = event else { return false }
-        if let target = stepSummaryTasks.removeValue(forKey: taskId) {
+        if let target = shownChat.stepSummaryTasks.removeValue(forKey: taskId) {
             // An answer after `answerWait` is forgotten like an unanswered
             // question: that run keeps the count.
             if let asked = stepSummaryRequested[target], Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
@@ -159,7 +159,7 @@ extension AppState {
             return true
         }
         guard ChatStepSummaries.isQuestion(question) else { return false }
-        if stepSummaryUnclaimed > 0, !taskId.isEmpty { stepSummaryEarlyAnswers[taskId] = text }
+        if shownChat.stepSummaryUnclaimed > 0, !taskId.isEmpty { shownChat.stepSummaryEarlyAnswers[taskId] = text }
         return true
     }
 
@@ -171,7 +171,7 @@ extension AppState {
         let waited = stepSummaryRequested.filter { now.timeIntervalSince($0.value) >= ChatStepSummaries.answerWait }
         guard !waited.isEmpty else { return }
         for run in waited.keys { stepSummaryRequested[run] = nil }
-        stepSummaryTasks = stepSummaryTasks.filter { stepSummaryRequested[$0.value] != nil }
+        shownChat.stepSummaryTasks = shownChat.stepSummaryTasks.filter { stepSummaryRequested[$0.value] != nil }
     }
 
     /// The summaries describe chats, so they leave with a dashboard's saved
@@ -180,14 +180,14 @@ extension AppState {
         ChatStepSummaries.remove(scopePrefix: scopePrefix)
         stepSummaries = ChatStepSummaries.saved()
         guard let scopePrefix else {
-            stepSummaryTasks = [:]
+            shownChat.stepSummaryTasks = [:]
             stepSummaryRequested = [:]
-            stepSummaryEarlyAnswers = [:]
+            shownChat.stepSummaryEarlyAnswers = [:]
             return
         }
         // Another dashboard signing out leaves this one's questions be.
         // Early answers carry no scope; unclaimed, they go with their wait.
-        stepSummaryTasks = stepSummaryTasks.filter { !$0.value.scope.hasPrefix(scopePrefix) }
+        shownChat.stepSummaryTasks = shownChat.stepSummaryTasks.filter { !$0.value.scope.hasPrefix(scopePrefix) }
         stepSummaryRequested = stepSummaryRequested.filter { !$0.key.scope.hasPrefix(scopePrefix) }
     }
 

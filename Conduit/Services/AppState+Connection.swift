@@ -1108,6 +1108,9 @@ extension AppState {
         clearAuthorityQueueState()
         persistedTranscriptWindow = nil
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
+        // Nothing of the signed-out account's chats stays followed, the
+        // one just left included.
+        stopFollowingChats(dashboardID: nil)
         keepDelegateAgents(of: [])
         clearStreamingText()
         resetReasoningTurn()

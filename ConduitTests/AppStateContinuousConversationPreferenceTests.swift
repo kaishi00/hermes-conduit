@@ -33,6 +33,44 @@ final class AppStateContinuousConversationPreferenceTests: XCTestCase {
         XCTAssertFalse(appState.continuousConversationEnabled)
     }
 
+    /// The preferences are decoded once for the bytes stored, not on every
+    /// read (a chat's open and the voice button read them each time), and
+    /// bytes written from anywhere are read again.
+    func testStoredPreferencesAreDecodedOncePerWrite() throws {
+        let (appState, defaults, suite) = makeAppState(profile: "default")
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        var seed = VoiceProfilePreferences()
+        seed.outputMuted = true
+        savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
+        XCTAssertTrue(appState.loadVoiceProfilePreferences(profile: "default").outputMuted)
+        let key = preferencesKey(profile: "default", gateway: "https://example.com")
+        XCTAssertEqual(appState.decodedVoicePreferences[key]?.preferences, seed, "kept beside its bytes")
+        // Read again, the same bytes aren't decoded again: what's kept
+        // beside them is what comes back.
+        var kept = seed
+        kept.spokenStopPhrases = ["kept, not decoded"]
+        appState.decodedVoicePreferences[key] = (try XCTUnwrap(defaults.data(forKey: key)), kept)
+        XCTAssertEqual(appState.loadVoiceProfilePreferences(profile: "default"), kept)
+
+        // A write that didn't go through AppState (another device's, the
+        // shared preferences') is seen on the next read.
+        seed.outputMuted = false
+        seed.continuousConversation = false
+        savePreferences(seed, defaults: defaults, profile: "default", gateway: "https://example.com")
+        let read = appState.loadVoiceProfilePreferences(profile: "default")
+        XCTAssertFalse(read.outputMuted)
+        XCTAssertFalse(read.continuousConversation)
+
+        // Its own setter's write too.
+        appState.setContinuousConversation(true)
+        XCTAssertTrue(appState.loadVoiceProfilePreferences(profile: "default").continuousConversation)
+
+        // Nothing stored reads as the defaults, whatever was read before.
+        defaults.removeObject(forKey: key)
+        XCTAssertEqual(appState.loadVoiceProfilePreferences(profile: "default"), VoiceProfilePreferences())
+    }
+
     func testSetContinuousConversationIsProfileScoped() throws {
         let (appState, defaults, suite) = makeAppState(profile: "alpha")
         defer { defaults.removePersistentDomain(forName: suite) }

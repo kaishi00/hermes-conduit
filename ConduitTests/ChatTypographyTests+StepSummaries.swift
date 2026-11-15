@@ -195,7 +195,7 @@ extension ChatTypographyTests {
         XCTAssertEqual(body["session_id"] as? String, "s1")
         XCTAssertEqual(body["wait_s"] as? TimeInterval, ChatStepSummaries.sideQuestionWait)
         XCTAssertTrue((body["question"] as? String)?.hasPrefix(ChatStepSummaries.explainHead) == true)
-        XCTAssertTrue(state.stepSummaryTasks.isEmpty, "no /btw was sent")
+        XCTAssertTrue(state.shownChat.stepSummaryTasks.isEmpty, "no /btw was sent")
         XCTAssertTrue(state.stepSummaryRequested.isEmpty, "an empty answer frees the run")
         XCTAssertNil(ChatStepSummaries.sideQuestionAnswer(["ok": true, "text": " "]))
         XCTAssertEqual(ChatStepSummaries.sideQuestionAnswer(["ok": true, "text": "I checked the relay."]), "I checked the relay.")

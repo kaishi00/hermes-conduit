@@ -35,8 +35,8 @@ extension AppState {
 
     @discardableResult
     func loadCapabilities() async -> CapabilityLoadOutcome {
-        capabilityLoadGeneration &+= 1
-        let generation = capabilityLoadGeneration
+        shownBot.capabilityLoadGeneration &+= 1
+        let generation = shownBot.capabilityLoadGeneration
         let profile = activeProfile
         let owner = currentCapabilitiesOwner
         guard let runtime = currentDashboardRuntimeOwner() else { return .unavailable(profile: profile) }
@@ -49,7 +49,7 @@ extension AppState {
         func ownsRequest() -> Bool {
             CapabilityLoadPolicy.canCommit(
                 generation: generation,
-                latestGeneration: capabilityLoadGeneration,
+                latestGeneration: shownBot.capabilityLoadGeneration,
                 requested: owner,
                 active: currentCapabilitiesOwner
             )
@@ -127,13 +127,13 @@ extension AppState {
         let current = skills.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
-        capabilityLoadGeneration &+= 1
+        shownBot.capabilityLoadGeneration &+= 1
         if let index = skills.firstIndex(where: { $0.name == name }) {
             skills[index].enabled = enabled
         }
         // After every switch flipped before it; a failure puts back what
         // Hermes last confirmed, unless a newer flip is on its way.
-        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|skill|\(name)", enabled: enabled, current: current) {
+        let outcome = await shownBot.capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|skill|\(name)", enabled: enabled, current: current) {
             // Hermes rewrites the profile config for it: in turn with
             // every other config save.
             try await ProfileConfigWriteQueue.runThrowing {
@@ -168,13 +168,13 @@ extension AppState {
         let current = toolsets.first(where: { $0.name == name })?.enabled ?? !enabled
         // Optimistic update. A list read still on its way was read before
         // this flip: it no longer commits (as CapabilitiesStore, #867).
-        capabilityLoadGeneration &+= 1
+        shownBot.capabilityLoadGeneration &+= 1
         if let index = toolsets.firstIndex(where: { $0.name == name }) {
             toolsets[index].enabled = enabled
         }
         let encodedName = name.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? name
         // In the same order as skill switches: Hermes rewrites one config.
-        let outcome = await capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|toolset|\(name)", enabled: enabled, current: current) {
+        let outcome = await shownBot.capabilityToggleWrites.send("\(ObjectIdentifier(owner.bridge))|\(profile)|toolset|\(name)", enabled: enabled, current: current) {
             // Hermes rewrites the profile config for it: in turn with
             // every other config save.
             try await ProfileConfigWriteQueue.runThrowing {
@@ -227,7 +227,7 @@ extension AppState {
     /// away from: a read still on its way commits nothing, and its rows
     /// never show (or act) under the next one.
     func retireCapabilitySnapshot() {
-        capabilityLoadGeneration &+= 1
+        shownBot.capabilityLoadGeneration &+= 1
         capabilitiesOwner = nil
         capabilitiesAreKept = false
         skills = []
@@ -259,15 +259,15 @@ extension AppState {
     /// refreshes it too). A failed read is tried again on the next chat.
     func loadToolCatalogIfNeeded() async {
         let key = toolCatalogKey
-        if toolCatalogOwner != key {
-            toolCatalogOwner = key
+        if shownBot.toolCatalogOwner != key {
+            shownBot.toolCatalogOwner = key
             toolCatalog = ToolCatalog.saved(key: key, defaults: defaults)
         }
-        guard !toolCatalogFetched.contains(key), !toolCatalogLoading.contains(key),
+        guard !shownBot.toolCatalogFetched.contains(key), !shownBot.toolCatalogLoading.contains(key),
               let owner = currentDashboardRuntimeOwner() else { return }
         // Two chats opened in a row ask once.
-        toolCatalogLoading.insert(key)
-        defer { toolCatalogLoading.remove(key) }
+        shownBot.toolCatalogLoading.insert(key)
+        defer { shownBot.toolCatalogLoading.remove(key) }
         // The answer Capabilities' Tools tab opens on, kept for it too.
         guard let response = try? await readKeepingToolsets(profile: activeProfile, owner: owner) else { return }
         let toolsets = (response["_array"] as? [Any] ?? []).compactMap(decodeCapabilityToolset)
@@ -279,12 +279,12 @@ extension AppState {
     /// retries: the next chat asks again.
     private func adoptToolCatalog(_ catalog: ToolCatalog, key: String) {
         guard !catalog.isEmpty else { return }
-        toolCatalogFetched.insert(key)
+        shownBot.toolCatalogFetched.insert(key)
         if catalog != ToolCatalog.saved(key: key, defaults: defaults) {
             catalog.save(key: key, defaults: defaults)
         }
         guard key == toolCatalogKey else { return }
-        toolCatalogOwner = key
+        shownBot.toolCatalogOwner = key
         if toolCatalog != catalog { toolCatalog = catalog }
     }
 

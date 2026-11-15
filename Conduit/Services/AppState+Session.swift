@@ -453,7 +453,8 @@ extension AppState {
         requiredViewportTransitionGeneration: UInt64?,
         reportsFailure: Bool = true,
         yieldsToNewerReads: Bool = false,
-        deferringOlderPages: Bool = false
+        deferringOlderPages: Bool = false,
+        listedChange: (_ changed: Bool) -> Void = { _ in }
     ) async -> Bool {
         if let requiredViewportTransitionGeneration,
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
@@ -510,7 +511,11 @@ extension AppState {
             let owner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
             let listChanged = listedSessions != sessions || listedCron != cronSessions
             let sameListAgain = !listChanged && catalogCommitOwner == owner
-            if listChanged { chatListCatalogGeneration &+= 1 }
+            if listChanged {
+                chatListCatalogGeneration &+= 1
+                catalogChangeSignal.noteListChanged()
+            }
+            listedChange(listChanged)
             if listedSessions != sessions { sessions = listedSessions }
             if listedCron != cronSessions { cronSessions = listedCron }
             catalogCommitOwner = owner
@@ -679,12 +684,25 @@ extension AppState {
                 self.leaveCatalogRefreshReportsFailure = false
                 let readsChange = self.leaveCatalogRefreshReadsChange
                 self.leaveCatalogRefreshReadsChange = false
+                // Only this read's own listing counts: one a newer read
+                // overtook lists nothing, and that read speaks for itself.
+                var changedByThisRead: Bool?
                 let listed = await self.loadSessions(
                     forceRefresh: false,
                     requiredViewportTransitionGeneration: nil,
-                    reportsFailure: reportsFailure
+                    reportsFailure: reportsFailure,
+                    listedChange: { changedByThisRead = $0 }
                 )
-                if readsChange, !listed { self.catalogChangeSignal.noteChanged() }
+                if readsChange {
+                    if let changedByThisRead {
+                        // Hermes signals every profile's changes: a read
+                        // that finds this list as it was waits longer
+                        // before the next.
+                        self.catalogChangeSignal.noteSignalRead(listedTheSameRows: !changedByThisRead)
+                    } else if !listed {
+                        self.catalogChangeSignal.noteChanged()
+                    }
+                }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
             self.leaveCatalogRefreshTask = nil
         }
@@ -805,7 +823,7 @@ extension AppState {
     /// focus: a notification or another chat opened while it was created
     /// is left alone.
     func focusNewChatComposer() {
-        guard newChatFocusesComposer, let created = newChatOpenedSessionID,
+        guard newChatFocusesComposer, let created = shownChat.newChatOpenedSessionID,
               activeSessionId == created else { return }
         requestComposerFocus(on: created)
     }
@@ -819,9 +837,9 @@ extension AppState {
     /// found". Conduit puts a fresh chat in its place instead of that dead
     /// end (replaceLostEmptyNewChat).
     func openChatIsEmptyNewChat(_ sessionIDs: Set<String>) -> Bool {
-        guard let created = newChatOpenedSessionID, activeSessionId == created,
+        guard let created = shownChat.newChatOpenedSessionID, activeSessionId == created,
               sessionIDs.contains(created)
-                || newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
+                || shownChat.newChatOpenedDurableSessionID.map(sessionIDs.contains) == true
         else { return false }
         // A slash command's answer (/btw's too) is the user's and lives only
         // here, so it counts as something in the chat; other notices don't.
@@ -847,7 +865,7 @@ extension AppState {
         // New Chat's chat is listed at once; one a sync opened because there
         // was nothing to resume waits for Hermes, and so does its stand-in.
         let listsBeforeHermes = openNewChatAwaitingListing != nil
-        let lost = lostSessionIDs.union([newChatOpenedSessionID, newChatOpenedDurableSessionID].compactMap { $0 })
+        let lost = lostSessionIDs.union([shownChat.newChatOpenedSessionID, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
         lifecycleLog.notice("Empty new chat gone on Hermes (session not found) → a fresh one in its place")
         let created = await createAndReconcileSession(
             using: client,
@@ -863,12 +881,12 @@ extension AppState {
         guard let created else { return false }
         // A fresh chat lost in its turn still answers for the first one's
         // draft; an unrelated replacement starts over.
-        let earlierLost = lostChatReplacement.flatMap { previous in
+        let earlierLost = shownChat.lostChatReplacement.flatMap { previous in
             previous.fresh.isDisjoint(with: lost) ? nil : previous.lost
         } ?? []
-        lostChatReplacement = (
+        shownChat.lostChatReplacement = (
             lost: earlierLost.union(lost),
-            fresh: Set([created, newChatOpenedDurableSessionID].compactMap { $0 })
+            fresh: Set([created, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
         )
         handOverWhatWaitsOnLostChat(lost, to: created)
         sessions.removeAll { row in
@@ -905,8 +923,8 @@ extension AppState {
         // A message typed while it reconnected goes into the fresh chat.
         if var pending = pendingComposerSend, !pending.isNewChat,
            !pending.chatSessionIDs.isDisjoint(with: lost) {
-            pending.sessionIDs = Set([fresh, newChatOpenedDurableSessionID].compactMap { $0 })
-            pending.draftSessionID = newChatOpenedDurableSessionID ?? fresh
+            pending.sessionIDs = Set([fresh, shownChat.newChatOpenedDurableSessionID].compactMap { $0 })
+            pending.draftSessionID = shownChat.newChatOpenedDurableSessionID ?? fresh
             pendingComposerSend = pending
             // Its saved copy follows, so a relaunch brings it back here.
             _ = recordPendingComposerSendFile(pending)
@@ -960,7 +978,7 @@ extension AppState {
         )
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.
-        if widgetLease?.isCurrent == false, token == reconciliationToken,
+        if widgetLease?.isCurrent == false, token == shownChat.reconciliationToken,
            activeSessionId == previousSessionID, turnState == .synchronizing {
             turnState = previousTurnState == .synchronizing ? .idle : previousTurnState
         }
@@ -1024,6 +1042,7 @@ extension AppState {
         title: String? = nil
     ) {
         if activeSessionId != id {
+            followLeftChatIfItsReplyRuns(leaving: activeSessionId, for: id)
             clearPendingDecisionRestorationGuard()
             resetResponseHapticTurn()
         }

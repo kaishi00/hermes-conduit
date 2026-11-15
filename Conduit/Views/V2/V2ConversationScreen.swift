@@ -58,8 +58,9 @@ struct V2ComposerTypingKey: PreferenceKey {
 
 /// A Bot Chat and its workstreams show in one pushed screen (the
 /// conversation in the Bots stack), so going between them pushes nothing:
-/// the screen slides the new chat in instead, a workstream from the
-/// trailing edge and Back to its Bot Chat from the leading one.
+/// the screen slides the new chat's transcript in instead, a workstream from
+/// the trailing edge and Back to its Bot Chat from the leading one
+/// (`TranscriptSwapMotion`).
 enum BotChatSwap: Equatable {
     case forward
     case back
@@ -69,12 +70,34 @@ enum BotChatSwap: Equatable {
         var botChat: String?
         /// The bot whose workstream shows, if one does.
         var workstreamOf: String?
+        /// That workstream's chat, which tells one of a bot's workstreams
+        /// from another.
+        var workstream: String?
+    }
+
+    /// What the screen watches to hear of a swap: the chat the transcript
+    /// draws changes when an open is asked for, the open chat's id once
+    /// Hermes has it, a moment later.
+    struct Watched: Equatable {
+        var openChat: String?
+        var drawn: String
     }
 
     static func direction(from old: Shown, to new: Shown) -> BotChatSwap? {
         if let bot = old.botChat ?? old.workstreamOf, same(bot, new.workstreamOf) { return .forward }
         if let bot = old.workstreamOf, same(bot, new.botChat) { return .back }
         return nil
+    }
+
+    /// The slide for the chat now placed as `shown`, after `last`, and
+    /// the placement to keep. The drawn chat's id alone (`opened` false)
+    /// may not place a chat yet: that keeps the last placement, so the
+    /// open chat's id can still ask for the slide. The same placement
+    /// heard twice asks once.
+    static func heard(_ shown: Shown, after last: Shown, opened: Bool) -> (swap: BotChatSwap?, shown: Shown) {
+        guard opened || shown != Shown() else { return (nil, last) }
+        guard shown != last else { return (nil, last) }
+        return (direction(from: last, to: shown), shown)
     }
 
     /// A swipe toward the trailing edge, mostly sideways and far enough.
@@ -149,10 +172,9 @@ struct V2ConversationScreen: View {
     /// Which Bot Chat or workstream the screen showed last, so going from
     /// one to the other slides (`BotChatSwap`).
     @State private var shownChat = BotChatSwap.Shown()
-    /// The chat sliding in, as a share of the column's width: 1 from the
-    /// trailing edge (a workstream opening), -1 from the leading edge (Back
-    /// to its Bot Chat).
-    @State private var swapShift: CGFloat = 0
+    /// Plays that slide on the transcript's own view, where it doesn't
+    /// wait for the main thread the swap keeps busy.
+    @State private var swapMotion = TranscriptSwapMotion()
     /// This Bot Chat grew out of its portrait on Bots Home.
     @Environment(\.botChatZoomed) private var botChatZoomed
     @Environment(\.dismiss) private var dismiss
@@ -202,7 +224,10 @@ struct V2ConversationScreen: View {
                 .environment(\.v2ComposerRests, true)
                 .environment(\.composerStaysExpanded, composerStaysExpanded)
         } else {
-            ChatView()
+            // A Bot Chat and its workstreams share this screen: one's
+            // transcript slides in over the other's as a push or a pop
+            // would.
+            ChatView(swapMotion: swapMotion)
                 .environment(\.v2ComposerRests, true)
                 .environment(\.composerStaysExpanded, composerStaysExpanded)
         }
@@ -285,15 +310,21 @@ struct V2ConversationScreen: View {
             // Animation Hitches track says whether that frame came late.
             ResponsivenessSignposts.signposter.emitEvent("Conversation appeared")
             sidePanelIDs = appState.activeChatArtifactSessionIDs
-            shownChat = currentShownChat
+            shownChat = chatShown(byOpenChatToo: true)
         }
-        .onChange(of: appState.activeSessionId) { _, _ in
-            sidePanelIDs = appState.activeChatArtifactSessionIDs
-            let shown = currentShownChat
-            if !shell.isSplit, !reduceMotion, let swap = BotChatSwap.direction(from: shownChat, to: shown) {
-                slideIn(swap)
+        .onChange(of: watchedChat) { old, new in
+            let opened = old.openChat != new.openChat
+            // The swap is heard of as the transcript draws the other chat,
+            // so its slide is asked for before its rows land; the open
+            // chat's id is the second chance, for a chat the drawn id
+            // alone doesn't place.
+            let heard = BotChatSwap.heard(chatShown(byOpenChatToo: opened), after: shownChat, opened: opened)
+            if slidesBetweenChats, let swap = heard.swap {
+                swapMotion.expect(swap, conversation: new.drawn)
             }
-            shownChat = shown
+            shownChat = heard.shown
+            guard opened else { return }
+            sidePanelIDs = appState.activeChatArtifactSessionIDs
             // A workstream opened from the panel shows its own chat, and
             // the Bot Chat opens again without it, on any window.
             workPanelOpen = false
@@ -455,10 +486,6 @@ struct V2ConversationScreen: View {
                         BotWorkHeader(work: appState.botWork)
                     }
                 }
-                // A Bot Chat and its workstreams share this screen: one
-                // slides in over the other as a push or a pop would.
-                .offset(x: swapShift * chatColumnWidth)
-                .opacity(1 - Double(abs(swapShift)) * 0.6)
                 .overlay(alignment: .bottomTrailing) {
                     // On a Mac, not when all it would do is the call the
                     // header has (issue 1534).
@@ -512,6 +539,9 @@ struct V2ConversationScreen: View {
     private func backToCoordinator() {
         guard let profile = workstreamGoesBack else { return }
         Haptics.light()
+        // The workstream's rows leave under the finger; the Bot Chat's
+        // come in once they're drawn.
+        if slidesBetweenChats { swapMotion.leave(.back) }
         appState.openCoordinator(profile: profile)
     }
 
@@ -544,19 +574,29 @@ struct V2ConversationScreen: View {
         }
     }
 
-    private var currentShownChat: BotChatSwap.Shown {
-        BotChatSwap.Shown(botChat: appState.activeBotChatProfile, workstreamOf: appState.activeWorkstream?.profile)
+    private var watchedChat: BotChatSwap.Watched {
+        BotChatSwap.Watched(openChat: appState.activeSessionId, drawn: ChatView.drawnConversation(in: appState))
     }
 
-    /// The new chat starts off to one side, then slides into place.
-    private func slideIn(_ swap: BotChatSwap) {
-        var start = Transaction()
-        start.disablesAnimations = true
-        withTransaction(start) { swapShift = swap == .forward ? 1 : -1 }
-        Task { @MainActor in
-            withAnimation(.smooth(duration: 0.32)) { swapShift = 0 }
-        }
+    /// The Bot Chat or workstream the transcript draws, placed by the
+    /// drawn chat's id: the open chat's id follows it by a few hundred
+    /// milliseconds on an open (a device trace, #2458: a slide asked for
+    /// by it came after the workstream's rows). `byOpenChatToo` places a
+    /// chat the drawn id doesn't by the open chat, once that changed.
+    private func chatShown(byOpenChatToo: Bool) -> BotChatSwap.Shown {
+        guard appState.activeRoomSurface == nil else { return BotChatSwap.Shown() }
+        let drawn = ChatView.drawnOrFallbackScrollSessionKey(in: appState).sessionID
+        let ids = appState.chatOwnSessionIDs(for: drawn).union([drawn])
+        let work = appState.botWork.workstream(forSession: ids) ?? (byOpenChatToo ? appState.activeWorkstream : nil)
+        let bot = appState.botScopeProfile(forSessionIDs: ids, workspaceProfile: appState.activeProfile)
+            ?? (byOpenChatToo ? appState.activeBotChatProfile : nil)
+        return BotChatSwap.Shown(botChat: bot, workstreamOf: work?.profile, workstream: work?.item.sessionID)
     }
+
+    /// A Bot Chat and its workstream slide over one another: not beside
+    /// the list on a wide window, where nothing is pushed, nor with Reduce
+    /// Motion.
+    private var slidesBetweenChats: Bool { !shell.isSplit && !reduceMotion }
 
     @ToolbarContentBuilder
     private var toolbarItems: some ToolbarContent {

@@ -35,7 +35,7 @@ extension AppState {
     /// too: never read for this profile and client, read too long ago, or
     /// still the saved list's.
     func projectsNeedReading(using client: HermesClient, profile: String, now: Date = Date()) -> Bool {
-        guard let read = projectsRead, read.profile == profile, read.client == ObjectIdentifier(client),
+        guard let read = shownBot.projectsRead, read.profile == profile, read.client == ObjectIdentifier(client),
               !projectsSeededFromSavedList else { return true }
         return now.timeIntervalSince(read.at) >= Self.projectsRereadInterval || now < read.at
     }
@@ -43,11 +43,11 @@ extension AppState {
     /// True when Hermes' list came in and is the one shown.
     @discardableResult
     func loadProjects(using client: HermesClient, profile: String) async -> Bool {
-        projectsRequestGeneration += 1
-        let generation = projectsRequestGeneration
+        shownBot.projectsRequestGeneration += 1
+        let generation = shownBot.projectsRequestGeneration
         projectsLoading = true
         defer {
-            if generation == projectsRequestGeneration,
+            if generation == shownBot.projectsRequestGeneration,
                profile == activeProfile,
                self.client === client {
                 projectsLoading = false
@@ -55,7 +55,7 @@ extension AppState {
         }
         do {
             let loaded = try await client.projects()
-            guard generation == projectsRequestGeneration,
+            guard generation == shownBot.projectsRequestGeneration,
                   profile == activeProfile,
                   self.client === client else { return false }
             let sorted = loaded.sorted {
@@ -66,12 +66,12 @@ extension AppState {
             // The same list again leaves the projects' positions as worked
             // out, unless they came from the saved list (issue 2357).
             if sorted != projects || projectsSeededFromSavedList { projects = sorted }
-            projectsRead = (profile, ObjectIdentifier(client), Date())
+            shownBot.projectsRead = (profile, ObjectIdentifier(client), Date())
             supportsProjects = true
             projectsLoadFailed = false
             return true
         } catch {
-            guard generation == projectsRequestGeneration,
+            guard generation == shownBot.projectsRequestGeneration,
                   profile == activeProfile,
                   self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
@@ -344,7 +344,7 @@ extension AppState {
     }
 
     private func projectPositionsIndex() -> [String: Int] {
-        if let index = projectPositionsBySessionID { return index }
+        if let index = shownBot.projectPositionsBySessionID { return index }
         var index: [String: Int] = [:]
         for (position, project) in projects.enumerated() where !project.isHome {
             for preview in project.previewSessions {
@@ -353,7 +353,7 @@ extension AppState {
                 }
             }
         }
-        projectPositionsBySessionID = index
+        shownBot.projectPositionsBySessionID = index
         return index
     }
 

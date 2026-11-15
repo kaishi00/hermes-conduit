@@ -166,8 +166,19 @@ extension AppState {
                 profile: profile, dashboardID: dashboardID, purpose: purpose, roster: earlyRoster
             )
             // On Jump to latest activity the newest chat is read from a
-            // short page beside the list instead (`latestChatBeforeList`).
-            let readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
+            // short page beside the list instead (`latestChatBeforeList`)…
+            var readsNewestFirst = savedChat == nil && latestChatMayResumeBeforeList(purpose: purpose)
+            // …unless the list kept from last time already names one: that
+            // opens at once, and the live list opens a newer one if it names
+            // one (below). Coming back to a dashboard almost always lands on
+            // the chat left there, and the short read could take 2 s on a
+            // busy host (Eric, 2026-11-14).
+            if readsNewestFirst, let kept = latestChatFromKeptList(profile: profile, dashboardID: dashboardID, roster: earlyRoster) {
+                savedChat = kept
+                latestPickedBeforeList = kept.sessionID
+                readsNewestFirst = false
+                noteConnectionStep("Newest chat from the list kept from last time")
+            }
             let catalogReadFailed = CatalogReadFailure()
             async let catalogRead = profileCatalogNotingFailure(using: client, failure: catalogReadFailed)
             // The list read goes out first; one that has already failed
@@ -201,7 +212,7 @@ extension AppState {
             if let savedChat, !catalogReadFailed.failed,
                PushNotificationService.shared.pendingTarget == nil,
                chatPickedFromSavedList == nil, pendingNewChat == nil,
-               token == reconciliationToken,
+               token == shownChat.reconciliationToken,
                automaticChatResumeWorkIsCurrent(automaticWorkToken, syncOperationID: automaticOperationID),
                chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                profile == activeProfile, dashboardID == activeDashboardID,
@@ -216,7 +227,7 @@ extension AppState {
                 earlyResumeLogger.notice("Chat resume goes out before the chat list")
                 // Read below only as this resume's own answer: a resume that
                 // stops before asking leaves it as it is.
-                reconciliationSessionWasNotFound = false
+                shownChat.reconciliationSessionWasNotFound = false
                 resumedBeforeList = await reconcile(
                     sessionId: savedChat.sessionID,
                     using: client,
@@ -228,7 +239,7 @@ extension AppState {
                     requiredViewportTransitionGeneration: requiredViewportTransitionGeneration,
                     historySourceUnavailable: historySourceUnavailable
                 )
-                if !resumedBeforeList, reconciliationSessionWasNotFound {
+                if !resumedBeforeList, shownChat.reconciliationSessionWasNotFound {
                     refusedBeforeList = savedChat.sessionID
                 }
                 if resumedBeforeList, earlyRoster != nil {
@@ -261,7 +272,7 @@ extension AppState {
                     syncOperationID: automaticOperationID
                   ),
                   resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   dashboardID == activeDashboardID,
                   let activeClient = self.client,
@@ -296,7 +307,11 @@ extension AppState {
                 let listedSessions = allSessions.filter { $0.source != .cron }
                 let listedCron = allSessions.filter { $0.source == .cron }
                 // A project's page beside the chat follows this list too.
-                if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
+                if listedSessions != sessions || listedCron != cronSessions {
+                    chatListCatalogGeneration &+= 1
+                    // A changed list brings the change signal's wait back to 5 s.
+                    catalogChangeSignal.noteListChanged()
+                }
                 sessions = listedSessions
                 cronSessions = listedCron
                 settleNewChatAwaitingListing(loaded: loadedSessions)
@@ -414,7 +429,7 @@ extension AppState {
                         syncOperationID: automaticOperationID
                       ),
                       chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-                      token == reconciliationToken,
+                      token == shownChat.reconciliationToken,
                       profile == activeProfile,
                       let activeClient = self.client,
                       activeClient === client else {
@@ -566,7 +581,7 @@ extension AppState {
                 }
                 if !succeeded,
                    purpose == .automaticReturn,
-                   reconciliationSessionWasNotFound,
+                   shownChat.reconciliationSessionWasNotFound,
                    resumeRecoveryOwnsViewport(
                     token: token,
                     profile: profile,
@@ -597,12 +612,12 @@ extension AppState {
                 }
                 if !succeeded,
                    purpose == .automaticReturn,
-                   !reconciliationWasIdentityRejected,
+                   !shownChat.reconciliationWasIdentityRejected,
                    automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticOperationID
                    ),
-                   token == reconciliationToken,
+                   token == shownChat.reconciliationToken,
                    profile == activeProfile {
                     scheduleReconnectAfterFailedSync()
                 }
@@ -637,13 +652,13 @@ extension AppState {
                     )
                 }
                 if !succeeded,
-                   reconciliationSessionWasNotFound,
+                   shownChat.reconciliationSessionWasNotFound,
                    automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticOperationID
                    ),
                    chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-                   token == reconciliationToken,
+                   token == shownChat.reconciliationToken,
                    profile == activeProfile,
                    let activeClient = self.client,
                    activeClient === client {
@@ -713,7 +728,7 @@ extension AppState {
                             chatSyncErrorMessage = nil
                         }
                         if !fallbackSucceeded,
-                           reconciliationSessionWasNotFound,
+                           shownChat.reconciliationSessionWasNotFound,
                            resumeRecoveryOwnsViewport(
                             token: token,
                             profile: profile,
@@ -740,13 +755,13 @@ extension AppState {
                             )
                         }
                         if !fallbackSucceeded,
-                           !reconciliationWasIdentityRejected,
-                           !reconciliationSessionWasNotFound,
+                           !shownChat.reconciliationWasIdentityRejected,
+                           !shownChat.reconciliationSessionWasNotFound,
                            automaticChatResumeWorkIsCurrent(
                             automaticWorkToken,
                             syncOperationID: automaticOperationID
                            ),
-                           token == reconciliationToken,
+                           token == shownChat.reconciliationToken,
                            profile == activeProfile {
                             // The prior saved identity was authoritatively
                             // deleted; do not let it masquerade as a visible
@@ -773,12 +788,12 @@ extension AppState {
                     ) ? .completed : chatResumeSyncInterruptionOutcome(for: automaticWorkToken)
                 }
                 if !succeeded,
-                   !reconciliationWasIdentityRejected,
+                   !shownChat.reconciliationWasIdentityRejected,
                    automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
                     syncOperationID: automaticOperationID
                    ),
-                   token == reconciliationToken,
+                   token == shownChat.reconciliationToken,
                    profile == activeProfile {
                     scheduleReconnectAfterFailedSync()
                 }
@@ -828,7 +843,7 @@ extension AppState {
                     syncOperationID: automaticOperationID
                   ),
                   resumedBeforeList || chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -1007,13 +1022,13 @@ extension AppState {
                 if chatSyncErrorMessage == handledError { chatSyncErrorMessage = nil }
                 return .completed
             }
-            if reconciliationSessionWasNotFound {
+            if shownChat.reconciliationSessionWasNotFound {
                 dead.formUnion(fallbackIDs)
                 dead.formUnion([fallback.storedSessionId].compactMap { $0 })
                 deadResumeRowIDs[deadRowKey, default: []].formUnion(dead)
                 continue
             }
-            if !reconciliationWasIdentityRejected,
+            if !shownChat.reconciliationWasIdentityRejected,
                resumeRecoveryOwnsViewport(
                 token: token,
                 profile: profile,
@@ -1082,8 +1097,8 @@ extension AppState {
         historySourceUnavailable: Bool
     ) async -> Bool {
         // A Kanban worker is refused under any of its ids.
-        guard reconciliationSessionWasNotFound,
-              !reconciliationWasKanbanWorker,
+        guard shownChat.reconciliationSessionWasNotFound,
+              !shownChat.reconciliationWasKanbanWorker,
               let storedID = row.storedSessionId,
               !storedID.isEmpty,
               storedID != row.id,
@@ -1153,7 +1168,7 @@ extension AppState {
                 syncOperationID: automaticSyncOperationID
               ),
               chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-              token == reconciliationToken,
+              token == shownChat.reconciliationToken,
               profile == activeProfile,
               let activeClient = self.client,
               activeClient === client else { return false }
@@ -1170,10 +1185,10 @@ extension AppState {
             streamTextAtBoundary = existingReconciliation.streamTextAtBoundary
             streamSessionIDAtBoundary = existingReconciliation.streamSessionIDAtBoundary
         } else {
-            streamTextAtBoundary = activeSessionId.map { _ in streamingBuffer }
+            streamTextAtBoundary = activeSessionId.map { _ in shownChat.streamingBuffer }
             streamSessionIDAtBoundary = activeSessionId
         }
-        reconciliationToken = token
+        shownChat.reconciliationToken = token
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: activeSessionId ?? "",
@@ -1190,7 +1205,7 @@ extension AppState {
     func invalidateReconciliation() {
         let wasReconciling = activeChatScrollSessionIdentity.isReconciling
         let closed = reconciliation
-        reconciliationToken = UUID()
+        shownChat.reconciliationToken = UUID()
         reconciliation = nil
         refreshActiveChatScrollSessionIdentity(
             isReconciling: false,
@@ -1206,9 +1221,9 @@ extension AppState {
     /// there, as it would have been while the boundary was open; one from
     /// another conversation still isn't.
     private func releaseHeldSideAgentCompletions(closing closed: Reconciliation?) {
-        guard reconciliation == nil, !heldSideAgentCompletions.isEmpty else { return }
-        let held = heldSideAgentCompletions
-        heldSideAgentCompletions = []
+        guard reconciliation == nil, !shownChat.heldSideAgentCompletions.isEmpty else { return }
+        let held = shownChat.heldSideAgentCompletions
+        shownChat.heldSideAgentCompletions = []
         let aliases = closed?.acceptedSessionIDs ?? []
         for event in held {
             guard case .sideAgentComplete(let sessionId, let kind, let taskId, let text, let question) = event,
@@ -1228,7 +1243,7 @@ extension AppState {
         _ token: UUID,
         automaticSyncOperationID: UUID?
     ) -> Bool {
-        guard token == reconciliationToken,
+        guard token == shownChat.reconciliationToken,
               var reconciliation else { return false }
         reconciliation.automaticSyncOperationID = automaticSyncOperationID
         self.reconciliation = reconciliation
@@ -1240,7 +1255,7 @@ extension AppState {
         _ token: UUID,
         automaticSyncOperationID: UUID? = nil
     ) -> Bool {
-        guard token == reconciliationToken,
+        guard token == shownChat.reconciliationToken,
               let activeReconciliation = reconciliation,
               activeReconciliation.automaticSyncOperationID == automaticSyncOperationID else {
             return false
@@ -1361,6 +1376,32 @@ extension AppState {
         if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
            !row.nestingIDs.contains(onScreen) { return waits("another chat is on screen") }
         // The identity the list's own pick resumes with.
+        return (sessionID, ConversationIdentity(
+            profile: profile,
+            durableSessionID: row.storedSessionId ?? row.id,
+            runtimeSessionID: row.storedSessionId != nil ? row.id : nil,
+            acceptedSessionIDs: Set([row.id] + row.alternateIds)
+        ))
+    }
+
+    /// Jump to latest activity's pick from the list kept from this
+    /// dashboard's last visit (shown after a switch or a launch until the
+    /// live list lands), when it names one and no other chat is on screen.
+    /// Nil leaves it to the newest chats read: a return to the app, with
+    /// the live list already in, reads the newest chats as before.
+    func latestChatFromKeptList(
+        profile: String,
+        dashboardID: UUID?,
+        roster: [BotProfile]? = nil
+    ) -> (sessionID: String, identity: ConversationIdentity)? {
+        // Kept only for its pinned rows means the live list is in.
+        guard let kept = savedChatListForActiveScope, kept.isShowingSavedRows,
+              !kept.list.sessions.isEmpty else { return nil }
+        let rows = kept.list.sessions
+        guard let row = latestOrdinaryChat(among: rows, profile: profile, dashboardID: dashboardID, roster: roster),
+              let sessionID = ChatScrollIdentityNormalization.sessionID(row.id) else { return nil }
+        if let onScreen = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+           !row.nestingIDs.contains(onScreen) { return nil }
         return (sessionID, ConversationIdentity(
             profile: profile,
             durableSessionID: row.storedSessionId ?? row.id,
@@ -1675,11 +1716,11 @@ extension AppState {
         // transaction; they are re-adopted below only from a transcript this
         // reconcile actually validated and accepted. A rejected identity
         // restores them — the rejection must not consume ordering evidence.
-        let savedDurablePersistedRowIDs = durablePersistedRowIDs
-        durablePersistedRowIDs = []
-        reconciliationWasIdentityRejected = false
-        reconciliationSessionWasNotFound = false
-        reconciliationWasKanbanWorker = false
+        let savedDurablePersistedRowIDs = shownChat.durablePersistedRowIDs
+        shownChat.durablePersistedRowIDs = []
+        shownChat.reconciliationWasIdentityRejected = false
+        shownChat.reconciliationSessionWasNotFound = false
+        shownChat.reconciliationWasKanbanWorker = false
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         turnState = .synchronizing
         // The resume RPC can overlap a user-initiated config.set. Capture the
@@ -1836,7 +1877,7 @@ extension AppState {
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   widgetLease?.isCurrent != false,
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -1890,8 +1931,8 @@ extension AppState {
                 // rejection may not consume it. (The already-published
                 // catalog refresh stays — discovery state is independent of
                 // the rejected claim.)
-                durablePersistedRowIDs = savedDurablePersistedRowIDs
-                reconciliationWasIdentityRejected = true
+                shownChat.durablePersistedRowIDs = savedDurablePersistedRowIDs
+                shownChat.reconciliationWasIdentityRejected = true
                 // Unstick the synchronizing wait without clobbering a live
                 // running turn; the transcript and identity above are left
                 // exactly as they were.
@@ -2031,8 +2072,8 @@ extension AppState {
             // persisted ORDERING frontier is re-established from the same
             // acceptance — never carried over from a previous conversation
             // state.
-            durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
-            persistedOrderingFrontier = Self.orderingFrontier(
+            shownChat.durablePersistedRowIDs = (transcriptMatches ? transcript?.durableRowIDs : nil) ?? []
+            shownChat.persistedOrderingFrontier = Self.orderingFrontier(
                 from: transcriptMatches ? transcript : nil
             )
 
@@ -2201,7 +2242,7 @@ extension AppState {
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   widgetLease?.isCurrent != false,
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -2217,7 +2258,7 @@ extension AppState {
             var bufferedEvents = bufferedEntries.map { $0.event }
             var bufferedGenerations = bufferedEntries.map { $0.generation }
             if result.snapshot.hasLiveProjection {
-                let resumedInflightText = streamingBuffer
+                let resumedInflightText = shownChat.streamingBuffer
                 let boundary = reconciliation?.token == token ? reconciliation : nil
                 let acceptedSessionIDs: Set<String>
                 if let boundary,
@@ -2312,10 +2353,10 @@ extension AppState {
             // stayed over a chat that came back on the next try).
             if settled {
                 chatErrorBehindRoom = nil
-                if let failed = chatRestoreFailureShown, errorMessage == failed {
+                if let failed = shownChat.chatRestoreFailureShown, errorMessage == failed {
                     errorMessage = nil
                 }
-                chatRestoreFailureShown = nil
+                shownChat.chatRestoreFailureShown = nil
             }
             if settled, reconcileExplicitYolo {
                 // Re-assert only after the ownership guard above (token,
@@ -2343,7 +2384,7 @@ extension AppState {
                     syncOperationID: automaticSyncOperationID
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -2373,7 +2414,7 @@ extension AppState {
             // edge must not overwrite.
             replayBufferedDecisionPrompts(for: token)
             turnState = .reconnecting
-            reconciliationSessionWasNotFound = resumeRPCFailedSessionNotFound
+            shownChat.reconciliationSessionWasNotFound = resumeRPCFailedSessionNotFound
             switch error {
             case is LegacyTranscriptOversizedError, DashboardTicketBridgeError.oversizedResponse:
                 // Oversized history responses carry their own user-facing
@@ -2385,14 +2426,14 @@ extension AppState {
             case let rpcError as RpcError where rpcError.code == 4132:
                 // A Kanban worker's transcript: Hermes lets only the board
                 // run it. Lists leave these out; a link can still reach one.
-                reconciliationWasKanbanWorker = true
-                reconciliationSessionWasNotFound = true
+                shownChat.reconciliationWasKanbanWorker = true
+                shownChat.reconciliationSessionWasNotFound = true
                 chatSyncErrorMessage = AppLocalization.string("This chat is a Kanban task's worker, so only the board can run it. Open the task on the Kanban board and check its Worker Log.")
             default:
                 chatSyncErrorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
             // A later restore of the chat that works takes it down again.
-            chatRestoreFailureShown = chatSyncErrorMessage
+            shownChat.chatRestoreFailureShown = chatSyncErrorMessage
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             return false
@@ -2480,7 +2521,7 @@ extension AppState {
         let generation = pendingApprovalsRequestGeneration
         let profile = presentationProfile(for: sessionId)
         let viewportGeneration = chatViewportTransitionGeneration
-        let reconciliationGeneration = reconciliationToken
+        let reconciliationGeneration = shownChat.reconciliationToken
         let acceptedSessionIDs = activeChatScrollSessionIdentity.equivalentSessionIDs
             .union([sessionId])
 
@@ -2522,7 +2563,7 @@ extension AppState {
                   profile == self.presentationProfile(for: sessionId),
                   self.client === client,
                   viewportGeneration == self.chatViewportTransitionGeneration,
-                  reconciliationGeneration == self.reconciliationToken,
+                  reconciliationGeneration == self.shownChat.reconciliationToken,
                   !acceptedSessionIDs.isDisjoint(
                     with: self.activeChatScrollSessionIdentity.equivalentSessionIDs
                   ) else { return }
@@ -2643,7 +2684,7 @@ extension AppState {
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   widgetLease?.isCurrent != false,
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -2681,15 +2722,15 @@ extension AppState {
             runtime.provider = ""
             runtime.serviceTier = ""
             keepDelegateAgents(of: [])
-            newChatOpenedSessionID = runtimeSessionID
-            newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
+            shownChat.newChatOpenedSessionID = runtimeSessionID
+            shownChat.newChatOpenedDurableSessionID = created.storedSessionId ?? runtimeSessionID
             messages = []
             dismissOfflineChatPresentation()
             persistedTranscriptWindow = nil
             resetTranscriptLifecycleEvidence()
             noteChatViewportTranscriptReplacement()
             clearStreamingText()
-            activeAssistantMessageId = nil
+            shownChat.activeAssistantMessageId = nil
             resetReasoningTurn()
             turnState = .idle
             noteConnectionStep("New chat ready")
@@ -2789,7 +2830,7 @@ extension AppState {
                   ),
                   chatViewportTransitionIsCurrent(requiredViewportTransitionGeneration),
                   widgetLease?.isCurrent != false,
-                  token == reconciliationToken,
+                  token == shownChat.reconciliationToken,
                   profile == activeProfile,
                   let activeClient = self.client,
                   activeClient === client else {
@@ -2882,7 +2923,7 @@ extension AppState {
         // The same messages from the other source (Hermes' stored rows or a
         // resume's) keep the ids they're drawn under (#1648).
         let rekeyed = isSameChat
-            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: durablePersistedRowIDs)
+            ? Self.keepingRowIDs(from: previousMessages, in: restored, durableIDs: shownChat.durablePersistedRowIDs)
             : restored
         let rebuilt = isSameChat ? Self.keepingLocalNotes(from: previousMessages, in: rekeyed) : rekeyed
         messages = mergeVoiceCallMarkers(into: mergeCachedReviews(into: rebuilt, sessionId: result.sessionId), sessionId: result.sessionId)
@@ -2935,8 +2976,8 @@ extension AppState {
         // frontier covers everything persisted — no local debt can outlive
         // it.
         transcriptFreshnessIsStale = false
-        locallyOwnedInFlightTurn = nil
-        pendingLocalOrderingDebt = nil
+        shownChat.locallyOwnedInFlightTurn = nil
+        shownChat.pendingLocalOrderingDebt = nil
         var gatewayPendingDecisionKeys = SessionPresentationCache.pendingDecisionKeys(in: result.messages)
         if let pendingClarify = result.snapshot.pendingClarify {
             gatewayPendingDecisionKeys.insert("clarify:\(pendingClarify.requestId)")
@@ -3041,10 +3082,10 @@ extension AppState {
                 result.snapshot.inflightAssistantText,
                 after: messages
             )
-            streamingBuffer = recoveredText
+            shownChat.streamingBuffer = recoveredText
             streamingText = recoveredText
         }
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         applyRuntime(
             result.snapshot,
@@ -3078,10 +3119,10 @@ extension AppState {
         // A resume that says the turn is over settles it, as setRunning(false)
         // does: its notes are no longer running (a forced idle that only
         // unsticks a sync keeps them; their ids are unique to this turn).
-        if result.snapshot.running == false { runningTurnNoteIDs = [] }
+        if result.snapshot.running == false { shownChat.runningTurnNoteIDs = [] }
         // The resume snapshot is authoritative about the turn state.
-        turnLifecycleEvidence = TurnLifecycleEvidence(
-            revision: turnLifecycleEvidence.revision &+ 1,
+        shownChat.turnLifecycleEvidence = TurnLifecycleEvidence(
+            revision: shownChat.turnLifecycleEvidence.revision &+ 1,
             running: turnState.isRunning
         )
         turnStateIsStale = false

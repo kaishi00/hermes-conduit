@@ -140,16 +140,16 @@ extension AppState {
     /// Sign-out or removal of the open dashboard: nothing Predictive knew
     /// of its chats stays for the next account.
     func forgetPredictiveState() {
-        predictiveGeneration &+= 1
-        predictivePauseTask?.cancel()
-        predictivePauseTask = nil
-        predictiveFollowUpTask?.cancel()
-        predictiveFollowUpTask = nil
-        predictiveRepliesAsked = nil
-        predictiveDraftAsked = nil
-        predictiveFollowUp = PredictiveFollowUpState()
+        shownChat.predictiveGeneration &+= 1
+        shownChat.predictivePauseTask?.cancel()
+        shownChat.predictivePauseTask = nil
+        shownChat.predictiveFollowUpTask?.cancel()
+        shownChat.predictiveFollowUpTask = nil
+        shownChat.predictiveRepliesAsked = nil
+        shownChat.predictiveDraftAsked = nil
+        shownChat.predictiveFollowUp = PredictiveFollowUpState()
         stopWaitingForPredictiveFollowUp()
-        predictiveReplyEnded = nil
+        shownChat.predictiveReplyEnded = nil
         predictiveComposerRequest = nil
         predictive.forgetAll()
     }
@@ -253,8 +253,8 @@ extension AppState {
             }
         }
         guard automaticChatResumeWorkMayStillSelectSession else { return }
-        guard !composerEditClaimedAutomaticWork else { return }
-        composerEditClaimedAutomaticWork = true
+        guard !shownChat.composerEditClaimedAutomaticWork else { return }
+        shownChat.composerEditClaimedAutomaticWork = true
 #if DEBUG
         composerEditCancellationCount += 1
 #endif
@@ -286,14 +286,14 @@ extension AppState {
     /// The failed send may have reached Hermes: its reply was lost after
     /// its chat was left. Asked once per failed send.
     func takeComposerSubmissionOfUnknownDelivery(_ context: ComposerSubmissionContext) -> Bool {
-        guard let index = composerSubmissionsOfUnknownDelivery.firstIndex(of: context) else { return false }
-        composerSubmissionsOfUnknownDelivery.remove(at: index)
+        guard let index = shownChat.composerSubmissionsOfUnknownDelivery.firstIndex(of: context) else { return false }
+        shownChat.composerSubmissionsOfUnknownDelivery.remove(at: index)
         return true
     }
 
     /// A dashboard left or signed out of: nobody asks about its sends again.
     func forgetComposerSubmissionsOfUnknownDelivery() {
-        composerSubmissionsOfUnknownDelivery.removeAll()
+        shownChat.composerSubmissionsOfUnknownDelivery.removeAll()
     }
 
     func isCurrentComposerSubmission(_ context: ComposerSubmissionContext) -> Bool {
@@ -512,7 +512,7 @@ extension AppState {
         // call) gets nothing, and the composer keeps the words: the shared
         // newChatOpenedSessionID would name that other creation's chat.
         guard let created = await createNewSessionMarkingStart(),
-              newChatOpenedSessionID == created, activeSessionId == created else { return nil }
+              shownChat.newChatOpenedSessionID == created, activeSessionId == created else { return nil }
         return composerSubmissionContext()
     }
 
@@ -599,7 +599,7 @@ extension AppState {
         // retry before appending a new-turn prompt into a possibly-reordered
         // transcript.
         if turnState == .idle,
-           transcriptFreshnessIsStale || pendingLocalOrderingDebt != nil {
+           transcriptFreshnessIsStale || shownChat.pendingLocalOrderingDebt != nil {
             switch await checkingBeforeSend(submissionContext, {
                 await confirmTranscriptFreshnessBeforeSend(using: submissionContext)
             }) {
@@ -650,7 +650,7 @@ extension AppState {
             sessionID: context.sessionID,
             viewportTransitionGeneration: context.viewportTransitionGeneration,
             startsChat: startsChat,
-            earlierNewChat: newChatOpenedSessionID
+            earlierNewChat: shownChat.newChatOpenedSessionID
         )
         composerSendChecks.append(marker)
         defer { composerSendChecks.removeAll { $0.id == marker.id } }
@@ -663,7 +663,7 @@ extension AppState {
             if check.startsChat, isStartingNewChat {
                 // The chat this check starts, never one an earlier New Chat made.
                 return activeSessionId == nil
-                    || (activeSessionId == newChatOpenedSessionID && activeSessionId != check.earlierNewChat)
+                    || (activeSessionId == shownChat.newChatOpenedSessionID && activeSessionId != check.earlierNewChat)
             }
             return check.sessionID == activeSessionId
                 && check.viewportTransitionGeneration == chatViewportTransitionGeneration

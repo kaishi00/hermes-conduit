@@ -434,7 +434,7 @@ extension AppState {
         //
         // Leave `locallyOwnedInFlightTurn` alone: the live turn still owns
         // the transcript, and settlement records its ordering debt.
-        if turnState == .running || locallyOwnedInFlightTurn != nil {
+        if turnState == .running || shownChat.locallyOwnedInFlightTurn != nil {
             transcriptFreshnessIsStale = true
             // Compression rewrote the persisted history server-side even
             // though adoption is deferred: a pre-compression backfill window
@@ -483,8 +483,8 @@ extension AppState {
     /// lands — they are re-established only by a fresh validated hydration.
     func invalidatePersistedHistoryInvariants() {
         persistedTranscriptWindow = nil
-        durablePersistedRowIDs = []
-        persistedOrderingFrontier = PersistedOrderingFrontier()
+        shownChat.durablePersistedRowIDs = []
+        shownChat.persistedOrderingFrontier = PersistedOrderingFrontier()
     }
 
     /// Adopt the gateway's post-compress transcript for the current
@@ -499,7 +499,7 @@ extension AppState {
     ) {
         settleReasoningSegmentIntoTranscript()
         clearStreamingText()
-        activeAssistantMessageId = nil
+        shownChat.activeAssistantMessageId = nil
         resetReasoningTurn()
         markChatViewportReplacement()
         // Locally restored-but-unanswered decision cards survive a
@@ -527,8 +527,8 @@ extension AppState {
         // The gateway's authoritative response just replaced the transcript:
         // no local turn/ordering debt can outlive it (applyChatResume's rule).
         transcriptFreshnessIsStale = false
-        locallyOwnedInFlightTurn = nil
-        pendingLocalOrderingDebt = nil
+        shownChat.locallyOwnedInFlightTurn = nil
+        shownChat.pendingLocalOrderingDebt = nil
         // Compression rewrote the persisted history server-side: window
         // offsets, durable-row provenance, and the ordering frontier from
         // BEFORE the compression describe history that no longer exists.
@@ -587,8 +587,8 @@ extension AppState {
             sessionCatalogLog.debug("Persisted-history page after /compress addressed to another conversation; backfill stays disabled for \(requestedSessionID, privacy: .private(mask: .hash))")
             return
         }
-        persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
-        durablePersistedRowIDs = transcript.durableRowIDs
+        shownChat.persistedOrderingFrontier = Self.orderingFrontier(from: transcript)
+        shownChat.durablePersistedRowIDs = transcript.durableRowIDs
         if let page = transcript.page, page.honorsTailContract {
             persistedTranscriptWindow = PersistedTranscriptWindowState(
                 requestedSessionID: requestedSessionID,

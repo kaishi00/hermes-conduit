@@ -6408,6 +6408,27 @@ final class AppStateChatResumeTests: XCTestCase {
         return openedBeforeList
     }
 
+    /// Shows `rows` as the list kept from the dashboard's last visit, as a
+    /// switch does until the live list lands.
+    private func keepChatList(_ rows: [SessionSummary], in appState: AppState) {
+        guard let dashboardID = appState.activeDashboardID else {
+            XCTFail("no dashboard to keep a list for")
+            return
+        }
+        appState.savedChatList = SavedChatListPresentation(
+            dashboardID: dashboardID,
+            profile: appState.activeProfile,
+            list: SavedChatList.capture(
+                sessions: rows,
+                cronSessions: [],
+                isPinned: { _ in false },
+                voiceTags: [:],
+                projects: [],
+                supportsProjects: false
+            )
+        )
+    }
+
     private func rosterBot(_ name: String, canonicalID: String) -> BotProfile {
         BotProfile(
             name: name,
@@ -6573,6 +6594,89 @@ final class AppStateChatResumeTests: XCTestCase {
         newestGate.resume()
         for _ in 0..<20 { await Task.yield() }
         XCTAssertEqual(openedSessionIDs, [newer.id], "the short read's late answer opens nothing")
+    }
+
+    /// The list kept from last time names the newest chat: it opens at
+    /// once, without waiting on the short read (which could take 2 s on a
+    /// busy host).
+    func testLatestActivityOpensTheKeptListsNewestChatWithoutTheShortRead() async {
+        let kept = session("kept-newest")
+        let older = session("older")
+        var shortReads = 0
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        var keepList: @MainActor () -> Void = {}
+        var operations = savedChatFirstOperations(
+            catalog: [kept, older],
+            gate: catalogGate,
+            catalogLoads: {},
+            opened: { openedSessionIDs.append($0) },
+            connected: { keepList() }
+        )
+        operations.loadNewestChats = { _ in
+            shortReads += 1
+            return [older]
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let appState = harness.appState
+        keepList = { [weak self, weak appState] in
+            guard let self, let appState else { return }
+            self.keepChatList([kept, older], in: appState)
+        }
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [kept.id], "opened from the kept list while the list is out")
+        catalogGate.resume()
+        await connecting.value
+        XCTAssertEqual(openedSessionIDs, [kept.id], "the list agrees: nothing opens again")
+        XCTAssertEqual(shortReads, 0, "no short read")
+        XCTAssertEqual(harness.appState.activeSessionId, kept.id)
+        // Once the live list is in, a list kept only for its pinned rows
+        // names no pick.
+        keepChatList([kept, older], in: harness.appState)
+        XCTAssertEqual(harness.appState.latestChatFromKeptList(profile: harness.appState.activeProfile, dashboardID: harness.appState.activeDashboardID)?.sessionID, kept.id)
+        harness.appState.savedChatList?.keptPinnedRows = []
+        XCTAssertNil(harness.appState.latestChatFromKeptList(profile: harness.appState.activeProfile, dashboardID: harness.appState.activeDashboardID))
+    }
+
+    /// A newer chat started elsewhere since the kept list: the kept pick
+    /// opens first, then the live list's newer one.
+    func testLatestActivityMovesFromTheKeptPickToTheListsNewerChat() async {
+        let kept = session("kept-newest")
+        let started = session("started-elsewhere")
+        var openedSessionIDs: [String] = []
+        let catalogGate = ControlledSuspension()
+        var keepList: @MainActor () -> Void = {}
+        let harness = makeHarness(
+            lifecycleOperations: savedChatFirstOperations(
+                catalog: [started, kept],
+                gate: catalogGate,
+                catalogLoads: {},
+                opened: { openedSessionIDs.append($0) },
+                connected: { keepList() },
+                newest: [started, kept]
+            )
+        )
+        harness.appState.setChatResumeBehavior(.latestActivity)
+        let appState = harness.appState
+        keepList = { [weak self, weak appState] in
+            guard let self, let appState else { return }
+            self.keepChatList([kept], in: appState)
+        }
+        let connecting = Task { @MainActor in
+            await harness.appState.connect(with: HermesConnection(baseUrl: "https://one.example", ticket: "t"))
+        }
+        await catalogGate.waitUntilSuspended()
+        for _ in 0..<500 where openedSessionIDs.isEmpty { await Task.yield() }
+        XCTAssertEqual(openedSessionIDs, [kept.id])
+        catalogGate.resume()
+        await connecting.value
+        XCTAssertEqual(openedSessionIDs, [kept.id, started.id])
+        XCTAssertEqual(harness.appState.activeSessionId, started.id)
     }
 
     /// A chat already on screen is the list's to keep or replace.
@@ -7631,24 +7735,24 @@ final class AppStateChatResumeTests: XCTestCase {
         let harness = makeHarness()
         XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
         harness.appState.activeSessionId = "s1"
-        harness.appState.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
-        harness.appState.predictiveFollowUpQueued = true
-        harness.appState.predictiveFollowUpTurnsAhead = 2
-        harness.appState.predictiveFollowUpQueuedAt = Date()
-        harness.appState.predictiveFollowUpSending = true
-        harness.appState.predictiveFollowUpAheadEnded = true
-        harness.appState.predictiveFollowUpUnreadMessages = [7]
-        let send = harness.appState.predictiveFollowUpSend
+        harness.appState.shownChat.predictiveFollowUpTurn = ("s1", "Worth a check.", nil)
+        harness.appState.shownChat.predictiveFollowUpQueued = true
+        harness.appState.shownChat.predictiveFollowUpTurnsAhead = 2
+        harness.appState.shownChat.predictiveFollowUpQueuedAt = Date()
+        harness.appState.shownChat.predictiveFollowUpSending = true
+        harness.appState.shownChat.predictiveFollowUpAheadEnded = true
+        harness.appState.shownChat.predictiveFollowUpUnreadMessages = [7]
+        let send = harness.appState.shownChat.predictiveFollowUpSend
 
         XCTAssertFalse(harness.appState.prepareChatResumeForConnection(to: "https://one.example"))
-        XCTAssertNotEqual(harness.appState.predictiveFollowUpSend, send, "a send still on its way is not applied")
-        XCTAssertFalse(harness.appState.predictiveFollowUpSending)
-        XCTAssertFalse(harness.appState.predictiveFollowUpAheadEnded)
-        XCTAssertTrue(harness.appState.predictiveFollowUpUnreadMessages.isEmpty)
-        XCTAssertNil(harness.appState.predictiveFollowUpTurn)
-        XCTAssertFalse(harness.appState.predictiveFollowUpQueued)
-        XCTAssertEqual(harness.appState.predictiveFollowUpTurnsAhead, 0)
-        XCTAssertNil(harness.appState.predictiveFollowUpQueuedAt)
+        XCTAssertNotEqual(harness.appState.shownChat.predictiveFollowUpSend, send, "a send still on its way is not applied")
+        XCTAssertFalse(harness.appState.shownChat.predictiveFollowUpSending)
+        XCTAssertFalse(harness.appState.shownChat.predictiveFollowUpAheadEnded)
+        XCTAssertTrue(harness.appState.shownChat.predictiveFollowUpUnreadMessages.isEmpty)
+        XCTAssertNil(harness.appState.shownChat.predictiveFollowUpTurn)
+        XCTAssertFalse(harness.appState.shownChat.predictiveFollowUpQueued)
+        XCTAssertEqual(harness.appState.shownChat.predictiveFollowUpTurnsAhead, 0)
+        XCTAssertNil(harness.appState.shownChat.predictiveFollowUpQueuedAt)
 
         harness.appState.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
         harness.appState.predictiveTurnSettled(sessionId: "s1")

@@ -237,6 +237,9 @@ extension AppState {
             recordSavedChatList()
             // And its chat, when Load earlier brought in older rows.
             keepLeftBackfilledTranscript()
+            // And its reply, while one is still coming (all-live stage 2):
+            // followed under the outgoing profile, shown on switching back.
+            followChatLeftForProfileSwitch(turnWasRunning: previousTurnState == .running)
             // Fence any residual deferred cache write scheduled under the
             // outgoing profile before identities and namespaces change over.
             setActiveProfile(target)
@@ -320,6 +323,8 @@ extension AppState {
                     generation: transitionGeneration
                 )
             }
+            // The chat it landed on is its own again, not a followed one.
+            releaseFollowedChatOnScreen()
             Task { await loadChatResumeSlashCommands() }
             return true
         } catch {
@@ -366,6 +371,11 @@ extension AppState {
             if adoptedTarget, activeDashboardID == previousTranscriptDashboardID {
                 messages = previousMessages
                 offlineChatPresentation = previousOfflineChatPresentation
+            }
+            // Its reply, followed as the switch began, is the chat on
+            // screen's again.
+            if let restored = activeSessionId, let dashboardID = activeDashboardID {
+                stopFollowingChats(dashboardID: dashboardID, sessionIDs: knownSessionIDs(for: restored).union([restored]))
             }
             connection = savedConnection
             previousClient?.disconnect()

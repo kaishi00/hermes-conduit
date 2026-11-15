@@ -132,11 +132,26 @@ struct NewChatAwaitingListing: Equatable {
 /// Each signal reads the catalog again, at most every 5 s, and never while
 /// a turn runs here (its own rows move the catalog the whole time); one
 /// held back is read once the wait or the turn is over.
+///
+/// Hermes sends the signal for every profile the gateway serves and names
+/// none, so a busy bot in another profile signals every few seconds while
+/// this profile's list stays the same. Each read that lists the same rows
+/// again doubles the wait before the next, up to `maximumInterval`; a read
+/// that changes the list, from a signal or anything else, starts it over
+/// at 5 s.
 struct CatalogChangeSignal {
     static let minimumInterval: TimeInterval = 5
+    static let maximumInterval: TimeInterval = 60
 
     private(set) var isPending = false
     private var lastReadAt: Date?
+    /// Signal reads in a row that listed the same rows.
+    private(set) var quietReads = 0
+
+    /// The wait after a signal read before the next one.
+    var interval: TimeInterval {
+        min(Self.maximumInterval, Self.minimumInterval * pow(2, Double(min(quietReads, 8))))
+    }
 
     mutating func noteChanged() {
         isPending = true
@@ -150,12 +165,28 @@ struct CatalogChangeSignal {
         return true
     }
 
+    /// A signal's read landed: one that listed the same rows lengthens the
+    /// wait before the next.
+    mutating func noteSignalRead(listedTheSameRows: Bool) {
+        if listedTheSameRows {
+            quietReads += 1
+        } else {
+            quietReads = 0
+        }
+    }
+
+    /// Any catalog read changed the list: the next signal is read after
+    /// the shortest wait again.
+    mutating func noteListChanged() {
+        quietReads = 0
+    }
+
     /// How long until a pending change may be read: nil when none is
     /// pending, 0 when it may be read now.
     func delayUntilDue(now: Date) -> TimeInterval? {
         guard isPending else { return nil }
         guard let lastReadAt else { return 0 }
-        return max(0, Self.minimumInterval - now.timeIntervalSince(lastReadAt))
+        return max(0, interval - now.timeIntervalSince(lastReadAt))
     }
 }
 
