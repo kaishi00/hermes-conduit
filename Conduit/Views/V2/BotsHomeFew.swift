@@ -96,7 +96,7 @@ struct BotLastReply: View {
     private var readKey: String {
         let chat = bot.canonicalSession
         let openTail = appState.activeBotChatProfile == bot.name
-            ? (appState.messages.last { $0.role == .assistant && $0.tool == nil }
+            ? (appState.messages.last(where: { $0.role == .assistant && $0.tool == nil })
                 .map { "\($0.id)\u{1E}\($0.content.hashValue)" } ?? "")
             : ""
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
