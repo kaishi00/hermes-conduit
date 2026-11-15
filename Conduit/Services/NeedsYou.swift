@@ -209,6 +209,8 @@ final class NeedsYouStore: ObservableObject {
         seen.formUnion(read.map(\.id))
         let merged = (items.filter { $0.profile != profile } + read).sorted { $0.since > $1.since }
         if merged != items { items = merged }
+        // A wait that left the list needs no remembering.
+        cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
         if let banner, !merged.contains(where: { $0.id == banner.id }) { self.banner = nil }
         guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.

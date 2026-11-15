@@ -186,6 +186,14 @@ enum PendingDecisionPayload: Equatable, Codable {
     /// batch model as native clarifies — no separate push card exists.
     case clarifyBatch(requestId: String, questions: [ClarifyQuestion])
 
+    /// A question's request id; nil for an approval.
+    var requestID: String? {
+        switch self {
+        case .approval: return nil
+        case .clarify(let requestId, _, _), .clarifyBatch(let requestId, _): return requestId
+        }
+    }
+
     /// Request ids minted by the notifier plugin's clarify loop; answers to
     /// these route through the relay instead of `clarify.respond`.
     static let relayRequestPrefix = "conduit-push-"

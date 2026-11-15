@@ -3472,6 +3472,25 @@ final class AppStateChatResumeTests: XCTestCase {
 
         let clarifyCards = harness.appState.messages.filter { $0.role == .clarify }
         XCTAssertEqual(clarifyCards.map { $0.clarify?.requestId }, ["gateway-rid-1"])
+
+        // Its Needs you row doesn't draw the copy again once Hermes' card
+        // is answered and the list still names the wait (issue 2556).
+        let appState = harness.appState
+        appState.needsYou.apply(
+            [NeedsYouItem(
+                waitID: "w1", profile: "default", kind: .question, sessionIDs: ["stored-a"],
+                card: .clarify(requestId: "conduit-push-abc123", question: "Which color?", choices: ["Red"])
+            )],
+            profile: "default", dashboardID: appState.activeDashboardID
+        ) { _ in false }
+        XCTAssertTrue(appState.needsYou.cardsHermesDrew.contains("conduit-push-abc123"))
+        if let index = appState.messages.firstIndex(where: { $0.clarify?.requestId == "gateway-rid-1" }),
+           var answered = appState.messages[index].clarify {
+            answered.questions[0].status = .answered
+            appState.messages[index].clarify = answered
+        }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["gateway-rid-1"])
     }
 
     func testAResumeDropsACachedPushCopyOfHermesCard() async {
