@@ -3463,10 +3463,18 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
         XCTAssertTrue(state.messages.isEmpty)
 
+        // Opened again under that id: its events reach the screen, and the
+        // followed copy keeps up until the open lands.
+        state.setActiveSessionState(id: "rt-elsewhere")
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: ", the end")),
+                       "The chat on screen takes its own events")
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time, the end")
+        state.setActiveSessionState(id: "b")
+
         // Hermes binds the id to another chat: it no longer reaches this one.
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "z", profile: state.activeProfile, source: .resume)
         XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " Not ours")))
-        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time")
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time, the end")
     }
 
     /// The reply's events, one by one: an interim note Hermes already

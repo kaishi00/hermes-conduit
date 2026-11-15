@@ -142,8 +142,10 @@ extension AppState {
         let id = sessionID(for: event)
         guard !id.isEmpty else { return false }
         let onScreen = eventBelongsToActiveSession(id)
+        // A rebound id reaches the followed copy on screen too, as its own
+        // ids do, so the copy is current if the open is overtaken.
         guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
-            ?? (onScreen ? nil : followedChatIndex(reboundTo: id)) else { return false }
+            ?? followedChatIndex(reboundTo: id) else { return false }
         if onScreen {
             // The chat on screen saves its own copy.
             _ = backgroundChats[index].apply(event)
