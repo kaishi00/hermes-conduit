@@ -209,14 +209,16 @@ class WorkflowContractTests(unittest.TestCase):
         and its plan job cancels the PR's older runs first, so the new run
         never waits for a cancelled Smoke job to wind down (Eric, 2026-11-02).
         A fork PR, whose token can't cancel, keeps cancel-in-progress per PR;
-        a push keeps a group per commit, so every merge gets a full run."""
+        a branch's pushes share a group by ref without cancelling, so one run
+        goes on and only the newest push waits (Eric, 2026-11-15)."""
         text = self._workflow_text()
         same_repo = ("github.event_name == 'pull_request' && "
                      "github.event.pull_request.head.repo.full_name == github.repository")
         self.assertIn(
             f"group: ci-${{{{ github.workflow }}}}-${{{{ ({same_repo}) && format('run-{{0}}', github.run_id)"
-            " || github.event.pull_request.number || github.sha }}", text)
-        self.assertIn("cancel-in-progress: true", text)
+            " || github.event.pull_request.number || github.ref }}", text)
+        self.assertIn("cancel-in-progress: ${{ github.event_name == 'pull_request' }}", text,
+                      "a fork PR cancels its older run; a push's run under way finishes")
         plan = self._job_text("plan")
         self.assertIn("actions: write", plan)
         first_step = plan.index("- name: Cancel this PR's older runs")
@@ -365,6 +367,83 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertFalse(skips("README.md", path), path)
         # A Swift file moved to docs/ lists its old name too, so it builds.
         self.assertFalse(skips("Conduit/X.swift", "docs/X.md"))
+
+    def _needs_build_script(self):
+        step = _step_text(self._job_text("plan"), "Does the change need the macOS build")
+        lines = step.splitlines()
+        run = next(i for i, l in enumerate(lines) if l.strip() == "run: |")
+        indent = len(lines[run]) - len(lines[run].lstrip())
+        body = []
+        for line in lines[run + 1:]:
+            if line.strip() and len(line) - len(line.lstrip()) <= indent:
+                break
+            body.append(line)
+        return textwrap.dedent("\n".join(body))
+
+    def test_a_one_commit_push_of_docs_skips_smoke(self):
+        """A push runs the step against the branch's tip before it: one commit
+        of only docs and config skips the macOS job, and anything else (code,
+        this workflow, several commits, a new branch) builds (2026-11-15: docs
+        merges to main each held a macOS runner for half an hour). A docs push
+        after a push whose run never passed (cancelled while it waited) builds,
+        since that push was never built."""
+        if not shutil.which("git"):
+            self.skipTest("git not installed")
+        script = self._needs_build_script()
+
+        def smoke_for(paths, before="parent", event="push", before_runs="1"):
+            with tempfile.TemporaryDirectory() as tmp:
+                # A stub gh answers the previous commit's passing push runs.
+                bindir = os.path.join(tmp, ".bin")
+                os.makedirs(bindir)
+                with open(os.path.join(bindir, "gh"), "w") as f:
+                    f.write("#!/usr/bin/env bash\n" + (
+                        "exit 1\n" if before_runs is None else f"echo '{before_runs}'\n"))
+                os.chmod(os.path.join(bindir, "gh"), 0o755)
+                def git(*args):
+                    return subprocess.run(["git", "-C", tmp, *args], check=True,
+                                          capture_output=True, text=True).stdout.strip()
+                git("init", "-q")
+                git("config", "user.email", "ci@example.com")
+                git("config", "user.name", "ci")
+                with open(os.path.join(tmp, "seed"), "w") as f:
+                    f.write("seed")
+                git("add", "-A")
+                git("commit", "-qm", "seed")
+                parent = git("rev-parse", "HEAD")
+                for path in paths:
+                    full = os.path.join(tmp, path)
+                    os.makedirs(os.path.dirname(full) or tmp, exist_ok=True)
+                    with open(full, "w") as f:
+                        f.write(path)
+                git("add", "-A")
+                git("commit", "-qm", "change")
+                output = os.path.join(tmp, ".out")
+                env = dict(os.environ, PATH=f"{bindir}:{os.environ['PATH']}", GITHUB_REPOSITORY="k/conduit",
+                           EVENT=event, PR_HEAD="", PR_NUMBER="", BASE_REF="",
+                           PUSH_BEFORE={"parent": parent, "other": "0" * 40, "none": ""}[before],
+                           GITHUB_OUTPUT=output, GITHUB_STEP_SUMMARY=os.path.join(tmp, ".summary"))
+                result = subprocess.run(["bash", "-c", script], cwd=tmp, env=env,
+                                        capture_output=True, text=True)
+                self.assertEqual(result.returncode, 0, result.stderr)
+                with open(output) as f:
+                    return f.read().strip()
+
+        self.assertEqual(smoke_for(["docs/FEATURE_MAP.md", "README.md"]), "smoke=false")
+        self.assertEqual(smoke_for([".github/workflows/nightly.yml"]), "smoke=false")
+        for paths in (["Conduit/App.swift"], ["docs/x.md", "scripts/ci-gate.py"],
+                      [".github/workflows/ci.yml"], ["Conduit/Resources/Help.md"]):
+            self.assertEqual(smoke_for(paths), "smoke=true", paths)
+        # The previous commit's push run was cancelled while it waited (no
+        # passing run), or GitHub can't say: that commit was never built.
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs="0"), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs=None), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before_runs="junk"), "smoke=true")
+        # Several commits pushed at once, or a new branch, build.
+        self.assertEqual(smoke_for(["docs/x.md"], before="other"), "smoke=true")
+        self.assertEqual(smoke_for(["docs/x.md"], before="none"), "smoke=true")
+        # A PR event with no merge commit of this PR builds.
+        self.assertEqual(smoke_for(["docs/x.md"], event="pull_request"), "smoke=true")
 
     def test_the_feature_map_check_knows_the_pr_and_its_base(self):
         """On a PR, an entry it edits names it on its Checked line: the step
