@@ -201,13 +201,15 @@ while [ $# -gt 0 ]; do
   shift
 done
 printf '%s' "$out" > "$FAKE_DIR/out_path"
+if [ -n "$FAKE_FAIL" ]; then printf '000'; exit 7; fi
 printf '204'
 """
 
 
 class NightlyDispatchScriptTests(unittest.TestCase):
-    def test_token_goes_to_curl_on_stdin_and_the_response_file_is_removed(self):
-        tmp = tempfile.mkdtemp()
+    def _run(self, **extra):
+        """Runs the script against the fake curl and a no-op sleep."""
+        tmp = self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
         os.mkdir(bin_dir)
@@ -215,14 +217,30 @@ class NightlyDispatchScriptTests(unittest.TestCase):
         with open(curl, "w") as fh:
             fh.write(FAKE_CURL)
         os.chmod(curl, 0o755)
+        sleep = os.path.join(bin_dir, "sleep")
+        with open(sleep, "w") as fh:
+            fh.write("#!/bin/sh\nexit 0\n")
+        os.chmod(sleep, 0o755)
         token = os.path.join(tmp, "token")
         with open(token, "w") as fh:
             fh.write("github_pat_fake123")
         env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"],
-                   FAKE_DIR=tmp, CONDUIT_NIGHTLY_TOKEN_FILE=token, TMPDIR=tmp)
-        result = subprocess.run(
+                   FAKE_DIR=tmp, CONDUIT_NIGHTLY_TOKEN_FILE=token, TMPDIR=tmp, **extra)
+        return subprocess.run(
             ["sh", os.path.join(TIMER_DIR, "conduit-nightly-dispatch.sh")],
-            env=env, capture_output=True, text=True)
+            env=env, capture_output=True, text=True, timeout=30)
+
+    def test_a_curl_failure_reports_one_000_per_attempt_and_gives_up(self):
+        result = self._run(FAKE_FAIL="1")
+        self.assertEqual(result.returncode, 1)
+        failures = [line for line in result.stderr.splitlines() if "failed:" in line]
+        self.assertEqual(len(failures), 4, result.stderr)
+        for line in failures:
+            self.assertEqual(line.count("000"), 1, line)
+
+    def test_token_goes_to_curl_on_stdin_and_the_response_file_is_removed(self):
+        result = self._run()
+        tmp = self.tmp
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn("HTTP 204", result.stdout)
         with open(os.path.join(tmp, "argv")) as fh:
