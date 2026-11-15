@@ -2305,7 +2305,9 @@ language; not needed) · Which dashboard a launch signs in to (a widget tap
 switches as before; not needed) · the Share extension's chat picker and the
 chats in Spotlight and Siri (read the same snapshot; not needed) · a Lock
 Screen size (gap) · the Mac (gap) · the Watch's widgets (their own app; not
-needed) · docs/WIDGETS.md · README.md
+needed) · Apple HomeView (a tap can't open Conduit there, so the launchers
+only show; Night Mode's vibrant drawing done; see the Pulse widget for its
+buttons) · docs/WIDGETS.md · README.md
 
 **Code**
 - Widget: `ConduitWidgets/LauncherWidgets.swift` (the three sizes), `ConduitWidgets/LauncherTimelineProvider.swift`
@@ -2317,13 +2319,15 @@ needed) · docs/WIDGETS.md · README.md
 - The small size is one tap target (WidgetKit takes no links there). It opens the conversation by default; New Chat or Talk when picked, falling back to the conversation (or its Open Conduit recovery) while that action has no link (#2264).
 - The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them; two at accessibility text sizes, so the last row still fits. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#2264).
 - Titles and workspace labels are privacy-sensitive, so a locked StandBy redacts them (#550).
+- In the vibrant rendering mode (StandBy at night, HomeView's Night Mode) Conduit-chan's artwork is drawn inverted, so the figure is the light part and its cream backdrop falls away instead of glowing as a square; the Native mark, light on black, is drawn as it is (2026-11-15, #2587, issue 2561).
+- The small size stays one tap that opens Conduit and shows no message text, which on HomeView would be in front of the whole household. It shows the conversation's title unless Hide conversation title is on, which is the choice for a shared HomeView (2026-11-15, #2587, issue 2561).
 
 **Open gaps**
 - No Lock Screen (accessory) size, which issue 1532 called optional.
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
-- Not tried on a device: the small and large layouts on the smallest and largest phones and iPad.
+- Not tried on a device: the small and large layouts on the smallest and largest phones and iPad, and the vibrant artwork in StandBy at night and on HomeView.
 
-**Checked:** 2026-11-12, #2264.
+**Checked:** 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
 
 ## Pulse widget
 
@@ -2331,7 +2335,8 @@ A Home Screen widget with Pulse's newest open cards (small, medium and
 large), whose Done, Do it and Not now work without Conduit coming to the
 front, and whose card opens on the Pulse screen when tapped (issue 2190).
 The widget reads Pulse's feed itself, so it shows new cards without Conduit
-running.
+running. The small size shows the top card with Not now and Done, which
+also work on Apple HomeView (issue 2561).
 
 **Siblings:** the Pulse screen (which cards are open, and which buttons each
 takes: the widget's rows are checked against PulseCard and AppState's
@@ -2343,8 +2348,9 @@ and the app language) · Location sharing's host pass (the widget reads with
 one of its own, made the same way) · Settings > Pulse (Next look, quiet, and the bot Do it goes to for a card from no chat) ·
 Hide private reminders on the Lock Screen (not needed: no Lock Screen size;
 card words are privacy-sensitive, so a locked StandBy redacts them) · the
-Watch and CarPlay (not needed: no Pulse screen there) · docs/WIDGETS.md ·
-README.md
+Watch and CarPlay (not needed: no Pulse screen there) · Apple HomeView (done:
+the small size's buttons; see the launcher widgets for Night Mode) ·
+docs/WIDGETS.md · README.md
 
 **Code**
 - Widget: `ConduitWidgets/PulseWidget.swift` (the view and its reads: the feed with `looks=1` where served, Next look from Pulse's state when nothing is open, every 30 minutes and on each reload), `ConduitWidgets/PulseWidgetRunner.swift` (the widget's stand-in for Do it's runner), `ConduitWidgets/Info.plist` (ATS as the app's, for http Tailscale hosts), `ConduitWidgets/ConduitWidgets.entitlements` (both App Groups)
@@ -2358,16 +2364,18 @@ README.md
 - Done and Not now go from the widget straight to the host. Do it sends a message to a chat, which takes Conduit's connection, so iOS runs it in Conduit, in the background (#2194).
 - Not now from the widget is later today; the plugin makes it tomorrow once today's gone, as the dialog's first choice would (#2194).
 - Do it on a card from no chat goes where Settings > Pulse > Do it says, as on the screen: a new chat, or the picked bot's Bot Chat, found as its Bots row finds it and sent to by that id, which acted names (Eric, 2026-11-11, #2211). The widget has no long press for another. As Send to Hermes, it never makes a bot's first Bot Chat off screen (it says to open it in Conduit), and while the bot list can't be read it says so rather than send to a new chat in the picked bot's place.
+- The small size shows its top card's Not now and Done, and never Do it. HomeView shows only small widgets, can't open Conduit and sends button taps to the iPhone, so the buttons are what a small widget can do there; it is one screen a household shares, and a widget can't tell it's on HomeView, so a visitor can't send work to Hermes from it. "%lld more waiting" is left off the small size to make room (2026-11-15, #2587, issue 2561).
 - A pick's Ask isn't offered as Do it in the widget: its words are for the user to change before sending, and the widget has no composer; the card opens instead (#2194).
 - The rows are the screen's open cards: follow-ups and report items, not done, put off, held for the morning brief, a suggestion, or a whole report or brief (#2194).
 - Every write to the widget's saved read (the widget's reads, Done and Not now, the app's Do it mark and notes) reads what's saved and writes its change as one step, coordinated across the app and the widget (removing it too), so one never undoes another's: a lost sent mark would let a card be sent twice. The widget's read checks its pass again once coordinated, and a Done or Not now note lands only on the dashboard it was pressed on (#2220, issue 2213).
 
 **Open gaps**
-- Not tried on a device: a press with Conduit not running, a token that expires, and a push's reload.
+- Not tried on a device: a press with Conduit not running, a token that expires, and a push's reload; and the small size's Not now and Done on a HomeView (the issue's reporter offered to test).
+- Do it on the small size as an opt-in, for a household of one (Eric, 2026-11-15: not ruled out, later).
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-15, #2587 (the small size's Not now and Done, for Apple HomeView; issue 2561); 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
