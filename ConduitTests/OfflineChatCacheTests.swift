@@ -4051,10 +4051,18 @@ final class OfflineChatCacheTests: XCTestCase {
         // kept across a later narrowing.
         state.reconciliation = AppState.Reconciliation(token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a"])
         state.handleStreamEvent(.messageDelta(sessionId: "rt-elsewhere", text: ","))
-        XCTAssertEqual(state.reconciliation?.reboundSessionIDs, ["rt-elsewhere"])
+        XCTAssertEqual(state.reconciliation?.reboundSessionIDs, ["rt-elsewhere": "a"])
         XCTAssertEqual(state.reconciliation?.bufferedEvents.count, 1, "The screen's reconcile buffer takes the rebound delta")
         XCTAssertTrue(state.eventBelongsToActiveSession("rt-elsewhere"), "…and the screen applies it when it replays")
         XCTAssertEqual(state.followedChat(answering: ["a"])?.rows.last?.content, "Once upon a time,")
+
+        // A resume of the same chat keeps the rebound id; one of another
+        // chat, which overtook this open, drops it (and the replay filter
+        // drops its buffered words with it).
+        let rebound = state.reconciliation?.reboundSessionIDs ?? [:]
+        XCTAssertEqual(AppState.Reconciliation.rebound(rebound, keptFor: ["a", "rt-a"]), ["rt-elsewhere": "a"])
+        XCTAssertEqual(AppState.Reconciliation.rebound(rebound, keptFor: ["b"]), [:],
+                       "Chat b's open never takes chat a's rebound id")
     }
 
     /// Issue 2577: a followed chat's reply that ends while its open is still

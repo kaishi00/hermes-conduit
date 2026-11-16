@@ -37,8 +37,15 @@ extension AppState {
         var bufferedGenerations: [Int?] = []
         /// Runtime ids Hermes rebound the chat being opened to while it was
         /// away, routed to the screen before the open knew them (issue
-        /// 2503): accepted, and kept when the resume narrows the set.
-        var reboundSessionIDs: Set<String> = []
+        /// 2503), each with the chat on screen it was routed for: accepted,
+        /// and kept when the resume narrows the set to that chat's ids only.
+        var reboundSessionIDs: [String: String] = [:]
+
+        /// The rebound ids routed for the conversation a resume addressed
+        /// (`ids`); one routed for an open this one overtook is dropped.
+        static func rebound(_ rebound: [String: String], keptFor ids: Set<String>) -> [String: String] {
+            rebound.filter { ids.contains($0.value) }
+        }
 
         init(
             token: UUID,
@@ -51,7 +58,7 @@ extension AppState {
             streamSessionIDAtBoundary: String? = nil,
             bufferedEvents: [StreamEvent] = [],
             bufferedGenerations: [Int?] = [],
-            reboundSessionIDs: Set<String> = []
+            reboundSessionIDs: [String: String] = [:]
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId

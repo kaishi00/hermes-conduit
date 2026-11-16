@@ -377,7 +377,7 @@ extension AppState {
             // The open's reconcile accepts it from now on, across the
             // resume's narrowing too, so the screen gets it live or replayed.
             if var open = reconciliation {
-                open.reboundSessionIDs.insert(id)
+                open.reboundSessionIDs[id] = activeSessionId
                 open.acceptedSessionIDs.insert(id)
                 reconciliation = open
             }
