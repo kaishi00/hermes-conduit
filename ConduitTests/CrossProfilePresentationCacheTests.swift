@@ -698,8 +698,18 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
+        let chat = session("mac-chat", profile: "atlas")
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.keepOutgoingDashboardRuntimeIfCombined(
+            mac.id, switchingTo: vps.id, roster: [], profiles: ["default", "atlas"], chats: [chat]
+        )
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        // Its profiles stay on Chats' strip and its chats in All from the
+        // switch on, read anew on the next pass (Eric, 2026-11-16).
+        XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["mac-chat"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.first?.combinedDashboardID, mac.id)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.at, Date.distantPast)
 
         appState.setDashboardCombined(vps.id, false)
 

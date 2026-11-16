@@ -105,18 +105,25 @@ struct CombinedDashboardBotPortrait: View {
                 }
             }
             Button(action: open) {
+                // As tall as the name row with its ⓘ on this dashboard's.
                 Text(bot.displayLabel)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                    .frame(minHeight: 32)
+                    .frame(minHeight: 44)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle())
             // The portrait says it, name and all.
             .accessibilityHidden(true)
+            // The status line's place this dashboard's portraits keep, so
+            // every row of the mixed grid is the same height (Eric,
+            // 2026-11-16, who saw the rows spaced apart by dashboard).
+            Color.clear
+                .frame(width: 1, height: 44)
+                .accessibilityHidden(true)
         }
         .onDrop(of: [UTType.text], delegate: LiftedBotDrop { dragged in
             // Back on its own place: taken here and left where it was.

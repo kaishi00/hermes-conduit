@@ -243,6 +243,11 @@ final class AppState: ObservableObject {
     /// read through and when: a new kept connection reads them again, and
     /// so does a pass past `keptDashboardProfilesMaxAge`.
     var keptDashboardProfiles: [UUID: (bridge: ObjectIdentifier, profiles: [String], at: Date)] = [:]
+    /// The dashboard whose connection's sync has settled (its chat list and
+    /// bots in), before the reads that follow it: another combined
+    /// dashboard's bot opens from here rather than after them. Cleared as
+    /// a switch starts.
+    var chatSyncSettledDashboardID: UUID?
     /// Each other combined dashboard's newest chats (all-live stage 4b),
     /// read through its kept connection for the profile it last used.
     @Published var combinedDashboardChats: [UUID: CombinedDashboardChats] = [:]

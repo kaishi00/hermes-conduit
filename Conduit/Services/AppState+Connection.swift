@@ -616,6 +616,7 @@ extension AppState {
             // before the reads below.
             await botEvidence.value
             guard let continuation = synced else { return }
+            if self.client === client { chatSyncSettledDashboardID = activeDashboardID }
             continuationPurpose = continuation.purpose
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent

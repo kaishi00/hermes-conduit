@@ -112,7 +112,10 @@ extension AppState {
     /// retirement then finds neither and closes nothing.
     /// `roster`: the outgoing dashboard's bots as it showed them, taken
     /// before the switch's preparation clears Bot Mode's state.
-    func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile]) {
+    func keepOutgoingDashboardRuntimeIfCombined(
+        _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
+        profiles: [String] = [], chats: [SessionSummary] = []
+    ) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
               // An edited address not yet taken up: this connection is to
@@ -131,6 +134,25 @@ extension AppState {
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
         seedCombinedDashboardBots(outgoingID, from: roster, client: client)
+        // Its profiles stay on Chats' strip too, from the list it had, and
+        // its chats are read for All at once rather than on the next poll
+        // (Eric, 2026-11-16, who saw the strip lose them after a switch).
+        if !profiles.isEmpty {
+            keptDashboardProfiles[outgoingID] = (ObjectIdentifier(bridge), profiles, Date())
+        }
+        if !chats.isEmpty, combinedDashboardChats[outgoingID] == nil {
+            // Marked as read long ago, so the next pass reads them anew.
+            combinedDashboardChats[outgoingID] = CombinedDashboardChats(
+                bridge: ObjectIdentifier(bridge),
+                profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
+                sessions: chats.map { row in
+                    var row = row
+                    row.combinedDashboardID = outgoingID
+                    return row
+                },
+                at: .distantPast
+            )
+        }
         self.client = nil
         dashboardTicketBridge = nil
         // The one on screen counts too, and the target, if kept, is about

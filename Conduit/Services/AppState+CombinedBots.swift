@@ -275,7 +275,18 @@ extension AppState {
         if zooms { botZoom.tap(bot.name) }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.switchDashboard(to: dashboardID)
+            // The chat opens as soon as the switch's sync settles there (its
+            // bots in), not after the reads that follow it (Eric,
+            // 2026-11-16: the open took too long).
+            let switching = CombinedSwitchUnderWay()
+            Task { @MainActor in
+                await self.switchDashboard(to: dashboardID)
+                switching.finished = true
+            }
+            while !switching.finished,
+                  !(self.activeDashboardID == dashboardID && self.chatSyncSettledDashboardID == dashboardID) {
+                try? await Task.sleep(nanoseconds: 40_000_000)
+            }
             // Another dashboard picked meanwhile owns the screen.
             guard self.activeDashboardID == dashboardID else {
                 // No chat comes: the arm goes, so a namesake here never
@@ -286,4 +297,10 @@ extension AppState {
             self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
         }
     }
+}
+
+/// A switch an open of another dashboard's bot started, until it returns.
+@MainActor
+private final class CombinedSwitchUnderWay {
+    var finished = false
 }
