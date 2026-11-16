@@ -50,7 +50,6 @@ extension AppState {
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
             if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
                now.timeIntervalSince(last.at) < Self.combinedDashboardChatsMaxAge { continue }
-            let earlier = combinedDashboardChats[id].flatMap { $0.bridge == bridge ? $0 : nil }
             var sessions: [SessionSummary] = []
             var answered = false
             var stale = false
@@ -67,9 +66,10 @@ extension AppState {
                     break
                 }
                 // An answer with no list (an error body) is a failed read:
-                // that profile keeps what it showed.
+                // that profile keeps what it shows now, the list kept
+                // through a reconnect or an overlapping read's included.
                 guard let batch = response?["sessions"] as? [Any] else {
-                    let kept = earlier?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
+                    let kept = combinedDashboardChats[id]?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
                     sessions = V2FilterSelection.mergedByRecency(sessions, kept)
                     continue
                 }

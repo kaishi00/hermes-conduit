@@ -879,10 +879,9 @@ struct V2SegmentedControl<Value: Hashable>: View {
 
 
 extension V2ProfileStrip {
-    /// A chip's spoken value: what waits there, then its unread line, which
-    /// the one chip words as another profile's.
-    /// What waits, then what else the chip says: its unread mark, or
-    /// another dashboard's name.
+    /// A chip's spoken value: what waits there, then what else the chip
+    /// says (its unread line, which the one chip words as another
+    /// profile's, or another dashboard's name).
     static func spokenValue(waiting: Int, also: String?) -> String {
         [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you", table: .chat) : nil, also]
             .compactMap { $0 }.joined(separator: ", ")

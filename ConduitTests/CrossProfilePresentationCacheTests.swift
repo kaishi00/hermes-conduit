@@ -1285,12 +1285,12 @@ extension CrossProfilePresentationCacheTests {
         let profiles = appState.profiles
         appState.profiles = ["default", "work"]
         appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
-        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All")
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"], "in All")
         // A dashboard with one profile still offers All in a group, whose
         // other dashboards' profiles it lists (#2637 review).
         appState.profiles = ["default"]
         XCTAssertTrue(appState.allProfilesChatsAvailable)
-        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All with one profile")
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"], "in All with one profile")
         appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
         appState.profiles = profiles
         let row = try XCTUnwrap(rows.first)

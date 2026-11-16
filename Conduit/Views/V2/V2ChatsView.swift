@@ -490,7 +490,13 @@ struct V2ChatsView: View, Equatable {
 
     /// What leads a row's list id: nothing outside All, else its profile.
     private func rowScope(_ session: SessionSummary) -> String {
-        appState.isAllProfilesChatsOn ? appState.rowProfile(session) + "\u{1F}" : ""
+        // Another dashboard's row is scoped by its dashboard and its own
+        // profile, so two of its profiles' chats never share an id.
+        guard appState.isAllProfilesChatsOn else { return "" }
+        if let dashboard = session.combinedDashboardID {
+            return dashboard.uuidString + "\u{1F}" + (session.profile ?? "") + "\u{1F}"
+        }
+        return appState.rowProfile(session) + "\u{1F}"
     }
 
     private func profileBadge(for session: SessionSummary) -> V2ProfileBadge? {
