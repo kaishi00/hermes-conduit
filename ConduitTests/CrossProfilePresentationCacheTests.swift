@@ -1371,6 +1371,13 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsPulse(force: true)
         XCTAssertEqual(appState.pulseDashboardChips.first?.unseen, 3)
 
+        // During a call the switch is refused, and nothing opens.
+        appState.isNativeHermesCallActive = true
+        appState.openCombinedPulse(mac.id)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "a call keeps the dashboard")
+        XCTAssertNil(appState.pulseOpenRequest)
+        appState.isNativeHermesCallActive = false
+
         appState.openCombinedPulse(mac.id)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertTrue(appState.client === outgoing, "switched through the kept connection")
