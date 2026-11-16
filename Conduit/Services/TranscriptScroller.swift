@@ -1514,8 +1514,7 @@ final class TranscriptScroller: ObservableObject {
             return resolveSnapshotRestorationDestination(snapshot)
         case .pendingClarify(let messageID, let fallbackSnapshot):
             if let target = targetCache.targets.first(where: { $0.id == messageID }),
-               let clarify = target.message.clarify,
-               clarify.needsAnswer {
+               ChatResumeCoordinator.isWaitingOnUser(target.message) {
                 return .anchor(messageID)
             }
             // The answer may have landed after reconciliation selected this

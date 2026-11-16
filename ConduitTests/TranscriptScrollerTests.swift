@@ -1191,6 +1191,33 @@ final class TranscriptScrollerTests: XCTestCase {
         )
     }
 
+    private func approvalMessage(status: ApprovalActivity.Status) -> ChatMessage {
+        ChatMessage(
+            id: "m5", role: .approval, content: "Run the deploy?", timestamp: "2026-01-01T00:00:00Z",
+            approval: ApprovalActivity(
+                sessionId: "a", command: "deploy", description: "Run the deploy?",
+                choices: nil, allowPermanent: false, smartDenied: false, status: status
+            )
+        )
+    }
+
+    private func inputMessage(status: InputPromptActivity.Status) -> ChatMessage {
+        ChatMessage(
+            id: "m5", role: .inputPrompt, content: "Verification code", timestamp: "2026-01-01T00:00:00Z",
+            inputPrompt: InputPromptActivity(requestId: "srq-m5", sessionId: "a", kind: .vaultCode, status: status)
+        )
+    }
+
+    private func connectionMessage(status: ConnectionActivity.Status, settled: Bool = false) -> ChatMessage {
+        // A connect card is live-only: ChatMessage's init doesn't take it.
+        var row = ChatMessage(id: "m5", role: .connection, content: "Connect apps", timestamp: "2026-01-01T00:00:00Z")
+        row.connection = ConnectionActivity(
+            opID: "op-m5", sessionId: "a", seq: 1, deadline: nil, toolCallID: nil,
+            targets: [], suggested: ["gmail"], settled: settled, status: status
+        )
+        return row
+    }
+
     /// Every row has a frame, so a saved place is made as soon as it's
     /// asked for: no ticks, no reveal.
     func testRestorationPlacesTheSavedRowAtTheTopAtOnce() {
@@ -1229,6 +1256,75 @@ final class TranscriptScrollerTests: XCTestCase {
         XCTAssertEqual(surface.contentOffsetY, 1950, "the pending question takes priority over m2")
         XCTAssertNil(scroller.restoration)
         XCTAssertEqual(scroller.topVisibleMessageID, "m5")
+    }
+
+    func testEveryWaitingDecisionOverridesTheSavedPlace() {
+        let cards = [
+            approvalMessage(status: .pending), approvalMessage(status: .error),
+            inputMessage(status: .pending), inputMessage(status: .error),
+            connectionMessage(status: .open), connectionMessage(status: .error),
+        ]
+        for card in cards {
+            let (scroller, surface) = makeScroller()
+            surface.insetTop = 50
+            var messages = Self.messages(0..<10)
+            messages[5] = card
+            XCTAssertEqual(ChatResumeCoordinator.pendingClarifyMessageID(in: messages), "m5")
+            scroller.transcriptChanged(messages: messages, transcriptRevision: 2, viewportTransitionGeneration: 1)
+            scroller.restorationRequested(pendingClarifyRequest(scroller, row: 5, fallbackRow: 2), transcriptRevision: 2)
+            XCTAssertEqual(surface.contentOffsetY, 1950, "the waiting card takes priority over m2")
+            XCTAssertNil(scroller.restoration)
+            XCTAssertEqual(scroller.topVisibleMessageID, "m5")
+        }
+    }
+
+    /// An answer can land after reconciliation picked its card, but before
+    /// the rows arrive at the scroller. That must still restore the fallback.
+    func testADecisionNoLongerWaitingFallsBackToTheSavedPlace() {
+        let cards: [(ChatMessage, ChatMessage)] = [
+            (approvalMessage(status: .pending), approvalMessage(status: .submitting)),
+            (approvalMessage(status: .pending), approvalMessage(status: .approved)),
+            (approvalMessage(status: .pending), approvalMessage(status: .rejected)),
+            (approvalMessage(status: .pending), approvalMessage(status: .expired)),
+            (inputMessage(status: .pending), inputMessage(status: .submitting)),
+            (inputMessage(status: .pending), inputMessage(status: .submitted)),
+            (inputMessage(status: .pending), inputMessage(status: .skipped)),
+            (inputMessage(status: .pending), inputMessage(status: .expired)),
+            (connectionMessage(status: .open), connectionMessage(status: .sending)),
+            (connectionMessage(status: .open), connectionMessage(status: .open, settled: true)),
+        ]
+        for (waiting, settled) in cards {
+            let (scroller, surface) = makeScroller()
+            surface.insetTop = 50
+            var messages = Self.messages(0..<10)
+            messages[5] = waiting
+            scroller.transcriptChanged(messages: messages, transcriptRevision: 2, viewportTransitionGeneration: 1)
+            scroller.restorationRequested(pendingClarifyRequest(scroller, row: 5, fallbackRow: 2), transcriptRevision: 3)
+            XCTAssertEqual(scroller.mode, .restoring)
+
+            messages[5] = settled
+            scroller.transcriptChanged(messages: messages, transcriptRevision: 3, viewportTransitionGeneration: 1)
+            XCTAssertEqual(surface.contentOffsetY, 750, "a card no longer waiting leaves the saved place")
+            XCTAssertNil(scroller.restoration)
+            XCTAssertEqual(scroller.topVisibleMessageID, "m2")
+        }
+    }
+
+    func testASettledDecisionWithoutASavedPlaceFallsBackToLatest() {
+        let (scroller, surface) = makeScroller()
+        var messages = Self.messages(0..<10)
+        messages[5] = approvalMessage(status: .approved)
+        scroller.transcriptChanged(messages: messages, transcriptRevision: 2, viewportTransitionGeneration: 1)
+        scroller.restorationRequested(
+            ChatResumeRestorationRequest(
+                generation: 9, sessionKey: keyA,
+                destination: .pendingClarify(messageID: "m5", fallbackSnapshot: nil)
+            ),
+            transcriptRevision: 2
+        )
+        XCTAssertEqual(surface.contentOffsetY, 3200)
+        XCTAssertTrue(scroller.isFollowingLatest)
+        XCTAssertNil(scroller.restoration)
     }
 
     func testAnAnsweredQuestionFallsBackToTheSavedPlace() {

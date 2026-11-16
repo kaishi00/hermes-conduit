@@ -3657,6 +3657,12 @@ final class AppState: ObservableObject {
     /// lost its send to an ownership fence, and only an authoritative replay
     /// of the still-open request can make it answerable again.
     var liveInputPromptSubmissions = Set<String>()
+    /// Clarify answers this device is sending right now, counted by request
+    /// id (a form sends its questions one after another; separate cards'
+    /// questions can overlap). Like `liveApprovalSubmissions`: a reopened
+    /// chat keeps a `.submitting` question whose answer is still on its way,
+    /// relay answers included, instead of reading it as lost (issue 2571).
+    var liveClarifySubmissions = [String: Int]()
     /// Connect-card answers on their way, by operation: which submission
     /// and the seq it went out at. A resume that rebuilds the card keeps
     /// its buttons waiting, and only that submission's failure reopens them.
