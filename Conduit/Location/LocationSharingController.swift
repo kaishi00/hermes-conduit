@@ -361,7 +361,9 @@ final class LocationSharingController: ObservableObject {
         unsent.fix = nil
         unsent.events = []
         unsent.spotEntries = []
-        saveUnsent()
+        // A write that fails (a full disk) leaves the dropped queue in the
+        // file whatever the config: tried again until it lands.
+        if !saveUnsent() { unsentDroppedWhileUnreadable = true }
     }
 
     func reconfigureMonitors() {

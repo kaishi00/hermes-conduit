@@ -998,6 +998,8 @@ extension AppState {
         activeSessionTitle = newTitle
         let previousTurnState = turnState
         let token = beginReconciliation()
+        // A new chat takes no rebound id routed for the chat it leaves.
+        reconciliation?.reboundSessionIDs = [:]
         turnState = .synchronizing
         let created = await createAndReconcileSession(
             using: client,

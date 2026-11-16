@@ -4197,6 +4197,14 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(AppState.Reconciliation.rebound(rebound, keptFor: ["a", "rt-a"]), ["rt-elsewhere": "a"])
         XCTAssertEqual(AppState.Reconciliation.rebound(rebound, keptFor: ["b"]), [:],
                        "Chat b's open never takes chat a's rebound id")
+
+        // Hermes binds the id to another chat while this open is pending:
+        // that chat's words aren't buffered for this one.
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "c", profile: state.activeProfile, source: .resume)
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-elsewhere", text: " Chat c's words."))
+        XCTAssertNil(state.reconciliation?.reboundSessionIDs["rt-elsewhere"])
+        XCTAssertEqual(state.reconciliation?.bufferedEvents.count, 1, "Chat c's delta isn't buffered for chat a's open")
+        XCTAssertFalse(state.eventBelongsToActiveSession("rt-elsewhere"))
     }
 
     /// Issue 2577: a followed chat's reply that ends while its open is still

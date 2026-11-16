@@ -322,6 +322,7 @@ extension AppState {
     }
 
     private func bufferIfReconciling(_ event: StreamEvent, turnGeneration: Int?) -> Bool {
+        dropReboundIDIfMovedOn(sessionID(for: event))
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
