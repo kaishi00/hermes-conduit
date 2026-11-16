@@ -261,10 +261,14 @@ extension AppState {
             return !followedChat(chat, isConversation: durable)
         }
         // Not rebound in the index: an id that is another listed chat's own
-        // now (an alias the chat kept that Hermes made a chat of its own)
-        // isn't this one's either.
-        guard chat.durableSessionID != nil, chat.profile == activeProfile,
-              let row = owningSessionRow(for: id), row.id == id || row.storedSessionId == id else { return false }
+        // now (an alias the chat kept that Hermes made a chat of its own),
+        // or one another row now carries too, isn't this one's either. The
+        // catalog is the profile on screen's, so a copy of another
+        // profile's chat (or a Bot Chat, with no durable id) goes by its
+        // ids alone, as followedChat(_:isConversation:) does.
+        guard let own = chat.durableSessionID, chat.profile == activeProfile else { return false }
+        if isSharedAlias(id), own != id { return true }
+        guard let row = owningSessionRow(for: id), row.id == id || row.storedSessionId == id else { return false }
         return !followedChat(chat, isConversation: id)
     }
 
@@ -300,7 +304,13 @@ extension AppState {
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
               let dashboardID = activeDashboardID else { return }
         // Its own row, never one that only borrows its id (issue 2602).
-        let listed = owningSessionRow(for: oldID)
+        // The screen's own conversation, as its scroll identity names it,
+        // wins over the row that owns the open id now: Hermes may have
+        // handed that id to another chat since the open.
+        let screen = activeChatScrollSessionIdentity
+        let screenRow = screen.contains(oldID) && screen.profile == ChatScrollIdentityNormalization.profile(activeProfile)
+            ? screen.canonicalSessionID.flatMap { owningSessionRow(for: $0) } : nil
+        let listed = screenRow ?? owningSessionRow(for: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
         let ownIDs = listed.map { followedSessionIDs(for: $0.id) }
@@ -310,8 +320,12 @@ extension AppState {
         // bound it to a chat other than its own row's.
         let indexed = conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
+        // What the caller passed, less any id another listed row owns or
+        // carries too (the pane's known ids, or the open id Hermes handed
+        // on), so a borrowed or shared id never reaches this copy.
+        let others = listed.map { sessionIDsOfOtherRows(than: $0) } ?? []
         let chat = BackgroundChat(
-            sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }),
+            sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
             title: activeSessionTitle,
             dashboardID: dashboardID,

@@ -886,10 +886,24 @@ extension AppState {
     /// shared id never redirects its events or its save (issue 2602).
     func followedSessionIDs(for sessionID: String) -> Set<String> {
         guard let row = owningSessionRow(for: sessionID) else { return [sessionID] }
-        let others = Set([sessions, cronSessions].joined().filter { $0.id != row.id }
+        let others = sessionIDsOfOtherRows(than: row)
+        return Set(row.nestingIDs.filter { !others.contains($0) }).union([sessionID])
+    }
+
+    /// The ids listed rows other than `row` answer to, its own id and
+    /// stored id left out: none of them is `row`'s chat's (issue 2602).
+    func sessionIDsOfOtherRows(than row: SessionSummary) -> Set<String> {
+        Set([sessions, cronSessions].joined().filter { $0.id != row.id }
             .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds })
             .subtracting([row.id, row.storedSessionId].compactMap { $0 })
-        return Set(row.nestingIDs.filter { !others.contains($0) }).union([sessionID])
+    }
+
+    /// An alias at least two listed rows carry, none as its own id or
+    /// stored id: it is neither's chat (issue 2602).
+    func isSharedAlias(_ sessionID: String) -> Bool {
+        let rows = Array([sessions, cronSessions].joined())
+        guard !rows.contains(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) else { return false }
+        return rows.filter { $0.alternateIds.contains(sessionID) }.count > 1
     }
 
     func knownSessionIDs(for sessionID: String) -> Set<String> {
