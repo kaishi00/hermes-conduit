@@ -24,6 +24,9 @@ struct CombinedDashboardBotPortrait: View {
     let section: CombinedDashboardBotsSection
     /// Another portrait dropped on this one: it takes this one's place.
     let onDrop: (String) -> Void
+    /// VoiceOver's way to arrange the grid, as a drag does.
+    var onMoveEarlier: (() -> Void)?
+    var onMoveLater: (() -> Void)?
 
     @Environment(\.v2Shell) private var shell
     @Environment(\.v2OpenBeside) private var openBeside
@@ -93,6 +96,14 @@ struct CombinedDashboardBotPortrait: View {
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(verbatim: section.badge.name))
             .accessibilityHint(AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
+            .accessibilityActions {
+                if let onMoveEarlier {
+                    Button(AppLocalization.string("Move Earlier"), action: onMoveEarlier)
+                }
+                if let onMoveLater {
+                    Button(AppLocalization.string("Move Later"), action: onMoveLater)
+                }
+            }
             Button(action: open) {
                 Text(bot.displayLabel)
                     .scaledFont(.subheadline.weight(.semibold))

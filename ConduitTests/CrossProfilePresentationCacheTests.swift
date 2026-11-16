@@ -698,7 +698,7 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         appState.setDashboardCombined(vps.id, false)
@@ -732,12 +732,12 @@ extension CrossProfilePresentationCacheTests {
         registry.dashboards[0].pendingURL = "https://127.0.0.9:1"
         appState.savedDashboardRegistry = registry
 
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "the old address's connection isn't kept")
 
         registry.dashboards[0].pendingURL = nil
         appState.savedDashboardRegistry = registry
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         // Kept, then the address moves on: the switch back lets it go.
@@ -750,7 +750,7 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: "https://127.0.0.9:1", dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         appState.removeDashboard(vps.id)
@@ -788,7 +788,7 @@ extension CrossProfilePresentationCacheTests {
         appState.connection = onScreen.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: dashboards[3].normalizedURL, dashboardID: dashboards[3].id))
 
-        appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id, roster: [])
 
         XCTAssertEqual(appState.keptDashboardRuntimes.count, 4)
         XCTAssertTrue(appState.takeKeptDashboardRuntime(dashboards[0].id, profile: "default")?.client === kept[0], "the oldest kept is the target, and is taken up")
@@ -818,7 +818,7 @@ extension CrossProfilePresentationCacheTests {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         appState.connection = outgoing.connection
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         let id = ObjectIdentifier(outgoing)
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profiles: ["default"], sessions: [], at: Date())

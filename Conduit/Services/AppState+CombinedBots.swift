@@ -155,7 +155,13 @@ extension AppState {
     /// place they have now, so a switch never moves them.
     func settleCombinedBotsHomeOrder(_ shown: [String]) {
         guard combinedBotsHomeRostersIn else { return }
-        let settled = CombinedBotsHomeOrder.settled(combinedBotsHomeOrder, shown: shown)
+        // A dashboard out of the group (removed, or no longer combined)
+        // leaves the order with its bots.
+        let group = Set(savedDashboardRegistry.dashboards.map(\.id).filter { isInCombinedGroup($0) }.map(\.uuidString))
+        let kept = combinedBotsHomeOrder.filter { key in
+            key.split(separator: "|", maxSplits: 1).first.map { group.contains(String($0)) } ?? false
+        }
+        let settled = CombinedBotsHomeOrder.settled(kept, shown: shown)
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
         CombinedBotsHomeOrder.save(settled, defaults)
