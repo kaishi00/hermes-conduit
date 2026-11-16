@@ -699,7 +699,10 @@ extension CrossProfilePresentationCacheTests {
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
         let chat = session("mac-chat", profile: "atlas")
-        appState.combinedDashboardChats[mac.id] = nil
+        // A list read on an earlier visit gives way to the one on screen.
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(again), profiles: ["old"], sessions: [session("old-chat", profile: "old")], at: Date()
+        )
         appState.keepOutgoingDashboardRuntimeIfCombined(
             mac.id, switchingTo: vps.id, roster: [], profiles: ["default", "atlas"], chats: [chat]
         )
@@ -710,6 +713,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["mac-chat"])
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.first?.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.at, Date.distantPast)
+        XCTAssertNotNil(appState.combinedDashboardChats[mac.id]?.seededAt, "a read started before it can't overwrite it")
+        // Its socket dropping keeps the strip's profiles with its list.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])
 
         appState.setDashboardCombined(vps.id, false)
 
@@ -1332,6 +1339,16 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
         appState.keptDashboardJSONReader = reader
+        // A switch's seed stands against a read started before it (#2644
+        // review), and gives way to one started after.
+        let listed = try XCTUnwrap(appState.combinedDashboardChats[mac.id])
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: listed.bridge, profiles: listed.profiles, sessions: [], at: .distantPast, seededAt: Date()
+        )
+        await appState.readOtherCombinedDashboardsChats(force: true, now: Date(timeIntervalSinceNow: -5))
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.isEmpty, true, "the older read is stale")
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
 
         let target = appState.combinedChatTarget(row, in: mac.id)
         XCTAssertEqual(target.dashboardID, mac.id)

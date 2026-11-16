@@ -21,6 +21,10 @@ struct CombinedDashboardChats: Equatable {
     let profiles: [String]
     let sessions: [SessionSummary]
     let at: Date
+    /// When a switch seeded it from the list on screen (`at` is then long
+    /// ago, so the next pass reads anew): a read started before this
+    /// can't overwrite it (#2644 review).
+    var seededAt: Date? = nil
 }
 
 extension AppState {
@@ -61,10 +65,11 @@ extension AppState {
                 let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, opened, or out of the group while the read was
-                // out, or a read started later already stored its answer:
-                // this one is stale.
+                // out, or a read started later (or a switch's seed) already
+                // stored its answer: this one is stale.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
-                      isInCombinedGroup(id), !(combinedDashboardChats[id].map { $0.at > now } ?? false) else {
+                      isInCombinedGroup(id),
+                      !(combinedDashboardChats[id].map { $0.at > now || ($0.seededAt.map { $0 > now } ?? false) } ?? false) else {
                     stale = true
                     break
                 }

@@ -275,18 +275,7 @@ extension AppState {
         if zooms { botZoom.tap(bot.name) }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            // The chat opens as soon as the switch's sync settles there (its
-            // bots in), not after the reads that follow it (Eric,
-            // 2026-11-16: the open took too long).
-            let switching = CombinedSwitchUnderWay()
-            Task { @MainActor in
-                await self.switchDashboard(to: dashboardID)
-                switching.finished = true
-            }
-            while !switching.finished,
-                  !(self.activeDashboardID == dashboardID && self.chatSyncSettledDashboardID == dashboardID) {
-                try? await Task.sleep(nanoseconds: 40_000_000)
-            }
+            await self.switchToCombinedDashboardUntilSettled(dashboardID)
             // Another dashboard picked meanwhile owns the screen.
             guard self.activeDashboardID == dashboardID else {
                 // No chat comes: the arm goes, so a namesake here never
@@ -295,6 +284,24 @@ extension AppState {
                 return
             }
             self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
+        }
+    }
+
+    /// Switches to another combined dashboard and returns as soon as the
+    /// switch's sync settles there, not after the reads that follow it
+    /// (Eric, 2026-11-16: opening another dashboard's bot took too long).
+    /// Its bot, its Needs you row and its Pulse chip all open this way
+    /// (#2644 review). Returns early on cancellation too; the caller checks
+    /// which dashboard is on screen.
+    func switchToCombinedDashboardUntilSettled(_ dashboardID: UUID) async {
+        let switching = CombinedSwitchUnderWay()
+        Task { @MainActor in
+            await self.switchDashboard(to: dashboardID)
+            switching.finished = true
+        }
+        while !switching.finished, !Task.isCancelled,
+              !(activeDashboardID == dashboardID && chatSyncSettledDashboardID == dashboardID) {
+            try? await Task.sleep(nanoseconds: 40_000_000)
         }
     }
 }

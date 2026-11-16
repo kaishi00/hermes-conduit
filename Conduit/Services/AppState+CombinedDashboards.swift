@@ -142,17 +142,25 @@ extension AppState {
         if !profiles.isEmpty {
             keptDashboardProfiles[outgoingID] = (ObjectIdentifier(bridge), profiles, .distantPast)
         }
-        if !chats.isEmpty {
-            // Marked as read long ago, so the next pass reads them anew.
-            combinedDashboardChats[outgoingID] = CombinedDashboardChats(
-                bridge: ObjectIdentifier(bridge),
-                profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
-                sessions: chats.map { row in
+        // An entry even with no chats listed, so its profiles outlast the
+        // kept connection dropping; one not listed yet keeps the chats it
+        // had (#2644 review).
+        if !chats.isEmpty || !profiles.isEmpty {
+            let rows = chats.isEmpty
+                ? (combinedDashboardChats[outgoingID]?.sessions ?? [])
+                : chats.map { row in
                     var row = row
                     row.combinedDashboardID = outgoingID
                     return row
-                },
-                at: .distantPast
+                }
+            // Marked as read long ago, so the next pass reads them anew;
+            // a read started before now can't overwrite them.
+            combinedDashboardChats[outgoingID] = CombinedDashboardChats(
+                bridge: ObjectIdentifier(bridge),
+                profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
+                sessions: rows,
+                at: .distantPast,
+                seededAt: Date()
             )
         }
         self.client = nil

@@ -240,7 +240,8 @@ extension AppState {
             guard !refusesCombinedSwitchDuringCall() else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.switchDashboard(to: dashboardID)
+                // Open as soon as its sync settles, as its bots do.
+                await self.switchToCombinedDashboardUntilSettled(dashboardID)
                 guard self.activeDashboardID == dashboardID else { return }
                 var own = item
                 own.dashboardID = nil
