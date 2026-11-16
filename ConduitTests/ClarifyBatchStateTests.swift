@@ -1914,6 +1914,15 @@ final class ClarifyFakeSocket: HermesWebSocket {
     private var bufferedFrames: [String] = []
     private let frameLock = NSLock()
 
+    /// Whether the client's receive loop is waiting on this socket now, so
+    /// a test's `cancel` reaches it (one before the loop's first receive
+    /// would find nothing to fail).
+    var hasWaitingReceive: Bool {
+        frameLock.lock()
+        defer { frameLock.unlock() }
+        return receiveContinuation != nil
+    }
+
     func receive() async throws -> URLSessionWebSocketTask.Message {
         try await withCheckedThrowingContinuation { continuation in
             frameLock.lock()

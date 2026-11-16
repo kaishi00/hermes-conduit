@@ -716,6 +716,8 @@ extension CrossProfilePresentationCacheTests {
         let client = HermesClient(connection: HermesConnection(baseUrl: baseURL, ticket: "t"), profile: "default", transportFactory: { transport })
         transport.open(socket)
         try await client.connect()
+        // Also once it has left the kept set (a take-up hands it back).
+        addTeardownBlock { @MainActor in client.disconnect() }
         return client
     }
 
@@ -795,5 +797,225 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertNil(appState.keptDashboardRuntimes[dashboards[1].id])
         XCTAssertFalse(kept[1].isConnected)
+    }
+}
+
+// MARK: - A kept socket that drops
+
+extension CrossProfilePresentationCacheTests {
+    /// Polls `condition` on the main actor, five seconds at most.
+    func waitUntil(_ condition: @escaping @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// A kept dashboard whose socket drops on its own (the server went
+    /// away, not a release of ours) is let go at once, with no switch.
+    func testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
+        appState.connection = outgoing.connection
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        await waitUntil { socket.hasWaitingReceive }
+        socket.cancel(with: .abnormalClosure, reason: nil)
+        await waitUntil { appState.keptDashboardRuntimes[mac.id] == nil }
+
+        XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
+        XCTAssertFalse(kept.client.isConnected)
+    }
+
+    /// A read sent on an earlier visit to a combined dashboard isn't this
+    /// visit's, though the kept bridge is the same one.
+    func testAnAnswerToAnEarlierVisitIsNotThisVisits() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        let earlier = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        XCTAssertTrue(appState.ownsDashboardRuntime(earlier))
+
+        await appState.switchDashboard(to: vps.id)
+        await appState.switchDashboard(to: mac.id)
+
+        let now = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        XCTAssertTrue(now.bridge === earlier.bridge, "the kept bridge came back")
+        XCTAssertFalse(appState.ownsDashboardRuntime(earlier), "but the earlier visit's reads don't land")
+        XCTAssertTrue(appState.ownsDashboardRuntime(now))
+    }
+}
+
+// MARK: - Every combined dashboard live (multi-instance stage 3b)
+
+extension CrossProfilePresentationCacheTests {
+    /// Waits, five seconds at most, for a quiet sign-in: its ticket
+    /// bridge reads cookies off the main actor, so turns alone aren't enough.
+    private func waitForKept(_ id: UUID, in appState: AppState) async {
+        await waitUntil { appState.keptDashboardRuntimes[id] != nil && appState.combinedSignInsUnderWay.isEmpty }
+    }
+
+    /// Once the dashboard on screen is connected, another combined one with
+    /// a saved session signs in beside it, on its own ticket and socket and
+    /// on its own last profile; a switch to it then takes that up.
+    func testTheOtherCombinedDashboardsConnectOnceTheOneOnScreenHas() async throws {
+        final class Counts { var mints: [String] = [] }
+        let counts = Counts()
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { baseURL in
+            counts.mints.append(baseURL)
+            return "vps-ticket"
+        }
+        operations.makeTransport = { transport }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        appState.isConnected = true
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: vps.normalizedURL, ticket: "spent"), dashboardID: vps.id)
+        appState.rememberActiveProfile("coder", for: vps.id)
+        transport.open(socket)
+
+        appState.connectOtherCombinedDashboards()
+        await waitForKept(vps.id, in: appState)
+
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[vps.id])
+        XCTAssertEqual(counts.mints, [vps.normalizedURL], "a fresh ticket for that dashboard alone")
+        XCTAssertEqual(kept.connection.ticket, "vps-ticket")
+        XCTAssertEqual(kept.client.profile, "coder")
+        XCTAssertTrue(kept.client.isConnected)
+        XCTAssertTrue(appState.client === outgoing, "nothing on screen changes")
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+
+        appState.connectOtherCombinedDashboards()
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty, "one already kept doesn't sign in again")
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertTrue(appState.client === kept.client, "the switch takes the background connection up")
+        XCTAssertEqual(counts.mints.count, 1, "no second ticket")
+    }
+
+    /// A dashboard that needs typing, or Face ID this launch hasn't had,
+    /// is left for a tap; and a sign-in that finishes after Conduit left
+    /// the screen keeps nothing.
+    func testACombinedDashboardThatNeedsSomeoneOrFinishesOffScreenIsNotKept() async throws {
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.makeTransport = { transport }
+        final class Box { weak var appState: AppState? }
+        let box = Box()
+        operations.mintTicket = { _ in
+            // Conduit leaves the screen while the ticket is out.
+            box.appState?.isSceneActive = false
+            box.appState?.dropKeptDashboardRuntimesAfterGrace()
+            return "late-ticket"
+        }
+        let (appState, _, vps, _, _) = try await combinedDashboards(operations: operations)
+        box.appState = appState
+        appState.isConnected = true
+
+        XCTAssertFalse(appState.combinedDashboardSignsInQuietly(vps.id), "nothing saved: a tap signs in")
+        KeychainHelper.saveCredentials(
+            DashboardCredentials(baseURL: vps.normalizedURL, username: "eric", password: "pw", requiresFaceID: true),
+            dashboardID: vps.id
+        )
+        appState.faceIDUnlockedThisLaunch = false
+        XCTAssertFalse(appState.combinedDashboardSignsInQuietly(vps.id), "behind a Face ID unlock this launch hasn't had")
+        appState.connectOtherCombinedDashboards()
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
+
+        KeychainHelper.clearCredentials(dashboardID: vps.id)
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: vps.normalizedURL, ticket: "spent"), dashboardID: vps.id)
+        transport.open(socket)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [vps.id])
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
+        XCTAssertNil(appState.keptDashboardRuntimes[vps.id], "finished after Conduit left the screen: let go")
+    }
+
+    /// The group connects beside a dashboard left out of it too; one with
+    /// an edited address waits for its switch; and one signed out of while
+    /// its ticket was out keeps and saves nothing.
+    func testTheGroupConnectsBesideALeftOutDashboardButNotOneSignedOutOrMoving() async throws {
+        let sockets = [ClarifyFakeSocket(), ClarifyFakeSocket()]
+        final class HandedOut { var count = 0 }
+        let handedOut = HandedOut()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = {
+            defer { handedOut.count += 1 }
+            return sockets[min(handedOut.count, sockets.count - 1)]
+        }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.makeTransport = { transport }
+        final class Box { weak var appState: AppState?; var signOut: UUID? }
+        let box = Box()
+        operations.mintTicket = { baseURL in
+            if let id = box.signOut, let appState = box.appState,
+               appState.savedDashboardRegistry.dashboard(with: id)?.normalizedURL == baseURL {
+                appState.signOutDashboard(id)
+            }
+            return "ticket"
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        box.appState = appState
+        appState.isConnected = true
+        // The one on screen leaves the group; VPS and Pi make it up.
+        let pi = SavedDashboard(id: UUID(), label: "Pi", normalizedURL: "https://127.0.0.3:1", combined: true)
+        appState.savedDashboardRegistry.dashboards[0].combined = false
+        appState.savedDashboardRegistry.dashboards.append(pi)
+        XCTAssertFalse(appState.isInCombinedGroup(mac.id))
+        for id in [vps.id, pi.id] {
+            KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: id)
+        }
+
+        // Pi's address is being edited: it waits. VPS signs in beside Mac.
+        appState.savedDashboardRegistry.dashboards[2].pendingURL = "https://127.0.0.4:1"
+        sockets.forEach { transport.open($0) }
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [vps.id], "beside a dashboard left out of the group")
+        await waitForKept(vps.id, in: appState)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id])
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id])
+
+        // Pi's move is done; it's signed out of while its ticket is out.
+        appState.savedDashboardRegistry.dashboards[2].pendingURL = nil
+        box.signOut = pi.id
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [pi.id])
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "signed out meanwhile: nothing kept")
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: pi.id), "nor saved again")
+
+        // The call-off drops it whatever it signs in with: the re-saved
+        // session stands for one present again by the time it finishes.
+        box.signOut = nil
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: pi.id)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [pi.id])
+        XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
+        appState.letGoCombinedDashboard(pi.id)
+        XCTAssertEqual(appState.combinedSignInsCalledOff, [pi.id])
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: pi.id)
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "called off: nothing kept")
+        XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
+
+        // A browser sign-in's grant goes with Sign Out too, so no later
+        // pass signs it in again.
+        KeychainHelper.saveNativeOAuthTokens(
+            NativeOAuthTokenSet(accessToken: "access", refreshToken: "refresh", expiresAt: 4_000_000_000, provider: "self-hosted", userID: "user"),
+            dashboardID: pi.id
+        )
+        XCTAssertTrue(appState.combinedDashboardSignsInQuietly(pi.id))
+        appState.signOutDashboard(pi.id)
+        XCTAssertFalse(appState.combinedDashboardSignsInQuietly(pi.id), "nothing left to sign in with")
+        appState.connectOtherCombinedDashboards()
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
     }
 }

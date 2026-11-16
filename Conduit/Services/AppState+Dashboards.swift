@@ -397,8 +397,9 @@ extension AppState {
     /// dashboard.
     func stageDashboardMove(_ id: UUID, toNormalizedURL url: String) {
         guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
-        // Its kept connection is to the old address.
-        dropKeptDashboardRuntime(id)
+        // Its kept connection is to the old address, and so is a quiet
+        // sign-in still out.
+        letGoCombinedDashboard(id)
         if let previous = savedDashboardRegistry.dashboards[index].pendingURL, previous != url,
            let credentials = KeychainHelper.loadCredentials(dashboardID: id),
            Self.normalizedDashboardURL(credentials.baseURL) == previous {
@@ -748,15 +749,23 @@ extension AppState {
     struct DashboardRuntimeOwner {
         let dashboardID: UUID?
         let bridge: DashboardTicketBridge
+        /// The visit: a combined dashboard's bridge outlives a switch away
+        /// and back, so the bridge alone can't tell an answer to an earlier
+        /// visit from one to this.
+        var switchGeneration: UInt64 = 0
     }
 
     /// The current dashboard and its bridge; nil without a bridge.
     func currentDashboardRuntimeOwner() -> DashboardRuntimeOwner? {
-        dashboardTicketBridge.map { DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0) }
+        dashboardTicketBridge.map {
+            DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0, switchGeneration: dashboardSwitchGeneration)
+        }
     }
 
     func ownsDashboardRuntime(_ owner: DashboardRuntimeOwner) -> Bool {
-        owner.bridge === dashboardTicketBridge && owner.dashboardID == activeDashboardID
+        owner.bridge === dashboardTicketBridge
+            && owner.dashboardID == activeDashboardID
+            && owner.switchGeneration == dashboardSwitchGeneration
     }
 
     func switchGenerationIsCurrent(_ generation: UInt64) -> Bool {
@@ -781,8 +790,9 @@ extension AppState {
     /// active dashboard this is the full Disconnect teardown, scoped.
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
-        // A combined dashboard kept connected signs out too.
-        dropKeptDashboardRuntime(id)
+        // A combined dashboard kept connected signs out too, and one
+        // signing in quietly keeps nothing.
+        letGoCombinedDashboard(id)
         // The host signed in next reports its own gateways.
         forgetRelayGatewayIDs(of: id)
         // Drafts shared for this dashboard belong to the signed-out user.

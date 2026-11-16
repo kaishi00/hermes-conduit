@@ -7106,7 +7106,9 @@ unlock covers its retry, as it did before for a dashboard already unlocked) · t
 screen's Use Face ID caption (not needed: "unlocks the saved sign-in when
 Conduit opens" still holds) · the saved dashboards list's Signs in with Face ID
 (not needed: the kind of sign-in is unchanged) · README.md (not needed: lists
-the lock only)
+the lock only) · Combine Dashboards (the launch's unlock signs the other combined
+dashboards in quietly once the one on screen has connected; a combined one the
+unlock doesn't cover waits for a tap, see Combined dashboards)
 
 **Code**
 - `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect, through clearSavedPassword)
@@ -7116,11 +7118,12 @@ the lock only)
 - One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, #2423).
 - A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for it after an unlock covered it (the launch's unlock covers the password a dashboard signs in with first) (#2423).
 - The unlock holds while Conduit runs, also after a long time away, as a connected Conduit never asks again on return.
+- Combined dashboards sign in beside the one on screen on this unlock and never ask for one themselves: one behind Face ID that the unlock doesn't cover (the launch had none) waits for a tap (#2599).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-14, #2425 (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
+**Checked:** 2026-11-16, #2599 (combined dashboards sign in on the launch's unlock); 2026-11-14, #2425 (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
 
 ## Which dashboard a launch signs in to
 
@@ -7134,61 +7137,67 @@ phone change to review and Pulse's retry included) · a
 link from another app · Pulse's Quiet for Today (the notification action and its retry) · a widget · a shared draft · Siri · Send to Hermes
 shortcuts · Log to Hermes (not needed: it queues offline and drains on connect) · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
 the background (Health, places, phone sync, pushes) · the on-screen retry of a
-sign-in that failed off screen · README.md
+sign-in that failed off screen · the combined group (one row on the list) ·
+README.md
 
 **Code**
 - Launch: `Conduit/Services/AppState+Connection.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch), `Conduit/Services/AppState+WatchCalls.swift` (setWatchVoiceCallActive), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase)
 - Releases: `Conduit/ConduitApp.swift` (userNotificationCenter didReceive for every tap but a dismissal or Maps directions; the notification, link and Siri routes), `Conduit/CarPlay/CarPlayVoiceSceneDelegate.swift`, `Conduit/Services/AppState+HermesCalls.swift` (setNativeHermesCallActive), `Conduit/Services/AppState+ShortcutSend.swift`, `Conduit/Services/AppState+Pulse.swift` (quietPulseForToday)
-- Setting: `Conduit/Views/SavedDashboardsView.swift`
+- Setting: `Conduit/Views/SavedDashboardsView.swift`; the list: `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen)
 - Tests: `ConduitTests/AppStateLaunchDashboardChoiceTests.swift`
 
 **Rulings**
 - Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #1911).
 - Only a plain open waits. Anything the launch came for that needs Hermes (a notification, Pulse's Quiet for Today, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
 - A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it. A release while it is under way starts no second sign-in (2026-11-07, #1911).
+- The combined group is one row on the list, where its first member stands; a tap opens its last used member (else its first), and the rest connect beside it (see Combined dashboards, #2599).
 - Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in. A push that only arrives meanwhile (a phone change) waits for the pick too, and the connected pass fetches it then (2026-11-07, #1911).
 
 **Open gaps**
 - None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
+**Checked:** 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
 
 ## Combined dashboards
 
 Combine Dashboards in Settings > Saved Dashboards (multi-instance stage 3): the
 dashboards switched on there, two or more, are one group. A combined dashboard
 left while connected keeps its socket and bridge, so a switch back takes them
-up again with only the usual sync (no ticket, no new socket). Lists stay per
-dashboard until stage 4.
+up again with only the usual sync (no ticket, no new socket). Once the
+dashboard on screen has connected, the others sign in quietly beside it and
+are kept the same way. Lists stay per dashboard until stage 4.
 
 **Siblings:** every dashboard switch (Saved Dashboards, the profile picker,
 the top bar's dashboard menu, a widget, a notification, a link, a shared
 draft) · Saved Dashboards' row status (Connected in the background) · Sign
 Out of This Dashboard, Remove Dashboard and an edited address (each lets its
-kept connection go) · Conduit leaving the screen (all kept connections go) ·
-Ask Which Dashboard at Launch (gap: the group as one choice, stage 3b) · Face
-ID for saved dashboards (gap: the group connecting at launch on one unlock,
-stage 3b) · a push from a combined dashboard (gap: opening through its kept
-connection, stage 3c) · the Combine Dashboards caption · README.md · the
+kept connection go) · Conduit leaving the screen (all kept connections go after
+the background grace) · the return to Conduit (the one on screen reconnects,
+then the rest) · the launch dashboard list and Ask Which Dashboard at Launch
+(the group is one row) · Face ID for saved dashboards (the launch's one unlock
+covers the group) · a push from a combined dashboard (gap: opening through its
+kept connection, stage 3c) · the Combine Dashboards caption · README.md · the
 Watch, CarPlay, calls and Siri (not needed: they act on the dashboard on
 screen, and a switch is unchanged for them)
 
 **Code**
-- `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, letGoKeptRuntimesOutsideTheGroup, keepOutgoingDashboardRuntimeIfCombined, keep, takeKeptDashboardRuntime, dropAllKeptDashboardRuntimes), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status)
-- Tests: `ConduitTests/CrossProfilePresentationCacheTests.swift` (testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone, testACombinedDashboardStaysConnectedWhileAnotherIsUsed, testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo, testAnEditedAddressKeepsNothingAndARemovalThatEndsTheGroupLetsGo, testAtTheCapTheSwitchTargetIsTakenUpAndSignOutLetsGo)
+- `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, letGoKeptRuntimesOutsideTheGroup, keepOutgoingDashboardRuntimeIfCombined, keep, takeKeptDashboardRuntime, dropAllKeptDashboardRuntimes, dropKeptDashboardRuntimesAfterGrace, connectOtherCombinedDashboards, combinedDashboardSignsInQuietly, signInCombinedDashboardQuietly), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove, DashboardRuntimeOwner), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client, then the rest of the group), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents, makeDashboardBridge), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status), `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen.listedRows, groupRow)
+- Tests: `ConduitTests/CrossProfilePresentationCacheTests.swift` (testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone, testACombinedDashboardStaysConnectedWhileAnotherIsUsed, testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo, testAnEditedAddressKeepsNothingAndARemovalThatEndsTheGroupLetsGo, testAtTheCapTheSwitchTargetIsTakenUpAndSignOutLetsGo, testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce, testAnAnswerToAnEarlierVisitIsNotThisVisits, testTheOtherCombinedDashboardsConnectOnceTheOneOnScreenHas, testACombinedDashboardThatNeedsSomeoneOrFinishesOffScreenIsNotKept, testTheGroupConnectsBesideALeftOutDashboardButNotOneSignedOutOrMoving)
 
 **Rulings**
 - One group, set in Settings > Saved Dashboards, "Combine Dashboards"; a dashboard left out stays as today, cold until picked (2026-11-13, Eric, multi-instance plan decisions).
 - Every combined dashboard live, up to 4 at once with the one on screen; past that the one kept longest is let go (stage 0's caps).
 - A kept dashboard's events are fenced while another is on screen; taking it up runs the usual sync, which brings its chat current. A kept socket that drops is let go at once; one on another profile than the switch resumes, or to an address the dashboard no longer has, is let go on the switch, which signs in as before. A dashboard with an edited address not yet taken up keeps nothing (#2595 review).
+- A read answered after a switch away and back belongs to the earlier visit and doesn't land, though the kept bridge is the same: the runtime owner carries the visit (#2599, #2595 review).
 - At the cap, the switch's own target is never the one let go: it leaves the kept set by being taken up. Removing a member that leaves the group at one lets the other's kept connection go too (#2595 review).
-- Leaving the screen lets every kept connection go, since iOS suspends the sockets; the next switch signs in as before.
+- Leaving the screen lets every kept connection go after the background grace the one on screen gets (25 s), since iOS suspends the sockets; the next switch signs in as before.
+- The others connect once the one on screen has connected and synced, at launch, on a return and after a switch, in Saved Dashboards order, each on its own ticket, bridge and last profile. Only one that can sign in with nobody there does: a browser sign-in's grant, a saved session, or a saved password (behind Face ID only once this launch's unlock covers it, quick win 2). One that needs typing is left for a tap, and one that fails signs in on its next switch as before. The one on screen needn't be in the group itself, so the group connects whichever dashboard Conduit opens on. One whose address was edited waits for its switch, which settles the move. A sign-in that finishes after its dashboard was signed out of, moved or removed keeps and saves nothing: the sign-out calls it off, and a later pass finds nothing to sign in with, since Sign Out clears the session, the grant and the password (#2599 review). A successful reconnect connects the rest too, one cut short by a trip off screen goes again on the return, and one finishing when a switch has filled the cap keeps nothing (#2599 review).
+- The launch list (and Ask Which Dashboard at Launch) shows the group as one row where its first member stands; a tap opens the last used member, else the first. Removing a member is in Settings > Saved Dashboards.
 
 **Open gaps**
-- Stage 3b: the other combined dashboards connect at launch after one Face ID unlock, and Ask Which Dashboard at Launch lists the group as one choice.
 - Stage 3c: each combined dashboard's state (down, sign-in needed) on its row and in the dashboard menu, a push opening through a kept connection, and memory and battery against stage 0's baseline.
 
-**Checked:** 2026-11-16, #2595.
+**Checked:** 2026-11-16, #2599; 2026-11-16, #2595.
 
 ## App Store screenshots and showcase clips
 

@@ -119,17 +119,183 @@ extension AppState {
         return kept
     }
 
+    /// Signed out of or moved: its kept connection goes, and a quiet sign-in
+    /// still out for it keeps nothing it finishes.
+    func letGoCombinedDashboard(_ id: UUID) {
+        if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
+        dropKeptDashboardRuntime(id)
+    }
+
     func dropKeptDashboardRuntime(_ id: UUID) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
     }
 
-    /// Every kept connection goes: Conduit left the screen (iOS would
-    /// suspend the sockets anyway). Signing out of one dashboard lets
-    /// only its own go.
+    /// Every kept connection goes: Conduit has been off screen past the
+    /// background grace (iOS would suspend the sockets anyway). Signing
+    /// out of one dashboard lets only its own go.
     func dropAllKeptDashboardRuntimes() {
+        // A quiet sign-in still out keeps nothing it finishes.
+        keptDashboardRuntimesGeneration &+= 1
         for id in Array(keptDashboardRuntimes.keys) {
             dropKeptDashboardRuntime(id)
+        }
+    }
+
+    // MARK: - Every combined dashboard live (stage 3b)
+
+    /// Conduit left the screen: the kept connections hold for the same
+    /// grace the one on screen gets, so a quick trip to another app keeps
+    /// them, then go (iOS suspends their sockets).
+    func dropKeptDashboardRuntimesAfterGrace() {
+        keptDashboardRuntimesGraceTask?.cancel()
+        // A quiet sign-in still out keeps nothing it finishes off screen.
+        keptDashboardRuntimesGeneration &+= 1
+        guard !keptDashboardRuntimes.isEmpty else {
+            keptDashboardRuntimesGraceTask = nil
+            return
+        }
+        let window = BackgroundConnectionGrace.window
+        keptDashboardRuntimesGraceTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(window)) } catch { return }
+            guard let self, !self.isSceneActive else { return }
+            self.keptDashboardRuntimesGraceTask = nil
+            self.dropAllKeptDashboardRuntimes()
+        }
+    }
+
+    /// Once the dashboard on screen has connected and synced (at launch, on
+    /// a return to Conduit, after a switch): every other combined dashboard
+    /// not yet kept signs in quietly beside it, up to the cap. One that
+    /// needs typing, or a Face ID unlock this launch hasn't had, is left
+    /// for a tap.
+    func connectOtherCombinedDashboards() {
+        // Beside any dashboard on screen, one left out of the group
+        // included: the group connects when Conduit opens.
+        guard isSceneActive, isConnected,
+              let activeID = activeDashboardID,
+              !savedDashboardRegistry.combinedGroupIDs.isEmpty else { return }
+        // Registry order: the Saved Dashboards list as the user sees it.
+        // One whose address was edited signs in on its next switch, which
+        // settles the move first.
+        for dashboard in savedDashboardRegistry.dashboards
+        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil {
+            let id = dashboard.id
+            guard keptDashboardRuntimes[id] == nil,
+                  !combinedSignInsUnderWay.contains(id),
+                  // The one on screen counts too.
+                  keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1,
+                  combinedDashboardSignsInQuietly(id) else { continue }
+            combinedSignInsUnderWay.insert(id)
+            let generation = keptDashboardRuntimesGeneration
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.signInCombinedDashboardQuietly(id)
+                self.combinedSignInsUnderWay.remove(id)
+                self.combinedSignInsCalledOff.remove(id)
+                // Conduit left and came back while it was out: the return's
+                // own pass skipped it, so it goes again. A plain failure
+                // waits for its switch.
+                if generation != self.keptDashboardRuntimesGeneration {
+                    self.connectOtherCombinedDashboards()
+                }
+            }
+        }
+    }
+
+    /// Whether a combined dashboard can sign in with nobody there: a
+    /// browser sign-in's grant, a saved session, or a saved password (one
+    /// behind Face ID only once this launch's unlock covers it).
+    func combinedDashboardSignsInQuietly(_ id: UUID) -> Bool {
+        if KeychainHelper.loadNativeOAuthTokens(dashboardID: id) != nil { return true }
+        if let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
+            return !credentials.requiresFaceID || faceIDUnlockHolds(for: id, credentials)
+        }
+        return KeychainHelper.loadConnection(dashboardID: id) != nil
+    }
+
+    /// Signs one combined dashboard in off screen and keeps it as a switch
+    /// would have left it: its own bridge and client, the socket open, its
+    /// events fenced until a switch takes it up. Nothing on screen changes,
+    /// and a failure leaves it to sign in on its next switch, as today.
+    private func signInCombinedDashboardQuietly(_ id: UUID) async {
+        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        let generation = keptDashboardRuntimesGeneration
+        let baseURL = dashboard.normalizedURL
+        let profile = rememberedActiveProfile(for: id) ?? "default"
+        let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: baseURL)
+        let bridge = makeDashboardBridge(normalizedURL: baseURL, dashboardID: id, access: access)
+        var client: HermesClient?
+        // Signed out, moved to another address or removed meanwhile: what
+        // it finishes isn't wanted (a sign-out clears what it signs in with).
+        func stillWanted() -> Bool {
+            guard let current = savedDashboardRegistry.dashboard(with: id) else { return false }
+            return generation == keptDashboardRuntimesGeneration
+                && !combinedSignInsCalledOff.contains(id)
+                && isSceneActive
+                && isInCombinedGroup(id)
+                && id != activeDashboardID
+                && keptDashboardRuntimes[id] == nil
+                && current.normalizedURL == baseURL
+                && current.pendingURL == nil
+                && combinedDashboardSignsInQuietly(id)
+        }
+        do {
+            let ticket: String
+            if KeychainHelper.loadNativeOAuthTokens(dashboardID: id) == nil,
+               let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
+                guard !credentials.requiresFaceID || faceIDUnlockHolds(for: id, credentials) else {
+                    bridge.invalidate()
+                    return
+                }
+                let signedIn = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access)
+                    .connect(username: credentials.username, password: credentials.password)
+                guard stillWanted() else {
+                    bridge.invalidate()
+                    return
+                }
+                signedIn.commitCookies(dashboardID: id)
+                ticket = signedIn.ticket
+            } else if let mintTicket = chatResumeLifecycleOperations.mintTicket {
+                ticket = try await mintTicket(baseURL)
+            } else {
+                ticket = try await bridge.mintTicket()
+            }
+            guard stillWanted() else {
+                bridge.invalidate()
+                return
+            }
+            let connection = HermesConnection(baseUrl: baseURL, ticket: ticket)
+            let transportFactory: @MainActor () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
+            let opened = HermesClient(
+                connection: connection,
+                profile: profile,
+                cloudflareAccess: access,
+                requestAuthorizer: bridge.requestAuthorizer,
+                transportFactory: transportFactory
+            )
+            client = opened
+            try await opened.connect()
+            // A switch meanwhile may have kept the dashboard it left: the
+            // cap holds, the one on screen counted.
+            guard stillWanted(), opened.isConnected,
+                  keptDashboardRuntimes.count < Self.combinedLiveDashboardCap - 1 else {
+                opened.disconnect()
+                bridge.invalidate()
+                return
+            }
+            KeychainHelper.saveConnection(connection, dashboardID: id)
+            keep(KeptDashboardRuntime(
+                client: opened,
+                bridge: bridge,
+                connection: connection,
+                keptAt: Date()
+            ), for: id)
+            lifecycleLog.notice("Combined dashboard connected in the background")
+        } catch {
+            client?.disconnect()
+            bridge.invalidate()
+            lifecycleLog.notice("Combined dashboard background sign-in failed: \(error.localizedDescription, privacy: .private)")
         }
     }
 

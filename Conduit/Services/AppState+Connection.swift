@@ -634,6 +634,8 @@ extension AppState {
                 || continuation.handedOffAutomaticIntent
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
+            // The dashboard on screen first, then the rest of the group.
+            connectOtherCombinedDashboards()
         } catch {
             guard let continuation = transportContinuation(
                     purpose: syncPurpose,
@@ -1612,6 +1614,9 @@ extension AppState {
                   let activeClient = self.client, activeClient === client else { return }
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
+            // The rest of the combined group connects beside it, as after a
+            // sign-in (the background grace may have let them go).
+            connectOtherCombinedDashboards()
         } catch {
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }

@@ -572,6 +572,38 @@ struct LoginDashboardsScreen: View {
         appState.savedDashboardRegistry.dashboards
     }
 
+    /// A row of the list: a dashboard, or the combined group as one row
+    /// where its first member stands (Combine Dashboards, stage 3b).
+    private enum ListedRow: Identifiable {
+        case dashboard(SavedDashboard)
+        /// The members, and the one a tap opens: the last used when it is
+        /// one of them, else the first.
+        case group([SavedDashboard], opens: SavedDashboard)
+
+        var id: String {
+            switch self {
+            case .dashboard(let dashboard): return dashboard.id.uuidString
+            case .group: return "combined"
+            }
+        }
+    }
+
+    private var listedRows: [ListedRow] {
+        let group = appState.savedDashboardRegistry.combinedGroupIDs
+        guard !group.isEmpty else { return dashboards.map { .dashboard($0) } }
+        let members = dashboards.filter { group.contains($0.id) }
+        let opens = members.first { $0.id == appState.activeDashboardID } ?? members[0]
+        var rows: [ListedRow] = []
+        for dashboard in dashboards {
+            if !group.contains(dashboard.id) {
+                rows.append(.dashboard(dashboard))
+            } else if dashboard.id == members[0].id {
+                rows.append(.group(members, opens: opens))
+            }
+        }
+        return rows
+    }
+
     /// A row that signs in without a saved password can open its sign-in
     /// page, natively when the dashboard's discovery says so on the tap, so
     /// the Private sign-in page switch shows under the list. A list of
@@ -594,8 +626,13 @@ struct LoginDashboardsScreen: View {
                     tint: .conduitAccent
                 )
                 VStack(spacing: 0) {
-                    ForEach(Array(dashboards.enumerated()), id: \.element.id) { index, dashboard in
-                        row(dashboard, first: index == 0)
+                    ForEach(Array(listedRows.enumerated()), id: \.element.id) { index, entry in
+                        switch entry {
+                        case .dashboard(let dashboard):
+                            row(dashboard, first: index == 0)
+                        case .group(let members, let opens):
+                            groupRow(members, opens: opens, first: index == 0)
+                        }
                     }
                 }
                 .settingsCard()
@@ -668,6 +705,41 @@ struct LoginDashboardsScreen: View {
                 // again.
                 .disabled(isConnecting(dashboard))
             }
+            if let failure {
+                LoginFailureCard(failure: failure, flow: flow, isInline: true)
+                    .padding(.leading, 56)
+                    .padding(.trailing, 16)
+                    .padding(.bottom, 14)
+            }
+        }
+        .background(failure == nil ? Color.clear : Color.red.opacity(0.07))
+        .overlay(alignment: .top) {
+            if !first { V2RowDivider(leadingInset: 56) }
+        }
+    }
+
+    /// The combined group: a tap opens the last used of its dashboards,
+    /// and the rest connect beside it once it has. Removing one is in
+    /// Settings > Saved Dashboards, where each has its own row.
+    @ViewBuilder
+    private func groupRow(_ members: [SavedDashboard], opens dashboard: SavedDashboard, first: Bool) -> some View {
+        let failure = flow.failure(at: .dashboard(dashboard.id))
+        VStack(spacing: 0) {
+            Button {
+                Haptics.selection()
+                Task { await flow.open(dashboard) }
+            } label: {
+                LoginRowLabel(
+                    icon: "square.stack.3d.up",
+                    title: AppLocalization.string("Combined Dashboards", table: .connection),
+                    detail: ListFormatter.localizedString(byJoining: members.map(\.label)),
+                    status: failure == nil ? status(for: dashboard) : nil,
+                    accessory: isConnecting(dashboard) ? .progress : .chevron
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(flow.isWorking && flow.workingDashboardID != dashboard.id)
+            .accessibilityIdentifier("login.dashboard.combined")
             if let failure {
                 LoginFailureCard(failure: failure, flow: flow, isInline: true)
                     .padding(.leading, 56)
