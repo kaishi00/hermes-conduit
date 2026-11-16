@@ -1052,7 +1052,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func detachEndedCallbackSettles() -> Task<Void, Never>? {
         guard let callbacks else { return nil }
         var settles: [DetachedCallbackSettle] = []
-        for (id, entry) in callbackWatches {
+        for (id, entry) in Array(callbackWatches) {
             guard let callID = entry.callID, callID != callbackCallID else { continue }
             guard let job = job(id) else {
                 // Settled and told: nothing to call about.
@@ -1072,7 +1072,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     kind: job.status == .finished ? .done : .failed
                 ))
             case .starting, .running, .needsInput:
-                continue
+                // The host already saw it end: told at once, as the pass
+                // would, rather than after the hold lapses.
+                guard entry.hostSawEnd, let target = Self.callbackTarget(job),
+                      job.isThreadTurn || job.requestSent else { continue }
+                settles.append(DetachedCallbackSettle(watchID: nil, profile: entry.profile, notify: target, kind: entry.hostEndKind))
             }
             callbackWatches[id] = nil
         }
@@ -1120,11 +1124,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
         case .finished, .failed:
             let untold = entry.untoldAtHangUp ?? callbackOutcomeUntold(id)
+            // Decided and marked before the cancel's wait: the watch is out
+            // of the list already, so a reset in that wait (a new call
+            // handing the jobs back) can't settle it apart, and the notice
+            // still goes (#2626's review).
+            let notify = generation == self.generation && untold ? target : nil
+            if notify != nil { update(id) { $0.outcomeDelivered = true } }
             if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
-            guard generation == self.generation, untold, let target else { break }
+            guard let notify else { break }
             // Ended without the call telling it: Conduit calls itself.
-            update(id) { $0.outcomeDelivered = true }
-            await callbacks.notify(target, job.status == .finished ? .done : .failed)
+            await callbacks.notify(notify, job.status == .finished ? .done : .failed)
         case .starting, .running, .needsInput:
             // A chat request still waiting its turn goes with the call.
             if job.isThreadTurn, !job.threadTurnSubmitted { break }

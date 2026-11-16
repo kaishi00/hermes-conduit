@@ -250,6 +250,28 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.detachEndedCallbackSettles(), "nothing left once reset")
     }
 
+    /// A running job the host already saw end is told at once when the
+    /// jobs are handed back mid-pass, not after its hold lapses (#2626's
+    /// review).
+    func testAResetDuringTheHangUpsPassTellsAJobTheHostSawEnd() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        calls.watchAnswers = [.ended(.failed)]
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+
+        supervisor.finishCallbacks()
+        let settles = supervisor.detachEndedCallbackSettles()
+        supervisor.reset()
+        await settles?.value
+
+        XCTAssertNotNil(settles)
+        XCTAssertEqual(calls.cancels, [], "no watch was registered to let go of")
+        XCTAssertEqual(calls.notified.map(\.target.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(calls.notified.first?.kind, .failed)
+    }
+
     func testHangUpNotifiesForAJobThatEndedUntold() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)
