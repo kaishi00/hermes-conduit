@@ -1103,7 +1103,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(routed.profile, "fam")
         XCTAssertEqual(routed.call?.kind, .question)
         XCTAssertEqual(routed.call?.reason, "Which branch?")
-        XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.title, HermesCallCopy.notificationTitle)
+        XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.title, HermesCallCopy.notificationTitle())
+        // The bot that calls is named, as its ring names it (issue 2540).
+        let talk = try XCTUnwrap(HermesCallNotifications.callRequest(for: target, missed: false, callerName: "Fam"))
+        XCTAssertEqual(talk.content.title, "Fam wants to talk")
+        XCTAssertEqual(talk.content.body, "Fam has a question for you. Which branch?")
         XCTAssertNil(HermesCallNotifications.callRequest(for: ConduitNotificationTarget(profile: nil, sessionId: "rt-1", type: nil), missed: true))
 
         // A missed call offers both (Eric 2026-11-15): Call Back, the

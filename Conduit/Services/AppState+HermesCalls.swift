@@ -355,11 +355,13 @@ extension AppState {
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
+                let profile = target.profile ?? self.voiceCallProfile
                 await HermesCallNotifications.post(HermesCallNotifications.localRequest(
                     for: target,
                     kind: kind,
-                    profile: target.profile ?? self.voiceCallProfile,
-                    dashboardID: self.activeDashboardID
+                    profile: profile,
+                    dashboardID: self.activeDashboardID,
+                    callerName: self.hermesCallContactName(profile)
                 ))
             }
         )
@@ -435,7 +437,7 @@ extension AppState {
                 HermesCallTrace.shared.note("Opening classic voice")
                 // Classic voice says it at its first listening window, with
                 // the question's choices when its card is in the chat.
-                let brief = opening.spokenBrief(waiting: self.hermesCallWaiting(opening))
+                let brief = opening.spokenBrief(waiting: self.hermesCallWaiting(opening), name: self.hermesCallContactName(profile))
                 classicBrief = brief
                 self.voiceBackgroundJobSupervisor.queueCallOpening(brief)
                 opened = await self.openVoiceConversation(intent)

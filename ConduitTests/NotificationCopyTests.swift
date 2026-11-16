@@ -187,6 +187,38 @@ final class NotificationCopyTests: XCTestCase {
                        "Hermes wants to talk")
     }
 
+    /// Issue 2540: a call, and the generic copy, name the bot rather than
+    /// Hermes, as the call's ring does; Hermes for a main bot nobody named.
+    func testCallsAndTheGenericCopyNameTheBot() {
+        let call: [String: Any] = [
+            "title_label": "call.requested", "profile": "default", "profile_name": "Cortana",
+            "call": ["kind": "question"],
+        ]
+        let preview = NotificationCopy.preview(call)
+        XCTAssertEqual(preview.title, "Cortana wants to talk")
+        XCTAssertNil(preview.subtitle, "the title names the bot already")
+        XCTAssertEqual(preview.body, "Cortana has a question for you.")
+        let names = NotificationCopy.chatNames(call.merging(["session_title": "Deploy"]) { $1 })
+        XCTAssertEqual(names.title, "Cortana wants to talk · Deploy")
+        XCTAssertNil(names.subtitle)
+        XCTAssertEqual(NotificationCopy.preview(["title_label": "call.requested", "profile": "scout"]).title, "Scout wants to talk",
+                       "a bot with no name by its profile, capitalized")
+        let renamed = NotificationCopy.named(["profile": "default", "profile_name": "Cortana"], mainName: "Jarvis")
+        XCTAssertEqual(NotificationCopy.botName(renamed), "Jarvis", "the name given the main bot in Conduit wins")
+        XCTAssertEqual(NotificationCopy.botName(NotificationCopy.named(["profile": "default"], mainName: nil)), "Hermes")
+
+        XCTAssertEqual(NotificationCopy.generic(for: "call.requested", name: "Cortana").title, "Cortana wants to talk")
+        XCTAssertEqual(NotificationCopy.generic(for: "call.requested", name: "Cortana").body, "Tap to talk to Cortana.")
+        XCTAssertEqual(NotificationCopy.generic(for: "response.ready", name: "Cortana").body, "Cortana has finished responding.")
+        XCTAssertEqual(NotificationCopy.generic(for: "approval.needed", name: "Cortana").body, "Cortana is waiting for your approval.")
+        XCTAssertEqual(NotificationCopy.generic(for: "phone.changes", name: "Cortana").title, "Cortana has a change for you")
+        XCTAssertEqual(NotificationCopy.generic(for: "call.requested", name: "Hermes").title, "Hermes wants to talk")
+        XCTAssertEqual(NotificationCopy.callLine(["kind": "failed", "origin": "alert"], name: "Cortana"),
+                       "Cortana ran into a problem with your request.")
+        standardDefaults.set("de", forKey: AppLanguageStore.defaultsKey)
+        XCTAssertEqual(NotificationCopy.generic(for: "call.requested", name: "Cortana").title, "Cortana möchte sprechen")
+    }
+
     // #1415: which profile a push came from, and Chat names.
 
     func testSubtitleNamesTheProfile() {

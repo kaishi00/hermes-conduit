@@ -78,16 +78,17 @@ final class NotificationService: UNNotificationServiceExtension {
                 deliver(copy)
                 return
             }
-            let generic = NotificationCopy.generic(for: verified.type)
-            content.title = generic.title
-            content.subtitle = ""
-            content.body = generic.body
             // The main bot by the name Conduit gives it on the push's dashboard.
             let named = NotificationCopy.named(verified.content, mainName: NotificationCopy.mainName(
                 dashboardID: verified.record.dashboardID,
                 activeDashboardID: NotificationSharedSettings.activeDashboardID,
                 names: NotificationSharedSettings.mainProfileNames
             ))
+            // The generic copy names the bot, which the relay can't read (issue 2540).
+            let generic = NotificationCopy.generic(for: verified.type, name: NotificationCopy.botName(named))
+            content.title = generic.title
+            content.subtitle = ""
+            content.body = generic.body
             if NotificationSharedSettings.showPreviews {
                 let preview = NotificationCopy.preview(named)
                 if let title = preview.title { content.title = title }

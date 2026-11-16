@@ -99,7 +99,8 @@ struct HermesCallRequest: Equatable {
 /// What a call says to the user, in the app's language. The relay's own
 /// copy for a call push stays English, like every push's.
 enum HermesCallCopy {
-    static var notificationTitle: String { AppLocalization.string("Hermes wants to talk") }
+    /// From the bot that calls (HermesCallerName), issue 2540.
+    static func notificationTitle(from name: String = HermesCallerName.fallback) -> String { NotificationCopy.callTitle(name: name) }
     /// A ringing call that didn't connect (#449 step 2).
     static var missedCallTitle: String { missedCallTitle(from: HermesCallerName.fallback) }
     /// Names the profile that called (HermesCallerName), as the call did.
@@ -125,10 +126,11 @@ enum HermesCallCopy {
     static var jobCardNote: String { AppLocalization.string("Calls you when done", table: .voice) }
 
     /// How the job ended, as one sentence: "“Check the server” finished."
-    static func outcome(kind: HermesCallRequest.Kind?, title: String?) -> String {
+    /// `name`: the bot that calls, said in what it waits on (issue 2540).
+    static func outcome(kind: HermesCallRequest.Kind?, title: String?, name: String = HermesCallerName.fallback) -> String {
         switch kind {
-        case .approval?: return AppLocalization.string("Hermes needs your OK.")
-        case .question?: return AppLocalization.string("Hermes has a question for you.")
+        case .approval?: return NotificationCopy.callOutcome(.approval, name: name)
+        case .question?: return NotificationCopy.callOutcome(.question, name: name)
         default: break
         }
         guard let title else {
@@ -151,13 +153,13 @@ enum HermesCallCopy {
     /// reason when it gave one (in its language), else how the job ended.
     /// The notification extension's banner says the same
     /// (NotificationCopy.callLine): keep the two in step.
-    static func summary(kind: HermesCallRequest.Kind?, title: String?, reason: String?) -> String {
-        guard let reason else { return outcome(kind: kind, title: title) }
+    static func summary(kind: HermesCallRequest.Kind?, title: String?, reason: String?, name: String = HermesCallerName.fallback) -> String {
+        guard let reason else { return outcome(kind: kind, title: title, name: name) }
         switch kind {
         // An approval's reason is its description (the plugin's alert), so
         // Hermes' own texts show in the App Language (#1589).
-        case .approval?: return outcome(kind: kind, title: nil) + " " + HermesApprovalText.description(reason)
-        case .question?: return outcome(kind: kind, title: nil) + " " + reason
+        case .approval?: return outcome(kind: kind, title: nil, name: name) + " " + HermesApprovalText.description(reason)
+        case .question?: return outcome(kind: kind, title: nil, name: name) + " " + reason
         default: return reason
         }
     }
@@ -339,19 +341,26 @@ struct HermesCallOpening: Equatable {
 
     /// With what the chat's card says: a question's choices, which Hermes'
     /// short reason leaves out, or the approval's ask for a yes or no.
-    func spokenBrief(waiting: HermesCallWaiting?) -> String {
-        let hello = AppLocalization.string("Hi, it's Hermes.", table: .voice)
+    /// `name`: the bot that called (HermesCallerName), which introduces
+    /// itself by it (issue 2540); Hermes for a main bot nobody named.
+    func spokenBrief(waiting: HermesCallWaiting?, name: String = HermesCallerName.fallback) -> String {
+        let named = name != HermesCallerName.fallback
+        let hello = named ? AppLocalization.string("Hi, it's \(name).", table: .voice) : AppLocalization.string("Hi, it's Hermes.", table: .voice)
         if let question = waiting?.openQuestion {
-            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil) + "\n" + HermesCallWaiting.spokenQuestion(question)
+            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil, name: name) + "\n"
+                + HermesCallWaiting.spokenQuestion(question, asker: named ? name : nil)
         }
         if case .approval(let command, let description)? = waiting?.item {
             // Said to the user, so Hermes' own texts in the App Language
             // (#1589); the model's brief (`block`) keeps Hermes' words.
             let what = description.isEmpty ? HermesApprovalText.command(command) : HermesApprovalText.description(description)
             let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
-            return hello + " " + AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
+            return hello + " " + (named
+                // Its own key: "… to go on" is a job's (VoiceBackgroundJobs.waitingNotice).
+                ? AppLocalization.string("\(name) needs your OK to go ahead: \(clipped). Say yes to allow it once, or no.", table: .voice)
+                : AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice))
         }
-        let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason)
+        let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason, name: name)
         guard let result, !waitsOnUser else { return intro }
         return intro + "\n\n" + VoiceReadBack.plainSpeech(result)
     }
@@ -1141,11 +1150,13 @@ enum HermesCallNotifications {
     }
 
     /// The local notification for `target`, routed like a call push.
-    /// `callerName`: who a missed call was from (HermesCallerName).
+    /// `callerName`: who the call is from (HermesCallerName), which its title
+    /// and lines name.
     static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = missed ? HermesCallCopy.missedCallTitle(from: callerName) : HermesCallCopy.notificationTitle
-        content.body = HermesCallCopy.summary(kind: kind, title: HermesCallRequest.cleanedTitle(target.title), reason: HermesCallRequest.cleanedReason(reason))
+        content.title = missed ? HermesCallCopy.missedCallTitle(from: callerName) : HermesCallCopy.notificationTitle(from: callerName)
+        content.body = HermesCallCopy.summary(kind: kind, title: HermesCallRequest.cleanedTitle(target.title),
+                                              reason: HermesCallRequest.cleanedReason(reason), name: callerName)
         content.sound = .default
         content.categoryIdentifier = missed ? missedCategoryIdentifier : categoryIdentifier
         content.threadIdentifier = "hermes-call"
