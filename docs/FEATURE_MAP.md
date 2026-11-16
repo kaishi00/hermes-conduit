@@ -7171,7 +7171,7 @@ are kept the same way. Lists stay per dashboard until stage 4.
 the top bar's dashboard menu, a widget, a notification, a link, a shared
 draft) · Saved Dashboards' row status and the Profiles sheet's (Connected in
 the background, Connecting…, Can't connect. Trying again., Sign In required) ·
-the top bar's dashboard menu (the same status under each name) · README.md · Sign
+the top bar's dashboard menu (the same status under each name) · Sign
 Out of This Dashboard, Remove Dashboard and an edited address (each lets its
 kept connection go) · Conduit leaving the screen (all kept connections go after
 the background grace) · the return to Conduit (the one on screen reconnects,
