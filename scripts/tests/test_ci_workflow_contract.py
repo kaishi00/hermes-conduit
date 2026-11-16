@@ -105,7 +105,7 @@ def _assert_cache_round_trip(tc, text, saver, label):
     tc.assertIn("id: build", text, label)
     tc.assertIn("steps.build.outcome == 'success'", text, label)
     tc.assertIn("steps.cache.outputs.cache-hit != 'true'", text, label)
-    tc.assertNotIn("head_ref", text, f"{label}: a PR's build must never be saved")
+    tc.assertNotIn("head_ref", text, f"{label}: the cache must not be keyed or gated by head_ref (it is empty on push events)")
     tc.assertIn(saver, text, label)
     tc.assertIn("dd-v1-$kind-$xcode-${ImageVersion:-image}", text, label)
     # The key still names the image, and the image-specific prefix is tried
@@ -205,6 +205,10 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if ! xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; then", script)
         self.assertIn("xcodebuild -downloadComponent MetalToolchain", script)
         self.assertLess(script.index('xcode-select -s "$target"'), script.index("-downloadComponent"))
+        gate = script.index("if ! xcrun -sdk iphonesimulator metal -v")
+        download = script.index("-downloadComponent")
+        self.assertLess(gate, download, "the download must sit inside the missing-toolchain check")
+        self.assertLess(download, script.index("fi", gate), "the download must sit inside the missing-toolchain check")
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
