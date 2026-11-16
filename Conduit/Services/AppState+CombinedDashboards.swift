@@ -163,12 +163,16 @@ extension AppState {
     /// needs typing, or a Face ID unlock this launch hasn't had, is left
     /// for a tap.
     func connectOtherCombinedDashboards() {
+        // Beside any dashboard on screen, one left out of the group
+        // included: the group connects when Conduit opens.
         guard isSceneActive, isConnected,
               let activeID = activeDashboardID,
-              isInCombinedGroup(activeID) else { return }
+              !savedDashboardRegistry.combinedGroupIDs.isEmpty else { return }
         // Registry order: the Saved Dashboards list as the user sees it.
+        // One whose address was edited signs in on its next switch, which
+        // settles the move first.
         for dashboard in savedDashboardRegistry.dashboards
-        where dashboard.isCombined && dashboard.id != activeID {
+        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil {
             let id = dashboard.id
             guard keptDashboardRuntimes[id] == nil,
                   !combinedSignInsUnderWay.contains(id),
@@ -206,12 +210,18 @@ extension AppState {
         let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: baseURL)
         let bridge = makeDashboardBridge(normalizedURL: baseURL, dashboardID: id, access: access)
         var client: HermesClient?
+        // Signed out, moved to another address or removed meanwhile: what
+        // it finishes isn't wanted (a sign-out clears what it signs in with).
         func stillWanted() -> Bool {
-            generation == keptDashboardRuntimesGeneration
+            guard let current = savedDashboardRegistry.dashboard(with: id) else { return false }
+            return generation == keptDashboardRuntimesGeneration
                 && isSceneActive
                 && isInCombinedGroup(id)
                 && id != activeDashboardID
                 && keptDashboardRuntimes[id] == nil
+                && current.normalizedURL == baseURL
+                && current.pendingURL == nil
+                && combinedDashboardSignsInQuietly(id)
         }
         do {
             let ticket: String
@@ -223,6 +233,10 @@ extension AppState {
                 }
                 let signedIn = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access)
                     .connect(username: credentials.username, password: credentials.password)
+                guard stillWanted() else {
+                    bridge.invalidate()
+                    return
+                }
                 signedIn.commitCookies(dashboardID: id)
                 ticket = signedIn.ticket
             } else if let mintTicket = chatResumeLifecycleOperations.mintTicket {

@@ -928,4 +928,59 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
         XCTAssertNil(appState.keptDashboardRuntimes[vps.id], "finished after Conduit left the screen: let go")
     }
+
+    /// The group connects beside a dashboard left out of it too; one with
+    /// an edited address waits for its switch; and one signed out of while
+    /// its ticket was out keeps and saves nothing.
+    func testTheGroupConnectsBesideALeftOutDashboardButNotOneSignedOutOrMoving() async throws {
+        let sockets = [ClarifyFakeSocket(), ClarifyFakeSocket()]
+        final class HandedOut { var count = 0 }
+        let handedOut = HandedOut()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = {
+            defer { handedOut.count += 1 }
+            return sockets[min(handedOut.count, sockets.count - 1)]
+        }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.makeTransport = { transport }
+        final class Box { weak var appState: AppState?; var signOut: UUID? }
+        let box = Box()
+        operations.mintTicket = { baseURL in
+            if let id = box.signOut, let appState = box.appState,
+               appState.savedDashboardRegistry.dashboard(with: id)?.normalizedURL == baseURL {
+                appState.signOutDashboard(id)
+            }
+            return "ticket"
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        box.appState = appState
+        appState.isConnected = true
+        // The one on screen leaves the group; VPS and Pi make it up.
+        let pi = SavedDashboard(id: UUID(), label: "Pi", normalizedURL: "https://127.0.0.3:1", combined: true)
+        appState.savedDashboardRegistry.dashboards[0].combined = false
+        appState.savedDashboardRegistry.dashboards.append(pi)
+        XCTAssertFalse(appState.isInCombinedGroup(mac.id))
+        for id in [vps.id, pi.id] {
+            KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: id)
+        }
+
+        // Pi's address is being edited: it waits. VPS signs in beside Mac.
+        appState.savedDashboardRegistry.dashboards[2].pendingURL = "https://127.0.0.4:1"
+        sockets.forEach { transport.open($0) }
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [vps.id], "beside a dashboard left out of the group")
+        await waitForKept(vps.id, in: appState)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id])
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id])
+
+        // Pi's move is done; it's signed out of while its ticket is out.
+        appState.savedDashboardRegistry.dashboards[2].pendingURL = nil
+        box.signOut = pi.id
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [pi.id])
+        for _ in 0..<200 where !appState.combinedSignInsUnderWay.isEmpty { await Task.yield() }
+
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "signed out meanwhile: nothing kept")
+        XCTAssertNil(KeychainHelper.loadConnection(dashboardID: pi.id), "nor saved again")
+    }
 }
