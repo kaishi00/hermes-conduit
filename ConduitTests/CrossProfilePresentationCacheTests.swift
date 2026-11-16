@@ -804,7 +804,7 @@ extension CrossProfilePresentationCacheTests {
 
 extension CrossProfilePresentationCacheTests {
     /// Polls `condition` on the main actor, five seconds at most.
-    func waitUntil(_ condition: @MainActor () -> Bool) async {
+    func waitUntil(_ condition: @escaping @MainActor () -> Bool) async {
         let deadline = Date().addingTimeInterval(5)
         while !condition(), Date() < deadline {
             try? await Task.sleep(for: .milliseconds(10))
