@@ -90,7 +90,7 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
             needsYou: appState.needsYou,
             scrolls: scrolls,
             unread: unread,
-            showsAllChip: leadsWithAllChip && AllProfilesChats.isAvailable(profiles: appState.profiles),
+            showsAllChip: leadsWithAllChip && appState.allProfilesChatsAvailable,
             onManage: { showProfileManager = true },
             onChooseAll: { showAllProfilesChooser = true }
         )
@@ -414,12 +414,14 @@ struct V2ProfileStrip: View {
     /// One view per profile whichever is selected, so a switch moves the
     /// glass capsule and the name across instead of swapping two different
     /// buttons (which also reloaded both pictures).
-    /// The pictures this phone saved for the other dashboards' profiles,
-    /// read once per strip.
+    /// The pictures this phone saved for the other dashboards' profiles:
+    /// the ones Bots Home's read of that dashboard already holds, so a
+    /// redraw lists no folder; the folder only before that read.
     private func otherAvatars(_ chips: [CombinedProfileChip]) -> [String: URL] {
         var urls: [String: URL] = [:]
         for id in Set(chips.filter(\.isOther).compactMap(\.dashboardID)) {
-            let saved = appState.profileAppearanceStore.loadAvatarURLs(dashboardID: id)
+            let saved = appState.combinedDashboardBots[id]?.avatars
+                ?? appState.profileAppearanceStore.loadAvatarURLs(dashboardID: id)
             for chip in chips where chip.dashboardID == id { urls[chip.id] = saved[chip.profile] }
         }
         return urls
@@ -464,7 +466,7 @@ struct V2ProfileStrip: View {
         .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier("v2.profile.\(dashboardID.uuidString).\(profile)")
         .accessibilityLabel(AppLocalization.string("\(profile) profile", table: .chat))
-        .accessibilityValue(Self.spokenValue(waiting: waiting, unread: dashboardName))
+        .accessibilityValue(Self.spokenValue(waiting: waiting, also: dashboardName.isEmpty ? nil : dashboardName))
         .accessibilityHint(AppLocalization.string("Switches to that dashboard and this profile", table: .chat))
     }
 
@@ -590,7 +592,7 @@ struct V2ProfileStrip: View {
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile", table: .chat))
-        .accessibilityValue(Self.spokenValue(waiting: waiting, unread: unreadValue))
+        .accessibilityValue(Self.spokenValue(waiting: waiting, also: unreadValue))
         .accessibilityHint(currentOnly || (isSelected && !(appState.isProfileSwitching || shell.isPickingProfile)) ? AppLocalization.string("Manage profiles", table: .chat) : AppLocalization.string("Switches to this profile", table: .chat))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -879,8 +881,10 @@ struct V2SegmentedControl<Value: Hashable>: View {
 extension V2ProfileStrip {
     /// A chip's spoken value: what waits there, then its unread line, which
     /// the one chip words as another profile's.
-    static func spokenValue(waiting: Int, unread: String?) -> String {
-        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you", table: .chat) : nil, unread]
+    /// What waits, then what else the chip says: its unread mark, or
+    /// another dashboard's name.
+    static func spokenValue(waiting: Int, also: String?) -> String {
+        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you", table: .chat) : nil, also]
             .compactMap { $0 }.joined(separator: ", ")
     }
 

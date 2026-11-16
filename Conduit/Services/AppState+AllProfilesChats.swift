@@ -37,10 +37,17 @@ extension AppState {
         allProfilesChatsSettings[dashboard: activeDashboardID]
     }
 
-    /// The Chats list shows All: it is on here, and the dashboard lists two
-    /// or more profiles.
+    /// All is offered: the dashboard lists two or more profiles, or it's in
+    /// a combined group, whose other dashboards' profiles All lists too, so
+    /// a one-profile dashboard there gets the group's strip and chats
+    /// (#2637 review).
+    var allProfilesChatsAvailable: Bool {
+        AllProfilesChats.isAvailable(profiles: profiles) || isInCombinedGroup(activeDashboardID)
+    }
+
+    /// The Chats list shows All: it is on here, and All is offered.
     var isAllProfilesChatsOn: Bool {
-        allProfilesChats.isOn && AllProfilesChats.isAvailable(profiles: profiles)
+        allProfilesChats.isOn && allProfilesChatsAvailable
     }
 
     /// The profiles All lists, in the strip's order.

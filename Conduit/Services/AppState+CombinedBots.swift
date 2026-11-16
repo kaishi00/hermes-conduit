@@ -159,7 +159,8 @@ extension AppState {
         // leaves the order with its bots.
         let group = Set(savedDashboardRegistry.dashboards.map(\.id).filter { isInCombinedGroup($0) }.map(\.uuidString))
         let kept = combinedBotsHomeOrder.filter { key in
-            key.split(separator: "|", maxSplits: 1).first.map { group.contains(String($0)) } ?? false
+            // "-" is a dashboard with no saved entry: not one that left.
+            key.split(separator: "|", maxSplits: 1).first.map { $0 == "-" || group.contains(String($0)) } ?? false
         }
         let settled = CombinedBotsHomeOrder.settled(kept, shown: shown)
         guard settled != combinedBotsHomeOrder else { return }

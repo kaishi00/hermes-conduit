@@ -1286,6 +1286,11 @@ extension CrossProfilePresentationCacheTests {
         appState.profiles = ["default", "work"]
         appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
         XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All")
+        // A dashboard with one profile still offers All in a group, whose
+        // other dashboards' profiles it lists (#2637 review).
+        appState.profiles = ["default"]
+        XCTAssertTrue(appState.allProfilesChatsAvailable)
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All with one profile")
         appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
         appState.profiles = profiles
         let row = try XCTUnwrap(rows.first)
@@ -1422,6 +1427,13 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.combinedBotsHomeRostersIn, "every other dashboard's bots are in")
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina")]
         XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.id),
+                       ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
+        // A dashboard out of the group leaves the order; the others keep
+        // their places.
+        let gone = CombinedBotsHomeOrder.key(UUID(), "yelan")
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina"), gone, CombinedBotsHomeOrder.key(mac.id, "raiden")]
+        appState.settleCombinedBotsHomeOrder(appState.combinedBotsHomeItems(own: own).map(\.id))
+        XCTAssertEqual(appState.combinedBotsHomeOrder,
                        ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
         appState.combinedBotsHomeOrder = []
         // A dashboard left while kept leaves its bots on the grid at once.
