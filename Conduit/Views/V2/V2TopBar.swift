@@ -688,7 +688,7 @@ struct V2ProfileStrip: View {
         .accessibilityLabel(AppLocalization.string("All profiles"))
         .accessibilityValue(Self.spokenValue(
             waiting: waiting,
-            unread: currentOnly && !unread.isEmpty ? AppLocalization.string("Unread in another profile") : nil
+            also: currentOnly && !unread.isEmpty ? AppLocalization.string("Unread in another profile") : nil
         ))
         .accessibilityHint(isSelected
             ? AppLocalization.string("Chooses which profiles All shows", table: .chat)
