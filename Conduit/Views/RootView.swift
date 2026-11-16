@@ -115,9 +115,13 @@ struct RootView: View {
                 // A main window reopened (beside a chat window, or after
                 // every window closed) counts from its first frame, not from
                 // its next phase change. At launch nothing has been heard
-                // yet, and its phase changes come as before.
+                // yet: its phase is counted without running a change's
+                // steps, which its phase changes run as before, so a chat
+                // window closing later never leaves the app's phase without it.
                 if appState.mergedScenePhase != nil {
                     appState.noteScenePhase(scenePhase, scene: AppState.mainWindowScene)
+                } else {
+                    appState.countScenePhaseBeforeAnyHeard(scenePhase, scene: AppState.mainWindowScene)
                 }
             } else {
                 // Environment-scoped dismissal: close THIS duplicate window

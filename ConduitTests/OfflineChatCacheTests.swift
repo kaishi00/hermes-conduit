@@ -3407,6 +3407,20 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes the left chat's words")
     }
 
+    /// The main window's phase at launch counts before any change was
+    /// heard, without running a change's steps: a chat window that opened
+    /// and closed after it never leaves the app's phase without it.
+    func testTheMainWindowsLaunchPhaseCountsBeforeAnyChange() {
+        let (state, _, _) = makeAppState()
+        state.countScenePhaseBeforeAnyHeard(.active, scene: AppState.mainWindowScene)
+        XCTAssertNil(state.mergedScenePhase, "Nothing handled yet: its first change runs the steps")
+        state.noteScenePhase(.active, scene: "chat-window:launch")
+        XCTAssertEqual(state.mergedScenePhase, .active)
+        state.noteScenePhase(.background, scene: "chat-window:launch")
+        state.noteScenePhase(nil, scene: "chat-window:launch")
+        XCTAssertEqual(state.mergedScenePhase, .active, "The main window on screen keeps the app active")
+    }
+
     /// A left chat's tool result resolves only its own crash-recovery
     /// record: a same-named tool still running in the chat on screen keeps
     /// its record, so a relaunch restores it as running.
