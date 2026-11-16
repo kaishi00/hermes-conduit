@@ -823,27 +823,75 @@ extension NotificationE2ETests {
         ])
         var configReadable = false
         var fileReadable = false
+        var fileWritable = false
+        var written: [LocationUnsent] = []
         let controller = LocationSharingController(
             engine: engine,
             readStoredConfig: { configReadable ? .value(LocationFixtures.config(background: true)) : .unreadable },
-            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() }
+            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() },
+            writeStoredUnsent: { queue in
+                guard fileWritable else { return false }
+                written.append(queue)
+                return true
+            }
         )
         controller.hostPassDashboardID = { nil }
         // Without a drop, the file's queue is read once it can be.
         let kept = LocationSharingController(
             engine: engine,
             readStoredConfig: { configReadable ? .value(LocationFixtures.config(background: true)) : .unreadable },
-            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() }
+            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() },
+            writeStoredUnsent: { _ in true }
         )
         XCTAssertFalse(controller.hasUnsent, "Nothing could be read at launch")
 
         controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertTrue(controller.unsentDroppedWhileUnreadable, "The drop's write failed: the file still holds the queue")
         configReadable = true
         fileReadable = true
         XCTAssertTrue(controller.readConfigIfNeeded())
         XCTAssertFalse(controller.hasUnsent, "The dropped queue's file copy isn't read back")
+        XCTAssertTrue(controller.unsentDroppedWhileUnreadable, "The write over it failed again: it's tried later")
+        XCTAssertTrue(written.isEmpty)
+
+        fileWritable = true
+        controller.retryDroppedUnsentSave()
+        XCTAssertFalse(controller.unsentDroppedWhileUnreadable)
+        XCTAssertEqual(written.count, 1)
+        XCTAssertTrue(written.last?.isEmpty == true, "The file is written over with the empty queue")
+
         XCTAssertTrue(kept.readConfigIfNeeded())
         XCTAssertTrue(kept.hasUnsent, "With no Sign Out meanwhile, the file's queue is read as before")
+    }
+
+    @MainActor
+    func testADroppedQueueIsWrittenOverWhenTheConfigTurnsOutMissing() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        var configMissing = false
+        var fileWritable = false
+        var written: [LocationUnsent] = []
+        let controller = LocationSharingController(
+            engine: engine,
+            readStoredConfig: { configMissing ? .missing : .unreadable },
+            readStoredUnsent: { LocationUnsent() },
+            writeStoredUnsent: { queue in
+                guard fileWritable else { return false }
+                written.append(queue)
+                return true
+            }
+        )
+        controller.hostPassDashboardID = { nil }
+        controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertTrue(controller.unsentDroppedWhileUnreadable)
+
+        configMissing = true
+        fileWritable = true
+        XCTAssertTrue(controller.readConfigIfNeeded())
+        XCTAssertFalse(controller.unsentDroppedWhileUnreadable)
+        XCTAssertEqual(written.count, 1, "The dropped queue's file is written over even with no config")
     }
 
     @MainActor
