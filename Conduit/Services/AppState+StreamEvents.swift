@@ -556,12 +556,14 @@ extension AppState {
         }
         // Off screen too: the record keys on the message and tool, and a
         // chat left mid-tool would otherwise restore it as still running.
+        // A left chat's own ids and profile, never the chat on screen's: a
+        // same-named tool running there stays running.
         sessionPresentationCache.resolvePendingTool(
             named: name,
             toolID: resolvedCacheToolID,
             messageID: adoptedMessageID,
-            profile: presentationProfile(for: streamSessionId),
-            sessionIDs: presentationCacheSessionIDs(for: streamSessionId)
+            profile: liveChatScope?.profile ?? presentationProfile(for: streamSessionId),
+            sessionIDs: liveChatScope.map { Array($0.sessionIDs) } ?? presentationCacheSessionIDs(for: streamSessionId)
         )
     }
 

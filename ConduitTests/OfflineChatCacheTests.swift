@@ -3378,6 +3378,69 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(state.followedChat(answering: ["b"]))
     }
 
+    /// Hermes saying a left chat's turn isn't running ends its turn as its
+    /// own end does: the flag goes, the words so far stay buffered, and a
+    /// completion after it with no words of its own settles them as its row.
+    func testALeftChatsTurnSettledBySessionInfoKeepsItsWordsForTheCompletion() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.first?.isRunning, true)
+
+        state.handleStreamEvent(.sessionInfo(sessionId: "a", snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])))
+        let settled = try XCTUnwrap(state.backgroundChats.first)
+        XCTAssertFalse(settled.isRunning)
+        XCTAssertEqual(settled.state.streamingBuffer, "Once upon", "The words so far stay the reply's")
+
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: nil, reasoning: nil))
+        let left = try XCTUnwrap(state.backgroundChats.first)
+        XCTAssertEqual(left.rows.map(\.content), ["Tell me a story", "Once upon"])
+        XCTAssertTrue(left.state.streamingBuffer.isEmpty)
+        XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes the left chat's words")
+    }
+
+    /// A left chat's tool result resolves only its own crash-recovery
+    /// record: a same-named tool still running in the chat on screen keeps
+    /// its record, so a relaunch restores it as running.
+    func testALeftChatsToolResultLeavesTheChatOnScreensRunningToolRecorded() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "List the files", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Looking"))
+        state.setActiveSessionState(id: "b")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Where am I", timestamp: "2")]
+        state.clearStreamingText()
+        state.turnState = .running
+        XCTAssertEqual(state.backgroundChats.count, 1)
+
+        state.handleStreamEvent(.toolStart(sessionId: "b", toolName: "terminal", toolInput: "pwd"))
+        let profile = state.activeProfile
+        func recordedOnScreen() -> [String] {
+            state.sessionPresentationCache
+                .merge([], profile: profile, sessionIDs: ["b"], includePendingTools: true)
+                .filter { $0.role == .tool }
+                .map { $0.tool?.input ?? "" }
+        }
+        XCTAssertEqual(recordedOnScreen(), ["pwd"])
+
+        // The left chat's result for a call whose start never reached it.
+        state.handleStreamEvent(.toolComplete(sessionId: "a", toolName: "terminal", toolOutput: "a.txt"))
+        XCTAssertEqual(state.backgroundChats.first?.state.messages.last?.tool?.status, .complete)
+        XCTAssertEqual(recordedOnScreen(), ["pwd"], "The chat on screen's running tool stays recorded")
+        XCTAssertEqual(state.messages.last?.tool?.status, .running)
+    }
+
     /// A profile switch leaves the chat on screen mid-reply: it's followed
     /// under its own profile, and only opened again there. The same chat
     /// under a new runtime id (a voice thread's rebind) isn't left at all.
