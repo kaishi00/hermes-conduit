@@ -75,6 +75,17 @@ struct ChatResumeLifecycleOperations {
     /// request ID, choice, and explicit presentation profile passed to the
     /// decision RPC.
     var respondToApproval: (@MainActor (HermesClient, String, String?, String, String?) async throws -> Bool)?
+    /// Test seam for a gateway clarify answer: request id, answer, question
+    /// id, the card's session and its profile. Not an init parameter: tests
+    /// set it on the value.
+    var respondToClarification: (@MainActor (
+        HermesClient,
+        String,
+        String,
+        String?,
+        String?,
+        String?
+    ) async throws -> HermesClient.ClarifyResponseOutcome)?
     var sendPrompt: (@MainActor (HermesClient, String, String) async throws -> PromptSubmissionOutcome)?
     /// Test seam for a Queue send (`queued: true`, #842). Not an init
     /// parameter: tests set it on the value.

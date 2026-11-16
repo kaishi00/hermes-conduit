@@ -3018,8 +3018,20 @@ extension AppState {
                 return SessionPresentationCache.decisionKey(for: message)
             }
         )
+        // A clarify question this process is still sending (a relay answer
+        // the gateway never lists, or a gateway one) keeps its wait: its
+        // answer's own completion settles it (issue 2571).
+        let liveSubmittingClarifyKeys = Set(
+            messages.compactMap { message -> String? in
+                guard let clarify = message.clarify,
+                      clarify.questions.contains(where: { $0.status == .submitting }),
+                      liveClarifySubmissions[clarify.requestId] != nil else { return nil }
+                return SessionPresentationCache.decisionKey(for: message)
+            }
+        )
         let resettableRestoredDecisionKeys = restoredPendingDecisionKeys
             .subtracting(liveSubmittingApprovalKeys)
+            .subtracting(liveSubmittingClarifyKeys)
         let gatewayHasPendingDecision = !gatewayPendingDecisionKeys.isEmpty
         var restoredMessagesAwaitingConfirmation: [ChatMessage] = []
         if result.snapshot.running != true && !resettableRestoredDecisionKeys.isEmpty {
