@@ -86,9 +86,11 @@ struct BotRosterView: View {
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
             // Bots Home with other combined dashboards' bots shows them
-            // (its scroll lists their sections) though this one has none.
+            // (its scroll lists their sections) though this one has none,
+            // unless this Hermes needs an update, which only this page says.
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
-                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
+                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty
+                    || appState.botModePhase == .gatewayUnsupported) {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         VStack(spacing: 12) {
