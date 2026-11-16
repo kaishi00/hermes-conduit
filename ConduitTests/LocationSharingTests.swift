@@ -752,9 +752,11 @@ extension NotificationE2ETests {
         controller.dropUnsent(boundTo: UUID())
         XCTAssertTrue(controller.hasUnsent, "Another dashboard's Sign Out keeps the queue")
 
+        XCTAssertTrue(controller.spotRepliesLand)
         controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
         XCTAssertFalse(controller.hasUnsent)
         XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
+        XCTAssertFalse(controller.spotRepliesLand, "a reply to a batch sent before it lists no shops (issue 2616)")
     }
 
     /// Sign Out while the config can't be read still drops what wasn't
