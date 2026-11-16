@@ -228,7 +228,7 @@ class ReviewChainTests(unittest.TestCase):
         # Step 5 Preview is the gate chain's last model, so nothing would
         # replace it: a slow review gets the rest of the chain's budget, not
         # REVIEW_MINUTES (1.8 s here).
-        runs = [("zai-custom/glm-5.3-flash", "zai", "fail"), ("stepfun/step-5-preview", "step", "slow")]
+        runs = [("zai-custom/glm-5.3-flashx", "zai", "fail"), ("stepfun/step-5-preview", "step", "slow")]
         run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=runs, chain_minutes="0.2")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
         self.assertEqual(out["model"], "stepfun/step-5-preview")
@@ -240,17 +240,17 @@ class ReviewChainTests(unittest.TestCase):
 
     def test_glm_reviews_when_it_can(self):
         run, log, out = self.run_chain(reviewer="GLM-5.3-Flash")
-        self.assertEqual(self.reviews(log), [["zai-custom/glm-5.3-flash", "zai"]])
-        self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
-        self.assertEqual(out["name"], "GLM-5.3-Flash")
+        self.assertEqual(self.reviews(log), [["zai-custom/glm-5.3-flashx", "zai"]])
+        self.assertEqual(out["model"], "zai-custom/glm-5.3-flashx")
+        self.assertEqual(out["name"], "GLM-5.3-FlashX")
 
     def test_glm_falls_back_to_step_5_preview(self):
         # Whatever stops GLM (a refused test request such as a usage
         # limit, a failed review, or one past REVIEW_MINUTES), Step 5
         # Preview reviews, and the label and outputs name it.
         for case in ({"codes": [("zai", 429)]},
-                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "fail")]},
-                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "hang")]},
+                     {"runs": [("zai-custom/glm-5.3-flashx", "zai", "fail")]},
+                     {"runs": [("zai-custom/glm-5.3-flashx", "zai", "hang")]},
                      {"unset": ["ZAI_API_KEY"]}):
             with self.subTest(case=case):
                 run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", **case)
