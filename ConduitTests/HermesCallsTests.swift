@@ -309,6 +309,11 @@ extension VoiceConversationControllerTests {
         supervisor.settlingCallProfile = "nahida"
         XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
         XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
+
+        // So does a call that hangs up with nothing to settle.
+        beginHermesCall(supervisor)
+        XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
+        XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
     }
 
     func testReleaseAfterTheHostSawTheEndNotifiesOnce() async {

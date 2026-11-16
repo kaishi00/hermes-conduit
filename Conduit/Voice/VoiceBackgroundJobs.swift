@@ -1013,14 +1013,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// The hang-up pass for a call on `callProfile`: its notices name that
     /// profile where a job names none, and the profile is cleared as the
     /// pass ends, unless a later pass set its own (#2630's review). With no
-    /// call to finish, a pass still running keeps its profile.
+    /// call to finish, or nothing of the call's to settle, a pass still
+    /// running keeps its profile and none is left set.
     @discardableResult
     func finishCallbacks(callProfile: String?) -> Task<Void, Never>? {
         guard callbackCallID != nil else { return nil }
+        let previous = (pass: settlingPass, profile: settlingCallProfile)
         let pass = UUID()
         settlingPass = pass
         settlingCallProfile = callProfile
-        guard let task = finishCallbacks() else { return nil }
+        guard let task = finishCallbacks() else {
+            settlingPass = previous.pass
+            settlingCallProfile = previous.profile
+            return nil
+        }
         return Task { [weak self] in
             await task.value
             guard let self, self.settlingPass == pass else { return }
