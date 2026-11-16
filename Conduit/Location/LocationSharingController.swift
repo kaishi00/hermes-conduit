@@ -119,10 +119,14 @@ final class LocationSharingController: ObservableObject {
     private let readStoredConfig: () -> LocationSharedStore.Read<LocationSharedConfig>
     /// Reads the stored unsent queue (tests pass their own).
     private let readStoredUnsent: () -> LocationUnsent
-    /// A Sign Out dropped the queue while the config couldn't be read; the
-    /// queue's file may not have been readable or writable either, so the
-    /// copy on disk isn't read back once the config is.
-    private var unsentDroppedWhileUnreadable = false
+    /// Writes the unsent queue, saying whether it was written (tests pass
+    /// their own, so they never touch the app group's file).
+    private let writeStoredUnsent: (LocationUnsent) -> Bool
+    /// A Sign Out dropped the queue while the config couldn't be read, and
+    /// no save of the queue has reached its file since: the copy on disk is
+    /// what was dropped, so it isn't read back once the config is, and the
+    /// save is tried again until it lands.
+    private(set) var unsentDroppedWhileUnreadable = false
     /// The dashboard the Keychain's host pass was saved for: it's saved
     /// only for the dashboard sharing is bound to, so it names the binding
     /// while the config can't be read.
@@ -133,11 +137,13 @@ final class LocationSharingController: ObservableObject {
         config: LocationSharedConfig? = nil,
         unsent: LocationUnsent? = nil,
         readStoredConfig: @escaping () -> LocationSharedStore.Read<LocationSharedConfig> = { LocationSharedStore.readConfig() },
-        readStoredUnsent: @escaping () -> LocationUnsent = { LocationSharedStore.readUnsent() }
+        readStoredUnsent: @escaping () -> LocationUnsent = { LocationSharedStore.readUnsent() },
+        writeStoredUnsent: @escaping (LocationUnsent) -> Bool = { LocationSharedStore.saveUnsent($0) }
     ) {
         self.engine = engine ?? LocationSyncEngine(deviceName: { UIDevice.current.name })
         self.readStoredConfig = readStoredConfig
         self.readStoredUnsent = readStoredUnsent
+        self.writeStoredUnsent = writeStoredUnsent
         if let config {
             self.config = config
         } else {
@@ -174,18 +180,19 @@ final class LocationSharingController: ObservableObject {
         case .value(let stored):
             config = stored
             if unsentDroppedWhileUnreadable {
-                // A Sign Out dropped the queue while its file couldn't be
-                // read or written: the file's copy is what was dropped, so
-                // what's in memory (recorded since) replaces it.
+                // A Sign Out dropped the queue and its file hasn't been
+                // written since: the file's copy is what was dropped, so
+                // what's in memory (recorded since) replaces it. A failed
+                // write keeps the flag, and the next foreground tries again.
                 saveUnsent()
             } else {
                 unsent = readStoredUnsent()
             }
-            unsentDroppedWhileUnreadable = false
             configUnreadable = false
             return true
         case .missing:
-            unsentDroppedWhileUnreadable = false
+            // No config, but the dropped queue's file may still be there.
+            if unsentDroppedWhileUnreadable { saveUnsent() }
             configUnreadable = false
             return true
         case .unreadable:
@@ -237,8 +244,19 @@ final class LocationSharingController: ObservableObject {
         reconfigureMonitors()
     }
 
-    private func saveUnsent() {
-        LocationSharedStore.saveUnsent(unsent)
+    @discardableResult
+    private func saveUnsent() -> Bool {
+        let saved = writeStoredUnsent(unsent)
+        // The file holds what's in memory now: nothing dropped is left in it.
+        if saved { unsentDroppedWhileUnreadable = false }
+        return saved
+    }
+
+    /// Tries again to write over a dropped queue's file, so a relaunch
+    /// doesn't read it back.
+    func retryDroppedUnsentSave() {
+        guard unsentDroppedWhileUnreadable else { return }
+        saveUnsent()
     }
 
     // MARK: Launch and foreground
@@ -256,6 +274,7 @@ final class LocationSharingController: ObservableObject {
     /// Conduit came to the foreground: permissions may have changed in the
     /// Settings app, and anything unsent goes now.
     func appBecameActive() {
+        retryDroppedUnsentSave()
         guard readConfigIfNeeded() else { return }
         refreshAuthorization()
         retryConfigSave()
@@ -336,7 +355,8 @@ final class LocationSharingController: ObservableObject {
         // (issue 2562).
         lastCallFix = nil
         // The file's copy may hold what memory doesn't (it couldn't be read
-        // at launch): it's never read back after this drop.
+        // at launch): it isn't read back after this drop, until a save of
+        // the queue lands (this one clears the flag when it does).
         if configUnreadable { unsentDroppedWhileUnreadable = true }
         unsent.fix = nil
         unsent.events = []
