@@ -74,6 +74,15 @@ boot_s=0
 readiness_s=0
 boot_confirmed=false
 if [ -n "${SIMULATOR_UDID:-}" ]; then
+  # TEMPORARY probe (#2594): when the device reports Booted and SpringBoard
+  # runs, against when bootstatus returns.
+  ( t0=$(date +%s); while [ $(( $(date +%s) - t0 )) -lt 600 ]; do
+      st=$(xcrun simctl list devices 2>/dev/null | grep -F "($SIMULATOR_UDID)" | sed -E 's/.*\(([A-Za-z ]+)\) *$/\1/')
+      sb=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list 2>/dev/null | grep -c SpringBoard)
+      echo "probe +$(( $(date +%s) - t0 ))s state=$st springboard=$sb load=$(sysctl -n vm.loadavg)"
+      sleep 5
+    done ) > "$LOG_DIR/boot-probe.log" 2>&1 &
+  probe_pid=$!
   started=$(date +%s)
   bounded_run 60 xcrun simctl boot "$SIMULATOR_UDID" || true
   boot_s=$(( $(date +%s) - started ))
@@ -114,6 +123,8 @@ if [ -n "${SIMULATOR_UDID:-}" ]; then
     fi
     seed_s=$(( $(date +%s) - started ))
   fi
+  kill "$probe_pid" 2>/dev/null || true
+  echo "boot probe:"; cat "$LOG_DIR/boot-probe.log" 2>/dev/null | head -n 80
   # What the boot waited on: bootstatus names each stage as it waits.
   echo "bootstatus (last lines):"
   printf '%s\n' "$BOUNDED_OUTPUT" | tail -n 25
