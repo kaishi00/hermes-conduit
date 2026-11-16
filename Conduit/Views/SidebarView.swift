@@ -290,14 +290,7 @@ struct SessionList: View {
                 }
 
                 Menu {
-                    if appState.offersNeedsYouList {
-                        Button {
-                            Haptics.selection()
-                            showNeedsYou = true
-                        } label: {
-                            Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
-                        }
-                    }
+                    NeedsYouMenuEntry(store: appState.needsYou) { showNeedsYou = true }
                     Button {
                         Haptics.selection()
                         showFilterOrder = true

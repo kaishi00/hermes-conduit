@@ -3820,6 +3820,36 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.composerRestoreRequests.isEmpty, "no draft of the next account gets them")
     }
 
+    /// The pane going while the send is out, and the send then failing:
+    /// the words go to the chat's draft too.
+    func testAKeptChatsWordsGoToItsDraftWhenItsPaneGoesDuringAFailedSend() async throws {
+        final class Box { weak var state: AppState? }
+        let box = Box()
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, _, _ in
+                await MainActor.run { box.state?.besideChatIDs = nil }
+                throw HermesError.timeout("prompt.submit")
+            })
+        )
+        box.state = state
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+
+        let went = await state.sendInKeptChat(kept, text: "Quick one")
+        XCTAssertFalse(went)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Quick one" })
+        XCTAssertEqual(state.composerRestoreRequests.last?.draft.text, "Quick one", "the words aren't lost with the pane")
+    }
+
     func testAKeptChatTakesAMessageFromItsBox() async throws {
         let sent = SentPrompts()
         var fails = false

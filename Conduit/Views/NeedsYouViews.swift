@@ -285,3 +285,24 @@ struct NeedsYouRow: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// The Needs you entry of the Chats and drawer menus. It watches the store
+/// itself: another combined dashboard's first wait brings it, on a
+/// dashboard whose own plugin keeps no list, with nothing else redrawing.
+struct NeedsYouMenuEntry: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var store: NeedsYouStore
+    let open: () -> Void
+
+    var body: some View {
+        // Any change of the store redraws it, whatever it reads.
+        if appState.offersNeedsYouList {
+            Button {
+                Haptics.selection()
+                open()
+            } label: {
+                Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
+            }
+        }
+    }
+}

@@ -1094,13 +1094,17 @@ extension CrossProfilePresentationCacheTests {
         appState.connectOtherCombinedDashboards(only: vps.id)
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty, "refused: not asked again")
         XCTAssertEqual(mints.count, before + 1, "asked once")
-        // Opening it is the tap it waited for: the refusal goes at once,
-        // however the open ends.
+        // Opening it is the tap it waited for: the refusal goes at once.
+        // The open runs to its end on a socket of its own, before the
+        // assertions after it.
+        let opened = ClarifyFakeSocket()
+        opened.refusesEveryRequest = true
+        transport.nextSocket = { opened }
+        transport.open(opened)
         let open = Task { @MainActor in await appState.switchDashboard(to: vps.id) }
         await waitUntil { !appState.combinedSignInsRefused.contains(vps.id) }
         XCTAssertFalse(appState.combinedSignInsRefused.contains(vps.id), "opening lifts the refusal")
-        // How the open ends isn't this test's.
-        open.cancel()
+        await open.value
 
         appState.setDashboardCombined(vps.id, false)
         XCTAssertNil(appState.combinedDashboardStatus(vps.id))
