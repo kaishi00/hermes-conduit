@@ -7182,7 +7182,7 @@ connection, stage 3c) · README.md
 - Stage 3b: the other combined dashboards connect at launch after one Face ID unlock, and Ask Which Dashboard at Launch lists the group as one choice.
 - Stage 3c: each combined dashboard's state (down, sign-in needed) on its row and in the dashboard menu, a push opening through a kept connection, and memory and battery against stage 0's baseline.
 
-**Checked:** 2026-11-15, #STAGE3A.
+**Checked:** 2026-11-16, #2595.
 
 ## App Store screenshots and showcase clips
 
