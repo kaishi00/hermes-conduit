@@ -1288,6 +1288,52 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
     }
 
+    /// Bots Home shows a kept combined dashboard's bots, read through its
+    /// kept client, under a section of its own; a tap opens through that
+    /// dashboard (all-live stage 4c).
+    func testBotsHomeShowsAKeptDashboardsBotsAndOpensThroughThem() async throws {
+        final class Counts { var mints = 0; var reads = 0 }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        func bot(_ name: String, hidden: Bool = false) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        appState.keptDashboardBotRosterReader = { client in
+            XCTAssertTrue(client === outgoing, "read through the kept client")
+            counts.reads += 1
+            return BotRosterSnapshot(bots: [bot("raiden"), bot("nahida", hidden: true)], supportsBotProtocol: true)
+        }
+
+        await appState.readOtherCombinedDashboardsBots()
+        let section = try XCTUnwrap(appState.otherCombinedDashboardsBots.first)
+        XCTAssertEqual(appState.otherCombinedDashboardsBots.count, 1, "only the other dashboard")
+        XCTAssertEqual(section.dashboardID, mac.id)
+        XCTAssertEqual(section.badge, V2DashboardBadge(letter: "M", colorIndex: 0, name: "Mac"))
+        XCTAssertEqual(section.bots.map(\.name), ["raiden"], "a hidden bot stays hidden")
+        // Read again only past a few minutes; a failed read keeps it.
+        await appState.readOtherCombinedDashboardsBots()
+        XCTAssertEqual(counts.reads, 1)
+        appState.keptDashboardBotRosterReader = { _ in throw URLError(.timedOut) }
+        await appState.readOtherCombinedDashboardsBots(force: true)
+        XCTAssertEqual(appState.otherCombinedDashboardsBots.first?.bots.map(\.name), ["raiden"])
+
+        appState.openCombinedBot(section.bots[0], in: mac.id)
+        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        XCTAssertTrue(appState.otherCombinedDashboardsBots.allSatisfy { $0.dashboardID != mac.id }, "on screen, its bots are Bots Home's own")
+        appState.letGoCombinedDashboard(vps.id)
+        XCTAssertNil(appState.combinedDashboardBots[vps.id])
+    }
+
     /// A notification from a combined dashboard kept beside the one on
     /// screen opens through its kept connection: no ticket, no new socket.
     func testANotificationFromAKeptDashboardOpensThroughItsKeptConnection() async throws {

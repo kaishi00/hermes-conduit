@@ -34,6 +34,8 @@ extension AppState {
             // The other combined dashboards' chats ride the same poll, read
             // less often (stage 4b, combinedDashboardChatsMaxAge).
             await self?.readOtherCombinedDashboardsChats()
+            // And their bots, every few minutes (stage 4c).
+            await self?.readOtherCombinedDashboardsBots()
         }
     }
 

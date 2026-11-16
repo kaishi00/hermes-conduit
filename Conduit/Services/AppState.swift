@@ -239,6 +239,11 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's newest chats (all-live stage 4b),
     /// read through its kept connection for the profile it last used.
     @Published var combinedDashboardChats: [UUID: CombinedDashboardChats] = [:]
+    /// Each other combined dashboard's bots (all-live stage 4c), read
+    /// through its kept client.
+    @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Reads a kept dashboard's bot roster through its client. Tests set it.
+    var keptDashboardBotRosterReader: ((HermesClient) async throws -> BotRosterSnapshot)?
     /// Reads a kept dashboard's JSON route through its bridge. Tests set it.
     var keptDashboardJSONReader: ((DashboardTicketBridge, String) async throws -> [String: Any])?
     /// Lets the kept connections go once Conduit has been off screen for
