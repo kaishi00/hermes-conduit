@@ -3789,6 +3789,37 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNotNil(state.composerNotice, "a notice says where they went")
     }
 
+    /// Signed out during the report: the words were the outgoing
+    /// account's, and go with its drafts.
+    func testAKeptChatsWordsDontComeBackAfterASignOutDuringItsReport() async throws {
+        let sent = SentPrompts()
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+        state.turnSurfaceSender = { [weak state] _ in
+            await MainActor.run { state?.disconnect() }
+        }
+
+        let went = await state.sendInKeptChat(kept, text: "Account A's words")
+        XCTAssertFalse(went)
+        XCTAssertTrue(sent.prompts.isEmpty)
+        XCTAssertTrue(state.composerRestoreRequests.isEmpty, "no draft of the next account gets them")
+    }
+
     func testAKeptChatTakesAMessageFromItsBox() async throws {
         let sent = SentPrompts()
         var fails = false
