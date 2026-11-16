@@ -509,7 +509,7 @@ jobs:
           steps.build.outcome == 'success'
           && steps.sim-seed.outputs.cache-hit != 'true'
           && env.SIM_SEED_CREATED == '1'
-          && github.event_name == 'push'
+          && (github.event_name == 'push' || github.event_name == 'pull_request')
         uses: actions/cache/save@v5
         with:
           path: ci-sim-seed
