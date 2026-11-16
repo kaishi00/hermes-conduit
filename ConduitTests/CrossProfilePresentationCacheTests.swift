@@ -1225,6 +1225,23 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedBotChatWaits(bot("atlas"), in: mac.id).map(\.id), [item.id])
         XCTAssertEqual(appState.combinedBotChatWaitThePillOpens(bot("atlas"), in: mac.id)?.id, item.id, "no workstream waits, so the pill opens the chat")
         XCTAssertEqual(appState.combinedBotStatus(bot("default"), in: mac.id), .idle)
+        // Its work, read through the kept connection: a workstream waiting
+        // adds to the pill, and the pill then opens the overview, not the
+        // chat (as this dashboard's portraits).
+        let needsYouReader = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [BotWorkstreamsClient.capability]] }
+            return ["ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+                    "counts": ["working": 0, "needs_you": 1, "ready": 0, "waiting": 1],
+                    "workstream_sessions": ["ws-1"], "work": [[String: Any]]()]
+        }
+        await appState.refreshCombinedDashboardBotWork(mac.id, profile: "atlas")
+        XCTAssertEqual(appState.combinedDashboardBotWork[mac.id]?["atlas"]?.needsYouCount, 1)
+        XCTAssertEqual(appState.combinedBotStatus(bot("atlas"), in: mac.id), .needsYou(2), "its work's wait and its chat's")
+        XCTAssertNil(appState.combinedBotChatWaitThePillOpens(bot("atlas"), in: mac.id), "a workstream waits: the overview")
+        appState.combinedDashboardBotWork[mac.id] = nil
+        appState.keptDashboardJSONReader = needsYouReader
         XCTAssertEqual(appState.needsYou.everyItem.map(\.id), [item.id], "the list shows it")
         XCTAssertTrue(appState.needsYou.items.isEmpty, "this dashboard's profile chips don't count it")
         XCTAssertNil(appState.needsYou.banner, "a first read shows no banner")
