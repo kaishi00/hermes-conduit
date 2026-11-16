@@ -1070,14 +1070,25 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "counted from one again")
         XCTAssertNotNil(appState.combinedDashboardRetries[vps.id]?.task)
 
+        // A refused sign-in waits for a tap: no pass, retry or return asks again.
+        appState.dropKeptDashboardRuntime(vps.id)
+        appState.combinedDashboardRetries.removeValue(forKey: vps.id)?.task?.cancel()
+        appState.combinedSignInsRefused.insert(vps.id)
+        appState.connectOtherCombinedDashboards()
+        appState.connectOtherCombinedDashboards(only: vps.id)
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty, "refused: not asked again")
+
         appState.setDashboardCombined(vps.id, false)
         XCTAssertNil(appState.combinedDashboardStatus(vps.id))
+        XCTAssertTrue(appState.combinedSignInsRefused.isEmpty, "out of the group: forgotten")
         XCTAssertNil(appState.combinedDashboardTrouble[vps.id])
         XCTAssertNil(appState.combinedDashboardRetries[vps.id], "out of the group: no retry")
 
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.signInRequired), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 401, detail: "")), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 502, detail: "")), .down)
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 403, detail: "")), .signInNeeded)
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 503, detail: "")), .down)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(URLError(.timedOut)), .down)
     }
 

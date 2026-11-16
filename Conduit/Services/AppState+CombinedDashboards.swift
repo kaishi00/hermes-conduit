@@ -223,7 +223,9 @@ extension AppState {
     /// not yet kept signs in quietly beside it, up to the cap. One that
     /// needs typing, or a Face ID unlock this launch hasn't had, is left
     /// for a tap.
-    func connectOtherCombinedDashboards() {
+    /// `only`: a down dashboard's own retry tries it alone, so another's
+    /// retry never cuts its wait short.
+    func connectOtherCombinedDashboards(only: UUID? = nil) {
         // Beside any dashboard on screen, one left out of the group
         // included: the group connects when Conduit opens.
         guard isSceneActive, isConnected,
@@ -235,19 +237,23 @@ extension AppState {
         // One whose address was edited signs in on its next switch, which
         // settles the move first.
         for dashboard in savedDashboardRegistry.dashboards
-        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil {
+        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil
+            && (only == nil || dashboard.id == only) {
             let id = dashboard.id
             guard keptDashboardRuntimes[id] == nil,
-                  !combinedSignInsUnderWay.contains(id) else { continue }
+                  !combinedSignInsUnderWay.contains(id),
+                  // Its sign-in was refused: it waits for a tap (opening
+                  // it), never asked again on its own.
+                  !combinedSignInsRefused.contains(id) else { continue }
+            // The one on screen counts too. One down past the cap says
+            // nothing until its turn: no "trying again" with no retry waiting.
+            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
+                if combinedDashboardTrouble[id] == .down { clearCombinedDashboardTrouble(id) }
+                continue
+            }
             guard combinedDashboardSignsInQuietly(id) else {
                 // Waits for a tap, and says so.
                 noteCombinedDashboardFailed(id, .signInNeeded)
-                continue
-            }
-            // The one on screen counts too. One past the cap says nothing
-            // until its turn: no "trying again" with no retry waiting.
-            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
-                clearCombinedDashboardTrouble(id)
                 continue
             }
             combinedSignInsUnderWay.insert(id)
@@ -263,6 +269,7 @@ extension AppState {
                 self.combinedSignInBridges.removeValue(forKey: id)
                 if case .failed(let trouble) = outcome, self.isInCombinedGroup(id) {
                     self.noteCombinedDashboardFailed(id, trouble)
+                    if trouble == .signInNeeded { self.combinedSignInsRefused.insert(id) }
                 }
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
@@ -407,6 +414,8 @@ extension AppState {
             return .signInNeeded
         case AuthClientError.loginFailed(let status, _), AuthClientError.ticketFailed(let status, _):
             return status == 401 || status == 403 ? .signInNeeded : .down
+        case DashboardTicketBridgeError.http(let status, _) where status == 401 || status == 403:
+            return .signInNeeded
         default:
             return .down
         }
@@ -433,7 +442,7 @@ extension AppState {
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self else { return }
             self.combinedDashboardRetries[id]?.task = nil
-            self.connectOtherCombinedDashboards()
+            self.connectOtherCombinedDashboards(only: id)
         }
         combinedDashboardRetries[id] = CombinedDashboardRetry(attempt: attempt, task: task)
     }
@@ -442,6 +451,7 @@ extension AppState {
     /// to say of it, and no retry.
     func clearCombinedDashboardTrouble(_ id: UUID) {
         if combinedDashboardTrouble[id] != nil { combinedDashboardTrouble.removeValue(forKey: id) }
+        combinedSignInsRefused.remove(id)
         combinedDashboardRetries.removeValue(forKey: id)?.task?.cancel()
     }
 

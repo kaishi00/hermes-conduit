@@ -215,6 +215,9 @@ final class AppState: ObservableObject {
     /// Each combined dashboard that's down: how many retries it has had in
     /// a row, and the one waiting.
     var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
+    /// Combined dashboards whose quiet sign-in was refused (the password or
+    /// the grant turned down): no pass asks again until it's opened.
+    var combinedSignInsRefused: Set<UUID> = []
     /// The first retry's wait; each one after doubles it, up to
     /// `combinedDashboardRetryMaxDelay`. Shorter in tests.
     var combinedDashboardRetryBaseDelay: TimeInterval = 30
