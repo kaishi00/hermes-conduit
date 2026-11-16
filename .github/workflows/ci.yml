@@ -473,20 +473,23 @@ jobs:
         run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
 
       - name: Save the build cache
-        # Pushes' builds only, right after the build and its weak-imports
-        # check (a build that fails it is never saved for PRs to restore): a
-        # push's UI smoke runs another 3-5 minutes, and every PR opened
-        # meanwhile would restore an older build and recompile main's latest
-        # merge. A PR restores the newest it can reach: main's, and on a PR
-        # into pulse, linked-rooms or all-live (each runs its own copy of
-        # this workflow) that branch's too, never another branch's. Smoke always builds the full app
+        # Every build that passed the weak-imports check (a build that fails
+        # it is never saved for another run to restore), right after it and
+        # before the tests, so a test failure still saves a good build.
+        # A push saves for the PRs opened after it: its UI smoke runs another
+        # 3-5 minutes, and a PR opened meanwhile would restore an older build
+        # and recompile main's latest merge. A PR saves for its own next
+        # push: GitHub gives a run its own ref's entries first, then its base
+        # branch's (and main's), never another PR's, so a review-fix push
+        # recompiles only what changed since the PR's last run instead of
+        # the PR again on top of main. Smoke always builds the full app
         # (project.yml); the app-only (slim) build the nightly unit shards
-        # restore is saved by nightly unit shard 1. Before the tests, so a
-        # test failure still saves a good build.
+        # restore is saved by nightly unit shard 1. A cache outage only
+        # warns: it never skips the tests.
         if: >-
           steps.build.outcome == 'success'
           && steps.cache.outputs.cache-hit != 'true'
-          && github.event_name == 'push'
+        continue-on-error: true
         uses: actions/cache/save@v5
         with:
           path: |

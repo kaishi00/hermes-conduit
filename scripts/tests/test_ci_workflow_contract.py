@@ -93,8 +93,8 @@ def _job_keys(path):
 
 def _assert_cache_round_trip(tc, text, saver, label):
     """A job restores the newest DerivedData it can reach before building and
-    saves its own after the tests, never a PR's and only after a successful
-    build, with the same path list (a different list is a different cache)."""
+    saves its own only after a successful build, with the same path list (a
+    different list is a different cache)."""
     tc.assertIn("uses: actions/cache/restore@v5", text, label)
     tc.assertIn("uses: actions/cache/save@v5", text, label)
     tc.assertEqual(2, text.count(CACHE_PATH), label)
@@ -186,13 +186,25 @@ class WorkflowContractTests(unittest.TestCase):
     def test_a_push_saves_its_build_before_the_tests(self):
         """A push's UI smoke runs minutes after its build; PRs opened then
         restored an older build and recompiled main's latest merge. The save
-        sits right after the build and before every test step."""
+        sits right after the build and before every test step, and PR runs
+        save too, so a PR's next push restores its own last build."""
         text = self._job_text("smoke")
         save = text.index("- name: Save the build cache")
         self.assertLess(text.index("- name: No back-deployed Date comparisons"), save)
         self.assertLess(save, text.index("- name: Run the curated unit smoke classes"))
         self.assertLess(save, text.index("- name: Run the curated UI smoke suite"))
-        self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Run the curated unit smoke classes")])
+        step = text[save:text.index("- name: Run the curated unit smoke classes")]
+        # PRs save too, for their own next push; an outage never skips tests.
+        self.assertNotIn("github.event_name", step)
+        self.assertIn("continue-on-error: true", step)
+
+    def test_select_xcode_fetches_a_missing_metal_toolchain(self):
+        """Image 20261112.0361.1's Xcode 27.3 had no Metal toolchain and every
+        build failed at CompileMetalFile (2026-11-16)."""
+        script = _read(os.path.join(SCRIPTS_DIR, "ci-select-xcode.sh"))
+        self.assertIn("if ! xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; then", script)
+        self.assertIn("xcodebuild -downloadComponent MetalToolchain", script)
+        self.assertLess(script.index('xcode-select -s "$target"'), script.index("-downloadComponent"))
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
@@ -569,7 +581,11 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("if: ${{ !cancelled() && steps.build.outcome == 'success' && github.event_name == 'push' }}", remove)
         unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
         self.assertNotIn("if:", unit, "the unit step runs only after a good build")
-        self.assertNotIn("continue-on-error", self._job_text("smoke"),
+        # A failed step fails the job; only the cache save may fail quietly
+        # (an Actions cache outage is no verdict on the change).
+        job = self._job_text("smoke")
+        save = _step_text(job, "Save the build cache")
+        self.assertEqual(job.count("continue-on-error"), save.count("continue-on-error"),
                          "a failed step must fail the job")
 
     def test_unit_smoke_step_runs_the_curated_classes_once_without_retry(self):
@@ -612,13 +628,11 @@ class WorkflowContractTests(unittest.TestCase):
     def test_smoke_job_builds_incrementally_and_pushes_save_the_full_build(self):
         """The smoke job restores the newest DerivedData it can reach (main's,
         and on a PR into pulse, linked-rooms or all-live that branch's) before
-        building, and saves its own only on pushes (to main, and in pulse's
-        linked-rooms' and all-live's copies to that branch; always the full app there),
-        after a successful build, with the same path list (a different list
-        is a different cache)."""
+        building, and saves its own on every run (a push for later PRs, a PR
+        for its own next push; always the full app), after a successful build,
+        with the same path list (a different list is a different cache)."""
         text = self._job_text("smoke")
-        _assert_cache_round_trip(self, text, "github.event_name == 'push'", "smoke")
-        self.assertIn("&& github.event_name == 'push'\n", text)
+        _assert_cache_round_trip(self, text, "continue-on-error: true", "smoke")
         build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
         self.assertIn("ci-normalize-mtimes.py", build)
         self.assertIn("IgnoreFileSystemDeviceInodeChanges", build)

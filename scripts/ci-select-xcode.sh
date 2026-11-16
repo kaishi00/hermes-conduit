@@ -32,4 +32,15 @@ echo "selecting $target"
 if [ -z "${APPLICATIONS_DIR:-}" ]; then
   xcode-select -s "$target"
   xcodebuild -version
+  # Xcode 26 and later ship the Metal toolchain as a separate component, and
+  # an image can carry an Xcode without it: image 20261112.0361.1's Xcode
+  # 27.3 (27C5020n) failed every build at CompileMetalFile ("missing Metal
+  # Toolchain", 2026-11-16). The app compiles a .metal file, so fetch it
+  # when the selected Xcode can't run metal.
+  if ! xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; then
+    echo "the Metal toolchain is missing - downloading it"
+    started=$(date +%s)
+    xcodebuild -downloadComponent MetalToolchain
+    echo "::notice title=Metal toolchain downloaded::$(xcodebuild -version | head -n 1) lacked it; fetching took $(( $(date +%s) - started ))s"
+  fi
 fi
