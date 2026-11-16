@@ -252,9 +252,10 @@ private struct ArtifactsList: View {
         return picked.isEmpty ? sources : picked
     }
 
-    /// The stores Saved reads: this dashboard's, which keeps the pins.
+    /// The stores Saved reads: this dashboard's, which keeps the pins,
+    /// whichever dashboard's chip the feed shows.
     private var ownSources: [ArtifactSource] {
-        currentKey.sources.filter { $0.dashboardID == nil }
+        appState.artifactSources(for: scope).filter { $0.dashboardID == nil }
     }
 
     private var items: [ArtifactItem] { feed?.items ?? [] }
