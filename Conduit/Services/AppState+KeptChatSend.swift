@@ -89,7 +89,9 @@ extension AppState {
         // A switch to another dashboard or profile during the report closed
         // the chat and moved the connection on: nothing goes, and the box
         // keeps the words.
-        guard activeDashboardID == reportedOn, activeProfile == profileBefore else {
+        guard activeDashboardID == reportedOn, activeProfile == profileBefore,
+              // A switch away and back closed it all the same.
+              keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true else {
             discardTurnSurface(runtimeSessionID: target, text: words, after: CancellationError(), reportedOn: reportedOn)
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }

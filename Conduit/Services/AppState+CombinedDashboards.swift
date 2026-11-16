@@ -223,7 +223,9 @@ extension AppState {
     /// not yet kept signs in quietly beside it, up to the cap. One that
     /// needs typing, or a Face ID unlock this launch hasn't had, is left
     /// for a tap.
-    func connectOtherCombinedDashboards() {
+    /// `only`: a down dashboard's own retry tries it alone, so another's
+    /// retry never cuts its wait short.
+    func connectOtherCombinedDashboards(only: UUID? = nil) {
         // Beside any dashboard on screen, one left out of the group
         // included: the group connects when Conduit opens.
         guard isSceneActive, isConnected,
@@ -235,17 +237,25 @@ extension AppState {
         // One whose address was edited signs in on its next switch, which
         // settles the move first.
         for dashboard in savedDashboardRegistry.dashboards
-        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil {
+        where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil
+            && (only == nil || dashboard.id == only) {
             let id = dashboard.id
             guard keptDashboardRuntimes[id] == nil,
-                  !combinedSignInsUnderWay.contains(id) else { continue }
+                  !combinedSignInsUnderWay.contains(id),
+                  // Its sign-in was refused: it waits for a tap (opening
+                  // it), never asked again on its own.
+                  !combinedSignInsRefused.contains(id) else { continue }
+            // The one on screen counts too. One down past the cap says
+            // nothing until its turn: no "trying again" with no retry waiting.
+            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
+                if combinedDashboardTrouble[id] == .down { clearCombinedDashboardTrouble(id) }
+                continue
+            }
             guard combinedDashboardSignsInQuietly(id) else {
                 // Waits for a tap, and says so.
                 noteCombinedDashboardFailed(id, .signInNeeded)
                 continue
             }
-            // The one on screen counts too.
-            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else { continue }
             combinedSignInsUnderWay.insert(id)
             // This pass is its retry: the one waiting goes.
             combinedDashboardRetries[id]?.task?.cancel()
@@ -259,6 +269,7 @@ extension AppState {
                 self.combinedSignInBridges.removeValue(forKey: id)
                 if case .failed(let trouble) = outcome, self.isInCombinedGroup(id) {
                     self.noteCombinedDashboardFailed(id, trouble)
+                    if trouble == .signInNeeded { self.combinedSignInsRefused.insert(id) }
                 }
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
@@ -395,6 +406,12 @@ extension AppState {
     /// The longest wait between retries of a down dashboard.
     static let combinedDashboardRetryMaxDelay: TimeInterval = 300
 
+    /// The wait before retry `attempt` (from 1): `base`, doubling each
+    /// time, to `combinedDashboardRetryMaxDelay` at most.
+    nonisolated static func combinedDashboardRetryDelay(attempt: Int, base: TimeInterval) -> TimeInterval {
+        min(base * pow(2, Double(min(max(attempt, 1) - 1, 16))), max(combinedDashboardRetryMaxDelay, base))
+    }
+
     /// A quiet sign-in refused (the password or the grant turned down) waits
     /// for a tap; anything else on the way is down and tried again.
     nonisolated static func troubleAfterCombinedSignIn(_ error: Error) -> CombinedDashboardTrouble {
@@ -403,6 +420,8 @@ extension AppState {
             return .signInNeeded
         case AuthClientError.loginFailed(let status, _), AuthClientError.ticketFailed(let status, _):
             return status == 401 || status == 403 ? .signInNeeded : .down
+        case DashboardTicketBridgeError.http(let status, _) where status == 401 || status == 403:
+            return .signInNeeded
         default:
             return .down
         }
@@ -420,16 +439,13 @@ extension AppState {
             return
         }
         let attempt = (combinedDashboardRetries[id]?.attempt ?? 0) + 1
-        let delay = min(
-            combinedDashboardRetryBaseDelay * pow(2, Double(min(attempt - 1, 16))),
-            max(Self.combinedDashboardRetryMaxDelay, combinedDashboardRetryBaseDelay)
-        )
+        let delay = Self.combinedDashboardRetryDelay(attempt: attempt, base: combinedDashboardRetryBaseDelay)
         combinedDashboardRetries[id]?.task?.cancel()
         let task = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self else { return }
             self.combinedDashboardRetries[id]?.task = nil
-            self.connectOtherCombinedDashboards()
+            self.connectOtherCombinedDashboards(only: id)
         }
         combinedDashboardRetries[id] = CombinedDashboardRetry(attempt: attempt, task: task)
     }
@@ -438,6 +454,7 @@ extension AppState {
     /// to say of it, and no retry.
     func clearCombinedDashboardTrouble(_ id: UUID) {
         if combinedDashboardTrouble[id] != nil { combinedDashboardTrouble.removeValue(forKey: id) }
+        combinedSignInsRefused.remove(id)
         combinedDashboardRetries.removeValue(forKey: id)?.task?.cancel()
     }
 
