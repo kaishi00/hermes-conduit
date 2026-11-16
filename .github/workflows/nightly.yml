@@ -216,6 +216,7 @@ jobs:
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
           SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
+          SIM_SEED_RESTORE_ONLY: "1"
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's unit classes
@@ -471,6 +472,7 @@ jobs:
           BUILD_TIMEOUT_SECS: "1800"
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
           SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
+          SIM_SEED_RESTORE_ONLY: "1"
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the timing families
@@ -539,6 +541,7 @@ jobs:
           # clean-build budget, as in PR CI (#2319).
           BUILD_TIMEOUT_SECS: "1800"
           SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
+          SIM_SEED_RESTORE_ONLY: "1"
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes

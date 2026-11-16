@@ -56,6 +56,9 @@ if [ -n "${SIM_SEED_DIR:-}" ] && [ -n "${SIMULATOR_UDID:-}" ]; then
   elif [ -f "$SIM_SEED_DIR/data.tar" ]; then
     echo "::warning::the warm-device seed is for another device - booting cold"
     seed_state=failed
+  elif [ "${SIM_SEED_RESTORE_ONLY:-}" = 1 ]; then
+    # A job that can't save a seed doesn't spend a second boot making one.
+    seed_state=skipped
   fi
 fi
 

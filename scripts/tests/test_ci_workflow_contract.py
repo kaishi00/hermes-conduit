@@ -189,7 +189,7 @@ class WorkflowContractTests(unittest.TestCase):
         sits right after the build and before every test step."""
         text = self._job_text("smoke")
         save = text.index("- name: Save the build cache")
-        self.assertLess(text.index("- name: Build and boot the simulator in parallel"), save)
+        self.assertLess(text.index("- name: No back-deployed Date comparisons"), save)
         self.assertLess(save, text.index("- name: Run the curated unit smoke classes"))
         self.assertLess(save, text.index("- name: Run the curated UI smoke suite"))
         self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Save the warm simulator")])
@@ -211,8 +211,11 @@ class WorkflowContractTests(unittest.TestCase):
         save = save[:save.index("\n      - name:")]
         self.assertIn("env.SIM_SEED_CREATED == '1'", save)
         self.assertIn("github.event_name == 'push'", save)
+        self.assertNotIn("pull_request", save)
         for job in ("unit", "timing", "ui"):
             self.assertNotIn("Save the warm simulator", _job_text(NIGHTLY, job), job)
+            # They can't save one, so they never spend a second boot making it.
+            self.assertIn('SIM_SEED_RESTORE_ONLY: "1"', _job_text(NIGHTLY, job), job)
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1

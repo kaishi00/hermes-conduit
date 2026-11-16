@@ -156,7 +156,7 @@ class HostedPreparationTests(unittest.TestCase):
     def test_existing_pin_does_not_trigger_reporting_lookup_or_reuse_stale_metadata(self):
         self._assert_preparation(existing_pin=True)
 
-    def _run_seeded(self, tmp, seed_udid=None):
+    def _run_seeded(self, tmp, seed_udid=None, restore_only=False):
         """ci-prepare-smoke.sh with SIM_SEED_DIR set and the device pinned;
         a seed for seed_udid is in place first when given."""
         bindir = os.path.join(tmp, "bin")
@@ -191,6 +191,9 @@ class HostedPreparationTests(unittest.TestCase):
                    GITHUB_STEP_SUMMARY=os.path.join(tmp, "summary"),
                    LOG_DIR=os.path.join(tmp, "logs"))
         env.pop("SIMULATOR_INVENTORY_CACHE", None)
+        env.pop("SIM_SEED_RESTORE_ONLY", None)
+        if restore_only:
+            env["SIM_SEED_RESTORE_ONLY"] = "1"
         proc = subprocess.run(["bash", os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")],
                               env=env, capture_output=True, text=True, timeout=20)
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
@@ -219,6 +222,14 @@ class HostedPreparationTests(unittest.TestCase):
             self.assertEqual(marker, "cold")
             self.assertEqual(doc["warm_seed"], "failed")
             self.assertIn("seed is for another device", proc.stdout)
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+
+    def test_a_restore_only_job_never_makes_a_seed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, seed = self._run_seeded(tmp, restore_only=True)
+            self.assertEqual(doc["warm_seed"], "skipped")
+            self.assertEqual(operations.count("xcrun|simctl boot PINNED"), 1)
+            self.assertFalse(os.path.exists(os.path.join(seed, "data.tar")))
             self.assertNotIn("SIM_SEED_CREATED", github_env)
 
     def test_without_a_seed_the_finished_first_boot_becomes_one(self):

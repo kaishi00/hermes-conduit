@@ -481,10 +481,20 @@ jobs:
           SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
         run: bash scripts/ci-hosted-build.sh
 
+      - name: No back-deployed Date comparisons or strong framework loads in the build
+        # The smoke build's app, its .debug.dylib and its extensions: none may
+        # weak-import Foundation's Date <= or >=, which early iOS 27.2 betas
+        # lack (TestFlight 251, 2026-11-05; Shared/DateOrder/DateOrder.swift),
+        # or load ActivityKit or ImagePlayground strongly, which macOS 14 and
+        # iOS 17 lack (issue 1877).
+        run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
+
       - name: Save the build cache
-        # Pushes' builds only, right after the build: a push's UI smoke runs
-        # another 3-5 minutes, and every PR opened meanwhile would restore an
-        # older build and recompile main's latest merge. A PR restores the
+        # Pushes' builds only, right after the build and its weak-imports
+        # check (a build that fails it is never saved for PRs to restore): a
+        # push's UI smoke runs another 3-5 minutes, and every PR opened
+        # meanwhile would restore an older build and recompile main's latest
+        # merge. A PR restores the
         # newest it can reach: main's, and on a PR into pulse, linked-rooms
         # or all-live (each runs its own copy of this workflow) that branch's
         # too, never another branch's. Smoke always builds the full app
@@ -514,14 +524,6 @@ jobs:
         with:
           path: ci-sim-seed
           key: ${{ steps.sim-key.outputs.key }}
-
-      - name: No back-deployed Date comparisons or strong framework loads in the build
-        # The smoke build's app, its .debug.dylib and its extensions: none may
-        # weak-import Foundation's Date <= or >=, which early iOS 27.2 betas
-        # lack (TestFlight 251, 2026-11-05; Shared/DateOrder/DateOrder.swift),
-        # or load ActivityKit or ImagePlayground strongly, which macOS 14 and
-        # iOS 17 lack (issue 1877).
-        run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
 
       - name: Run the curated unit smoke classes
         # A few pinned tests per risk area (scripts/smoke-suite.json, capped),
