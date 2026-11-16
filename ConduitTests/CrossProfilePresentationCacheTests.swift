@@ -803,6 +803,14 @@ extension CrossProfilePresentationCacheTests {
 // MARK: - A kept socket that drops
 
 extension CrossProfilePresentationCacheTests {
+    /// Polls `condition` on the main actor, five seconds at most.
+    func waitUntil(_ condition: @MainActor () -> Bool) async {
+        let deadline = Date().addingTimeInterval(5)
+        while !condition(), Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     /// A kept dashboard whose socket drops on its own (the server went
     /// away, not a release of ours) is let go at once, with no switch.
     func testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce() async throws {
@@ -812,8 +820,9 @@ extension CrossProfilePresentationCacheTests {
         appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
 
+        await waitUntil { socket.hasWaitingReceive }
         socket.cancel(with: .abnormalClosure, reason: nil)
-        for _ in 0..<200 where appState.keptDashboardRuntimes[mac.id] != nil { await Task.yield() }
+        await waitUntil { appState.keptDashboardRuntimes[mac.id] == nil }
 
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
         XCTAssertFalse(kept.client.isConnected)
@@ -840,11 +849,10 @@ extension CrossProfilePresentationCacheTests {
 // MARK: - Every combined dashboard live (multi-instance stage 3b)
 
 extension CrossProfilePresentationCacheTests {
-    /// Waits, a few turns of the main actor at most, for a quiet sign-in.
+    /// Waits, five seconds at most, for a quiet sign-in: its ticket
+    /// bridge reads cookies off the main actor, so turns alone aren't enough.
     private func waitForKept(_ id: UUID, in appState: AppState) async {
-        for _ in 0..<200 where appState.keptDashboardRuntimes[id] == nil || !appState.combinedSignInsUnderWay.isEmpty {
-            await Task.yield()
-        }
+        await waitUntil { appState.keptDashboardRuntimes[id] != nil && appState.combinedSignInsUnderWay.isEmpty }
     }
 
     /// Once the dashboard on screen is connected, another combined one with
@@ -924,7 +932,7 @@ extension CrossProfilePresentationCacheTests {
         transport.open(socket)
         appState.connectOtherCombinedDashboards()
         XCTAssertEqual(appState.combinedSignInsUnderWay, [vps.id])
-        for _ in 0..<200 where !appState.combinedSignInsUnderWay.isEmpty { await Task.yield() }
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
 
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
         XCTAssertNil(appState.keptDashboardRuntimes[vps.id], "finished after Conduit left the screen: let go")
@@ -979,7 +987,7 @@ extension CrossProfilePresentationCacheTests {
         box.signOut = pi.id
         appState.connectOtherCombinedDashboards()
         XCTAssertEqual(appState.combinedSignInsUnderWay, [pi.id])
-        for _ in 0..<200 where !appState.combinedSignInsUnderWay.isEmpty { await Task.yield() }
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
 
         XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "signed out meanwhile: nothing kept")
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: pi.id), "nor saved again")
