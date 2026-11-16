@@ -64,10 +64,14 @@ jobs:
           for name in "${NAMES[@]}"; do
             name="$(echo "$name" | xargs)"
             udid=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
+          import json, os, sys
           name = sys.argv[1]
           runtimes = json.load(sys.stdin)["devices"]
           ios = sorted((r for r in runtimes if "iOS" in r), reverse=True)
+          # A fallback Xcode (ci-select-xcode.sh) pins the runtime it builds for.
+          pin = os.environ.get("SIMULATOR_OS")
+          if pin:
+              ios = [r for r in ios if r.endswith("iOS-" + pin.replace(".", "-"))]
           # Exact name first, then the first name starting with it (iPad
           # names carry the chip, which changes with each Xcode).
           for exact in (True, False):
@@ -262,10 +266,14 @@ jobs:
         run: |
           set -euo pipefail
           udid=$(xcrun simctl list devices available -j | python3 -c '
-          import json, sys
+          import json, os, sys
           name = sys.argv[1]
           runtimes = json.load(sys.stdin)["devices"]
           watch = sorted((r for r in runtimes if "watchOS" in r), reverse=True)
+          # A fallback Xcode (ci-select-xcode.sh) pins the runtime it builds for.
+          pin = os.environ.get("WATCH_SIMULATOR_OS")
+          if pin:
+              watch = [r for r in watch if r.endswith("watchOS-" + pin.replace(".", "-"))]
           for exact in (True, False):
               for r in watch:
                   for d in runtimes[r]:

@@ -23,7 +23,8 @@
 # An image that carries a newer Xcode usually carries its iOS runtime too, and
 # the device lookup (scripts/ci-lib.sh) takes the newest runtime, which an
 # older Xcode doesn't build for. So when the script falls back past the newest
-# release it pins SIMULATOR_OS to the selected Xcode's simulator SDK version
+# release it pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
+# screenshots' Watch job reads) to the selected Xcode's simulator SDK versions
 # through GITHUB_ENV (the workflows keep that variable across sudo).
 #
 # APPLICATIONS_DIR is for the regression test only; it puts stub
@@ -56,15 +57,16 @@ while IFS= read -r target; do
     if xcodebuild -downloadComponent MetalToolchain && has_metal; then
       echo "::notice title=Metal toolchain downloaded::$(xcodebuild -version | head -n 1) lacked it; fetching took $(( $(date +%s) - started ))s"
     else
-      echo "::warning title=Metal toolchain unavailable::$target has no Metal toolchain and the download failed; trying the next one"
+      echo "::warning title=Metal toolchain unavailable::$target has no Metal toolchain and couldn't get one (the download failed or left metal missing); trying the next one"
       continue
     fi
   fi
   if [ -n "$newest" ] && [ "$target" != "$newest" ]; then
     sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
-    echo "::notice title=Simulator runtime pinned::fell back to $target; the simulator runs iOS $sdk, the runtime its SDK builds for"
+    watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version)
+    echo "::notice title=Simulator runtime pinned::fell back to $target; simulators run iOS $sdk and watchOS $watch_sdk, the runtimes its SDKs build for"
     if [ -n "${GITHUB_ENV:-}" ]; then
-      echo "SIMULATOR_OS=$sdk" >> "$GITHUB_ENV"
+      printf 'SIMULATOR_OS=%s\nWATCH_SIMULATOR_OS=%s\n' "$sdk" "$watch_sdk" >> "$GITHUB_ENV"
     fi
   fi
   exit 0
