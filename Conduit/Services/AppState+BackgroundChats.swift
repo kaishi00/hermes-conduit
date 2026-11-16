@@ -424,6 +424,20 @@ extension AppState {
     /// belongs to (another device resumed it, say), by the conversation
     /// index. Looked up on every event and never kept, so an id the index
     /// later binds to another chat stops reaching this one.
+    /// A rebound id the open's reconcile took for the chat it was routed for
+    /// stops being accepted once the identity index binds it to another
+    /// chat, so that chat's words never reach this open (#2610's review).
+    func dropReboundIDIfMovedOn(_ id: String) {
+        guard var open = reconciliation, let routedFor = open.reboundSessionIDs[id] else { return }
+        let routedIDs = knownSessionIDs(for: routedFor).union([routedFor])
+        // Kept while the index still binds it there, or no longer knows it.
+        guard let durableID = conversationIdentityIndex.durableID(forRuntime: id, profile: activeProfile),
+              !routedIDs.contains(durableID) else { return }
+        open.reboundSessionIDs[id] = nil
+        open.acceptedSessionIDs.remove(id)
+        reconciliation = open
+    }
+
     func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
         return backgroundChats.firstIndex { chat in
