@@ -1289,6 +1289,11 @@ final class AppState: ObservableObject {
     /// New Chats creating their chat right now: the transcript on screen
     /// until then is the one being left, so the composer doesn't wait on it.
     var newSessionCreationsInFlight = 0
+    /// The chat a New Chat of the overlapping run under way followed as it
+    /// left it, until the run's last New Chat finishes: only then can a run
+    /// that started nothing let go of it. Nil when none of them followed
+    /// one, so a follow an open relies on is left alone (issue 2505).
+    var newChatRunFollowedIDs: Set<String>?
 
     // MARK: - Ask Hermes About Screen (AppState+ScreenQuestion.swift)
 

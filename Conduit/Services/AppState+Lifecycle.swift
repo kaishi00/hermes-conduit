@@ -35,6 +35,17 @@ extension AppState {
         /// step with `bufferedEvents`, so a replay is told apart as live
         /// events are (`takeVoiceEventAfterCancel`).
         var bufferedGenerations: [Int?] = []
+        /// Runtime ids Hermes rebound the chat being opened to while it was
+        /// away, routed to the screen before the open knew them (issue
+        /// 2503), each with the chat on screen it was routed for: accepted,
+        /// and kept when the resume narrows the set to that chat's ids only.
+        var reboundSessionIDs: [String: String] = [:]
+
+        /// The rebound ids routed for the conversation a resume addressed
+        /// (`ids`); one routed for an open this one overtook is dropped.
+        static func rebound(_ rebound: [String: String], keptFor ids: Set<String>) -> [String: String] {
+            rebound.filter { ids.contains($0.value) }
+        }
 
         init(
             token: UUID,
@@ -46,7 +57,8 @@ extension AppState {
             streamTextAtBoundary: String? = nil,
             streamSessionIDAtBoundary: String? = nil,
             bufferedEvents: [StreamEvent] = [],
-            bufferedGenerations: [Int?] = []
+            bufferedGenerations: [Int?] = [],
+            reboundSessionIDs: [String: String] = [:]
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId
@@ -58,6 +70,7 @@ extension AppState {
             self.streamSessionIDAtBoundary = streamSessionIDAtBoundary
             self.bufferedEvents = bufferedEvents
             self.bufferedGenerations = bufferedGenerations
+            self.reboundSessionIDs = reboundSessionIDs
         }
 
         /// Each buffered event with the turn it named (nil when none).

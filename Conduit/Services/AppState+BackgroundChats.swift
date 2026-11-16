@@ -159,8 +159,8 @@ extension AppState {
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
-        // The chat picked to stay beside the next one is followed whether
-        // or not a reply runs in it.
+        // A chat kept beside the next one (the pane or a chat window,
+        // keptChatIDs) is followed whether or not a reply runs in it.
         let staysBeside = keptChatIDs.map { !$0.isDisjoint(with: ids) } == true
         // Followed already by a New Chat under way (it follows the chat
         // before its create, and the create's adoption leaves it again):
@@ -187,11 +187,13 @@ extension AppState {
     /// the caller says whether the chat's turn was running: one that hasn't
     /// streamed words yet (just sent, or a tool step) is followed too.
     /// Returns the ids it followed, so a New Chat that starts nothing can
-    /// let go of them.
+    /// let go of them. `joiningCreation`: a New Chat tapped while another's
+    /// create is under way, which keeps the copy that one followed.
     @discardableResult
-    func followChatBeingLeft(turnWasRunning: Bool) -> Set<String>? {
+    func followChatBeingLeft(turnWasRunning: Bool, joiningCreation: Bool = false) -> Set<String>? {
         guard let oldID = activeSessionId else { return nil }
         let ids = knownSessionIDs(for: oldID).union([oldID])
+        if joiningCreation, followedChat(answering: ids) != nil { return nil }
         let before = backgroundChats
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnWasRunning)
         return backgroundChats == before ? nil : ids
@@ -359,19 +361,44 @@ extension AppState {
         guard !backgroundChats.isEmpty else { return false }
         let id = sessionID(for: event)
         guard !id.isEmpty else { return false }
-        let onScreen = eventBelongsToActiveSession(id)
+        var onScreen = eventBelongsToActiveSession(id)
         // A rebound id reaches the followed copy on screen too, as its own
         // ids do, so the copy is current if the open is overtaken.
-        guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
-            ?? followedChatIndex(reboundTo: id) else { return false }
+        let ownIndex = backgroundChats.firstIndex(where: { $0.answers(to: id) })
+        guard let index = ownIndex ?? followedChatIndex(reboundTo: id) else { return false }
         let chat = backgroundChats[index]
+        // Hermes bound the chat being opened to a new runtime id while it
+        // was away, and its events arrive under that id before the open
+        // knows it: they're the screen's too, so the open's reconcile
+        // buffer takes them as well as the copy (issue 2503).
+        if !onScreen, ownIndex == nil, let activeSessionId,
+           !chat.sessionIDs.isDisjoint(with: knownSessionIDs(for: activeSessionId).union([activeSessionId])) {
+            onScreen = true
+            // The open's reconcile accepts it from now on, across the
+            // resume's narrowing too, so the screen gets it live or replayed.
+            if var open = reconciliation {
+                open.reboundSessionIDs[id] = activeSessionId
+                open.acceptedSessionIDs.insert(id)
+                reconciliation = open
+            }
+        }
         guard chat.dashboardID == activeDashboardID else {
             backgroundChats.remove(at: index)
             return false
         }
         if onScreen {
-            // The chat on screen saves its own copy.
+            // The chat on screen saves its own copy, once its open lands.
+            let wasRunning = chat.isRunning
             act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
+            // Still showing the followed copy while its open is in flight:
+            // the screen has recorded nothing newer, and a leave before the
+            // open lands keeps nothing of the screen's, so the copy's
+            // finished reply is saved now (issue 2577).
+            var isCompletion = false
+            if case .messageComplete = event { isCompletion = true }
+            if offlineChatPresentation != nil, !chat.isRunning, wasRunning || isCompletion {
+                saveBackgroundChatCopy(chat)
+            }
             return false
         }
         let wasRunning = chat.isRunning
