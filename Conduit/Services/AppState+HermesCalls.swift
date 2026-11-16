@@ -372,20 +372,10 @@ extension AppState {
         guard hermesCallbackEngine == engine else { return }
         hermesCallbackEngine = nil
         endHermesCallPresence()
-        let callProfile = voiceCallProfile
-        voiceBackgroundJobSupervisor.settlingCallProfile = callProfile
-        guard let task = voiceBackgroundJobSupervisor.finishCallbacks() else {
-            voiceBackgroundJobSupervisor.settlingCallProfile = nil
-            return
-        }
+        guard let task = voiceBackgroundJobSupervisor.finishCallbacks(callProfile: voiceCallProfile) else { return }
         let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.hangUp")
-        Task { [weak self] in
+        Task {
             await task.value
-            // Only for its own pass: a later hang-up's profile stays
-            // (#2630's review).
-            if let supervisor = self?.voiceBackgroundJobSupervisor, supervisor.settlingCallProfile == callProfile {
-                supervisor.settlingCallProfile = nil
-            }
             end()
         }
     }

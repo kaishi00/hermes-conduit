@@ -13,8 +13,9 @@ import XCTest
 
 @MainActor
 final class PulseFeedTests: XCTestCase {
-    /// A visited Pulse tab kept mounted behind another tab isn't on screen:
-    /// it neither polls the feed nor marks cards seen (issue 2515).
+    /// A visited Pulse tab kept mounted behind another tab isn't on screen
+    /// (issue 2515). The polling and card marking that key on this aren't
+    /// tested at the view level.
     func testAPulsePageInAHiddenTabIsNotVisible() {
         var shell = V2ShellContext()
         XCTAssertTrue(V2PulsePage.isVisible(shown: true, in: shell))
