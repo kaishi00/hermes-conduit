@@ -3716,6 +3716,40 @@ final class OfflineChatCacheTests: XCTestCase {
     /// A message from the pane's box shows at once, runs a turn, and goes
     /// to the chat's own session; one that fails comes off again, unless
     /// Hermes' word of it came first.
+    /// A switch to another profile landing while a kept chat's message
+    /// reports its surface sends nothing: the row comes off, the turn
+    /// isn't running, and the box keeps the words.
+    func testAKeptChatsMessageSendsNothingWhenASwitchLandsDuringItsReport() async throws {
+        let sent = SentPrompts()
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+        XCTAssertTrue(state.canSendInKeptChat(kept))
+        state.turnSurfaceSender = { [weak state] _ in
+            await MainActor.run { state?.setActiveProfileForTesting("work") }
+        }
+
+        let went = await state.sendInKeptChat(kept, text: "Quick one")
+        XCTAssertFalse(went, "the box keeps the words")
+        XCTAssertTrue(sent.prompts.isEmpty, "nothing goes to the new workspace")
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Quick one" })
+        XCTAssertFalse(kept.isRunning)
+    }
+
     func testAKeptChatTakesAMessageFromItsBox() async throws {
         let sent = SentPrompts()
         var fails = false
