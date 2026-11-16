@@ -272,6 +272,21 @@ class HostedPreparationTests(unittest.TestCase):
             self.assertFalse(os.path.exists(os.path.join(seed, "data.tar")))
             self.assertNotIn("SIM_SEED_CREATED", github_env)
 
+    def test_a_restore_only_job_reports_an_unusable_seed_as_failed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(
+                tmp, seed_udid="PINNED", corrupt=True, restore_only=True)
+            self.assertIn("xcrun|simctl erase PINNED", operations)
+            self.assertEqual(doc["warm_seed"], "failed")
+            self.assertEqual(operations.count("xcrun|simctl boot PINNED"), 1)
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(
+                tmp, seed_udid="OTHER", restore_only=True)
+            self.assertEqual(doc["warm_seed"], "failed")
+            self.assertEqual(marker, "cold")
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+
     def test_without_a_seed_the_finished_first_boot_becomes_one(self):
         with tempfile.TemporaryDirectory() as tmp:
             proc, operations, marker, doc, github_env, seed = self._run_seeded(tmp)
