@@ -1027,7 +1027,7 @@ extension CrossProfilePresentationCacheTests {
     /// tap; one whose server didn't answer is down and tried again until
     /// it connects; a kept one whose socket drops is down again.
     func testACombinedDashboardSaysWhyItIsntConnectedAndOneDownIsTriedAgain() async throws {
-        final class Mints { var failures = 1; var count = 0 }
+        final class Mints { var failures = 1; var count = 0; var status = 503 }
         let mints = Mints()
         let socket = ClarifyFakeSocket()
         let transport = ClarifyFakeTransport()
@@ -1037,7 +1037,7 @@ extension CrossProfilePresentationCacheTests {
             mints.count += 1
             if mints.failures > 0 {
                 mints.failures -= 1
-                throw DashboardTicketBridgeError.http(status: 503, detail: "")
+                throw DashboardTicketBridgeError.http(status: mints.status, detail: "")
             }
             return "vps-ticket"
         }
@@ -1070,13 +1070,41 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "counted from one again")
         XCTAssertNotNil(appState.combinedDashboardRetries[vps.id]?.task)
 
-        // A refused sign-in waits for a tap: no pass, retry or return asks again.
+        // Down past the cap: it says nothing until its turn, and its
+        // backoff stands for then.
+        let others: Set<UUID> = [UUID(), UUID(), UUID()]
         appState.dropKeptDashboardRuntime(vps.id)
-        appState.combinedDashboardRetries.removeValue(forKey: vps.id)?.task?.cancel()
-        appState.combinedSignInsRefused.insert(vps.id)
+        appState.combinedDashboardTrouble[vps.id] = .down
+        appState.combinedSignInsUnderWay.formUnion(others)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "its backoff stands")
+        appState.combinedSignInsUnderWay.subtract(others)
+
+        // A refused sign-in waits for a tap: no pass, retry or return asks again.
+        mints.failures = 1
+        mints.status = 401
+        let before = mints.count
+        appState.connectOtherCombinedDashboards(only: vps.id)
+        await waitUntil { appState.combinedSignInsRefused.contains(vps.id) }
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .signInNeeded)
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
         appState.connectOtherCombinedDashboards()
         appState.connectOtherCombinedDashboards(only: vps.id)
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty, "refused: not asked again")
+        XCTAssertEqual(mints.count, before + 1, "asked once")
+        // Opening it is the tap it waited for: the refusal goes at once.
+        // The open runs to its end on a socket of its own, before the
+        // assertions after it.
+        let opened = ClarifyFakeSocket()
+        opened.refusesEveryRequest = true
+        transport.nextSocket = { opened }
+        transport.open(opened)
+        let open = Task { @MainActor in await appState.switchDashboard(to: vps.id) }
+        await waitUntil { !appState.combinedSignInsRefused.contains(vps.id) }
+        XCTAssertFalse(appState.combinedSignInsRefused.contains(vps.id), "opening lifts the refusal")
+        await open.value
 
         appState.setDashboardCombined(vps.id, false)
         XCTAssertNil(appState.combinedDashboardStatus(vps.id))
@@ -1092,6 +1120,82 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 403, detail: "")), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 503, detail: "")), .down)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(URLError(.timedOut)), .down)
+    }
+
+    /// Needs you lists the other combined dashboards' waits, read through
+    /// their kept connections for every profile there, badged; a row opens
+    /// by switching through the kept connection (all-live stage 4a).
+    func testNeedsYouListsAKeptDashboardsWaitsAndOpensThroughIt() async throws {
+        final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(kept.client === outgoing)
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            counts.reads.append(path)
+            if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
+            guard path.contains("profile=atlas") else { return ["waiting": []] }
+            return ["waiting": [[
+                "id": "w1", "kind": "approval", "session_ids": ["session-a"],
+                "title": "Release prep", "summary": "rm -rf build", "at": 1_000,
+            ]]]
+        }
+
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        let item = try XCTUnwrap(appState.needsYou.otherDashboards[mac.id]?.first)
+        XCTAssertEqual(item.dashboardID, mac.id)
+        XCTAssertEqual(item.profile, "atlas")
+        XCTAssertEqual(appState.needsYou.everyItem.map(\.id), [item.id], "the list shows it")
+        XCTAssertTrue(appState.needsYou.items.isEmpty, "this dashboard's profile chips don't count it")
+        XCTAssertNil(appState.needsYou.banner, "a first read shows no banner")
+        XCTAssertTrue(appState.offersNeedsYouList)
+        XCTAssertEqual(appState.combinedDashboardBadge(mac.id)?.letter, "M")
+        XCTAssertEqual(appState.combinedDashboardBadge(mac.id)?.colorIndex, 0)
+        XCTAssertEqual(appState.combinedDashboardBadge(vps.id)?.colorIndex, 1, "no two share a color")
+        XCTAssertEqual(NeedsYouRow.whose(item, appState), "Mac · atlas")
+
+        // The profiles are read once per kept connection.
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(counts.reads.filter { $0 == "/api/profiles" }.count, 1)
+        // Every few minutes they're read again: a profile deleted there
+        // takes its rows with it.
+        let read = try XCTUnwrap(appState.keptDashboardProfiles[mac.id])
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, .distantPast)
+        let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path == "/api/profiles" { return ["profiles": ["default"]] }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "atlas is gone there, and its wait with it")
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.profiles, ["default"])
+        // A read again that fails keeps the last list, and its rows.
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path == "/api/profiles" { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, ["default"], .distantPast)
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.profiles, ["default"], "a failed read again keeps the last list")
+        appState.keptDashboardJSONReader = reader
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id)
+
+        appState.openNeedsYou(item)
+        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "on screen, its waits are read as this dashboard's")
     }
 
     /// A notification from a combined dashboard kept beside the one on

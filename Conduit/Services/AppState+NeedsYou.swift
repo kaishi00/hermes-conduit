@@ -28,7 +28,89 @@ extension AppState {
     /// asked for while one runs (a burst of pushes) make one more read
     /// after it, never several at once.
     func refreshNeedsYou() async {
-        await needsYou.coalescing { [weak self] in await self?.readNeedsYou() }
+        await needsYou.coalescing { [weak self] in
+            await self?.readNeedsYou()
+            await self?.readOtherCombinedDashboardsNeedsYou()
+        }
+    }
+
+    /// Whether Needs you has a list to show: this dashboard's plugin keeps
+    /// one, or another combined dashboard listed a wait.
+    var offersNeedsYouList: Bool {
+        servesNeedsYou || !needsYou.otherDashboards.isEmpty
+    }
+
+    /// The other combined dashboards' waits, each read through its kept
+    /// connection for every one of its profiles (all-live stage 4a). Quiet
+    /// on failure, as this dashboard's: a profile that can't be read keeps
+    /// what it showed, and a dashboard let go says nothing more.
+    func readOtherCombinedDashboardsNeedsYou() async {
+        let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
+        needsYou.forgetOtherDashboards(otherThan: Set(kept.keys))
+        keptDashboardProfiles = keptDashboardProfiles.filter { id, read in
+            kept[id].map { ObjectIdentifier($0.bridge) == read.bridge } == true
+        }
+        for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
+            guard isSceneActive else { return }
+            guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
+            for profile in profiles {
+                guard isSceneActive else { return }
+                let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
+                let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
+                // Let go, or opened, while the read was out: not this pass's.
+                guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
+                guard let listed = response?["waiting"] as? [[String: Any]] else { continue }
+                needsYou.applyOther(
+                    listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
+                    profile: profile,
+                    dashboardID: id
+                )
+            }
+            if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
+                needsYou.forgetOther(id, profilesOtherThan: Set(profiles))
+            }
+        }
+    }
+
+    /// How long a kept dashboard's profile list stands before a pass reads
+    /// it again: a profile made or deleted there shows within this.
+    static let keptDashboardProfilesMaxAge: TimeInterval = 300
+
+    /// A kept dashboard's profiles, read through its bridge once per kept
+    /// connection and again every few minutes. The last list when a read
+    /// again fails; nil when none could be read.
+    private func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
+        let bridge = ObjectIdentifier(runtime.bridge)
+        let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
+        if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
+        guard let response = try? await readKeptDashboardJSON(runtime.bridge, path: "/api/profiles"),
+              keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return last?.profiles }
+        let names = (response["profiles"] as? [Any] ?? []).compactMap { value -> String? in
+            if let name = value as? String { return name }
+            return (value as? [String: Any])?["name"] as? String
+        }
+        // Hermes always has `default`; an empty list is a degraded reply.
+        guard !names.isEmpty else { return last?.profiles }
+        let profiles = names.contains("default") ? names : ["default"] + names
+        keptDashboardProfiles[id] = (bridge, profiles, now)
+        return profiles
+    }
+
+    private func readKeptDashboardJSON(_ bridge: DashboardTicketBridge, path: String) async throws -> [String: Any] {
+        if let keptDashboardJSONReader { return try await keptDashboardJSONReader(bridge, path) }
+        return try await bridge.requestJSON(path: path, timeoutMilliseconds: 6_000)
+    }
+
+    /// A combined dashboard's badge (all-live stage 4): the first letter of
+    /// its name on its color. The color is its place among the combined
+    /// dashboards in Saved Dashboards order, so no two in the group share
+    /// one. Nil outside the group.
+    func combinedDashboardBadge(_ id: UUID) -> (letter: String, colorIndex: Int, name: String)? {
+        let members = savedDashboardRegistry.dashboards.filter { savedDashboardRegistry.combinedGroupIDs.contains($0.id) }
+        guard let index = members.firstIndex(where: { $0.id == id }) else { return nil }
+        let name = members[index].label.trimmingCharacters(in: .whitespacesAndNewlines)
+        let letter = name.first.map { String($0).uppercased() } ?? "?"
+        return (letter, index, name)
     }
 
     private func readNeedsYou() async {
@@ -135,6 +217,19 @@ extension AppState {
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
         needsYou.dismissBanner(item)
+        // Another combined dashboard's: switch to it (through its kept
+        // connection, no sign-in), then open as one of its own.
+        if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.switchDashboard(to: dashboardID)
+                guard self.activeDashboardID == dashboardID else { return }
+                var own = item
+                own.dashboardID = nil
+                self.openNeedsYou(own)
+            }
+            return
+        }
         if let roomID = item.roomID {
             // A wait in a group room this Hermes hosts: the room opens (in
             // any profile, since rooms are the dashboard's) with its card.

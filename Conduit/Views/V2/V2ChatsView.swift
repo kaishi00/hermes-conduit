@@ -1006,16 +1006,9 @@ struct V2ChatsView: View, Equatable {
                 }
                 .disabled(!canCreateProject)
             } else {
-                if appState.servesNeedsYou {
-                    // Every profile's waiting chats, beside the filters
-                    // that narrow this list to its own.
-                    Button {
-                        Haptics.selection()
-                        showNeedsYou = true
-                    } label: {
-                        Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
-                    }
-                }
+                // Every profile's waiting chats, beside the filters that
+                // narrow this list to its own.
+                NeedsYouMenuEntry(store: appState.needsYou) { showNeedsYou = true }
                 filterToggle(.all)
                 filterToggle(.starred)
 

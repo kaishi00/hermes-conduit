@@ -651,6 +651,46 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertEqual(sent, 3)
     }
 
+    /// The Chats and drawer menus' Needs you entry watches the store: on a
+    /// dashboard whose plugin keeps no list, another combined dashboard's
+    /// first wait brings it with nothing else redrawing, and its last one
+    /// takes it away (all-live stage 4a).
+    @MainActor
+    func testTheNeedsYouMenuEntryComesWithAnotherDashboardsFirstWait() throws {
+        let state = makeAppState()
+        XCTAssertFalse(state.servesNeedsYou)
+        let host = UIHostingController(rootView: VStack { NeedsYouMenuEntry(store: state.needsYou) {} }.environmentObject(state))
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        window.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        window.rootViewController = host
+        window.isHidden = false
+        defer { window.isHidden = true }
+        NeedsYouMenuEntry.lastShown = nil
+        waitUntil { NeedsYouMenuEntry.lastShown != nil }
+        XCTAssertEqual(NeedsYouMenuEntry.lastShown, false)
+
+        let there = UUID()
+        state.needsYou.applyOther([NeedsYouItem(waitID: "w", profile: "default", kind: .approval, sessionIDs: ["s"])],
+                                  profile: "default", dashboardID: there)
+        waitUntil { NeedsYouMenuEntry.lastShown == true }
+        XCTAssertEqual(NeedsYouMenuEntry.lastShown, true, "another dashboard's wait brings the entry")
+
+        state.needsYou.forgetOtherDashboards(otherThan: [])
+        waitUntil { NeedsYouMenuEntry.lastShown == false }
+        XCTAssertEqual(NeedsYouMenuEntry.lastShown, false, "and its going takes it away")
+
+        // Past the palette, each place's hue keeps clear of the palette's
+        // and of the ones before it.
+        let hues = (6..<12).map(CombinedDashboardBadge.generatedHue)
+        for (at, hue) in hues.enumerated() {
+            for other in CombinedDashboardBadge.paletteHues + hues[..<at] {
+                let apart = min(abs(hue - other), 1 - abs(hue - other))
+                XCTAssertGreaterThan(apart, 0.03, "hue \(hue) sits on \(other)")
+            }
+        }
+    }
+
     private func settle() {
         RunLoop.current.run(until: Date().addingTimeInterval(0.1))
     }

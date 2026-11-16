@@ -85,6 +85,14 @@ extension AppState {
         let ids = chat.sessionIDs.union([target])
         let reportedOn = activeDashboardID
         let profileBefore = activeProfile
+        // Where its words go back if its pane goes, settled now: a sign-out
+        // meanwhile clears the drafts, and the words with them.
+        let wordsBack = KeptChatWordsBack(
+            draftSessionID: chat.durableSessionID
+                ?? conversationIdentityIndex.durableID(forRuntime: target, profile: chat.profile)
+                ?? target,
+            draftsClearCount: composerDraftStore.clearCount
+        )
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
         // A switch to another dashboard or profile during the report closed
         // the chat and moved the connection on: nothing goes, and the box
@@ -96,6 +104,7 @@ extension AppState {
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
             besideChatLive.moved()
+            returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
             return false
         }
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
@@ -136,7 +145,35 @@ extension AppState {
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
             besideChatLive.moved()
+            // The pane may have gone while the send was out, too.
+            returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
             return false
         }
     }
+
+    /// The pane or window that would keep a message's words went with the
+    /// keep: closed, or its chat opened in the chat's own column (Swap,
+    /// Open in Main Window), or a switch. They go to that chat's draft, on
+    /// screen if it's there now, and a notice says so.
+    private func returnKeptChatWordsIfItsPaneWent(_ chat: BackgroundChat, target: String, words: String, back: KeptChatWordsBack) {
+        guard keptChat(answering: target) == nil,
+              // Signed out (or the server changed) since: the drafts were
+              // the outgoing account's, and so are these words.
+              composerDraftStore.clearCount == back.draftsClearCount else { return }
+        returnFailedComposerSubmission(
+            ComposerDraft(text: words, attachments: []),
+            key: ComposerBar.composerDraftKey(for: back.draftSessionID, profile: chat.profile),
+            dashboardID: chat.dashboardID,
+            title: chat.title,
+            stoppedQuietly: true
+        )
+    }
+}
+
+/// Where a kept chat's message's words go back, settled before its report:
+/// the chat's draft id (its stored id, or a runtime id resolved in the
+/// chat's own profile), and the drafts' clear count a sign-out moves on.
+private struct KeptChatWordsBack {
+    let draftSessionID: String
+    let draftsClearCount: UInt64
 }

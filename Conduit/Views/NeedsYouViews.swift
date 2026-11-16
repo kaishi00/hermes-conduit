@@ -47,23 +47,18 @@ struct NeedsYouBanner: View {
     }
 
     private func announcement(_ item: NeedsYouItem) -> String {
-        [appState.profileDisplayName(item.profile), NeedsYouRow.title(item), item.kindLine].joined(separator: ", ")
+        [NeedsYouRow.whose(item, appState), NeedsYouRow.title(item), item.kindLine].joined(separator: ", ")
     }
 
     private func banner(_ item: NeedsYouItem) -> some View {
         // Not counting the open chat's wait, whose card is on screen.
-        let others = store.items.filter { $0.id != item.id && !appState.isOpenChat($0) }.count
+        let others = store.everyItem.filter { $0.id != item.id && !($0.dashboardID == nil && appState.isOpenChat($0)) }.count
         return HStack(spacing: 10) {
-            ProfileAvatarView(
-                profile: item.profile,
-                displayName: appState.profileDisplayName(item.profile),
-                url: appState.profileAvatarURL(for: item.profile),
-                size: 28
-            )
-            .overlay(alignment: .bottomTrailing) { NeedsYouDot(size: 9) }
-            .accessibilityHidden(true)
+            NeedsYouRow.picture(item, appState, size: 28)
+                .overlay(alignment: .bottomTrailing) { NeedsYouDot(size: 9) }
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(verbatim: "\(appState.profileDisplayName(item.profile)) · \(NeedsYouRow.title(item))")
+                Text(verbatim: "\(NeedsYouRow.whose(item, appState)) · \(NeedsYouRow.title(item))")
                     .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Text(verbatim: others > 0
@@ -167,7 +162,7 @@ struct NeedsYouSheet: View {
             ZStack {
                 ConduitBackdrop()
                 List {
-                    if store.items.isEmpty {
+                    if store.everyItem.isEmpty {
                         ContentUnavailableView(
                             AppLocalization.string("Nothing needs you", table: .chat),
                             systemImage: "checkmark.circle",
@@ -176,7 +171,7 @@ struct NeedsYouSheet: View {
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                     } else {
-                        ForEach(store.items) { item in
+                        ForEach(store.everyItem) { item in
                             Button {
                                 Haptics.selection()
                                 dismiss()
@@ -185,7 +180,10 @@ struct NeedsYouSheet: View {
                                 NeedsYouRow(item: item)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint(item.roomID == nil
+                            .accessibilityHint(item.dashboardID.map { $0 != appState.activeDashboardID } == true
+                                // Another combined dashboard's: the whole app moves there.
+                                ? AppLocalization.string("Switches to that dashboard and opens the chat at its card", table: .chat)
+                                : item.roomID == nil
                                 ? AppLocalization.string("Opens the chat at its card", table: .chat)
                                 : AppLocalization.string("Opens this group chat."))
                         }
@@ -214,15 +212,43 @@ struct NeedsYouRow: View {
         item.title.isEmpty ? AppLocalization.string("Untitled chat") : item.title
     }
 
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
+    /// Whose wait it is: the profile's name here, or on another combined
+    /// dashboard its name with the profile (the names and pictures this
+    /// dashboard keeps are its own profiles').
+    @MainActor
+    static func whose(_ item: NeedsYouItem, _ appState: AppState) -> String {
+        guard let dashboardID = item.dashboardID, dashboardID != appState.activeDashboardID else {
+            return appState.profileDisplayName(item.profile)
+        }
+        let dashboard = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
+        guard !dashboard.isEmpty else { return item.profile }
+        return item.profile == "default" ? dashboard : "\(dashboard) · \(item.profile)"
+    }
+
+    /// The profile's picture, or on another combined dashboard a plain one
+    /// with that dashboard's badge.
+    @MainActor @ViewBuilder
+    static func picture(_ item: NeedsYouItem, _ appState: AppState, size: CGFloat) -> some View {
+        if let dashboardID = item.dashboardID, dashboardID != appState.activeDashboardID {
+            ProfileAvatarView(profile: item.profile, displayName: item.profile, url: nil, size: size)
+                .overlay(alignment: .topLeading) {
+                    CombinedDashboardBadge(dashboardID: dashboardID, size: size * 0.55)
+                        .offset(x: -size * 0.15, y: -size * 0.15)
+                }
+        } else {
             ProfileAvatarView(
                 profile: item.profile,
                 displayName: appState.profileDisplayName(item.profile),
                 url: appState.profileAvatarURL(for: item.profile),
-                size: 30
+                size: size
             )
-            .accessibilityHidden(true)
+        }
+    }
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Self.picture(item, appState, size: 30)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(verbatim: Self.title(item))
@@ -240,7 +266,7 @@ struct NeedsYouRow: View {
                 }
                 HStack(spacing: 6) {
                     NeedsYouDot(size: 7)
-                    Text(verbatim: "\(appState.profileDisplayName(item.profile)) · \(item.kindLine)")
+                    Text(verbatim: "\(Self.whose(item, appState)) · \(item.kindLine)")
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(Color.conduitAttention)
                         .lineLimit(1)
@@ -257,5 +283,31 @@ struct NeedsYouRow: View {
         .padding(.vertical, 4)
         .contentShape(Rectangle())
         .accessibilityElement(children: .combine)
+    }
+}
+
+/// The Needs you entry of the Chats and drawer menus. It watches the store
+/// itself: another combined dashboard's first wait brings it, on a
+/// dashboard whose own plugin keeps no list, with nothing else redrawing.
+struct NeedsYouMenuEntry: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var store: NeedsYouStore
+    let open: () -> Void
+
+    /// Whether it last drew its button. Tests read it.
+    static var lastShown: Bool?
+
+    var body: some View {
+        // Any change of the store redraws it, whatever it reads.
+        let shown = appState.offersNeedsYouList
+        let _ = (Self.lastShown = shown)
+        if shown {
+            Button {
+                Haptics.selection()
+                open()
+            } label: {
+                Label(AppLocalization.string("Needs you"), systemImage: "exclamationmark.bubble")
+            }
+        }
     }
 }

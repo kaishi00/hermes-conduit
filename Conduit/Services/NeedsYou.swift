@@ -43,8 +43,14 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// chat draws it when Hermes drew none there, since an open Conduit gets
     /// no notification to tap (issue 2556). Nil for an approval.
     let card: PendingDecisionPayload?
+    /// Another combined dashboard's wait, read through its kept connection
+    /// (all-live stage 4a). Nil for the dashboard on screen's.
+    var dashboardID: UUID? = nil
 
-    var id: String { "\(profile)\u{1F}\(waitID)" }
+    var id: String {
+        let own = "\(profile)\u{1F}\(waitID)"
+        return dashboardID.map { "\($0.uuidString)\u{1F}\(own)" } ?? own
+    }
 
     init(
         waitID: String,
@@ -150,6 +156,10 @@ final class NeedsYouStore: ObservableObject {
 
     /// Newest first, every profile's.
     @Published private(set) var items: [NeedsYouItem] = []
+    /// The other combined dashboards' waits, read through their kept
+    /// connections (all-live stage 4a), newest first in each. Apart from
+    /// `items`, so a profile chip counts only the dashboard on screen's.
+    @Published private(set) var otherDashboards: [UUID: [NeedsYouItem]] = [:]
     /// A wait that began since the last read, in a chat other than the open one.
     @Published private(set) var banner: NeedsYouItem?
 
@@ -159,6 +169,10 @@ final class NeedsYouStore: ObservableObject {
     /// shows no banner for what already waited there.
     private var readProfiles: Set<String> = []
     private var seen: Set<String> = []
+    /// The same for each other combined dashboard, kept through a switch:
+    /// a dashboard's first read of a profile shows no banner either.
+    private var otherReadProfiles: [UUID: Set<String>] = [:]
+    private var otherSeen: Set<String> = []
     private var reading = false
     private var readAgain = false
     /// Questions whose card Hermes drew itself: the row's copy stays out of
@@ -211,11 +225,73 @@ final class NeedsYouStore: ObservableObject {
         if merged != items { items = merged }
         // A wait that left the list needs no remembering.
         cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
-        if let banner, !merged.contains(where: { $0.id == banner.id }) { self.banner = nil }
+        dropBannerNoLongerListed()
         guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
         if let banner, banner.since > newest.since { return }
         banner = newest
+    }
+
+    /// Every wait, the dashboard on screen's and the other combined
+    /// ones', newest first: the Needs you list.
+    var everyItem: [NeedsYouItem] {
+        guard !otherDashboards.isEmpty else { return items }
+        return (items + otherDashboards.values.joined()).sorted { $0.since > $1.since }
+    }
+
+    /// One profile's list on another combined dashboard, as just read
+    /// through its kept connection. A new wait there shows the banner, as
+    /// one here does; it can't be in the chat on screen.
+    func applyOther(_ read: [NeedsYouItem], profile: String, dashboardID: UUID) {
+        guard dashboardID != self.dashboardID else { return }
+        let tagged = read.map { item -> NeedsYouItem in
+            var item = item
+            item.dashboardID = dashboardID
+            return item
+        }
+        let firstRead = otherReadProfiles[dashboardID]?.contains(profile) != true
+        otherReadProfiles[dashboardID, default: []].insert(profile)
+        let fresh = tagged.filter { !otherSeen.contains($0.id) }
+        otherSeen.formUnion(tagged.map(\.id))
+        let merged = ((otherDashboards[dashboardID] ?? []).filter { $0.profile != profile } + tagged)
+            .sorted { $0.since > $1.since }
+        if merged != otherDashboards[dashboardID] ?? [] {
+            otherDashboards[dashboardID] = merged.isEmpty ? nil : merged
+        }
+        dropBannerNoLongerListed()
+        guard !firstRead, let newest = fresh.max(by: { $0.since < $1.since }) else { return }
+        if let banner, banner.since > newest.since { return }
+        banner = newest
+    }
+
+    /// Another combined dashboard's profiles no longer listed there.
+    func forgetOther(_ dashboardID: UUID, profilesOtherThan profiles: Set<String>) {
+        guard let listed = otherDashboards[dashboardID] else { return }
+        let kept = listed.filter { profiles.contains($0.profile) }
+        if kept != listed { otherDashboards[dashboardID] = kept.isEmpty ? nil : kept }
+        otherReadProfiles[dashboardID] = otherReadProfiles[dashboardID]?.intersection(profiles)
+        dropBannerNoLongerListed()
+    }
+
+    /// Only the combined dashboards still kept beside the one on screen
+    /// keep their waits: one let go, out of the group or signed out of
+    /// says nothing more.
+    func forgetOtherDashboards(otherThan kept: Set<UUID>) {
+        let gone = Set(otherDashboards.keys).union(otherReadProfiles.keys).subtracting(kept)
+        guard !gone.isEmpty else { return }
+        for id in gone {
+            otherDashboards.removeValue(forKey: id)
+            otherReadProfiles.removeValue(forKey: id)
+        }
+        let prefixes = gone.map { "\($0.uuidString)\u{1F}" }
+        otherSeen = otherSeen.filter { id in !prefixes.contains { id.hasPrefix($0) } }
+        dropBannerNoLongerListed()
+    }
+
+    private func dropBannerNoLongerListed() {
+        guard let banner else { return }
+        let listed = banner.dashboardID.map { otherDashboards[$0] ?? [] } ?? items
+        if !listed.contains(where: { $0.id == banner.id }) { self.banner = nil }
     }
 
     /// A profile no longer listed (removed, or its plugin can't be read).
@@ -223,7 +299,7 @@ final class NeedsYouStore: ObservableObject {
         let kept = items.filter { profiles.contains($0.profile) }
         if kept != items { items = kept }
         readProfiles = readProfiles.intersection(profiles)
-        if let banner, !kept.contains(where: { $0.id == banner.id }) { self.banner = nil }
+        dropBannerNoLongerListed()
     }
 
     func dismissBanner(_ item: NeedsYouItem? = nil) {
@@ -237,6 +313,11 @@ final class NeedsYouStore: ObservableObject {
         seen = []
         cardsHermesDrew = []
         if !items.isEmpty { items = [] }
+        // The one now on screen is read as this dashboard's from here.
+        if let dashboardID {
+            otherDashboards.removeValue(forKey: dashboardID)
+            otherReadProfiles.removeValue(forKey: dashboardID)
+        }
         banner = nil
     }
 }
