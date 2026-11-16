@@ -123,7 +123,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   released Xcode on its image (`ci-select-xcode.sh`), not the image's default
   `Xcode.app`, which can lag it (27.1 beside 27.2 and its iOS 27.2 runtime). When the selected Xcode can't run `metal` (image 20261112.0361.1's
   Xcode 27.3 shipped without the Metal toolchain component, and every build
-  failed at CompileMetalFile), the script downloads it first; every macOS job on such an image pays that fetch until GitHub updates the image. The nightly timing repeats build
+  failed at CompileMetalFile), the script downloads it first; every macOS job on such an image pays that fetch until GitHub updates the image. When the download fails too (Apple's catalog had no toolchain for that build, the 2026-11-16 Nightly), the script selects the next newest release and tries again, and the step fails only when no Xcode on the image has one. The nightly timing repeats build
   `project-tests.yml` too and restore the slim cache without saving it
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
   shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
