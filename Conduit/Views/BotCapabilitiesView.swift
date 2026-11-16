@@ -220,10 +220,11 @@ struct BotMcpServersView: View {
                 }
                 if mcpProfile != nil, mcpSetup != nil {
                     Button {
-                        mcpNotice = nil
                         // Without a Hermes to hold to, the add couldn't be
-                        // fenced: the button waits for one.
+                        // fenced: the button waits for one, and a tap after
+                        // it went leaves the notice as it was.
                         guard let owner = appState.currentDashboardRuntimeOwner() else { return }
+                        mcpNotice = nil
                         addOwner = owner
                         addingServer = true
                     } label: {
@@ -237,6 +238,10 @@ struct BotMcpServersView: View {
                         Text(AppLocalization.string("Add MCP servers in Edit Bot, once the bot is made.", table: .bots))
                     } else if mcpSetup == nil && mcpSetupRead {
                         Text(AppLocalization.string("Add new MCP servers from Hermes on your computer.", table: .bots))
+                    } else if mcpSetup != nil && appState.currentDashboardRuntimeOwner() == nil {
+                        // The catalog reads without the dashboard's link
+                        // (issue 2394); an add needs it to hold to.
+                        Text(AppLocalization.string("Adding a server needs Conduit's link to this Hermes' dashboard. It comes back when Conduit reconnects.", table: .bots))
                     } else if mcpSetupKept && mcpSetupRead {
                         // Hermes didn't answer: Add and Sign In wait over the
                         // kept catalog until it does.

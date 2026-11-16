@@ -17,6 +17,16 @@ extension AppState {
         notifierPluginUpdate.state(on: activeDashboardID)
     }
 
+    /// The update here ended with the gateway restarted and only the
+    /// dashboard left running the old plugin (a Desktop or plugin host
+    /// that can't restart it): the restart texts name the dashboard, not
+    /// Hermes (notifier issue 778).
+    var notifierPluginOnlyDashboardLeft: Bool {
+        guard notifierPlugin.restartPending else { return false }
+        if case .needsDashboardRestart = activeNotifierPluginUpdate { return true }
+        return false
+    }
+
     /// Why the update can't run right now, or nil when it can. A call
     /// would lose its connection while Hermes restarts.
     var notifierPluginUpdateBlocker: String? {

@@ -49896,6 +49896,94 @@
           }
         }
       }
+    },
+    "Adding a server needs Conduit's link to this Hermes' dashboard. It comes back when Conduit reconnects." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zum Hinzufügen eines Servers braucht Conduit die Verbindung zum Dashboard dieses Hermes. Sie kommt zurück, sobald Conduit sich wieder verbindet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adding a server needs Conduit's link to this Hermes' dashboard. It comes back when Conduit reconnects."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para añadir un servidor, Conduit necesita su conexión con el panel de este Hermes. Vuelve cuando Conduit se reconecta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour ajouter un serveur, Conduit a besoin de sa connexion au tableau de bord de ce Hermes. Elle revient quand Conduit se reconnecte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menambahkan server memerlukan tautan Conduit ke dasbor Hermes ini. Tautan itu kembali saat Conduit tersambung lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per aggiungere un server, Conduit ha bisogno del collegamento alla dashboard di questo Hermes. Torna quando Conduit si riconnette."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーを追加するには、この Hermes のダッシュボードへの Conduit の接続が必要です。Conduit が再接続すると戻ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버를 추가하려면 이 Hermes 대시보드에 대한 Conduit의 연결이 필요합니다. Conduit이 다시 연결되면 돌아옵니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodanie serwera wymaga połączenia Conduit z panelem tego Hermesa. Wraca, gdy Conduit połączy się ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar um servidor exige a conexão do Conduit com o painel deste Hermes. Ela volta quando o Conduit se reconecta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы добавить сервер, Conduit нужна связь с панелью этого Hermes. Она вернётся, когда Conduit переподключится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucu eklemek için Conduit'in bu Hermes'in paneline bağlantısı gerekir. Conduit yeniden bağlandığında geri gelir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加服务器需要 Conduit 与此 Hermes 仪表板的连接。Conduit 重新连接后即可恢复。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增伺服器需要 Conduit 與此 Hermes 儀表板的連線。Conduit 重新連線後即會恢復。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

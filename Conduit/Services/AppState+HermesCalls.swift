@@ -372,6 +372,7 @@ extension AppState {
         guard hermesCallbackEngine == engine else { return }
         hermesCallbackEngine = nil
         endHermesCallPresence()
+        voiceBackgroundJobSupervisor.settlingCallProfile = voiceCallProfile
         guard let task = voiceBackgroundJobSupervisor.finishCallbacks() else { return }
         let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.hangUp")
         Task {

@@ -156,6 +156,8 @@ struct V2ListNavigationBar: UIViewRepresentable {
 
         /// The bar as any other screen has it.
         private func handBack() {
+            // The next stay traces its own give-up (#2628's review).
+            reportedNoStack = false
             guard let bar = navigation?.navigationBar else { return }
             bar.isUserInteractionEnabled = true
             bar.accessibilityElementsHidden = false

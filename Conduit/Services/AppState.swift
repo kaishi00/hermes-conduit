@@ -628,9 +628,9 @@ final class AppState: ObservableObject {
         get { shownChat.isRewindingTurns }
         set { shownChat.isRewindingTurns = newValue }
     }
-    var slashPromptRefusedDuringRewind: Bool {
-        get { shownChat.slashPromptRefusedDuringRewind }
-        set { shownChat.slashPromptRefusedDuringRewind = newValue }
+    var slashPromptRefusedDuringRewindIn: String? {
+        get { shownChat.slashPromptRefusedDuringRewindIn }
+        set { shownChat.slashPromptRefusedDuringRewindIn = newValue }
     }
     var activeAgents: Int {
         get { shownChat.activeAgents }
@@ -1006,9 +1006,12 @@ final class AppState: ObservableObject {
     var hermesUpdateTask: Task<Void, Never>?
     /// Test seam: answers Update Hermes' dashboard requests.
     var hermesUpdateRequest: (@MainActor (String, String) async throws -> [String: Any])?
-    /// Restart now is under way (restartGatewayNow): one at a time, however
-    /// many places show the wait.
-    @Published var gatewayRestartingNow = false
+    /// The dashboards a Restart now is under way on (restartGatewayNow): one
+    /// at a time on each, however many places show the wait. Another
+    /// dashboard's doesn't hold this one's update or restart (issue 2396).
+    @Published var gatewayRestartingNowDashboards: Set<UUID?> = []
+    /// A Restart now is under way on the dashboard in use.
+    var gatewayRestartingNow: Bool { gatewayRestartingNowDashboards.contains(activeDashboardID) }
     /// Why the last Restart now failed, kept here so a wait view opened
     /// after it finished still shows it.
     @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?

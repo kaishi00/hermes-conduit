@@ -1545,6 +1545,37 @@ extension GatewayRestartTests {
         XCTAssertTrue(NotifierPluginUpdater.ranMixedHermes("cannot import name 'x' from 'pm.workspace'"))
     }
 
+    /// After an update that restarted the gateway but not the dashboard,
+    /// the restart texts name the dashboard (notifier issue 778); a restart
+    /// left by anything else still says Hermes.
+    @MainActor
+    func testOnlyADashboardLeftToRestartIsNamedAsTheDashboard() throws {
+        let suite = "PluginUpdateOnlyDashboard.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let current = NotifierPluginStatus.recommendedVersion
+        appState.notifierPlugin = NotifierPluginStatus(
+            state: .reported(version: current, capabilities: Set(NotifierPluginStatus.usedCapabilities)),
+            runtime: NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "b")
+        )
+        XCTAssertTrue(appState.notifierPlugin.restartPending)
+        XCTAssertFalse(appState.notifierPluginOnlyDashboardLeft, "no update ran here: Hermes needs the restart")
+
+        let run = appState.notifierPluginUpdate.start(on: appState.activeDashboardID)
+        appState.notifierPluginUpdate.update(.needsDashboardRestart(detail: nil), run: run)
+        XCTAssertTrue(appState.notifierPluginOnlyDashboardLeft)
+
+        let otherRun = appState.notifierPluginUpdate.start(on: UUID())
+        appState.notifierPluginUpdate.update(.needsDashboardRestart(detail: nil), run: otherRun)
+        XCTAssertFalse(appState.notifierPluginOnlyDashboardLeft, "another dashboard's update says nothing here")
+
+        let again = appState.notifierPluginUpdate.start(on: appState.activeDashboardID)
+        appState.notifierPluginUpdate.update(.needsDashboardRestart(detail: nil), run: again)
+        appState.notifierPlugin.runtime = NotifierPluginStatus.Runtime(loadedVersion: current, restartNeeded: false, bootID: "c")
+        XCTAssertFalse(appState.notifierPluginOnlyDashboardLeft, "once the dashboard runs it, nothing is left")
+    }
+
     func testHostJobOutcomes() {
         XCTAssertNil(NotifierPluginUpdater.hostOutcome(["step": "restarting_gateway"]))
         XCTAssertEqual(NotifierPluginUpdater.hostStep(["step": "restarting_gateway"]), .restartingGateway(nil))

@@ -1283,7 +1283,7 @@ private struct SettingsHome: View {
             ScrollView {
                 VStack(spacing: v2Layout ? 24 : 14) {
                     if appState.notifierPlugin.needsAttention {
-                        NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel) {
+                        NotifierPluginUpdateNotice(status: appState.notifierPlugin, dashboardLabel: notifierDashboardLabel, onlyDashboardLeft: appState.notifierPluginOnlyDashboardLeft) {
                             Haptics.selection()
                             path.append(.conduitPlugin)
                         }
@@ -2194,6 +2194,8 @@ private struct NotifierPluginUpdateNotice: View {
     let status: NotifierPluginStatus
     /// Names the dashboard when several are saved: each has its own host.
     let dashboardLabel: String?
+    /// The gateway already restarted: only the dashboard is left.
+    var onlyDashboardLeft = false
     let open: () -> Void
 
     var body: some View {
@@ -2226,6 +2228,12 @@ private struct NotifierPluginUpdateNotice: View {
         }
         if status.offersInstall {
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
+        }
+        if onlyDashboardLeft && !status.updateRecommended {
+            if let label = dashboardLabel {
+                return AppLocalization.string("The Conduit plugin on \(label) was updated, and only its dashboard needs a restart to use it.", table: .settings)
+            }
+            return AppLocalization.string("The Conduit plugin on your Hermes host was updated, and only the Hermes dashboard needs a restart to use it.", table: .settings)
         }
         switch (dashboardLabel, status.restartPending && !status.updateRecommended) {
         case (let label?, true):

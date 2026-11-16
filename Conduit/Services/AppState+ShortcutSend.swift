@@ -96,8 +96,10 @@ extension AppState {
                         // A read the connection dropped under says nothing
                         // about the bot: the run waits out the drop (issue 2473),
                         // also in the moment before the close reaches
-                        // handleDisconnect, when the socket already refuses.
-                        if !self.isConnected || self.client.map({ $0.isConnected && !$0.canSend }) == true {
+                        // handleDisconnect, when the socket already refuses
+                        // or has already been let go of (issue 2496). A
+                        // client that never connected isn't a drop.
+                        if !self.isConnected || self.client.map({ ($0.isConnected && !$0.canSend) || $0.hasDropped }) == true {
                             throw HermesError.notConnected
                         }
                         throw ShortcutSendError.chatUnavailable

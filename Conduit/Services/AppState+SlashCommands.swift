@@ -563,9 +563,14 @@ extension AppState {
             // A rewind started after this one's reopen (during /retry's
             // send) owns the flags now.
             let owned = shownChat.rewindGeneration == generation
-            let refusedSlashPrompt = owned && slashPromptRefusedDuringRewind
+            // Only a refusal in this rewind's own chat: one an older
+            // rewind in another chat still owed isn't this one's to say.
+            let refusedSlashPrompt = owned && slashPromptRefusedDuringRewindIn.map { refusedIn in
+                composerSessionIDsAreEquivalent(context.sessionID, refusedIn)
+                    || composerSessionIDsAreEquivalent(context.durableSessionID, refusedIn)
+            } == true
             if owned {
-                slashPromptRefusedDuringRewind = false
+                slashPromptRefusedDuringRewindIn = nil
                 isRewindingTurns = false
             }
             // Last, after the reopen and the rewind's own note, and only
@@ -1275,7 +1280,7 @@ extension AppState {
             // takes back, nor a note now, which its reopen would clear.
             if !message.isEmpty, !(await sendMessage(message, attachments: [], context: context)),
                isRewindingTurns, isCurrentComposerSubmission(context) {
-                slashPromptRefusedDuringRewind = true
+                slashPromptRefusedDuringRewindIn = context.durableSessionID ?? context.sessionID
             }
         case "prefill":
             let message = obj["message"]?.stringValue ?? output
@@ -1284,7 +1289,7 @@ extension AppState {
             // refused prompt is.
             if isRewindingTurns, isCurrentComposerSubmission(context) {
                 if !message.isEmpty || !(obj["notice"]?.stringValue ?? "").isEmpty {
-                    slashPromptRefusedDuringRewind = true
+                    slashPromptRefusedDuringRewindIn = context.durableSessionID ?? context.sessionID
                 }
                 return
             }

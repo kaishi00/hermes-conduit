@@ -292,7 +292,11 @@ struct ConduitPluginSettingsDetail: View {
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
         case .reported:
             if status.updateAvailable { return AppLocalization.string("Version \(status.offeredVersion) is available.") }
-            if status.restartPending { return AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it.") }
+            if status.restartPending {
+                return appState.notifierPluginOnlyDashboardLeft
+                    ? AppLocalization.string("The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once.")
+                    : AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it.")
+            }
             if let managedBy = status.managedBy { return NotifierPluginStatus.managedText(managedBy) }
             return AppLocalization.string("Up to date on this dashboard's host")
         }
@@ -475,7 +479,7 @@ struct NotifierPluginUpdateStatusView: View {
             return Row(
                 title: AppLocalization.string("Restart the Hermes dashboard to finish", table: .notifications),
                 detail: detail.map { AppLocalization.string("The gateway restarted and runs the new plugin. Only the dashboard still runs the old one.", table: .notifications) + " " + $0 }
-                    ?? AppLocalization.string("The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once.", table: .notifications),
+                    ?? AppLocalization.string("The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once."),
                 symbol: "clock.badge.exclamationmark",
                 tint: .orange
             )
