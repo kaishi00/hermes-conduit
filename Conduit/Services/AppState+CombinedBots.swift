@@ -356,6 +356,9 @@ extension AppState {
               let capabilities = await combinedDashboardCapabilities(id, runtime),
               capabilities.contains(BotWorkstreamsClient.capability) else { return }
         let bridge = runtime.bridge
+        // Kept anew (opened and left again) while the read was out: the
+        // work that switch seeded is newer than this read.
+        let keptAt = runtime.keptAt
         let parameter = capabilities.contains(DashboardPath.dashboardProfilesCapability)
             ? DashboardPath.conduitProfileParameter : "profile"
         let client = BotWorkstreamsClient(profile: profile, parameter: parameter) { [weak self] path, _, _ in
@@ -364,7 +367,8 @@ extension AppState {
         }
         guard let snapshot = try? await client.list(),
               // Let go, opened, or out of the group while the read was out.
-              keptDashboardRuntimes[id]?.bridge === bridge, activeDashboardID != id, isInCombinedGroup(id) else { return }
+              keptDashboardRuntimes[id]?.bridge === bridge, keptDashboardRuntimes[id]?.keptAt == keptAt,
+              activeDashboardID != id, isInCombinedGroup(id) else { return }
         combinedDashboardBotWork[id, default: [:]][profile.lowercased()] = snapshot
     }
 
@@ -384,6 +388,15 @@ extension AppState {
             $0.roomID == nil && Self.profilesMatch($0.profile, bot.name) && Set($0.sessionIDs).isDisjoint(with: known)
         }
         .sorted { $0.since > $1.since }
+    }
+
+    /// The chat wait its Needs you pill opens: only when none of its
+    /// workstreams waits, as this dashboard's portraits; else the pill
+    /// opens its overview, where that work is.
+    func combinedBotChatWaitThePillOpens(_ bot: BotProfile, in id: UUID) -> NeedsYouItem? {
+        let snapshot = combinedDashboardBotWork[id]?[bot.name.lowercased()]
+        guard (snapshot?.isOn == true ? snapshot?.needsYouCount ?? 0 : 0) == 0 else { return nil }
+        return combinedBotChatWaits(bot, in: id).first
     }
 
     /// Another combined dashboard's bot's overview: the switch to its

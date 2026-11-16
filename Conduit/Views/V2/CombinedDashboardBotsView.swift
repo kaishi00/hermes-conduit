@@ -48,6 +48,10 @@ struct CombinedDashboardBotPortrait: View {
     private var portraitSize: CGFloat { min(scaledSize, 115) }
 
     private var bot: BotProfile { item.bot }
+    /// Its kept connection, so a new one reads its work again.
+    private var keptAt: TimeInterval {
+        appState.keptDashboardRuntimes[section.dashboardID]?.keptAt.timeIntervalSinceReferenceDate ?? 0
+    }
     private var url: URL? { section.avatars[bot.name] }
 
     /// Plays only while Bots Home is on screen, as this dashboard's
@@ -110,7 +114,7 @@ struct CombinedDashboardBotPortrait: View {
             .accessibilityHint(AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
             .accessibilityAction(named: Text(BotStatusPill.overviewTitle)) { onOverview() }
             .accessibilityActions {
-                if let wait = appState.combinedBotChatWaits(bot, in: section.dashboardID).first, case .needsYou = status {
+                if case .needsYou = status, let wait = appState.combinedBotChatWaitThePillOpens(bot, in: section.dashboardID) {
                     Button(AppLocalization.string("Needs you")) { appState.openNeedsYou(wait) }
                 }
                 if let onMoveEarlier {
@@ -152,7 +156,8 @@ struct CombinedDashboardBotPortrait: View {
         })
         // Its work, read through its kept connection each time Bots Home
         // shows, as this dashboard's portraits read theirs.
-        .task(id: "\(section.dashboardID)\u{1F}\(bot.name)\u{1F}\(shell.isTabActive)") {
+        // A reconnect while Bots Home stays up reads it again too.
+        .task(id: "\(section.dashboardID)\u{1F}\(bot.name)\u{1F}\(shell.isTabActive)\u{1F}\(keptAt)") {
             guard shell.isTabActive else { return }
             await appState.refreshCombinedDashboardBotWork(section.dashboardID, profile: bot.name)
         }
@@ -194,7 +199,7 @@ struct CombinedDashboardBotPortrait: View {
         } else {
             Button {
                 Haptics.light()
-                if case .needsYou = status, let wait = appState.combinedBotChatWaits(bot, in: section.dashboardID).first {
+                if case .needsYou = status, let wait = appState.combinedBotChatWaitThePillOpens(bot, in: section.dashboardID) {
                     appState.openNeedsYou(wait)
                 } else {
                     onOverview()

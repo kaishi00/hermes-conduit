@@ -100,6 +100,9 @@ extension AppState {
         for dashboard in savedDashboardRegistry.dashboards
         where isInCombinedGroup(dashboard.id) && dashboard.id != activeDashboardID
             && keptDashboardRuntimes[dashboard.id] == nil && !combinedDashboardSignsInQuietly(dashboard.id) {
+            // Nothing saved behind Face ID: that one waits for a tap, the
+            // rest still ask.
+            guard KeychainHelper.loadCredentials(dashboardID: dashboard.id)?.requiresFaceID == true else { continue }
             // Cancelled, or no Face ID to be had: the rest wait for a tap.
             guard await unlockCombinedDashboardWithFaceID(dashboard.id) else { break }
         }

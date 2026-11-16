@@ -1223,6 +1223,7 @@ extension CrossProfilePresentationCacheTests {
         }
         XCTAssertEqual(appState.combinedBotStatus(bot("atlas"), in: mac.id), .needsYou(1))
         XCTAssertEqual(appState.combinedBotChatWaits(bot("atlas"), in: mac.id).map(\.id), [item.id])
+        XCTAssertEqual(appState.combinedBotChatWaitThePillOpens(bot("atlas"), in: mac.id)?.id, item.id, "no workstream waits, so the pill opens the chat")
         XCTAssertEqual(appState.combinedBotStatus(bot("default"), in: mac.id), .idle)
         XCTAssertEqual(appState.needsYou.everyItem.map(\.id), [item.id], "the list shows it")
         XCTAssertTrue(appState.needsYou.items.isEmpty, "this dashboard's profile chips don't count it")
