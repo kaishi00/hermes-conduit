@@ -757,6 +757,53 @@ extension NotificationE2ETests {
         XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
     }
 
+    /// Sign Out while the config can't be read still drops what wasn't
+    /// sent, unless the host pass names another dashboard (issue 2591).
+    @MainActor
+    func testSignOutWhileTheConfigCantBeReadStillDropsWhatWasntSent() {
+        func controller(passFor dashboard: UUID?) -> LocationSharingController {
+            var unsent = LocationUnsent()
+            unsent.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
+                LocationPlaceEvent(id: "e_1", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
+            ])
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+            let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                            keys: LocationKeyStore.memory())
+            let controller = LocationSharingController(engine: engine, unsent: unsent, readStoredConfig: { .unreadable })
+            controller.hostPassDashboardID = { dashboard }
+            XCTAssertTrue(controller.configUnreadable)
+            XCTAssertTrue(controller.hasUnsent)
+            return controller
+        }
+
+        let noPass = controller(passFor: nil)
+        noPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(noPass.hasUnsent, "With nothing naming the binding, the queue goes")
+
+        let ownPass = controller(passFor: LocationFixtures.dashboardID)
+        ownPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(ownPass.hasUnsent, "The host pass names the dashboard signed out of")
+
+        let otherPass = controller(passFor: UUID())
+        otherPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertTrue(otherPass.hasUnsent, "Sharing is bound to another dashboard: its queue stays")
+    }
+
+    /// A host pass read during a connect is kept only while nothing signed
+    /// the dashboard out or moved the binding (issue 2562).
+    @MainActor
+    func testAHostPassReadDuringASignOutIsntKept() {
+        let dashboard = UUID()
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://one.example", headers: [:], expiresAt: nil, savedAt: Date())
+        XCTAssertTrue(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: dashboard))
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 4, boundDashboardID: dashboard),
+                       "Signed out while the cookies were read")
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: nil),
+                       "Unbound while it was read")
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: UUID()),
+                       "Bound to another dashboard meanwhile")
+    }
+
     @MainActor
     func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)

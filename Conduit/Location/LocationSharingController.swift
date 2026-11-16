@@ -115,12 +115,25 @@ final class LocationSharingController: ObservableObject {
     private(set) var lastTalkingUpload: LocationTalkingUpload?
     private var activated = false
 
-    init(engine: LocationSyncEngine? = nil, config: LocationSharedConfig? = nil, unsent: LocationUnsent? = nil) {
+    /// Reads the stored config file (tests pass one that can't be read).
+    private let readStoredConfig: () -> LocationSharedStore.Read<LocationSharedConfig>
+    /// The dashboard the Keychain's host pass was saved for: it's saved
+    /// only for the dashboard sharing is bound to, so it names the binding
+    /// while the config can't be read.
+    var hostPassDashboardID: () -> UUID? = { LocationKeychain.loadHostPass()?.dashboardID }
+
+    init(
+        engine: LocationSyncEngine? = nil,
+        config: LocationSharedConfig? = nil,
+        unsent: LocationUnsent? = nil,
+        readStoredConfig: @escaping () -> LocationSharedStore.Read<LocationSharedConfig> = { LocationSharedStore.readConfig() }
+    ) {
         self.engine = engine ?? LocationSyncEngine(deviceName: { UIDevice.current.name })
+        self.readStoredConfig = readStoredConfig
         if let config {
             self.config = config
         } else {
-            switch LocationSharedStore.readConfig() {
+            switch readStoredConfig() {
             case .value(let stored): self.config = stored
             case .missing: self.config = LocationSharedConfig()
             case .unreadable:
@@ -149,7 +162,7 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func readConfigIfNeeded() -> Bool {
         guard configUnreadable else { return true }
-        switch LocationSharedStore.readConfig() {
+        switch readStoredConfig() {
         case .value(let stored):
             config = stored
             unsent = LocationSharedStore.readUnsent()
@@ -289,10 +302,20 @@ final class LocationSharingController: ObservableObject {
     /// and shop entries not sent yet: the next sign-in there may be another
     /// account, and they'd go under it (issue 2482). Sharing stays on and
     /// bound, so what's recorded after Sign Out goes with the next sign-in.
+    /// While the config can't be read, the binding isn't known: the queue
+    /// goes unless the host pass names another dashboard (issue 2591), as
+    /// keeping it could send one account's places under another's.
     func dropUnsent(boundTo dashboardID: UUID) {
-        guard readConfigIfNeeded(), config.binding?.dashboardID == dashboardID else { return }
+        if readConfigIfNeeded() {
+            guard config.binding?.dashboardID == dashboardID else { return }
+        } else if let passDashboard = hostPassDashboardID(), passDashboard != dashboardID {
+            return
+        }
         unsentDrops &+= 1
         lastTalkingUpload = nil
+        // A dropped call fix mustn't hold back the call's next moves
+        // (issue 2562).
+        lastCallFix = nil
         guard !unsent.isEmpty else { return }
         unsent.fix = nil
         unsent.events = []
@@ -439,10 +462,9 @@ final class LocationSharingController: ObservableObject {
     // MARK: Taking and sending
 
     /// Takes a fix for `source` (with any events) and sends it. True when
-    /// the host has it.
+    /// the host has it. `drops` is `unsentDrops` when what's shared was
+    /// seen: a Sign Out since drops it.
     @discardableResult
-    /// `drops` is `unsentDrops` when what's shared was seen: a Sign Out
-    /// since drops it.
     func shareFix(source: LocationFixSource, events: [LocationPlaceEvent] = [], drops seen: Int? = nil) async -> Bool {
         let drops = seen ?? unsentDrops
         guard drops == unsentDrops, let bound = config.binding, settings.shares(source, at: now()) else { return false }
