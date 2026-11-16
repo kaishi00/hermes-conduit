@@ -1692,7 +1692,6 @@ final class AppState: ObservableObject {
     lazy var localLiveTurns: LocalLiveTurnRunner = LocalLiveTurnRunner(backend: LocalLiveTurnRunner.Backend(
         resolveChat: { [weak self] in
             guard let self else { throw HermesError.notConnected }
-            let client = try await self.clientForVoiceRequest()
             // A call from Home or Siri has no chat: its first turn makes one,
             // and the rest of the call goes on there. So does a call whose
             // chat was deleted (issue 1797).
@@ -1707,6 +1706,9 @@ final class AppState: ObservableObject {
                     // No profile asked is the call's, as of the ask: the
                     // active one, unless the call went on across a switch.
                     let expected = profile ?? self.voiceCallProfile
+                    // The client as of the create, not of the turn's start:
+                    // a reconnect during the runtime read replaced it.
+                    let client = try await self.clientForVoiceRequest()
                     // The call's request: a switch it goes on across carries it.
                     let created = try await CallRequestScope.$isCallRequest.withValue(true) {
                         try await client.createSession(inProfile: profile ?? self.callProfileOffScreen)
