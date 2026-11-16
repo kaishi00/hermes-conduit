@@ -225,11 +225,18 @@ struct V2PulsePage: View {
             guard isVisible, scenePhase == .active else { return }
             // A card asked for while the tab was hidden opens on the cards
             // the page already has, without waiting on a read that may fail.
-            if let request = appState.pulseOpenRequest, page != nil { focus(request) }
+            // One the page doesn't have yet waits for the read that brings it.
+            if let request = appState.pulseOpenRequest,
+               request.card == nil || page?.cards.contains(where: { $0.id == request.card }) == true {
+                focus(request)
+            }
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
                 await load()
+                // Hidden or replaced meanwhile: the other dashboards' reads
+                // wait for the page to show again.
+                guard !Task.isCancelled else { break }
                 // The other combined dashboards' chips (all-live stage 4d).
                 await appState.readOtherCombinedDashboardsPulse()
                 try? await Task.sleep(for: .seconds(60))
