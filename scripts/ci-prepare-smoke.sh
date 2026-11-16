@@ -61,11 +61,13 @@ if [ -n "${SIM_SEED_DIR:-}" ] && [ -n "${SIMULATOR_UDID:-}" ]; then
       # A half-restored device can't boot; erase gives back the image's own.
       echo "::warning::could not restore the warm-device seed - erasing the device and booting it cold"
       bounded_run 120 xcrun simctl erase "$SIMULATOR_UDID" || true
-      seed_state=$seed_miss
+      seed_state=create
+      if [ "$seed_miss" = skipped ]; then seed_state=failed; fi
     fi
     seed_s=$(( $(date +%s) - started ))
   elif [ -f "$SIM_SEED_DIR/data.tar" ]; then
     echo "::warning::the warm-device seed is for another device - booting cold"
+    if [ "$seed_miss" = skipped ]; then seed_state=failed; fi
   fi
   if [ "$seed_state" = create ]; then rm -f "$SIM_SEED_DIR/data.tar" "$SIM_SEED_DIR/udid"; fi
 fi
@@ -77,8 +79,8 @@ if [ -n "${SIMULATOR_UDID:-}" ]; then
   # TEMPORARY probe (#2594): when the device reports Booted and SpringBoard
   # runs, against when bootstatus returns.
   ( t0=$(date +%s); while [ $(( $(date +%s) - t0 )) -lt 600 ]; do
-      st=$(xcrun simctl list devices 2>/dev/null | grep -F "($SIMULATOR_UDID)" | sed -E 's/.*\(([A-Za-z ]+)\) *$/\1/')
-      sb=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list 2>/dev/null | grep -c SpringBoard)
+      st=$(xcrun simctl list devices 2>/dev/null | grep -F "($SIMULATOR_UDID)" | sed -E 's/.*\(([A-Za-z ]+)\) *$/\1/' || true)
+      sb=$(xcrun simctl spawn "$SIMULATOR_UDID" launchctl list 2>/dev/null | grep -c SpringBoard || true)
       echo "probe +$(( $(date +%s) - t0 ))s state=$st springboard=$sb load=$(sysctl -n vm.loadavg)"
       sleep 5
     done ) > "$LOG_DIR/boot-probe.log" 2>&1 &

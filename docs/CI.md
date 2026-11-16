@@ -368,7 +368,8 @@ device is selected. Cache-write failures warn and preserve the lookup result.
 runtime, boot confirmation, the warm-device seed's outcome (`off`: no seed
 directory; `restored`; `created`; `create`: none made, the first boot never
 confirmed; `create-failed`: made but not kept; `skipped`: a restore-only job
-with none; `failed`: the device wasn't shut down), and separate lookup,
+with none; `failed`: the device wasn't shut down, or a restore-only job's seed
+couldn't be used), and separate lookup,
 shutdown, boot, readiness and warm-seed seconds. The existing three-second settling delay is additional. Runtime
 reporting reuses that retained pre-boot inventory; it never adds a post-boot
 `simctl list` probe. Each preparation gets a fresh diagnostic file so an existing
