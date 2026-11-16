@@ -204,7 +204,8 @@ class WorkflowContractTests(unittest.TestCase):
         xcode-select, xcodebuild and xcrun. An Xcode named in no_metal can't
         run metal until a download installs it; one in no_download fails the
         download, and one in empty_download reports success but installs
-        nothing. Xcode_<v>.app's simulator SDK is <v>, Xcode.app's is 27.0,
+        nothing. Xcode_<v>.app's simulator SDK is <v> (27.3.0 reads as 27.3),
+        Xcode.app's is 27.0,
         and every watchOS simulator SDK is 13.2.
         Returns (exit code, the Xcode left selected, stdout, what the script
         wrote to GITHUB_ENV)."""
@@ -225,7 +226,7 @@ class WorkflowContractTests(unittest.TestCase):
                 "xcrun": (
                     'if [ "$2" = watchsimulator ]; then echo 13.2; exit 0; fi\n'
                     'if [ "$3" = --show-sdk-version ]; then\n'
-                    '  sed -E "s/^Xcode_(.*)\\.app$/\\1/; s/^Xcode\\.app$/27.0/" "$SELECTED"; exit 0\n'
+                    '  sed -E "s/^Xcode_(.*)\\.app$/\\1/; s/^([0-9]+\\.[0-9]+)\\.0$/\\1/; s/^Xcode\\.app$/27.0/" "$SELECTED"; exit 0\n'
                     'fi\n'
                     'grep -qxFf "$SELECTED" "$INSTALLED" && exit 0\n'
                     'grep -qxFf "$SELECTED" "$NO_METAL" && exit 1; exit 0\n'),
@@ -300,6 +301,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("Simulator runtime pinned", out)
         code, chosen, out, env = self._select_xcode(["Xcode.app"])
         self.assertEqual((code, chosen, env), (0, "Xcode.app", ""), out)
+        # Another copy of the same SDK isn't an older Xcode: an image carried
+        # Xcode_27.3.app without a toolchain beside Xcode_27.3.0.app, and a
+        # pin to iOS 27.3 left Smoke without a device (#2627).
+        same = ["Xcode.app", "Xcode_27.2.app", "Xcode_27.3.app", "Xcode_27.3.0.app"]
+        code, chosen, out, env = self._select_xcode(
+            same, no_metal=["Xcode_27.3.app"], no_download=["Xcode_27.3.app"])
+        self.assertEqual(code, 0, out)
+        self.assertEqual((chosen, env), ("Xcode_27.3.0.app", ""), out)
         for path in (WORKFLOW, NIGHTLY):
             self.assertNotIn("sudo bash scripts/ci-select-xcode.sh", _read(path), path)
         # The App Store screenshots jobs pick their devices themselves; both
@@ -310,6 +319,27 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('r.endswith("iOS-" + pin.replace(".", "-"))', screenshots)
         self.assertIn('os.environ.get("WATCH_SIMULATOR_OS")', screenshots)
         self.assertIn('r.endswith("watchOS-" + pin.replace(".", "-"))', screenshots)
+        # Run both embedded lookups against a simctl inventory.
+        lookups = re.findall(r"python3 -c '\n(.*?)\n\s*' \"\$", screenshots, re.S)
+        self.assertEqual(len(lookups), 2)
+        rt = "com.apple.CoreSimulator.SimRuntime."
+        inventory = json.dumps({"devices": {
+            rt + "iOS-27-2": [{"name": "iPhone 18 Pro", "udid": "ios-27-2"}],
+            rt + "iOS-27-3": [{"name": "iPhone 18 Pro", "udid": "ios-27-3"}],
+            rt + "watchOS-13-2": [{"name": "Apple Watch Ultra 4 (49mm)", "udid": "watch-13-2"}],
+            rt + "watchOS-13-3": [{"name": "Apple Watch Ultra 4 (49mm)", "udid": "watch-13-3"}],
+        }})
+        def lookup(code, name, **pins):
+            env = {k: v for k, v in os.environ.items()
+                   if k not in ("SIMULATOR_OS", "WATCH_SIMULATOR_OS")}
+            return subprocess.run(
+                ["python3", "-c", textwrap.dedent(code), name], input=inventory,
+                env=dict(env, **pins), capture_output=True, text=True).stdout.strip()
+        ios, watch = lookups
+        self.assertEqual(lookup(ios, "iPhone 18 Pro"), "ios-27-3")
+        self.assertEqual(lookup(ios, "iPhone 18 Pro", SIMULATOR_OS="27.2"), "ios-27-2")
+        self.assertEqual(lookup(watch, "Apple Watch Ultra 4"), "watch-13-3")
+        self.assertEqual(lookup(watch, "Apple Watch Ultra 4", WATCH_SIMULATOR_OS="13.2"), "watch-13-2")
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1

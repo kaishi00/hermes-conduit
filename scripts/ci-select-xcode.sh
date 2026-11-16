@@ -22,10 +22,13 @@
 #
 # An image that carries a newer Xcode usually carries its iOS runtime too, and
 # the device lookup (scripts/ci-lib.sh) takes the newest runtime, which an
-# older Xcode doesn't build for. So when the script falls back past the newest
-# release it pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
+# older Xcode doesn't build for. So when the script falls back to an Xcode
+# whose iOS simulator SDK is older than the first candidate's, it pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
 # screenshots' Watch job reads) to the selected Xcode's simulator SDK versions
-# through GITHUB_ENV (the workflows keep that variable across sudo).
+# through GITHUB_ENV (the workflows keep that variable across sudo). A
+# fallback to another copy of the same SDK pins nothing: an image carried
+# both Xcode_27.3.app (no toolchain) and Xcode_27.3.0.app, and pinning iOS
+# 27.3 there left Smoke without a device (#2627's first run).
 #
 # APPLICATIONS_DIR is for the regression test only; it puts stub
 # xcode-select, xcodebuild and xcrun first on PATH.
@@ -42,7 +45,6 @@ candidates=$(find "$apps" -maxdepth 1 -name 'Xcode_*.app' 2>/dev/null \
 if [ -z "$candidates" ]; then
   echo "::warning::no released Xcode_<version>.app under $apps; keeping the default Xcode.app"
 fi
-newest=$(printf '%s\n' "$candidates" | head -n 1)
 candidates=$(printf '%s\n%s\n' "$candidates" "$apps/Xcode.app" | sed '/^$/d')
 
 has_metal() { xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; }
@@ -51,6 +53,8 @@ while IFS= read -r target; do
   echo "selecting $target"
   xcode-select -s "$target"
   xcodebuild -version
+  sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+  newest_sdk="${newest_sdk:-$sdk}"
   if ! has_metal; then
     echo "the Metal toolchain is missing - downloading it"
     started=$(date +%s)
@@ -61,8 +65,7 @@ while IFS= read -r target; do
       continue
     fi
   fi
-  if [ -n "$newest" ] && [ "$target" != "$newest" ]; then
-    sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+  if [ "$sdk" != "$newest_sdk" ]; then
     watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version)
     echo "::notice title=Simulator runtime pinned::fell back to $target; simulators run iOS $sdk and watchOS $watch_sdk, the runtimes its SDKs build for"
     if [ -n "${GITHUB_ENV:-}" ]; then
