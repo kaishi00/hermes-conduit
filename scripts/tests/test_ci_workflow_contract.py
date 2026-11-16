@@ -168,7 +168,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(list(labels), ["xcode-27"], labels)
         for path in (WORKFLOW, NIGHTLY, screenshots):
             text = _read(path)
-            self.assertEqual(text.count("run: sudo bash scripts/ci-select-xcode.sh"),
+            self.assertEqual(text.count("run: sudo --preserve-env=GITHUB_ENV bash scripts/ci-select-xcode.sh"),
                              len(re.findall(r"runs-on: xcode-", text)), path)
             self.assertNotIn("xcode-select -s /Applications/Xcode.app", text, path)
 
@@ -199,11 +199,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("continue-on-error: true", step)
 
     @staticmethod
-    def _select_xcode(names, no_metal=(), no_download=()):
+    def _select_xcode(names, no_metal=(), no_download=(), empty_download=()):
         """Runs ci-select-xcode.sh against fake /Applications entries with stub
-        xcode-select, xcodebuild and xcrun: an Xcode named in no_metal can't run
-        metal, and one named in no_download also fails the toolchain download.
-        Returns (exit code, the Xcode left selected, stdout)."""
+        xcode-select, xcodebuild and xcrun. An Xcode named in no_metal can't
+        run metal until a download installs it; one in no_download fails the
+        download, and one in empty_download reports success but installs
+        nothing. Xcode_<v>.app's simulator SDK is <v>, Xcode.app's is 27.0.
+        Returns (exit code, the Xcode left selected, stdout, what the script
+        wrote to GITHUB_ENV)."""
         with tempfile.TemporaryDirectory() as root:
             apps = os.path.join(root, "Applications")
             stubs = os.path.join(root, "bin")
@@ -212,12 +215,23 @@ class WorkflowContractTests(unittest.TestCase):
             for name in names:
                 os.mkdir(os.path.join(apps, name))
             selected = os.path.join(root, "selected")
+            installed = os.path.join(root, "installed")
+            github_env = os.path.join(root, "github_env")
+            open(installed, "w").close()
+            open(github_env, "w").close()
             stub_text = {
                 "xcode-select": 'echo "${2##*/}" > "$SELECTED"\n',
-                "xcrun": 'grep -qxFf "$SELECTED" "$NO_METAL" && exit 1; exit 0\n',
+                "xcrun": (
+                    'if [ "$3" = --show-sdk-version ]; then\n'
+                    '  sed -E "s/^Xcode_(.*)\\.app$/\\1/; s/^Xcode\\.app$/27.0/" "$SELECTED"; exit 0\n'
+                    'fi\n'
+                    'grep -qxFf "$SELECTED" "$INSTALLED" && exit 0\n'
+                    'grep -qxFf "$SELECTED" "$NO_METAL" && exit 1; exit 0\n'),
                 "xcodebuild": (
                     'if [ "$1" = -version ]; then echo "Xcode $(cat "$SELECTED")"; exit 0; fi\n'
-                    'grep -qxFf "$SELECTED" "$NO_DOWNLOAD" && exit 70; exit 0\n'),
+                    'grep -qxFf "$SELECTED" "$NO_DOWNLOAD" && exit 70\n'
+                    'grep -qxFf "$SELECTED" "$EMPTY_DOWNLOAD" && exit 0\n'
+                    'cat "$SELECTED" >> "$INSTALLED"; exit 0\n'),
             }
             for tool, body in stub_text.items():
                 path = os.path.join(stubs, tool)
@@ -225,48 +239,73 @@ class WorkflowContractTests(unittest.TestCase):
                     f.write("#!/usr/bin/env bash\n" + body)
                 os.chmod(path, 0o755)
             lists = {}
-            for key, entries in (("NO_METAL", no_metal), ("NO_DOWNLOAD", no_download)):
+            for key, entries in (("NO_METAL", no_metal), ("NO_DOWNLOAD", no_download),
+                                 ("EMPTY_DOWNLOAD", empty_download)):
                 lists[key] = os.path.join(root, key)
                 with open(lists[key], "w") as f:
                     f.write("".join(e + "\n" for e in entries) or "\n")
             proc = subprocess.run(
                 ["bash", os.path.join(SCRIPTS_DIR, "ci-select-xcode.sh")],
                 env=dict(os.environ, APPLICATIONS_DIR=apps, SELECTED=selected,
+                         INSTALLED=installed, GITHUB_ENV=github_env,
                          PATH=stubs + os.pathsep + os.environ["PATH"], **lists),
                 capture_output=True, text=True)
             chosen = None
             if os.path.exists(selected):
                 with open(selected) as f:
                     chosen = f.read().strip()
-            return proc.returncode, chosen, proc.stdout
+            with open(github_env) as f:
+                env_lines = f.read()
+            return proc.returncode, chosen, proc.stdout, env_lines
 
     def test_select_xcode_fetches_a_missing_metal_toolchain(self):
         """Image 20261112.0361.1's Xcode 27.3 had no Metal toolchain and every
         build failed at CompileMetalFile (2026-11-16): the script downloads it.
         Apple's catalog had no toolchain for that build either (the 2026-11-16
         Nightly's timing repeat 3, "Failed fetching catalog"), so a failed
-        download moves on to the next newest release, and the job fails only
-        when no Xcode has one."""
+        download, or one that leaves metal still missing, moves on to the next
+        newest release and then the default Xcode.app; the job fails only
+        when none has one."""
         names = ["Xcode.app", "Xcode_27.2.app", "Xcode_27.3.0.app"]
-        code, chosen, out = self._select_xcode(names, no_metal=["Xcode_27.3.0.app"])
-        self.assertEqual((code, chosen), (0, "Xcode_27.3.0.app"), out)
+        code, chosen, out, env = self._select_xcode(names, no_metal=["Xcode_27.3.0.app"])
+        self.assertEqual((code, chosen, env), (0, "Xcode_27.3.0.app", ""), out)
         self.assertIn("Metal toolchain downloaded", out)
-        code, chosen, out = self._select_xcode(
-            names, no_metal=["Xcode_27.3.0.app"], no_download=["Xcode_27.3.0.app"])
-        self.assertEqual((code, chosen), (0, "Xcode_27.2.app"), out)
-        self.assertIn("Metal toolchain unavailable", out)
-        code, _, out = self._select_xcode(
-            names, no_metal=["Xcode_27.3.0.app", "Xcode_27.2.app"],
-            no_download=["Xcode_27.3.0.app", "Xcode_27.2.app"])
+        for broken in ({"no_download": ["Xcode_27.3.0.app"]},
+                       {"empty_download": ["Xcode_27.3.0.app"]}):
+            code, chosen, out, _ = self._select_xcode(
+                names, no_metal=["Xcode_27.3.0.app"], **broken)
+            self.assertEqual((code, chosen), (0, "Xcode_27.2.app"), (broken, out))
+            self.assertIn("Metal toolchain unavailable", out)
+        both = ["Xcode_27.3.0.app", "Xcode_27.2.app"]
+        code, chosen, out, _ = self._select_xcode(names, no_metal=both, no_download=both)
+        self.assertEqual((code, chosen), (0, "Xcode.app"), out)
+        everything = both + ["Xcode.app"]
+        code, _, out, _ = self._select_xcode(names, no_metal=everything, no_download=everything)
         self.assertEqual(code, 1, out)
         self.assertIn("no Xcode on this image has a Metal toolchain", out)
+
+    def test_select_xcode_pins_the_runtime_when_it_falls_back(self):
+        """The device lookup takes the newest iOS runtime, and an image with
+        Xcode 27.3 likely carries iOS 27.3, which Xcode 27.2 doesn't build
+        for: a fallback pins SIMULATOR_OS to the selected Xcode's simulator
+        SDK through GITHUB_ENV, which every Select Xcode step keeps across
+        sudo. The newest release's own selection pins nothing."""
+        names = ["Xcode.app", "Xcode_27.2.app", "Xcode_27.3.0.app"]
+        code, chosen, out, env = self._select_xcode(
+            names, no_metal=["Xcode_27.3.0.app"], no_download=["Xcode_27.3.0.app"])
+        self.assertEqual((code, chosen, env), (0, "Xcode_27.2.app", "SIMULATOR_OS=27.2\n"), out)
+        self.assertIn("Simulator runtime pinned", out)
+        code, chosen, out, env = self._select_xcode(["Xcode.app"])
+        self.assertEqual((code, chosen, env), (0, "Xcode.app", ""), out)
+        for path in (WORKFLOW, NIGHTLY):
+            self.assertNotIn("sudo bash scripts/ci-select-xcode.sh", _read(path), path)
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
         beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas
         and release candidates never count."""
         def pick(names):
-            code, chosen, out = self._select_xcode(names)
+            code, chosen, out, _ = self._select_xcode(names)
             self.assertEqual(code, 0, out)
             return chosen
         self.assertEqual(pick(["Xcode.app", "Xcode_27.app", "Xcode_27.1.app",

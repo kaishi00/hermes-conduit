@@ -17,7 +17,14 @@
 # selected Xcode can't run metal the script downloads it. Apple's catalog
 # doesn't always carry that build's toolchain ("Failed fetching catalog for
 # assetType", the 2026-11-16 Nightly), so when the download fails the next
-# newest release is tried, and the job fails only when none has a toolchain.
+# newest release is tried, then the image's default Xcode.app, and the job
+# fails only when none has a toolchain.
+#
+# An image that carries a newer Xcode usually carries its iOS runtime too, and
+# the device lookup (scripts/ci-lib.sh) takes the newest runtime, which an
+# older Xcode doesn't build for. So when the script falls back past the newest
+# release it pins SIMULATOR_OS to the selected Xcode's simulator SDK version
+# through GITHUB_ENV (the workflows keep that variable across sudo).
 #
 # APPLICATIONS_DIR is for the regression test only; it puts stub
 # xcode-select, xcodebuild and xcrun first on PATH.
@@ -33,23 +40,34 @@ candidates=$(find "$apps" -maxdepth 1 -name 'Xcode_*.app' 2>/dev/null \
 
 if [ -z "$candidates" ]; then
   echo "::warning::no released Xcode_<version>.app under $apps; keeping the default Xcode.app"
-  candidates="$apps/Xcode.app"
 fi
+newest=$(printf '%s\n' "$candidates" | head -n 1)
+candidates=$(printf '%s\n%s\n' "$candidates" "$apps/Xcode.app" | sed '/^$/d')
+
+has_metal() { xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; }
 
 while IFS= read -r target; do
   echo "selecting $target"
   xcode-select -s "$target"
   xcodebuild -version
-  if xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; then
-    exit 0
+  if ! has_metal; then
+    echo "the Metal toolchain is missing - downloading it"
+    started=$(date +%s)
+    if xcodebuild -downloadComponent MetalToolchain && has_metal; then
+      echo "::notice title=Metal toolchain downloaded::$(xcodebuild -version | head -n 1) lacked it; fetching took $(( $(date +%s) - started ))s"
+    else
+      echo "::warning title=Metal toolchain unavailable::$target has no Metal toolchain and the download failed; trying the next one"
+      continue
+    fi
   fi
-  echo "the Metal toolchain is missing - downloading it"
-  started=$(date +%s)
-  if xcodebuild -downloadComponent MetalToolchain; then
-    echo "::notice title=Metal toolchain downloaded::$(xcodebuild -version | head -n 1) lacked it; fetching took $(( $(date +%s) - started ))s"
-    exit 0
+  if [ -n "$newest" ] && [ "$target" != "$newest" ]; then
+    sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+    echo "::notice title=Simulator runtime pinned::fell back to $target; the simulator runs iOS $sdk, the runtime its SDK builds for"
+    if [ -n "${GITHUB_ENV:-}" ]; then
+      echo "SIMULATOR_OS=$sdk" >> "$GITHUB_ENV"
+    fi
   fi
-  echo "::warning title=Metal toolchain unavailable::$target has no Metal toolchain and the download failed; trying the next newest release"
+  exit 0
 done <<< "$candidates"
 
 echo "::error::no Xcode on this image has a Metal toolchain, and none could download one"
