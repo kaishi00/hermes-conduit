@@ -156,15 +156,29 @@ extension AppState {
     func settleCombinedBotsHomeOrder(_ shown: [String]) {
         // A dashboard out of the group (removed, or no longer combined)
         // leaves the order with its bots, whether or not every roster is in.
-        let group = Set(savedDashboardRegistry.dashboards.map(\.id).filter { isInCombinedGroup($0) }.map(\.uuidString))
-        let kept = combinedBotsHomeOrder.filter { key in
-            // "-" is a dashboard with no saved entry: not one that left.
-            key.split(separator: "|", maxSplits: 1).first.map { $0 == "-" || group.contains(String($0)) } ?? false
-        }
+        let kept = combinedBotsHomeOrderInGroup
         let settled = combinedBotsHomeRostersIn ? CombinedBotsHomeOrder.settled(kept, shown: shown) : kept
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
         CombinedBotsHomeOrder.save(settled, defaults)
+    }
+
+    /// The saved order without the keys of dashboards out of the group.
+    /// "-" is a dashboard with no saved entry: not one that left.
+    var combinedBotsHomeOrderInGroup: [String] {
+        let group = Set(savedDashboardRegistry.dashboards.map(\.id).filter { isInCombinedGroup($0) }.map(\.uuidString))
+        return combinedBotsHomeOrder.filter { key in
+            key.split(separator: "|", maxSplits: 1).first.map { $0 == "-" || group.contains(String($0)) } ?? false
+        }
+    }
+
+    /// The group changed: a dashboard that left takes its bots out of the
+    /// order at once, not only when a mixed grid next draws.
+    func pruneCombinedBotsHomeOrder() {
+        let kept = combinedBotsHomeOrderInGroup
+        guard kept != combinedBotsHomeOrder else { return }
+        combinedBotsHomeOrder = kept
+        CombinedBotsHomeOrder.save(kept, defaults)
     }
 
     /// A portrait of the mixed grid dropped on another (`onto`, its key),
