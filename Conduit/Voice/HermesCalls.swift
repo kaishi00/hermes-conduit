@@ -341,19 +341,24 @@ struct HermesCallOpening: Equatable {
 
     /// With what the chat's card says: a question's choices, which Hermes'
     /// short reason leaves out, or the approval's ask for a yes or no.
-    func spokenBrief(waiting: HermesCallWaiting?) -> String {
-        let hello = AppLocalization.string("Hi, it's Hermes.", table: .voice)
+    /// `name`: the bot that called (HermesCallerName), which introduces
+    /// itself by it (issue 2540); Hermes for a main bot nobody named.
+    func spokenBrief(waiting: HermesCallWaiting?, name: String = HermesCallerName.fallback) -> String {
+        let named = name != HermesCallerName.fallback
+        let hello = named ? AppLocalization.string("Hi, it's \(name).", table: .voice) : AppLocalization.string("Hi, it's Hermes.", table: .voice)
         if let question = waiting?.openQuestion {
-            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil) + "\n" + HermesCallWaiting.spokenQuestion(question)
+            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil, name: name) + "\n" + HermesCallWaiting.spokenQuestion(question)
         }
         if case .approval(let command, let description)? = waiting?.item {
             // Said to the user, so Hermes' own texts in the App Language
             // (#1589); the model's brief (`block`) keeps Hermes' words.
             let what = description.isEmpty ? HermesApprovalText.command(command) : HermesApprovalText.description(description)
             let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
-            return hello + " " + AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
+            return hello + " " + (named
+                ? AppLocalization.string("\(name) needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
+                : AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice))
         }
-        let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason)
+        let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason, name: name)
         guard let result, !waitsOnUser else { return intro }
         return intro + "\n\n" + VoiceReadBack.plainSpeech(result)
     }
