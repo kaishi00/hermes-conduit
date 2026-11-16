@@ -1746,6 +1746,11 @@ struct V2PulsePage: View {
 
     private func load() async {
         let dashboard = appState.activeDashboardID
+        // The visit the read began in: a retry's read that lands in a later
+        // visit, or after the page hid (which ends the visit), marks nothing
+        // seen. `visit` is state, so it reads the live value even from a
+        // retry's task holding an old copy of the view.
+        let visit = self.visit
         do {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
@@ -1758,7 +1763,7 @@ struct V2PulsePage: View {
             learnedNote = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest, isVisible { focus(request) }
-            if !Task.isCancelled, isVisible, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
+            if !Task.isCancelled, isVisible, visit == self.visit, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
                appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }

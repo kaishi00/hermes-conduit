@@ -967,8 +967,10 @@ extension VoiceConversationControllerTests {
         await supervisor.pollOnce()
         await supervisor.pollOnce()
         XCTAssertEqual(supervisor.jobs.first?.status, .running, "not on two reads")
+        fake.threadReply = "The router is fine."
         await supervisor.pollOnce()
         XCTAssertEqual(supervisor.jobs.first?.status, .finished, "never listed in three: settled")
+        XCTAssertEqual(supervisor.jobs.first?.result, "The router is fine.", "settled from its chat")
 
         let (cancelling, cancelFake) = makeSupervisor()
         cancelFake.profileTargets = ["fam": .other("fam")]

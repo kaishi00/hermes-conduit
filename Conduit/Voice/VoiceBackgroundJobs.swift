@@ -3505,6 +3505,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // A job that went active while the reads awaited is judged next time.
             guard let rows = rowsByProfile[job.profile] else { continue }
             let row = rows.first { job.owns(sessionID: $0.runtimeSessionId) || job.owns(sessionID: $0.storedSessionId) }
+            var settlesUnlisted = false
             if let row {
                 if (job.storedSessionID ?? "").isEmpty, !row.storedSessionId.isEmpty,
                    let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty, row.storedSessionId != runtimeID {
@@ -3534,6 +3535,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     jobs[index].unlistedPolls += 1
                     guard jobs[index].unlistedPolls >= unlistedPollsBeforeSettling
                         || Date().timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge else { continue }
+                    settlesUnlisted = true
                 } else {
                     // Absence is only trusted when it repeats: a row missing
                     // from one read must not discard the real completion.
@@ -3547,7 +3549,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 settledThreadTurns.append(job.id)
                 continue
             }
-            if readsRepliesWhenSettling || liveCallReadsReplies || job.isRestored, !job.isThreadTurn, job.result == nil {
+            if readsRepliesWhenSettling || liveCallReadsReplies || job.isRestored || settlesUnlisted, !job.isThreadTurn, job.result == nil {
                 settledJobs.append(job.id)
                 continue
             }
