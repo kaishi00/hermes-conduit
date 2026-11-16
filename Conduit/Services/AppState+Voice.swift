@@ -1374,7 +1374,9 @@ extension AppState {
         if let live = rows.first(where: { thread.owns(sessionID: $0.runtimeSessionId) || thread.owns(sessionID: $0.storedSessionId) }) {
             return live.runtimeSessionId
         }
-        return try await client.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: callThreadProfile(thread)).sessionId
+        // The client as of now: a reconnect during the read replaced it.
+        let opener = try await clientForVoiceRequest()
+        return try await opener.openSession(thread.storedSessionID ?? thread.runtimeSessionID, profile: callThreadProfile(thread)).sessionId
     }
 
     /// The runtime a Local Live call's next turn runs on in `chat`, or nil
@@ -1517,7 +1519,7 @@ extension AppState {
         let reportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
         let outcome: PromptSubmissionOutcome
-        let sender: HermesClient
+        var sender: HermesClient
         do {
             // Re-read right before the send: a turn running there (typed on
             // another device) is waited for. A failed read fails the send rather
@@ -1541,8 +1543,11 @@ extension AppState {
                 runtimeID: target, otherSessionIDs: [thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 },
                 profile: callThreadProfile(thread),
                 stillWanted: stillWanted
-            ) { [sender] in
-                try await sender.sendPrompt(target, text: text)
+            ) {
+                // The client as of each send: the resend after a takeover
+                // wait can come after a reconnect replaced the first one.
+                sender = try await clientForVoiceRequest()
+                return try await sender.sendPrompt(target, text: text)
             }
         } catch {
             // Nothing of it was sent, or Hermes refused it: its report waits for no turn.

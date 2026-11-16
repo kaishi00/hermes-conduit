@@ -5736,6 +5736,39 @@ extension HermesClientTests {
         incoming.disconnect()
     }
 
+    /// A carried spoken submit that an older Hermes refuses for its
+    /// `voice_turn` key is resent where the socket is now, not on the
+    /// client that handed it on.
+    func testACarriedSubmitsResendGoesToTheClientHoldingTheSocket() async throws {
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let submit = Task { try await outgoing.sendPrompt("job-1", text: "Book it", surface: "voice-live", voiceTurn: true) }
+        try await sent.wait("the job's submit to be sent")
+        let first = try lastRequest(on: socket)
+        let firstID = try XCTUnwrap(first["id"] as? Int)
+        XCTAssertEqual((first["params"] as? [String: Any])?["voice_turn"] as? Bool, true)
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming, carryingSessions: ["job-1"], carryingCallRequests: true))
+        outgoing.disconnect()
+        XCTAssertTrue(outgoing.socketHolder === incoming)
+
+        let resent = Gate()
+        socket.onSend = { resent.signal() }
+        try deliverReply([
+            "jsonrpc": "2.0", "id": firstID,
+            "error": ["code": 4000, "message": "invalid params for prompt.submit: voice_turn: Extra inputs are not permitted"]
+        ], on: socket)
+        try await resent.wait("the resend without voice_turn")
+        let retry = try lastRequest(on: socket)
+        XCTAssertNil((retry["params"] as? [String: Any])?["voice_turn"])
+        try deliverReply(["jsonrpc": "2.0", "id": try XCTUnwrap(retry["id"] as? Int), "result": ["status": "streaming"]], on: socket)
+        let outcome = try await awaitResult(of: submit, "the resent submit to be answered")
+        XCTAssertEqual(outcome, .accepted)
+        incoming.disconnect()
+    }
+
     func testALateAnswerToTheOutgoingProfilesRequestNeverSettlesTheNextOnes() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         let sent = Gate()

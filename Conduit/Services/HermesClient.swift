@@ -1616,6 +1616,7 @@ final class HermesClient: ObservableObject {
         self.socket = nil
         isConnected = false
         socketSuccessor = successor
+        handedSocketTo = successor
         successor.adoptSocket(socket, transport: transport, from: self)
         transport = nil
         // Not cancelled: the receive it runs brings the socket's next frame
@@ -1643,6 +1644,8 @@ final class HermesClient: ObservableObject {
     ) {
         self.socket = socket
         self.transport = transport
+        // The socket is this client's again: nothing to follow on.
+        handedSocketTo = nil
         requestId = max(requestId, predecessor.requestId)
         connectGeneration &+= 1
         socketHasOpened = true
@@ -1686,6 +1689,19 @@ final class HermesClient: ObservableObject {
     /// last receive waits, so its frame always finds the client holding
     /// the socket, however many switches ago it was handed on.
     private var socketSuccessor: HermesClient?
+    /// The client this one handed its socket to, kept after its last
+    /// receive ends (unlike `socketSuccessor`): a carried request's resend
+    /// goes where the socket is now (`socketHolder`).
+    private var handedSocketTo: HermesClient?
+
+    /// The client holding the socket this one handed on, however many
+    /// switches ago; this client when it handed nothing on.
+    var socketHolder: HermesClient {
+        var holder = self
+        var seen: Set<ObjectIdentifier> = [ObjectIdentifier(self)]
+        while let next = holder.handedSocketTo, seen.insert(ObjectIdentifier(next)).inserted { holder = next }
+        return holder
+    }
     /// Set while a predecessor's receive is still waiting on this client's
     /// socket: its frame comes here, then this client reads on.
     private var awaitsHandedOnFrame = false
@@ -3740,7 +3756,11 @@ final class HermesClient: ObservableObject {
         while answer == nil {
             do {
                 let current = params
-                answer = try await shapedRPC(timeout: Self.promptSubmitTimeout) { authority in
+                // A resend after a switch the call went on across handed the
+                // socket on: it goes where the socket is now, as the first
+                // send's answer did.
+                let via = socketHolder
+                answer = try await via.shapedRPC(timeout: Self.promptSubmitTimeout) { authority in
                     sentToAuthority = authority
                     var shaped = current
                     if authority {

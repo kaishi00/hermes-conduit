@@ -122,6 +122,18 @@ extension AppState {
         handleScenePhase(merged)
     }
 
+    /// A window's phase from before any phase was handled (the main
+    /// window's first frame at launch): counted with the others from now,
+    /// without the steps a change runs. Its first change runs them, as it
+    /// did before. Once a phase was handled, `noteScenePhase` instead.
+    func countScenePhaseBeforeAnyHeard(_ phase: ScenePhase, scene: String) {
+        guard mergedScenePhase == nil else {
+            noteScenePhase(phase, scene: scene)
+            return
+        }
+        windowScenePhases[scene] = phase
+    }
+
     /// The most active of `phases`: active, then inactive, then background.
     nonisolated static func mergedScenePhase(_ phases: [ScenePhase]) -> ScenePhase? {
         if phases.contains(.active) { return .active }
