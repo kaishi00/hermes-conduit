@@ -837,6 +837,29 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNotNil(appState.followedChat(answering: ["a"]), "The reopen still landing keeps the copy the run followed")
     }
 
+    /// #2612's review: a New Chat's reconcile takes no rebound id routed
+    /// for the chat it leaves.
+    func testANewChatTakesNoReboundIDRoutedForTheChatItLeaves() async {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await withCheckedContinuation { waiting.append($0) }
+            throw URLError(.notConnectedToInternet)
+        }
+        appState.setActiveSessionState(id: "a")
+        appState.reconciliation = AppState.Reconciliation(
+            token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a", "rt-a"], reboundSessionIDs: ["rt-a": "a"]
+        )
+
+        let create = Task { await appState.createNewSession() }
+        for _ in 0..<2000 where waiting.isEmpty { await Task.yield() }
+        XCTAssertFalse(waiting.isEmpty, "The create is under way")
+        XCTAssertEqual(appState.reconciliation?.reboundSessionIDs, [:], "Chat a's rebound id stays with chat a")
+        waiting.forEach { $0.resume() }
+        _ = await create.value
+    }
+
     // MARK: - A new chat in the list (issue 1454)
 
     func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {

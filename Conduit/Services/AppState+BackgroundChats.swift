@@ -426,16 +426,33 @@ extension AppState {
     /// later binds to another chat stops reaching this one.
     /// A rebound id the open's reconcile took for the chat it was routed for
     /// stops being accepted once the identity index binds it to another
-    /// chat, so that chat's words never reach this open (#2610's review).
-    func dropReboundIDIfMovedOn(_ id: String) {
-        guard var open = reconciliation, let routedFor = open.reboundSessionIDs[id] else { return }
-        let routedIDs = knownSessionIDs(for: routedFor).union([routedFor])
+    /// chat, so that chat's words and cards never reach this open (#2610's
+    /// review). Run on every event before a followed chat takes it, so a
+    /// rebind to a chat that is itself followed is noticed too. Its words
+    /// buffered so far stay out of the replay with it, and a side agent's
+    /// completion held for it is let go.
+    @discardableResult
+    func dropReboundIDIfMovedOn(_ id: String) -> Bool {
+        guard var open = reconciliation, let routedFor = open.reboundSessionIDs[id] else { return false }
+        let index = conversationIdentityIndex
         // Kept while the index still binds it there, or no longer knows it.
-        guard let durableID = conversationIdentityIndex.durableID(forRuntime: id, profile: activeProfile),
-              !routedIDs.contains(durableID) else { return }
+        guard let durableID = index.durableID(forRuntime: id, profile: activeProfile) else { return false }
+        // The index's own binding for the chat it was routed for wins; the
+        // catalog row's ids, its stored id included, stand in when the index
+        // doesn't know that chat (or the row is away mid-refresh).
+        if let routedDurableID = index.durableID(forRuntime: routedFor, profile: activeProfile) {
+            guard routedDurableID != durableID else { return false }
+        } else {
+            let row = [sessions, cronSessions].joined().first { $0.nestingIDs.contains(routedFor) }
+            let routedIDs = knownSessionIDs(for: routedFor).union([routedFor]).union(row?.nestingIDs ?? [])
+            guard !routedIDs.contains(durableID) else { return false }
+        }
         open.reboundSessionIDs[id] = nil
         open.acceptedSessionIDs.remove(id)
+        open.movedOnSessionIDs.insert(id)
         reconciliation = open
+        shownChat.heldSideAgentCompletions.removeAll { sessionID(for: $0) == id }
+        return true
     }
 
     func followedChatIndex(reboundTo id: String) -> Int? {

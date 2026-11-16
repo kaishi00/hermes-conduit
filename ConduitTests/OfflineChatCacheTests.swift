@@ -4205,6 +4205,85 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(state.reconciliation?.reboundSessionIDs["rt-elsewhere"])
         XCTAssertEqual(state.reconciliation?.bufferedEvents.count, 1, "Chat c's delta isn't buffered for chat a's open")
         XCTAssertFalse(state.eventBelongsToActiveSession("rt-elsewhere"))
+        // Its buffered words stay out of the replay, and a reconcile that
+        // takes any chat's events still turns it away (#2612's review).
+        XCTAssertEqual(state.reconciliation?.movedOnSessionIDs, ["rt-elsewhere"])
+        XCTAssertFalse(state.reconciliation?.accepts("rt-elsewhere") ?? true)
+        _ = state.beginReconciliation()
+        XCTAssertEqual(state.reconciliation?.acceptsAnySession, true)
+        XCTAssertFalse(state.reconciliation?.accepts("rt-elsewhere") ?? true, "An any-chat reconcile carries the moved-on id")
+        XCTAssertTrue(state.reconciliation?.accepts("a") ?? false)
+
+        // A failed resume replays the decision cards it buffered, but not
+        // one under the moved-on id (#2613's review).
+        guard let token = state.reconciliation?.token else { return XCTFail("The open is reconciling") }
+        func approval(_ session: String, _ text: String) -> StreamEvent {
+            .approval(sessionId: session, activity: ApprovalActivity(
+                sessionId: session, requestId: nil, command: "deploy", description: text, choices: nil,
+                allowPermanent: false, smartDenied: false, status: .pending, choice: nil, error: nil))
+        }
+        state.reconciliation?.bufferedEvents = [approval("rt-elsewhere", "Chat c's card"), approval("a", "Chat a's card")]
+        state.reconciliation?.bufferedGenerations = [nil, nil]
+        state.replayBufferedDecisionPrompts(for: token)
+        let cards = state.messages.compactMap(\.approval?.description)
+        XCTAssertFalse(cards.contains("Chat c's card"), "Chat c's card never lands on chat a")
+        XCTAssertTrue(cards.contains("Chat a's card"))
+    }
+
+    /// #2612's review: a rebound id is noticed as moved on before a chat
+    /// that's followed takes the event, and only a followed chat of the
+    /// profile on screen hands its rebound id to the open.
+    func testAReboundIDMovedToAFollowedChatOrAnotherProfileStaysOffTheOpen() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b"), session("c")]
+        state.isConnected = true
+        // Chats a and c are both left mid-reply, for b.
+        for id in ["a", "c"] {
+            state.setActiveSessionState(id: id)
+            state.messages = [ChatMessage(id: "u-\(id)", role: .user, content: "Hello", timestamp: "1")]
+            state.turnState = .running
+            state.handleStreamEvent(.messageDelta(sessionId: id, text: "Hi"))
+            state.setActiveSessionState(id: "b")
+            state.messages = []
+            state.clearStreamingText()
+            state.turnState = .idle
+        }
+        XCTAssertNotNil(state.followedChat(answering: ["c"]))
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: state.activeProfile, source: .resume)
+
+        // Chat a opens again and takes its rebound id.
+        state.setActiveSessionState(id: "a")
+        state.reconciliation = AppState.Reconciliation(token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a"])
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: " there"))
+        XCTAssertEqual(state.reconciliation?.reboundSessionIDs, ["rt-a": "a"])
+
+        // Hermes binds it to chat c, which is followed: c takes the words,
+        // and the open lets the id go before it does, with a side agent's
+        // completion it held for that id.
+        state.shownChat.heldSideAgentCompletions = [
+            .sideAgentComplete(sessionId: "rt-a", kind: .btw, taskId: "btw_1", text: "Chat c's answer", question: nil),
+        ]
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "c", profile: state.activeProfile, source: .resume)
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: " from c"))
+        XCTAssertTrue(state.shownChat.heldSideAgentCompletions.isEmpty, "The completion held for the moved-on id is let go")
+        XCTAssertNil(state.reconciliation?.reboundSessionIDs["rt-a"])
+        XCTAssertFalse(state.reconciliation?.accepts("rt-a") ?? true)
+        XCTAssertEqual(state.followedChat(answering: ["c"])?.rows.last?.content, "Hi from c", "Chat c follows its own words")
+
+        // A followed chat of another profile never hands the open its
+        // rebound id, though its ids match the chat on screen's.
+        guard let followedA = state.followedChat(answering: ["a"]),
+              let index = state.backgroundChats.firstIndex(of: followedA) else {
+            return XCTFail("Chat a is followed")
+        }
+        state.backgroundChats[index] = BackgroundChat(
+            sessionIDs: followedA.sessionIDs, durableSessionID: followedA.durableSessionID, title: followedA.title,
+            dashboardID: followedA.dashboardID, profile: "elsewhere", isBotChat: false, state: followedA.state
+        )
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-other", durableID: "a", profile: "elsewhere", source: .resume)
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-other", text: " other profile"))
+        XCTAssertNil(state.reconciliation?.reboundSessionIDs["rt-other"])
+        XCTAssertFalse(state.reconciliation?.accepts("rt-other") ?? true)
     }
 
     /// Issue 2577: a followed chat's reply that ends while its open is still

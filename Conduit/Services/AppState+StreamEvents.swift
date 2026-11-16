@@ -65,6 +65,9 @@ extension AppState {
             break
         }
         releaseServerCompactionClaimOnAgentOutput(event)
+        // A rebound id Hermes has since bound to another chat leaves the
+        // open first, so the chat it went to can't take it with it.
+        dropReboundIDIfMovedOn(sessionID(for: event))
         // A chat left mid-reply follows the rest of it (stage 2).
         if applyBackgroundChatEvent(event) { return }
         if bufferIfReconciling(event, turnGeneration: turnGeneration) { return }
@@ -311,6 +314,11 @@ extension AppState {
     func replayBufferedDecisionPrompts(for token: UUID) {
         guard let reconciliation, reconciliation.token == token else { return }
         for event in reconciliation.bufferedEvents {
+            // One routed by an id the reconcile no longer takes (a rebound
+            // id Hermes gave another chat, say) stays out; a connection
+            // event names no chat.
+            let id = sessionID(for: event)
+            guard id.isEmpty || reconciliation.accepts(id) else { continue }
             switch event {
             case .approval, .approvalWithdrawn, .clarify, .clarifyExpire,
                     .inputPrompt, .inputPromptExpire, .connection:
@@ -322,7 +330,6 @@ extension AppState {
     }
 
     private func bufferIfReconciling(_ event: StreamEvent, turnGeneration: Int?) -> Bool {
-        dropReboundIDIfMovedOn(sessionID(for: event))
         guard var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
@@ -369,6 +376,9 @@ extension AppState {
     func eventBelongsToActiveSession(_ sessionId: String) -> Bool {
         guard let activeSessionId, !sessionId.isEmpty else { return false }
         if sessionId == activeSessionId { return true }
+        // A rebound id the identity index gave another chat is that chat's,
+        // though the catalog may still list it here (#2613's review).
+        if reconciliation?.movedOnSessionIDs.contains(sessionId) == true { return false }
 
         // Every delta of a chat running in the background lands here: search
         // the two lists in place rather than copying them into one.

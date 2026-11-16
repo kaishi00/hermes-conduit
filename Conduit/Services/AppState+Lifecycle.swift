@@ -40,6 +40,11 @@ extension AppState {
         /// 2503), each with the chat on screen it was routed for: accepted,
         /// and kept when the resume narrows the set to that chat's ids only.
         var reboundSessionIDs: [String: String] = [:]
+        /// Rebound ids the identity index has since bound to another chat:
+        /// never accepted again by this open or the reconciles that carry
+        /// it, an any-session one included, so that chat's words and cards
+        /// stay out of every replay (#2612's review).
+        var movedOnSessionIDs: Set<String> = []
 
         /// The rebound ids routed for the conversation a resume addressed
         /// (`ids`); one routed for an open this one overtook is dropped.
@@ -58,7 +63,8 @@ extension AppState {
             streamSessionIDAtBoundary: String? = nil,
             bufferedEvents: [StreamEvent] = [],
             bufferedGenerations: [Int?] = [],
-            reboundSessionIDs: [String: String] = [:]
+            reboundSessionIDs: [String: String] = [:],
+            movedOnSessionIDs: Set<String> = []
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId
@@ -71,6 +77,7 @@ extension AppState {
             self.bufferedEvents = bufferedEvents
             self.bufferedGenerations = bufferedGenerations
             self.reboundSessionIDs = reboundSessionIDs
+            self.movedOnSessionIDs = movedOnSessionIDs
         }
 
         /// Each buffered event with the turn it named (nil when none).
@@ -82,7 +89,7 @@ extension AppState {
         }
 
         func accepts(_ sessionId: String) -> Bool {
-            guard !sessionId.isEmpty else { return false }
+            guard !sessionId.isEmpty, !movedOnSessionIDs.contains(sessionId) else { return false }
             if acceptsAnySession { return true }
             return acceptedSessionIDs.contains(sessionId)
                 || sessionId == requestedSessionId
@@ -939,9 +946,19 @@ extension AppState {
         setRunning(true)
         turnStateIsStale = false
         // Newer live edges win over the snapshot.
-        let bufferedEntries = reconciliation?.bufferedEntries ?? []
-        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
+        replayForegroundBufferedEntries()
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    /// The foreground boundary's buffered events, newer live edges over the
+    /// baseline, less any under a rebound id Hermes has since given another
+    /// chat (#2613's review).
+    func replayForegroundBufferedEntries() {
+        let open = reconciliation
+        for entry in open?.bufferedEntries ?? []
+        where open?.movedOnSessionIDs.contains(sessionID(for: entry.event)) != true {
+            applyNumberedStreamEvent(entry.event, turnGeneration: entry.generation)
+        }
     }
 
     /// Replays the events buffered while the foreground reconciliation
@@ -955,8 +972,7 @@ extension AppState {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
         guard token == shownChat.reconciliationToken else { return }
-        let bufferedEntries = reconciliation?.bufferedEntries ?? []
-        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
+        replayForegroundBufferedEntries()
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 
