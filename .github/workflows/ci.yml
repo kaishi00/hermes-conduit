@@ -5,7 +5,7 @@ name: CI
 #
 #   PR / push (this file)   the cheap Linux validation beside ONE macOS job that
 #                           compiles the full app and all test targets once,
-#                           incrementally from main's latest build, and runs
+#                           incrementally from the PR's own last build or main's, and runs
 #                           the pinned unit smoke tests (scripts/smoke-suite.json)
 #                           on that build and simulator; a push to main also
 #                           runs the pinned UI smoke tests there.
@@ -482,7 +482,7 @@ jobs:
         # push: GitHub gives a run its own ref's entries first, then its base
         # branch's (and main's), never another PR's, so a review-fix push
         # recompiles only what changed since the PR's last run instead of
-        # the PR again on top of main. Smoke always builds the full app
+        # the PR again on top of its base branch. Smoke always builds the full app
         # (project.yml); the app-only (slim) build the nightly unit shards
         # restore is saved by nightly unit shard 1. A cache outage only
         # warns: it never skips the tests.
