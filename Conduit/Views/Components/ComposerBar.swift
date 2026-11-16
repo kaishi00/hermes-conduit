@@ -824,7 +824,7 @@ struct ComposerBar: View, Equatable {
                         dictateButton
                             .conduitFixedGlyph()
                             .padding(.leading, 6)
-                            .padding(.trailing, stopOnly ? 6 : 4)
+                            .padding(.trailing, stopOnly ? Self.controlSpacing - 2 : 4)
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
@@ -1132,9 +1132,14 @@ struct ComposerBar: View, Equatable {
     /// The round controls match the context ring, leaving the model chip
     /// more width (#466).
     static let controlSize: CGFloat = 32
-    /// Taps land a little outside each control. Half the row spacing, so
-    /// neighbours never overlap.
-    static var controlHitShape: some Shape { Rectangle().inset(by: -4) }
+    /// The gap between two round controls side by side.
+    static let controlSpacing: CGFloat = 12
+    /// Taps land a little outside each control, to 44 pt both ways: half
+    /// the gap between round controls, so neighbours never overlap
+    /// (issue 2525).
+    static var controlHitShape: some Shape { Rectangle().inset(by: -controlSpacing / 2) }
+    /// A notice's 28 pt dismiss glyph taps at 44 pt (issue 2525).
+    static var dismissHitShape: some Shape { Rectangle().inset(by: -8) }
 
     /// "42%", for the context ring's large content viewer.
     private var contextPercentLabel: String {
@@ -1147,57 +1152,62 @@ struct ComposerBar: View, Equatable {
 
             modelButton
 
-            if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
-                resumeVoiceCallButton(callID)
-            }
+            // The round controls stand further apart than the chip and
+            // attach, which no hit shape crosses into: each one's 44 pt
+            // hit shape stays its own.
+            HStack(spacing: Self.controlSpacing) {
+                if let callID = appState.activeVoiceCallSessionID, appState.canResumeVoiceCall {
+                    resumeVoiceCallButton(callID)
+                }
 
-            Button {
-                Haptics.selection()
-                appState.showContextSheet = true
-            } label: {
-                ContextRingView(percent: appState.runtime.contextPercent)
-                    .frame(width: Self.controlSize, height: Self.controlSize)
-                    .contentShape(Self.controlHitShape)
-            }
-            .buttonStyle(.plain)
-            .accessibilityShowsLargeContentViewer {
-                Label(
-                    AppLocalization.string("Context \(contextPercentLabel)"),
-                    systemImage: "chart.pie"
-                )
-            }
-            .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
-
-            if appState.activeAgents > 0 {
                 Button {
                     Haptics.selection()
-                    appState.showAgentsSheet = true
+                    appState.showContextSheet = true
                 } label: {
-                    Label("\(appState.activeAgents)", systemImage: "person.2")
-                        .scaledFont(.caption.weight(.semibold).monospacedDigit())
-                        .foregroundStyle(.conduitAccent)
-                        .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
+                    ContextRingView(percent: appState.runtime.contextPercent)
+                        .frame(width: Self.controlSize, height: Self.controlSize)
                         .contentShape(Self.controlHitShape)
                 }
                 .buttonStyle(.plain)
                 .accessibilityShowsLargeContentViewer {
                     Label(
-                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat),
-                        systemImage: "person.2"
+                        AppLocalization.string("Context \(contextPercentLabel)"),
+                        systemImage: "chart.pie"
                     )
                 }
-                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat))
-            }
+                .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
 
-            if Self.controlsRowShowsDictate(
-                holdsSendSlot: dictationHoldsSendSlot,
-                voiceButtonBeside: keepsVoiceButtonBeside,
-                showsRestingDictateButton: showsRestingDictateButton
-            ) {
-                dictateButton
-            }
+                if appState.activeAgents > 0 {
+                    Button {
+                        Haptics.selection()
+                        appState.showAgentsSheet = true
+                    } label: {
+                        Label("\(appState.activeAgents)", systemImage: "person.2")
+                            .scaledFont(.caption.weight(.semibold).monospacedDigit())
+                            .foregroundStyle(.conduitAccent)
+                            .frame(minWidth: Self.controlSize, minHeight: Self.controlSize)
+                            .contentShape(Self.controlHitShape)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityShowsLargeContentViewer {
+                        Label(
+                            AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat),
+                            systemImage: "person.2"
+                        )
+                    }
+                    .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat))
+                }
 
-            trailingSlot
+                if Self.controlsRowShowsDictate(
+                    holdsSendSlot: dictationHoldsSendSlot,
+                    voiceButtonBeside: keepsVoiceButtonBeside,
+                    showsRestingDictateButton: showsRestingDictateButton
+                ) {
+                    dictateButton
+                }
+
+                trailingSlot
+            }
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)
@@ -1312,6 +1322,7 @@ struct ComposerBar: View, Equatable {
                     Image(systemName: "xmark")
                         .scaledFont(.caption.weight(.semibold))
                         .frame(width: 28, height: 28)
+                        .contentShape(Self.dismissHitShape)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
@@ -1991,7 +2002,7 @@ struct ComposerBar: View, Equatable {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .frame(width: 28, height: 28)
-                    .contentShape(Rectangle())
+                    .contentShape(Self.dismissHitShape)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(Text("Dismiss notice"))

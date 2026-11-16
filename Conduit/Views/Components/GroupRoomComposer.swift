@@ -460,10 +460,14 @@ struct GroupRoomComposer: View {
                 attachButton
             }
             Spacer(minLength: 0)
-            if !dictationHoldsSendSlot {
-                dictateButton
+            // Apart as in the chat's controls row, so each 44 pt hit shape
+            // stays its own (issue 2525).
+            HStack(spacing: ComposerBar.controlSpacing) {
+                if !dictationHoldsSendSlot {
+                    dictateButton
+                }
+                sendSlot()
             }
-            sendSlot()
         }
         .padding(.horizontal, 10)
         .padding(.top, 6)

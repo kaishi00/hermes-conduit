@@ -4094,14 +4094,21 @@ Settings caption describes it · the placeholder (the chat's: Message,
 Interrupt, Steer, Queue, a chat on its way, which names the open chat's agent, a Bot Chat's bot, and the workspace profile only for a New Chat (#2026); the room's; the drawer
 shell's chat, the same ComposerBar; done, #1541) · accessibility Text
 Sizes on a narrow iPhone (both composers, resting and expanded, in both
-shells; done, #1541)
+shells; done, #1541) · a 375 pt iPhone at any Text Size (the chat's and
+the room's placeholder, both shells; done, #2649) · the round controls'
+and the notices' tap targets (the chat's resting row and controls row, the
+room's controls row, the full editor's mic and Send, the composer notice
+and the takeover offer; done, #2649; the expanded composer and the full
+editor have the width the hint needs, voice modes no placeholder of their
+own, the Watch and CarPlay no composer)
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
 - V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
 - Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
-- Large Text Sizes: `Conduit/Views/Components/DynamicTypeSupport.swift` (ComposerPlaceholderText, conduitFixedGlyph), `Conduit/Services/AppState+BotMode.swift` (composerPlaceholder, composerShortPlaceholder), used in `Conduit/Views/Components/ComposerBar.swift` (composerContent's resting row, composerField) and `Conduit/Views/Components/GroupRoomComposer.swift` (the resting row's attachButton, field)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded)
+- Tap targets: `Conduit/Views/Components/ComposerBar.swift` (controlSize, controlSpacing, controlHitShape, dismissHitShape; the controls row's round controls, composerNoticeLine, the takeover offer's dismiss), `Conduit/Views/Components/GroupRoomComposer.swift` (controlsRow), `Conduit/Views/Components/ComposerFullEditor.swift` (the mic and Send's row)
+- One-line placeholder: `Conduit/Views/Components/DynamicTypeSupport.swift` (ComposerPlaceholderText, conduitFixedGlyph), `Conduit/Services/AppState+BotMode.swift` (composerPlaceholder, composerShortPlaceholder), used in `Conduit/Views/Components/ComposerBar.swift` (composerContent's resting row, composerField) and `Conduit/Views/Components/GroupRoomComposer.swift` (the resting row's attachButton, field)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded, testRoundComposerControlsTapAt44PointsWithoutOverlapping)
 
 **Rulings**
 - iPhone: the composer rests and expands while it is used (focus, a draft,
@@ -4126,11 +4133,22 @@ shells; done, #1541)
   it at once (2026-10-29, #1512).
 
 - At the accessibility Text Sizes the resting bar's controls (attach, the
-  mic, Stop) are capped at xxLarge like the controls row's, and the
-  placeholder keeps to one line: the whole hint when it fits, then the
-  hint without the agent's name ("Interrupt…"), then that one shrunk to
-  fit and cut off. Below them it wraps as before, so the name stays
-  (#1476). The same in group rooms (Eric's report, 2026-10-30, #1541).
+  mic, Stop) are capped at xxLarge like the controls row's (Eric's report,
+  2026-10-30, #1541).
+- The placeholder keeps to one line at every Text Size: the whole hint
+  when it fits, then the hint without the agent's name ("Interrupt…"),
+  then that one shrunk only as far as it needs and cut off. It used to
+  wrap below the accessibility sizes so the name stayed (#1476), which on
+  a 375 pt iPhone left the resting bar two or three lines tall and taller
+  than the voice button, springing to one line on the first tap; the name
+  now stays wherever a line holds it, and the header names the agent
+  anyway. The same in group rooms (Eric, 2026-11-16, #2649, issue 2525;
+  #1541 at the accessibility sizes).
+- Every round composer control taps at 44 by 44 pt around its 32 pt
+  face, and round controls side by side stand 12 pt apart so the hit
+  shapes never overlap; the model chip and attach keep 8 pt, as neither
+  reaches into the gap. A notice's 28 pt dismiss glyph taps at 44 pt too
+  (Eric, 2026-11-16, #2649, issue 2525).
 
 **Open gaps**
 - Not yet seen on a device: an iPad crossing 600 pt as a split or Artifacts
@@ -4138,8 +4156,11 @@ shells; done, #1541)
   of a chat may still show the resting bar before its width is measured.
 - Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
   in a group room (#1541, checked in code and a unit test only).
+- Not yet seen on a device: whether a glass control's interactive glass
+  keeps taps to its own shape inside the 44 pt hit shape (#2649, checked
+  in the simulator only).
 
-**Checked:** 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2026 (the placeholder of a chat on its way names the chat's agent, issue 2025; see Bots: create and edit); 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-11-16, #2649 (Eric: the placeholder keeps to one line at every Text Size, so a 375 pt iPhone's resting bar stays one line; round controls and notices' dismiss tap at 44 pt, issue 2525); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2026 (the placeholder of a chat on its way names the chat's agent, issue 2025; see Bots: create and edit); 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
