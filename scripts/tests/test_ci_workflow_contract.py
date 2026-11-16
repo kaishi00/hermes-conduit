@@ -183,6 +183,17 @@ class WorkflowContractTests(unittest.TestCase):
         for job in ("unit", "timing", "ui"):
             self.assertIn('BUILD_TIMEOUT_SECS: "1800"', _job_text(NIGHTLY, job), job)
 
+    def test_a_push_saves_its_build_before_the_tests(self):
+        """A push's UI smoke runs minutes after its build; PRs opened then
+        restored an older build and recompiled main's latest merge. The save
+        sits right after the build and before every test step."""
+        text = self._job_text("smoke")
+        save = text.index("- name: Save the build cache")
+        self.assertLess(text.index("- name: No back-deployed Date comparisons"), save)
+        self.assertLess(save, text.index("- name: Run the curated unit smoke classes"))
+        self.assertLess(save, text.index("- name: Run the curated UI smoke suite"))
+        self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Run the curated unit smoke classes")])
+
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
         beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas

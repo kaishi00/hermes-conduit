@@ -89,9 +89,12 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   before merge. The nightly unit shards and timing repeats still build
   `project-tests.yml`.
 - **Incremental builds from an earlier build.** Builds on `main` save their
-  DerivedData to the Actions cache after the tests, keyed by project kind,
+  DerivedData to the Actions cache, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
-  smoke job of every push to `main` that builds saves the full app, and nightly unit
+  smoke job of every push to `main` that builds saves the full app (right
+  after its build and weak-imports check, before its tests: its UI smoke runs
+  another 3-5 minutes, and a PR opened meanwhile restored an older build and
+  recompiled main's latest merge, 2026-11-16), and nightly unit
   shard 1 saves the app-only (slim) build when it runs on `main`. A push to
   `linked-rooms` or `all-live` saves its full app as well, for that branch's
   later pushes and the PRs into it (GitHub gives a run its own branch's
@@ -299,10 +302,10 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
    smoke (ONE macOS job)
      restore main's (or its base branch's) build cache
      build-for-testing  ||  simulator boot      (ci-hosted-build.sh)
+     check-weak-imports; pushes only: save the full build cache
      unit smoke: 70 pinned tests, ONE invocation, no retry
      UI smoke:   pushes only: 4 pinned tests, ONE invocation, one
                  targeted retry (runs even if unit smoke failed)
-     pushes only: save the full build cache
                  |
                  v
           ci-gate  ->  "CI Gate" (the single required status check)
@@ -319,7 +322,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `linked-rooms` or `all-live`. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `linked-rooms` or `all-live`, after the build and its weak-imports check and before the tests. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites

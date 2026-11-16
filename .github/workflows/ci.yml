@@ -472,6 +472,28 @@ jobs:
         # iOS 17 lack (issue 1877).
         run: python3 scripts/check-weak-imports.py binaries --products "${DERIVED_DATA_PATH:-$PWD/ci-derived-data}/Build/Products/Debug-iphonesimulator"
 
+      - name: Save the build cache
+        # Pushes' builds only, right after the build and its weak-imports
+        # check (a build that fails it is never saved for PRs to restore): a
+        # push's UI smoke runs another 3-5 minutes, and every PR opened
+        # meanwhile would restore an older build and recompile main's latest
+        # merge. A PR restores the newest it can reach: main's, and on a PR
+        # into pulse, linked-rooms or all-live (each runs its own copy of
+        # this workflow) that branch's too, never another branch's. Smoke always builds the full app
+        # (project.yml); the app-only (slim) build the nightly unit shards
+        # restore is saved by nightly unit shard 1. Before the tests, so a
+        # test failure still saves a good build.
+        if: >-
+          steps.build.outcome == 'success'
+          && steps.cache.outputs.cache-hit != 'true'
+          && github.event_name == 'push'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+
       - name: Run the curated unit smoke classes
         # A few pinned tests per risk area (scripts/smoke-suite.json, capped),
         # plus the static source contracts and the change's own unit classes
@@ -659,24 +681,6 @@ jobs:
             }
             echo "::warning::runner-level flake absorbed: $retry_csv failed, then the targeted retry passed"
           fi
-
-      - name: Save the build cache
-        # Pushes' builds only. A PR restores the newest it can reach: main's,
-        # and on a PR into pulse, linked-rooms or all-live (each runs its own copy of
-        # this workflow) that branch's too, never another branch's. Smoke
-        # always builds the full app (project.yml); the app-only (slim) build
-        # the nightly unit shards restore is saved by nightly unit shard 1.
-        # After the tests, so a test failure still saves a good build.
-        if: >-
-          always() && steps.build.outcome == 'success'
-          && steps.cache.outputs.cache-hit != 'true'
-          && github.event_name == 'push'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            ci-derived-data
-            !ci-derived-data/Logs
-          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
