@@ -2580,6 +2580,35 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.liveVoiceHostContextForTesting, [])
     }
 
+    /// A job the ledger brings back on a bot's profile names that profile
+    /// on the client, so a cancel or submit about it after a switch still
+    /// reaches the bot (issue 2551).
+    func testARestoredJobsOwnProfileIsNamedOnTheClient() async throws {
+        let appState = makeGPTLiveAppState()
+        let client = HermesClient(connection: appState.connection!, profile: "default")
+        appState.client = client
+        var job = VoiceBackgroundJob(id: UUID(), title: "Mail", instructions: "check mail",
+                                     runtimeSessionID: "rt-bot", status: .running, startedAt: Date())
+        job.profile = "furina"
+        job.storedSessionID = "st-bot"
+        let own = VoiceBackgroundJob(id: UUID(), title: "Router", instructions: "check the router",
+                                     runtimeSessionID: "rt-own", status: .running, startedAt: Date())
+        let saved = [job, own].compactMap { SavedVoiceJob($0) }
+        XCTAssertEqual(saved.count, 2)
+        appState.defaults.set(try JSONEncoder().encode(saved), forKey: appState.voiceJobLedgerKey)
+
+        appState.scheduleVoiceJobLedgerRestore()
+        for _ in 0..<100 where appState.voiceBackgroundJobSupervisor.jobs.count < 2 { await Task.yield() }
+
+        XCTAssertEqual(appState.voiceBackgroundJobSupervisor.jobs.count, 2)
+        XCTAssertEqual(client.sessionProfile(for: "rt-bot"), "furina")
+        XCTAssertEqual(client.sessionProfile(for: "st-bot"), "furina")
+        XCTAssertNil(client.sessionProfile(for: "rt-own"), "a job on the client's own profile names none")
+        let next = HermesClient(connection: appState.connection!, profile: "work")
+        next.inheritSessionProfiles(from: client)
+        XCTAssertEqual(next.sessionProfile(for: "rt-bot"), "furina", "an ordinary switch's client inherits it")
+    }
+
     /// A live call keeps its profile once another one is on screen
     /// (all-live stage 2): its chat, its jobs' ledger, its style and the
     /// link to its chat stay the call's, and the bar names it. Ending it
@@ -2665,6 +2694,20 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(started.callEndedOffProfileHandBack, "Nothing is left to reset the new call's jobs later")
         XCTAssertEqual(started.voiceCallProfile, "work")
         releaseStarted.yield()
+
+        // The hand-back saves the call's ledger, with its jobs, under the
+        // call's key and not the profile on screen's (issue 2551).
+        let (seeded, seededLedger, releaseSeeded, _) = endedOffProfile()
+        let job = VoiceBackgroundJob(id: UUID(), title: "Router", instructions: "check the router",
+                                     runtimeSessionID: "rt-seed", status: .running, startedAt: Date())
+        if let saved = SavedVoiceJob(job) { seeded.voiceBackgroundJobSupervisor.restore([saved]) }
+        seeded.voiceJobLedgerRestoredKey = seededLedger
+        seeded.handBackEndedCallJobsNow()
+        XCTAssertEqual(SavedVoiceJob.decode(seeded.defaults.data(forKey: seededLedger)).map(\.runtimeSessionID), ["rt-seed"])
+        XCTAssertNotEqual(seeded.voiceJobLedgerKey, seededLedger)
+        XCTAssertTrue(SavedVoiceJob.decode(seeded.defaults.data(forKey: seeded.voiceJobLedgerKey)).isEmpty,
+                      "nothing of the call's lands in the profile on screen's ledger")
+        releaseSeeded.yield()
 
         // A boundary drops the wait with the jobs.
         let (retired, _, releaseRetired, retiredPass) = endedOffProfile()

@@ -2144,6 +2144,19 @@ extension AppState {
             guard self.voiceJobLedgerRestoredKey != key else { return }
             self.voiceJobLedgerRestoredKey = key
             self.voiceBackgroundJobSupervisor.restore(SavedVoiceJob.decode(self.defaults.data(forKey: key)))
+            self.noteVoiceJobProfiles()
+        }
+    }
+
+    /// The client names each job's or the call chat's own profile for its
+    /// sessions: a job the ledger brought back on a bot's profile was never
+    /// started through this client, so a cancel or a submit about it, here
+    /// or on a client that inherits from this one after a switch, would
+    /// otherwise reach the profile on screen (issue 2551).
+    func noteVoiceJobProfiles() {
+        guard let client else { return }
+        for named in voiceBackgroundJobSupervisor.sessionIDsNamingAProfile {
+            client.noteSessionProfile(named.profile, for: named.ids)
         }
     }
 

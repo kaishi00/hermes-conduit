@@ -726,6 +726,8 @@ extension AppState {
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
         notifierPlugin = freshNotifierPluginStatus
+        // A status read from the outgoing visit never answers this one (#2620's review).
+        notifierPluginStatusSharedRefresh = nil
         // A flush scheduled under the outgoing server must not write through
         // after the switch; the boundary already cleared the cache it would
         // resurrect content into.

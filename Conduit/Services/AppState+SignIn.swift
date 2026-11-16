@@ -484,6 +484,8 @@ extension AppState {
             // still holds; a new host is asked again on connect.
             if dashboardTicketBridge?.baseURL != normalized {
                 notifierPlugin = freshNotifierPluginStatus
+                // A status read from the outgoing visit never answers this one (#2620's review).
+                notifierPluginStatusSharedRefresh = nil
             }
             dashboardTicketBridge?.invalidate()
             let bridge = makeDashboardBridge(normalizedURL: normalized, dashboardID: dashboardID, access: access)
@@ -587,6 +589,8 @@ extension AppState {
         dashboardTicketBridge = nil
         let pluginStateBeforeSignIn = notifierPlugin.state
         notifierPlugin = freshNotifierPluginStatus
+        // A status read from the outgoing visit never answers this one (#2620's review).
+        notifierPluginStatusSharedRefresh = nil
         // A forced sign-out kills the bridge mid-playback; stop the read
         // aloud and drop its gateway the same way Disconnect does.
         messageReadAloudController.stop()
