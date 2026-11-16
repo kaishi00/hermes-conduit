@@ -244,8 +244,12 @@ extension AppState {
                 noteCombinedDashboardFailed(id, .signInNeeded)
                 continue
             }
-            // The one on screen counts too.
-            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else { continue }
+            // The one on screen counts too. One past the cap says nothing
+            // until its turn: no "trying again" with no retry waiting.
+            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
+                clearCombinedDashboardTrouble(id)
+                continue
+            }
             combinedSignInsUnderWay.insert(id)
             // This pass is its retry: the one waiting goes.
             combinedDashboardRetries[id]?.task?.cancel()
