@@ -262,9 +262,7 @@ extension AppState {
     func connectOtherCombinedDashboards(only: UUID? = nil) {
         // Beside any dashboard on screen, one left out of the group
         // included: the group connects when Conduit opens.
-        guard isSceneActive, isConnected,
-              let activeID = activeDashboardID,
-              !savedDashboardRegistry.combinedGroupIDs.isEmpty else { return }
+        guard combinedDashboardsCanConnect, let activeID = activeDashboardID else { return }
         // The one on screen connected: nothing to say of it or try again.
         clearCombinedDashboardTrouble(activeID)
         // Registry order: the Saved Dashboards list as the user sees it.
@@ -284,11 +282,7 @@ extension AppState {
             guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
                 // Its backoff stands: when its turn comes, a failure waits
                 // on from where it was.
-                if combinedDashboardTrouble[id] == .down {
-                    combinedDashboardTrouble.removeValue(forKey: id)
-                    combinedDashboardRetries[id]?.task?.cancel()
-                    combinedDashboardRetries[id]?.task = nil
-                }
+                standDownCombinedDashboardRetry(id)
                 continue
             }
             guard combinedDashboardSignsInQuietly(id) else {
@@ -485,9 +479,34 @@ extension AppState {
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }
             guard let self else { return }
             self.combinedDashboardRetries[id]?.task = nil
+            // Off screen, or the one on screen not connected: no pass can
+            // try it, so it stops saying "trying again"; the pass that
+            // comes once it can (a return, a connect, a reconnect) tries it
+            // at once, from where its backoff stood (issue 2615).
+            guard self.combinedDashboardsCanConnect else {
+                self.standDownCombinedDashboardRetry(id)
+                return
+            }
             self.connectOtherCombinedDashboards(only: id)
         }
         combinedDashboardRetries[id] = CombinedDashboardRetry(attempt: attempt, task: task)
+    }
+
+    /// A pass can sign the others in: Conduit on screen, the one on screen
+    /// connected, and a group. Beside any dashboard on screen, one left out
+    /// of the group included: the group connects when Conduit opens.
+    var combinedDashboardsCanConnect: Bool {
+        isSceneActive && isConnected && activeDashboardID != nil && !savedDashboardRegistry.combinedGroupIDs.isEmpty
+    }
+
+    /// A down dashboard no retry can try for now says nothing ("trying
+    /// again" stands only with a retry waiting); its backoff stands, so a
+    /// failure when its turn comes waits on from where it was.
+    func standDownCombinedDashboardRetry(_ id: UUID) {
+        guard combinedDashboardTrouble[id] == .down else { return }
+        combinedDashboardTrouble.removeValue(forKey: id)
+        combinedDashboardRetries[id]?.task?.cancel()
+        combinedDashboardRetries[id]?.task = nil
     }
 
     /// Connected, on screen, signed out of, or out of the group: nothing

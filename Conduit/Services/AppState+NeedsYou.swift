@@ -77,7 +77,8 @@ extension AppState {
                 needsYou.applyOther(
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
-                    dashboardID: id
+                    dashboardID: id,
+                    isOpenChat: isOpenChat
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {

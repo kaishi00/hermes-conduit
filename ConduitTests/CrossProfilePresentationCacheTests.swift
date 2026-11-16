@@ -1090,6 +1090,20 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "its backoff stands")
         appState.combinedSignInsUnderWay.subtract(others)
 
+        // Its retry wakes when no pass can try it (the one on screen not
+        // connected): it stops saying "trying again" with nothing waiting,
+        // and its backoff stands (issue 2615).
+        appState.combinedDashboardRetryBaseDelay = 0.05
+        appState.isConnected = false
+        appState.noteCombinedDashboardFailed(vps.id, .down)
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .down)
+        await waitUntil { appState.combinedDashboardTrouble[vps.id] == nil }
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
+        appState.isConnected = true
+        appState.combinedDashboardRetryBaseDelay = 60
+
         // A refused sign-in waits for a tap: no pass, retry or return asks again.
         mints.failures = 1
         mints.status = 401
@@ -1436,6 +1450,29 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedBotsHomeOrder,
                        ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
         appState.combinedBotsHomeOrder = []
+        // One Hermes saved at two addresses (a bot of each has the same Bot
+        // Chat): its bots show once, as this dashboard's; a namesake on
+        // another Hermes still shows (issue 2640).
+        func chatBot(_ name: String, _ chat: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                       canonicalSession: BotCanonicalSession(id: chat, resolvedID: nil, lastActive: nil, preview: nil),
+                       lastActive: nil, lastPreview: nil)
+        }
+        let macBots = appState.combinedDashboardBots[mac.id]
+        appState.botRoster = [chatBot("furina", "c1"), bot("neuvillette")]
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("Furina", "c1"), bot("neuvillette"), bot("raiden")],
+            avatars: [:], at: Date()
+        )
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).map(\.id),
+                       ["\(mac.id.uuidString)|raiden", "\(vps.id.uuidString)|furina", "\(vps.id.uuidString)|neuvillette"])
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
+        )
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
+        appState.combinedDashboardBots[mac.id] = macBots
+        appState.botRoster = [bot("furina")]
         // A dashboard left while kept leaves its bots on the grid at once.
         appState.seedCombinedDashboardBots(vps.id, from: [bot("furina"), bot("nahida", hidden: true)], client: outgoing)
         XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])

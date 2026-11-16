@@ -138,7 +138,37 @@ extension AppState {
             }
         }
         if !mineListed { items = mine + items }
-        return CombinedBotsHomeOrder.ordered(items, saved: combinedBotsHomeOrder, key: \.id)
+        return CombinedBotsHomeOrder.ordered(Self.oneCopyPerHermes(items), saved: combinedBotsHomeOrder, key: \.id)
+    }
+
+    /// One Hermes saved at two addresses answers both with one roster: its
+    /// bots show once, as this dashboard's, else as the first dashboard's in
+    /// Saved Dashboards order, as a chat given twice does (issue 2640). Two
+    /// dashboards are one Hermes when a bot of each has the same Bot Chat
+    /// (its registry id is the host's own); bots of one name on two Hermes
+    /// that share none both show.
+    static func oneCopyPerHermes(_ items: [CombinedBotsHomeItem]) -> [CombinedBotsHomeItem] {
+        var chats: [UUID?: Set<String>] = [:]
+        for item in items {
+            if let id = item.bot.canonicalSession?.id { chats[item.dashboardID, default: []].insert(id) }
+        }
+        func oneHermes(_ a: UUID?, _ b: UUID?) -> Bool {
+            a == b || !(chats[a] ?? []).isDisjoint(with: chats[b] ?? [])
+        }
+        // This dashboard's come first in `items` only when it heads Saved
+        // Dashboards: take them first so its copy is the one kept.
+        let first = items.filter { if case .own = $0.kind { return true } else { return false } }
+        var kept: [CombinedBotsHomeItem] = []
+        var dropped = Set<String>()
+        for item in first + items.filter({ if case .own = $0.kind { return false } else { return true } }) {
+            let name = item.bot.name.lowercased()
+            if kept.contains(where: { $0.dashboardID != item.dashboardID && $0.bot.name.lowercased() == name && oneHermes($0.dashboardID, item.dashboardID) }) {
+                dropped.insert(item.id)
+            } else {
+                kept.append(item)
+            }
+        }
+        return dropped.isEmpty ? items : items.filter { !dropped.contains($0.id) }
     }
 
     /// Every other dashboard of the group has its bots on the grid: until

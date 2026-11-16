@@ -127,7 +127,7 @@ extension ChatOnScreenTests {
         XCTAssertEqual(store.count(for: "default", matches: AppState.profilesMatch), 1, "the chip counts this dashboard's")
         XCTAssertNil(store.banner, "a first read there shows no banner")
         XCTAssertNotEqual(store.everyItem[0].id, NeedsYouItem(waitID: "t1", profile: "default", kind: .approval, sessionIDs: ["b"]).id,
-                          "the same wait id on two dashboards is two rows")
+                          "its id carries its dashboard")
 
         store.applyOther([
             NeedsYouItem(waitID: "t1", profile: "default", kind: .approval, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20)),
@@ -150,6 +150,34 @@ extension ChatOnScreenTests {
         // Switched to: it's read as this dashboard's from then.
         store.reset(dashboardID: there)
         XCTAssertTrue(store.otherDashboards.isEmpty)
+    }
+
+    /// One Hermes saved at two addresses, both in the group: a wait both
+    /// list shows once, as this dashboard's, and banners once, from this
+    /// dashboard; one in the chat on screen banners from neither (issue 2631).
+    func testAWaitTwoDashboardsOfOneHermesListShowsOnce() {
+        let store = NeedsYouStore()
+        let here = UUID(), twin = UUID()
+        func wait(_ id: String, _ at: Double) -> NeedsYouItem {
+            NeedsYouItem(waitID: id, profile: "default", kind: .approval, sessionIDs: ["s-\(id)"],
+                         since: Date(timeIntervalSince1970: at))
+        }
+        store.apply([wait("w1", 10)], profile: "default", dashboardID: here) { _ in false }
+        store.applyOther([wait("w1", 10)], profile: "default", dashboardID: twin)
+        XCTAssertEqual(store.everyItem.map(\.waitID), ["w1"])
+        XCTAssertNil(store.everyItem.first?.dashboardID, "as this dashboard's")
+
+        store.apply([wait("w1", 10), wait("w2", 20)], profile: "default", dashboardID: here) { _ in false }
+        store.applyOther([wait("w1", 10), wait("w2", 20)], profile: "default", dashboardID: twin)
+        XCTAssertEqual(store.banner?.waitID, "w2")
+        XCTAssertNil(store.banner?.dashboardID, "the banner is this dashboard's copy")
+        XCTAssertEqual(store.everyItem.map(\.waitID), ["w2", "w1"])
+
+        // The twin's read lands first for a wait in the chat on screen.
+        store.applyOther([wait("w1", 10), wait("w2", 20), wait("w3", 30)], profile: "default", dashboardID: twin,
+                         isOpenChat: { $0.waitID == "w3" })
+        XCTAssertEqual(store.banner?.waitID, "w2", "no banner for the chat on screen")
+        XCTAssertEqual(store.everyItem.map(\.waitID), ["w3", "w2", "w1"])
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
