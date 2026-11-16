@@ -1679,19 +1679,22 @@ struct V2Shell: View {
             // as it was on the dashboard it switched on, whichever tap left
             // it there: another one picked meanwhile keeps its own All. A
             // newer tap kept meanwhile left All for good, so it stays off
-            // for that one.
-            if targetLeftAll, appState.activeDashboardID == targetDashboardID, appState.activeProfile != target,
-               queuedProfilePick.profile == nil {
-                appState.setAllProfilesChatsOn(true)
-            }
+            // for that one; a kept tap that asks for no switch (the profile
+            // showing) doesn't (#2628's review).
+            let didntLand = targetLeftAll && appState.activeDashboardID == targetDashboardID
+                && appState.activeProfile != target
             isPickingProfile = false
             // A tap kept during this switch goes now, with the content
             // still out of sight.
             let nextLeavesAll = queuedProfilePick.leavesAll
-            if let next = queuedProfilePick.take(
+            let next = queuedProfilePick.take(
                 landedOn: appState.activeProfile,
                 dashboardID: appState.activeDashboardID
-            ) {
+            )
+            if didntLand, next == nil {
+                appState.setAllProfilesChatsOn(true)
+            }
+            if let next {
                 pickProfile(next, haptic: false, leavesAll: nextLeavesAll)
                 // It started its own switch, which brings the content back.
                 guard token == profileSwitchToken else { return }
