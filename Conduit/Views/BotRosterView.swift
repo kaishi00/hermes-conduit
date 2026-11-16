@@ -101,7 +101,7 @@ struct BotRosterView: View {
                     }
                     // Bots Home's empty page reads the other combined
                     // dashboards' rosters too, so their bots replace it.
-                    .task(id: createRequest != nil && botsHomeShowsLiveStatus) {
+                    .task(id: "\(createRequest != nil && botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
                         guard createRequest != nil, botsHomeShowsLiveStatus else { return }
                         await appState.readOtherCombinedDashboardsBots()
                     }
