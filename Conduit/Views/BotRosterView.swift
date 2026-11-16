@@ -1009,8 +1009,10 @@ struct BotRosterView: View {
         // Each bot's chats' Running and waits, read while Bots Home shows:
         // the Chats list's poll stops here.
         // The other combined dashboards' rosters, when theirs are older
-        // than a few minutes.
-        .task(id: botsHomeShowsLiveStatus) {
+        // than a few minutes, and at once when one connects (a quiet
+        // sign-in at launch, a reconnect after a drop), not only on the
+        // next visit.
+        .task(id: "\(botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
             guard botsHomeShowsLiveStatus else { return }
             await appState.readOtherCombinedDashboardsBots()
         }

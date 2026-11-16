@@ -1532,7 +1532,11 @@ struct V2ChatsView: View, Equatable {
         .v2HoldsUpdatesWhileScrolling(updates)
         .refreshable {
             appState.refreshAllProfilesCatalog()
-            let others = Task { await appState.readOtherCombinedDashboardsChats(force: true) }
+            // The other combined dashboards' chats only show in All.
+            let others = Task {
+                guard appState.isAllProfilesChatsOn else { return }
+                await appState.readOtherCombinedDashboardsChats(force: true)
+            }
             await appState.refreshSessionCatalog()
             await appState.allProfilesCatalogTask?.value
             await others.value

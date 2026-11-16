@@ -41,8 +41,10 @@ extension AppState {
     /// feed has no chip; a read that fails keeps what the chip said.
     func readOtherCombinedDashboardsPulse(force: Bool = false, now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
-        if combinedDashboardPulse.keys.contains(where: { kept[$0] == nil }) {
-            combinedDashboardPulse = combinedDashboardPulse.filter { kept[$0.key] != nil }
+        // One that dropped by itself keeps its last list until it's back;
+        // out of the group or opened here, it goes.
+        if combinedDashboardPulse.keys.contains(where: { !isInCombinedGroup($0) || $0 == activeDashboardID }) {
+            combinedDashboardPulse = combinedDashboardPulse.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
         }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }

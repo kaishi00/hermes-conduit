@@ -95,6 +95,11 @@ extension AppState {
         for keptID in Array(keptDashboardRuntimes.keys) where !group.contains(keptID) {
             dropKeptDashboardRuntime(keptID)
         }
+        // Lists that stood through a drop go with the group too.
+        for id in Set(combinedDashboardChats.keys).union(combinedDashboardBots.keys).union(combinedDashboardPulse.keys)
+        where !group.contains(id) {
+            forgetCombinedDashboardLists(id)
+        }
         // Nor is anything said of it, or tried again.
         for id in Set(combinedDashboardTrouble.keys).union(combinedDashboardRetries.keys) where !group.contains(id) {
             clearCombinedDashboardTrouble(id)
@@ -142,7 +147,7 @@ extension AppState {
             Task { @MainActor in
                 guard let self, let client,
                       self.keptDashboardRuntimes[id]?.client === client else { return }
-                self.dropKeptDashboardRuntime(id)
+                self.dropKeptDashboardRuntime(id, keepingLists: true)
                 // Dropped on its own (the network, the server restarting):
                 // down, and tried again while Conduit is on screen.
                 self.noteCombinedDashboardFailed(id, .down)
@@ -176,34 +181,46 @@ extension AppState {
         if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
         combinedSignInBridges.removeValue(forKey: id)?.invalidate()
         dropKeptDashboardRuntime(id)
+        // Its lists go too, even when its connection had already dropped
+        // (they stand through a drop, below).
+        forgetCombinedDashboardLists(id)
         // The next pass says what it waits for now.
         clearCombinedDashboardTrouble(id)
     }
 
-    func dropKeptDashboardRuntime(_ id: UUID) {
+    /// `keepingLists`: a connection that dropped by itself (the network, the
+    /// server restarting, Conduit off screen past the grace) leaves its
+    /// chats, bots and Pulse chip listed as last read until it's back, so
+    /// they don't come and go with each blip (Eric, 2026-11-16); a tap
+    /// signs in as a switch does. Its waits go either way: a stale one
+    /// would ask for an answer that may be given.
+    func dropKeptDashboardRuntime(_ id: UUID, keepingLists: Bool = false) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
-        // Nor its chats in the Chats list (stage 4b).
-        if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
-        // Nor its bots on Bots Home (stage 4c).
-        if combinedDashboardBots[id] != nil { combinedDashboardBots.removeValue(forKey: id) }
-        // Nor its chip on Pulse (stage 4d).
-        if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
+        if !keepingLists { forgetCombinedDashboardLists(id) }
         if id != activeDashboardID {
             needsYou.forgetOtherDashboards(otherThan: Set(keptDashboardRuntimes.keys))
         }
     }
 
+    /// A combined dashboard's chats in the Chats list (stage 4b), bots on
+    /// Bots Home (stage 4c) and chip on Pulse (stage 4d) go.
+    func forgetCombinedDashboardLists(_ id: UUID) {
+        if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
+        if combinedDashboardBots[id] != nil { combinedDashboardBots.removeValue(forKey: id) }
+        if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
+    }
+
     /// Every kept connection goes: Conduit has been off screen past the
     /// background grace (iOS would suspend the sockets anyway). Signing
     /// out of one dashboard lets only its own go.
-    func dropAllKeptDashboardRuntimes() {
+    func dropAllKeptDashboardRuntimes(keepingLists: Bool = false) {
         // A quiet sign-in still out keeps nothing it finishes.
         keptDashboardRuntimesGeneration &+= 1
         for id in Array(keptDashboardRuntimes.keys) {
-            dropKeptDashboardRuntime(id)
+            dropKeptDashboardRuntime(id, keepingLists: keepingLists)
         }
     }
 
@@ -225,7 +242,8 @@ extension AppState {
             do { try await Task.sleep(for: .seconds(window)) } catch { return }
             guard let self, !self.isSceneActive else { return }
             self.keptDashboardRuntimesGraceTask = nil
-            self.dropAllKeptDashboardRuntimes()
+            // Their lists stand until the return reconnects them.
+            self.dropAllKeptDashboardRuntimes(keepingLists: true)
         }
     }
 

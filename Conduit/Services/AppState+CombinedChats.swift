@@ -34,8 +34,10 @@ extension AppState {
     /// what it showed, and one let go or opened says nothing more.
     func readOtherCombinedDashboardsChats(force: Bool = false, now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
-        let gone = combinedDashboardChats.keys.filter { kept[$0] == nil }
-        if !gone.isEmpty { combinedDashboardChats = combinedDashboardChats.filter { kept[$0.key] != nil } }
+        // One that dropped by itself keeps its last list until it's back;
+        // out of the group or opened here, it goes.
+        let gone = combinedDashboardChats.keys.filter { !isInCombinedGroup($0) || $0 == activeDashboardID }
+        if !gone.isEmpty { combinedDashboardChats = combinedDashboardChats.filter { !gone.contains($0.key) } }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             let bridge = ObjectIdentifier(runtime.bridge)

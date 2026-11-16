@@ -1361,12 +1361,23 @@ extension CrossProfilePresentationCacheTests {
         appState.keptDashboardBotRosterReader = { _ in throw URLError(.timedOut) }
         await appState.readOtherCombinedDashboardsBots(force: true)
         XCTAssertEqual(appState.otherCombinedDashboardsBots.first?.bots.map(\.name), ["raiden"])
+        // Its connection gone for a moment (it dropped by itself): its bots
+        // stay listed until it's back, not coming and going (Eric,
+        // 2026-11-16).
+        let keptMac = try XCTUnwrap(appState.keptDashboardRuntimes.removeValue(forKey: mac.id))
+        await appState.readOtherCombinedDashboardsBots(force: true)
+        XCTAssertEqual(appState.otherCombinedDashboardsBots.first?.bots.map(\.name), ["raiden"], "kept through a drop")
+        appState.keptDashboardRuntimes[mac.id] = keptMac
 
         appState.openCombinedBot(section.bots[0], in: mac.id)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
         XCTAssertTrue(appState.otherCombinedDashboardsBots.allSatisfy { $0.dashboardID != mac.id }, "on screen, its bots are Bots Home's own")
+        // Signed out of, its bots go, even with no connection kept.
+        appState.combinedDashboardBots[vps.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [bot("yelan")], avatars: [:], at: Date()
+        )
         appState.letGoCombinedDashboard(vps.id)
         XCTAssertNil(appState.combinedDashboardBots[vps.id])
     }

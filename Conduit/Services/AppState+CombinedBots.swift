@@ -21,7 +21,7 @@ struct CombinedDashboardBots: Equatable {
     let at: Date
 }
 
-/// One other dashboard's section on Bots Home.
+/// One other dashboard's bots on Bots Home's grid.
 struct CombinedDashboardBotsSection: Identifiable, Equatable {
     let dashboardID: UUID
     let badge: V2DashboardBadge
@@ -38,8 +38,10 @@ extension AppState {
     /// Quiet on failure: a roster that can't be read keeps what it showed.
     func readOtherCombinedDashboardsBots(force: Bool = false, now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
-        if combinedDashboardBots.keys.contains(where: { kept[$0] == nil }) {
-            combinedDashboardBots = combinedDashboardBots.filter { kept[$0.key] != nil }
+        // One that dropped by itself keeps its last list until it's back;
+        // out of the group or opened here, it goes.
+        if combinedDashboardBots.keys.contains(where: { !isInCombinedGroup($0) || $0 == activeDashboardID }) {
+            combinedDashboardBots = combinedDashboardBots.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
         }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
