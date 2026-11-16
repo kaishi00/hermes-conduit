@@ -610,6 +610,9 @@ extension CrossProfilePresentationCacheTests {
         seedOutgoingTranscript(in: appState, connection: connection, sessionID: "session-a")
         let transport = ClarifyFakeTransport()
         let socket = ClarifyFakeSocket()
+        // The steps after a take up get an answer at once, rather than
+        // waiting out their timeouts on a socket that never answers.
+        socket.refusesEveryRequest = true
         transport.nextSocket = { socket }
         let outgoing = HermesClient(connection: connection, profile: "default", transportFactory: { transport })
         transport.open(socket)
