@@ -376,6 +376,9 @@ extension AppState {
     func eventBelongsToActiveSession(_ sessionId: String) -> Bool {
         guard let activeSessionId, !sessionId.isEmpty else { return false }
         if sessionId == activeSessionId { return true }
+        // A rebound id the identity index gave another chat is that chat's,
+        // though the catalog may still list it here (#2613's review).
+        if reconciliation?.movedOnSessionIDs.contains(sessionId) == true { return false }
 
         // Every delta of a chat running in the background lands here: search
         // the two lists in place rather than copying them into one.

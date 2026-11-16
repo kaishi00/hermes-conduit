@@ -948,6 +948,50 @@ extension NotificationE2ETests {
         XCTAssertFalse(launch().hasUnsent, "The next launch reads the empty file as usual")
     }
 
+    /// #2613's review: a drop note the Keychain can't be read for at launch
+    /// (before the first unlock) still counts once the config reads, and a
+    /// clear the Keychain refused is tried again at the next save.
+    @MainActor
+    func testADropNoteUnreadableAtLaunchStillKeepsTheQueueDropped() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        var onDisk = LocationUnsent()
+        onDisk.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
+            LocationPlaceEvent(id: "e_old", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
+        ])
+        var unlocked = false
+        var written: [LocationUnsent] = []
+        let note = LocationDropMarker.Box(true)
+        let marker = LocationDropMarker(isSet: { unlocked && note.isSet }, set: LocationDropMarker.memory(note).set)
+        let controller = LocationSharingController(
+            engine: engine,
+            readStoredConfig: { unlocked ? .value(LocationFixtures.config(background: true)) : .unreadable },
+            readStoredUnsent: { unlocked ? onDisk : LocationUnsent() },
+            writeStoredUnsent: { queue in
+                written.append(queue)
+                onDisk = queue
+                return true
+            },
+            dropMarker: marker
+        )
+        controller.hostPassDashboardID = { nil }
+        XCTAssertFalse(controller.unsentDroppedWhileUnreadable, "Nothing could be read before the first unlock")
+
+        unlocked = true
+        note.writable = false
+        XCTAssertTrue(controller.readConfigIfNeeded())
+        XCTAssertFalse(controller.hasUnsent, "The dropped queue isn't read back once the note can be read")
+        XCTAssertEqual(written.last?.isEmpty, true, "…and the file is written over")
+        XCTAssertFalse(controller.unsentDroppedWhileUnreadable)
+        XCTAssertTrue(note.isSet, "The Keychain refused the clear")
+
+        note.writable = true
+        controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(note.isSet, "The next save that lands clears the note")
+    }
+
     @MainActor
     func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)

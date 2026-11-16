@@ -130,9 +130,16 @@ final class LocationSharingController: ObservableObject {
     /// Keychain too (`dropMarker`), so a relaunch knows.
     private(set) var unsentDroppedWhileUnreadable = false {
         didSet {
-            if unsentDroppedWhileUnreadable != oldValue { dropMarker.set(unsentDroppedWhileUnreadable) }
+            guard unsentDroppedWhileUnreadable != oldValue else { return }
+            // A clear the Keychain refused is tried again at the next save
+            // that lands, so a stale note can't empty the queue at a launch.
+            let changed = dropMarker.set(unsentDroppedWhileUnreadable)
+            dropMarkerClearPending = !unsentDroppedWhileUnreadable && !changed
         }
     }
+    /// The Keychain refused to clear the drop note: tried again at each
+    /// save of the queue that lands (#2613's review).
+    private var dropMarkerClearPending = false
     /// Where a dropped queue not yet written over is remembered across a
     /// launch (tests pass their own).
     private let dropMarker: LocationDropMarker
@@ -199,6 +206,9 @@ final class LocationSharingController: ObservableObject {
         switch readStoredConfig() {
         case .value(let stored):
             config = stored
+            // A note the Keychain couldn't be read for at launch (before
+            // the first unlock) counts now, before the file is read back.
+            if !unsentDroppedWhileUnreadable, dropMarker.isSet() { unsentDroppedWhileUnreadable = true }
             if unsentDroppedWhileUnreadable {
                 // A Sign Out dropped the queue and its file hasn't been
                 // written since: the file's copy is what was dropped, so
@@ -268,7 +278,10 @@ final class LocationSharingController: ObservableObject {
     private func saveUnsent() -> Bool {
         let saved = writeStoredUnsent(unsent)
         // The file holds what's in memory now: nothing dropped is left in it.
-        if saved { unsentDroppedWhileUnreadable = false }
+        if saved {
+            unsentDroppedWhileUnreadable = false
+            if dropMarkerClearPending { dropMarkerClearPending = !dropMarker.set(false) }
+        }
         return saved
     }
 
@@ -1000,7 +1013,8 @@ final class LocationSharingController: ObservableObject {
 /// unsent queue and the file still holds it (#2612's review).
 struct LocationDropMarker {
     var isSet: () -> Bool
-    var set: (Bool) -> Void
+    /// Says whether the change was stored.
+    var set: (Bool) -> Bool
 
     static var keychain: LocationDropMarker {
         LocationDropMarker(isSet: { LocationKeychain.unsentDropped() }, set: { LocationKeychain.setUnsentDropped($0) })
@@ -1008,11 +1022,17 @@ struct LocationDropMarker {
 
     /// Kept in memory only, for tests: `stored` stands for the Keychain.
     static func memory(_ stored: Box = Box()) -> LocationDropMarker {
-        LocationDropMarker(isSet: { stored.isSet }, set: { stored.isSet = $0 })
+        LocationDropMarker(isSet: { stored.isSet }, set: { value in
+            guard stored.writable else { return false }
+            stored.isSet = value
+            return true
+        })
     }
 
     final class Box {
         var isSet: Bool
+        /// False stands for a Keychain that refuses changes.
+        var writable = true
         init(_ isSet: Bool = false) { self.isSet = isSet }
     }
 }

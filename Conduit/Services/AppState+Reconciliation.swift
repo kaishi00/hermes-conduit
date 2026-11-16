@@ -1716,10 +1716,18 @@ extension AppState {
         // is dropped, and the replay filter drops its events with it.
         // Matched on the addressed chat's own ids, not the accepted set,
         // which can carry a replaced conversation's aliases.
+        let addressedIDs = knownSessionIDs(for: sessionId).union([sessionId])
         let reboundSessionIDs = Reconciliation.rebound(
             priorReconciliation?.reboundSessionIDs ?? [:],
-            keptFor: knownSessionIDs(for: sessionId).union([sessionId])
+            keptFor: addressedIDs
         )
+        // A moved-on id is turned away only by the open it moved on from:
+        // an open of the chat it now belongs to takes it (#2613's review).
+        let movedOnSessionIDs = (priorReconciliation?.movedOnSessionIDs ?? []).filter { id in
+            guard !addressedIDs.contains(id) else { return false }
+            let durableID = conversationIdentityIndex.durableID(forRuntime: id, profile: profile)
+            return durableID.map { !addressedIDs.contains($0) } ?? true
+        }
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
@@ -1730,7 +1738,7 @@ extension AppState {
             bufferedEvents: bufferedEvents,
             bufferedGenerations: bufferedGenerations,
             reboundSessionIDs: reboundSessionIDs,
-            movedOnSessionIDs: priorReconciliation?.movedOnSessionIDs ?? []
+            movedOnSessionIDs: movedOnSessionIDs
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this

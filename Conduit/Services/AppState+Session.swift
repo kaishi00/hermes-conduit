@@ -997,8 +997,10 @@ extension AppState {
         activeSessionTitle = newTitle
         let previousTurnState = turnState
         let token = beginReconciliation()
-        // A new chat takes no rebound id routed for the chat it leaves.
+        // A new chat takes no rebound id routed for the chat it leaves, and
+        // turns away none that chat's open let go.
         reconciliation?.reboundSessionIDs = [:]
+        reconciliation?.movedOnSessionIDs = []
         turnState = .synchronizing
         let created = await createAndReconcileSession(
             using: client,

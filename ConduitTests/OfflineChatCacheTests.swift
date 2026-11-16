@@ -4213,6 +4213,21 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.reconciliation?.acceptsAnySession, true)
         XCTAssertFalse(state.reconciliation?.accepts("rt-elsewhere") ?? true, "An any-chat reconcile carries the moved-on id")
         XCTAssertTrue(state.reconciliation?.accepts("a") ?? false)
+
+        // A failed resume replays the decision cards it buffered, but not
+        // one under the moved-on id (#2613's review).
+        guard let token = state.reconciliation?.token else { return XCTFail("The open is reconciling") }
+        func approval(_ session: String, _ text: String) -> StreamEvent {
+            .approval(sessionId: session, activity: ApprovalActivity(
+                sessionId: session, requestId: nil, command: "deploy", description: text, choices: nil,
+                allowPermanent: false, smartDenied: false, status: .pending, choice: nil, error: nil))
+        }
+        state.reconciliation?.bufferedEvents = [approval("rt-elsewhere", "Chat c's card"), approval("a", "Chat a's card")]
+        state.reconciliation?.bufferedGenerations = [nil, nil]
+        state.replayBufferedDecisionPrompts(for: token)
+        let cards = state.messages.compactMap(\.approval?.description)
+        XCTAssertFalse(cards.contains("Chat c's card"), "Chat c's card never lands on chat a")
+        XCTAssertTrue(cards.contains("Chat a's card"))
     }
 
     /// #2612's review: a rebound id is noticed as moved on before a chat
@@ -4243,9 +4258,14 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(state.reconciliation?.reboundSessionIDs, ["rt-a": "a"])
 
         // Hermes binds it to chat c, which is followed: c takes the words,
-        // and the open lets the id go before it does.
+        // and the open lets the id go before it does, with a side agent's
+        // completion it held for that id.
+        state.shownChat.heldSideAgentCompletions = [
+            .sideAgentComplete(sessionId: "rt-a", kind: .btw, taskId: "btw_1", text: "Chat c's answer", question: nil),
+        ]
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "c", profile: state.activeProfile, source: .resume)
         state.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: " from c"))
+        XCTAssertTrue(state.shownChat.heldSideAgentCompletions.isEmpty, "The completion held for the moved-on id is let go")
         XCTAssertNil(state.reconciliation?.reboundSessionIDs["rt-a"])
         XCTAssertFalse(state.reconciliation?.accepts("rt-a") ?? true)
         XCTAssertEqual(state.followedChat(answering: ["c"])?.rows.last?.content, "Hi from c", "Chat c follows its own words")
