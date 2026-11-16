@@ -33,6 +33,7 @@ struct CombinedDashboardBotPortrait: View {
     @Environment(\.botsHomeCovered) private var covered
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject private var devicePower = DevicePowerState.shared
     /// 72 at the default Text Size, as this dashboard's portraits, which
     /// stop growing at accessibility1 (about 115).
@@ -105,13 +106,14 @@ struct CombinedDashboardBotPortrait: View {
                 }
             }
             Button(action: open) {
-                // As tall as the name row with its ⓘ on this dashboard's.
+                // As tall as the name row with its ⓘ on this dashboard's
+                // (at accessibility sizes its ⓘ moves to the status line).
                 Text(bot.displayLabel)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
                     .minimumScaleFactor(0.85)
-                    .frame(minHeight: 44)
+                    .frame(minHeight: typeSize.isAccessibilitySize ? 32 : 44)
                     .frame(maxWidth: .infinity)
                     .contentShape(Rectangle())
             }

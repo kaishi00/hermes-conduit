@@ -140,7 +140,7 @@ extension AppState {
         if !profiles.isEmpty {
             keptDashboardProfiles[outgoingID] = (ObjectIdentifier(bridge), profiles, Date())
         }
-        if !chats.isEmpty, combinedDashboardChats[outgoingID] == nil {
+        if !chats.isEmpty {
             // Marked as read long ago, so the next pass reads them anew.
             combinedDashboardChats[outgoingID] = CombinedDashboardChats(
                 bridge: ObjectIdentifier(bridge),
