@@ -89,6 +89,14 @@ extension AppState {
         return merged
     }
 
+    /// The other combined dashboards' chats the Chats list shows: only in
+    /// All, since one profile's list holds that profile's chats alone (Eric,
+    /// 2026-11-16). Grouped by profile, each dashboard's get a section of
+    /// their own.
+    func chatListCombinedChats(excluding listed: Set<String>) -> [SessionSummary] {
+        isAllProfilesChatsOn ? otherCombinedDashboardsChats(excluding: listed) : []
+    }
+
     /// The dashboard another combined dashboard's row came from; nil for
     /// the dashboard on screen's own rows.
     func combinedChatDashboard(_ session: SessionSummary) -> UUID? {

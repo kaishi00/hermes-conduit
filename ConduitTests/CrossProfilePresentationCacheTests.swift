@@ -1242,6 +1242,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(counts.reads[0].contains("profile=default"), "the profile it last used: \(counts.reads[0])")
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
+        // The Chats list shows them only in All: one profile's list is that
+        // profile's own (Eric, 2026-11-16).
+        XCTAssertTrue(appState.chatListCombinedChats(excluding: []).isEmpty, "not in one profile's list")
+        let profiles = appState.profiles
+        appState.profiles = ["default", "work"]
+        appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All")
+        appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
+        appState.profiles = profiles
         let row = try XCTUnwrap(rows.first)
         XCTAssertEqual(appState.combinedChatDashboard(row), mac.id)
         XCTAssertEqual(appState.combinedChatBadge(row), V2DashboardBadge(letter: "M", colorIndex: 0, name: "Mac"))

@@ -511,11 +511,11 @@ struct V2ChatsView: View, Equatable {
             // Pulse's own chat stays behind the Pulse screen, in All too.
             let sessions = appState.chatListSessions
             let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
-            // The other combined dashboards' chats, merged in by activity
-            // (all-live stage 4b). Not in All's section per profile, whose
-            // sections name this dashboard's profiles.
-            let others = appState.allProfilesGroupsByProfile
-                ? [] : appState.otherCombinedDashboardsChats(excluding: Set(chats.map(\.id)))
+            // The other combined dashboards' chats (all-live stage 4b), only
+            // in All: one profile's list holds that profile's chats alone
+            // (Eric, 2026-11-16). Merged in by activity, or grouped by
+            // profile under a section per dashboard of their own.
+            let others = appState.chatListCombinedChats(excluding: Set(chats.map(\.id)))
             return (others.isEmpty ? chats : V2FilterSelection.mergedByRecency(chats, others), appState.chatListCronSessions)
         }
     }
@@ -1492,9 +1492,13 @@ struct V2ChatsView: View, Equatable {
             }
 
             if layout.liveSections && appState.allProfilesGroupsByProfile {
-                // A section per profile, its pinned chats first.
+                // A section per profile, its pinned chats first; then a
+                // section per other combined dashboard, under its badge.
                 ForEach(profileGroups(sections), id: \.profile) { group in
                     profileSection(group.profile, nodes: group.items, expanded: expanded)
+                }
+                ForEach(combinedDashboardGroups(sections), id: \.dashboardID) { group in
+                    combinedDashboardSection(group.dashboardID, nodes: group.items, expanded: expanded)
                 }
             } else {
                 if layout.liveSections && !sections.pinned.isEmpty {
@@ -1604,11 +1608,81 @@ struct V2ChatsView: View, Equatable {
         _ sections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
     ) -> [(profile: String, items: [SessionNesting.Node])] {
         AllProfilesChats.groups(
-            sections.pinned + sections.recent,
+            // Another combined dashboard's rows have sections of their own.
+            (sections.pinned + sections.recent).filter { $0.session.combinedDashboardID == nil },
             profiles: appState.allProfilesIncluded,
             fallback: appState.activeProfile,
             owner: { appState.rowProfile($0.session) }
         )
+    }
+
+    /// The other combined dashboards' rows, a group per dashboard in Saved
+    /// Dashboards order, for All's sections by profile.
+    private func combinedDashboardGroups(
+        _ sections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
+    ) -> [(dashboardID: UUID, items: [SessionNesting.Node])] {
+        var byDashboard: [UUID: [SessionNesting.Node]] = [:]
+        for node in sections.pinned + sections.recent {
+            guard let id = appState.combinedChatDashboard(node.session) else { continue }
+            byDashboard[id, default: []].append(node)
+        }
+        guard !byDashboard.isEmpty else { return [] }
+        return appState.savedDashboardRegistry.dashboards.compactMap { dashboard in
+            byDashboard[dashboard.id].map { (dashboard.id, $0) }
+        }
+    }
+
+    /// Another combined dashboard's chats under its badge, its name and the
+    /// profile they were read for: its newest few until "Show more", as a
+    /// profile's section lists them. Never pinned here, so nothing moves.
+    private func combinedDashboardSection(
+        _ dashboardID: UUID,
+        nodes: [SessionNesting.Node],
+        expanded: Set<String>
+    ) -> some View {
+        let key = "dashboard\u{1F}" + dashboardID.uuidString
+        return Section {
+            let preview = AllProfilesChats.preview(
+                nodes,
+                showsAll: !sectionsCollapsible,
+                isPinned: { _ in false },
+                isOpen: holdsOpenChat,
+                activity: ChatListSection.latestActivity(in:)
+            )
+            let showsAll = profilesShowingAll.contains(key)
+            listRows(V2ChatsListItem.items(showsAll ? nodes : preview.shown, expanded: expanded, scope: rowScope))
+            if preview.hidden > 0 {
+                profileShowMoreRow(key, hiddenCount: preview.hidden)
+            }
+        } header: {
+            combinedDashboardSectionHeader(dashboardID)
+        }
+    }
+
+    private func combinedDashboardSectionHeader(_ dashboardID: UUID) -> some View {
+        let name = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
+        let profile = appState.combinedDashboardChats[dashboardID]?.profile
+        return HStack(spacing: 8) {
+            CombinedDashboardBadge(dashboardID: dashboardID, size: 20)
+            Text(verbatim: name)
+                .lineLimit(1)
+            // Its main profile goes unnamed: the dashboard's name says it.
+            if let profile, !profile.isEmpty, profile.lowercased() != "default" {
+                Text(verbatim: profile)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
+            Spacer(minLength: 6)
+        }
+        .scaledFont(.footnote.weight(.semibold))
+        .foregroundStyle(.secondary)
+        .textCase(nil)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 2)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .listRowInsets(EdgeInsets())
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isHeader)
     }
 
     private func isProfileCollapsed(_ profile: String) -> Bool {

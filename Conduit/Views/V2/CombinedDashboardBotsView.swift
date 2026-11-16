@@ -2,38 +2,25 @@
 //  CombinedDashboardBotsView.swift
 //  Conduit
 //
-//  All-live stage 4c: on Bots Home, under the dashboard on screen's bots,
-//  each other combined dashboard's bots, headed by its badge and name. A
-//  portrait only opens (through a switch to its dashboard): dragging,
+//  All-live stage 4c: on Bots Home, after the dashboard on screen's bots and
+//  in the same grid, each other combined dashboard's bots, marked with its
+//  badge. A portrait only opens (through a switch to its dashboard): dragging,
 //  rooms and the bot's menu are its own dashboard's, on its own Bots Home.
 //
 
 import SwiftUI
 
-struct CombinedDashboardBotsSections: View {
-    @EnvironmentObject private var appState: AppState
+/// The other combined dashboards' bots as cells of Bots Home's own grid,
+/// after the dashboard on screen's bots, in Saved Dashboards order: one set
+/// of bots, each marked with its dashboard's badge (Eric, 2026-11-16).
+struct CombinedDashboardBotCells: View {
+    let sections: [CombinedDashboardBotsSection]
 
     var body: some View {
-        ForEach(appState.otherCombinedDashboardsBots) { section in
-            HStack(alignment: .center, spacing: 8) {
-                CombinedDashboardBadge.Mark(badge: section.badge, size: 18)
-                    .accessibilityHidden(true)
-                Text(verbatim: section.badge.name)
-                    .scaledFont(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer(minLength: 0)
-            }
-            .accessibilityElement(children: .combine)
-            .accessibilityAddTraits(.isHeader)
-            .padding(.horizontal, 16)
-            .padding(.top, 10)
-            .frame(minHeight: 44)
-            BotPortraitGrid(bots: section.bots) { bot in
+        ForEach(sections) { section in
+            ForEach(section.bots) { bot in
                 CombinedDashboardBotPortrait(bot: bot, section: section)
             }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
         }
     }
 }

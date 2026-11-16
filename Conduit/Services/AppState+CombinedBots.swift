@@ -4,8 +4,8 @@
 //
 //  All-live stage 4c: Bots Home shows every combined dashboard's bots.
 //  Each other dashboard's roster is read through its kept client and
-//  shown under the dashboard on screen's, a section per dashboard in Saved
-//  Dashboards order, each headed by its badge and name. A portrait's tap
+//  shown in the same grid as the dashboard on screen's, after them, in Saved
+//  Dashboards order, each portrait with its badge. A portrait's tap
 //  switches to that dashboard (through the kept connection) and opens the
 //  bot's chat.
 //

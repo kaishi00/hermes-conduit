@@ -434,13 +434,21 @@ struct BotRosterView: View {
     /// menu.
     @ViewBuilder
     private var shownPortraits: some View {
-        switch BotsHomeLayout.of(visibleBots: visibleBots.count, accessibilitySize: typeSize.isAccessibilitySize) {
+        // The other combined dashboards' bots join the grid after these, so
+        // the group reads as one set of bots; with any of them there, the
+        // lone and paired layouts give way to the grid.
+        let others = appState.otherCombinedDashboardsBots
+        switch others.isEmpty
+            ? BotsHomeLayout.of(visibleBots: visibleBots.count, accessibilitySize: typeSize.isAccessibilitySize)
+            : .grid {
         case .solo:
             if let bot = visibleBots.first { soloHome(bot) }
         case .pair:
             pairHome
         case .grid:
-            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) } trailing: {
+                CombinedDashboardBotCells(sections: others)
+            }
         }
     }
 
@@ -972,7 +980,7 @@ struct BotRosterView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
-                if !appState.shownBotRoster.isEmpty {
+                if !appState.shownBotRoster.isEmpty || !appState.otherCombinedDashboardsBots.isEmpty {
                     portraitGrid
                         .padding(.bottom, 8)
                 }
@@ -981,8 +989,6 @@ struct BotRosterView: View {
                 TipView(gesturesTip)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
-                // The other combined dashboards' bots (all-live stage 4c).
-                CombinedDashboardBotsSections()
                 homeGroupSection
             }
             .overlayPreferenceValue(BotsHomeAnchorKey.self) { anchors in
