@@ -78,7 +78,9 @@ extension AppState {
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: isOpenChat
+                    // By its chat only: another Hermes' room can share the
+                    // open room's id (issue 2631).
+                    isOpenChat: { $0.roomID == nil && self.isOpenChat($0) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {

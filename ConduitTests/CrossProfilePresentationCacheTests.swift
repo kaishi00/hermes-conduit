@@ -1519,9 +1519,10 @@ extension CrossProfilePresentationCacheTests {
         // One Hermes saved twice: its bot shown as the other dashboard's
         // copy takes the place the first copy had (issue 2640).
         let twin = UUID()
-        XCTAssertEqual(CombinedBotsHomeOrder.handingOn([CombinedBotsHomeOrder.key(mac, "n"), CombinedBotsHomeOrder.key(vps, "m")],
-                                                       shown: [CombinedBotsHomeOrder.key(vps, "m"), CombinedBotsHomeOrder.key(twin, "n")]),
+        let saved = [CombinedBotsHomeOrder.key(mac, "n"), CombinedBotsHomeOrder.key(vps, "m")]
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [CombinedBotsHomeOrder.key(twin, "n"): [CombinedBotsHomeOrder.key(mac, "n")]]),
                        [CombinedBotsHomeOrder.key(twin, "n"), CombinedBotsHomeOrder.key(vps, "m")])
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [:]), saved, "a namesake on another Hermes takes no place")
     }
 
     /// Pulse has a chip per combined dashboard whose Pulse answers, the
