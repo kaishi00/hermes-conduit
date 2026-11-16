@@ -137,8 +137,10 @@ extension AppState {
         // Its profiles stay on Chats' strip too, from the list it had, and
         // its chats are read for All at once rather than on the next poll
         // (Eric, 2026-11-16, who saw the strip lose them after a switch).
+        // Marked as read long ago, so the next pass still asks its Hermes
+        // for the list (one made or deleted there meanwhile shows).
         if !profiles.isEmpty {
-            keptDashboardProfiles[outgoingID] = (ObjectIdentifier(bridge), profiles, Date())
+            keptDashboardProfiles[outgoingID] = (ObjectIdentifier(bridge), profiles, .distantPast)
         }
         if !chats.isEmpty {
             // Marked as read long ago, so the next pass reads them anew.
