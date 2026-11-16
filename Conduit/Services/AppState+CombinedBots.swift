@@ -100,15 +100,19 @@ enum CombinedBotsHomeOrder {
         return saved + shown.filter { !known.contains($0) }
     }
 
-    /// A shown key the order lacks takes the place of the first of its
-    /// twins the order holds (`twins`: the copies of the same bot on other
-    /// dashboards of one Hermes, which the grid doesn't show), so a switch
-    /// between two dashboards of one Hermes moves nothing. A bot of the
-    /// same name on another Hermes is never a twin.
+    /// A shown key holds the earliest place it or any of its twins has in
+    /// the order (`twins`: the copies of the same bot on other dashboards
+    /// of one Hermes, which the grid doesn't show), and the twins' keys
+    /// leave the order, so a switch between two dashboards of one Hermes
+    /// moves nothing and a drag moves the place the grid reads. A bot of
+    /// the same name on another Hermes is never a twin.
     static func handingOn(_ order: [String], twins: [String: [String]]) -> [String] {
         var order = order
-        for (key, copies) in twins where !order.contains(key) {
-            if let at = order.firstIndex(where: copies.contains) { order[at] = key }
+        for (key, copies) in twins {
+            let group = Set([key] + copies)
+            guard let at = order.firstIndex(where: group.contains) else { continue }
+            order[at] = key
+            order = order.enumerated().filter { $0.offset == at || !group.contains($0.element) }.map(\.element)
         }
         return order
     }
@@ -179,8 +183,23 @@ extension AppState {
         for item in items {
             if let id = item.bot.canonicalSession?.id { chats[item.dashboardID, default: []].insert(id) }
         }
+        // Dashboards sharing a Bot Chat are one Hermes, and so are two that
+        // each share one with a third (rosters cached at different times).
+        var hermes: [UUID?: Int] = [:]
+        for (at, dashboard) in chats.keys.enumerated() { hermes[dashboard] = at }
+        var merged = true
+        while merged {
+            merged = false
+            for a in chats.keys {
+                for b in chats.keys where hermes[a] != hermes[b] && !(chats[a] ?? []).isDisjoint(with: chats[b] ?? []) {
+                    let from = max(hermes[a]!, hermes[b]!), to = min(hermes[a]!, hermes[b]!)
+                    for (d, h) in hermes where h == from { hermes[d] = to }
+                    merged = true
+                }
+            }
+        }
         func oneHermes(_ a: UUID?, _ b: UUID?) -> Bool {
-            a == b || !(chats[a] ?? []).isDisjoint(with: chats[b] ?? [])
+            a == b || (hermes[a] != nil && hermes[a] == hermes[b])
         }
         // This dashboard's come first in `items` only when it heads Saved
         // Dashboards: take them first so its copy is the one kept.

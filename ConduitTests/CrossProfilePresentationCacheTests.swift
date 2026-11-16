@@ -1471,6 +1471,17 @@ extension CrossProfilePresentationCacheTests {
             client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
         )
         XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
+        // Rosters cached at different times overlap only through a third
+        // dashboard: still one Hermes, its bot shown once.
+        let (a, b, c) = (UUID(), UUID(), UUID())
+        func homeItem(_ dashboard: UUID, _ profile: BotProfile) -> CombinedBotsHomeItem { CombinedBotsHomeItem(dashboardID: dashboard, kind: .own(profile)) }
+        let spread = AppState.oneCopyPerHermes([
+            homeItem(c, bot("n")), homeItem(c, chatBot("q", "y")),
+            homeItem(b, bot("n")), homeItem(b, chatBot("p", "x")), homeItem(b, chatBot("q", "y")),
+            homeItem(a, bot("n")), homeItem(a, chatBot("p", "x")),
+        ])
+        XCTAssertEqual(spread.kept.map(\.id), [CombinedBotsHomeOrder.key(c, "n"), CombinedBotsHomeOrder.key(c, "q"), CombinedBotsHomeOrder.key(b, "p")])
+        XCTAssertEqual(Set(spread.twins[CombinedBotsHomeOrder.key(c, "n")] ?? []), [CombinedBotsHomeOrder.key(b, "n"), CombinedBotsHomeOrder.key(a, "n")])
         appState.combinedDashboardBots[mac.id] = macBots
         appState.botRoster = [bot("furina")]
         // A dashboard left while kept leaves its bots on the grid at once.
@@ -1523,6 +1534,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [CombinedBotsHomeOrder.key(twin, "n"): [CombinedBotsHomeOrder.key(mac, "n")]]),
                        [CombinedBotsHomeOrder.key(twin, "n"), CombinedBotsHomeOrder.key(vps, "m")])
         XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [:]), saved, "a namesake on another Hermes takes no place")
+        // An order holding both copies keeps one, at the earlier place, so
+        // a drag moves the place the grid reads.
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved + [CombinedBotsHomeOrder.key(twin, "n")],
+                                                       twins: [CombinedBotsHomeOrder.key(twin, "n"): [CombinedBotsHomeOrder.key(mac, "n")]]),
+                       [CombinedBotsHomeOrder.key(twin, "n"), CombinedBotsHomeOrder.key(vps, "m")])
     }
 
     /// Pulse has a chip per combined dashboard whose Pulse answers, the
