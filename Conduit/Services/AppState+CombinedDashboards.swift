@@ -42,8 +42,14 @@ extension AppState {
         registry.dashboards[index].combined = combined ? true : nil
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
-        let group = registry.combinedGroupIDs
-        for keptID in keptDashboardRuntimes.keys where !group.contains(keptID) {
+        letGoKeptRuntimesOutsideTheGroup()
+    }
+
+    /// A dashboard left the group, was removed, or the group fell to one:
+    /// every kept connection no longer in it goes.
+    func letGoKeptRuntimesOutsideTheGroup() {
+        let group = savedDashboardRegistry.combinedGroupIDs
+        for keptID in Array(keptDashboardRuntimes.keys) where !group.contains(keptID) {
             dropKeptDashboardRuntime(keptID)
         }
     }
@@ -54,22 +60,43 @@ extension AppState {
     func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
+              // An edited address not yet taken up: this connection is to
+              // the old one.
+              savedDashboardRegistry.dashboard(with: outgoingID)?.pendingURL == nil,
               let client, keptClientIsOpen(client),
               let bridge = dashboardTicketBridge,
               let connection else { return }
         dropKeptDashboardRuntime(outgoingID)
-        keptDashboardRuntimes[outgoingID] = KeptDashboardRuntime(
+        keep(KeptDashboardRuntime(
             client: client,
             bridge: bridge,
             connection: connection,
             keptAt: Date()
-        )
+        ), for: outgoingID)
         self.client = nil
         dashboardTicketBridge = nil
-        // The one on screen counts too.
-        while keptDashboardRuntimes.count > Self.combinedLiveDashboardCap - 1,
-              let oldest = keptDashboardRuntimes.min(by: { $0.value.keptAt < $1.value.keptAt })?.key {
+        // The one on screen counts too, and the target, if kept, is about
+        // to be taken up rather than let go: it leaves the kept set itself.
+        let allowed = Self.combinedLiveDashboardCap - 1 + (keptDashboardRuntimes[targetID] == nil ? 0 : 1)
+        while keptDashboardRuntimes.count > allowed,
+              let oldest = keptDashboardRuntimes
+                .filter({ $0.key != targetID })
+                .min(by: { $0.value.keptAt < $1.value.keptAt })?.key {
             dropKeptDashboardRuntime(oldest)
+        }
+    }
+
+    /// Puts a connection in the kept set. Its socket dropping lets it go at
+    /// once, so the row and the next switch never count on a dead one;
+    /// taking it up points its events back at the screen.
+    func keep(_ kept: KeptDashboardRuntime, for id: UUID) {
+        keptDashboardRuntimes[id] = kept
+        kept.client.onDisconnected = { [weak self, weak client = kept.client] in
+            Task { @MainActor in
+                guard let self, let client,
+                      self.keptDashboardRuntimes[id]?.client === client else { return }
+                self.dropKeptDashboardRuntime(id)
+            }
         }
     }
 
@@ -81,7 +108,11 @@ extension AppState {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return nil }
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
-              (kept.client.profile ?? "default") == profile else {
+              (kept.client.profile ?? "default") == profile,
+              // Still the dashboard's address (an edit since lets it go).
+              let dashboard = savedDashboardRegistry.dashboard(with: id),
+              kept.connection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+                == dashboard.normalizedURL.trimmingCharacters(in: CharacterSet(charactersIn: "/")) else {
             release(kept)
             return nil
         }
@@ -94,7 +125,8 @@ extension AppState {
     }
 
     /// Every kept connection goes: Conduit left the screen (iOS would
-    /// suspend the sockets anyway), or everything was signed out.
+    /// suspend the sockets anyway). Signing out of one dashboard lets
+    /// only its own go.
     func dropAllKeptDashboardRuntimes() {
         for id in Array(keptDashboardRuntimes.keys) {
             dropKeptDashboardRuntime(id)

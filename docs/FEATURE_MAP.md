@@ -7166,16 +7166,19 @@ kept connection go) · Conduit leaving the screen (all kept connections go) ·
 Ask Which Dashboard at Launch (gap: the group as one choice, stage 3b) · Face
 ID for saved dashboards (gap: the group connecting at launch on one unlock,
 stage 3b) · a push from a combined dashboard (gap: opening through its kept
-connection, stage 3c) · README.md
+connection, stage 3c) · the Combine Dashboards caption · README.md · the
+Watch, CarPlay, calls and Siri (not needed: they act on the dashboard on
+screen, and a switch is unchanged for them)
 
 **Code**
-- `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, keepOutgoingDashboardRuntimeIfCombined, takeKeptDashboardRuntime, dropAllKeptDashboardRuntimes), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status)
-- Tests: `ConduitTests/CrossProfilePresentationCacheTests.swift` (testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone, testACombinedDashboardStaysConnectedWhileAnotherIsUsed, testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo)
+- `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, letGoKeptRuntimesOutsideTheGroup, keepOutgoingDashboardRuntimeIfCombined, keep, takeKeptDashboardRuntime, dropAllKeptDashboardRuntimes), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status)
+- Tests: `ConduitTests/CrossProfilePresentationCacheTests.swift` (testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone, testACombinedDashboardStaysConnectedWhileAnotherIsUsed, testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo, testAnEditedAddressKeepsNothingAndARemovalThatEndsTheGroupLetsGo, testAtTheCapTheSwitchTargetIsTakenUpAndSignOutLetsGo)
 
 **Rulings**
 - One group, set in Settings > Saved Dashboards, "Combine Dashboards"; a dashboard left out stays as today, cold until picked (2026-11-13, Eric, multi-instance plan decisions).
 - Every combined dashboard live, up to 4 at once with the one on screen; past that the one kept longest is let go (stage 0's caps).
-- A kept dashboard's events are fenced while another is on screen; taking it up runs the usual sync, which brings its chat current. A kept socket that dropped, or one on another profile than the switch resumes, is let go and the switch signs in as before.
+- A kept dashboard's events are fenced while another is on screen; taking it up runs the usual sync, which brings its chat current. A kept socket that drops is let go at once; one on another profile than the switch resumes, or to an address the dashboard no longer has, is let go on the switch, which signs in as before. A dashboard with an edited address not yet taken up keeps nothing (#2595 review).
+- At the cap, the switch's own target is never the one let go: it leaves the kept set by being taken up. Removing a member that leaves the group at one lets the other's kept connection go too (#2595 review).
 - Leaving the screen lets every kept connection go, since iOS suspends the sockets; the next switch signs in as before.
 
 **Open gaps**

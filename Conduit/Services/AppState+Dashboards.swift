@@ -868,6 +868,8 @@ extension AppState {
         }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        // A group that fell to one lets its other kept connection go.
+        letGoKeptRuntimesOutsideTheGroup()
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a
