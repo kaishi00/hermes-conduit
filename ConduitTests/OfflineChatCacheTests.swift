@@ -3764,6 +3764,7 @@ final class OfflineChatCacheTests: XCTestCase {
         // The last turn's reply still settling is no word of this one.
         kept.state.streamingBuffer = "The last reply's words"
         let unsettled = await state.sendInKeptChat(kept, text: "Again")
+        XCTAssertEqual(sent.prompts.last?.text, "Again", "It went to Hermes, which gave no word of it")
         XCTAssertFalse(unsettled)
         XCTAssertFalse(kept.state.messages.contains { $0.content == "Again" })
         XCTAssertFalse(kept.isRunning)
@@ -3992,6 +3993,89 @@ final class OfflineChatCacheTests: XCTestCase {
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "z", profile: state.activeProfile, source: .resume)
         XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " Not ours")))
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time, the end")
+    }
+
+    /// Issue 2566: a message another device sends to the chat kept beside
+    /// comes before its reply in the copy saved as the turn ends.
+    func testAnotherDevicesMessageIsSavedBeforeItsReplyInTheKeptChatsCopy() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1"),
+            ChatMessage(id: "r1", role: .assistant, content: "Hello", timestamp: "2")
+        ]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.messageStart(sessionId: "a"))
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Got it"))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r2", content: "Got it.", reasoning: nil))
+
+        store.waitForPendingWrites()
+        let saved = store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.map(\.content) ?? []
+        XCTAssertEqual(Array(saved.suffix(2)), ["From my Mac", "Got it."], "The prompt is saved before its reply")
+    }
+
+    /// Issue 2503: a chat opened again by its old id while Hermes streams
+    /// under a runtime id it bound while the chat was away: the event
+    /// reaches the followed copy and is left for the screen (or the open's
+    /// reconcile buffer) too.
+    func testAReboundIDsEventDuringAnOpenByTheOldIDReachesTheScreen() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "a", profile: state.activeProfile, source: .resume)
+
+        state.setActiveSessionState(id: "a")
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " a time")),
+                       "The chat being opened takes the rebound id's events too")
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.rows.last?.content, "Once upon a time",
+                       "…and the followed copy keeps up")
+    }
+
+    /// Issue 2577: a followed chat's reply that ends while its open is still
+    /// in flight is saved then, so leaving before the open lands keeps it.
+    func testAFollowedChatsReplyEndingWhileItsOpenLandsIsSaved() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        guard let followed = state.followedChat(answering: ["a"]) else {
+            return XCTFail("Chat a is followed once left mid-reply")
+        }
+
+        // Opened again: its copy shows while the open is in flight.
+        state.setActiveSessionState(id: "a")
+        state.messages = []
+        XCTAssertTrue(state.presentBackgroundChat(followed, openedAs: "a"))
+        state.turnState = .synchronizing
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
     }
 
     /// The reply's events, one by one: an interim note Hermes already
