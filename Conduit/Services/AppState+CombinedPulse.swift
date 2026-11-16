@@ -15,6 +15,10 @@ import Foundation
 struct CombinedDashboardPulse: Equatable {
     let bridge: ObjectIdentifier
     let unseen: Int
+    /// Its Pulse chat and the profile it's in, as the feed named them, so
+    /// Chats keeps that chat behind its Pulse before it's opened here.
+    var homeChatID: String? = nil
+    var profile: String? = nil
     let at: Date
 }
 
@@ -53,7 +57,11 @@ extension AppState {
             // Let go, opened, or out of the group while the read was out.
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
                   isInCombinedGroup(id), let response, let page = PulseFeedPage(json: response) else { continue }
-            combinedDashboardPulse[id] = CombinedDashboardPulse(bridge: bridge, unseen: page.unseen, at: now)
+            // A read started later already stored its count: keep that one.
+            if let stored = combinedDashboardPulse[id], stored.at > now { continue }
+            combinedDashboardPulse[id] = CombinedDashboardPulse(
+                bridge: bridge, unseen: page.unseen, homeChatID: page.homeChatID, profile: page.profile, at: now
+            )
         }
     }
 

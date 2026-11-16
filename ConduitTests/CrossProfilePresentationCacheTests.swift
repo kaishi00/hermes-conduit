@@ -1290,6 +1290,12 @@ extension CrossProfilePresentationCacheTests {
         }
         await appState.readOtherCombinedDashboardsChats()
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.combinedDashboardID), [vps.id])
+        // Its Pulse chat, as its feed names it, stays behind its Pulse.
+        appState.combinedDashboardPulse[vps.id] = CombinedDashboardPulse(
+            bridge: ObjectIdentifier(vpsClient), unseen: 0, homeChatID: "vps-1", profile: "default", at: Date()
+        )
+        XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
+        appState.combinedDashboardPulse[vps.id] = nil
         appState.letGoCombinedDashboard(vps.id)
         XCTAssertNil(appState.combinedDashboardChats[vps.id])
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
@@ -1364,7 +1370,7 @@ extension CrossProfilePresentationCacheTests {
         }
 
         await appState.readOtherCombinedDashboardsPulse()
-        XCTAssertEqual(counts.reads, ["\(PulseClient.path)/feed"])
+        XCTAssertEqual(counts.reads, ["\(PulseClient.path)/feed?proposals=1"], "suggestions counted, as the page does")
         appState.pulseUnseen = 1
         let chips = appState.pulseDashboardChips
         XCTAssertEqual(chips.map(\.dashboardID), [mac.id, vps.id], "Saved Dashboards order")

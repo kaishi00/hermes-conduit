@@ -73,12 +73,13 @@ extension AppState {
         var taken = listed
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID {
             guard isInCombinedGroup(dashboard.id), let chats = combinedDashboardChats[dashboard.id] else { continue }
-            // That dashboard's Pulse chat, as it last named it there, stays
-            // behind its Pulse, as this dashboard's own does.
+            // That dashboard's Pulse chat, as its feed names it or as it last
+            // named it there, stays behind its Pulse, as this one's does.
             let key = dashboard.id.uuidString
-            let pulseHome = pulseRememberedHomes[key].flatMap {
-                profilesMatch(chats.profile, pulseRememberedProfiles[key] ?? chats.profile) ? $0 : nil
-            }
+            let feed = combinedDashboardPulse[dashboard.id]
+            let home = feed?.homeChatID.map { ($0, feed?.profile) }
+                ?? pulseRememberedHomes[key].map { ($0, pulseRememberedProfiles[key]) }
+            let pulseHome = home.flatMap { profilesMatch(chats.profile, $0.1 ?? chats.profile) ? $0.0 : nil }
             let fresh = chats.sessions.filter {
                 !taken.contains($0.id) && !(pulseHome.map($0.nestingIDs.contains) ?? false)
             }
