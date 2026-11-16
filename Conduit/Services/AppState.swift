@@ -202,6 +202,14 @@ final class AppState: ObservableObject {
     /// socket and bridge so a switch back takes it up at once
     /// (AppState+CombinedDashboards.swift).
     @Published var keptDashboardRuntimes: [UUID: KeptDashboardRuntime] = [:]
+    /// Combined dashboards signing in quietly beside the one on screen
+    /// (stage 3b), and the count that fences one whose kept set was let go
+    /// meanwhile (Conduit left the screen).
+    var combinedSignInsUnderWay: Set<UUID> = []
+    var keptDashboardRuntimesGeneration: UInt64 = 0
+    /// Lets the kept connections go once Conduit has been off screen for
+    /// the background grace.
+    var keptDashboardRuntimesGraceTask: Task<Void, Never>?
     var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
     /// `takeVoiceEventAfterCancel`).

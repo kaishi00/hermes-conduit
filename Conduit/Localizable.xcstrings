@@ -196042,88 +196042,6 @@
         }
       }
     },
-    "Combined dashboards stay connected while you use another one, so switching back to one is instant. Switch on two or more." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Kombinierte Dashboards bleiben verbunden, während du ein anderes nutzt, sodass der Wechsel zurück sofort geht. Schalte zwei oder mehr ein."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los paneles combinados siguen conectados mientras usas otro, así que volver a uno es instantáneo. Activa dos o más."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les tableaux de bord combinés restent connectés pendant que tu en utilises un autre, donc y revenir est instantané. Actives-en deux ou plus."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dasbor yang digabung tetap terhubung saat kamu memakai yang lain, jadi kembali ke salah satunya langsung. Aktifkan dua atau lebih."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Le dashboard combinate restano connesse mentre ne usi un'altra, così tornare a una è immediato. Attivane due o più."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "統合したダッシュボードは、別のダッシュボードを使っている間も接続されたままなので、すぐに戻れます。2つ以上をオンにしてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "합친 대시보드는 다른 대시보드를 쓰는 동안에도 연결된 상태로 남아 있어 바로 돌아갈 수 있습니다. 두 개 이상 켜세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Połączone panele pozostają połączone, gdy używasz innego, więc powrót do nich jest natychmiastowy. Włącz dwa lub więcej."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Painéis combinados continuam conectados enquanto você usa outro, então voltar para um é instantâneo. Ative dois ou mais."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Объединённые дашборды остаются подключёнными, пока вы пользуетесь другим, поэтому возврат к ним мгновенный. Включите два или больше."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Birleştirilen paneller başka birini kullanırken bağlı kalır, böylece birine geri dönmek anında olur. İki veya daha fazlasını açın."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "合并的仪表板在你使用其他仪表板时保持连接，因此切换回来是即时的。请打开两个或更多。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "合併的儀表板在你使用其他儀表板時保持連線，因此切換回來是即時的。請開啟兩個或更多。"
-          }
-        }
-      }
-    },
     "Connected in the background" : {
       "localizations" : {
         "de" : {
@@ -196202,6 +196120,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "已在背景連線"
+          }
+        }
+      }
+    },
+    "Combined dashboards all connect when Conduit opens and stay connected while you use another one, so switching between them is instant. Switch on two or more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kombinierte Dashboards verbinden sich alle, wenn Conduit öffnet, und bleiben verbunden, während du ein anderes nutzt, sodass der Wechsel zwischen ihnen sofort geht. Schalte zwei oder mehr ein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los paneles combinados se conectan todos al abrir Conduit y siguen conectados mientras usas otro, así que cambiar entre ellos es instantáneo. Activa dos o más."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les tableaux de bord combinés se connectent tous à l'ouverture de Conduit et restent connectés pendant que vous en utilisez un autre : passer de l'un à l'autre est instantané. Activez-en deux ou plus."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor gabungan semuanya terhubung saat Conduit dibuka dan tetap terhubung saat kamu memakai yang lain, jadi berpindah di antaranya langsung terjadi. Aktifkan dua atau lebih."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dashboard combinate si connettono tutte all'apertura di Conduit e restano connesse mentre ne usi un'altra, così passare dall'una all'altra è immediato. Attivane due o più."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "統合したダッシュボードは Conduit を開くとすべて接続され、別のものを使っている間も接続されたままなので、すぐに切り替えられます。2つ以上オンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "합친 대시보드는 Conduit을 열면 모두 연결되고 다른 대시보드를 쓰는 동안에도 연결된 채로 있어 바로 전환할 수 있습니다. 두 개 이상 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączone panele łączą się wszystkie po otwarciu Conduit i pozostają połączone, gdy używasz innego, więc przełączanie między nimi jest natychmiastowe. Włącz dwa lub więcej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os painéis combinados se conectam todos quando o Conduit abre e continuam conectados enquanto você usa outro, então alternar entre eles é instantâneo. Ative dois ou mais."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Объединённые дашборды подключаются все сразу при открытии Conduit и остаются подключёнными, пока вы пользуетесь другим, поэтому переключение между ними мгновенное. Включите два или больше."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Birleştirilmiş paneller Conduit açıldığında hepsi bağlanır ve başka birini kullanırken bağlı kalır, böylece aralarında geçiş anında olur. İki veya daha fazlasını açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合并的仪表板会在打开 Conduit 时全部连接，并在你使用其他仪表板时保持连接，因此可以即时切换。请打开两个或更多。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "合併的儀表板會在打開 Conduit 時全部連線，並在你使用其他儀表板時保持連線，因此可以即時切換。請開啟兩個或更多。"
           }
         }
       }

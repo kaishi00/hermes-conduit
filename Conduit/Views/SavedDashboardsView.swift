@@ -117,7 +117,7 @@ struct SavedDashboardsSettingsDetail: View {
                 }
                 .accessibilityIdentifier("settings.combine-dashboard")
             }
-            Text("Combined dashboards stay connected while you use another one, so switching back to one is instant. Switch on two or more.")
+            Text("Combined dashboards all connect when Conduit opens and stay connected while you use another one, so switching between them is instant. Switch on two or more.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

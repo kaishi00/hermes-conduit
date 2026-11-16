@@ -192,6 +192,8 @@ extension AppState {
             isSceneActive = true
             sceneHasBeenActive = true
             backgroundConnectionGrace.end()
+            keptDashboardRuntimesGraceTask?.cancel()
+            keptDashboardRuntimesGraceTask = nil
             // Polls left long while nothing moved catch up at once.
             noteChatListInteraction()
             openChatSync.resetIdlePace()
@@ -351,6 +353,9 @@ extension AppState {
                                 automaticWorkToken: automaticWorkToken
                             )
                         }
+                        // Back on screen over the socket that held: the
+                        // rest of the group, let go while away, again.
+                        self.connectOtherCombinedDashboards()
                     } catch {
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID) else {
                             self.settleReconciliation(token)
@@ -409,9 +414,10 @@ extension AppState {
             return task
 
         case .background:
-            // Combined dashboards kept connected let go: iOS suspends their
-            // sockets anyway, and the next switch signs in as before.
-            dropAllKeptDashboardRuntimes()
+            // Combined dashboards kept connected let go after the usual
+            // grace: iOS suspends their sockets anyway, and the next switch
+            // signs in as before.
+            dropKeptDashboardRuntimesAfterGrace()
             // A shared draft whose chat was still opening waits on disk for
             // the next time Conduit is on screen.
             sharedDraftLaunch = nil

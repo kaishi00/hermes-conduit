@@ -442,6 +442,33 @@ extension AppState {
         showLogin = true
     }
 
+    /// A dashboard's request authority: its native grant (or cookie mode),
+    /// its origin and base path, and the other saved dashboards it must
+    /// never authorize for, read live so adding or removing one applies at
+    /// once. The selected dashboard's, or a combined one signing in quietly.
+    func makeDashboardBridge(
+        normalizedURL normalized: String,
+        dashboardID: UUID?,
+        access: CloudflareAccessCredentials?
+    ) -> DashboardTicketBridge {
+        let requestAuthorizer = DashboardRequestAuthorizer.forDashboard(
+            baseURL: normalized,
+            dashboardID: dashboardID,
+            cloudflareAccess: access,
+            otherDashboardURLs: { [weak self] in
+                self?.savedDashboardRegistry.dashboards
+                    .filter { $0.id != dashboardID }
+                    .map(\.normalizedURL) ?? []
+            }
+        )
+        return DashboardTicketBridge(
+            baseURL: normalized,
+            cloudflareAccess: access,
+            dashboardID: dashboardID,
+            requestAuthorizer: requestAuthorizer
+        )
+    }
+
     func prepareDashboardBridge(for baseUrl: String) {
         let normalized = baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let access = dashboardScopedCloudflareAccess(for: normalized)
@@ -459,26 +486,7 @@ extension AppState {
                 notifierPlugin = freshNotifierPluginStatus
             }
             dashboardTicketBridge?.invalidate()
-            // The selected dashboard's request authority: its native grant
-            // (or cookie mode), its origin and base path, and the other saved
-            // dashboards it must never authorize for, read live so adding or
-            // removing one applies at once.
-            let requestAuthorizer = DashboardRequestAuthorizer.forDashboard(
-                baseURL: normalized,
-                dashboardID: dashboardID,
-                cloudflareAccess: access,
-                otherDashboardURLs: { [weak self] in
-                    self?.savedDashboardRegistry.dashboards
-                        .filter { $0.id != dashboardID }
-                        .map(\.normalizedURL) ?? []
-                }
-            )
-            let bridge = DashboardTicketBridge(
-                baseURL: normalized,
-                cloudflareAccess: access,
-                dashboardID: dashboardID,
-                requestAuthorizer: requestAuthorizer
-            )
+            let bridge = makeDashboardBridge(normalizedURL: normalized, dashboardID: dashboardID, access: access)
             bridge.onPageEvent = { [weak self, weak bridge] event in
                 guard let self, let bridge, self.dashboardTicketBridge === bridge else { return }
                 self.noteConnectionStep(event)
