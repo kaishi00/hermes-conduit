@@ -308,8 +308,6 @@ extension GatewayRestartTests {
         let feed = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
         let saved = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
         try await held.waitForRequests(1)
-        try await Task.sleep(for: .milliseconds(50))
-        XCTAssertEqual(held.sent.filter { $0.path == NotifierPluginStatus.path }.count, 1, "one read for both")
         XCTAssertNotNil(appState.notifierPluginStatusSharedRefresh)
 
         let other = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
@@ -324,6 +322,9 @@ extension GatewayRestartTests {
         await feed.value
         await saved.value
         await otherRead.value
+        // Counted once both have ended, so a second read either caller
+        // sent, however late its cookie lookup let it go, is counted too.
+        XCTAssertEqual(held.sent.filter { $0.path == NotifierPluginStatus.path }.count, 1, "one read for both")
         XCTAssertNil(appState.notifierPluginStatusSharedRefresh, "nothing left to join once the reads end")
     }
 
