@@ -86,11 +86,9 @@ struct BotRosterView: View {
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
             // Bots Home with other combined dashboards' bots shows them
-            // (its scroll lists their sections) though this one has none,
-            // unless this Hermes needs an update, which only this page says.
+            // (its scroll lists their sections) though this one has none.
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
-                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty
-                    || appState.botModePhase == .gatewayUnsupported) {
+                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         VStack(spacing: 12) {
@@ -964,6 +962,13 @@ struct BotRosterView: View {
                 }
                 if case .failed(let message) = appState.botModePhase {
                     botModeFailure(message)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 3)
+                }
+                // This Hermes needs an update, said over the other combined
+                // dashboards' bots when they take the empty page's place.
+                if appState.botModePhase == .gatewayUnsupported {
+                    botModeFailure(AppLocalization.string("Update Hermes to use Bot Mode."))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
