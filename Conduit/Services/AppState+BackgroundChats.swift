@@ -259,7 +259,19 @@ extension AppState {
     func idBoundToAnotherChat(_ id: String, than chat: BackgroundChat) -> Bool {
         guard let durable = conversationIdentityIndex.durableID(forRuntime: id, profile: chat.profile),
               durable != id else { return false }
-        return !chat.sessionIDs.contains(durable) && chat.durableSessionID != durable
+        return !followedChat(chat, isConversation: durable)
+    }
+
+    /// `durable` is `chat`'s own conversation. A listed chat's is its
+    /// durable id (or another id of the same row): an alias it was left
+    /// with that Hermes later makes a chat of its own isn't it. A chat with
+    /// no durable id (a Bot Chat) goes by the ids it answers to.
+    func followedChat(_ chat: BackgroundChat, isConversation durable: String) -> Bool {
+        guard let own = chat.durableSessionID else { return chat.sessionIDs.contains(durable) }
+        if own == durable { return true }
+        guard chat.profile == activeProfile,
+              let row = owningSessionRow(for: durable)?.id else { return false }
+        return owningSessionRow(for: own)?.id == row
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
@@ -285,12 +297,15 @@ extension AppState {
         let listed = owningSessionRow(for: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
+        let ownIDs = listed.map { followedSessionIDs(for: $0.id) }
+        // The chat the screen's id stands for in the identity index is
+        // this one: kept, so a later rebind of one of its ids to another
+        // chat shows as one (issue 2603). Not when the index has already
+        // bound it to a chat other than its own row's.
+        let indexed = conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)
+            .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         let chat = BackgroundChat(
-            // The chat the screen's id stands for in the identity index is
-            // this one: kept, so a later rebind of one of its ids to another
-            // chat shows as one (issue 2603).
-            sessionIDs: ids.union(listed.map { followedSessionIDs(for: $0.id) } ?? [])
-                .union([conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)].compactMap { $0 }),
+            sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
             title: activeSessionTitle,
             dashboardID: dashboardID,
@@ -475,7 +490,7 @@ extension AppState {
         let index = conversationIdentityIndex
         return backgroundChats.firstIndex { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }
-            return chat.sessionIDs.contains(durableID) || chat.durableSessionID == durableID
+            return followedChat(chat, isConversation: durableID)
         }
     }
 

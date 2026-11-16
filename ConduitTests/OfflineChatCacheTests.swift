@@ -4165,6 +4165,59 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: state.activeProfile))
     }
 
+    /// Issues 2602 and 2603: an alias two rows carry is neither's, an
+    /// alias the chat was left with that Hermes later makes a chat of its
+    /// own isn't its, and an id the index has already bound to another
+    /// chat doesn't join it.
+    func testAFollowedChatLeavesSharedAndReboundAliases() throws {
+        func leave(_ state: AppState, openAs id: String) {
+            state.isConnected = true
+            state.setActiveSessionState(id: id)
+            state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+            state.turnState = .running
+            state.handleStreamEvent(.messageDelta(sessionId: id, text: "Once upon"))
+            state.setActiveSessionState(id: "c")
+            state.messages = []
+            state.clearStreamingText()
+            state.turnState = .idle
+        }
+
+        // Shared alias, no index mapping.
+        let (shared, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["x"]
+        var b = session("b")
+        b.alternateIds = ["x"]
+        shared.sessions = [a, b, session("c")]
+        leave(shared, openAs: "a")
+        XCTAssertEqual(try XCTUnwrap(shared.followedChat(answering: ["a"])).sessionIDs, ["a"])
+        XCTAssertFalse(shared.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")))
+
+        // An alias no row owned yet, made a chat of its own later.
+        let (later, _, _) = makeAppState()
+        var own = session("a")
+        own.alternateIds = ["rt-a", "y"]
+        later.sessions = [own, session("c")]
+        leave(later, openAs: "a")
+        XCTAssertEqual(try XCTUnwrap(later.followedChat(answering: ["a"])).sessionIDs, ["a", "rt-a", "y"])
+        own.alternateIds = ["rt-a"]
+        later.sessions = [own, session("y"), session("c")]
+        later.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "y", profile: later.activeProfile, source: .resume)
+        XCTAssertFalse(later.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-a", text: " Not ours")))
+        XCTAssertEqual(later.backgroundChats.first?.rows.last?.content, "Once upon")
+
+        // The index binds the screen's id to another chat before it's left.
+        let (bound, _, _) = makeAppState()
+        var boundOwn = session("a")
+        boundOwn.alternateIds = ["rt-a"]
+        bound.sessions = [boundOwn, session("b"), session("c")]
+        bound.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "b", profile: bound.activeProfile, source: .resume)
+        leave(bound, openAs: "rt-a")
+        let left = try XCTUnwrap(bound.backgroundChats.first)
+        XCTAssertEqual(left.durableSessionID, "a")
+        XCTAssertFalse(left.sessionIDs.contains("b"), "not the other chat's durable id")
+    }
+
     /// A runtime id Hermes binds to a followed chat while it's away
     /// (another device resumed it), as the identity index knows it, still
     /// reaches the followed chat, only while the index maps it there.

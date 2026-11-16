@@ -881,13 +881,14 @@ extension AppState {
     }
 
     /// The ids a followed copy of `sessionID`'s chat answers to and saves
-    /// over: its own row's, less any alias another row owns (Hermes hands
-    /// runtime ids from one chat to another), so a borrowed id never
-    /// redirects its events or its save (issue 2602).
+    /// over: its own row's, less any alias another row owns or carries too
+    /// (Hermes hands runtime ids from one chat to another), so a borrowed or
+    /// shared id never redirects its events or its save (issue 2602).
     func followedSessionIDs(for sessionID: String) -> Set<String> {
         guard let row = owningSessionRow(for: sessionID) else { return [sessionID] }
         let others = Set([sessions, cronSessions].joined().filter { $0.id != row.id }
-            .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
+            .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds })
+            .subtracting([row.id, row.storedSessionId].compactMap { $0 })
         return Set(row.nestingIDs.filter { !others.contains($0) }).union([sessionID])
     }
 
