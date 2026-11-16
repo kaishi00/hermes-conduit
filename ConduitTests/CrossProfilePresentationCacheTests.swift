@@ -714,6 +714,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.first?.combinedDashboardID, mac.id)
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.at, Date.distantPast)
         XCTAssertNotNil(appState.combinedDashboardChats[mac.id]?.seededAt, "a read started before it can't overwrite it")
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.at, Date.distantPast, "its profiles are read anew on the next pass")
         // Its socket dropping keeps the strip's profiles with its list.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])
