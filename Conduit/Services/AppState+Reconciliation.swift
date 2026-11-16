@@ -1723,11 +1723,18 @@ extension AppState {
         )
         // A moved-on id is turned away only by the open it moved on from:
         // an open of the chat it now belongs to takes it (#2613's review).
-        let movedOnSessionIDs = (priorReconciliation?.movedOnSessionIDs ?? []).filter { id in
-            guard !addressedIDs.contains(id) else { return false }
-            let durableID = conversationIdentityIndex.durableID(forRuntime: id, profile: profile)
-            return durableID.map { !addressedIDs.contains($0) } ?? true
-        }
+        // The index is asked first, since a stale catalog row can still list
+        // the id under the addressed chat, and the addressed chat counts by
+        // its own durable id too, so an open by runtime id of the chat the id
+        // moved to takes it (issue 2619).
+        let identityIndex = conversationIdentityIndex
+        let addressedDurableIDs = addressedIDs
+            .union([identityIndex.durableID(forRuntime: sessionId, profile: profile)].compactMap { $0 })
+        let movedOnSessionIDs = Reconciliation.movedOn(
+            priorReconciliation?.movedOnSessionIDs ?? [],
+            keptFor: addressedIDs,
+            durableIDs: addressedDurableIDs
+        ) { identityIndex.durableID(forRuntime: $0, profile: profile) }
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,

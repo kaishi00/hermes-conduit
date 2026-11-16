@@ -139,11 +139,17 @@ final class LocationSharingController: ObservableObject {
             // that lands, so a stale note can't empty the queue at a launch.
             let changed = dropMarker.set(unsentDroppedWhileUnreadable)
             dropMarkerClearPending = !unsentDroppedWhileUnreadable && !changed
+            // A note the Keychain refused is tried again at each save that
+            // fails, and each foreground's retry (issue 2619).
+            dropMarkerSetPending = unsentDroppedWhileUnreadable && !changed
         }
     }
     /// The Keychain refused to clear the drop note: tried again at each
     /// save of the queue that lands (#2613's review).
     private var dropMarkerClearPending = false
+    /// The Keychain refused the drop note: tried again while the drop
+    /// hasn't reached the file.
+    private var dropMarkerSetPending = false
     /// Where a dropped queue not yet written over is remembered across a
     /// launch (tests pass their own).
     private let dropMarker: LocationDropMarker
@@ -181,11 +187,14 @@ final class LocationSharingController: ObservableObject {
         // app quit: the file's copy is what was dropped, so it isn't read,
         // and the write over it is tried again (at the first config read
         // and each foreground).
+        // The note is read after the file, so a first unlock between the
+        // two can't leave the file's dropped queue read back (issue 2619).
+        let stored = unsent ?? readStoredUnsent()
         if dropMarker.isSet() {
             self.unsentDroppedWhileUnreadable = true
             self.unsent = unsent ?? LocationUnsent()
         } else {
-            self.unsent = unsent ?? readStoredUnsent()
+            self.unsent = stored
         }
         self.engine.spotsReplied = { [weak self] watches in
             // A reply to a batch sent before Walking past went off lists
@@ -225,7 +234,10 @@ final class LocationSharingController: ObservableObject {
             configUnreadable = false
             return true
         case .missing:
-            // No config, but the dropped queue's file may still be there.
+            // No config, but the dropped queue's file may still be there;
+            // a note unreadable at launch counts now, as with a config
+            // (issue 2619).
+            if !unsentDroppedWhileUnreadable, dropMarker.isSet() { unsentDroppedWhileUnreadable = true }
             if unsentDroppedWhileUnreadable { saveUnsent() }
             configUnreadable = false
             return true
@@ -285,6 +297,8 @@ final class LocationSharingController: ObservableObject {
         if saved {
             unsentDroppedWhileUnreadable = false
             if dropMarkerClearPending { dropMarkerClearPending = !dropMarker.set(false) }
+        } else if dropMarkerSetPending, unsentDroppedWhileUnreadable {
+            dropMarkerSetPending = !dropMarker.set(true)
         }
         return saved
     }
