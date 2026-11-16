@@ -113,6 +113,45 @@ extension ChatOnScreenTests {
                                               matches: AppState.profilesMatch), 0)
     }
 
+    /// Another combined dashboard's waits stay apart from this one's: the
+    /// list shows both, newest first, the chips count only this one's, a
+    /// new wait there banners, and one let go says nothing more.
+    func testAnotherCombinedDashboardsWaitsListApartAndBanner() {
+        let store = NeedsYouStore()
+        let here = UUID(), there = UUID()
+        store.apply([NeedsYouItem(waitID: "h1", profile: "default", kind: .question, sessionIDs: ["a"], since: Date(timeIntervalSince1970: 10))],
+                    profile: "default", dashboardID: here) { _ in false }
+        store.applyOther([NeedsYouItem(waitID: "t1", profile: "default", kind: .approval, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                         profile: "default", dashboardID: there)
+        XCTAssertEqual(store.everyItem.map(\.waitID), ["t1", "h1"], "newest first, both")
+        XCTAssertEqual(store.count(for: "default", matches: AppState.profilesMatch), 1, "the chip counts this dashboard's")
+        XCTAssertNil(store.banner, "a first read there shows no banner")
+        XCTAssertNotEqual(store.everyItem[0].id, NeedsYouItem(waitID: "t1", profile: "default", kind: .approval, sessionIDs: ["b"]).id,
+                          "the same wait id on two dashboards is two rows")
+
+        store.applyOther([
+            NeedsYouItem(waitID: "t1", profile: "default", kind: .approval, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20)),
+            NeedsYouItem(waitID: "t2", profile: "default", kind: .question, sessionIDs: ["c"], since: Date(timeIntervalSince1970: 30)),
+        ], profile: "default", dashboardID: there)
+        XCTAssertEqual(store.banner?.waitID, "t2")
+        XCTAssertEqual(store.banner?.dashboardID, there)
+
+        // The one on screen's own reads never banner it again, nor take it.
+        store.apply([], profile: "default", dashboardID: here) { _ in false }
+        XCTAssertEqual(store.banner?.waitID, "t2")
+
+        store.forgetOtherDashboards(otherThan: [])
+        XCTAssertNil(store.banner, "let go: its banner goes")
+        XCTAssertEqual(store.everyItem.map(\.waitID), [], "and its rows")
+
+        // Read again later, it starts over: a first read, no banner.
+        store.applyOther([NeedsYouItem(waitID: "t3", profile: "default", kind: .question, sessionIDs: ["d"])], profile: "default", dashboardID: there)
+        XCTAssertNil(store.banner)
+        // Switched to: it's read as this dashboard's from then.
+        store.reset(dashboardID: there)
+        XCTAssertTrue(store.otherDashboards.isEmpty)
+    }
+
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
         let store = NeedsYouStore()
         let dashboard = UUID()

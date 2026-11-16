@@ -290,7 +290,7 @@ struct SessionList: View {
                 }
 
                 Menu {
-                    if appState.servesNeedsYou {
+                    if appState.offersNeedsYouList {
                         Button {
                             Haptics.selection()
                             showNeedsYou = true

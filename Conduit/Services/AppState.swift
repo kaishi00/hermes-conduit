@@ -231,6 +231,12 @@ final class AppState: ObservableObject {
     /// again after a sign-out cleared it.
     var combinedSignInBridges: [UUID: DashboardTicketBridge] = [:]
     var keptDashboardRuntimesGeneration: UInt64 = 0
+    /// Each kept dashboard's profiles, read once through its kept bridge
+    /// (stage 4a's Needs you reads every one of them), with the bridge they
+    /// were read through: a new kept connection reads them again.
+    var keptDashboardProfiles: [UUID: (bridge: ObjectIdentifier, profiles: [String])] = [:]
+    /// Reads a kept dashboard's JSON route through its bridge. Tests set it.
+    var keptDashboardJSONReader: ((DashboardTicketBridge, String) async throws -> [String: Any])?
     /// Lets the kept connections go once Conduit has been off screen for
     /// the background grace.
     var keptDashboardRuntimesGraceTask: Task<Void, Never>?

@@ -1006,7 +1006,7 @@ struct V2ChatsView: View, Equatable {
                 }
                 .disabled(!canCreateProject)
             } else {
-                if appState.servesNeedsYou {
+                if appState.offersNeedsYouList {
                     // Every profile's waiting chats, beside the filters
                     // that narrow this list to its own.
                     Button {

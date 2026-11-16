@@ -183,6 +183,11 @@ extension AppState {
     func dropKeptDashboardRuntime(_ id: UUID) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
+        // Nothing more of its own in Needs you (stage 4a), nor its profiles.
+        keptDashboardProfiles.removeValue(forKey: id)
+        if id != activeDashboardID {
+            needsYou.forgetOtherDashboards(otherThan: Set(keptDashboardRuntimes.keys))
+        }
     }
 
     /// Every kept connection goes: Conduit has been off screen past the
