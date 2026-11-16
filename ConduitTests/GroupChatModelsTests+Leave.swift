@@ -165,6 +165,38 @@ extension GroupChatModelsTests {
         appState.closeGroupRoom()
     }
 
+    @MainActor
+    func testARoomWhosePeopleCantBeReadIsNotYourOwnHermes() async throws {
+        // Issue 2405: a failed people read, a plugin without room invites,
+        // and a room with no linked people all settle it as false: the
+        // owner's rules hold and Group Info offers the room choices.
+        let routes = CopiesRoutes(copies: [])
+        routes.people = ["ok": false]
+        let appState = try await leaveAppState(routes, room: leaveOwnRoom)
+        await appState.openGroupRoom(leaveOwnRoom)
+        await copiesWait("the failed people read", until: { appState.activeRoomOwnHermes == false })
+        appState.closeGroupRoom()
+
+        var withoutInvites = copiesPluginReport
+        withoutInvites["capabilities"] = (withoutInvites["capabilities"] as? [String] ?? [])
+            .filter { $0 != RoomDraftsClient.capability }
+        let noInvites = try await leaveAppState(CopiesRoutes(copies: []), room: leaveOwnRoom, report: withoutInvites)
+        await noInvites.openGroupRoom(leaveOwnRoom)
+        await copiesWait("no people read to wait for", until: { noInvites.activeRoomOwnHermes == false })
+        noInvites.closeGroupRoom()
+
+        let own = leaveOwnRoom
+        let mine = GroupRoom(
+            roomID: own.roomID, name: own.name, members: own.members.filter { $0.memberID != "m-laifu" },
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0,
+            disbandedAt: nil, latestSeq: 0
+        )
+        let local = try await leaveAppState(CopiesRoutes(copies: []), room: mine)
+        await local.openGroupRoom(mine)
+        await copiesWait("a room with no linked people", until: { local.activeRoomOwnHermes == false })
+        local.closeGroupRoom()
+    }
+
     func testGroupInfoOffersRoomChoicesOnlyOnceTheRoomIsKnownNotToBeOnlyYourOwnHermes() {
         let yours = GroupMember(memberID: "m-furina", profile: "furina", handle: "furina", displayName: "Furina",
                                 target: nil, extra: [:])

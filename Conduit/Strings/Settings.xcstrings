@@ -42118,6 +42118,170 @@
           }
         }
       }
+    },
+    "The Conduit plugin on %@ was updated, and only its dashboard needs a restart to use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin auf %@ wurde aktualisiert. Nur das Dashboard muss neu starten, um es zu verwenden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit en %@ se actualizó y solo su panel necesita reiniciarse para usarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit sur %@ a été mis à jour, et seul son tableau de bord doit redémarrer pour l’utiliser."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit di %@ telah diperbarui, dan hanya dasbornya yang perlu dimulai ulang untuk menggunakannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit su %@ è stato aggiornato e solo la sua dashboard deve riavviarsi per usarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ のConduitプラグインはアップデートされました。使用するにはダッシュボードの再起動だけが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 Conduit 플러그인이 업데이트되었으며, 사용하려면 대시보드만 다시 시작하면 됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit na %@ została zaktualizowana i tylko jej panel musi się ponownie uruchomić, aby jej używać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit em %@ foi atualizado, e só o painel precisa reiniciar para usá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit на %@ обновлён, и перезапустить нужно только панель, чтобы его использовать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ üzerindeki Conduit eklentisi güncellendi; kullanmak için yalnızca panelin yeniden başlaması gerekiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Conduit 插件已更新，只需重启它的仪表板即可使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 上的 Conduit 外掛程式已更新，只需重新啟動它的儀表板即可使用。"
+          }
+        }
+      }
+    },
+    "The Conduit plugin on your Hermes host was updated, and only the Hermes dashboard needs a restart to use it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin auf deinem Hermes-Host wurde aktualisiert. Nur das Hermes-Dashboard muss neu starten, um es zu verwenden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit en tu host de Hermes se actualizó y solo el panel de Hermes necesita reiniciarse para usarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit sur votre hôte Hermes a été mis à jour, et seul le tableau de bord Hermes doit redémarrer pour l’utiliser."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit di host Hermes Anda telah diperbarui, dan hanya dasbor Hermes yang perlu dimulai ulang untuk menggunakannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit sul tuo host Hermes è stato aggiornato e solo la dashboard di Hermes deve riavviarsi per usarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HermesホストのConduitプラグインはアップデートされました。使用するにはHermesダッシュボードの再起動だけが必要です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 호스트의 Conduit 플러그인이 업데이트되었으며, 사용하려면 Hermes 대시보드만 다시 시작하면 됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit na Twoim hoście Hermes została zaktualizowana i tylko panel Hermes musi się ponownie uruchomić, aby jej używać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit no seu host do Hermes foi atualizado, e só o painel do Hermes precisa reiniciar para usá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit на вашем хосте Hermes обновлён, и перезапустить нужно только панель Hermes, чтобы его использовать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ana makinenizdeki Conduit eklentisi güncellendi; kullanmak için yalnızca Hermes panelinin yeniden başlaması gerekiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主机上的 Conduit 插件已更新，只需重启 Hermes 仪表板即可使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的 Hermes 主機上的 Conduit 外掛程式已更新，只需重新啟動 Hermes 儀表板即可使用。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

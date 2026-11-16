@@ -750,6 +750,18 @@ extension ScreenQuestionTests {
         }
         appState.isConnected = true
 
+        // The moment after the socket failed and the client let it go, before
+        // handleDisconnect clears AppState's flag (issue 2496): still a drop.
+        // A client that never connected (above) isn't one.
+        appState.client?.setDroppedForTesting(true)
+        do {
+            _ = try await backend.pickedChat(pick("nobody"))
+            XCTFail("a lookup the connection dropped under isn't an answer")
+        } catch {
+            XCTAssertTrue(ShortcutSender.isDrop(error))
+        }
+        appState.client?.setDroppedForTesting(false)
+
         // A bot with no chat is never given a new one from here, and an empty
         // lookup for a chat the roster names is worth a retry, not "gone".
         roster = [bot("atlas"), bot("rei"), bot("nia", canonical: "nia-durable")]

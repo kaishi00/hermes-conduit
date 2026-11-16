@@ -178,7 +178,10 @@ extension ShareDraftTests {
             appState.activeSessionId = "elsewhere"
             return false
         }
-        try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"), action: .remember)
+        let envelope = try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"), action: .remember)
+        // Its file is gone before pickup, so the share has a warning to give.
+        let folder = try XCTUnwrap(inbox.pending(id: envelope.id)?.folder)
+        try FileManager.default.removeItem(at: folder.appendingPathComponent("1.txt"))
         appState.pickUpSharedDrafts()
 
         guard await waitForDelivery(appState) else { return }
@@ -194,7 +197,10 @@ extension ShareDraftTests {
                        "it says which chat holds the draft")
         // The test's own catalog read can fail (not connected): only the
         // share's warnings count here.
-        let shareWarnings = [AppLocalization.string("Conduit couldn't open the chat you picked, so the shared draft is in this one."), "Could not prepare"]
+        let shareWarnings = [
+            AppLocalization.string("Conduit couldn't open the chat you picked, so the shared draft is in this one."),
+            AppLocalization.string("Could not prepare \("notes.txt") for upload."),
+        ]
         XCTAssertFalse(shareWarnings.contains { appState.errorMessage?.contains($0) == true }, "no file warning on the other chat")
         appState.consumeComposerRestoreRequest(request.id)
         request.draft.attachments.compactMap { URL(string: $0.uri) }.forEach { try? FileManager.default.removeItem(at: $0) }

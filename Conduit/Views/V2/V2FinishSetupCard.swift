@@ -112,7 +112,9 @@ struct V2FinishSetupCard: View {
                 actionButton(AppLocalization.string("Update"), action: openPluginPage)
             }
         case .restart:
-            FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it."), identifier: "finish-setup.plugin") {
+            FinishSetupRow(icon: icon, title: title, detail: appState.notifierPluginOnlyDashboardLeft
+                ? AppLocalization.string("The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once.")
+                : AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it."), identifier: "finish-setup.plugin") {
                 actionButton(AppLocalization.string("Finish Update"), action: openPluginPage)
             }
         case .notRunning:

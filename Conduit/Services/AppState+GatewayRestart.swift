@@ -117,8 +117,8 @@ extension AppState {
                 message: AppLocalization.string("Wait for the Hermes update to finish."), dashboardID: dashboardID, at: Date())
             return
         }
-        gatewayRestartingNow = true
-        defer { gatewayRestartingNow = false }
+        gatewayRestartingNowDashboards.insert(dashboardID)
+        defer { gatewayRestartingNowDashboards.remove(dashboardID) }
         let client = client
         let profile = activeProfile
         let steps = GatewayRestartNow(

@@ -1570,6 +1570,7 @@ final class HermesClient: ObservableObject {
         let request = try await upgradeRequest(ticket: connection.ticket, generation: generation)
         let socket = try await openSocket(with: request, generation: generation)
         isConnected = true
+        hasDropped = false
         logger.notice("WebSocket handshake completed")
 
         // Start listening for messages
@@ -1672,6 +1673,7 @@ final class HermesClient: ObservableObject {
         approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
         clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
         isConnected = true
+        hasDropped = false
         startKeepalive(for: socket)
         // A receive already waiting on the socket (URLSession's can't be
         // called off) brings its frame here, and this client reads on from
@@ -2017,6 +2019,7 @@ final class HermesClient: ObservableObject {
     private func receiveFailed(on socket: any HermesWebSocket) {
         guard self.socket === socket else { return }
         isConnected = false
+        hasDropped = true
         stopKeepalive()
         // No response can ever arrive on a dead socket; failing the
         // in-flight requests here keeps awaiting UI from hanging for
@@ -2396,6 +2399,16 @@ final class HermesClient: ObservableObject {
         guard let socket else { return false }
         return socket.closeCode == .invalid && isConnected
     }
+
+    /// The socket this client had failed under it, until it connects again:
+    /// tells a connection that just dropped (before AppState's own
+    /// handleDisconnect has run) from a client that never connected, which
+    /// `canSend` alone can't (issue 2496).
+    private(set) var hasDropped = false
+
+    #if DEBUG
+    func setDroppedForTesting(_ dropped: Bool) { hasDropped = dropped }
+    #endif
 
     func disconnect() {
         closedIntentionally = true

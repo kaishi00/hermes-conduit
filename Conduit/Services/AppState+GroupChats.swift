@@ -1164,6 +1164,11 @@ extension AppState {
             activeRoomDriverStatus = driver
             if hasLinkedPeople(state) {
                 Task { await self.readActiveRoomPeople(epoch: epoch) }
+            } else if activeRoomOwnHermes == nil {
+                // No linked people: only this Hermes' agents, so not a room
+                // of the user's other Hermes. Settled now, not left nil for
+                // the visit (issue 2405).
+                activeRoomOwnHermes = false
             }
             let latest = state.latestSeq ?? 0
             let start = max(0, latest - window)
@@ -1661,7 +1666,11 @@ extension AppState {
         guard canInviteLinkedPeople, let surface = activeRoomSurface,
               let room = DashboardPath.encodedQueryComponent(surface.room.roomID) else {
             // No people read to wait for: the room choices show as before.
-            if groupRoomEpoch == epoch, activeRoomSurface != nil, activeRoomOwnHermes == nil {
+            // Not while the plugin hasn't said what it serves: once it
+            // reports room invites the people are read (issue 2405), so a
+            // room of the user's own Hermes doesn't show the choices first.
+            if groupRoomEpoch == epoch, activeRoomSurface != nil, activeRoomOwnHermes == nil,
+               notifierPlugin.state != .unknown {
                 activeRoomOwnHermes = false
             }
             return

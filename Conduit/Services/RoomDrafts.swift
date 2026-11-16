@@ -523,6 +523,10 @@ extension AppState {
                 // The rooms you joined, as copies, which Group Chats lists.
                 await refreshLinkedRoomCopies()
                 followLinkedRoomsOnTheirWay()
+                // A room open before the plugin said it serves invites
+                // hasn't read its people: whether it's only the user's own
+                // Hermes is read now (issue 2405).
+                await refreshActiveRoomPeople()
             }
             if approvals {
                 await refreshLinkedRoomApprovals()

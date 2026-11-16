@@ -119,6 +119,25 @@ extension GatewayRestartTests {
         XCTAssertFalse(appState.canUpdateHermes, "and Hermes isn't updated under it")
     }
 
+    /// Restart Now on another dashboard holds nothing on this one (issue
+    /// 2396): its update and plugin update stay offered.
+    func testAnotherDashboardsRestartNowHoldsNothingHere() throws {
+        let suite = "HermesUpdateRestartNowScope.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.dashboardTicketBridge = DashboardTicketBridge(baseURL: "https://example.com")
+        appState.gatewayRestartingNowDashboards = [UUID()]
+        XCTAssertFalse(appState.gatewayRestartingNow)
+        XCTAssertTrue(appState.canUpdateHermes)
+        XCTAssertNil(appState.notifierPluginUpdateBlocker)
+
+        appState.gatewayRestartingNowDashboards.insert(appState.activeDashboardID)
+        XCTAssertTrue(appState.gatewayRestartingNow)
+        XCTAssertFalse(appState.canUpdateHermes)
+        XCTAssertEqual(appState.notifierPluginUpdateBlocker, "Wait for the gateway restart to finish.")
+    }
+
     // MARK: - Skill Hub update check
 
     func testHubSkillUpdateRowsKeepTheirName() {

@@ -354,10 +354,12 @@ final class ChatState: ObservableObject {
     /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
     /// refuse a stale count), or land in the transcript the reopen replaces.
     @Published var isRewindingTurns = false
-    /// A slash command's prompt or prefill refused while a rewind ran: the
-    /// rewind says so once it is done, after its reopen has replaced the
-    /// transcript a note added sooner would be in.
-    var slashPromptRefusedDuringRewind = false
+    /// The chat a slash command's prompt or prefill was refused in while a
+    /// rewind ran, by its durable id (else its runtime id): the rewind in
+    /// that chat says so once it is done, after its reopen has replaced the
+    /// transcript a note added sooner would be in. A rewind in another chat
+    /// never reports it (issue 2396).
+    var slashPromptRefusedDuringRewindIn: String?
     /// Counts rewinds started: a rewind clears the flags above only while
     /// no later one has started.
     var rewindGeneration = 0

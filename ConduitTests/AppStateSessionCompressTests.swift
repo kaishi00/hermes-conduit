@@ -2013,7 +2013,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
         XCTAssertEqual(sends, 0)
         XCTAssertEqual(harness.appState.composerPrefillText, "")
-        XCTAssertTrue(harness.appState.slashPromptRefusedDuringRewind)
+        XCTAssertNotNil(harness.appState.slashPromptRefusedDuringRewindIn)
         XCTAssertEqual(
             harness.appState.callRefusalMessageForOpenChat(),
             AppLocalization.string("Still taking a message back. Try again in a moment.")
@@ -2063,7 +2063,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         operations.rewindSnapshot = { _, _ in Self.rewindTurns }
         operations.rewindSession = { _, _, _, _ in
             // A slash command's prompt refused while the rewind runs.
-            appState?.slashPromptRefusedDuringRewind = true
+            appState?.slashPromptRefusedDuringRewindIn = "composer-origin"
             return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
         }
         let harness = makeHarness(lifecycleOperations: operations)
@@ -2075,7 +2075,7 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         _ = await harness.appState.submitComposer(text: "/undo")
 
-        XCTAssertFalse(harness.appState.slashPromptRefusedDuringRewind)
+        XCTAssertNil(harness.appState.slashPromptRefusedDuringRewindIn)
         XCTAssertEqual(
             harness.appState.messages.last?.content,
             AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
@@ -2130,7 +2130,7 @@ final class AppStateSessionCompressTests: XCTestCase {
             sessionID: origin.id,
             context: appState.composerSubmissionContext()
         )
-        XCTAssertTrue(appState.slashPromptRefusedDuringRewind, "a prefill now would be replaced by the rewind's words")
+        XCTAssertNotNil(appState.slashPromptRefusedDuringRewindIn, "a prefill now would be replaced by the rewind's words")
 
         release.resume()
         _ = await first.value
@@ -2142,6 +2142,41 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(appState.messages.last?.content, refusal)
     }
 
+    /// A refusal an older rewind in another chat still owes isn't named by
+    /// a rewind in this one (issue 2396).
+    func testARewindDoesntNameAnotherChatsRefusal() async throws {
+        weak var appState: AppState?
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "composer-origin",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            // Chat A's /retry send, refused while this rewind in B runs.
+            appState?.slashPromptRefusedDuringRewindIn = "chat-a"
+            return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        appState = harness.appState
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin, session("chat-a")]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo")
+
+        XCTAssertNil(harness.appState.slashPromptRefusedDuringRewindIn)
+        XCTAssertFalse(harness.appState.messages.contains {
+            $0.content == AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        })
+    }
+
     func testARefusedSlashPromptsNoteStaysOutOfAChatOpenedDuringTheRewind() async throws {
         weak var appState: AppState?
         var operations = ChatResumeLifecycleOperations(
@@ -2150,7 +2185,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
         operations.rewindSnapshot = { _, _ in Self.rewindTurns }
         operations.rewindSession = { _, _, _, _ in
-            appState?.slashPromptRefusedDuringRewind = true
+            appState?.slashPromptRefusedDuringRewindIn = "composer-origin"
             // The reader opens another chat while the rewind runs.
             appState?.activeSessionId = "elsewhere"
             return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
