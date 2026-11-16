@@ -4230,26 +4230,6 @@ final class OfflineChatCacheTests: XCTestCase {
         let left = try XCTUnwrap(bound.backgroundChats.first)
         XCTAssertEqual(left.durableSessionID, "a")
         XCTAssertFalse(left.sessionIDs.contains("b"), "not the other chat's durable id")
-
-        // Hermes handed the open id to another listed chat since the open:
-        // the copy is still the screen's own chat's, without that id.
-        let (handed, _, _) = makeAppState()
-        var handedOwn = session("a")
-        handedOwn.alternateIds = ["rt-a"]
-        handed.sessions = [handedOwn, session("c")]
-        handed.isConnected = true
-        handed.setActiveSessionState(id: "rt-a")
-        handed.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
-        handed.turnState = .running
-        handed.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: "Once upon"))
-        handed.sessions = [session("a"), session("rt-a"), session("c")]
-        handed.activeChatScrollSessionIdentity = ChatScrollSessionIdentity(
-            profile: handed.activeProfile, canonicalSessionID: "a", equivalentSessionIDs: ["a", "rt-a"],
-            isReconciling: false, settledRevision: 1)
-        handed.followChatOnScreen(answering: handed.followedSessionIDs(for: "rt-a"), openAs: "rt-a", turnRunning: true)
-        let handedCopy = try XCTUnwrap(handed.backgroundChats.first)
-        XCTAssertEqual(handedCopy.durableSessionID, "a", "the screen's chat, not the row that owns the open id now")
-        XCTAssertEqual(handedCopy.sessionIDs, ["a"])
     }
 
     /// A runtime id Hermes binds to a followed chat while it's away

@@ -304,13 +304,7 @@ extension AppState {
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
               let dashboardID = activeDashboardID else { return }
         // Its own row, never one that only borrows its id (issue 2602).
-        // The screen's own conversation, as its scroll identity names it,
-        // wins over the row that owns the open id now: Hermes may have
-        // handed that id to another chat since the open.
-        let screen = activeChatScrollSessionIdentity
-        let screenRow = screen.contains(oldID) && screen.profile == ChatScrollIdentityNormalization.profile(activeProfile)
-            ? screen.canonicalSessionID.flatMap { owningSessionRow(for: $0) } : nil
-        let listed = screenRow ?? owningSessionRow(for: oldID)
+        let listed = owningSessionRow(for: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
         let ownIDs = listed.map { followedSessionIDs(for: $0.id) }
@@ -321,8 +315,7 @@ extension AppState {
         let indexed = conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         // What the caller passed, less any id another listed row owns or
-        // carries too (the pane's known ids, or the open id Hermes handed
-        // on), so a borrowed or shared id never reaches this copy.
+        // carries too (the pane's known ids), so a borrowed or shared id never reaches this copy.
         let others = listed.map { sessionIDsOfOtherRows(than: $0) } ?? []
         let chat = BackgroundChat(
             sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),
