@@ -354,7 +354,8 @@ and uses that ID for shutdown, boot, boot readiness and the test destination.
 This avoids re-resolving an already-selected device by an ambiguous name across
 multiple installed runtimes. Destination settlement remains fatal when no
 device appears; shutdown and boot remain best-effort, with the existing 60s
-command and 200s readiness budgets. Unresolvable IDs retain the existing
+command and 200s readiness budgets (420s for a first boot that makes a warm
+seed). Unresolvable IDs retain the existing
 name-based destination fallback. No additional retry is added; the only erase
 is the warm-seed fallback (a seed restore that failed), see "A warm simulator"
 above.
@@ -364,8 +365,10 @@ successful live device lookups retain their inventory without affecting which
 device is selected. Cache-write failures warn and preserve the lookup result.
 
 `ci-lane/destination/preparation.json` and the job summary report device ID,
-runtime, boot confirmation, the warm-device seed's outcome (`off`, `restored`,
-`created`, `create-failed`, `skipped` or `failed`), and separate lookup,
+runtime, boot confirmation, the warm-device seed's outcome (`off`: no seed
+directory; `restored`; `created`; `create`: none made, the first boot never
+confirmed; `create-failed`: made but not kept; `skipped`: a restore-only job
+with none; `failed`: the device wasn't shut down), and separate lookup,
 shutdown, boot, readiness and warm-seed seconds. The existing three-second settling delay is additional. Runtime
 reporting reuses that retained pre-boot inventory; it never adds a post-boot
 `simctl list` probe. Each preparation gets a fresh diagnostic file so an existing
