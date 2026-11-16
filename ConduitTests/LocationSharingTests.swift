@@ -757,6 +757,95 @@ extension NotificationE2ETests {
         XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
     }
 
+    /// Sign Out while the config can't be read still drops what wasn't
+    /// sent, unless the host pass names another dashboard (issue 2591).
+    @MainActor
+    func testSignOutWhileTheConfigCantBeReadStillDropsWhatWasntSent() {
+        var folders: [URL] = []
+        defer { folders.forEach { try? FileManager.default.removeItem(at: $0) } }
+        func controller(passFor dashboard: UUID?) -> LocationSharingController {
+            var unsent = LocationUnsent()
+            unsent.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
+                LocationPlaceEvent(id: "e_1", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
+            ])
+            let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+            folders.append(folder)
+            let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                            keys: LocationKeyStore.memory())
+            let controller = LocationSharingController(engine: engine, unsent: unsent, readStoredConfig: { .unreadable })
+            controller.hostPassDashboardID = { dashboard }
+            XCTAssertTrue(controller.configUnreadable)
+            XCTAssertTrue(controller.hasUnsent)
+            return controller
+        }
+
+        let noPass = controller(passFor: nil)
+        noPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(noPass.hasUnsent, "With nothing naming the binding, the queue goes")
+
+        let ownPass = controller(passFor: LocationFixtures.dashboardID)
+        ownPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertFalse(ownPass.hasUnsent, "The host pass names the dashboard signed out of")
+
+        let otherPass = controller(passFor: UUID())
+        otherPass.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        XCTAssertTrue(otherPass.hasUnsent, "Sharing is bound to another dashboard: its queue stays")
+    }
+
+    /// A host pass read during a connect is kept only while nothing signed
+    /// the dashboard out or moved the binding (issue 2562).
+    @MainActor
+    func testAHostPassReadDuringASignOutIsntKept() {
+        let dashboard = UUID()
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://one.example", headers: [:], expiresAt: nil, savedAt: Date())
+        XCTAssertTrue(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: dashboard))
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 4, boundDashboardID: dashboard),
+                       "Signed out while the cookies were read")
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: nil),
+                       "Unbound while it was read")
+        XCTAssertFalse(AppState.keepsReadHostPass(pass, readAtGeneration: 3, generationNow: 3, boundDashboardID: UUID()),
+                       "Bound to another dashboard meanwhile")
+    }
+
+    /// #2606's review: launched before the config and the queue's file
+    /// could be read, memory holds no queue while the file still does. A
+    /// Sign Out then must keep the file's copy from coming back once the
+    /// config reads; what was recorded since stays.
+    @MainActor
+    func testAQueueDroppedWhileUnreadableIsntReadBackFromItsFile() {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                                        keys: LocationKeyStore.memory())
+        var onDisk = LocationUnsent()
+        onDisk.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
+            LocationPlaceEvent(id: "e_old", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
+        ])
+        var configReadable = false
+        var fileReadable = false
+        let controller = LocationSharingController(
+            engine: engine,
+            readStoredConfig: { configReadable ? .value(LocationFixtures.config(background: true)) : .unreadable },
+            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() }
+        )
+        controller.hostPassDashboardID = { nil }
+        // Without a drop, the file's queue is read once it can be.
+        let kept = LocationSharingController(
+            engine: engine,
+            readStoredConfig: { configReadable ? .value(LocationFixtures.config(background: true)) : .unreadable },
+            readStoredUnsent: { fileReadable ? onDisk : LocationUnsent() }
+        )
+        XCTAssertFalse(controller.hasUnsent, "Nothing could be read at launch")
+
+        controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
+        configReadable = true
+        fileReadable = true
+        XCTAssertTrue(controller.readConfigIfNeeded())
+        XCTAssertFalse(controller.hasUnsent, "The dropped queue's file copy isn't read back")
+        XCTAssertTrue(kept.readConfigIfNeeded())
+        XCTAssertTrue(kept.hasUnsent, "With no Sign Out meanwhile, the file's queue is read as before")
+    }
+
     @MainActor
     func testAMessageAtThePlaceTheHostHasSendsNoFixAgain() throws {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("location-\(UUID().uuidString)", isDirectory: true)

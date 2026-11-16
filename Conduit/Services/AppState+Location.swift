@@ -168,10 +168,13 @@ extension AppState {
         guard controller.binding?.dashboardID == dashboardID,
               activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else { return }
         let generation = locationHostPassGeneration
-        // Removed, unbound or signed out while the pass was read: it isn't kept.
         if let pass = await dashboardHostPass(bridge: bridge, dashboardID: dashboardID),
-           generation == locationHostPassGeneration,
-           controller.binding?.dashboardID == pass.dashboardID,
+           Self.keepsReadHostPass(
+               pass,
+               readAtGeneration: generation,
+               generationNow: locationHostPassGeneration,
+               boundDashboardID: controller.binding?.dashboardID
+           ),
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
             // the app still sends through the dashboard connection, but the
@@ -179,6 +182,18 @@ extension AppState {
             // next connect saves it.
             LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
         }
+    }
+
+    /// Whether a host pass read during a connect is kept: not when the
+    /// dashboard was signed out (the generation moved on) or sharing was
+    /// unbound or bound elsewhere while it was read.
+    static func keepsReadHostPass(
+        _ pass: LocationHostPass,
+        readAtGeneration: Int,
+        generationNow: Int,
+        boundDashboardID: UUID?
+    ) -> Bool {
+        readAtGeneration == generationNow && boundDashboardID == pass.dashboardID
     }
 
     /// The headers this dashboard's requests carry, for sending without the
