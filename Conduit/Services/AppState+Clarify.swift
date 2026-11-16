@@ -48,7 +48,27 @@ extension AppState {
         messages[index].clarify = activity
         setRunning(true)
         cacheMessagePresentation()
-        await sendClarifyAnswer(trimmedAnswer ?? "", for: activity.questions[questionIndex], requestId: requestId)
+        await sendClarifyAnswer(
+            trimmedAnswer ?? "",
+            for: activity.questions[questionIndex],
+            requestId: requestId,
+            to: clarifyCardTarget()
+        )
+    }
+
+    /// The chat a clarify card on screen belongs to, read when its answer
+    /// is given: the answer is addressed to it even if another chat opens
+    /// while it goes, as an approval's is (issue 2570).
+    private func clarifyCardTarget() -> ClarifyCardTarget {
+        ClarifyCardTarget(
+            sessionId: activeSessionId,
+            profile: presentationProfile(for: activeSessionId)
+        )
+    }
+
+    struct ClarifyCardTarget {
+        let sessionId: String?
+        let profile: String?
     }
 
     /// Sends a form's fields together (`ClarifyActivity.isForm`): every
@@ -69,19 +89,30 @@ extension AppState {
         messages[index].clarify = activity
         setRunning(true)
         cacheMessagePresentation()
+        // Every answer goes to the card's own chat, on the connection the
+        // form was sent on (issue 2570).
+        let target = clarifyCardTarget()
+        let client = self.client
+        let profile = activeProfile
         // One at a time, in order: the last lock resolves the request.
         var stillOpen: Set<String>?
         for (question, answer) in sending {
             // Expired meanwhile: every open question went with it. A card
-            // that left the screen (another chat opened) still sends.
+            // that left the screen (another chat opened) still sends, to
+            // its own chat.
             if messages.first(where: { $0.clarify?.requestId == requestId })?.clarify?.isExpired == true { return }
+            // Another connection or profile took over: the rest isn't its
+            // to send. The questions not sent stay submitting in the chat's
+            // saved copy, and its next open reads what Hermes still waits on.
+            if !requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+               self.client !== client || activeProfile != profile { return }
             // No longer on Hermes' list of open questions: another device
             // answered it while the form was sending.
             if let stillOpen, !stillOpen.contains(question.id) {
                 settleClarifyQuestionAnsweredElsewhere(requestId: requestId, questionId: question.id)
                 continue
             }
-            if let remaining = await sendClarifyAnswer(answer, for: question, requestId: requestId) {
+            if let remaining = await sendClarifyAnswer(answer, for: question, requestId: requestId, to: target) {
                 stillOpen = Set(remaining)
             }
         }
@@ -106,7 +137,22 @@ extension AppState {
     /// `answer` leaves it blank. Returns the questions Hermes still waits on
     /// after it, when its reply lists them.
     @discardableResult
-    private func sendClarifyAnswer(_ answer: String, for question: ClarifyQuestion, requestId: String) async -> [String]? {
+    private func sendClarifyAnswer(
+        _ answer: String,
+        for question: ClarifyQuestion,
+        requestId: String,
+        to target: ClarifyCardTarget
+    ) async -> [String]? {
+        // On its way: a reopen of the chat meanwhile keeps the question
+        // submitting rather than offering it again (issue 2571).
+        liveClarifySubmissions[requestId, default: 0] += 1
+        defer {
+            if let count = liveClarifySubmissions[requestId], count > 1 {
+                liveClarifySubmissions[requestId] = count - 1
+            } else {
+                liveClarifySubmissions.removeValue(forKey: requestId)
+            }
+        }
         // Plugin-minted clarify ids are answered through the relay's decision
         // loop (the gateway's own clarify id never reached this device); the
         // gateway-side middleware polls the relay and resolves the tool call.
@@ -153,19 +199,26 @@ extension AppState {
             wireAnswer = answer
         }
         do {
-            let outcome = try await client.respondToClarification(
-                requestId: requestId,
-                answer: wireAnswer,
-                // Only gateway-minted qids may address a question. A locally
-                // synthesized id (legacy scalar card) rides the request-level
-                // respond shape every gateway generation accepts.
-                questionId: question.isSyntheticID ? nil : question.id,
-                // The card is in the open chat: on the session authority its
-                // resume names a prompt this socket didn't see asked (#1618),
-                // under the chat's own profile (a bot chat's).
-                sessionId: activeSessionId,
-                profile: presentationProfile(for: activeSessionId)
-            )
+            // Only gateway-minted qids may address a question. A locally
+            // synthesized id (legacy scalar card) rides the request-level
+            // respond shape every gateway generation accepts.
+            let questionId = question.isSyntheticID ? nil : question.id
+            // The card's own chat, read when it was answered: on the session
+            // authority its resume names a prompt this socket didn't see
+            // asked (#1618), under the chat's own profile (a bot chat's).
+            // Never the chat on screen now, which may be another (2570).
+            let outcome: HermesClient.ClarifyResponseOutcome
+            if let respond = chatResumeLifecycleOperations.respondToClarification {
+                outcome = try await respond(client, requestId, wireAnswer, questionId, target.sessionId, target.profile)
+            } else {
+                outcome = try await client.respondToClarification(
+                    requestId: requestId,
+                    answer: wireAnswer,
+                    questionId: questionId,
+                    sessionId: target.sessionId,
+                    profile: target.profile
+                )
+            }
             guard profile == activeProfile, self.client === client else { return nil }
             applyClarifyResponseOutcome(
                 outcome,
@@ -270,8 +323,13 @@ extension AppState {
                 // Another device locked this qid first; settle it without
                 // displaying this device's rejected text. Sibling questions
                 // keep their state — a locked qid never retires the batch.
-                activity.questions[questionIndex].status = .answered
-                activity.questions[questionIndex].answer = nil
+                // An answer of this device's already taken stays shown: a
+                // second send of it (re-tapped after a reopen) is locked
+                // out by the first, which the relay kept (issue 2571).
+                if activity.questions[questionIndex].status != .answered {
+                    activity.questions[questionIndex].status = .answered
+                    activity.questions[questionIndex].answer = nil
+                }
             case .decisionReleased, .noLongerActive:
                 // Released (the native gateway path resolved the whole
                 // clarify) and timed-out/gone decisions are different relay
@@ -322,9 +380,12 @@ extension AppState {
             case .alreadyAnsweredElsewhere:
                 // Another device resolved the decision with its own answer;
                 // settle the card but do not display this device's rejected
-                // text as if it were what Hermes received.
-                activity.questions[0].status = .answered
-                activity.questions[0].answer = nil
+                // text as if it were what Hermes received. An answer of this
+                // device's already taken stays shown (issue 2571).
+                if activity.questions[0].status != .answered {
+                    activity.questions[0].status = .answered
+                    activity.questions[0].answer = nil
+                }
             case .noLongerActive:
                 activity.questions[0].status = .error
                 activity.questions[0].answer = nil
@@ -550,6 +611,16 @@ extension AppState {
                     // local outranks it — least of all a `.submitting` from a
                     // previous process whose RPC outcome is unknown.
                     merged.isExpired = false
+                    // A question this process is still sending keeps its
+                    // wait: its answer's completion settles it, and offering
+                    // it again would send a second answer (issue 2571).
+                    if liveClarifySubmissions[activity.requestId] != nil {
+                        for questionIndex in merged.questions.indices
+                        where merged.questions[questionIndex].status == .pending {
+                            guard existing.questions.first(where: { $0.id == merged.questions[questionIndex].id })?.status == .submitting else { continue }
+                            merged.questions[questionIndex].status = .submitting
+                        }
+                    }
                 }
             }
             if merged.isExpired {
