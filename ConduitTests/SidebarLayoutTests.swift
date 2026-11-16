@@ -679,9 +679,19 @@ final class SidebarLayoutTests: XCTestCase {
         state.needsYou.forgetOtherDashboards(otherThan: [])
         waitUntil { NeedsYouMenuEntry.lastShown == false }
         XCTAssertEqual(NeedsYouMenuEntry.lastShown, false, "and its going takes it away")
+    }
 
-        // Past the palette, each place's hue keeps clear of the palette's
-        // and of the ones before it.
+    /// A combined dashboard's badge past the palette: each place's hue
+    /// keeps clear of the palette's and of the ones before it.
+    @MainActor
+    func testBadgeHuesPastThePaletteKeepClearOfEachOther() {
+        // The hues the generated ones keep clear of are the palette's own.
+        XCTAssertEqual(CombinedDashboardBadge.paletteHues.count, CombinedDashboardBadge.palette.count)
+        for (color, listed) in zip(CombinedDashboardBadge.palette, CombinedDashboardBadge.paletteHues) {
+            var hue: CGFloat = 0
+            XCTAssertTrue(UIColor(color).getHue(&hue, saturation: nil, brightness: nil, alpha: nil))
+            XCTAssertEqual(Double(hue), listed, accuracy: 0.002, "paletteHues drifted from the palette")
+        }
         let hues = (6..<12).map(CombinedDashboardBadge.generatedHue)
         for (at, hue) in hues.enumerated() {
             for other in CombinedDashboardBadge.paletteHues + hues[..<at] {

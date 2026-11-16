@@ -27,10 +27,9 @@ struct CombinedDashboardBadge: View {
     /// The palette's hues, which a color past it keeps clear of.
     static let paletteHues: [Double] = [0.603, 0.907, 0.438, 0.076, 0.704, 0.119]
 
-    /// Past the palette (a group of seven or more), a hue of its own:
-    /// stepped by the golden angle, each step nudged to the middle of the
-    /// widest gap it lands in, so it sits between the palette's hues and
-    /// the ones before it. Yellows and greens, light by nature, are
+    /// Past the palette (a group of seven or more), a hue of its own: the
+    /// middle of the widest gap left between the palette's hues and the
+    /// ones before it. Yellows and greens, light by nature, are
     /// darkened, so white text reads on each.
     static func color(_ index: Int) -> Color {
         guard index >= palette.count else { return palette[max(index, 0)] }
@@ -61,12 +60,22 @@ struct CombinedDashboardBadge: View {
 
     var body: some View {
         if let badge = appState.combinedDashboardBadge(dashboardID) {
+            Mark(badge: V2DashboardBadge(letter: badge.letter, colorIndex: badge.colorIndex, name: badge.name), size: size)
+        }
+    }
+
+    /// The circle itself, for a row that already knows its badge.
+    struct Mark: View {
+        let badge: V2DashboardBadge
+        var size: CGFloat = 16
+
+        var body: some View {
             // Fixed size: it sits on a fixed-size picture, as the unread dot.
             Text(verbatim: badge.letter)
                 .font(.system(size: size * 0.6, weight: .bold))
                 .foregroundStyle(Color.white)
                 .frame(width: size, height: size)
-                .background(Circle().fill(Self.color(badge.colorIndex)))
+                .background(Circle().fill(CombinedDashboardBadge.color(badge.colorIndex)))
                 .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
                 .fixedSize()
                 .accessibilityLabel(Text(verbatim: badge.name))

@@ -236,6 +236,17 @@ final class AppState: ObservableObject {
     /// read through and when: a new kept connection reads them again, and
     /// so does a pass past `keptDashboardProfilesMaxAge`.
     var keptDashboardProfiles: [UUID: (bridge: ObjectIdentifier, profiles: [String], at: Date)] = [:]
+    /// Each other combined dashboard's newest chats (all-live stage 4b),
+    /// read through its kept connection for the profile it last used.
+    @Published var combinedDashboardChats: [UUID: CombinedDashboardChats] = [:]
+    /// Each other combined dashboard's bots (all-live stage 4c), read
+    /// through its kept client.
+    @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Each other combined dashboard's count of new Pulse cards (all-live
+    /// stage 4d), read through its kept connection.
+    @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
+    /// Reads a kept dashboard's bot roster through its client. Tests set it.
+    var keptDashboardBotRosterReader: ((HermesClient) async throws -> BotRosterSnapshot)?
     /// Reads a kept dashboard's JSON route through its bridge. Tests set it.
     var keptDashboardJSONReader: ((DashboardTicketBridge, String) async throws -> [String: Any])?
     /// Lets the kept connections go once Conduit has been off screen for
@@ -634,6 +645,8 @@ final class AppState: ObservableObject {
     /// Every chat Hermes waits on the user in, every profile's (issue 1705;
     /// AppState+NeedsYou). Its own observable, as `chatCards`.
     let needsYou = NeedsYouStore()
+    /// The other combined dashboards' reads, coalesced apart from this one's.
+    let otherCombinedReads = ReadCoalescer()
     /// A chat opened from the Needs you list or banner, to scroll to its
     /// waiting card once its transcript has it.
     @Published var pendingNeedsYouReveal: NeedsYouReveal?

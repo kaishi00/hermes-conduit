@@ -217,6 +217,8 @@ struct V2PulsePage: View {
             // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
                 await load()
+                // The other combined dashboards' chips (all-live stage 4d).
+                await appState.readOtherCombinedDashboardsPulse()
                 try? await Task.sleep(for: .seconds(60))
             }
         }
@@ -348,6 +350,8 @@ struct V2PulsePage: View {
         ZStack {
             V2Backdrop(drifts: false)
             content
+                // A chip per combined dashboard (all-live stage 4d).
+                .safeAreaInset(edge: .top, spacing: 0) { PulseDashboardChips() }
         }
         .navigationTitle(Text("Pulse"))
         .navigationBarTitleDisplayMode(.large)

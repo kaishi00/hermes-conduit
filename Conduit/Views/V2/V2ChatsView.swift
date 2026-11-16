@@ -494,7 +494,8 @@ struct V2ChatsView: View, Equatable {
     }
 
     private func profileBadge(for session: SessionSummary) -> V2ProfileBadge? {
-        guard badgesRows else { return nil }
+        // Another combined dashboard's row carries that dashboard's badge.
+        guard badgesRows, session.combinedDashboardID == nil else { return nil }
         let profile = appState.rowProfile(session)
         return V2ProfileBadge(
             profile: profile,
@@ -510,7 +511,12 @@ struct V2ChatsView: View, Equatable {
             // Pulse's own chat stays behind the Pulse screen, in All too.
             let sessions = appState.chatListSessions
             let chats = appState.pulseHomeChat == nil ? sessions : sessions.filter { !appState.isPulseHomeChat($0) }
-            return (chats, appState.chatListCronSessions)
+            // The other combined dashboards' chats, merged in by activity
+            // (all-live stage 4b). Not in All's section per profile, whose
+            // sections name this dashboard's profiles.
+            let others = appState.allProfilesGroupsByProfile
+                ? [] : appState.otherCombinedDashboardsChats(excluding: Set(chats.map(\.id)))
+            return (others.isEmpty ? chats : V2FilterSelection.mergedByRecency(chats, others), appState.chatListCronSessions)
         }
     }
 
@@ -1327,6 +1333,8 @@ struct V2ChatsView: View, Equatable {
         [session.title, session.model, session.id, session.preview ?? "", category(session).label]
             .contains { $0.localizedCaseInsensitiveContains(query) }
             || projectTitle(for: session)?.localizedCaseInsensitiveContains(query) == true
+            // Another combined dashboard's chats by its name too.
+            || appState.combinedChatBadge(session)?.name.localizedCaseInsensitiveContains(query) == true
     }
 
     private var isSearching: Bool {
@@ -1520,8 +1528,10 @@ struct V2ChatsView: View, Equatable {
         .v2HoldsUpdatesWhileScrolling(updates)
         .refreshable {
             appState.refreshAllProfilesCatalog()
+            let others = Task { await appState.readOtherCombinedDashboardsChats(force: true) }
             await appState.refreshSessionCatalog()
             await appState.allProfilesCatalogTask?.value
+            await others.value
         }
         .onAppear {
             revealActiveNestAncestors()
@@ -2432,7 +2442,9 @@ struct V2ChatsRow: View {
                             liveStatus: appState.sessionLiveStatus
                         ).isUnread
                     ),
-                    isSavedRow: appState.isSavedChatRow(session),
+                    // Another combined dashboard's row only opens: its
+                    // actions would act on this dashboard's chats.
+                    isSavedRow: appState.isSavedChatRow(session) || session.combinedDashboardID != nil,
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) },
                     onReorderPinned: { onReorderPinned(session) }
@@ -2447,7 +2459,7 @@ struct V2ChatsRow: View {
                     appState: appState,
                     session: session,
                     nest: nil,
-                    isSavedRow: appState.isSavedChatRow(session),
+                    isSavedRow: appState.isSavedChatRow(session) || session.combinedDashboardID != nil,
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) }
                 )
@@ -2524,14 +2536,17 @@ struct V2ChatsRowContent: View, Equatable {
                 selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
-                profileBadge: profileBadge(session)
+                profileBadge: profileBadge(session),
+                dashboardBadge: appState.combinedChatBadge(session)
             )
         }
         .buttonStyle(.plain)
         // Its saved copy comes into memory as it shows, so a tap opens on it
         // without a read on the main thread.
         .onAppear { appState.warmSavedCopy(of: session) }
-        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .accessibilityHint(session.combinedDashboardID == nil
+            ? AppLocalization.string("Swipe or touch and hold for conversation actions.")
+            : AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
         .v2SelectedTrait(selection(session))
     }
 

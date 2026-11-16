@@ -20,7 +20,8 @@ extension AppState {
     /// tag names. A row tagged with a profile this dashboard doesn't list
     /// stays with the one in use, as before All.
     func rowProfile(_ session: SessionSummary) -> String {
-        guard let owner = session.profile,
+        // Another combined dashboard's row names that dashboard's profiles.
+        guard session.combinedDashboardID == nil, let owner = session.profile,
               !sessionBelongsToProfile(session, profile: activeProfile),
               let listed = AllProfilesChats.profile(named: owner, in: profiles) else { return activeProfile }
         return listed

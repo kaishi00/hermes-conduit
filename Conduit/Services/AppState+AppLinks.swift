@@ -119,9 +119,12 @@ extension AppState {
     /// Opens a bot's chat from a link or card Conduit wrote, or from one of
     /// its artifacts. The roster is read once when it doesn't list the bot
     /// yet (just after launch).
-    func openLinkedBotChat(_ profile: String) {
+    /// `expectedDashboardID`: the dashboard the bot was picked on; another
+    /// one opened meanwhile drops the open rather than finding a namesake.
+    func openLinkedBotChat(_ profile: String, inDashboard expectedDashboardID: UUID? = nil) {
         Task { @MainActor [weak self] in
             guard let self else { return }
+            guard expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
             // Offline, the roster can't say whether the bot is still there.
             guard self.isConnected else {
                 self.errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
@@ -132,7 +135,8 @@ extension AppState {
                 let openBefore = self.activeSessionId
                 await self.refreshBotRoster()
                 // A chat opened meanwhile is the later choice; it stays.
-                guard self.activeSessionId == openBefore else { return }
+                guard self.activeSessionId == openBefore,
+                      expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {

@@ -1245,6 +1245,10 @@ struct SessionSummary: Identifiable, Equatable, Codable {
     /// The listing's one-line `preview` (the opening message), when the row
     /// carried one apart from its title. The V2 session list's second line.
     var preview: String? = nil
+    /// Another combined dashboard's row in the Chats list (all-live stage
+    /// 4b): the dashboard it was read from, through its kept connection.
+    /// Nil for every row of the dashboard on screen.
+    var combinedDashboardID: UUID? = nil
 }
 
 /// A server-owned workspace from Hermes' `projects.*` capability. Projects are

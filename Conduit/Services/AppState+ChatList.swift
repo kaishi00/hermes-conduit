@@ -127,7 +127,8 @@ extension AppState {
     /// Hermes hasn't sent yet.
     func isSavedChatRow(_ session: SessionSummary) -> Bool {
         // Another profile's row in All comes from Hermes' own listing.
-        guard !isOtherProfileRow(session), let saved = savedChatListForActiveScope else { return false }
+        guard !isOtherProfileRow(session), session.combinedDashboardID == nil,
+              let saved = savedChatListForActiveScope else { return false }
         return saved.isShowingSavedRows || saved.isKeptRow(session)
     }
 
@@ -135,6 +136,11 @@ extension AppState {
     /// shows at once (its saved copy, or its title while it opens) and opens
     /// for real once the live list lands.
     func openListedSession(_ session: SessionSummary) {
+        // Another combined dashboard's row opens through a switch to it.
+        if let dashboardID = combinedChatDashboard(session) {
+            openCombinedChat(session, in: dashboardID)
+            return
+        }
         // Another profile's row in All opens the way a link to it does:
         // the switch to its profile, then the chat.
         let owner = rowProfile(session)
@@ -184,7 +190,8 @@ extension AppState {
     /// its row shows, so tapping it shows the copy from memory rather than
     /// reading its file first (issue 1725).
     func warmSavedCopy(of session: SessionSummary) {
-        guard let dashboardID = activeDashboardID else { return }
+        // Another combined dashboard's copy isn't this one's to warm.
+        guard let dashboardID = activeDashboardID, session.combinedDashboardID == nil else { return }
         // Another profile's row in All opens in its own profile: its copy is
         // kept under that one.
         // Its stored id first, where a copy is most often saved, then every

@@ -156,7 +156,12 @@ extension AppState {
     /// Open in Main Window), or a switch. They go to that chat's draft, on
     /// screen if it's there now, and a notice says so.
     private func returnKeptChatWordsIfItsPaneWent(_ chat: BackgroundChat, target: String, words: String, back: KeptChatWordsBack) {
-        guard keptChat(answering: target) == nil,
+        // Its pane still holds it only in the dashboard and profile it was
+        // kept in: after a switch, a chat kept there under the same id is
+        // another one.
+        let stillKept = activeDashboardID == chat.dashboardID && profilesMatch(activeProfile, chat.profile)
+            && keptChat(answering: target) != nil
+        guard !stillKept,
               // Signed out (or the server changed) since: the drafts were
               // the outgoing account's, and so are these words.
               composerDraftStore.clearCount == back.draftsClearCount else { return }

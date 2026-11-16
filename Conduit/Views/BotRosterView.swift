@@ -85,7 +85,10 @@ struct BotRosterView: View {
             // Hidden bots still list (under Hidden), so only an empty
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
-            if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
+            // Bots Home with other combined dashboards' bots shows them
+            // (its scroll lists their sections) though this one has none.
+            if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
+                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         VStack(spacing: 12) {
@@ -965,6 +968,8 @@ struct BotRosterView: View {
                 TipView(gesturesTip)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
+                // The other combined dashboards' bots (all-live stage 4c).
+                CombinedDashboardBotsSections()
                 homeGroupSection
             }
             .overlayPreferenceValue(BotsHomeAnchorKey.self) { anchors in
@@ -984,6 +989,12 @@ struct BotRosterView: View {
         .onChange(of: newRoom.isEmpty) { _, empty in if !empty { BotsHomeGesturesTip.learned() } }
         // Each bot's chats' Running and waits, read while Bots Home shows:
         // the Chats list's poll stops here.
+        // The other combined dashboards' rosters, when theirs are older
+        // than a few minutes.
+        .task(id: botsHomeShowsLiveStatus) {
+            guard botsHomeShowsLiveStatus else { return }
+            await appState.readOtherCombinedDashboardsBots()
+        }
         .task(id: "\(botsHomeShowsLiveStatus)|\(appState.isConnected)|\(visibleBotNames)") {
             guard botsHomeShowsLiveStatus, appState.isConnected else { return }
             await appState.runBotsHomeLiveStatus(bots: visibleBotNames)
