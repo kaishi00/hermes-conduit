@@ -1048,35 +1048,45 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// pass does. A watch whose job still runs is left to its hold, which
     /// lapses on the host within `callbackHoldSeconds`; Hermes calls as
     /// usual after that. Taken before the reset; the task runs on its own.
+    /// `callProfile` is the ended call's profile, named on each settle
+    /// whose watch or job names none: the task runs after the hand-back,
+    /// when "no profile" would mean the one on screen (#2626's review).
     @discardableResult
-    func detachEndedCallbackSettles() -> Task<Void, Never>? {
+    func detachEndedCallbackSettles(callProfile: String? = nil) -> Task<Void, Never>? {
         guard let callbacks else { return nil }
         var settles: [DetachedCallbackSettle] = []
+        func pinned(_ target: VoiceCallbackTarget?) -> VoiceCallbackTarget? {
+            guard let target, target.profile == nil, let callProfile else { return target }
+            return VoiceCallbackTarget(title: target.title, sessionIDs: target.sessionIDs,
+                                       runtimeSessionID: target.runtimeSessionID,
+                                       storedSessionID: target.storedSessionID, profile: callProfile)
+        }
         for (id, entry) in Array(callbackWatches) {
+            let profile = entry.profile ?? callProfile
             guard let callID = entry.callID, callID != callbackCallID else { continue }
             guard let job = job(id) else {
                 // Settled and told: nothing to call about.
-                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: entry.profile, notify: nil, kind: nil))
+                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: profile, notify: nil, kind: nil))
                 callbackWatches[id] = nil
                 continue
             }
             switch job.status {
             case .cancelled:
-                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: entry.profile, notify: nil, kind: nil))
+                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: profile, notify: nil, kind: nil))
             case .finished, .failed:
                 let untold = entry.untoldAtHangUp ?? callbackOutcomeUntold(id)
-                let target = untold ? Self.callbackTarget(job) : nil
+                let target = untold ? pinned(Self.callbackTarget(job)) : nil
                 if target != nil { update(id) { $0.outcomeDelivered = true } }
                 settles.append(DetachedCallbackSettle(
-                    watchID: entry.watchID, profile: entry.profile, notify: target,
+                    watchID: entry.watchID, profile: profile, notify: target,
                     kind: job.status == .finished ? .done : .failed
                 ))
             case .starting, .running, .needsInput:
                 // The host already saw it end: told at once, as the pass
                 // would, rather than after the hold lapses.
-                guard entry.hostSawEnd, let target = Self.callbackTarget(job),
+                guard entry.hostSawEnd, let target = pinned(Self.callbackTarget(job)),
                       job.isThreadTurn || job.requestSent else { continue }
-                settles.append(DetachedCallbackSettle(watchID: nil, profile: entry.profile, notify: target, kind: entry.hostEndKind))
+                settles.append(DetachedCallbackSettle(watchID: nil, profile: profile, notify: target, kind: entry.hostEndKind))
             }
             callbackWatches[id] = nil
         }
