@@ -196,16 +196,15 @@ extension AppState {
                 sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids, label: bot.displayLabel,
                                               isBotChat: true))
             }
-            // All reaches every combined dashboard (Eric, 2026-11-16): each
-            // profile of each other one, read through its kept connection,
-            // its rows named by that dashboard and profile.
-            if isAllProfilesChatsOn {
-                for dashboard in otherCombinedArtifactDashboards {
-                    for profile in dashboard.profiles {
-                        let label = profile == "default" ? dashboard.name : "\(dashboard.name) · \(profile)"
-                        sources.append(ArtifactSource(profile: profile, sessionIDs: [], label: label,
-                                                      dashboardID: dashboard.id))
-                    }
+            // The page reaches every combined dashboard (Eric, 2026-11-16),
+            // with or without All: each profile of each other one, read
+            // through its kept connection, its rows named by that dashboard
+            // and profile, a chip per dashboard to narrow to one.
+            for dashboard in otherCombinedArtifactDashboards {
+                for profile in dashboard.profiles {
+                    let label = profile == "default" ? dashboard.name : "\(dashboard.name) · \(profile)"
+                    sources.append(ArtifactSource(profile: profile, sessionIDs: [], label: label,
+                                                  dashboardID: dashboard.id))
                 }
             }
             return sources

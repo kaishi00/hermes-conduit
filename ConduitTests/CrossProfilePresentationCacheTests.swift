@@ -1375,11 +1375,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(shown.isKept, "from the phone's copy")
     }
 
-    /// Artifacts in All lists every combined dashboard's (Eric,
+    /// Artifacts lists every combined dashboard's, All on or off (Eric,
     /// 2026-11-16): each profile of a kept dashboard, read through its kept
     /// connection, its rows named by that dashboard and apart from this
     /// one's of the same path, its files read there too.
-    func testArtifactsInAllListAKeptDashboardsArtifactsThroughIt() async throws {
+    func testArtifactsListAKeptDashboardsArtifactsThroughIt() async throws {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
@@ -1387,11 +1387,8 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
         )
-        // One profile on screen and All off: this dashboard's alone.
-        XCTAssertTrue(appState.artifactSources(for: .profile).allSatisfy { $0.dashboardID == nil })
-
-        appState.setAllProfilesChatsOn(true)
-        XCTAssertTrue(appState.isAllProfilesChatsOn, "a combined dashboard offers All")
+        // All off, the other dashboard is listed all the same.
+        XCTAssertFalse(appState.isAllProfilesChatsOn)
         let far = appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }
         XCTAssertEqual(far.map(\.profile), ["default", "atlas"])
         XCTAssertEqual(far.map(\.label), ["Mac", "Mac · atlas"])

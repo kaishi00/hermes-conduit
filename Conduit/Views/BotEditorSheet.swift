@@ -94,6 +94,7 @@ struct BotEditorSheet: View {
                         .foregroundStyle(.red)
                         .padding(.horizontal, 16)
                 }
+                createDashboardRow
                 avatarHeader
                 colorSection
                 nameSection
@@ -199,6 +200,24 @@ struct BotEditorSheet: View {
     }
 
     // MARK: Sections
+
+    /// Combined, a new bot's sheet names the dashboard it's made on, the
+    /// one on screen, with its badge (Eric, 2026-11-16).
+    @ViewBuilder
+    private var createDashboardRow: some View {
+        if isCreating, let id = appState.activeDashboardID, appState.isInCombinedGroup(id),
+           let badge = appState.combinedDashboardBadge(id) {
+            HStack(spacing: 8) {
+                CombinedDashboardBadge(dashboardID: id, size: 20)
+                Text(verbatim: badge.name)
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity)
+            .accessibilityElement(children: .combine)
+        }
+    }
 
     private var avatarHeader: some View {
         VStack(spacing: 12) {
