@@ -29,12 +29,12 @@ struct V2BesideChatPane: View {
             VStack(spacing: 0) {
                 header
                 V2BesideChatRows(
-                    live: appState.besideChatLive,
+                    live: appState.besideChatLive.notice(for: chat),
                     chat: chat,
                     gatewayResolver: appState.gatewayMediaResolver(for: chat.profile)
                 )
                 // Its draft is this chat's: Swap empties the box.
-                V2KeptChatComposer(live: appState.besideChatLive, chat: chat)
+                V2KeptChatComposer(live: appState.besideChatLive.notice(for: chat), chat: chat)
                     .id(chat.sessionIDs)
             }
         }
@@ -116,7 +116,7 @@ struct V2BesideChatPane: View {
 /// answers to cards stay with the chat's own column (Swap).
 private struct V2KeptChatComposer: View {
     @EnvironmentObject private var appState: AppState
-    @ObservedObject var live: BesideChatLive
+    @ObservedObject var live: BesideChatLive.Chat
     let chat: BackgroundChat
     @State private var draft = ""
     @State private var sending = false
@@ -235,10 +235,11 @@ struct V2ChatWindow: View {
     }
 }
 
-/// The pane's rows. They follow the pane's own notice (`BesideChatLive`),
-/// so a reply streaming here redraws these and nothing else.
+/// The pane's rows. They follow their own chat's notice (`BesideChatLive`),
+/// so a reply streaming here redraws these and nothing else, not another
+/// window's rows (issue 2625).
 private struct V2BesideChatRows: View {
-    @ObservedObject var live: BesideChatLive
+    @ObservedObject var live: BesideChatLive.Chat
     let chat: BackgroundChat
     let gatewayResolver: GatewayMediaDataURLResolver
     @Environment(\.v2Shell) private var shell

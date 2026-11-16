@@ -17,11 +17,37 @@ import Foundation
 /// Tells the pane beside the chat that its chat's rows or reply moved. Its
 /// own object, as the reply on screen has (`LiveTurnProjection`): a reply
 /// streaming in the pane redraws the pane, never every view of AppState.
+/// Each kept chat (the pane's and every chat window's) has a notice of its
+/// own, so a reply streaming in one redraws that one only (issue 2625).
 @MainActor
-final class BesideChatLive: ObservableObject {
-    @Published private(set) var revision: UInt64 = 0
+final class BesideChatLive {
+    /// One kept chat's notice.
+    final class Chat: ObservableObject {
+        @Published private(set) var revision: UInt64 = 0
+        func moved() { revision &+= 1 }
+    }
 
-    func moved() { revision &+= 1 }
+    private var chats: [ObjectIdentifier: Chat] = [:]
+
+    /// The notice the views of `chat` follow.
+    func notice(for chat: BackgroundChat) -> Chat {
+        let key = ObjectIdentifier(chat.state)
+        if let notice = chats[key] { return notice }
+        let notice = Chat()
+        chats[key] = notice
+        return notice
+    }
+
+    /// `chat`'s rows or reply moved.
+    func moved(_ chat: BackgroundChat) { chats[ObjectIdentifier(chat.state)]?.moved() }
+
+    /// Every kept chat may have moved (the socket closed, a pane opened).
+    /// Notices of chats no longer followed go.
+    func moved(keeping chats: [BackgroundChat]) {
+        let kept = Set(chats.map { ObjectIdentifier($0.state) })
+        self.chats = self.chats.filter { kept.contains($0.key) }
+        self.chats.values.forEach { $0.moved() }
+    }
 }
 
 extension AppState {
@@ -70,7 +96,7 @@ extension AppState {
         )
         row.rowId = rowId
         chat.state.messages.append(row)
-        besideChatLive.moved()
+        besideChatLive.moved(chat)
     }
 
     /// A message's whole words, spacing aside: two messages that only start
