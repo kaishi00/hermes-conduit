@@ -94,6 +94,18 @@ extension AppState {
         let target = clarifyCardTarget()
         let client = self.client
         let profile = activeProfile
+        // The whole form reads as on its way until its last answer settles:
+        // a resume between two of its sends mustn't offer the rest again.
+        beginClarifySubmission(requestId)
+        defer {
+            endClarifySubmission(requestId)
+            // Another connection or profile took over before every answer
+            // settled: what's still marked sending is no longer on its way.
+            if !requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
+               self.client !== client || activeProfile != profile {
+                rearmStaleClarifyQuestions(requestId: requestId, questionIds: Set(sending.map(\.question.id)))
+            }
+        }
         // One at a time, in order: the last lock resolves the request.
         var stillOpen: Set<String>?
         for (question, answer) in sending {
@@ -102,8 +114,9 @@ extension AppState {
             // its own chat.
             if messages.first(where: { $0.clarify?.requestId == requestId })?.clarify?.isExpired == true { return }
             // Another connection or profile took over: the rest isn't its
-            // to send. The questions not sent stay submitting in the chat's
-            // saved copy, and its next open reads what Hermes still waits on.
+            // to send. The questions not sent go back to answerable (the
+            // defer above), and the chat's next open reads what Hermes
+            // still waits on.
             if !requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix),
                self.client !== client || activeProfile != profile { return }
             // No longer on Hermes' list of open questions: another device
@@ -145,13 +158,15 @@ extension AppState {
     ) async -> [String]? {
         // On its way: a reopen of the chat meanwhile keeps the question
         // submitting rather than offering it again (issue 2571).
-        liveClarifySubmissions[requestId, default: 0] += 1
+        beginClarifySubmission(requestId)
+        // A completion fenced off below (another connection or profile took
+        // over) settles nothing; once no send of this request is on its way,
+        // the question goes back to answerable rather than read Sending
+        // with nothing sending it.
+        var fenced = false
         defer {
-            if let count = liveClarifySubmissions[requestId], count > 1 {
-                liveClarifySubmissions[requestId] = count - 1
-            } else {
-                liveClarifySubmissions.removeValue(forKey: requestId)
-            }
+            endClarifySubmission(requestId)
+            if fenced { rearmStaleClarifyQuestions(requestId: requestId, questionIds: [question.id]) }
         }
         // Plugin-minted clarify ids are answered through the relay's decision
         // loop (the gateway's own clarify id never reached this device); the
@@ -219,7 +234,10 @@ extension AppState {
                     profile: target.profile
                 )
             }
-            guard profile == activeProfile, self.client === client else { return nil }
+            guard profile == activeProfile, self.client === client else {
+                fenced = true
+                return nil
+            }
             applyClarifyResponseOutcome(
                 outcome,
                 requestId: requestId,
@@ -229,7 +247,10 @@ extension AppState {
             guard case .accepted(let remaining) = outcome else { return nil }
             return remaining
         } catch {
-            guard profile == activeProfile, self.client === client else { return nil }
+            guard profile == activeProfile, self.client === client else {
+                fenced = true
+                return nil
+            }
             if Self.isExpiredPromptError(error) {
                 // Older gateways report expiry as RPC 4009 instead of the
                 // typed `expired` status — same teardown either way.
@@ -256,6 +277,40 @@ extension AppState {
             }
             return nil
         }
+    }
+
+    private func beginClarifySubmission(_ requestId: String) {
+        liveClarifySubmissions[requestId, default: 0] += 1
+    }
+
+    private func endClarifySubmission(_ requestId: String) {
+        if let count = liveClarifySubmissions[requestId], count > 1 {
+            liveClarifySubmissions[requestId] = count - 1
+        } else {
+            liveClarifySubmissions.removeValue(forKey: requestId)
+        }
+    }
+
+    /// Questions a replaced connection left marked sending go back to
+    /// answerable, once nothing of their request is on its way here: the
+    /// resume that ran meanwhile kept their wait for a send that then
+    /// settled nothing. A send of the new connection's own still holds the
+    /// count, so this never writes over it. If Hermes took the answer after
+    /// all, its next snapshot says so. As approvals' rearmStaleSubmission.
+    func rearmStaleClarifyQuestions(requestId: String, questionIds: Set<String>) {
+        guard liveClarifySubmissions[requestId] == nil,
+              let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
+              var activity = messages[index].clarify, !activity.isExpired else { return }
+        var changed = false
+        for questionIndex in activity.questions.indices
+        where questionIds.contains(activity.questions[questionIndex].id) && activity.questions[questionIndex].status == .submitting {
+            activity.questions[questionIndex].status = .pending
+            activity.questions[questionIndex].error = nil
+            changed = true
+        }
+        guard changed else { return }
+        messages[index].clarify = activity
+        cacheMessagePresentation()
     }
 
     /// Restores exactly one question to an answerable/error state after a
