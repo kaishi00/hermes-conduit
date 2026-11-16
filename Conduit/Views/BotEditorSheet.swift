@@ -209,6 +209,7 @@ struct BotEditorSheet: View {
            let badge = appState.combinedDashboardBadge(id) {
             HStack(spacing: 8) {
                 CombinedDashboardBadge(dashboardID: id, size: 20)
+                    .accessibilityHidden(true)
                 Text(verbatim: badge.name)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
