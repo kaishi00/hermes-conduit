@@ -4370,6 +4370,40 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(cards.contains("Chat a's card"))
     }
 
+    /// Issue 2619 (#2618's review leftovers): an alias the identity index
+    /// gave another chat stays off the chat on screen once its open has
+    /// settled, though a stale row still lists it; a rebind recorded during
+    /// the foreground probe is caught before the replay; an open of the
+    /// chat the id moved to takes it again, by its runtime id too.
+    func testAMovedOnIDStaysOffTheChatOnceItsOpenSettles() {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-x"]
+        state.sessions = [a, session("c")]
+        state.setActiveSessionState(id: "a")
+        state.reconciliation = nil
+        XCTAssertTrue(state.eventBelongsToActiveSession("rt-x"))
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-x", durableID: "c", profile: state.activeProfile, source: .resume)
+        XCTAssertFalse(state.eventBelongsToActiveSession("rt-x"), "the index gave it to chat c, though chat a's row lists it")
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-y", durableID: "a", profile: state.activeProfile, source: .resume)
+        state.reconciliation = AppState.Reconciliation(
+            token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a", "rt-y"], reboundSessionIDs: ["rt-y": "a"]
+        )
+        state.reconciliation?.bufferedEvents = [.messageDelta(sessionId: "rt-y", text: "Chat c's words")]
+        state.reconciliation?.bufferedGenerations = [nil]
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-y", durableID: "c", profile: state.activeProfile, source: .resume)
+        state.replayForegroundBufferedEntries()
+        XCTAssertEqual(state.reconciliation?.movedOnSessionIDs, ["rt-y"], "asked of the index again before the replay")
+        XCTAssertTrue(state.shownChat.streamingBuffer.isEmpty, "chat c's words never reach chat a")
+
+        let indexed = ["rt-x": "c"]
+        XCTAssertEqual(AppState.Reconciliation.movedOn(["rt-x", "rt-z"], keptFor: ["rt-c"], durableIDs: ["rt-c", "c"]) { indexed[$0] },
+                       ["rt-z"], "an open of chat c by its runtime id takes the id again")
+        XCTAssertEqual(AppState.Reconciliation.movedOn(["rt-x"], keptFor: ["a", "rt-x"], durableIDs: ["a", "rt-x"]) { indexed[$0] },
+                       ["rt-x"], "the index first: a stale row listing it under chat a doesn't take it back")
+    }
+
     /// #2612's review: a rebound id is noticed as moved on before a chat
     /// that's followed takes the event, and only a followed chat of the
     /// profile on screen hands its rebound id to the open.

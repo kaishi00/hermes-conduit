@@ -843,19 +843,24 @@ final class SessionRenameTests: XCTestCase {
         let appState = makeConnectedAppState { _, _ in }
         appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
         var waiting: [CheckedContinuation<Void, Never>] = []
+        let (creating, createStarted) = AsyncStream<Void>.makeStream()
         appState.widgetSessionCreatorOverride = { _, _ in
+            createStarted.yield(())
             await withCheckedContinuation { waiting.append($0) }
             throw URLError(.notConnectedToInternet)
         }
         appState.setActiveSessionState(id: "a")
         appState.reconciliation = AppState.Reconciliation(
-            token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a", "rt-a"], reboundSessionIDs: ["rt-a": "a"]
+            token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a", "rt-a"], reboundSessionIDs: ["rt-a": "a"],
+            movedOnSessionIDs: ["rt-b"]
         )
 
         let create = Task { await appState.createNewSession() }
-        for _ in 0..<2000 where waiting.isEmpty { await Task.yield() }
-        XCTAssertFalse(waiting.isEmpty, "The create is under way")
+        // The create's own signal that it's under way (issue 2619).
+        for await _ in creating { break }
         XCTAssertEqual(appState.reconciliation?.reboundSessionIDs, [:], "Chat a's rebound id stays with chat a")
+        XCTAssertEqual(appState.reconciliation?.movedOnSessionIDs, [], "…and turns away none chat a's open let go")
+        XCTAssertFalse(waiting.isEmpty, "The create is under way")
         waiting.forEach { $0.resume() }
         _ = await create.value
     }

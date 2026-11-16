@@ -387,7 +387,18 @@ extension AppState {
         }
         if let activeSession = sessions.first(where: isActive) ?? cronSessions.first(where: isActive) {
             let activeIDs = Set([activeSession.id] + activeSession.alternateIds)
-            if activeIDs.contains(sessionId) { return true }
+            if activeIDs.contains(sessionId) {
+                // An alias the identity index has since given another chat
+                // is that chat's, once the open has settled too, though a
+                // stale catalog row still lists it here (issue 2619).
+                let index = conversationIdentityIndex
+                if let durable = index.durableID(forRuntime: sessionId, profile: activeProfile), durable != sessionId,
+                   !activeIDs.contains(durable), activeSession.storedSessionId != durable,
+                   index.durableID(forRuntime: activeSessionId, profile: activeProfile) != durable {
+                    return false
+                }
+                return true
+            }
         }
 
         // During resume, the gateway may switch between the requested and
