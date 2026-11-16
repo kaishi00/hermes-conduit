@@ -1209,13 +1209,13 @@ final class TranscriptScrollerTests: XCTestCase {
     }
 
     private func connectionMessage(status: ConnectionActivity.Status, settled: Bool = false) -> ChatMessage {
-        ChatMessage(
-            id: "m5", role: .connection, content: "Connect apps", timestamp: "2026-01-01T00:00:00Z",
-            connection: ConnectionActivity(
-                opID: "op-m5", sessionId: "a", seq: 1, deadline: nil, toolCallID: nil,
-                targets: [], suggested: ["gmail"], settled: settled, status: status
-            )
+        // A connect card is live-only: ChatMessage's init doesn't take it.
+        var row = ChatMessage(id: "m5", role: .connection, content: "Connect apps", timestamp: "2026-01-01T00:00:00Z")
+        row.connection = ConnectionActivity(
+            opID: "op-m5", sessionId: "a", seq: 1, deadline: nil, toolCallID: nil,
+            targets: [], suggested: ["gmail"], settled: settled, status: status
         )
+        return row
     }
 
     /// Every row has a frame, so a saved place is made as soon as it's
