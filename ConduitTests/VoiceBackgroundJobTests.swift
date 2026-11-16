@@ -86,6 +86,12 @@ final class FakeVoiceJobBackend {
     var profileTargets: [String: VoiceJobProfileTarget] = [:]
     /// Profiles whose liveSessions read throws.
     var failingLiveProfiles: Set<String> = []
+    var sessionRunningResult: Bool?
+    var sessionRunningError: Error?
+    private(set) var sessionReads: [(String, String?)] = []
+    var parksSessionRead = false
+    let sessionReadParked = AwaitableCounter()
+    private var parkedSessionRead: CheckedContinuation<Void, Never>?
     private(set) var titles: [(String, String)] = []
     /// Each job kept in its bot's work registry: profile, session, title, whether a Watch call's.
     private(set) var kept: [(String?, String, String, Bool)] = []
@@ -210,6 +216,18 @@ final class FakeVoiceJobBackend {
                 if let profile, self.failingLiveProfiles.contains(profile) { throw URLError(.timedOut) }
                 return self.liveRows
             },
+            sessionRunning: { [self] id, profile in
+                self.sessionReads.append((id, profile))
+                if self.parksSessionRead {
+                    self.parksSessionRead = false
+                    await withCheckedContinuation { continuation in
+                        self.parkedSessionRead = continuation
+                        self.sessionReadParked.increment()
+                    }
+                }
+                if let error = self.sessionRunningError { throw error }
+                return self.sessionRunningResult
+            },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
             threadIsBusy: { [self] _ in
                 if let delay = self.threadBusyDelay { try? await Task.sleep(for: delay) }
@@ -253,6 +271,12 @@ final class FakeVoiceJobBackend {
             threadAwaitsSeveralPrompts: { [self] _ in self.severalPrompts },
             openThreadMessages: { [self] _ in self.openMessages }
         )
+    }
+
+    func releaseSessionRead() {
+        let continuation = parkedSessionRead
+        parkedSessionRead = nil
+        continuation?.resume()
     }
 
     func releaseCreate() {
@@ -973,6 +997,162 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(SavedVoiceJob(job)?.job?.listedByLivenessPoll, false)
     }
 
+    private func savedRunningJob(_ runtimeID: String = "rt-gone") throws -> SavedVoiceJob {
+        try XCTUnwrap(SavedVoiceJob(VoiceBackgroundJob(
+            id: UUID(), title: "Router", instructions: "check the router", profile: "fam",
+            runtimeSessionID: runtimeID, storedSessionID: "st-\(runtimeID)", status: .running,
+            startedAt: Date().addingTimeInterval(-3_600)
+        )))
+    }
+
+    func testRestoredJobsReapedBeforeTheirFirstListingReleaseTheirSlots() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let saved = try (1...VoiceBackgroundJobSupervisor.maximumActiveJobs).map { try savedRunningJob("rt-gone-\($0)") }
+        supervisor.restore(saved)
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found", reason: "not_found")
+        XCTAssertEqual(supervisor.activeJobCount, VoiceBackgroundJobSupervisor.maximumActiveJobs)
+
+        await supervisor.pollOnce()
+        XCTAssertTrue(fake.sessionReads.isEmpty, "one missing registry row is not enough")
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(fake.sessionReads.map { $0.0 }, saved.map(\.runtimeSessionID))
+        XCTAssertTrue(fake.sessionReads.allSatisfy { $0.1 == "fam" }, "probe the job's own profile")
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        XCTAssertTrue(supervisor.jobs.allSatisfy { $0.status == .failed(AppLocalization.string("That chat is no longer available.")) })
+        XCTAssertTrue(supervisor.savedLedger().allSatisfy { $0.state == .failed }, "never restore these as running again")
+        _ = await supervisor.startJob(instructions: "new work")
+        XCTAssertEqual(fake.created, 1, "a new job is admitted after the stale jobs settle")
+    }
+
+    func testAnUnlistedJobWithAReadOnlyIdleAnswerRecoversItsReply() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        fake.sessionRunningResult = false
+        fake.threadReply = "The router is fine."
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, "The router is fine.")
+        XCTAssertEqual(fake.replyReads.first?.runtimeSessionID, "rt-1")
+        XCTAssertEqual(fake.replyReads.first?.storedSessionID, "st-1")
+        XCTAssertEqual(fake.replyReads.first?.profile, "fam")
+    }
+
+    func testAReapedRuntimeStillRecoversTheReplyKeptInItsStoredChat() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        fake.threadReply = "The check finished before the runtime was reaped."
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertEqual(supervisor.jobs.first?.result, fake.threadReply)
+        XCTAssertEqual(supervisor.savedLedger().first?.state, .finished)
+    }
+
+    func testRunningOrUnknownSessionChecksKeepAnUnlistedJobSupervised() async throws {
+        for running in [true, nil] as [Bool?] {
+            let (supervisor, fake) = makeSupervisor()
+            supervisor.restore([try savedRunningJob()])
+            fake.sessionRunningResult = running
+            await supervisor.pollOnce()
+            await supervisor.pollOnce()
+            await supervisor.pollOnce()
+            XCTAssertEqual(supervisor.jobs.first?.status, .running)
+            XCTAssertEqual(supervisor.activeJobCount, 1)
+            XCTAssertTrue(fake.replyReads.isEmpty)
+        }
+    }
+
+    func testAnUnreachableOrUnsupportedSessionCheckIsNotAnEndedJob() async throws {
+        let errors: [Error] = [
+            URLError(.timedOut), HermesError.notConnected,
+            RpcError(code: -32601, message: "method not found"),
+            RpcError(code: 4001, message: "permission_denied", reason: "permission_denied"),
+        ]
+        for error in errors {
+            let (supervisor, fake) = makeSupervisor()
+            supervisor.restore([try savedRunningJob()])
+            fake.sessionRunningError = error
+            await supervisor.pollOnce()
+            await supervisor.pollOnce()
+            XCTAssertEqual(supervisor.jobs.first?.status, .running)
+            XCTAssertEqual(fake.sessionReads.count, 1)
+        }
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.failingLiveProfiles = ["fam"]
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        XCTAssertTrue(fake.sessionReads.isEmpty, "a failed registry read is not a missing row")
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+    }
+
+    func testAListingOvertakesAMissingSessionCheck() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        await supervisor.pollOnce()
+        fake.parksSessionRead = true
+        let checking = Task { await supervisor.pollOnce() }
+        await fake.sessionReadParked.waitUntil(1)
+
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-gone", storedSessionId: "st-rt-gone", status: "working")]
+        await supervisor.pollOnce()
+        fake.releaseSessionRead()
+        await checking.value
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertEqual(supervisor.jobs.first?.consecutiveMissedPolls, 0)
+        XCTAssertTrue(supervisor.jobs.first?.listedByLivenessPoll == true)
+    }
+
+    func testAWorkPanelStopOvertakesAMissingSessionCheck() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        await supervisor.pollOnce()
+        fake.parksSessionRead = true
+        let checking = Task { await supervisor.pollOnce() }
+        await fake.sessionReadParked.waitUntil(1)
+
+        XCTAssertTrue(supervisor.stoppedFromWorkPanel(sessionID: "rt-gone"))
+        fake.releaseSessionRead()
+        await checking.value
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .cancelled)
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        XCTAssertTrue(supervisor.savedLedger().isEmpty)
+        XCTAssertTrue(fake.replyReads.isEmpty, "never turn the Work panel's stop into a finished job")
+    }
+
+    func testAMissingSessionCheckCannotSettleARestoredJobAfterReset() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let saved = try savedRunningJob()
+        supervisor.restore([saved])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        await supervisor.pollOnce()
+        fake.parksSessionRead = true
+        let checking = Task { await supervisor.pollOnce() }
+        await fake.sessionReadParked.waitUntil(1)
+
+        supervisor.reset()
+        supervisor.restore([saved])
+        fake.releaseSessionRead()
+        await checking.value
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertEqual(supervisor.jobs.first?.consecutiveMissedPolls, 0)
+        XCTAssertTrue(fake.replyReads.isEmpty)
+    }
+
     func testAWatchCallHearsTheReplyOfAJobThePollSettled() async {
         let (supervisor, fake) = makeSupervisor()
         supervisor.readsRepliesWhenSettling = true
@@ -1216,6 +1396,39 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered ?? true)
         let all = await supervisor.cancelAll()
         XCTAssertFalse(all.contains("Cancelled"), all)
+    }
+
+    func testCancelAndCancelAllAcceptAReapedSessionAsAlreadyStopped() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let first = try savedRunningJob("rt-gone-1")
+        supervisor.restore([first, try savedRunningJob("rt-gone-2")])
+        fake.cancelError = RpcError(code: 4001, message: "session not found", reason: "not_found")
+
+        let one = await supervisor.cancel(jobID: first.id)
+        XCTAssertEqual(one, AppLocalization.string("\(first.title) was cancelled."))
+        _ = await supervisor.cancelAll()
+
+        XCTAssertTrue(supervisor.jobs.allSatisfy { $0.status == .cancelled && $0.outcomeDelivered })
+        XCTAssertEqual(supervisor.activeJobCount, 0)
+        XCTAssertTrue(supervisor.savedLedger().isEmpty)
+    }
+
+    func testAMissingCancelReplyAfterResetCannotCancelTheNewLedger() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        let saved = try savedRunningJob()
+        supervisor.restore([saved])
+        fake.parksCancel = true
+        fake.cancelError = RpcError(code: 4001, message: "session not found")
+        let cancelling = Task { await supervisor.cancel(jobID: saved.id) }
+        await fake.cancelParked.waitUntil(1)
+
+        supervisor.reset()
+        supervisor.restore([saved])
+        fake.releaseCancel()
+        _ = await cancelling.value
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered ?? true)
     }
 
     func testFailedStartIsReportedInlineOnly() async {

@@ -3625,17 +3625,31 @@ final class HermesClient: ObservableObject {
     /// catalog. This is particularly important for profile-scoped sessions,
     /// whose title can be updated asynchronously by Hermes.
     func sessionTitle(_ sessionId: String, profile: String? = nil) async throws -> String? {
+        let result = try await sessionMetadata(sessionId, profile: profile)
+        let title = result.objectValue?["title"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (title?.isEmpty == false) ? title : nil
+    }
+
+    /// A read-only check of a runtime the active registry has never listed.
+    /// The authority's info says whether its turn runs; the dashboard's
+    /// title read only proves the runtime exists, so its answer is unknown.
+    /// A missing session throws as it does for the title read. Neither read
+    /// resumes the chat or takes over its transport.
+    func sessionRunning(_ sessionId: String, profile: String? = nil) async throws -> Bool? {
+        let result = try await sessionMetadata(sessionId, profile: profile)
+        guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        return object["running"]?.boolValue ?? object["info"]?.objectValue?["running"]?.boolValue
+    }
+
+    private func sessionMetadata(_ sessionId: String, profile: String?) async throws -> AnyCodable {
         var params: [String: Any] = ["session_id": sessionId]
         if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             params["profile"] = profile
         }
         // The authority has no `session.title`: its `session.info` names it.
-        let result = try await shapedRPC { authority in
+        return try await shapedRPC { authority in
             GatewayRequest(method: authority ? "session.info" : "session.title", params: params)
         }
-        let title = result.objectValue?["title"]?.stringValue?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return (title?.isEmpty == false) ? title : nil
     }
 
     /// A stateless one-shot request on the profile's `task` backend (no

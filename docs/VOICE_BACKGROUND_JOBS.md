@@ -106,7 +106,13 @@ a job. At most three jobs run at once.
   profile whenever its transcript is open.
 - `VoiceBackgroundJobSupervisor` follows the job through gateway events
   (observed before AppState's active-session filter). `session.active_list`
-  is polled as a fallback for a completion event that never arrived.
+  is polled as a fallback for a completion event that never arrived. A job
+  in another profile that the registry has never listed is checked directly
+  after two successful reads omit it. If Hermes confirms it ended or its
+  session is gone, Conduit reads any saved reply and releases the job slot.
+  A gone session without a reply shows as unavailable; a connection error
+  or an answer that cannot confirm its state leaves the job supervised.
+  Cancelling a session Hermes no longer knows removes the stale job too.
 - Approvals and clarifications stay where they are today: the job's chat and
   the push notification. Voice only says that the job is waiting. Voice
   approvals will be a per-user setting in a later phase.
