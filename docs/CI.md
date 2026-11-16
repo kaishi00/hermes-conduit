@@ -88,8 +88,23 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   included. A full build also catches a Watch or extension compile error
   before merge. The nightly unit shards and timing repeats still build
   `project-tests.yml`.
+- **A warm simulator.** The image's devices have never been booted, so a
+  job's first boot ran iOS's data migration while the build waited: 230 s
+  median (80-300 s) over 57 Smoke runs on 2026-11-15, half of them past
+  `bootstatus`'s 200 s budget. `ci-prepare-smoke.sh` (with `SIM_SEED_DIR`)
+  restores the pinned device's `data` folder as it was right after one
+  finished first boot, before anything was installed, so the device boots
+  already migrated. A seed is for one UDID (another device's is ignored, and
+  a restore that fails erases the device and boots it cold). With no seed,
+  the job waits up to 420 s for its first boot to finish, shuts the device
+  down, keeps its `data` folder and boots it again. Smoke's push runs save
+  it (`sim-v1-<xcode>-<image>-<simulator>`, `scripts/ci-sim-seed-key.sh`),
+  once per image and Xcode; Smoke and every nightly unit, timing and UI job
+  restore it. A push saves its build cache right after the build too,
+  before its tests, so a PR opened during main's UI smoke restores the
+  latest merge's build.
 - **Incremental builds from an earlier build.** Builds on `main` save their
-  DerivedData to the Actions cache after the tests, keyed by project kind,
+  DerivedData to the Actions cache, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
   smoke job of every push to `main` that builds saves the full app, and nightly unit
   shard 1 saves the app-only (slim) build when it runs on `main`. A push to
