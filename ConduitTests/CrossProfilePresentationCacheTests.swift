@@ -716,6 +716,8 @@ extension CrossProfilePresentationCacheTests {
         let client = HermesClient(connection: HermesConnection(baseUrl: baseURL, ticket: "t"), profile: "default", transportFactory: { transport })
         transport.open(socket)
         try await client.connect()
+        // Also once it has left the kept set (a take-up hands it back).
+        addTeardownBlock { @MainActor in client.disconnect() }
         return client
     }
 
@@ -815,6 +817,23 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
         XCTAssertFalse(kept.client.isConnected)
+    }
+
+    /// A read sent on an earlier visit to a combined dashboard isn't this
+    /// visit's, though the kept bridge is the same one.
+    func testAnAnswerToAnEarlierVisitIsNotThisVisits() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        let earlier = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        XCTAssertTrue(appState.ownsDashboardRuntime(earlier))
+
+        await appState.switchDashboard(to: vps.id)
+        await appState.switchDashboard(to: mac.id)
+
+        let now = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        XCTAssertTrue(now.bridge === earlier.bridge, "the kept bridge came back")
+        XCTAssertFalse(appState.ownsDashboardRuntime(earlier), "but the earlier visit's reads don't land")
+        XCTAssertTrue(appState.ownsDashboardRuntime(now))
     }
 }
 

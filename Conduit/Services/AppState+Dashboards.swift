@@ -748,15 +748,23 @@ extension AppState {
     struct DashboardRuntimeOwner {
         let dashboardID: UUID?
         let bridge: DashboardTicketBridge
+        /// The visit: a combined dashboard's bridge outlives a switch away
+        /// and back, so the bridge alone can't tell an answer to an earlier
+        /// visit from one to this.
+        var switchGeneration: UInt64 = 0
     }
 
     /// The current dashboard and its bridge; nil without a bridge.
     func currentDashboardRuntimeOwner() -> DashboardRuntimeOwner? {
-        dashboardTicketBridge.map { DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0) }
+        dashboardTicketBridge.map {
+            DashboardRuntimeOwner(dashboardID: activeDashboardID, bridge: $0, switchGeneration: dashboardSwitchGeneration)
+        }
     }
 
     func ownsDashboardRuntime(_ owner: DashboardRuntimeOwner) -> Bool {
-        owner.bridge === dashboardTicketBridge && owner.dashboardID == activeDashboardID
+        owner.bridge === dashboardTicketBridge
+            && owner.dashboardID == activeDashboardID
+            && owner.switchGeneration == dashboardSwitchGeneration
     }
 
     func switchGenerationIsCurrent(_ generation: UInt64) -> Bool {
