@@ -406,6 +406,12 @@ extension AppState {
     /// The longest wait between retries of a down dashboard.
     static let combinedDashboardRetryMaxDelay: TimeInterval = 300
 
+    /// The wait before retry `attempt` (from 1): `base`, doubling each
+    /// time, to `combinedDashboardRetryMaxDelay` at most.
+    nonisolated static func combinedDashboardRetryDelay(attempt: Int, base: TimeInterval) -> TimeInterval {
+        min(base * pow(2, Double(min(max(attempt, 1) - 1, 16))), max(combinedDashboardRetryMaxDelay, base))
+    }
+
     /// A quiet sign-in refused (the password or the grant turned down) waits
     /// for a tap; anything else on the way is down and tried again.
     nonisolated static func troubleAfterCombinedSignIn(_ error: Error) -> CombinedDashboardTrouble {
@@ -433,10 +439,7 @@ extension AppState {
             return
         }
         let attempt = (combinedDashboardRetries[id]?.attempt ?? 0) + 1
-        let delay = min(
-            combinedDashboardRetryBaseDelay * pow(2, Double(min(attempt - 1, 16))),
-            max(Self.combinedDashboardRetryMaxDelay, combinedDashboardRetryBaseDelay)
-        )
+        let delay = Self.combinedDashboardRetryDelay(attempt: attempt, base: combinedDashboardRetryBaseDelay)
         combinedDashboardRetries[id]?.task?.cancel()
         let task = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(delay)) } catch { return }

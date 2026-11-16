@@ -1087,6 +1087,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.signInRequired), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 401, detail: "")), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 502, detail: "")), .down)
+        XCTAssertEqual([1, 2, 3, 4, 5, 9].map { AppState.combinedDashboardRetryDelay(attempt: $0, base: 30) },
+                       [30, 60, 120, 240, 300, 300], "30 s, doubling, 5 min at most")
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 403, detail: "")), .signInNeeded)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.http(status: 503, detail: "")), .down)
         XCTAssertEqual(AppState.troubleAfterCombinedSignIn(URLError(.timedOut)), .down)
