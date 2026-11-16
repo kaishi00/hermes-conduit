@@ -798,6 +798,26 @@ extension CrossProfilePresentationCacheTests {
     }
 }
 
+// MARK: - A kept socket that drops
+
+extension CrossProfilePresentationCacheTests {
+    /// A kept dashboard whose socket drops on its own (the server went
+    /// away, not a release of ours) is let go at once, with no switch.
+    func testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
+        appState.connection = outgoing.connection
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+
+        socket.cancel(with: .abnormalClosure, reason: nil)
+        for _ in 0..<200 where appState.keptDashboardRuntimes[mac.id] != nil { await Task.yield() }
+
+        XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
+        XCTAssertFalse(kept.client.isConnected)
+    }
+}
+
 // MARK: - Every combined dashboard live (multi-instance stage 3b)
 
 extension CrossProfilePresentationCacheTests {
