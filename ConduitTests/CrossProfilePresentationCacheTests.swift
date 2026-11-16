@@ -1326,8 +1326,8 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
-    /// kept client, under a section of its own; a tap opens through that
-    /// dashboard (all-live stage 4c).
+    /// kept client, in the same grid as Bots Home's own, mixed in the
+    /// group's order; a tap opens through that dashboard (all-live stage 4c).
     func testBotsHomeShowsAKeptDashboardsBotsAndOpensThroughThem() async throws {
         final class Counts { var mints = 0; var reads = 0 }
         let counts = Counts()
