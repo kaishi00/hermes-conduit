@@ -439,7 +439,8 @@ struct BotRosterView: View {
         // bots; with any of them there, the lone and paired layouts give
         // way to the grid. One Hermes saved twice lists its bots once, so
         // only bots another Hermes adds count (issue 2640).
-        let othersShown = appState.combinedBotsHomeItems(own: visibleBots).contains {
+        let items = appState.combinedBotsHomeItems(own: visibleBots)
+        let othersShown = items.contains {
             if case .other = $0.kind { return true } else { return false }
         }
         switch BotsHomeLayout.of(
@@ -455,15 +456,14 @@ struct BotRosterView: View {
             if !othersShown {
                 BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
             } else {
-                mixedGrid
+                mixedGrid(items)
             }
         }
     }
 
     /// The group's grid: every combined dashboard's bots in one order the
     /// person arranges, each with its dashboard's badge.
-    private var mixedGrid: some View {
-        let items = appState.combinedBotsHomeItems(own: visibleBots)
+    private func mixedGrid(_ items: [CombinedBotsHomeItem]) -> some View {
         let shown = items.map(\.id)
         return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }) { item in
             switch item.kind {
@@ -1845,9 +1845,13 @@ private struct BotModeNoticeRow: View {
                 .foregroundStyle(.secondary)
             if let retry {
                 Spacer(minLength: 8)
-                Button(AppLocalization.string("Retry"), action: retry)
-                    .scaledFont(.footnote.weight(.semibold))
-                    .buttonStyle(.borderless)
+                Button(action: retry) {
+                    Text(AppLocalization.string("Retry"))
+                        .scaledFont(.footnote.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
             }
         }
     }

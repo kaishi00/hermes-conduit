@@ -215,10 +215,12 @@ extension AppState {
         if !mineListed { chips = mine + chips }
         // One Hermes saved at two addresses: its profile shows once, as
         // Bots Home shows its bot, at the place its copies were saved at.
+        // This dashboard's copy is always the one kept.
+        let twins = combinedBotsHomeTwins
         let shownKeys = Set(chips.map(\.id))
-        let copies = Set(combinedBotsHomeTwins.filter { shownKeys.contains($0.key) }.values.joined())
+        let copies = Set(twins.filter { shownKeys.contains($0.key) }.values.joined())
         chips.removeAll { copies.contains($0.id) }
-        let saved = CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, twins: combinedBotsHomeTwins)
+        let saved = CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, twins: twins)
         return CombinedBotsHomeOrder.ordered(chips, saved: saved, key: \.id)
     }
 

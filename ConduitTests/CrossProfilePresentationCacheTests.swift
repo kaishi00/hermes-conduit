@@ -1290,13 +1290,25 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
-        // One Hermes saved twice (Bots Home found the twins): its profile
-        // shows once, at the place its copy was saved at (issue 2640).
+        // One Hermes saved twice (a bot of each has the same Bot Chat): its
+        // profile shows once, as this dashboard's, at the place its copy
+        // was saved at, with no Bots Home drawn (issue 2640).
+        func chatBot(_ name: String, _ chat: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                       canonicalSession: BotCanonicalSession(id: chat, resolvedID: nil, lastActive: nil, preview: nil),
+                       lastActive: nil, lastPreview: nil)
+        }
+        let roster = appState.botRoster
+        appState.botRoster = [chatBot("default", "c1")]
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("default", "c1"), chatBot("atlas", "c2")], avatars: [:], at: Date()
+        )
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(mac.id, "default")]
-        appState.combinedBotsHomeTwins = [CombinedBotsHomeOrder.key(vps.id, "default"): [CombinedBotsHomeOrder.key(mac.id, "default")]]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
                        [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
-        appState.combinedBotsHomeTwins = [:]
+        appState.combinedDashboardBots[mac.id] = nil
+        appState.botRoster = roster
         appState.combinedBotsHomeOrder = []
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")

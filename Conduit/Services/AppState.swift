@@ -253,9 +253,6 @@ final class AppState: ObservableObject {
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).
     @Published var combinedBotsHomeOrder: [String] = []
-    /// Bots Home's grid as last built: each bot shown to its copies on other
-    /// dashboards of one Hermes, which it leaves out (issue 2640).
-    var combinedBotsHomeTwins: [String: [String]] = [:]
     /// Each other combined dashboard's count of new Pulse cards (all-live
     /// stage 4d), read through its kept connection.
     @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
