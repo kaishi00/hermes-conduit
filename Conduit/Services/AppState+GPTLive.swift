@@ -81,7 +81,8 @@ extension AppState {
     /// calls for those too: nobody is billed for a call they didn't start
     /// without having said so.
     var gptLiveCallBilling: GPTLiveBilling {
-        let preferences = loadVoiceProfilePreferences(profile: activeProfile)
+        // The call's own profile's, a call that went on across a switch included.
+        let preferences = loadVoiceProfilePreferences(profile: voiceCallProfile)
         guard preferences.resolvedGPTLiveBilling == .api else { return .subscription }
         let hermesPlacedCall = liveHermesCall != nil || pendingHermesCall != nil
         if hermesPlacedCall, preferences.gptLiveAPIHermesCalls != true { return .subscription }
@@ -90,7 +91,8 @@ extension AppState {
 
     /// The voice for the next call, from the list of the path it's billed on.
     var gptLiveCallVoice: String? {
-        gptLiveCallBilling == .api ? gptLiveAPIVoice : gptLiveVoice
+        let preferences = loadVoiceProfilePreferences(profile: voiceCallProfile)
+        return gptLiveCallBilling == .api ? preferences.gptLiveAPIVoice : preferences.gptLiveVoice
     }
 
     var gptLiveAPIVoice: String? {
@@ -219,7 +221,7 @@ extension AppState {
         GPTLiveConversationController.briefing(
             memory: gptLiveMemoryContext,
             personality: gptLivePersonality,
-            answerLength: liveVoiceStyle.answerLength,
+            answerLength: liveCallStyle.answerLength,
             followedBy: (liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                 + liveHermesCallInstructions(delegation: true)
                 + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
@@ -228,7 +230,7 @@ extension AppState {
                 + GPTLiveConversationController.jobApprovalRule
                 + (gptLiveWebLookUps ? GPTLiveConversationController.webLookUpRule : "")
                 + LiveVoiceStyle.askFirstInstructions(on: voiceBackgroundJobSupervisor.asksBeforeSending)
-                + liveVoiceStyle.instructions
+                + liveCallStyle.instructions
         )
     }
 
@@ -248,6 +250,9 @@ extension AppState {
         showGPTLiveSheet = true
         if !gptLiveController.isActive {
             gptLiveController.installInitialWidgetCaptureAuthorization(initialCaptureAuthorization)
+            // An ended call's jobs go back first (the modes stopped above may
+            // have just ended one off its profile).
+            handBackEndedCallJobsNow()
             // A new call is attached to the chat it was started from; a
             // running one keeps what it had.
             voiceBackgroundJobSupervisor.attachLiveThread(thread)
@@ -275,6 +280,7 @@ extension AppState {
         stopGrokLiveConversation()
         stopLocalLiveConversation()
         guard !gptLiveController.isActive else { return }
+        handBackEndedCallJobsNow()
         // A call started from CarPlay's chat list is attached to that chat,
         // as one started from a chat on the phone is.
         if let thread {
@@ -291,6 +297,8 @@ extension AppState {
     /// drops its memory and persona too: nothing presents it, so nothing
     /// would close it.
     func releaseCarPlayGPTLive() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         guard !(isSceneActive && (showGPTLiveSheet || minimisedLiveVoice == .gptLive)) else { return }
         if isGPTLiveActive {
             closeGPTLiveConversation()
@@ -305,6 +313,8 @@ extension AppState {
     }
 
     func closeGPTLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         callOffWaitingCall(.gptLive)
         // Before the call stops, while its transcript still reads (#449).
         finishHermesCallbacks(engine: .gptLive)
@@ -327,6 +337,8 @@ extension AppState {
     /// Boundary teardown (disconnect, server/profile change, sign-out, or
     /// another voice mode taking over).
     func stopGPTLiveConversation() {
+        // A call that kept its profile across a switch gives its jobs back.
+        defer { callEndedOffItsProfile() }
         // A conversation that already failed with no sheet up has nothing
         // to close, but its host text still goes at the boundary.
         guard showGPTLiveSheet || minimisedLiveVoice == .gptLive || isGPTLiveActive else {

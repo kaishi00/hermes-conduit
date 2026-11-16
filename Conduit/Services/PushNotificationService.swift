@@ -2571,8 +2571,10 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// A "Hermes wants to talk" notification Conduit posted itself (#449).
-    func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
-        guard let target = HermesCallNotifications.localTarget(from: userInfo) else { return }
+    /// `opensChatOnly`: a missed call's Open Chat, which opens its chat
+    /// without calling back.
+    func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any], opensChatOnly: Bool = false) {
+        guard let target = HermesCallNotifications.localTarget(from: userInfo, opensChatOnly: opensChatOnly) else { return }
         route(target)
     }
 

@@ -3454,6 +3454,336 @@ final class OfflineChatCacheTests: XCTestCase {
                        "and its followed copy keeps up")
     }
 
+    // MARK: - A chat kept beside the one on screen (all-live stage 2, slice 3)
+
+    /// The chat picked to stay beside the next one is followed from the
+    /// moment it's left, with no reply running in it; a reply that starts
+    /// there later reaches it and tells the pane; and its pane closes once
+    /// the chat is opened in the chat's own column again.
+    func testAChatKeptBesideIsFollowedWithNoReplyRunning() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1"),
+            ChatMessage(id: "r1", role: .assistant, content: "Hello", timestamp: "2"),
+            ChatMessage(id: "c1", role: .approval, content: "Run it?", timestamp: "3")
+        ]
+        state.turnState = .idle
+        XCTAssertTrue(state.canKeepChatOnScreenBeside)
+        XCTAssertTrue(state.canOpenBeside(session("b")))
+        XCTAssertFalse(state.canOpenBeside(session("a")), "The open chat isn't beside itself")
+
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        let beside = try XCTUnwrap(state.besideChat)
+        XCTAssertFalse(beside.isRunning)
+        XCTAssertEqual(beside.newestSettledRows(10).map(\.id), ["u1", "r1"], "A card that waits for an answer isn't drawn where nothing acts")
+        XCTAssertEqual(beside.newestSettledRows(1).map(\.id), ["r1"])
+
+        let before = state.besideChatLive.revision
+        XCTAssertTrue(state.applyBackgroundChatEvent(.messageStart(sessionId: "a")))
+        XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: "More")))
+        XCTAssertTrue(beside.isRunning)
+        XCTAssertEqual(beside.state.streamingBuffer, "More")
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertTrue(state.messages.isEmpty)
+
+        // A message another device sends to it shows in the pane once.
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
+        XCTAssertEqual(beside.state.messages.filter { $0.rowId == 7 }.map(\.content), ["From my Mac"])
+        XCTAssertTrue(state.messages.isEmpty)
+
+        // Chats left after it never push it out, finished or not, and it
+        // takes none of their places.
+        var list = state.backgroundChats
+        for index in 0..<BackgroundChat.limit {
+            list = BackgroundChat.adding(
+                BackgroundChat(sessionIDs: ["x\(index)"], durableSessionID: nil, title: "", dashboardID: beside.dashboardID,
+                               profile: beside.profile, isBotChat: false, rows: [], streamingText: "…"),
+                to: list, keeping: state.besideChatIDs
+            )
+        }
+        XCTAssertEqual(list.count, BackgroundChat.limit + 1)
+        XCTAssertTrue(list.contains { $0.answers(to: "a") })
+
+        // Opened in the chat's own column, it's beside no longer.
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertNil(state.besideChatIDs)
+        XCTAssertNil(state.besideChat)
+    }
+
+    /// The pane's chat moves to a window of its own and is followed there
+    /// with no reply running, its events telling the window; closing the
+    /// window lets go of it; and the window closes once its chat opens in
+    /// the main window, or on a profile or dashboard switch.
+    func testAChatMovesFromThePaneToAWindowOfItsOwn() async throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        func keepABesideB() {
+            state.setActiveSessionState(id: "a")
+            state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+            state.turnState = .idle
+            state.besideChatIDs = ["a"]
+            state.setActiveSessionState(id: "b")
+            state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        }
+        keepABesideB()
+        XCTAssertTrue(state.canMoveBesideChatToWindow)
+        let key = try XCTUnwrap(state.moveBesideChatToWindow())
+        XCTAssertNil(state.besideChatIDs, "The pane closes")
+        XCTAssertNil(state.besideChat)
+        XCTAssertFalse(state.canMoveBesideChatToWindow)
+        XCTAssertEqual(state.windowChat(key)?.answers(to: "a"), true)
+        XCTAssertEqual(state.windowChat(key)?.isRunning, false)
+        XCTAssertNil(state.windowChat("b"))
+
+        // A message another device sends to it shows in the window.
+        let before = state.besideChatLive.revision
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 9, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.last?.content, "From my Mac")
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        // Hermes' word of a message whose row is here already adds none;
+        // the same words again after a reply are a new message.
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 2)
+        state.windowChat(key)?.state.messages.append(ChatMessage(id: "r9", role: .assistant, content: "Done", timestamp: "3"))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.map(\.role), [.user, .user, .assistant, .user])
+        // One that only starts with the same words is another message.
+        let long = String(repeating: "Same opening words. ", count: 12)
+        state.windowChat(key)?.state.messages[3].content = long + "Then one thing."
+        state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 12, text: long + "Then another.", origin: nil))
+        XCTAssertEqual(state.windowChat(key)?.state.messages.last?.rowId, 12)
+        XCTAssertEqual(state.windowChat(key)?.state.messages.count, 5)
+        state.windowChat(key)?.state.messages.removeLast(3)
+
+        // It takes a message by its own id, only between turns and
+        // connected (with a client to send through), and never by an id
+        // Hermes has since bound to another chat.
+        let windowed = try XCTUnwrap(state.windowChat(key))
+        XCTAssertEqual(state.keptChatSendTarget(windowed), "a")
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "a", durableID: "other", profile: state.activeProfile, source: .resume)
+        XCTAssertNil(state.keptChatSendTarget(windowed), "Its id now goes to another chat")
+        state.conversationIdentityIndex.removeSessionIDs(["other"], profile: state.activeProfile)
+        XCTAssertFalse(state.canSendInKeptChat(windowed), "No client to send through here")
+        let sent = await state.sendInKeptChat(windowed, text: "Hello there")
+        XCTAssertFalse(sent)
+        XCTAssertFalse(windowed.state.messages.contains { $0.content == "Hello there" }, "Nothing shows that didn't go")
+        XCTAssertFalse(windowed.isRunning)
+
+        // The app is in the background only once every window is.
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .active]), .active)
+        XCTAssertEqual(AppState.mergedScenePhase([.background, .inactive]), .inactive)
+        XCTAssertEqual(AppState.mergedScenePhase([.background]), .background)
+        XCTAssertNil(AppState.mergedScenePhase([]))
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+        state.noteScenePhase(.active, scene: "chat-window:\(key)")
+        state.noteScenePhase(.background, scene: AppState.mainWindowScene)
+        XCTAssertTrue(state.isSceneActive, "A chat window on screen keeps the app active")
+        state.noteScenePhase(nil, scene: "chat-window:\(key)")
+        XCTAssertFalse(state.isSceneActive)
+        state.noteScenePhase(.active, scene: AppState.mainWindowScene)
+
+        // Closing the window lets go of a chat with no reply running.
+        state.closeChatWindow(key)
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        // A message under a runtime id Hermes bound to it since (another
+        // device resumed it) reaches it too.
+        keepABesideB()
+        let second = try XCTUnwrap(state.moveBesideChatToWindow())
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: state.activeProfile, source: .resume)
+        state.handleStreamEvent(.userMessage(sessionId: "rt-a", rowId: 21, text: "Resumed elsewhere", origin: nil))
+        XCTAssertEqual(state.windowChat(second)?.state.messages.last?.rowId, 21)
+        XCTAssertEqual(state.windowChat(second).flatMap(state.keptChatSendTarget), "rt-a", "Its next message goes where its turns now run")
+
+        // Open in Main Window shows the chat whatever the main window
+        // showed; its window closes once the open lands.
+        state.showSidebar = true
+        state.windowScenePhases[AppState.mainWindowScene] = .background
+        XCTAssertFalse(state.openWindowChatInMainWindow(second), "a main window is open, behind or not")
+        XCTAssertFalse(state.showSidebar)
+        XCTAssertFalse(state.mainWindowOpensChat)
+        state.windowScenePhases.removeValue(forKey: AppState.mainWindowScene)
+        XCTAssertTrue(state.openWindowChatInMainWindow(second), "with the main window closed, one opens to show the chat")
+        XCTAssertTrue(state.mainWindowOpensChat, "and it opens on the chat, not the list")
+        state.mainWindowOpensChat = false
+        XCTAssertNotNil(state.windowChat(second), "Shown until the open lands")
+        state.releaseFollowedChat(answering: ["a"])
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+
+        // A profile change of any kind closes every window.
+        keepABesideB()
+        XCTAssertNotNil(state.moveBesideChatToWindow())
+        let home = state.activeProfile
+        state.setActiveProfileForTesting(home + "-other")
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        state.setActiveProfileForTesting(home)
+        state.stopFollowingChats(dashboardID: nil)
+
+        // A profile or dashboard switch closes the pane and every window.
+        keepABesideB()
+        XCTAssertNotNil(state.moveBesideChatToWindow())
+        state.closeKeptChats()
+        XCTAssertTrue(state.windowChatIDs.isEmpty)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+    }
+
+    /// A message from the pane's box shows at once, runs a turn, and goes
+    /// to the chat's own session; one that fails comes off again, unless
+    /// Hermes' word of it came first.
+    func testAKeptChatTakesAMessageFromItsBox() async throws {
+        let sent = SentPrompts()
+        var fails = false
+        var outcome = PromptSubmissionOutcome.accepted
+        var hermesWordFirst: (() -> Void)?
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                hermesWordFirst?()
+                if fails { throw HermesError.timeout("prompt.submit") }
+                return outcome
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+        XCTAssertTrue(state.canSendInKeptChat(kept))
+
+        let before = state.besideChatLive.revision
+        let went = await state.sendInKeptChat(kept, text: "  Quick one  ")
+        XCTAssertTrue(went)
+        XCTAssertEqual(sent.prompts.map(\.sessionID), ["a"])
+        XCTAssertEqual(sent.prompts.map(\.text), ["Quick one"])
+        XCTAssertEqual(kept.state.messages.last?.content, "Quick one")
+        XCTAssertTrue(kept.isRunning)
+        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertFalse(state.canSendInKeptChat(kept), "Not while its turn runs")
+
+        // A send that fails with no word from Hermes comes off.
+        kept.state.messages.append(ChatMessage(id: "r1", role: .assistant, content: "Sure", timestamp: "2"))
+        state.act(on: kept) { state.setRunning(false) }
+        fails = true
+        let failed = await state.sendInKeptChat(kept, text: "Another")
+        XCTAssertFalse(failed)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Another" })
+        XCTAssertFalse(kept.isRunning)
+
+        // The last turn's reply still settling is no word of this one.
+        kept.state.streamingBuffer = "The last reply's words"
+        let unsettled = await state.sendInKeptChat(kept, text: "Again")
+        XCTAssertFalse(unsettled)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Again" })
+        XCTAssertFalse(kept.isRunning)
+        kept.state.streamingBuffer = ""
+
+        // One Hermes queued behind a turn already running stays, running.
+        fails = false
+        outcome = .queued
+        let queued = await state.sendInKeptChat(kept, text: "After that")
+        XCTAssertTrue(queued)
+        XCTAssertEqual(kept.state.messages.last?.content, "After that")
+        XCTAssertTrue(kept.isRunning)
+        state.act(on: kept) { state.setRunning(false) }
+        fails = true
+        outcome = .accepted
+
+        // A row from elsewhere landing during a failed send is no word of
+        // it: the send still comes off.
+        hermesWordFirst = {
+            kept.state.messages.append(ChatMessage(id: "job-post", role: .assistant, content: "A job's post", timestamp: "9"))
+        }
+        let elsewhere = await state.sendInKeptChat(kept, text: "Fourth")
+        XCTAssertFalse(elsewhere)
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Fourth" })
+        XCTAssertFalse(kept.isRunning)
+
+        // One whose word from Hermes came before the failure stays, its
+        // turn running.
+        hermesWordFirst = {
+            state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 30, text: "Third", origin: nil))
+        }
+        let kept3 = await state.sendInKeptChat(kept, text: "Third")
+        XCTAssertTrue(kept3)
+        XCTAssertEqual(kept.state.messages.last?.content, "Third")
+        XCTAssertEqual(kept.state.messages.last?.rowId, 30)
+        XCTAssertTrue(kept.isRunning)
+        // The seam's closure holds this one, which holds the state.
+        hermesWordFirst = nil
+
+        // A socket that closes mid-turn ends the turn as far as this phone
+        // knows: Hermes doesn't replay its end, and the box sends again.
+        state.handleDisconnectForTesting()
+        XCTAssertFalse(kept.isRunning)
+        XCTAssertTrue(kept.state.messages.contains { $0.content == "Third" })
+        state.besideChatIDs = nil
+    }
+
+
+    /// Closing the pane lets go of a chat with no reply running, and goes
+    /// on following one whose reply still comes; a chat that couldn't be
+    /// followed as it was left (a saved copy still opening) isn't beside.
+    func testClosingThePaneKeepsFollowingOnlyAReplyStillComing() {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        XCTAssertNotNil(state.besideChat)
+        state.closeBesideChat()
+        XCTAssertNil(state.besideChatIDs)
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+
+        state.turnState = .running
+        state.besideChatIDs = ["b"]
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        XCTAssertEqual(state.besideChat?.isRunning, true)
+        state.closeBesideChat()
+        XCTAssertEqual(state.backgroundChats.count, 1, "Its reply is followed as any left chat's")
+
+        // A turn Hermes reports starting in an idle pane's chat, before
+        // any word of it, is a reply still coming.
+        state.setActiveSessionState(id: "b")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Hello", timestamp: "2")]
+        state.releaseFollowedChat(answering: ["b"])
+        state.besideChatIDs = ["b"]
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        XCTAssertEqual(state.besideChat?.isRunning, false)
+        XCTAssertTrue(state.applyBackgroundChatEvent(.sessionBusy(sessionId: "b", busy: true)))
+        XCTAssertEqual(state.besideChat?.isRunning, true)
+        state.closeBesideChat()
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        state.stopFollowingChats(dashboardID: nil)
+
+        // Disconnected, the chat being left isn't followed: no pane.
+        state.isConnected = false
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "c")
+        XCTAssertNil(state.besideChatIDs)
+    }
+
     /// A followed chat of another dashboard is let go on its next event,
     /// which reaches neither the chat on screen nor a saved copy.
     func testAnotherDashboardsFollowedChatIsLetGoOnItsNextEvent() {
@@ -3478,6 +3808,76 @@ final class OfflineChatCacheTests: XCTestCase {
         store.waitForPendingWrites()
         XCTAssertNotEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
                           "Once upon a time.", "The reply's end saves nothing once it's let go")
+
+        // The same for one whose id is the chat on screen's (one host saved
+        // as two dashboards): let go, and the screen still takes the event.
+        state.savedDashboardRegistry.activeDashboardID = dashboard
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u2", role: .user, content: "Again", timestamp: "2")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Twice"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.backgroundChats.count, 1)
+        state.savedDashboardRegistry.activeDashboardID = UUID()
+        state.setActiveSessionState(id: "a")
+        state.messages = []
+        state.clearStreamingText()
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: " more"))
+        XCTAssertTrue(state.backgroundChats.isEmpty)
+        XCTAssertEqual(state.shownChat.streamingBuffer, " more", "The screen still takes the event")
+    }
+
+    /// A chat left while its finished reply's last words still drain on
+    /// screen: the reply settles in the left chat's rows and is saved.
+    func testAChatLeftWhileItsReplyDrainsSavesTheFinalReply() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+
+        state.setActiveSessionState(id: "b")
+        let left = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertFalse(left.isRunning)
+        XCTAssertEqual(left.rows.map(\.content), ["Tell me a story", "Once upon a time."])
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
+    }
+
+    /// New Chat follows the chat on screen at the tap; a reply that ends
+    /// before the create's adoption reaches the copy through the on-screen
+    /// branch, which leaves the save to the screen. Leaving the chat keeps
+    /// that copy and saves it (issue 2523's follow-up).
+    func testAReplyEndingBeforeNewChatsAdoptionIsSavedFromTheFollowedCopy() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        XCTAssertNotNil(state.followChatBeingLeft(turnWasRunning: true))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        let settled = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertFalse(settled.isRunning)
+
+        // The create's adoption, while its New Chat is under way.
+        state.newSessionCreationsInFlight += 1
+        state.setActiveSessionState(id: "b")
+        state.newSessionCreationsInFlight -= 1
+        XCTAssertEqual(state.backgroundChats.count, 1, "The adoption keeps the one follow")
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
     }
 
     /// A runtime id Hermes binds to a followed chat while it's away
@@ -3521,46 +3921,110 @@ final class OfflineChatCacheTests: XCTestCase {
     /// streamed is sealed in place, a failure ends it, and five left
     /// chats keep four, letting go of a finished one first.
     func testABackgroundChatFollowsTheReplyEventByEvent() {
-        let dashboard = UUID()
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b"), session("c"), session("e")]
+        state.isConnected = true
+        // Leaves chat `id` mid-turn, the words a tool step cut off on
+        // screen, for chat b, which opens empty and idle.
+        func leave(_ id: String) {
+            state.setActiveSessionState(id: id)
+            state.messages = [ChatMessage(id: "p-\(id)", role: .partial, content: "Looking", timestamp: "1")]
+            state.turnState = .running
+            state.setActiveSessionState(id: "b")
+            state.messages = []
+            state.clearStreamingText()
+            state.turnState = .idle
+        }
+        func rows(_ id: String) -> [ChatMessage] { state.followedChat(answering: [id])?.rows ?? [] }
+
+        leave("a")
+        XCTAssertEqual(rows("a").first?.role, .assistant, "A partial reads as the reply's words")
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Checking the map"))
+        state.handleStreamEvent(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true))
+        XCTAssertEqual(rows("a").last?.content, "Checking the map.")
+        // Its tool steps and thinking follow it too, through the chat's own
+        // stream handling.
+        state.handleStreamEvent(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil, toolID: "t1"))
+        XCTAssertEqual(rows("a").last?.tool?.status, .running)
+        state.handleStreamEvent(.toolComplete(sessionId: "a", toolName: "maps", toolOutput: "Found", toolID: "t1"))
+        XCTAssertEqual(rows("a").last?.tool?.status, .complete, "The card completes in place")
+        XCTAssertEqual(rows("a").filter { $0.role == .tool }.count, 1)
+        state.handleStreamEvent(.reasoningDelta(sessionId: "a", text: "The cafe is close"))
+        XCTAssertEqual(rows("a").last?.role, .reasoning)
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Found it"))
+        XCTAssertEqual(rows("a").last?.content, "Found it")
+        state.handleStreamEvent(.messageError(sessionId: "a", message: "boom"))
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.isRunning, false)
+        XCTAssertEqual(rows("a").map(\.content), ["Looking", "Checking the map.", "", "The cafe is close", "Found it"],
+                       "A reply that never finished keeps the words that came")
+        XCTAssertNotEqual(state.errorMessage, "boom", "A left chat's error isn't the chat on screen's")
+        state.handleStreamEvent(.sessionBusy(sessionId: "a", busy: true))
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.isRunning, false, "A left chat's turn only ever ends")
+
+        // An interim note Hermes didn't stream cuts the reply off: the
+        // reply so far shows until the final row takes its place.
+        leave("c")
+        state.handleStreamEvent(.messageDelta(sessionId: "c", text: "Let me look"))
+        state.handleStreamEvent(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false))
+        XCTAssertEqual(rows("c").map(\.content), ["Looking", "Let me look", "Checking the map."])
+        state.handleStreamEvent(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil))
+        XCTAssertEqual(rows("c").map(\.content), ["Checking the map.", "Let me look. Found it."],
+                       "The reply's opening words show once, whether cut off before or after it was left")
+        XCTAssertEqual(state.followedChat(answering: ["c"])?.isRunning, false)
+        // A completion with no words still lets go of the cut-off words,
+        // as the screen removes its partials.
+        leave("e")
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Let me look"))
+        state.handleStreamEvent(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
+        state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil))
+        XCTAssertEqual(rows("e").map(\.content), ["Checking the map."])
+
+        // A turn's end that comes before its completion: the completion's
+        // reasoning isn't added twice, and its final row is what's saved.
+        leave("a")
+        state.handleStreamEvent(.reasoningDelta(sessionId: "a", text: "Weighing it"))
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Half"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "a", busy: false))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r3", content: "Half of it, then all.", reasoning: "Weighing it"))
+        XCTAssertEqual(rows("a").filter { $0.role == .reasoning }.count, 1)
+        XCTAssertEqual(rows("a").last?.content, "Half of it, then all.")
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Half of it, then all.")
+
+        // A completion with no words of its own after the turn's end
+        // settles the words that came as the reply.
+        leave("c")
+        state.handleStreamEvent(.messageDelta(sessionId: "c", text: "All of it"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "c", busy: false))
+        XCTAssertEqual(rows("c").last?.content, "All of it")
+        state.handleStreamEvent(.messageComplete(sessionId: "c", messageId: "r4", content: nil, reasoning: nil))
+        XCTAssertEqual(rows("c").last?.content, "All of it")
+        XCTAssertEqual(rows("c").last?.id, "r4")
+        // A new turn after one that never completed keeps those words apart.
+        leave("e")
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Cut short"))
+        state.handleStreamEvent(.sessionBusy(sessionId: "e", busy: false))
+        state.handleStreamEvent(.messageStart(sessionId: "e"))
+        state.handleStreamEvent(.messageDelta(sessionId: "e", text: "Next reply"))
+        XCTAssertEqual(rows("e").suffix(2).map(\.content), ["Cut short", "Next reply"])
+        // Words a tool step cut off in that unfinished turn stay too, once
+        // the new reply completes.
+        state.handleStreamEvent(.messageComplete(sessionId: "e", messageId: "r5", content: "Next reply.", reasoning: nil))
+        XCTAssertEqual(rows("e").map(\.content), ["Looking", "Cut short", "Next reply."])
+        XCTAssertTrue(state.messages.isEmpty, "The chat on screen never takes a left chat's events")
+
         func chat(_ id: String, running: Bool = true) -> BackgroundChat {
-            var chat = BackgroundChat(
+            let chat = BackgroundChat(
                 sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
                 profile: "default", isBotChat: false,
                 rows: [ChatMessage(id: "p", role: .partial, content: "Looking", timestamp: "1")],
                 streamingText: ""
             )
-            if !running { _ = chat.apply(.messageInterrupted(sessionId: id)) }
+            if !running { chat.state.turnState = .idle }
             return chat
         }
-        var left = chat("a")
-        XCTAssertEqual(left.rows.first?.role, .assistant, "A partial reads as the reply's words")
-        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Checking the map")), .updated)
-        XCTAssertEqual(left.apply(.messageInterim(sessionId: "a", text: "Checking the map.", alreadyStreamed: true)), .updated)
-        XCTAssertEqual(left.rows.last?.content, "Checking the map.")
-        XCTAssertEqual(left.apply(.toolStart(sessionId: "a", toolName: "maps", toolInput: nil)), .ignored)
-        XCTAssertEqual(left.apply(.messageDelta(sessionId: "a", text: "Found it")), .updated)
-        XCTAssertEqual(left.rows.count, 3)
-        XCTAssertEqual(left.apply(.messageError(sessionId: "a", message: "boom")), .ended)
-        XCTAssertFalse(left.isRunning)
-        XCTAssertEqual(left.apply(.sessionBusy(sessionId: "a", busy: false)), .ignored)
-
-        // An interim note Hermes didn't stream cuts the reply off: the
-        // reply so far shows until the final row takes its place.
-        var cut = chat("c")
-        _ = cut.apply(.messageDelta(sessionId: "c", text: "Let me look"))
-        XCTAssertEqual(cut.apply(.messageInterim(sessionId: "c", text: "Checking the map.", alreadyStreamed: false)), .updated)
-        XCTAssertEqual(cut.rows.map(\.content), ["Looking", "Let me look", "Checking the map."])
-        XCTAssertEqual(cut.apply(.messageComplete(sessionId: "c", messageId: "r1", content: "Let me look. Found it.", reasoning: nil)), .ended)
-        XCTAssertEqual(cut.rows.map(\.content), ["Checking the map.", "Let me look. Found it."],
-                       "The reply's opening words show once, whether cut off before or after it was left")
-        // A completion with no words still lets go of the cut-off words,
-        // as the screen removes its partials.
-        var empty = chat("e")
-        _ = empty.apply(.messageDelta(sessionId: "e", text: "Let me look"))
-        _ = empty.apply(.messageInterim(sessionId: "e", text: "Checking the map.", alreadyStreamed: false))
-        XCTAssertEqual(empty.apply(.messageComplete(sessionId: "e", messageId: "r2", content: "", reasoning: nil)), .ended)
-        XCTAssertEqual(empty.rows.map(\.content), ["Checking the map."])
-
         var list: [BackgroundChat] = []
         list = BackgroundChat.adding(chat("1"), to: list)
         list = BackgroundChat.adding(chat("2", running: false), to: list)

@@ -227,8 +227,13 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             } else if request.trigger is UNPushNotificationTrigger {
                 PushNotificationService.shared.receiveNotificationPayload(request.content.userInfo)
             } else {
-                // Conduit posts only "Hermes wants to talk" itself (#449).
-                PushNotificationService.shared.receiveLocalCallNotification(request.content.userInfo)
+                // Conduit posts only "Hermes wants to talk" and missed calls
+                // itself (#449). A missed call's Open Chat opens its chat
+                // with no call; its Call Back and a tap call back.
+                PushNotificationService.shared.receiveLocalCallNotification(
+                    request.content.userInfo,
+                    opensChatOnly: response.actionIdentifier == HermesCallNotifications.openChatActionIdentifier
+                )
             }
             completionHandler()
         }
@@ -268,7 +273,7 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             completionHandler([.banner, .list, .sound])
             return
         }
-        if notification.request.content.categoryIdentifier == HermesCallNotifications.categoryIdentifier {
+        if HermesCallNotifications.isCallCategory(notification.request.content.categoryIdentifier) {
             completionHandler([.banner, .list, .sound])
             return
         }
@@ -363,6 +368,25 @@ struct ConduitApp: App {
         // The menu bar and ⌘-held shortcuts on an iPad and a Mac: ⌘N is
         // New Chat here, not a second window (issue 2219).
         .commands { ConduitKeyboardCommands() }
+
+        // A chat in a window of its own, opened from the pane beside the
+        // open chat (all-live stage 2, AppState+ChatWindows.swift). The
+        // first-window guard is RootView's, so it never closes these.
+        WindowGroup(id: V2ChatWindow.sceneID, for: String.self) { key in
+            chatWindowContent(key.wrappedValue)
+        }
+    }
+
+    /// A chat window's view, with what the main window's root gives every
+    /// view under it: the app's state, language, theme and accent.
+    private func chatWindowContent(_ key: String?) -> some View {
+        V2ChatWindow(key: key)
+            .environmentObject(appState)
+            .environment(\.locale, appLanguage.resolvedLocale)
+            .preferredColorScheme(appState.themePreference.colorScheme)
+            .tint(.conduitAccent)
+            .environment(\.conduitAccent, accentChoice)
+            .background(WindowAccentTint(choice: accentChoice))
     }
 
     private var rootContent: some View {

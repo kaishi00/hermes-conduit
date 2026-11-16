@@ -1492,6 +1492,8 @@ extension AppState {
         if case .bot(let name) = picked {
             return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
+        // Any call, a call kept across the switch too: New Chat can't start
+        // one while a call runs, so the switch would land on no chat.
         if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }

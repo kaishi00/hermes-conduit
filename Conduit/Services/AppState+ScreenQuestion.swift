@@ -535,10 +535,11 @@ extension AppState {
         }
         let requestedProfile = PendingVoiceLaunchPolicy.normalizedProfile(profile)
         var switchedProfile = false
-        if let requestedProfile, requestedProfile != activeProfile, isVoiceCallInProgress {
+        if let requestedProfile, requestedProfile != activeProfile, isCallEndingProfileSwitch {
             // The switch would end the call running, which a screenshot is
             // often asked during: it stays in this profile and the call goes
-            // on (issue 2390, as #1297's refusals).
+            // on (issue 2390, as #1297's refusals). A live call that goes on
+            // across the switch (all-live stage 2) lets it switch.
             showCallRefusal(AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone))
         } else if let requestedProfile, requestedProfile != activeProfile {
             await switchProfile(to: requestedProfile)
@@ -557,8 +558,10 @@ extension AppState {
         // text only), so a chat that can't come on screen (a Bot Chat, which
         // opens in the bot's profile, or a failed open) leaves the
         // screenshot in the chat that is, sent with its next message, and
-        // the call is told so.
-        if !switchedProfile, isLiveVoiceCallActive,
+        // the call is told so. A call on another profile than the one on
+        // screen (it went on across a switch) leaves it there too: its chat
+        // would open by switching back.
+        if !switchedProfile, isLiveVoiceCallActive, callProfileOffScreen == nil,
            let thread = voiceBackgroundJobSupervisor.liveThread, thread.profile == nil, !isOpenChat(thread) {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
             guard isConnected else { return false }

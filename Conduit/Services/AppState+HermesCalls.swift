@@ -52,12 +52,15 @@ extension AppState {
         return hermesCallsStatus
     }
 
-    /// Whether Hermes can call the user when a live call's work is done.
-    /// Settings not read yet count as on: the host refuses the watch if
-    /// they're off, and the call hears so.
+    /// Whether Hermes can call the user when a live call's work is done,
+    /// by the call's own profile's settings (a call kept across a switch
+    /// is on another profile than the screen's). Settings not read yet
+    /// count as on: the host refuses the watch if they're off, and the
+    /// call hears so.
     var hermesCallbackAvailability: VoiceCallbackAvailability {
         guard supportsHermesCalls else { return .unsupported }
-        return activeHermesCallsStatus?.callbackAvailability ?? .available
+        guard hermesCallsStatusKey == hermesCallsKey(profile: voiceCallProfile) else { return .available }
+        return hermesCallsStatus?.callbackAvailability ?? .available
     }
 
     private func hermesCallsKey(profile: String) -> String {
@@ -337,25 +340,25 @@ extension AppState {
                 return try await self.hermesCallsClient.watch(
                     sessionIDs: target.sessionIDs,
                     title: target.title,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     holdSeconds: holdSeconds,
                     endedWithinSeconds: endedWithinSeconds
                 )
             },
             hold: { [weak self] watchID, profile, seconds in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.activeProfile, seconds: seconds)
+                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.voiceCallProfile, seconds: seconds)
             },
             cancel: { [weak self] watchID, profile in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.activeProfile)
+                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.voiceCallProfile)
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
                 await HermesCallNotifications.post(HermesCallNotifications.localRequest(
                     for: target,
                     kind: kind,
-                    profile: target.profile ?? self.activeProfile,
+                    profile: target.profile ?? self.voiceCallProfile,
                     dashboardID: self.activeDashboardID
                 ))
             }
@@ -388,6 +391,8 @@ extension AppState {
             HermesCallTrace.shared.note("Voice not opened (connected: \(isConnected), voice in use: \(isVoiceInUse))")
             return false
         }
+        // An ended call's jobs go back before this one notes anything.
+        handBackEndedCallJobsNow()
         // The call tells the user how the job went; no voice conversation
         // announces it again.
         voiceBackgroundJobSupervisor.noteCallAnswered(sessionIDs: call.sessionIDs)
@@ -480,7 +485,9 @@ extension AppState {
     /// in use.
     func beginHermesCallPresence() {
         guard supportsHermesCallPresence else { return }
-        let profile = activeProfile
+        // The call's profile, read once as it starts: the renewals keep
+        // naming it across a profile switch the call goes on over.
+        let profile = voiceCallProfile
         // The same call reconnecting keeps the presence it has.
         if hermesCallPresenceTask != nil, hermesCallPresenceProfile == profile { return }
         endHermesCallPresence()

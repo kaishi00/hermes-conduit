@@ -311,8 +311,10 @@ struct GeminiLiveVoiceSheet: View {
             showsCamera: !isWaiting,
             onEnd: onClose,
             onRetry: onRetry,
-            // A call still waiting on Hermes has no mode to move yet.
-            modeSwitch: isWaiting ? nil : appState.voiceModeSwitch(for: engine.callEngine),
+            // A call still waiting on Hermes has no mode to move yet; one on
+            // another profile than the one on screen would save the mode
+            // there and start again on it.
+            modeSwitch: isWaiting || appState.callProfileOffScreen != nil ? nil : appState.voiceModeSwitch(for: engine.callEngine),
             consent: isWaiting ? nil : controller.awaitingConsent,
             onAllowConsent: {
                 guard let mode = controller.awaitingConsent else { return }

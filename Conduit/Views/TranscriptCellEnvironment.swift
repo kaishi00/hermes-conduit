@@ -35,6 +35,9 @@ struct TranscriptCellEnvironment: Equatable {
         // The shell sets it for the main button in a Duo's status strip;
         // no transcript row reads it.
         "v2MainButtonDiameter",
+        // The shell sets it on the list column, for a chat row's Open
+        // Beside; no transcript row reads it.
+        "v2BesideChatFits",
     ]
 
     // Conduit's

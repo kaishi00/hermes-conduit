@@ -5,7 +5,9 @@ import UserNotifications
 /// launch and when the app's language changes, so their buttons read in it.
 enum NotificationCategories {
     static func register(center: UNUserNotificationCenter = .current()) {
-        center.setNotificationCategories([HermesCallNotifications.category(), PulseNotifications.category()])
+        center.setNotificationCategories([
+            HermesCallNotifications.category(), HermesCallNotifications.missedCategory(), PulseNotifications.category()
+        ])
     }
 }
 

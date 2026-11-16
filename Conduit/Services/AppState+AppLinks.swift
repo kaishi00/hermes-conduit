@@ -83,7 +83,8 @@ extension AppState {
             openLinkedBotChat(owner)
             return
         }
-        guard !isVoiceCallInProgress else {
+        // A live call that goes on across the switch (all-live stage 2) doesn't refuse.
+        guard !isCallEndingProfileSwitch else {
             showCallRefusal(AppLocalization.string("End the call to open a chat in another profile."))
             return
         }

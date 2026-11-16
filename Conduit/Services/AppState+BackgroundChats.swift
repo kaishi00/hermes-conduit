@@ -3,13 +3,151 @@
 //  Conduit
 //
 //  A chat left while its reply was still coming keeps following that reply
-//  (all-live stage 2, BackgroundChat.swift): its rows grow as the reply
-//  streams on the shared socket, and going back to it shows them at once.
+//  (all-live stage 2, BackgroundChat.swift): its own state takes the rest of
+//  its turn as it streams on the shared socket, and going back to it shows
+//  its rows at once.
 //
 
 import Foundation
 
+/// The left chat the app acts on while one of its events applies
+/// (`AppState.act(on:)`): who it is, in place of the chat on screen's ids
+/// and profile.
+struct LiveChatScope: Equatable {
+    let sessionIDs: Set<String>
+    let profile: String
+}
+
 extension AppState {
+    /// Whether the app acts on the chat on screen, as it does except while
+    /// a left chat's event applies to that chat (`act(on:)`). What a turn
+    /// does to the screen, rather than to its chat, checks this: Voice,
+    /// haptics, Read Aloud, suggested replies, the saved presentation, the
+    /// viewport, the message waiting to send.
+    var actingOnChatOnScreen: Bool { liveChatScope == nil }
+
+    /// The profile of the chat acted on, which a left chat's rows are
+    /// written by: a profile switch can leave one in another profile.
+    var actingProfile: String { liveChatScope?.profile ?? activeProfile }
+
+    /// Runs `body` with `chat`'s own state as the chat acted on, so the
+    /// stream handling written for the chat on screen applies to it.
+    /// Nothing awaits inside, so nothing on screen draws in between.
+    func act(on chat: BackgroundChat, _ body: () -> Void) {
+        let screen = shownChat
+        let scope = liveChatScope
+        shownChat = chat.state
+        liveChatScope = LiveChatScope(sessionIDs: chat.sessionIDs, profile: chat.profile)
+        defer {
+            shownChat = screen
+            liveChatScope = scope
+        }
+        body()
+    }
+
+    /// Applies a left chat's event to its own state (inside `act(on:)`):
+    /// its reply's words, thinking and tool steps, through the same steps
+    /// as the chat on screen. The model, context and other runtime events
+    /// are the chat on screen's, and decision cards show once Hermes' rows
+    /// land.
+    private func applyLeftChatEvent(_ event: StreamEvent, sessionID: String) {
+        switch event {
+        case .messageStart:
+            finalizePendingStreamingCompletion()
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningTurn()
+            keepWordsOfAnUnfinishedReply()
+            setRunning(true)
+        case .messageDelta(_, let text):
+            finalizePendingStreamingCompletion()
+            shownChat.streamingBuffer += text
+            setRunning(true)
+        case .messageInterim(_, let text, let alreadyStreamed):
+            finalizePendingStreamingCompletion()
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningSegment()
+            sealInterimCommentary(text, alreadyStreamed: alreadyStreamed)
+            setRunning(true)
+        case .reasoningDelta(_, let text):
+            finalizePendingStreamingCompletion()
+            shownChat.receivedReasoningForCurrentTurn = true
+            appendReasoning(text)
+            setRunning(true)
+        case .messageComplete(_, let messageId, let content, let reasoning, let alreadyShown):
+            // Settles at once off screen: no tail to drain.
+            scheduleStreamingCompletion(
+                sessionId: sessionID,
+                messageId: messageId,
+                content: content,
+                reasoning: reasoning,
+                alreadyShown: alreadyShown
+            )
+        case .messageError, .messageInterrupted:
+            // A reply that never finished keeps the words that came.
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningTurn()
+            flushStreamingPartial()
+            clearStreamingText()
+            setRunning(false)
+        case .sessionBusy(_, let busy):
+            if busy {
+                // A turn starting in the chat kept beside the one on screen,
+                // before any word of it: the pane says it works, and
+                // closing the pane goes on following the reply. Any other
+                // left chat's turn only ever ends.
+                if actingOnBesideChat, !shownChat.turnState.isRunning { setRunning(true) }
+                break
+            }
+            // The end of its turn.
+            guard shownChat.turnState.isRunning else { break }
+            settleReasoningSegmentIntoTranscript()
+            // The segment ends, the turn's flag stays: a completion that
+            // carries the reasoning already streamed mustn't add it again.
+            resetReasoningSegment()
+            // The words so far stay the reply's: a completion that comes
+            // after with no words of its own settles them as its row.
+            setRunning(false)
+        case .toolStart(_, let name, let input, let eventToolID):
+            applyToolStart(name: name, input: input, eventToolID: eventToolID, streamSessionId: sessionID)
+        case .toolComplete(_, let name, let output, let eventToolID):
+            applyToolComplete(name: name, output: output, eventToolID: eventToolID, streamSessionId: sessionID)
+        case .sessionInfo(_, let snapshot):
+            // Hermes says the turn isn't running: it ended where no event
+            // of its end reached here.
+            // As the turn's own end does: the words so far stay in the
+            // buffer, so a completion after it with no words of its own
+            // still settles them as its row.
+            guard snapshot.running == false, shownChat.turnState.isRunning else { break }
+            settleReasoningSegmentIntoTranscript()
+            resetReasoningSegment()
+            setRunning(false)
+        default:
+            break
+        }
+    }
+
+    /// Ends a left chat's turn as far as this phone knows, with no
+    /// completion still to come: its words so far become its row, its flag
+    /// goes.
+    private func settleKeptChatTurn() {
+        settleReasoningSegmentIntoTranscript()
+        resetReasoningSegment()
+        flushStreamingPartial()
+        clearStreamingText()
+        setRunning(false)
+    }
+
+    /// The socket closed: a left chat's turn is followed no more (a new
+    /// socket isn't attached to it, and Hermes doesn't replay its end), so
+    /// it stops counting as running and its message box sends again. Its
+    /// words so far stay; opening it reads the rest.
+    func settleKeptChatTurnsAfterDisconnect() {
+        for chat in backgroundChats where chat.isRunning {
+            act(on: chat) { settleKeptChatTurn() }
+        }
+        besideChatLive.moved()
+    }
+
     /// The chat on screen is being left for `newID` (setActiveSessionState).
     /// While its reply is still coming, its rows and the reply so far are
     /// kept and follow the rest of the reply. A chat being opened stays
@@ -21,7 +159,26 @@ extension AppState {
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
-        followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running)
+        // The chat picked to stay beside the next one is followed whether
+        // or not a reply runs in it.
+        let staysBeside = keptChatIDs.map { !$0.isDisjoint(with: ids) } == true
+        // Followed already by a New Chat under way (it follows the chat
+        // before its create, and the create's adoption leaves it again):
+        // that copy has taken every event since and keeps the chat's own
+        // title, where the screen's rows stopped at the create (issue
+        // 2523). A reply that ended while the chat was still on screen took
+        // the on-screen branch, which leaves the save to the screen; the
+        // copy is the complete one, so it's saved now that the chat is
+        // left. Any other leave, and the chat kept beside, takes a fresh
+        // copy of what's on screen, since what was sent there reached only
+        // the screen.
+        if !staysBeside, newSessionCreationsInFlight > 0, let chat = followedChat(answering: ids) {
+            if !chat.isRunning { saveBackgroundChatCopy(chat) }
+        } else {
+            followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running, staysBeside: staysBeside)
+        }
+        // One that couldn't be followed (a saved copy, a room) isn't beside.
+        closeBesideChatWithoutItsChat()
     }
 
     /// A profile switch, or New Chat, leaves the chat on screen. Called
@@ -86,6 +243,8 @@ extension AppState {
             $0.dashboardID == activeDashboardID && $0.profile == activeProfile
                 && !$0.sessionIDs.isDisjoint(with: ids)
         }
+        // The chat beside the one on screen, opened there, is beside no longer.
+        closeBesideChatWithoutItsChat()
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
@@ -98,9 +257,11 @@ extension AppState {
         return durableIDs.contains(newDurableID) || ids.contains(newDurableID)
     }
 
-    private func followChatOnScreen(answering ids: Set<String>, openAs oldID: String, turnRunning: Bool) {
+    /// `staysBeside`: the chat stays beside the next one, so it's followed
+    /// with no reply running too.
+    func followChatOnScreen(answering ids: Set<String>, openAs oldID: String, turnRunning: Bool, staysBeside: Bool = false) {
         guard isConnected,
-              turnRunning || !shownChat.streamingBuffer.isEmpty,
+              staysBeside || turnRunning || !shownChat.streamingBuffer.isEmpty,
               offlineChatPresentation == nil,
               activeRoomSurface == nil,
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
@@ -119,10 +280,67 @@ extension AppState {
             dashboardID: dashboardID,
             profile: activeProfile,
             isBotChat: isBotChat,
-            rows: messages,
-            streamingText: shownChat.streamingBuffer
+            state: leftChatState(turnRunning: turnRunning)
         )
-        backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats())
+        backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats(), keeping: keptChatIDs)
+        if staysBeside { besideChatLive.moved() }
+        // A reply that finished while its last words drained on screen
+        // settles in the left chat's own rows.
+        if chat.state.pendingStreamingCompletion != nil {
+            act(on: chat) { finalizePendingStreamingCompletion(cancelResponseHapticConclusion: false) }
+            saveBackgroundChatCopy(chat)
+        }
+    }
+
+    /// A new turn on a left chat whose last reply never completed (its
+    /// turn ended without a completion): those words stay as a row of
+    /// their own rather than running into the new reply.
+    private func keepWordsOfAnUnfinishedReply() {
+        // Words a tool step cut off before it ended are the reply's too:
+        // the next completion removes partials, so they become its rows.
+        if messages.contains(where: { $0.role == .partial }) {
+            messages = messages.map { row in
+                guard row.role == .partial else { return row }
+                var kept = ChatMessage(id: row.id, role: .assistant, content: row.content, timestamp: row.timestamp, author: row.author ?? actingProfile)
+                kept.reasoning = row.reasoning
+                return kept
+            }
+        }
+        let words = shownChat.streamingBuffer.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty else { return }
+        messages.append(ChatMessage(
+            id: "assistant-\(Date().timeIntervalSince1970)",
+            role: .assistant,
+            content: words,
+            timestamp: Self.localTimestamp(),
+            author: actingProfile
+        ))
+        clearStreamingText()
+    }
+
+    /// A state of its own for the chat on screen as it's left mid-reply:
+    /// its rows and its turn as far as it got, the reply streaming, the
+    /// thinking card live, the interim notes and a completion still
+    /// draining. The screen's own state then goes on to the next chat.
+    private func leftChatState(turnRunning: Bool) -> ChatState {
+        let screen = shownChat
+        let left = ChatState()
+        left.messages = screen.messages
+        left.streamingBuffer = screen.streamingBuffer
+        left.activeAssistantMessageId = screen.activeAssistantMessageId
+        left.interimRowID = screen.interimRowID
+        left.runningTurnNoteIDs = screen.runningTurnNoteIDs
+        left.receivedReasoningForCurrentTurn = screen.receivedReasoningForCurrentTurn
+        left.reasoningBuffer = screen.reasoningBuffer
+        left.activeReasoningMessageId = screen.activeReasoningMessageId
+        left.liveTurn.reasoningSegment = screen.liveTurn.reasoningSegment
+        left.pendingStreamingCompletion = screen.pendingStreamingCompletion
+        // Its reply is still coming, whether or not it has words yet; one
+        // only draining its last words has finished.
+        // A chat kept beside the next one may have no reply at all.
+        let replyStreams = !screen.streamingBuffer.isEmpty && screen.pendingStreamingCompletion == nil
+        left.turnState = (turnRunning || replyStreams) ? .running : .idle
+        return left
     }
 
     /// The followed chats of the dashboard on screen, any of its profiles
@@ -146,17 +364,31 @@ extension AppState {
         // ids do, so the copy is current if the open is overtaken.
         guard let index = backgroundChats.firstIndex(where: { $0.answers(to: id) })
             ?? followedChatIndex(reboundTo: id) else { return false }
-        if onScreen {
-            // The chat on screen saves its own copy.
-            _ = backgroundChats[index].apply(event)
-            return false
-        }
-        guard backgroundChats[index].dashboardID == activeDashboardID else {
+        let chat = backgroundChats[index]
+        guard chat.dashboardID == activeDashboardID else {
             backgroundChats.remove(at: index)
             return false
         }
-        if backgroundChats[index].apply(event) == .ended {
-            saveBackgroundChatCopy(backgroundChats[index])
+        if onScreen {
+            // The chat on screen saves its own copy.
+            act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
+            return false
+        }
+        let wasRunning = chat.isRunning
+        act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
+        if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
+            besideChatLive.moved()
+            // A turn sent from its message box has a Live Activity too.
+            LiveTurnActivities.shared?.observe(event, sessionID: id)
+            noteKeptChatEvent(chat, sessionID: id)
+        }
+        // Saved as its turn ends, and again for a completion that lands
+        // after the turn's end (sessionBusy came first), whose final row
+        // takes the cut-off words' place.
+        var isCompletion = false
+        if case .messageComplete = event { isCompletion = true }
+        if !chat.isRunning, wasRunning || isCompletion {
+            saveBackgroundChatCopy(chat)
         }
         return true
     }
@@ -165,7 +397,7 @@ extension AppState {
     /// belongs to (another device resumed it, say), by the conversation
     /// index. Looked up on every event and never kept, so an id the index
     /// later binds to another chat stops reaching this one.
-    private func followedChatIndex(reboundTo id: String) -> Int? {
+    func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
         return backgroundChats.firstIndex { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }
@@ -202,6 +434,7 @@ extension AppState {
             (dashboardID == nil || chat.dashboardID == dashboardID)
                 && sessionIDs.map { !chat.sessionIDs.isDisjoint(with: $0) } != false
         }
+        closeBesideChatWithoutItsChat()
     }
 
     /// Shows a followed chat's rows while it opens, as a saved copy shows

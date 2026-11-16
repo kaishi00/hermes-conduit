@@ -160,7 +160,7 @@ extension AppState {
         let isOpen = isOpenChat(item)
         // Another profile's chat doesn't open during a call (it says so),
         // so nothing waits to scroll.
-        let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isVoiceCallInProgress
+        let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isCallEndingProfileSwitch
         if !refused {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)

@@ -2580,6 +2580,104 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.liveVoiceHostContextForTesting, [])
     }
 
+    /// A live call keeps its profile once another one is on screen
+    /// (all-live stage 2): its chat, its jobs' ledger, its style and the
+    /// link to its chat stay the call's, and the bar names it. Ending it
+    /// hands voice jobs back to the profile on screen.
+    func testALiveCallKeepsItsProfileWhileAnotherIsOnScreen() {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveEnabled(true)
+        var homeStyle = LiveVoiceStyle()
+        homeStyle.answerLength = .concise
+        appState.setLiveVoiceStyle(homeStyle, profile: "default")
+        appState.liveCallProfile = "default"
+        appState.showGPTLiveSheet = true
+        appState.minimisedLiveVoice = .gptLive
+        let thread = VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
+        let homeLedger = appState.voiceJobLedgerKey
+        XCTAssertNil(appState.callProfileOffScreen, "Nothing to name while the call's profile is on screen")
+        XCTAssertNil(appState.callThreadProfile(thread))
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "Trip")
+
+        appState.setActiveProfileForTesting("work")
+
+        XCTAssertEqual(appState.voiceCallProfile, "default")
+        XCTAssertEqual(appState.callProfileOffScreen, "default")
+        XCTAssertEqual(appState.callThreadProfile(thread), "default", "The call's chat is read and sent to on its profile")
+        var bot = thread
+        bot.profile = "furina"
+        XCTAssertEqual(appState.callThreadProfile(bot), "furina", "A Bot Chat stays its bot's")
+        XCTAssertEqual(appState.voiceJobLedgerKey, homeLedger, "Its jobs stay in its own profile's ledger")
+        XCTAssertEqual(appState.liveCallStyle.answerLength, .concise, "The call keeps its own style")
+        XCTAssertEqual(appState.callChatLink(.session(id: "stored-1")), .session(id: "stored-1", profile: "default"),
+                       "Opening its chat goes back to the call's profile")
+        XCTAssertEqual(appState.callChatLink(.bot(profile: "furina")), .bot(profile: "furina"))
+        let name = appState.profileDisplayName("default")
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "\(name) · Trip", "The bar says which profile the call is on")
+        XCTAssertEqual(appState.liveCallBarSubject(thread: nil), name)
+
+        appState.closeGPTLiveConversation()
+
+        XCTAssertNil(appState.liveCallProfile)
+        XCTAssertEqual(appState.voiceCallProfile, "work", "Voice is the profile on screen's again")
+        XCTAssertNotEqual(appState.voiceJobLedgerKey, homeLedger)
+        XCTAssertNil(appState.callProfileOffScreen)
+    }
+
+    /// A call that ended off its profile while its hang-up's callback pass
+    /// is on the wire: its jobs stay its profile's until the pass ends, a
+    /// new voice start takes them back at once, and a boundary drops the
+    /// wait (all-live stage 2).
+    func testACallEndedOffItsProfileHandsItsJobsBackAfterTheHangUpsCallbackPass() async {
+        func endedOffProfile() -> (AppState, String, AsyncStream<Void>.Continuation, Task<Void, Never>) {
+            let appState = makeGPTLiveAppState()
+            appState.setGPTLiveEnabled(true)
+            appState.liveCallProfile = "default"
+            appState.showGPTLiveSheet = true
+            let homeLedger = appState.voiceJobLedgerKey
+            appState.setActiveProfileForTesting("work")
+            let (stream, release) = AsyncStream<Void>.makeStream()
+            let pass = Task { for await _ in stream { break } }
+            appState.voiceBackgroundJobSupervisor.holdCallbackSyncForTesting(pass)
+            appState.closeGPTLiveConversation()
+            XCTAssertNil(appState.liveCallProfile)
+            XCTAssertEqual(appState.callProfileHandingBack, "default")
+            XCTAssertEqual(appState.voiceCallProfile, "default", "Its jobs are still its profile's while the pass runs")
+            XCTAssertEqual(appState.voiceJobLedgerKey, homeLedger)
+            return (appState, homeLedger, release, pass)
+        }
+
+        // The pass ends: the jobs go back to the profile on screen.
+        let (waited, homeLedger, release, pass) = endedOffProfile()
+        release.yield()
+        await pass.value
+        for _ in 0..<50 where waited.callProfileHandingBack != nil { await Task.yield() }
+        XCTAssertNil(waited.callProfileHandingBack)
+        XCTAssertNil(waited.callEndedOffProfileHandBack)
+        XCTAssertEqual(waited.voiceCallProfile, "work")
+        XCTAssertNotEqual(waited.voiceJobLedgerKey, homeLedger)
+        XCTAssertNil(waited.voiceBackgroundJobSupervisor.callbackSyncInFlight)
+
+        // A new voice start doesn't wait for the pass.
+        let (started, _, releaseStarted, _) = endedOffProfile()
+        started.handBackEndedCallJobsNow()
+        XCTAssertNil(started.callProfileHandingBack)
+        XCTAssertNil(started.callEndedOffProfileHandBack, "Nothing is left to reset the new call's jobs later")
+        XCTAssertEqual(started.voiceCallProfile, "work")
+        releaseStarted.yield()
+
+        // A boundary drops the wait with the jobs.
+        let (retired, _, releaseRetired, retiredPass) = endedOffProfile()
+        retired.retireVoiceBackgroundJobs()
+        XCTAssertNil(retired.callProfileHandingBack)
+        XCTAssertNil(retired.callEndedOffProfileHandBack)
+        XCTAssertEqual(retired.voiceCallProfile, "work")
+        releaseRetired.yield()
+        await retiredPass.value
+        await Task.yield()
+        XCTAssertNil(retired.callProfileHandingBack)
+    }
+
     func testDisconnectDropsTheHostTextOfALiveCallThatAlreadyFailed() {
         let appState = makeGPTLiveAppState()
         appState.installLiveVoiceHostContextForTesting()

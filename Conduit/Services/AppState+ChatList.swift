@@ -139,8 +139,8 @@ extension AppState {
         // the switch to its profile, then the chat.
         let owner = rowProfile(session)
         if owner != activeProfile {
-            // A switch ends a call: say so here, where the tap was.
-            guard !isVoiceCallInProgress else {
+            // A switch ends a call (but a live call that goes on across it): say so here, where the tap was.
+            guard !isCallEndingProfileSwitch else {
                 showSessionMutationNotice(AppLocalization.string("End the call to open a chat in another profile."))
                 return
             }
@@ -661,6 +661,10 @@ extension AppState {
     /// do not simplify either away.
     func setActiveProfile(_ newValue: String) {
         guard newValue != activeProfile else { return }
+        // The pane's chat and each chat window's are the outgoing
+        // profile's, whatever changed it: a switch closes them first, and
+        // so does a profile Hermes no longer has, or one a sign-in brings.
+        closeKeptChats()
         activeProfile = newValue
         // A chat error waiting behind a room was the outgoing profile's chat's.
         chatErrorBehindRoom = nil

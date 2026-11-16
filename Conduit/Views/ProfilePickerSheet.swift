@@ -96,7 +96,7 @@ struct ProfilePickerSheet: View {
                                 }
                             ) {
                                 Haptics.medium()
-                                appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
+                                appState.switchEndingCall(to: appState.profileDisplayName(profile), profileOnly: true, pending: &pendingCallEndingSwitch) {
                                     Task { await appState.switchProfile(to: profile); dismiss() }
                                 }
                             }

@@ -827,7 +827,8 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(plan(target), .ring)
         XCTAssertEqual(plan(target, sentAgo: nil), .ring, "An older relay doesn't say when it sent it")
         XCTAssertEqual(plan(target, sentAgo: 91), .endAtOnce(.missed), "The phone was offline: a missed call, never a late ring")
-        XCTAssertEqual(plan(target, busy: true), .endAtOnce(.talk))
+        XCTAssertEqual(plan(target, busy: true), .endAtOnce(.busy), "Already in a call: a missed call, never a ring over it")
+        XCTAssertTrue(plan(target, busy: true).startsTrace)
         XCTAssertEqual(plan(target, replayed: true), .endAtOnce(.none))
         XCTAssertEqual(plan(nil), .endAtOnce(.unreadable))
         XCTAssertTrue(plan(target, sentAgo: 91).startsTrace)
@@ -837,7 +838,7 @@ extension VoiceConversationControllerTests {
         // rings always shows, one that wouldn't only when iOS needs it.
         XCTAssertTrue(HermesNativeCalls.showsCall(.ring, mustReport: false))
         XCTAssertTrue(HermesNativeCalls.showsCall(.endAtOnce(.missed), mustReport: true))
-        XCTAssertFalse(HermesNativeCalls.showsCall(.endAtOnce(.talk), mustReport: false))
+        XCTAssertFalse(HermesNativeCalls.showsCall(.endAtOnce(.busy), mustReport: false))
         XCTAssertFalse(HermesNativeCalls.showsCall(.endAtOnce(.none), mustReport: false))
         if #available(iOS 26.4, *) {
             let selector = NSSelectorFromString("pushRegistry:didReceiveIncomingVoIPPushWithPayload:metadata:withCompletionHandler:")
@@ -853,7 +854,7 @@ extension VoiceConversationControllerTests {
     func testInTheCarOrSilencedTheWatchStopsRinging() {
         XCTAssertTrue(HermesNativeCalls.stopsWatchRing(plan: .ring, inCar: true), "Driving: the call rings on CarPlay, not the wrist")
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .ring, inCar: false))
-        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.talk), inCar: false), "Busy in voice here")
+        XCTAssertTrue(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.busy), inCar: false), "Busy in voice here")
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.missed), inCar: true), "A late push: the Watch judges its own")
         XCTAssertFalse(HermesNativeCalls.stopsWatchRing(plan: .endAtOnce(.none), inCar: true))
         XCTAssertTrue(HermesNativeCalls.stopsWatchRing(after: .filteredByDoNotDisturb), "A Focus silenced it here")
@@ -1007,6 +1008,23 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(routed.call?.reason, "Which branch?")
         XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.title, HermesCallCopy.notificationTitle)
         XCTAssertNil(HermesCallNotifications.callRequest(for: ConduitNotificationTarget(profile: nil, sessionId: "rt-1", type: nil), missed: true))
+
+        // A missed call offers both (Eric 2026-11-15): Call Back, the
+        // Talk button's action, and Open Chat, which opens its chat with
+        // no call. "Hermes wants to talk" keeps Talk alone.
+        XCTAssertEqual(missed.content.categoryIdentifier, HermesCallNotifications.missedCategoryIdentifier)
+        XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.categoryIdentifier,
+                       HermesCallNotifications.categoryIdentifier)
+        XCTAssertTrue(HermesCallNotifications.isCallCategory(HermesCallNotifications.missedCategoryIdentifier))
+        XCTAssertTrue(HermesCallNotifications.isCallCategory(HermesCallNotifications.categoryIdentifier))
+        XCTAssertEqual(HermesCallNotifications.missedCategory().actions.map(\.identifier),
+                       [HermesCallNotifications.talkActionIdentifier, HermesCallNotifications.openChatActionIdentifier])
+        let chatOnly = try XCTUnwrap(HermesCallNotifications.localTarget(from: missed.content.userInfo, opensChatOnly: true))
+        XCTAssertEqual(chatOnly.sessionId, "rt-1")
+        XCTAssertEqual(chatOnly.durableSessionID, "st-1")
+        XCTAssertEqual(chatOnly.profile, "fam")
+        XCTAssertNil(chatOnly.call, "Open Chat starts no call")
+        XCTAssertNil(chatOnly.type)
     }
 
     func testTheLiveModelAnswersWhatTheCallWaitsOnOnlyWithTheUsersWords() async {

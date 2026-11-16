@@ -248,7 +248,8 @@ extension AppState {
             running: running
         )
         if running {
-            clearPendingDecisionRestorationGuard()
+            // The guard is the chat on screen's.
+            if actingOnChatOnScreen { clearPendingDecisionRestorationGuard() }
         } else {
             // The turn settled. A locally-owned turn whose persisted
             // boundary was never positively observed leaves ordering debt:

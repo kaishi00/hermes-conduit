@@ -118,6 +118,10 @@ enum HermesCallCopy {
         )
     }
     static var talkAction: String { AppLocalization.string("Talk") }
+    /// A missed call's buttons (Eric 2026-11-15): call back, or open the
+    /// chat it was about without a call.
+    static var callBackAction: String { AppLocalization.string("Call Back", table: .voice) }
+    static var openChatAction: String { AppLocalization.string("Open Chat") }
     static var jobCardNote: String { AppLocalization.string("Calls you when done", table: .voice) }
 
     /// How the job ended, as one sentence: "“Check the server” finished."
@@ -1108,6 +1112,11 @@ struct HermesCallOutcomeOutbox: Codable, Equatable {
 enum HermesCallNotifications {
     static let categoryIdentifier = "HERMES_CALL"
     static let talkActionIdentifier = "HERMES_CALL_TALK"
+    /// A missed call's category: Call Back (the Talk button's action) and
+    /// Open Chat, which opens the chat the call was about with no call
+    /// (all-live stage 2; Eric 2026-11-15 chose both).
+    static let missedCategoryIdentifier = "HERMES_CALL_MISSED"
+    static let openChatActionIdentifier = "HERMES_CALL_OPEN_CHAT"
     /// Where a call notification Conduit posted itself keeps its routing.
     static let localPayloadKey = "conduit_local_call"
 
@@ -1119,6 +1128,18 @@ enum HermesCallNotifications {
         return UNNotificationCategory(identifier: categoryIdentifier, actions: [talk], intentIdentifiers: [], options: [])
     }
 
+    /// A missed call's category, registered with the others.
+    static func missedCategory() -> UNNotificationCategory {
+        let callBack = UNNotificationAction(identifier: talkActionIdentifier, title: HermesCallCopy.callBackAction, options: [.foreground])
+        let openChat = UNNotificationAction(identifier: openChatActionIdentifier, title: HermesCallCopy.openChatAction, options: [.foreground])
+        return UNNotificationCategory(identifier: missedCategoryIdentifier, actions: [callBack, openChat], intentIdentifiers: [], options: [])
+    }
+
+    /// Whether `identifier` is one of a call's categories.
+    static func isCallCategory(_ identifier: String) -> Bool {
+        identifier == categoryIdentifier || identifier == missedCategoryIdentifier
+    }
+
     /// The local notification for `target`, routed like a call push.
     /// `callerName`: who a missed call was from (HermesCallerName).
     static func localRequest(for target: VoiceCallbackTarget, kind: HermesCallRequest.Kind?, profile: String, dashboardID: UUID?, reason: String? = nil, missed: Bool = false, callerName: String = HermesCallerName.fallback) -> UNNotificationRequest {
@@ -1126,7 +1147,7 @@ enum HermesCallNotifications {
         content.title = missed ? HermesCallCopy.missedCallTitle(from: callerName) : HermesCallCopy.notificationTitle
         content.body = HermesCallCopy.summary(kind: kind, title: HermesCallRequest.cleanedTitle(target.title), reason: HermesCallRequest.cleanedReason(reason))
         content.sound = .default
-        content.categoryIdentifier = categoryIdentifier
+        content.categoryIdentifier = missed ? missedCategoryIdentifier : categoryIdentifier
         content.threadIdentifier = "hermes-call"
         var routing: [String: Any] = [
             "profile": profile,
@@ -1180,7 +1201,9 @@ enum HermesCallNotifications {
     /// The target of a call notification Conduit posted itself. Only the
     /// app can post one, so it routes without the end-to-end checks a push
     /// goes through.
-    static func localTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
+    /// `opensChatOnly`: a missed call's Open Chat, which opens the chat
+    /// the call was about and starts no call.
+    static func localTarget(from userInfo: [AnyHashable: Any], opensChatOnly: Bool = false) -> ConduitNotificationTarget? {
         guard let routing = userInfo[localPayloadKey] as? [String: Any],
               let sessionID = (routing["session_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !sessionID.isEmpty else { return nil }
@@ -1198,8 +1221,8 @@ enum HermesCallNotifications {
             sessionId: sessionID,
             durableSessionID: stored?.isEmpty == false ? stored : nil,
             dashboardID: (routing["dashboard_id"] as? String).flatMap(UUID.init(uuidString:)),
-            type: HermesCallRequest.type,
-            call: call
+            type: opensChatOnly ? nil : HermesCallRequest.type,
+            call: opensChatOnly ? nil : call
         )
     }
 }
