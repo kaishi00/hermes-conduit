@@ -86,12 +86,14 @@ extension AppState {
         let reportedOn = activeDashboardID
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
+        // The client as of the send: a reconnect during the report replaced it.
+        let sender = self.client ?? client
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
-                outcome = try await sendPrompt(client, target, words)
+                outcome = try await sendPrompt(sender, target, words)
             } else {
-                outcome = try await client.sendPrompt(target, text: words)
+                outcome = try await sender.sendPrompt(target, text: words)
             }
             // Steered, redirected or queued: a turn was running there
             // already, so the message joined it and its card stands.
