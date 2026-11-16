@@ -101,7 +101,7 @@ struct BotRosterView: View {
                     }
                     // Bots Home's empty page reads the other combined
                     // dashboards' rosters too, so their bots replace it.
-                    .task(id: createRequest != nil && botsHomeShowsLiveStatus) {
+                    .task(id: "\(createRequest != nil && botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
                         guard createRequest != nil, botsHomeShowsLiveStatus else { return }
                         await appState.readOtherCombinedDashboardsBots()
                     }
@@ -434,9 +434,10 @@ struct BotRosterView: View {
     /// menu.
     @ViewBuilder
     private var shownPortraits: some View {
-        // The other combined dashboards' bots join the grid after these, so
-        // the group reads as one set of bots; with any of them there, the
-        // lone and paired layouts give way to the grid.
+        // The other combined dashboards' bots join the grid, mixed with
+        // these in the group's one order, so the group reads as one set of
+        // bots; with any of them there, the lone and paired layouts give
+        // way to the grid.
         let others = appState.otherCombinedDashboardsBots
         switch BotsHomeLayout.of(
             visibleBots: visibleBots.count,
@@ -448,9 +449,41 @@ struct BotRosterView: View {
         case .pair:
             pairHome
         case .grid:
-            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) } trailing: {
-                CombinedDashboardBotCells(sections: others)
+            if others.isEmpty {
+                BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            } else {
+                mixedGrid
             }
+        }
+    }
+
+    /// The group's grid: every combined dashboard's bots in one order the
+    /// person arranges, each with its dashboard's badge.
+    private var mixedGrid: some View {
+        let items = appState.combinedBotsHomeItems(own: visibleBots)
+        let shown = items.map(\.id)
+        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }) { item in
+            switch item.kind {
+            case .own(let bot):
+                portrait(bot, mixedKey: item.id, shown: shown)
+            case .other(_, let section):
+                CombinedDashboardBotPortrait(item: item, section: section) { dragged in
+                    moveMixed(dragged, onto: item.id, shown: shown)
+                }
+            }
+        }
+        // A bot the order doesn't name yet keeps the place it shows in, so
+        // a switch between the group's dashboards never moves it; only once
+        // every dashboard's bots are in, so one read first never fixes the
+        // order of the ones still on their way.
+        .onAppear { appState.settleCombinedBotsHomeOrder(shown) }
+        .onChange(of: shown) { _, ids in appState.settleCombinedBotsHomeOrder(ids) }
+    }
+
+    private func moveMixed(_ dragged: String, onto target: String?, shown: [String]) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveCombinedBot(dragged, onto: target, shown: shown)
         }
     }
 
@@ -492,7 +525,16 @@ struct BotRosterView: View {
         .padding(.bottom, 4)
     }
 
-    private func portrait(_ bot: BotProfile, size: CGFloat = 72) -> some View {
+    /// `mixedKey`: in the group's mixed grid, this portrait's key there;
+    /// it carries its dashboard's badge, and a drop that doesn't start a
+    /// room moves bots in the group's order (`shown`) instead of this
+    /// dashboard's.
+    private func portrait(
+        _ bot: BotProfile,
+        size: CGFloat = 72,
+        mixedKey: String? = nil,
+        shown: [String] = []
+    ) -> some View {
         BotPortraitCell(
             bot: bot,
             work: appState.botWork,
@@ -502,17 +544,32 @@ struct BotRosterView: View {
                 canDelete: appState.canDeleteBot(bot),
                 rooms: botRooms(bot),
                 canStartGroup: canStartGroups && !bot.isHiddenByMeta,
-                actions: actions(for: bot)
+                // Reorder Bots arranges this dashboard's order, which the
+                // group's mixed grid doesn't follow: there a drag does it.
+                actions: actions(for: bot, reorders: mixedKey == nil)
             ),
             onOverview: { overviewBot = bot },
             // A hidden bot can't join a room, so its tap still opens its chat.
             room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
-            onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
+            onDrop: { dragged, merge in
+                if let mixedKey, !(merge && canMerge(dragged, with: bot)) {
+                    moveMixed(dragged, onto: mixedKey, shown: shown)
+                } else {
+                    handleDrop(dragged, on: bot, merge: merge)
+                }
+            },
             canMerge: { dragged in canMerge(dragged, with: bot) },
-            onSlide: { dragged in slideBot(dragged, onto: bot) },
+            onSlide: { dragged in
+                if let mixedKey {
+                    moveMixed(dragged, onto: mixedKey, shown: shown)
+                } else {
+                    slideBot(dragged, onto: bot)
+                }
+            },
             onToggleRoom: { toggleNewRoom(bot) },
             needsYou: appState.needsYou,
-            portraitSize: size
+            portraitSize: size,
+            dashboardBadge: mixedKey == nil ? nil : appState.activeDashboardID
         )
     }
 
@@ -542,6 +599,9 @@ struct BotRosterView: View {
     /// A bot held over `target` takes its place while still in hand, and
     /// the others slide aside, as on the Home Screen.
     private func slideBot(_ dragged: String, onto target: BotProfile) {
+        // Another dashboard's portrait has no place in this dashboard's
+        // order (the hidden bots' grid).
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
@@ -552,6 +612,7 @@ struct BotRosterView: View {
     /// room (or the dropped one joins the room being started); else it
     /// takes its place.
     private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         if merge, canMerge(dragged, with: target),
            let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
@@ -566,6 +627,7 @@ struct BotRosterView: View {
     }
 
     private func dropAtEnd(_ dragged: String) {
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             appState.moveBot(dragged, before: nil, shown: appState.shownBotRoster.map(\.name))
@@ -852,7 +914,7 @@ struct BotRosterView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    private func actions(for bot: BotProfile) -> BotRosterRow.Actions {
+    private func actions(for bot: BotProfile, reorders: Bool = true) -> BotRosterRow.Actions {
         BotRosterRow.Actions(
             edit: { editorMode = .edit(bot) },
             togglePin: {
@@ -884,7 +946,7 @@ struct BotRosterView: View {
                     addToNewRoom([bot.name])
                 }
             },
-            reorder: createRequest == nil ? nil : { showingReorder = true }
+            reorder: createRequest == nil || !reorders ? nil : { showingReorder = true }
         )
     }
 

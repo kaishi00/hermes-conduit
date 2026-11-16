@@ -812,13 +812,18 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// A kept dashboard whose socket drops on its own (the server went
-    /// away, not a release of ours) is let go at once, with no switch.
+    /// away, not a release of ours) is let go at once, with no switch; its
+    /// chats, bots and Pulse chip stay listed until it's back (#2634).
     func testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce() async throws {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         appState.connection = outgoing.connection
         appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let id = ObjectIdentifier(outgoing)
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profile: "default", sessions: [], at: Date())
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(client: id, bots: [], avatars: [:], at: Date())
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: id, unseen: 2, at: Date())
 
         await waitUntil { socket.hasWaitingReceive }
         socket.cancel(with: .abnormalClosure, reason: nil)
@@ -826,6 +831,9 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
         XCTAssertFalse(kept.client.isConnected)
+        XCTAssertNotNil(appState.combinedDashboardChats[mac.id], "its chats stay listed")
+        XCTAssertNotNil(appState.combinedDashboardBots[mac.id], "its bots stay listed")
+        XCTAssertEqual(appState.combinedDashboardPulse[mac.id]?.unseen, 2, "its chip stays")
     }
 
     /// A read sent on an earlier visit to a combined dashboard isn't this
@@ -1326,8 +1334,8 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
-    /// kept client, under a section of its own; a tap opens through that
-    /// dashboard (all-live stage 4c).
+    /// kept client, in the same grid as Bots Home's own, mixed in the
+    /// group's order; a tap opens through that dashboard (all-live stage 4c).
     func testBotsHomeShowsAKeptDashboardsBotsAndOpensThroughThem() async throws {
         final class Counts { var mints = 0; var reads = 0 }
         let counts = Counts()
@@ -1369,7 +1377,24 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.otherCombinedDashboardsBots.first?.bots.map(\.name), ["raiden"], "kept through a drop")
         appState.keptDashboardRuntimes[mac.id] = keptMac
 
+        // One grid for the group: until arranged, each dashboard's bots in
+        // Saved Dashboards order; arranged, the group's order holds, mixed.
+        appState.botRoster = [bot("furina")]
+        appState.combinedBotsHomeOrder = []
+        let own = appState.shownBotRoster
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.bot.name), ["raiden", "furina"])
+        XCTAssertTrue(appState.combinedBotsHomeRostersIn, "every other dashboard's bots are in")
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina")]
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.id),
+                       ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
+        appState.combinedBotsHomeOrder = []
+        // A dashboard left while kept leaves its bots on the grid at once.
+        appState.seedCombinedDashboardBots(vps.id, from: [bot("furina"), bot("nahida", hidden: true)], client: outgoing)
+        XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])
+        appState.combinedDashboardBots[vps.id] = nil
+
         appState.openCombinedBot(section.bots[0], in: mac.id)
+        XCTAssertEqual(appState.botZoom.tapped, "raiden", "the chat grows out of the portrait")
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
@@ -1380,6 +1405,31 @@ extension CrossProfilePresentationCacheTests {
         )
         appState.letGoCombinedDashboard(vps.id)
         XCTAssertNil(appState.combinedDashboardBots[vps.id])
+    }
+
+    /// Bots Home's mixed order across a combined group: the saved keys
+    /// first, new ones after as shown, and a drop takes the target's place
+    /// as on the Home Screen.
+    func testCombinedBotsHomeOrderMixesAndMovesLikeTheHomeScreen() {
+        let mac = UUID(), vps = UUID()
+        XCTAssertEqual(CombinedBotsHomeOrder.key(mac, "Raiden"), "\(mac.uuidString)|raiden")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: "Furina", onScreen: vps), "\(vps.uuidString)|furina",
+                       "this dashboard's portrait carries its bot's name")
+        let other = CombinedBotsHomeOrder.key(mac, "raiden")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: other, onScreen: vps), other,
+                       "another dashboard's carries its key")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: "data|core", onScreen: vps), "\(vps.uuidString)|data|core",
+                       "a bot's name may hold a bar")
+        XCTAssertFalse(CombinedBotsHomeOrder.isKey("data|core"))
+
+        XCTAssertEqual(CombinedBotsHomeOrder.ordered(["a", "b", "c", "d"], saved: ["c", "a"]) { $0 }, ["c", "a", "b", "d"])
+        XCTAssertEqual(CombinedBotsHomeOrder.settled(["c", "a"], shown: ["a", "b", "c", "d"]), ["c", "a", "b", "d"])
+
+        let order = ["a", "b", "c", "d"]
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "a", onto: "c"), ["b", "c", "a", "d"], "carried on: after")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "d", onto: "b"), ["a", "d", "b", "c"], "carried back: before")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: nil), ["a", "c", "d", "b"], "at the end")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: "b"), order, "on itself")
     }
 
     /// Pulse has a chip per combined dashboard whose Pulse answers, the
