@@ -919,6 +919,41 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertTrue(appState.client === kept.client, "the switch takes the background connection up")
         XCTAssertEqual(counts.mints.count, 1, "no second ticket")
+
+        // A pick of another of its profiles from Mac's strip lands on that
+        // profile at once, its socket handed to a client on it, never first
+        // on the one it last used (Eric, 2026-11-16).
+        await appState.switchDashboard(to: mac.id)
+        let keptAgain = try XCTUnwrap(appState.keptDashboardRuntimes[vps.id])
+        XCTAssertEqual(keptAgain.client.profile, "coder")
+        let picked = await appState.switchForCombinedProfile(in: vps.id, profile: "default")
+        XCTAssertTrue(picked)
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertEqual(appState.client?.profile, "default")
+        XCTAssertFalse(appState.client === keptAgain.client, "a client on the picked profile")
+        XCTAssertTrue(appState.client?.isConnected ?? false, "on the kept socket")
+        XCTAssertEqual(counts.mints.count, 1, "no new ticket")
+    }
+
+    /// Turning combine on signs the other dashboard in at once, not first
+    /// on the next connect or a switch to it (Eric, 2026-11-16).
+    func testTurningCombineOnSignsTheOtherDashboardInAtOnce() async throws {
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "vps-ticket" }
+        operations.makeTransport = { transport }
+        let (appState, _, vps, _, _) = try await combinedDashboards(operations: operations)
+        appState.isConnected = true
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: vps.normalizedURL, ticket: "spent"), dashboardID: vps.id)
+        transport.open(socket)
+        appState.setDashboardCombined(vps.id, false)
+        XCTAssertTrue(appState.keptDashboardRuntimes.isEmpty)
+
+        appState.setDashboardCombined(vps.id, true)
+        await waitForKept(vps.id, in: appState)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "signed in beside the one on screen")
     }
 
     /// A dashboard that needs typing, or Face ID this launch hasn't had,
@@ -1178,6 +1213,16 @@ extension CrossProfilePresentationCacheTests {
         let item = try XCTUnwrap(appState.needsYou.otherDashboards[mac.id]?.first)
         XCTAssertEqual(item.dashboardID, mac.id)
         XCTAssertEqual(item.profile, "atlas")
+        // Its bot's pill on Bots Home's mixed grid says so, and opens it
+        // (Eric, 2026-11-16: the far bots showed no status).
+        func bot(_ name: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        XCTAssertEqual(appState.combinedBotStatus(bot("atlas"), in: mac.id), .needsYou(1))
+        XCTAssertEqual(appState.combinedBotChatWaits(bot("atlas"), in: mac.id).map(\.id), [item.id])
+        XCTAssertEqual(appState.combinedBotStatus(bot("default"), in: mac.id), .idle)
         XCTAssertEqual(appState.needsYou.everyItem.map(\.id), [item.id], "the list shows it")
         XCTAssertTrue(appState.needsYou.items.isEmpty, "this dashboard's profile chips don't count it")
         XCTAssertNil(appState.needsYou.banner, "a first read shows no banner")

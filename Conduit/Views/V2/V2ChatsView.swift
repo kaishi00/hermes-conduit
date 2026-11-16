@@ -500,8 +500,19 @@ struct V2ChatsView: View, Equatable {
     }
 
     private func profileBadge(for session: SessionSummary) -> V2ProfileBadge? {
-        // Another combined dashboard's row carries that dashboard's badge.
-        guard badgesRows, session.combinedDashboardID == nil else { return nil }
+        guard badgesRows else { return nil }
+        // Another combined dashboard's row carries its own profile's
+        // picture, as saved for that dashboard, with the dashboard's mark
+        // on it (Eric, 2026-11-16: they all showed the dashboard's badge).
+        if let dashboardID = session.combinedDashboardID {
+            let profile = session.profile ?? "default"
+            return V2ProfileBadge(
+                profile: profile,
+                name: profile,
+                url: appState.combinedDashboardBots[dashboardID]?.avatars[profile]
+                    ?? appState.otherCombinedDashboardProfileAvatar(profile, in: dashboardID)
+            )
+        }
         let profile = appState.rowProfile(session)
         return V2ProfileBadge(
             profile: profile,

@@ -610,6 +610,15 @@ extension AppState {
             if row.profile == nil { row.profile = activeProfile }
             return row
         }
+        // Its bots' pills, and what its plugin serves, which the far bots'
+        // pills read by (Eric, 2026-11-16).
+        let outgoingWork = Dictionary(
+            outgoingRoster.compactMap { bot in botWork.snapshot(bot.name).map { (bot.name.lowercased(), $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let outgoingGlows = profileGlowColors()
+        var outgoingCapabilities: Set<String>?
+        if case .reported(_, let capabilities) = notifierPlugin.state { outgoingCapabilities = capabilities }
         selectDashboardTarget(id)
         // Pulse's badge, marks and chat are the outgoing dashboard's.
         pulseUnseen = 0
@@ -623,7 +632,8 @@ extension AppState {
         // A combined dashboard left while connected stays connected, so a
         // switch back is at once (multi-instance stage 3).
         keepOutgoingDashboardRuntimeIfCombined(
-            previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats
+            previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats,
+            work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows
         )
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {
@@ -641,13 +651,13 @@ extension AppState {
         }
         // A combined dashboard kept connected is taken up again: its socket
         // and bridge are already open, so only the sync runs.
-        if let kept = takeKeptDashboardRuntime(id, profile: activeProfile) {
+        if let kept = takeKeptDashboardRuntime(id, profile: activeProfile),
+           let reusing = keptClient(kept, on: activeProfile) {
             presentOfflineChatIfAvailable(dashboardID: id)
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            dashboardTicketBridge = kept.bridge
-            await connect(with: kept.connection, profile: activeProfile, reusing: kept.client)
+            await connect(with: kept.connection, profile: activeProfile, reusing: reusing)
             settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }

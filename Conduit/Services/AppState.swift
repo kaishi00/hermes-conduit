@@ -254,6 +254,13 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's bots (all-live stage 4c), read
     /// through its kept client.
     @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Another combined dashboard's bots' work, as their pills show it on
+    /// Bots Home: read through its kept connection, by bot (Eric,
+    /// 2026-11-16: the far bots showed no "Needs you" or work status).
+    @Published var combinedDashboardBotWork: [UUID: [String: BotWorkSnapshot]] = [:]
+    /// What another combined dashboard's plugin serves, read through its
+    /// kept connection (keyed by that connection's bridge).
+    var combinedDashboardPluginCapabilities: [UUID: (bridge: ObjectIdentifier, capabilities: Set<String>)] = [:]
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).

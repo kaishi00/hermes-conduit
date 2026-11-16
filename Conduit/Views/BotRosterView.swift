@@ -471,6 +471,10 @@ struct BotRosterView: View {
                     item: item,
                     section: section,
                     onDrop: { dragged in moveMixed(dragged, onto: item.id, shown: shown) },
+                    onOverview: {
+                        appState.openCombinedBotOverview(item.bot, in: section.dashboardID) { overviewBot = $0 }
+                    },
+                    needsYou: appState.needsYou,
                     onMoveEarlier: mixedStep(item.id, by: -1, shown: shown),
                     onMoveLater: mixedStep(item.id, by: 1, shown: shown)
                 )

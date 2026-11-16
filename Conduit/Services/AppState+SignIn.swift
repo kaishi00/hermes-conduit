@@ -257,6 +257,18 @@ extension AppState {
     /// A dashboard unlocked before holds while its password is the one
     /// unlocked (a different one saved later asks again); any other holds
     /// after the launch's first unlock unless it was relocked since.
+    /// Face ID for a combined dashboard's saved password, asked because the
+    /// person just turned combine on: the unlock then covers that password,
+    /// as a switch's does. False when it has none behind Face ID, or Face
+    /// ID didn't pass.
+    func unlockCombinedDashboardWithFaceID(_ dashboardID: UUID) async -> Bool {
+        guard let credentials = KeychainHelper.loadCredentials(dashboardID: dashboardID),
+              credentials.requiresFaceID, isSceneActive, await unlockWithFaceID() else { return false }
+        faceIDUnlockedDashboards[dashboardID] = Self.faceIDUnlockFingerprint(credentials)
+        faceIDRelockedDashboards.remove(dashboardID)
+        return true
+    }
+
     func faceIDUnlockHolds(for dashboardID: UUID, _ credentials: DashboardCredentials) -> Bool {
         if let fingerprint = faceIDUnlockedDashboards[dashboardID] {
             return fingerprint == Self.faceIDUnlockFingerprint(credentials)

@@ -86,6 +86,24 @@ extension AppState {
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
         letGoKeptRuntimesOutsideTheGroup()
+        // Turned on: the group signs in now, not first on the next connect
+        // or a switch to it (Eric, 2026-11-16).
+        if combined { Task { @MainActor [weak self] in await self?.signInCombinedGroupNow() } }
+    }
+
+    /// The person just turned combine on: each dashboard of the group
+    /// whose saved password waits on Face ID this launch hasn't had asks
+    /// for it now, once, rather than waiting for a switch to it, and the
+    /// group signs in beside the one on screen. One with nothing saved
+    /// still waits for a tap, and says so.
+    func signInCombinedGroupNow() async {
+        for dashboard in savedDashboardRegistry.dashboards
+        where isInCombinedGroup(dashboard.id) && dashboard.id != activeDashboardID
+            && keptDashboardRuntimes[dashboard.id] == nil && !combinedDashboardSignsInQuietly(dashboard.id) {
+            // Cancelled, or no Face ID to be had: the rest wait for a tap.
+            guard await unlockCombinedDashboardWithFaceID(dashboard.id) else { break }
+        }
+        connectOtherCombinedDashboards()
     }
 
     /// A dashboard left the group, was removed, or the group fell to one:
@@ -111,10 +129,14 @@ extension AppState {
     /// connected keeps its client and bridge instead of closing them. The
     /// retirement then finds neither and closes nothing.
     /// `roster`: the outgoing dashboard's bots as it showed them, taken
-    /// before the switch's preparation clears Bot Mode's state.
+    /// before the switch's preparation clears Bot Mode's state; `work`
+    /// their work by lowercased name, and `pluginCapabilities` what its
+    /// plugin serves, taken then too.
     func keepOutgoingDashboardRuntimeIfCombined(
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
-        profiles: [String] = [], chats: [SessionSummary] = []
+        profiles: [String] = [], chats: [SessionSummary] = [],
+        work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
+        glows: [String: ProfileGlowRGB]? = nil
     ) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
@@ -133,7 +155,13 @@ extension AppState {
         ), for: outgoingID)
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
-        seedCombinedDashboardBots(outgoingID, from: roster, client: client)
+        seedCombinedDashboardBots(outgoingID, from: roster, client: client, glows: glows)
+        // Their pills too, from the work it read (and what its plugin
+        // serves, so the next read needs no second ask).
+        if !work.isEmpty { combinedDashboardBotWork[outgoingID] = work }
+        if let pluginCapabilities {
+            combinedDashboardPluginCapabilities[outgoingID] = (ObjectIdentifier(bridge), pluginCapabilities)
+        }
         // Its profiles stay on Chats' strip too, from the list it had, and
         // its chats are read for All at once rather than on the next poll
         // (Eric, 2026-11-16, who saw the strip lose them after a switch).
@@ -202,7 +230,9 @@ extension AppState {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return nil }
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
-              (kept.client.profile ?? "default") == profile,
+              // On another profile, its socket is handed to a client on this
+              // one (`keptClient(_:on:)`), as a profile switch keeps it.
+              (kept.client.profile ?? "default") == profile || kept.client.canHandOffSocket,
               // Still the dashboard's address (an edit since lets it go).
               let dashboard = savedDashboardRegistry.dashboard(with: id),
               kept.connection.baseUrl.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
@@ -211,6 +241,28 @@ extension AppState {
             return nil
         }
         return kept
+    }
+
+    /// The client a kept connection is taken up with on `profile`: its own,
+    /// or, on another profile, a new one its socket is handed to, as a
+    /// profile switch keeps the socket. So a pick of another dashboard's
+    /// profile lands there at once, never first on the profile it last used
+    /// (Eric, 2026-11-16). Nil, with the connection let go, when the socket
+    /// can't be handed on; the switch then signs in as before. Sets the
+    /// kept bridge as the dashboard's, which the new client authorizes by.
+    func keptClient(_ kept: KeptDashboardRuntime, on profile: String) -> HermesClient? {
+        dashboardTicketBridge = kept.bridge
+        guard (kept.client.profile ?? "default") != profile else { return kept.client }
+        let next = makeClient(connection: kept.connection, profile: profile)
+        next.inheritSessionProfiles(from: kept.client)
+        guard kept.client.handOffSocket(to: next) else {
+            dashboardTicketBridge = nil
+            next.disconnect()
+            release(kept)
+            return nil
+        }
+        noteConnectionStep("Kept socket taken up on another profile")
+        return next
     }
 
     /// Signed out of or moved: its kept connection goes, and a quiet sign-in
@@ -248,6 +300,8 @@ extension AppState {
     func forgetCombinedDashboardLists(_ id: UUID) {
         if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
         if combinedDashboardBots[id] != nil { combinedDashboardBots.removeValue(forKey: id) }
+        if combinedDashboardBotWork[id] != nil { combinedDashboardBotWork.removeValue(forKey: id) }
+        combinedDashboardPluginCapabilities.removeValue(forKey: id)
         if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
     }
 

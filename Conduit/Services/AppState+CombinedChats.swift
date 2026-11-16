@@ -238,8 +238,11 @@ extension AppState {
     /// there through its kept connection, the strip staying as it was (the
     /// group's one order), its list no longer All. True once it's on screen;
     /// the caller then picks the profile as the strip does on one dashboard.
-    func switchForCombinedProfile(in dashboardID: UUID) async -> Bool {
+    func switchForCombinedProfile(in dashboardID: UUID, profile: String? = nil) async -> Bool {
         guard !refusesCombinedSwitchDuringCall() else { return false }
+        // The switch resumes on the picked profile, not first on the one
+        // it last used there (Eric, 2026-11-16).
+        if let profile { rememberActiveProfile(profile, for: dashboardID) }
         await switchDashboard(to: dashboardID)
         guard activeDashboardID == dashboardID else { return false }
         setAllProfilesChatsOn(false)

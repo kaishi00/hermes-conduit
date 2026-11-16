@@ -1625,6 +1625,31 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func pill(_ status: BotPortraitStatus) -> some View {
+        BotStatusPill(status: status)
+    }
+
+    private func accessibilityValue(_ status: BotPortraitStatus) -> String {
+        let parts = [
+            bot.isPinned ? AppLocalization.string("Pinned") : "",
+            room == .member ? AppLocalization.string("In the new room", table: .bots) : "",
+            status == .idle ? "" : status.title,
+        ]
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+}
+
+/// A bot's status pill on Bots Home, this dashboard's and another combined
+/// dashboard's alike.
+struct BotStatusPill: View {
+    let status: BotPortraitStatus
+
+    /// The ⓘ's words, which another combined dashboard's portrait shares.
+    static var overviewTitle: String { AppLocalization.string("Overview", table: .bots) }
+    static func overviewLabel(_ bot: BotProfile) -> String {
+        AppLocalization.string("\(bot.displayLabel)’s overview", table: .bots)
+    }
+
+    var body: some View {
         HStack(spacing: 4) {
             if let symbol = status.symbol {
                 Image(systemName: symbol)
@@ -1646,15 +1671,6 @@ struct BotPortraitCell<MenuContent: View>: View {
         // Past accessibility2 the pill's words outgrow a two-column cell
         // and truncate to nothing; the overview sheet says them in full.
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-    }
-
-    private func accessibilityValue(_ status: BotPortraitStatus) -> String {
-        let parts = [
-            bot.isPinned ? AppLocalization.string("Pinned") : "",
-            room == .member ? AppLocalization.string("In the new room", table: .bots) : "",
-            status == .idle ? "" : status.title,
-        ]
-        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }
 
