@@ -100,6 +100,7 @@ extension AppState {
         where !group.contains(id) {
             forgetCombinedDashboardLists(id)
         }
+        pruneCombinedBotsHomeOrder()
         // Nor is anything said of it, or tried again.
         for id in Set(combinedDashboardTrouble.keys).union(combinedDashboardRetries.keys) where !group.contains(id) {
             clearCombinedDashboardTrouble(id)

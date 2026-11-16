@@ -1449,6 +1449,17 @@ extension CrossProfilePresentationCacheTests {
         appState.settleCombinedBotsHomeOrder(appState.combinedBotsHomeItems(own: own).map(\.id))
         XCTAssertEqual(appState.combinedBotsHomeOrder,
                        ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
+        // So it does while another dashboard's roster isn't in, and when
+        // the group changes, with no grid drawn at all.
+        let macBots = appState.combinedDashboardBots.removeValue(forKey: mac.id)
+        XCTAssertFalse(appState.combinedBotsHomeRostersIn)
+        appState.combinedBotsHomeOrder = [gone, CombinedBotsHomeOrder.key(mac.id, "raiden")]
+        appState.settleCombinedBotsHomeOrder([])
+        XCTAssertEqual(appState.combinedBotsHomeOrder, ["\(mac.id.uuidString)|raiden"], "pruned, nothing settled in")
+        appState.combinedDashboardBots[mac.id] = macBots
+        appState.combinedBotsHomeOrder = [gone, "-|furina", CombinedBotsHomeOrder.key(vps.id, "furina")]
+        appState.letGoKeptRuntimesOutsideTheGroup()
+        XCTAssertEqual(appState.combinedBotsHomeOrder, ["-|furina", "\(vps.id.uuidString)|furina"])
         appState.combinedBotsHomeOrder = []
         // One Hermes saved at two addresses (a bot of each has the same Bot
         // Chat): its bots show once, as this dashboard's; a namesake on

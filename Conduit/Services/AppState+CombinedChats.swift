@@ -4,7 +4,7 @@
 //
 //  All-live stage 4b: the Chats list shows every combined dashboard's
 //  chats. Each other dashboard's newest are read through its kept
-//  connection, for the profile it last used, and merged into the list by
+//  connection, every one of its profiles, and merged into the list by
 //  last activity, each row marked with its dashboard's badge. A tap
 //  switches to that dashboard (through the kept connection, no sign-in)
 //  and opens the chat, as a notification from it does.
@@ -45,7 +45,10 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             let bridge = ObjectIdentifier(runtime.bridge)
+            // No profile list to be had (a reconnect lost it and the read
+            // failed): the profiles it listed last, so none of them drops.
             let profiles = await keptDashboardProfileNames(id, runtime)
+                ?? combinedDashboardChats[id]?.profiles
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
             if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
