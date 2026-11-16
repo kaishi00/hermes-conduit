@@ -111,7 +111,7 @@ extension AppState {
     /// retirement then finds neither and closes nothing.
     /// `roster`: the outgoing dashboard's bots as it showed them, taken
     /// before the switch's preparation clears Bot Mode's state.
-    func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile] = []) {
+    func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile]) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
               // An edited address not yet taken up: this connection is to

@@ -467,9 +467,13 @@ struct BotRosterView: View {
             case .own(let bot):
                 portrait(bot, mixedKey: item.id, shown: shown)
             case .other(_, let section):
-                CombinedDashboardBotPortrait(item: item, section: section) { dragged in
-                    moveMixed(dragged, onto: item.id, shown: shown)
-                }
+                CombinedDashboardBotPortrait(
+                    item: item,
+                    section: section,
+                    onDrop: { dragged in moveMixed(dragged, onto: item.id, shown: shown) },
+                    onMoveEarlier: mixedStep(item.id, by: -1, shown: shown),
+                    onMoveLater: mixedStep(item.id, by: 1, shown: shown)
+                )
             }
         }
         // A bot the order doesn't name yet keeps the place it shows in, so
@@ -478,6 +482,14 @@ struct BotRosterView: View {
         // order of the ones still on their way.
         .onAppear { appState.settleCombinedBotsHomeOrder(shown) }
         .onChange(of: shown) { _, ids in appState.settleCombinedBotsHomeOrder(ids) }
+    }
+
+    /// VoiceOver's step of a mixed-grid portrait past its neighbour: nil at
+    /// either end.
+    private func mixedStep(_ key: String, by step: Int, shown: [String]) -> (() -> Void)? {
+        guard let index = shown.firstIndex(of: key), shown.indices.contains(index + step) else { return nil }
+        let neighbour = shown[index + step]
+        return { moveMixed(key, onto: neighbour, shown: shown) }
     }
 
     private func moveMixed(_ dragged: String, onto target: String?, shown: [String]) {
@@ -569,7 +581,9 @@ struct BotRosterView: View {
             onToggleRoom: { toggleNewRoom(bot) },
             needsYou: appState.needsYou,
             portraitSize: size,
-            dashboardBadge: mixedKey == nil ? nil : appState.activeDashboardID
+            dashboardBadge: mixedKey == nil ? nil : appState.activeDashboardID,
+            onMoveEarlier: mixedKey.flatMap { mixedStep($0, by: -1, shown: shown) },
+            onMoveLater: mixedKey.flatMap { mixedStep($0, by: 1, shown: shown) }
         )
     }
 

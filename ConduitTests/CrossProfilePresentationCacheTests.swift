@@ -698,7 +698,7 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         appState.setDashboardCombined(vps.id, false)
@@ -732,12 +732,12 @@ extension CrossProfilePresentationCacheTests {
         registry.dashboards[0].pendingURL = "https://127.0.0.9:1"
         appState.savedDashboardRegistry = registry
 
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "the old address's connection isn't kept")
 
         registry.dashboards[0].pendingURL = nil
         appState.savedDashboardRegistry = registry
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         // Kept, then the address moves on: the switch back lets it go.
@@ -750,7 +750,7 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: "https://127.0.0.9:1", dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
 
         appState.removeDashboard(vps.id)
@@ -788,7 +788,7 @@ extension CrossProfilePresentationCacheTests {
         appState.connection = onScreen.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: dashboards[3].normalizedURL, dashboardID: dashboards[3].id))
 
-        appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id, roster: [])
 
         XCTAssertEqual(appState.keptDashboardRuntimes.count, 4)
         XCTAssertTrue(appState.takeKeptDashboardRuntime(dashboards[0].id, profile: "default")?.client === kept[0], "the oldest kept is the target, and is taken up")
@@ -818,10 +818,10 @@ extension CrossProfilePresentationCacheTests {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         appState.connection = outgoing.connection
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
+        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         let id = ObjectIdentifier(outgoing)
-        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profile: "default", sessions: [], at: Date())
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profiles: ["default"], sessions: [], at: Date())
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(client: id, bots: [], avatars: [:], at: Date())
         appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: id, unseen: 2, at: Date())
 
@@ -1236,8 +1236,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id) ?? "default", "default")
         appState.keptDashboardJSONReader = { bridge, path in
             XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
-            counts.reads.append(path)
+            if path == "/api/profiles" { return ["profiles": ["default", "atlas"]] }
             guard path.contains("/api/profiles/sessions") else { return [:] }
+            counts.reads.append(path)
+            if path.contains("profile=atlas") {
+                return ["sessions": [
+                    ["id": "atlas-1", "title": "Garden", "message_count": 3, "profile": "atlas", "last_active": 1_500],
+                ]]
+            }
             return ["sessions": [
                 ["id": "mac-1", "title": "Release prep", "message_count": 4, "profile": "default", "last_active": 2_000],
                 ["id": "mac-2", "title": "Old", "message_count": 2, "profile": "default", "last_active": 1_000],
@@ -1245,10 +1251,33 @@ extension CrossProfilePresentationCacheTests {
             ]]
         }
 
+        // Every one of its profiles, not only the one it last used (Eric,
+        // 2026-11-16: All combines all of it).
         await appState.readOtherCombinedDashboardsChats()
-        XCTAssertEqual(counts.reads.count, 1)
-        XCTAssertTrue(counts.reads[0].contains("profile=default"), "the profile it last used: \(counts.reads[0])")
-        let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2"])
+        XCTAssertEqual(counts.reads.count, 2)
+        XCTAssertTrue(counts.reads[0].contains("profile=default"), counts.reads[0])
+        XCTAssertTrue(counts.reads[1].contains("profile=atlas"), counts.reads[1])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default", "atlas"])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"],
+                       "newest first across its profiles")
+        XCTAssertEqual(appState.combinedChatTarget(
+            try XCTUnwrap(appState.otherCombinedDashboardsChats(excluding: []).first { $0.id == "atlas-1" }), in: mac.id
+        ).profile, "atlas", "a row opens in its own profile")
+        // Chats' strip: every dashboard's profiles in one row, each
+        // dashboard's in Saved Dashboards order until arranged on Bots
+        // Home, then in that order.
+        appState.combinedBotsHomeOrder = []
+        let strip = appState.combinedProfileStrip(own: ["default"])
+        XCTAssertEqual(strip.map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas"),
+            CombinedBotsHomeOrder.key(vps.id, "default"),
+        ])
+        XCTAssertEqual(strip.map(\.isOther), [true, true, false])
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        appState.combinedBotsHomeOrder = []
+        let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
         // The Chats list shows them only in All: one profile's list is that
         // profile's own (Eric, 2026-11-16).
@@ -1256,7 +1285,12 @@ extension CrossProfilePresentationCacheTests {
         let profiles = appState.profiles
         appState.profiles = ["default", "work"]
         appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
-        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1"], "in All")
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"], "in All")
+        // A dashboard with one profile still offers All in a group, whose
+        // other dashboards' profiles it lists (#2637 review).
+        appState.profiles = ["default"]
+        XCTAssertTrue(appState.allProfilesChatsAvailable)
+        XCTAssertEqual(appState.chatListCombinedChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"], "in All with one profile")
         appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
         appState.profiles = profiles
         let row = try XCTUnwrap(rows.first)
@@ -1272,14 +1306,21 @@ extension CrossProfilePresentationCacheTests {
 
         // Read again only past a minute, or on a pull.
         await appState.readOtherCombinedDashboardsChats()
-        XCTAssertEqual(counts.reads.count, 1)
-        await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(counts.reads.count, 2)
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(counts.reads.count, 4)
         // A failed read keeps what the list showed.
         let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
         appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
         await appState.readOtherCombinedDashboardsChats(force: true)
-        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "mac-2"])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
+        // One profile failing keeps that profile's rows, the other's fresh.
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("profile=atlas") { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
         appState.keptDashboardJSONReader = reader
 
         let target = appState.combinedChatTarget(row, in: mac.id)
@@ -1324,7 +1365,7 @@ extension CrossProfilePresentationCacheTests {
         var twin = try XCTUnwrap(appState.combinedDashboardChats[vps.id]?.sessions.first)
         twin.combinedDashboardID = lab.id
         appState.combinedDashboardChats[lab.id] = CombinedDashboardChats(
-            bridge: ObjectIdentifier(vpsClient), profile: "default", sessions: [twin], at: Date()
+            bridge: ObjectIdentifier(vpsClient), profiles: ["default"], sessions: [twin], at: Date()
         )
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.combinedDashboardID), [vps.id])
         appState.combinedDashboardChats[lab.id] = nil
@@ -1386,6 +1427,13 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.combinedBotsHomeRostersIn, "every other dashboard's bots are in")
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina")]
         XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.id),
+                       ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
+        // A dashboard out of the group leaves the order; the others keep
+        // their places.
+        let gone = CombinedBotsHomeOrder.key(UUID(), "yelan")
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina"), gone, CombinedBotsHomeOrder.key(mac.id, "raiden")]
+        appState.settleCombinedBotsHomeOrder(appState.combinedBotsHomeItems(own: own).map(\.id))
+        XCTAssertEqual(appState.combinedBotsHomeOrder,
                        ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
         appState.combinedBotsHomeOrder = []
         // A dashboard left while kept leaves its bots on the grid at once.

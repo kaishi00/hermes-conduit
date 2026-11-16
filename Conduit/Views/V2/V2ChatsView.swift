@@ -490,7 +490,13 @@ struct V2ChatsView: View, Equatable {
 
     /// What leads a row's list id: nothing outside All, else its profile.
     private func rowScope(_ session: SessionSummary) -> String {
-        appState.isAllProfilesChatsOn ? appState.rowProfile(session) + "\u{1F}" : ""
+        // Another dashboard's row is scoped by its dashboard and its own
+        // profile, so two of its profiles' chats never share an id.
+        guard appState.isAllProfilesChatsOn else { return "" }
+        if let dashboard = session.combinedDashboardID {
+            return dashboard.uuidString + "\u{1F}" + (session.profile ?? "") + "\u{1F}"
+        }
+        return appState.rowProfile(session) + "\u{1F}"
     }
 
     private func profileBadge(for session: SessionSummary) -> V2ProfileBadge? {
@@ -1493,12 +1499,13 @@ struct V2ChatsView: View, Equatable {
 
             if layout.liveSections && appState.allProfilesGroupsByProfile {
                 // A section per profile, its pinned chats first; then a
-                // section per other combined dashboard, under its badge.
+                // section per other combined dashboard's profile, under its
+                // badge.
                 ForEach(profileGroups(sections), id: \.profile) { group in
                     profileSection(group.profile, nodes: group.items, expanded: expanded)
                 }
-                ForEach(combinedDashboardGroups(sections), id: \.dashboardID) { group in
-                    combinedDashboardSection(group.dashboardID, nodes: group.items, expanded: expanded)
+                ForEach(combinedDashboardGroups(sections), id: \.id) { group in
+                    combinedDashboardSection(group.dashboardID, profile: group.profile, nodes: group.items, expanded: expanded)
                 }
             } else {
                 if layout.liveSections && !sections.pinned.isEmpty {
@@ -1620,31 +1627,46 @@ struct V2ChatsView: View, Equatable {
         )
     }
 
-    /// The other combined dashboards' rows, a group per dashboard in Saved
-    /// Dashboards order, for All's sections by profile.
+    /// The other combined dashboards' rows, a group per dashboard and
+    /// profile, in Saved Dashboards order and each dashboard's profile
+    /// order, for All's sections by profile.
     private func combinedDashboardGroups(
         _ sections: (pinned: [SessionNesting.Node], recent: [SessionNesting.Node])
-    ) -> [(dashboardID: UUID, items: [SessionNesting.Node])] {
+    ) -> [(id: String, dashboardID: UUID, profile: String, items: [SessionNesting.Node])] {
         var byDashboard: [UUID: [SessionNesting.Node]] = [:]
         for node in sections.pinned + sections.recent {
             guard let id = appState.combinedChatDashboard(node.session) else { continue }
             byDashboard[id, default: []].append(node)
         }
         guard !byDashboard.isEmpty else { return [] }
-        return appState.savedDashboardRegistry.dashboards.compactMap { dashboard in
-            byDashboard[dashboard.id].map { (dashboard.id, $0) }
+        return appState.savedDashboardRegistry.dashboards.flatMap { dashboard -> [(id: String, dashboardID: UUID, profile: String, items: [SessionNesting.Node])] in
+            guard let nodes = byDashboard[dashboard.id] else { return [] }
+            let order = appState.combinedDashboardChats[dashboard.id]?.profiles ?? []
+            var byProfile: [String: [SessionNesting.Node]] = [:]
+            var seen: [String] = []
+            for node in nodes {
+                let profile = node.session.profile ?? "default"
+                let key = order.first { appState.profilesMatch($0, profile) } ?? profile
+                if byProfile[key] == nil { seen.append(key) }
+                byProfile[key, default: []].append(node)
+            }
+            let profiles = order.filter { byProfile[$0] != nil } + seen.filter { !order.contains($0) }
+            return profiles.map { profile in
+                ("\(dashboard.id.uuidString)\u{1F}\(profile)", dashboard.id, profile, byProfile[profile] ?? [])
+            }
         }
     }
 
-    /// Another combined dashboard's chats under its badge, its name and the
-    /// profile they were read for: its newest few until "Show more", as a
+    /// One profile of another combined dashboard: its chats under the
+    /// dashboard's badge and name and the profile's: its newest few until "Show more", as a
     /// profile's section lists them. Never pinned here, so nothing moves.
     private func combinedDashboardSection(
         _ dashboardID: UUID,
+        profile: String,
         nodes: [SessionNesting.Node],
         expanded: Set<String>
     ) -> some View {
-        let key = "dashboard\u{1F}" + dashboardID.uuidString
+        let key = "dashboard\u{1F}" + dashboardID.uuidString + "\u{1F}" + profile
         return Section {
             let preview = AllProfilesChats.preview(
                 nodes,
@@ -1659,19 +1681,18 @@ struct V2ChatsView: View, Equatable {
                 profileShowMoreRow(key, hiddenCount: preview.hidden)
             }
         } header: {
-            combinedDashboardSectionHeader(dashboardID)
+            combinedDashboardSectionHeader(dashboardID, profile: profile)
         }
     }
 
-    private func combinedDashboardSectionHeader(_ dashboardID: UUID) -> some View {
+    private func combinedDashboardSectionHeader(_ dashboardID: UUID, profile: String) -> some View {
         let name = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
-        let profile = appState.combinedDashboardChats[dashboardID]?.profile
         return HStack(spacing: 8) {
             CombinedDashboardBadge(dashboardID: dashboardID, size: 20)
             Text(verbatim: name)
                 .lineLimit(1)
             // Its main profile goes unnamed: the dashboard's name says it.
-            if let profile, !profile.isEmpty, profile.lowercased() != "default" {
+            if !profile.isEmpty, profile.lowercased() != "default" {
                 Text(verbatim: profile)
                     .foregroundStyle(.tertiary)
                     .lineLimit(1)

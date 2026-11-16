@@ -130,7 +130,7 @@ struct ProfilePickerSheet: View {
         offersAllChatsRow && V2SessionsBarControls.showsAllChatsRow(
             profiles: profilesPreference,
             allProfilesChatsOn: appState.isAllProfilesChatsOn,
-            allProfilesAvailable: AllProfilesChats.isAvailable(profiles: appState.profiles)
+            allProfilesAvailable: appState.allProfilesChatsAvailable
         )
     }
 

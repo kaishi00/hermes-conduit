@@ -1142,6 +1142,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// In a combined group's mixed grid, the dashboard whose bot this is:
     /// every portrait there carries its badge, this dashboard's too.
     var dashboardBadge: UUID?
+    /// In the mixed grid, VoiceOver's way to arrange it (a drag there has
+    /// no accessible form, and Reorder Bots arranges this dashboard only).
+    var onMoveEarlier: (() -> Void)?
+    var onMoveLater: (() -> Void)?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -1246,6 +1250,12 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityActions {
                 if let wait = chatWaitThePillOpens(status) {
                     Button(AppLocalization.string("Needs you")) { appState.openNeedsYou(wait) }
+                }
+                if let onMoveEarlier {
+                    Button(AppLocalization.string("Move Earlier"), action: onMoveEarlier)
+                }
+                if let onMoveLater {
+                    Button(AppLocalization.string("Move Later"), action: onMoveLater)
                 }
             }
             .v2SelectedTrait(selection)

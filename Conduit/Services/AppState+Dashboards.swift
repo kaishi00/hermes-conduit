@@ -596,6 +596,11 @@ extension AppState {
         // The owner taken for the chat on screen is this dashboard's.
         outgoingBotChatCopyOwner = nil
         recordSavedChatList()
+        // The outgoing dashboard's bots as it showed them (its kept copy
+        // too, before its roster answered), before the switch moves off it
+        // and preparing clears them: a combined one kept below leaves them
+        // on Bots Home.
+        let outgoingRoster = shownBotRoster
         selectDashboardTarget(id)
         // Pulse's badge, marks and chat are the outgoing dashboard's.
         pulseUnseen = 0
@@ -605,9 +610,6 @@ extension AppState {
         // one's pass comes once it has connected.
         if let previousDashboardID, previousDashboardID != id { removePulseWidget(dashboardID: previousDashboardID) }
         rememberDashboardURL(dashboard.normalizedURL)
-        // The outgoing dashboard's bots, before preparing clears them: a
-        // combined one kept below leaves them on Bots Home.
-        let outgoingRoster = botRoster
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         // A combined dashboard left while connected stays connected, so a
         // switch back is at once (multi-instance stage 3).

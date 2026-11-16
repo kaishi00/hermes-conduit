@@ -154,8 +154,14 @@ extension AppState {
     /// The grid as shown names every bot the order lacks: they keep the
     /// place they have now, so a switch never moves them.
     func settleCombinedBotsHomeOrder(_ shown: [String]) {
-        guard combinedBotsHomeRostersIn else { return }
-        let settled = CombinedBotsHomeOrder.settled(combinedBotsHomeOrder, shown: shown)
+        // A dashboard out of the group (removed, or no longer combined)
+        // leaves the order with its bots, whether or not every roster is in.
+        let group = Set(savedDashboardRegistry.dashboards.map(\.id).filter { isInCombinedGroup($0) }.map(\.uuidString))
+        let kept = combinedBotsHomeOrder.filter { key in
+            // "-" is a dashboard with no saved entry: not one that left.
+            key.split(separator: "|", maxSplits: 1).first.map { $0 == "-" || group.contains(String($0)) } ?? false
+        }
+        let settled = combinedBotsHomeRostersIn ? CombinedBotsHomeOrder.settled(kept, shown: shown) : kept
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
         CombinedBotsHomeOrder.save(settled, defaults)
