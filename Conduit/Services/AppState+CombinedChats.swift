@@ -213,7 +213,13 @@ extension AppState {
         }
         guard others else { return mine }
         if !mineListed { chips = mine + chips }
-        return CombinedBotsHomeOrder.ordered(chips, saved: combinedBotsHomeOrder, key: \.id)
+        // One Hermes saved at two addresses: its profile shows once, as
+        // Bots Home shows its bot, at the place its copies were saved at.
+        let shownKeys = Set(chips.map(\.id))
+        let copies = Set(combinedBotsHomeTwins.filter { shownKeys.contains($0.key) }.values.joined())
+        chips.removeAll { copies.contains($0.id) }
+        let saved = CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, twins: combinedBotsHomeTwins)
+        return CombinedBotsHomeOrder.ordered(chips, saved: saved, key: \.id)
     }
 
     /// Another combined dashboard's profiles as last read: with its chats,

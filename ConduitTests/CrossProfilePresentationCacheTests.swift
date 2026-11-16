@@ -1290,6 +1290,13 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        // One Hermes saved twice (Bots Home found the twins): its profile
+        // shows once, at the place its copy was saved at (issue 2640).
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(mac.id, "default")]
+        appState.combinedBotsHomeTwins = [CombinedBotsHomeOrder.key(vps.id, "default"): [CombinedBotsHomeOrder.key(mac.id, "default")]]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
+                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
+        appState.combinedBotsHomeTwins = [:]
         appState.combinedBotsHomeOrder = []
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
