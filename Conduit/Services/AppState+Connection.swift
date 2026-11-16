@@ -409,6 +409,8 @@ extension AppState {
             dashboardTicketBridge = nil
             let pluginStateBeforeSignIn = notifierPlugin.state
             notifierPlugin = freshNotifierPluginStatus
+            // A status read from the outgoing visit never answers this one (#2620's review).
+            notifierPluginStatusSharedRefresh = nil
             let failure = ConnectionFailureClassifier.classify(error)
             if keepOfflineChatInsteadOfSignIn(failure) { return }
             wipeOfflineChatCacheForSignIn(after: failure, dashboardID: dashboardID)
@@ -909,6 +911,8 @@ extension AppState {
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
         notifierPlugin = freshNotifierPluginStatus
+        // A status read from the outgoing visit never answers this one (#2620's review).
+        notifierPluginStatusSharedRefresh = nil
         prepareDashboardBridge(for: baseURL)
     }
 
@@ -1086,6 +1090,8 @@ extension AppState {
         dashboardTicketBridge?.invalidate()
         dashboardTicketBridge = nil
         notifierPlugin = freshNotifierPluginStatus
+        // A status read from the outgoing visit never answers this one (#2620's review).
+        notifierPluginStatusSharedRefresh = nil
         voiceConversationController.stop()
         stopQwenLiveConversation()
         stopGeminiLiveConversation()
