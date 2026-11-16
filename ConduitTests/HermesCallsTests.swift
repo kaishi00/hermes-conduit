@@ -314,6 +314,27 @@ extension VoiceConversationControllerTests {
         beginHermesCall(supervisor)
         XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
         XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
+
+        // A pass held open on the wire keeps its own token through such a
+        // hang-up, so it still clears its profile as it ends (#2636's
+        // review, issue 2633).
+        supervisor.settlingCallProfile = nil
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the logs"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        let held = Task { for await _ in stream { break } }
+        supervisor.holdCallbackSyncForTesting(held)
+        let first = supervisor.finishCallbacks(callProfile: "furina")
+        XCTAssertNotNil(first)
+        XCTAssertEqual(supervisor.settlingCallProfile, "furina")
+        beginHermesCall(supervisor)
+        XCTAssertNil(supervisor.finishCallbacks(callProfile: "nahida"))
+        XCTAssertEqual(supervisor.settlingCallProfile, "furina")
+        release.yield()
+        await first?.value
+        XCTAssertNil(supervisor.settlingCallProfile, "the held pass's own token stood: it clears as it ends")
     }
 
     func testReleaseAfterTheHostSawTheEndNotifiesOnce() async {

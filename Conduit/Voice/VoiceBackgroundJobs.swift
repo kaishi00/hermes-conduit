@@ -137,6 +137,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// profile, that proves the scoped read really is that profile's
     /// registry, so a later absence can be trusted.
     var listedByLivenessPoll = false
+    /// Its profile's registry reads that answered without it while it had
+    /// never been listed: a session reaped before its first listing (a
+    /// relaunch after a while away) never will be (issue 2639).
+    var unlistedPolls = 0
     /// A live call's request sent as the next turn of the chat the call is
     /// attached to, not a job in its own session. It runs in that chat, so
     /// it is never listed, counted, or cancelled as a background job.
@@ -492,6 +496,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Settled, already-announced jobs kept for the Voice sheet and status.
     static let maximumSettledJobs = 10
     static let missedPollsBeforeSettling = 2
+    /// Another profile's job its registry never listed settles after this
+    /// many of that registry's answers without it: half an hour at the
+    /// 20 s poll (issue 2639; tests set fewer).
+    var unlistedPollsBeforeSettling = 90
     /// Thread turns in flight at once: one running, the rest waiting their
     /// turn in order.
     static let maximumThreadTurns = 3
@@ -2701,6 +2709,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if job.isCallChat { pumpThreadTurns() }
             return true
         } catch {
+            // Hermes has no such session (reaped, or deleted elsewhere):
+            // nothing runs there, so the cancellation stands and the job's
+            // slot is free (issue 2639).
+            if HermesClient.isSessionNotFoundError(error) {
+                if job.isCallChat || job.continuesChat { pumpThreadTurns() }
+                return true
+            }
             if self.job(job.id)?.status == .cancelled {
                 update(job.id) {
                     $0.status = job.status
@@ -3510,11 +3525,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // Another profile's registry is only trusted about absence
                 // once it has listed the job: a gateway that ignored the
                 // profile would otherwise "finish" a job still running there.
-                if job.profile != nil, !job.listedByLivenessPoll { continue }
-                // Absence is only trusted when it repeats: a row missing
-                // from one read must not discard the real completion.
-                jobs[index].consecutiveMissedPolls += 1
-                if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
+                // One never listed settles after half an hour of that
+                // registry's answers without it, or a day after it started,
+                // reading its chat as a restored job does, so a session
+                // reaped before its first listing doesn't hold a job slot
+                // for good (issue 2639).
+                if job.profile != nil, !job.listedByLivenessPoll {
+                    jobs[index].unlistedPolls += 1
+                    guard jobs[index].unlistedPolls >= unlistedPollsBeforeSettling
+                        || Date().timeIntervalSince(job.startedAt) > Self.savedJobMaximumAge else { continue }
+                } else {
+                    // Absence is only trusted when it repeats: a row missing
+                    // from one read must not discard the real completion.
+                    jobs[index].consecutiveMissedPolls += 1
+                    if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
+                }
             }
             // A thread turn's reply is in its chat: read it before settling,
             // so the call hears the reply, not a pointer to the chat.

@@ -164,6 +164,9 @@ struct V2PulsePage: View {
     @State private var newCards: Set<Int>?
     /// The last Done or Not now, for the Undo bar.
     @State private var undo: PulseUndo?
+    /// This visit to the page: an action's Undo shows only in the visit
+    /// that started it (#2636's review, issue 2633).
+    @State private var visit = UUID()
     /// The card Not now asks "until when?" about.
     @State private var restCard: PulseCard?
     /// Quiet for today, or End quiet time, on its way to the plugin.
@@ -928,13 +931,15 @@ struct V2PulsePage: View {
         focusedCard = nil
         voiceOverCard = nil
         undo = nil  // an undo belongs to the visit that made it
+        visit = UUID()
         expandedBriefs = []
         expandedWhy = []
     }
 
-    private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil) {
-        // The page was left before the plugin answered: no bar comes back later.
-        guard isVisible else { return }
+    private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil, visit: UUID) {
+        // The page was left before the plugin answered: no bar comes back
+        // later, in this visit or the next.
+        guard isVisible, visit == self.visit else { return }
         var message = AppLocalization.string("Marked done", table: .pulse)
         if action == .dismissed {
             message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.", table: .pulse)
@@ -1753,7 +1758,7 @@ struct V2PulsePage: View {
             learnedNote = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest, isVisible { focus(request) }
-            if isVisible, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
+            if !Task.isCancelled, isVisible, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
                appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
@@ -1775,6 +1780,7 @@ struct V2PulsePage: View {
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
         ratingCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         Task {
             defer { ratingCards.remove(card.id) }
             do {
@@ -1795,7 +1801,7 @@ struct V2PulsePage: View {
                         }
                         if focusedCard == card.id { focusedCard = nil; voiceOverCard = nil }
                     }
-                    showUndo(.dismissed, card: card.id, back: back)
+                    showUndo(.dismissed, card: card.id, back: back, visit: visit)
                 }
                 errorMessage = nil
                 learnedNote = rated.lessons.isEmpty ? nil
@@ -1837,6 +1843,7 @@ struct V2PulsePage: View {
     private func dismiss(_ card: PulseCard, _ dismissed: Bool, until: PulseRest? = nil) {
         finishingCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
             do {
@@ -1851,7 +1858,7 @@ struct V2PulsePage: View {
                     if focusedCard == card.id, dismissed { focusedCard = nil; voiceOverCard = nil }
                     if !dismissed { unfold(card) }
                 }
-                if dismissed { showUndo(.dismissed, card: card.id, back: answer.restUntil) }
+                if dismissed { showUndo(.dismissed, card: card.id, back: answer.restUntil, visit: visit) }
                 errorMessage = nil
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
@@ -1872,6 +1879,7 @@ struct V2PulsePage: View {
     private func markDone(_ card: PulseCard, _ done: Bool) {
         finishingCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
             do {
@@ -1889,7 +1897,7 @@ struct V2PulsePage: View {
                 if !done { unfold(card) }
                 if done {
                     untoldCards.remove(card.id)
-                    showUndo(.done, card: card.id)
+                    showUndo(.done, card: card.id, visit: visit)
                 }
                 errorMessage = nil
             } catch {

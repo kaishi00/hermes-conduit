@@ -955,6 +955,36 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
     }
 
+    /// Issue 2639: a job on another profile whose session was reaped before
+    /// that registry ever listed it settles after a long run of its answers
+    /// without it; its cancel stands when Hermes has no such session; a
+    /// listed job keeps that across a relaunch.
+    func testAJobReapedBeforeItsFirstListingStillSettlesAndCancels() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.unlistedPollsBeforeSettling = 3
+        fake.profileTargets = ["fam": .other("fam")]
+        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "not on two reads")
+        await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished, "never listed in three: settled")
+
+        let (cancelling, cancelFake) = makeSupervisor()
+        cancelFake.profileTargets = ["fam": .other("fam")]
+        _ = await cancelling.startJob(instructions: "check the router", profile: "fam")
+        let job = try XCTUnwrap(cancelling.jobs.first)
+        cancelFake.cancelError = RpcError(code: 4001, message: "Session not found")
+        _ = await cancelling.cancel(jobID: job.id)
+        XCTAssertEqual(cancelling.jobs.first(where: { $0.id == job.id })?.status ?? .cancelled, .cancelled,
+                       "Hermes has no such session: the cancel stands")
+
+        var listed = job
+        listed.listedByLivenessPoll = true
+        XCTAssertEqual(SavedVoiceJob(listed)?.job?.listedByLivenessPoll, true, "kept across a relaunch")
+        XCTAssertEqual(SavedVoiceJob(job)?.job?.listedByLivenessPoll, false)
+    }
+
     func testAWatchCallHearsTheReplyOfAJobThePollSettled() async {
         let (supervisor, fake) = makeSupervisor()
         supervisor.readsRepliesWhenSettling = true
