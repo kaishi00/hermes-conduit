@@ -45,7 +45,10 @@ extension AppState {
             let bridge = ObjectIdentifier(runtime.bridge)
             if !force, let last = combinedDashboardPulse[id], last.bridge == bridge,
                now.timeIntervalSince(last.at) < Self.combinedDashboardPulseMaxAge { continue }
-            let path = "\(PulseClient.path)/feed" + PulseClient.feedQuery(proposals: false, looks: false)
+            // Suggestions asked for, as the page it opens asks where they're
+            // on: a plugin without them ignores the ask, and the count then
+            // matches what that page shows new.
+            let path = "\(PulseClient.path)/feed" + PulseClient.feedQuery(proposals: true, looks: false)
             let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
             // Let go, opened, or out of the group while the read was out.
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
