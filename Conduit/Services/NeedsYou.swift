@@ -321,3 +321,27 @@ final class NeedsYouStore: ObservableObject {
         banner = nil
     }
 }
+
+/// Runs one read at a time; reads asked for while one runs make one more
+/// after it, never several at once.
+@MainActor
+final class ReadCoalescer {
+    private var reading = false
+    private var readAgain = false
+
+    func coalescing(_ read: @escaping @MainActor () async -> Void) async {
+        guard !reading else {
+            readAgain = true
+            return
+        }
+        reading = true
+        // Unstructured, so a follow-up still runs when the caller is cancelled.
+        await Task { @MainActor in
+            defer { self.reading = false }
+            repeat {
+                self.readAgain = false
+                await read()
+            } while self.readAgain
+        }.value
+    }
+}

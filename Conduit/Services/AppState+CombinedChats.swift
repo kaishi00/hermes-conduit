@@ -85,10 +85,22 @@ extension AppState {
         return V2DashboardBadge(letter: badge.letter, colorIndex: badge.colorIndex, name: badge.name)
     }
 
+    /// A switch to another combined dashboard during a call says to end the
+    /// call first, as a notification from that dashboard does: the switch
+    /// would end it.
+    func refusesCombinedSwitchDuringCall() -> Bool {
+        guard isVoiceCallInProgress else { return false }
+        showCallRefusal(AppLocalization.string("End the call to open a chat in another workspace."))
+        return true
+    }
+
     /// Opens another combined dashboard's row: the switch to its dashboard
     /// (through its kept connection), then the chat in the profile it was
     /// read for, as a notification from that dashboard opens.
     func openCombinedChat(_ session: SessionSummary, in dashboardID: UUID) {
+        // The notification path refuses during a call too; saying so here
+        // keeps it to the tap.
+        guard !refusesCombinedSwitchDuringCall() else { return }
         PushNotificationService.shared.routeChatLink(combinedChatTarget(session, in: dashboardID))
     }
 

@@ -28,13 +28,22 @@ extension AppState {
     /// asked for while one runs (a burst of pushes) make one more read
     /// after it, never several at once.
     func refreshNeedsYou() async {
+        // The other combined dashboards are read beside this one's, never
+        // ahead of it: a slow one doesn't hold back a push's wait here.
+        let others = Task { @MainActor [weak self] in await self?.refreshOtherCombinedDashboards() }
         await needsYou.coalescing { [weak self] in
             await self?.readNeedsYou()
+        }
+        await others.value
+    }
+
+    /// The other combined dashboards' waits, chats (less often, stage 4b)
+    /// and bots (every few minutes, stage 4c), read through their kept
+    /// connections, coalesced apart from this dashboard's reads.
+    func refreshOtherCombinedDashboards() async {
+        await otherCombinedReads.coalescing { [weak self] in
             await self?.readOtherCombinedDashboardsNeedsYou()
-            // The other combined dashboards' chats ride the same poll, read
-            // less often (stage 4b, combinedDashboardChatsMaxAge).
             await self?.readOtherCombinedDashboardsChats()
-            // And their bots, every few minutes (stage 4c).
             await self?.readOtherCombinedDashboardsBots()
         }
     }
@@ -120,7 +129,10 @@ extension AppState {
 
     private func readNeedsYou() async {
         guard servesNeedsYou else {
-            if !needsYou.items.isEmpty || needsYou.banner != nil { needsYou.reset(dashboardID: activeDashboardID) }
+            // Another combined dashboard's banner stays for its time.
+            if !needsYou.items.isEmpty || (needsYou.banner != nil && needsYou.banner?.dashboardID == nil) {
+                needsYou.reset(dashboardID: activeDashboardID)
+            }
             return
         }
         guard isConnected, let bridge = dashboardTicketBridge else { return }
@@ -225,6 +237,7 @@ extension AppState {
         // Another combined dashboard's: switch to it (through its kept
         // connection, no sign-in), then open as one of its own.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
+            guard !refusesCombinedSwitchDuringCall() else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 await self.switchDashboard(to: dashboardID)

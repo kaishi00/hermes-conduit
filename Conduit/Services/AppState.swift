@@ -645,6 +645,8 @@ final class AppState: ObservableObject {
     /// Every chat Hermes waits on the user in, every profile's (issue 1705;
     /// AppState+NeedsYou). Its own observable, as `chatCards`.
     let needsYou = NeedsYouStore()
+    /// The other combined dashboards' reads, coalesced apart from this one's.
+    let otherCombinedReads = ReadCoalescer()
     /// A chat opened from the Needs you list or banner, to scroll to its
     /// waiting card once its transcript has it.
     @Published var pendingNeedsYouReveal: NeedsYouReveal?

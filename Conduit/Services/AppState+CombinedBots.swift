@@ -85,6 +85,7 @@ extension AppState {
     /// (through its kept connection), then the bot's chat, as a link to it
     /// opens.
     func openCombinedBot(_ bot: BotProfile, in dashboardID: UUID) {
+        guard !refusesCombinedSwitchDuringCall() else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.switchDashboard(to: dashboardID)
