@@ -99,6 +99,12 @@ struct BotRosterView: View {
                         }
                         .padding(.horizontal, 16)
                     }
+                    // Bots Home's empty page reads the other combined
+                    // dashboards' rosters too, so their bots replace it.
+                    .task(id: createRequest != nil && botsHomeShowsLiveStatus) {
+                        guard createRequest != nil, botsHomeShowsLiveStatus else { return }
+                        await appState.readOtherCombinedDashboardsBots()
+                    }
             } else {
                 rosterList
                     .environment(\.botsHomeCovered, coveredBySheet)
@@ -956,6 +962,13 @@ struct BotRosterView: View {
                 }
                 if case .failed(let message) = appState.botModePhase {
                     botModeFailure(message)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 3)
+                }
+                // This Hermes needs an update, said over the other combined
+                // dashboards' bots when they take the empty page's place.
+                if appState.botModePhase == .gatewayUnsupported {
+                    botModeFailure(AppLocalization.string("Update Hermes to use Bot Mode."))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }

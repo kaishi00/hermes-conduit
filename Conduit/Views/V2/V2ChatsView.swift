@@ -2592,6 +2592,9 @@ struct V2ChatsRowContent: View, Equatable {
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
         let rowSelection = selection(session, faintAlone: false)
+        // Another combined dashboard's chat nested under its parent: badged,
+        // and it only opens, as its own row does.
+        let dashboardBadge = appState.combinedChatBadge(session)
         return Button {
             Haptics.light()
             appState.dismissSidebarDrawer()
@@ -2604,6 +2607,10 @@ struct V2ChatsRowContent: View, Equatable {
                     .padding(.leading, 34 + CGFloat(min(depth, 3)) * 14)
                     .padding(.trailing, 6)
                 V2StatusGlyph(status: status == .none ? .source(appState.sessionCategory(for: session)) : status)
+                if let dashboardBadge {
+                    CombinedDashboardBadge.Mark(badge: dashboardBadge, size: 14)
+                        .accessibilityHidden(true)
+                }
                 Text(session.title)
                     .scaledFont(.subheadline.weight(isUnread ? .semibold : .regular))
                     .foregroundStyle(.primary)
@@ -2632,12 +2639,15 @@ struct V2ChatsRowContent: View, Equatable {
         .accessibilityLabel(Text(session.title))
         .accessibilityValue(Text([
             AppLocalization.string("From \(parentTitle)"),
+            dashboardBadge?.name,
             isUnread ? AppLocalization.string("Unread") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))
-        .accessibilityHint(AppLocalization.string("Swipe or touch and hold for conversation actions."))
+        .accessibilityHint(dashboardBadge == nil
+            ? AppLocalization.string("Swipe or touch and hold for conversation actions.")
+            : AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
         .accessibilityAddTraits(.isButton)
         .v2SelectedTrait(rowSelection)
     }
