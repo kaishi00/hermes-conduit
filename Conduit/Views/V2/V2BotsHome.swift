@@ -1019,6 +1019,10 @@ enum BotPortraitStatus: Equatable {
     case inRooms([String])
     /// Its own ask to another bot is unanswered (an ask_out waiting).
     case waitingOn(String)
+    /// A chat of its replying, its Bot Chat's own turn included: not a
+    /// workstream, so it never says "working" (Eric, 2026-11-16: the
+    /// coordinator talking read as a workstream running).
+    case replying
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
@@ -1042,11 +1046,12 @@ enum BotPortraitStatus: Equatable {
         }) {
             return .helping(ask.otherBot)
         }
-        if let work, work.workingCount > 0 { return .working(work.workingCount + chats.working) }
+        // Its workstreams only: its chats replying aren't work running.
+        if let work, work.workingCount > 0 { return .working(work.workingCount) }
         let agents = snapshot?.botChatAgentCount ?? 0
         if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
-        if chats.working > 0 { return .working(chats.working) }
+        if chats.working > 0 { return .replying }
         guard let snapshot = work else { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
@@ -1080,6 +1085,7 @@ enum BotPortraitStatus: Equatable {
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms", table: .bots)
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)", table: .bots)
+        case .replying: return AppLocalization.string("Replying", table: .bots)
         // Idle says nothing: the portrait's still ring says it.
         case .idle: return ""
         }
@@ -1088,7 +1094,7 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working, .agents, .inRooms: return .conduitAccent
+        case .helping, .working, .agents, .inRooms, .replying: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
@@ -1101,6 +1107,7 @@ enum BotPortraitStatus: Equatable {
         case .agents: return "person.2.fill"
         case .inRooms: return "bubble.left.and.bubble.right.fill"
         case .waitingOn: return "hourglass"
+        case .replying: return "ellipsis.bubble.fill"
         case .idle: return nil
         }
     }
@@ -1843,7 +1850,7 @@ struct BotOverviewSheet: View {
                    chats.waiting + chats.working > 0 {
                     let parts = [
                         chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
-                        chats.working > 0 ? BotPortraitStatus.working(chats.working).title : nil,
+                        chats.working > 0 ? BotPortraitStatus.replying.title : nil,
                     ].compactMap { $0 }
                     Label {
                         Text(verbatim: parts.joined(separator: " · "))
@@ -2197,7 +2204,7 @@ struct BotPortraitMotion: ViewModifier {
 
     private var isWorking: Bool {
         switch status {
-        case .working, .helping, .agents: return true
+        case .working, .helping, .agents, .replying: return true
         default: return false
         }
     }

@@ -189,6 +189,15 @@ extension GroupChatModelsTests {
         XCTAssertTrue(justMe.justMe)
         XCTAssertTrue(justMe.justMeOffered)
         XCTAssertTrue(justMe.joined.isEmpty)
+
+        // Removed on the Hermes (plugin 0.177.23): no row on any phone,
+        // whatever this one dismissed; an older plugin says nothing.
+        XCTAssertFalse(try XCTUnwrap(RoomInvitesClient.invite(invitesInvite("conduit-4", status: "cancelled"))).removed)
+        var gone = invitesInvite("conduit-4", status: "cancelled", reason: "withdrawn")
+        gone["removed"] = true
+        let removedHere = try XCTUnwrap(RoomInvitesClient.invite(gone))
+        XCTAssertTrue(removedHere.removed)
+        XCTAssertTrue(RoomInviteRows.rows([removedHere], dismissed: []).isEmpty)
     }
 
     // MARK: - Answering
