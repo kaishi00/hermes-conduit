@@ -411,6 +411,31 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(appState.lastDashboardURL, vps.normalizedURL)
     }
 
+    /// Issue 2566: a dashboard switch closes the pane and every chat
+    /// window; an idle followed chat there is let go, a running one stays
+    /// followed.
+    func testADashboardSwitchClosesThePaneAndChatWindows() async {
+        let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let vps = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps]))
+        func kept(_ id: String, running: Bool) -> BackgroundChat {
+            let state = ChatState()
+            state.messages = [ChatMessage(id: "r-\(id)", role: .assistant, content: "Hi", timestamp: "1")]
+            state.turnState = running ? .running : .idle
+            return BackgroundChat(sessionIDs: [id], durableSessionID: id, title: id, dashboardID: mac.id,
+                                  profile: appState.activeProfile, isBotChat: false, state: state)
+        }
+        appState.backgroundChats = [kept("pane", running: false), kept("idle", running: false), kept("busy", running: true)]
+        appState.besideChatIDs = ["pane"]
+        appState.windowChatIDs = [["idle"], ["busy"]]
+
+        await appState.switchDashboard(to: vps.id)
+
+        XCTAssertNil(appState.besideChatIDs)
+        XCTAssertTrue(appState.windowChatIDs.isEmpty)
+        XCTAssertEqual(appState.backgroundChats.map(\.sessionIDs), [["busy"]], "Only the reply still coming stays followed")
+    }
+
     func testSwitchToUnknownDashboardIsInert() async {
         let mac = dashboard("Mac", "https://mac.tailnet.ts.net")
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac]))

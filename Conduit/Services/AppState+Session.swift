@@ -966,6 +966,7 @@ extension AppState {
         newSessionCreationsInFlight += 1
         defer {
             newSessionCreationsInFlight -= 1
+            if newSessionCreationsInFlight == 0 { newChatRunFollowedIDs = nil }
             cancelChatViewportTransitionIfNoReplacement(generation: transitionGeneration)
         }
         guard widgetLease?.isCurrent != false else { return nil }
@@ -981,7 +982,16 @@ extension AppState {
         // before any words: the turn reads synchronizing from here on, so
         // adopting the new chat can't tell it was running. Before the title
         // changes, so the followed chat keeps its own.
-        let followedIDs = followChatBeingLeft(turnWasRunning: turnState == .running)
+        // A New Chat tapped again during the first one's create leaves the
+        // chat the first one already followed as it is: that copy has
+        // taken every event since, where the screen stopped at the first
+        // create (issue 2577).
+        if let followedIDs = followChatBeingLeft(
+            turnWasRunning: turnState == .running,
+            joiningCreation: joinsAnotherCreation
+        ) {
+            newChatRunFollowedIDs = followedIDs
+        }
         outgoingBotChatCopyOwner = nil
         let newTitle = AppLocalization.string("New conversation")
         activeSessionTitle = newTitle
@@ -998,14 +1008,15 @@ extension AppState {
         )
         // No chat started: the one still open is on screen, not left. A
         // New Chat tapped again meanwhile still leaves it, so it stays until
-        // the last one finishes. That one may have followed nothing itself
-        // (the first had already set the turn to synchronizing), so it lets
-        // go by the chat's own ids. A lone New Chat that followed nothing
-        // leaves any follow alone: an open still landing relies on it.
+        // the run's last New Chat finishes, which lets go of what any of
+        // them followed. A run that followed nothing leaves any follow
+        // alone: an open still landing relies on it (issue 2505), and so
+        // does one the user started meanwhile, showing the copy the run
+        // followed (a reopen during the create).
         if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
-           followedIDs != nil || (joinsAnotherCreation && previousTurnState == .synchronizing),
-           let previousSessionID {
-            releaseFollowedChat(answering: followedIDs ?? knownSessionIDs(for: previousSessionID).union([previousSessionID]))
+           offlineChatPresentation == nil,
+           let followedIDs = newChatRunFollowedIDs {
+            releaseFollowedChat(answering: followedIDs)
         }
         // An expired widget launch adopts nothing: the chat still open gets
         // its own turn state back unless something newer took it over.

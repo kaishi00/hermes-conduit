@@ -10391,6 +10391,33 @@ extension AppStateChatResumeTests {
         return (harness.appState, harness.defaults, { mintCount })
     }
 
+    /// Issue 2566: a profile switch closes the pane and every chat window;
+    /// an idle followed chat there is let go, a running one stays followed.
+    func testAProfileSwitchClosesThePaneAndChatWindows() async {
+        let gate = ControlledSuspension()
+        let (appState, _, _) = supersededSwitchHarness(gateMint: false, gate: gate)
+        let dashboard = appState.activeDashboardID ?? UUID()
+        func kept(_ id: String, running: Bool) -> BackgroundChat {
+            let state = ChatState()
+            state.messages = [ChatMessage(id: "r-\(id)", role: .assistant, content: "Hi", timestamp: "1")]
+            state.turnState = running ? .running : .idle
+            return BackgroundChat(sessionIDs: [id], durableSessionID: id, title: id, dashboardID: dashboard,
+                                  profile: "default", isBotChat: false, state: state)
+        }
+        appState.backgroundChats = [kept("pane", running: false), kept("idle", running: false), kept("busy", running: true)]
+        appState.besideChatIDs = ["pane"]
+        appState.windowChatIDs = [["idle"], ["busy"]]
+
+        let switching = Task { @MainActor in await appState.switchProfile(to: "work") }
+        await gate.waitUntilSuspended()
+        gate.resume()
+        await switching.value
+
+        XCTAssertNil(appState.besideChatIDs)
+        XCTAssertTrue(appState.windowChatIDs.isEmpty)
+        XCTAssertEqual(appState.backgroundChats.map(\.sessionIDs), [["busy"]], "Only the reply still coming stays followed")
+    }
+
     func testASwitchSupersededWhileMintingLeavesThePreviousProfileAsItWas() async {
         let gate = ControlledSuspension()
         let (appState, _, _) = supersededSwitchHarness(gateMint: true, gate: gate)
