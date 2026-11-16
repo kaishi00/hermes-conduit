@@ -144,8 +144,11 @@ struct CombinedDashboardBotPortrait: View {
                 face(size: 64, animated: false)
             })
             .accessibilityLabel(Text(bot.displayLabel))
-            .accessibilityValue(Text(verbatim: status == .idle ? section.badge.name : "\(section.badge.name), \(status.title)"))
-            .accessibilityHint(AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
+            .accessibilityValue(Text(verbatim: [section.badge.name, room.valuePart ?? "", status == .idle ? "" : status.title]
+                .filter { !$0.isEmpty }.joined(separator: ", ")))
+            // While a room is being started, its tap puts it in or takes it
+            // out, as this dashboard's portraits say.
+            .accessibilityHint(room.hint ?? AppLocalization.string("Switches to that dashboard and opens the chat", table: .chat))
             .accessibilityAction(named: Text(BotStatusPill.overviewTitle)) { onOverview() }
             .accessibilityActions {
                 if case .needsYou = status, let wait = appState.combinedBotChatWaitThePillOpens(bot, in: section.dashboardID) {

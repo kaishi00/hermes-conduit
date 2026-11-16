@@ -734,6 +734,21 @@ enum BotPortraitRoom: Equatable {
     /// One is: this bot is in it, or could be added.
     case member
     case notMember
+
+    /// What a portrait's tap does while a room is being started, for
+    /// VoiceOver; nil when none is (each portrait says its own).
+    var hint: String? {
+        switch self {
+        case .off: return nil
+        case .member: return AppLocalization.string("Takes this bot out of the new room.", table: .bots)
+        case .notMember: return AppLocalization.string("Adds this bot to the new room.", table: .bots)
+        }
+    }
+
+    /// The part of a portrait's VoiceOver value that says it's in the room.
+    var valuePart: String? {
+        self == .member ? AppLocalization.string("In the new room", table: .bots) : nil
+    }
 }
 
 /// Bots Home's one tip (Eric, 2026-11-06, #1850): touch and hold a bot for
@@ -1397,11 +1412,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private var portraitHint: String {
-        switch room {
-        case .off: return AppLocalization.string("Opens this bot's chat.", table: .bots)
-        case .member: return AppLocalization.string("Takes this bot out of the new room.", table: .bots)
-        case .notMember: return AppLocalization.string("Adds this bot to the new room.", table: .bots)
-        }
+        room.hint ?? AppLocalization.string("Opens this bot's chat.", table: .bots)
     }
 
     private func beginTargeting() {
@@ -1638,7 +1649,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     private func accessibilityValue(_ status: BotPortraitStatus) -> String {
         let parts = [
             bot.isPinned ? AppLocalization.string("Pinned") : "",
-            room == .member ? AppLocalization.string("In the new room", table: .bots) : "",
+            room.valuePart ?? "",
             status == .idle ? "" : status.title,
         ]
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
