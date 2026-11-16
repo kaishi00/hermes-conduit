@@ -207,8 +207,9 @@ final class AppState: ObservableObject {
     /// meanwhile (Conduit left the screen).
     var combinedSignInsUnderWay: Set<UUID> = []
     /// Quiet sign-ins still out whose dashboard was signed out of or moved
-    /// since: what they finish is dropped (a grant survives sign-out, so
-    /// what it signs in with can't tell).
+    /// since: what they finish is dropped, whatever it signed in with. (A
+    /// later pass finds nothing to sign in with: Sign Out clears the
+    /// session, the grant and the password.)
     var combinedSignInsCalledOff: Set<UUID> = []
     var keptDashboardRuntimesGeneration: UInt64 = 0
     /// Lets the kept connections go once Conduit has been off screen for

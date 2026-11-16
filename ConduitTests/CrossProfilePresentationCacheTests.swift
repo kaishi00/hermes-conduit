@@ -992,8 +992,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "signed out meanwhile: nothing kept")
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: pi.id), "nor saved again")
 
-        // A browser sign-in's grant outlives Sign Out, so the call-off is
-        // what drops it.
+        // The call-off drops it whatever it signs in with: the re-saved
+        // session stands for one present again by the time it finishes.
         box.signOut = nil
         KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: pi.id)
         appState.connectOtherCombinedDashboards()
@@ -1005,5 +1005,17 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
         XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "called off: nothing kept")
         XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
+
+        // A browser sign-in's grant goes with Sign Out too, so no later
+        // pass signs it in again.
+        KeychainHelper.saveNativeOAuthTokens(
+            NativeOAuthTokenSet(accessToken: "access", refreshToken: "refresh", expiresAt: 4_000_000_000, provider: "self-hosted", userID: "user"),
+            dashboardID: pi.id
+        )
+        XCTAssertTrue(appState.combinedDashboardSignsInQuietly(pi.id))
+        appState.signOutDashboard(pi.id)
+        XCTAssertFalse(appState.combinedDashboardSignsInQuietly(pi.id), "nothing left to sign in with")
+        appState.connectOtherCombinedDashboards()
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
     }
 }
