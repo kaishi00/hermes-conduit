@@ -355,11 +355,13 @@ extension AppState {
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
+                let profile = target.profile ?? self.voiceCallProfile
                 await HermesCallNotifications.post(HermesCallNotifications.localRequest(
                     for: target,
                     kind: kind,
-                    profile: target.profile ?? self.voiceCallProfile,
-                    dashboardID: self.activeDashboardID
+                    profile: profile,
+                    dashboardID: self.activeDashboardID,
+                    callerName: self.hermesCallContactName(profile)
                 ))
             }
         )

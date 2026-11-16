@@ -13,26 +13,59 @@ enum NotificationCopy {
     /// previews off, or a push Conduit can't verify. Kept message for
     /// message with the relay's generic copy (`genericCopy` in
     /// hermes-conduit-notifier's relay/src/server.mjs), in the App Language:
-    /// a change there belongs here too.
-    static func generic(for type: String?) -> (title: String, body: String) {
+    /// a change there belongs here too. `name`: the bot the push is from
+    /// (`botName`), so a call says "Cortana wants to talk" (issue 2540);
+    /// Hermes for a push that doesn't say.
+    static func generic(for type: String?, name: String = NotificationCopy.mainBotName) -> (title: String, body: String) {
+        let named = name != mainBotName
         switch type {
         case "approval.needed":
-            return (AppLocalization.string("Approval needed"), AppLocalization.string("Hermes is waiting for your approval."))
+            return (AppLocalization.string("Approval needed"),
+                    named ? AppLocalization.string("\(name) is waiting for your approval.") : AppLocalization.string("Hermes is waiting for your approval."))
         case "input.needed":
-            return (AppLocalization.string("Input needed"), AppLocalization.string("Hermes needs your response before it can continue."))
+            return (AppLocalization.string("Input needed"),
+                    named ? AppLocalization.string("\(name) needs your response before it can continue.")
+                        : AppLocalization.string("Hermes needs your response before it can continue."))
         case "turn.failed":
             return (AppLocalization.string("Turn failed"), AppLocalization.string("A Hermes turn could not be completed."))
         case "background_task.finished":
             return (AppLocalization.string("Background task finished"), AppLocalization.string("A delegated task has finished."))
         case "call.requested":
-            return (AppLocalization.string("Hermes wants to talk"), AppLocalization.string("Tap to talk to Hermes."))
+            return (callTitle(name: name),
+                    named ? AppLocalization.string("Tap to talk to \(name).") : AppLocalization.string("Tap to talk to Hermes."))
         case "phone.changes":
-            return (AppLocalization.string("Hermes has a change for you"), AppLocalization.string("Tap to review it in Conduit."))
+            return (named ? AppLocalization.string("\(name) has a change for you") : AppLocalization.string("Hermes has a change for you"),
+                    AppLocalization.string("Tap to review it in Conduit."))
         case "room.invite":
             return (AppLocalization.string("Room invite"), AppLocalization.string("Someone you've linked with invited you to a room."))
         default:
-            return (AppLocalization.string("Response ready"), AppLocalization.string("Hermes has finished responding."))
+            return (AppLocalization.string("Response ready"),
+                    named ? AppLocalization.string("\(name) has finished responding.") : AppLocalization.string("Hermes has finished responding."))
         }
+    }
+
+    /// A call's title, from the bot that calls (issue 2540): "Cortana wants
+    /// to talk", "Hermes wants to talk" for a main bot nobody named.
+    static func callTitle(name: String) -> String {
+        name == mainBotName ? AppLocalization.string("Hermes wants to talk") : AppLocalization.string("\(name) wants to talk")
+    }
+
+    /// The bot a push is from, as its call rings it (HermesCallerName.name,
+    /// which the extension doesn't build: keep the two in step), run on the
+    /// content `named` gave, which holds the main bot's Conduit name: its
+    /// name, else its profile id capitalized, and Hermes for an unnamed main
+    /// bot or a push that names no profile.
+    static func botName(_ content: [String: Any]) -> String {
+        func oneLine(_ value: Any?) -> String {
+            ((value as? String) ?? "").split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
+        }
+        let id = oneLine(content["profile"])
+        guard !id.isEmpty else { return mainBotName }
+        // A name that is only the profile id says nothing more than the id.
+        let given = oneLine(content["profile_name"])
+        let name = given.lowercased() == id.lowercased() ? "" : given
+        if !name.isEmpty { return name }
+        return id.lowercased() == "default" ? mainBotName : String(id.prefix(1)).uppercased() + String(id.dropFirst())
     }
 
     /// What a verified push shows with Show in notifications on Full
@@ -72,8 +105,9 @@ enum NotificationCopy {
             title = pulseTitle(for: label, count: content["count"] as? Int)
         }
         let finalTitle = title ?? hostTitle
-        let subtitle = profileLine(content, title: finalTitle)
-        if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call) {
+        // A call's title names its bot already.
+        let subtitle = label == "call.requested" && title != nil ? nil : profileLine(content, title: finalTitle)
+        if label == "call.requested", let call = content["call"] as? [String: Any], let line = callLine(call, name: botName(content)) {
             return (finalTitle, subtitle, line)
         }
         if label.hasPrefix("pulse."), content["private"] as? Bool == true {
@@ -94,8 +128,10 @@ enum NotificationCopy {
     /// generic one. Only a title Conduit writes from the `title_label`
     /// counts, never the host's own title, which may quote a tool's prompt.
     static func chatNames(_ content: [String: Any]) -> (title: String?, subtitle: String?) {
-        let title = nonEmpty(content["title_label"]).flatMap { labelTitle($0, content: content) }
-        return (title, profileLine(content, title: title))
+        let label = nonEmpty(content["title_label"])
+        let title = label.flatMap { labelTitle($0, content: content) }
+        // A call's title names its bot already.
+        return (title, label == "call.requested" && title != nil ? nil : profileLine(content, title: title))
     }
 
     /// The title a `title_label` gives, with the chat's title when the host
@@ -104,7 +140,7 @@ enum NotificationCopy {
         let sessionTitle = nonEmpty(content["session_title"])
         if label == "response.ready" {
             return sessionTitle ?? AppLocalization.string("Response ready")
-        } else if let heading = heading(for: label) {
+        } else if let heading = label == "call.requested" ? callTitle(name: botName(content)) : heading(for: label) {
             return sessionTitle.map { "\(heading) · \($0)" } ?? heading
         }
         return phoneTitle(for: label)
@@ -165,7 +201,6 @@ enum NotificationCopy {
         case "input.needed": return AppLocalization.string("Input needed")
         case "turn.failed": return AppLocalization.string("Turn failed")
         case "background_task.finished": return AppLocalization.string("Task finished")
-        case "call.requested": return AppLocalization.string("Hermes wants to talk")
         default: return nil
         }
     }
@@ -224,16 +259,17 @@ enum NotificationCopy {
     /// A call request's line, as the app's own call notification says it
     /// (HermesCallCopy.summary, which the extension can't link): what Hermes
     /// waits on, its reason, else how the job ended. Keep the two in step.
-    static func callLine(_ call: [String: Any]) -> String? {
+    /// `name`: the bot that calls (`botName`).
+    static func callLine(_ call: [String: Any], name: String = NotificationCopy.mainBotName) -> String? {
         let reason = nonEmpty(call["reason"])
         let job = nonEmpty(call["title"])
         let outcome: String
         switch call["kind"] as? String {
-        case "approval": outcome = AppLocalization.string("Hermes needs your OK.")
-        case "question": outcome = AppLocalization.string("Hermes has a question for you.")
+        case "approval": outcome = callOutcome(.approval, name: name)
+        case "question": outcome = callOutcome(.question, name: name)
         case let kind?:
             if call["origin"] as? String == "alert" {
-                return AppLocalization.string("Hermes ran into a problem with your request.")
+                return callOutcome(.problem, name: name)
             }
             if let reason { return reason }
             switch (kind, job) {
@@ -253,6 +289,24 @@ enum NotificationCopy {
         // own texts in the App Language (#1589), as HermesCallCopy.summary.
         let said = call["kind"] as? String == "approval" ? reason.map(HermesApprovalText.description) : reason
         return said.map { outcome + " " + $0 } ?? outcome
+    }
+
+    /// What a call waits on, said of the bot that calls (issue 2540):
+    /// "Cortana needs your OK.", with Hermes' own lines for a main bot
+    /// nobody named. HermesCallCopy.outcome says the same.
+    enum CallWait { case approval, question, problem }
+
+    static func callOutcome(_ wait: CallWait, name: String) -> String {
+        let named = name != mainBotName
+        switch wait {
+        case .approval:
+            return named ? AppLocalization.string("\(name) needs your OK.") : AppLocalization.string("Hermes needs your OK.")
+        case .question:
+            return named ? AppLocalization.string("\(name) has a question for you.") : AppLocalization.string("Hermes has a question for you.")
+        case .problem:
+            return named ? AppLocalization.string("\(name) ran into a problem with your request.")
+                : AppLocalization.string("Hermes ran into a problem with your request.")
+        }
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {
