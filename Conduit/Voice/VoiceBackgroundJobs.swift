@@ -1032,6 +1032,59 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         return callbackSyncTask
     }
 
+    /// One ended call's watch, settled apart from the supervisor.
+    private struct DetachedCallbackSettle {
+        let watchID: String?
+        let profile: String?
+        let notify: VoiceCallbackTarget?
+        let kind: HermesCallRequest.Kind?
+    }
+
+    /// The ended call's watches whose jobs are over, settled apart from the
+    /// supervisor: a new call that starts at once resets it while the
+    /// hang-up's pass is still on the wire, and the reset would cancel the
+    /// pass (issue 2551). Each is let go of on the host, and one that ended
+    /// without the call telling it gets Conduit's own notification, as the
+    /// pass does. A watch whose job still runs is left to its hold, which
+    /// lapses on the host within `callbackHoldSeconds`; Hermes calls as
+    /// usual after that. Taken before the reset; the task runs on its own.
+    @discardableResult
+    func detachEndedCallbackSettles() -> Task<Void, Never>? {
+        guard let callbacks else { return nil }
+        var settles: [DetachedCallbackSettle] = []
+        for (id, entry) in callbackWatches {
+            guard let callID = entry.callID, callID != callbackCallID else { continue }
+            guard let job = job(id) else {
+                // Settled and told: nothing to call about.
+                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: entry.profile, notify: nil, kind: nil))
+                callbackWatches[id] = nil
+                continue
+            }
+            switch job.status {
+            case .cancelled:
+                settles.append(DetachedCallbackSettle(watchID: entry.watchID, profile: entry.profile, notify: nil, kind: nil))
+            case .finished, .failed:
+                let untold = entry.untoldAtHangUp ?? callbackOutcomeUntold(id)
+                let target = untold ? Self.callbackTarget(job) : nil
+                if target != nil { update(id) { $0.outcomeDelivered = true } }
+                settles.append(DetachedCallbackSettle(
+                    watchID: entry.watchID, profile: entry.profile, notify: target,
+                    kind: job.status == .finished ? .done : .failed
+                ))
+            case .starting, .running, .needsInput:
+                continue
+            }
+            callbackWatches[id] = nil
+        }
+        guard !settles.isEmpty else { return nil }
+        return Task { @MainActor in
+            for settle in settles {
+                if let watchID = settle.watchID { try? await callbacks.cancel(watchID, settle.profile) }
+                if let target = settle.notify { await callbacks.notify(target, settle.kind) }
+            }
+        }
+    }
+
     /// Whether the job ended without the user hearing how: no notice taken
     /// for it yet, or one taken but not sent. Stopped work is never untold.
     private func callbackOutcomeUntold(_ id: UUID) -> Bool {

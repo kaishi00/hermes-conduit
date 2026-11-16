@@ -224,6 +224,32 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(calls.holds.count, holdsAtHangUp, "Nothing renews after the call")
     }
 
+    /// A new call resets the supervisor while the hang-up's pass is still
+    /// on the wire (issue 2551): the ended jobs' watches are settled on
+    /// their own, a running job's is left to lapse on the host.
+    func testAResetDuringTheHangUpsPassStillSettlesTheEndedJobs() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = await supervisor.performVoiceCommand(.start(instructions: "find a dinner recipe"))
+        _ = supervisor.requestCallback(.all)
+        await supervisor.callbackPassesSettled()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
+
+        supervisor.finishCallbacks()
+        let settles = supervisor.detachEndedCallbackSettles()
+        supervisor.reset()
+        await settles?.value
+
+        XCTAssertNotNil(settles)
+        let routerWatch = (calls.watches.firstIndex { $0.target.runtimeSessionID == "rt-1" }).map { "w\($0 + 1)" }
+        XCTAssertEqual(calls.watches.count, 2)
+        XCTAssertEqual(calls.cancels, routerWatch.map { [$0] } ?? [], "only the ended job's watch")
+        XCTAssertEqual(calls.notified.map(\.target.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(calls.notified.first?.kind, .done)
+        XCTAssertNil(supervisor.detachEndedCallbackSettles(), "nothing left once reset")
+    }
+
     func testHangUpNotifiesForAJobThatEndedUntold() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         beginHermesCall(supervisor)

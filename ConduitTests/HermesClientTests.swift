@@ -5651,6 +5651,18 @@ extension HermesClientTests {
         appState.keepCallSessionsOnTheirProfile(appState.voiceCallProfile, for: afterSwitch)
         XCTAssertEqual(afterSwitch.sessionProfile(for: "bot-1"), "furina")
         XCTAssertEqual(afterSwitch.sessionProfile(for: "bot-stored-1"), "furina")
+        // A reconnect's client, with no predecessor to inherit from, names
+        // it too, and Local Live's own chat on a bot's profile (issue 2551).
+        appState.localLiveOwnChat = VoiceThreadTarget(
+            runtimeSessionID: "own-1", storedSessionID: "own-stored-1", title: "Own", profile: "atlas"
+        )
+        let reconnectedAgain = makeClient(transport: transport, profile: "work")
+        appState.keepCallSessionsOnTheirProfile(afterReconnect: reconnectedAgain)
+        XCTAssertEqual(reconnectedAgain.sessionProfile(for: "bot-1"), "furina")
+        XCTAssertEqual(reconnectedAgain.sessionProfile(for: "bot-stored-1"), "furina")
+        XCTAssertEqual(reconnectedAgain.sessionProfile(for: "own-1"), "atlas")
+        XCTAssertEqual(reconnectedAgain.sessionProfile(for: "own-stored-1"), "atlas")
+        appState.localLiveOwnChat = nil
         botThreadSupervisor.attachLiveThread(
             VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
         )
