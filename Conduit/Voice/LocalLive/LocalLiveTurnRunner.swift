@@ -490,7 +490,13 @@ final class LocalLiveTurnRunner {
         return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
     }
 
-    static var needsInputLine: String {
-        AppLocalization.string("Hermes needs your answer in the chat before it can go on.", table: .voice)
+    static var needsInputLine: String { needsInputLine(name: HermesCallerName.fallback) }
+
+    /// `name`: the bot that waits (HermesCallerName), as a call's brief
+    /// names it (issue 2540); Hermes for a main bot nobody named.
+    static func needsInputLine(name: String) -> String {
+        name == HermesCallerName.fallback
+            ? AppLocalization.string("Hermes needs your answer in the chat before it can go on.", table: .voice)
+            : AppLocalization.string("\(name) needs your answer in the chat before it can go on.", table: .voice)
     }
 }

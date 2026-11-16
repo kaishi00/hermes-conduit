@@ -347,7 +347,8 @@ struct HermesCallOpening: Equatable {
         let named = name != HermesCallerName.fallback
         let hello = named ? AppLocalization.string("Hi, it's \(name).", table: .voice) : AppLocalization.string("Hi, it's Hermes.", table: .voice)
         if let question = waiting?.openQuestion {
-            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil, name: name) + "\n" + HermesCallWaiting.spokenQuestion(question)
+            return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil, name: name) + "\n"
+                + HermesCallWaiting.spokenQuestion(question, asker: named ? name : nil)
         }
         if case .approval(let command, let description)? = waiting?.item {
             // Said to the user, so Hermes' own texts in the App Language
@@ -355,7 +356,8 @@ struct HermesCallOpening: Equatable {
             let what = description.isEmpty ? HermesApprovalText.command(command) : HermesApprovalText.description(description)
             let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
             return hello + " " + (named
-                ? AppLocalization.string("\(name) needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
+                // Its own key: "… to go on" is a job's (VoiceBackgroundJobs.waitingNotice).
+                ? AppLocalization.string("\(name) needs your OK to go ahead: \(clipped). Say yes to allow it once, or no.", table: .voice)
                 : AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice))
         }
         let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason, name: name)

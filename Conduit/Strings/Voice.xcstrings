@@ -50482,6 +50482,170 @@
           }
         }
       }
+    },
+    "%@ needs your OK to go ahead: %@. Say yes to allow it once, or no." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ braucht dein OK, um weiterzumachen: %2$@. Sag Ja, um es einmal zu erlauben, oder Nein."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ necesita tu visto bueno para seguir: %2$@. Di sí para permitirlo una vez, o no."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ a besoin de votre accord pour continuer : %2$@. Dites oui pour l’autoriser une fois, ou non."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ perlu persetujuan Anda untuk lanjut: %2$@. Katakan ya untuk mengizinkannya sekali, atau tidak."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ha bisogno del tuo OK per continuare: %2$@. Di' sì per consentirlo una volta, oppure no."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@が続けるにはあなたの許可が必要です：%2$@。1回だけ許可するなら「はい」、しないなら「いいえ」と言ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@이(가) 계속하려면 승인이 필요해요: %2$@. 한 번 허용하려면 '네', 아니면 '아니요'라고 말하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ potrzebuje Twojej zgody, by kontynuować: %2$@. Powiedz „tak”, aby zezwolić jednorazowo, albo „nie”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ precisa do seu OK para continuar: %2$@. Diga sim para permitir uma vez, ou não."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ нужно ваше разрешение, чтобы продолжить: %2$@. Скажите «да», чтобы разрешить один раз, или «нет»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ devam etmek için onayınızı bekliyor: %2$@. Bir kez izin vermek için evet, vermemek için hayır deyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 需要你同意才能继续：%2$@。说“是”允许这一次，或说“不”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 需要你同意才能繼續：%2$@。說「是」允許這一次，或說「不」。"
+          }
+        }
+      }
+    },
+    "%@ needs your answer in the chat before it can go on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ braucht deine Antwort im Chat, bevor es weitergeht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ necesita tu respuesta en el chat para continuar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a besoin de votre réponse dans la discussion pour continuer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ perlu jawaban Anda di obrolan sebelum bisa melanjutkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ha bisogno della tua risposta nella chat prima di continuare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "続けるには、チャットで %@ に回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "계속하려면 채팅에서 %@에게 답해 주세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ potrzebuje twojej odpowiedzi w czacie, żeby kontynuować."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ precisa da sua resposta na conversa para continuar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы продолжить, %@ нужен ваш ответ в чате."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ devam etmek için sohbette yanıtınızı bekliyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要你在聊天中回答后才能继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 需要你在聊天中回答後才能繼續。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
