@@ -1019,4 +1019,95 @@ extension CrossProfilePresentationCacheTests {
         appState.connectOtherCombinedDashboards()
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
     }
+
+    // MARK: Status, retries and pushes (stage 3c)
+
+    /// The row and the menu say why a combined dashboard beside the one on
+    /// screen isn't connected: one with nothing to sign in with waits for a
+    /// tap; one whose server didn't answer is down and tried again until
+    /// it connects; a kept one whose socket drops is down again.
+    func testACombinedDashboardSaysWhyItIsntConnectedAndOneDownIsTriedAgain() async throws {
+        final class Mints { var failures = 1; var count = 0 }
+        let mints = Mints()
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in
+            mints.count += 1
+            if mints.failures > 0 {
+                mints.failures -= 1
+                throw DashboardTicketBridgeError.http(status: 503, detail: "")
+            }
+            return "vps-ticket"
+        }
+        operations.makeTransport = { transport }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        appState.isConnected = true
+        appState.combinedDashboardRetryBaseDelay = 0.05
+        XCTAssertNil(appState.combinedDashboardStatus(mac.id), "the one on screen says nothing here")
+
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .signInNeeded, "nothing to sign in with")
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id], "a tap, not a retry")
+
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: vps.normalizedURL, ticket: "spent"), dashboardID: vps.id)
+        transport.open(socket)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .connecting)
+        await waitForKept(vps.id, in: appState)
+        XCTAssertEqual(mints.count, 2, "down once, then the retry signed it in")
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .live)
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id])
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id])
+
+        appState.combinedDashboardRetryBaseDelay = 60
+        await waitUntil { socket.hasWaitingReceive }
+        socket.cancel(with: .abnormalClosure, reason: nil)
+        await waitUntil { appState.combinedDashboardStatus(vps.id) == .down }
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .down)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "counted from one again")
+        XCTAssertNotNil(appState.combinedDashboardRetries[vps.id]?.task)
+
+        appState.setDashboardCombined(vps.id, false)
+        XCTAssertNil(appState.combinedDashboardStatus(vps.id))
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id])
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id], "out of the group: no retry")
+
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(DashboardTicketBridgeError.signInRequired), .signInNeeded)
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 401, detail: "")), .signInNeeded)
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(AuthClientError.loginFailed(status: 502, detail: "")), .down)
+        XCTAssertEqual(AppState.troubleAfterCombinedSignIn(URLError(.timedOut)), .down)
+    }
+
+    /// A notification from a combined dashboard kept beside the one on
+    /// screen opens through its kept connection: no ticket, no new socket.
+    func testANotificationFromAKeptDashboardOpensThroughItsKeptConnection() async throws {
+        final class Counts { var connects = 0; var mints = 0 }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing)
+
+        let open = Task { @MainActor in
+            await appState.openNotificationTarget(ConduitNotificationTarget(
+                profile: "default", sessionId: "session-a", dashboardID: mac.id, type: nil, isChatLink: true
+            ))
+        }
+        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        // What the open does after the switch isn't this test's.
+        open.cancel()
+
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertTrue(appState.client === outgoing, "the kept client is taken up")
+        XCTAssertEqual(counts.connects, 0, "no socket is opened")
+        XCTAssertEqual(counts.mints, 0, "no ticket is minted")
+    }
 }
