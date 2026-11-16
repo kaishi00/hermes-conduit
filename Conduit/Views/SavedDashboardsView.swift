@@ -60,6 +60,7 @@ struct SavedDashboardsSettingsDetail: View {
                     Text("When Conduit opens, your dashboards stay listed until you tap one, instead of signing in to the last one you used. A notification, a link, Siri, CarPlay, the Apple Watch or a call from Hermes still signs in on its own.")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                    combineDashboards
                 }
             }
         }
@@ -94,6 +95,31 @@ struct SavedDashboardsSettingsDetail: View {
         .sheet(isPresented: $showsAddDashboard) {
             AddDashboardSheet(onSignedIn: { close() })
                 .environmentObject(appState)
+        }
+    }
+
+    // MARK: - Combine Dashboards
+
+    /// The combined group (multi-instance stage 3): a switch per saved
+    /// dashboard. Two or more switched on stay connected while another is
+    /// in use.
+    private var combineDashboards: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Combine Dashboards", systemImage: "square.stack.3d.up")
+                .scaledFont(.subheadline.weight(.semibold))
+                .padding(.top, 6)
+            ForEach(rows) { row in
+                Toggle(isOn: Binding(
+                    get: { row.dashboard.isCombined },
+                    set: { appState.setDashboardCombined(row.dashboard.id, $0) }
+                )) {
+                    Text(verbatim: row.dashboard.label)
+                }
+                .accessibilityIdentifier("settings.combine-dashboard")
+            }
+            Text("Combined dashboards stay connected while you use another one, so switching back to one is instant. Switch on two or more.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -269,6 +295,9 @@ struct SavedDashboardRowLabel: View {
                 ? AppLocalization.string("Connected")
                 : AppLocalization.string("Disconnected")
         }
+        if appState.keptDashboardRuntimes[row.dashboard.id] != nil {
+            return AppLocalization.string("Connected in the background")
+        }
         return row.hasReusableAuth
             ? AppLocalization.string("Saved")
             : AppLocalization.string("Sign In required", table: .connection)
@@ -294,6 +323,7 @@ struct SavedDashboardRowLabel: View {
             }
             return appState.isConnected ? .green : .red
         }
+        if appState.keptDashboardRuntimes[row.dashboard.id] != nil { return .green }
         return row.hasReusableAuth ? .secondary : .orange
     }
 }

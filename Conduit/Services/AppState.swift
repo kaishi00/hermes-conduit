@@ -198,6 +198,10 @@ final class AppState: ObservableObject {
     @Published var isProfileSwitching = false
     @Published var appIconChoice: AppIconChoice
     @Published var dashboardTicketBridge: DashboardTicketBridge?
+    /// Combined dashboards left while connected, each still holding its
+    /// socket and bridge so a switch back takes it up at once
+    /// (AppState+CombinedDashboards.swift).
+    @Published var keptDashboardRuntimes: [UUID: KeptDashboardRuntime] = [:]
     var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
     /// `takeVoiceEventAfterCancel`).

@@ -397,6 +397,8 @@ extension AppState {
     /// dashboard.
     func stageDashboardMove(_ id: UUID, toNormalizedURL url: String) {
         guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        // Its kept connection is to the old address.
+        dropKeptDashboardRuntime(id)
         if let previous = savedDashboardRegistry.dashboards[index].pendingURL, previous != url,
            let credentials = KeychainHelper.loadCredentials(dashboardID: id),
            Self.normalizedDashboardURL(credentials.baseURL) == previous {
@@ -600,6 +602,9 @@ extension AppState {
         if let previousDashboardID, previousDashboardID != id { removePulseWidget(dashboardID: previousDashboardID) }
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
+        // A combined dashboard left while connected stays connected, so a
+        // switch back is at once (multi-instance stage 3).
+        keepOutgoingDashboardRuntimeIfCombined(previousDashboardID, switchingTo: id)
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {
             // Resume on the target's own profile, not the outgoing
@@ -613,6 +618,18 @@ extension AppState {
             persistActiveProfile(targetProfile)
             restoreActiveSessionState(for: targetProfile)
             restorePinnedSessions(for: targetProfile)
+        }
+        // A combined dashboard kept connected is taken up again: its socket
+        // and bridge are already open, so only the sync runs.
+        if let kept = takeKeptDashboardRuntime(id, profile: activeProfile) {
+            presentOfflineChatIfAvailable(dashboardID: id)
+            showLogin = false
+            isConnecting = true
+            turnState = .synchronizing
+            dashboardTicketBridge = kept.bridge
+            await connect(with: kept.connection, profile: activeProfile, reusing: kept.client)
+            settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
+            return
         }
         // Mirrors cold launch: the target's own saved copy and Chats list,
         // kept while another dashboard was in use, show until it answers.
@@ -764,6 +781,8 @@ extension AppState {
     /// active dashboard this is the full Disconnect teardown, scoped.
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        // A combined dashboard kept connected signs out too.
+        dropKeptDashboardRuntime(id)
         // The host signed in next reports its own gateways.
         forgetRelayGatewayIDs(of: id)
         // Drafts shared for this dashboard belong to the signed-out user.
@@ -824,6 +843,7 @@ extension AppState {
     /// other saved dashboard is auto-connected.
     func removeDashboard(_ id: UUID) {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
+        dropKeptDashboardRuntime(id)
         let wasActive = id == activeDashboardID
         if wasActive {
             // Full scoped teardown of the active dashboard's auth and live
@@ -848,6 +868,8 @@ extension AppState {
         }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        // A group that fell to one lets its other kept connection go.
+        letGoKeptRuntimesOutsideTheGroup()
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a

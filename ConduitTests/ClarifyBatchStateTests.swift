@@ -1860,11 +1860,29 @@ final class ClarifyFakeSocket: HermesWebSocket {
     var refusesApprovalPendingBeforeRespond = false
     private var sawApprovalRespond = false
 
+    /// A gateway that refuses every request at once (-32601), for a test
+    /// about what a connection does whose steps would otherwise wait out
+    /// their timeouts on a socket that never answers. Kept out of
+    /// `sentTexts` and `onSend`.
+    var refusesEveryRequest = false
+
     func send(_ message: URLSessionWebSocketTask.Message, completionHandler: @escaping @Sendable (Error?) -> Void) {
         if case .string(let text) = message {
             let request = (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
             let method = request?["method"] as? String
             if method == "approval.respond" { sawApprovalRespond = true }
+            if refusesEveryRequest, let id = request?["id"] as? Int {
+                completionHandler(nil)
+                deliver(String(
+                    decoding: try! JSONSerialization.data(withJSONObject: [
+                        "jsonrpc": "2.0",
+                        "id": id,
+                        "error": ["code": -32601, "message": "unknown method: \(method ?? "")"]
+                    ]),
+                    as: UTF8.self
+                ))
+                return
+            }
             if refusesApprovalPendingBeforeRespond, !sawApprovalRespond,
                method == "approval.pending", let id = request?["id"] as? Int {
                 completionHandler(nil)

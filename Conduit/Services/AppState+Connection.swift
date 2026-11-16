@@ -420,12 +420,13 @@ extension AppState {
         }
     }
 
-    func connect(with conn: HermesConnection, profile: String = "default") async {
+    func connect(with conn: HermesConnection, profile: String = "default", reusing keptClient: HermesClient? = nil) async {
         await connect(
             with: conn,
             profile: profile,
             syncPurpose: .automaticReturn,
-            cancelsResumeRestoration: true
+            cancelsResumeRestoration: true,
+            reusing: keptClient
         )
     }
 
@@ -436,8 +437,13 @@ extension AppState {
         cancelsResumeRestoration: Bool,
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticReconnectOperationID: UUID? = nil,
-        isRenewal: Bool = false
+        isRenewal: Bool = false,
+        reusing keptClient: HermesClient? = nil
     ) async {
+        // A kept client this connect stops before taking up closes, rather
+        // than staying open with nothing holding it.
+        var keptClientTakenUp = false
+        defer { if !keptClientTakenUp { keptClient?.disconnect() } }
         if cancelsResumeRestoration {
             cancelChatResumeTransportRecovery()
         }
@@ -521,7 +527,17 @@ extension AppState {
         }
 
         let previousClient = client
-        let client = makeClient(connection: conn, profile: profile)
+        // A combined dashboard's kept client is already open: it takes this
+        // connection's epoch and skips the socket's opening.
+        let client: HermesClient
+        if let keptClient {
+            client = keptClient
+            keptClientTakenUp = true
+            client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
+            attachClientEvents(client)
+        } else {
+            client = makeClient(connection: conn, profile: profile)
+        }
         // The same dashboard (a silent re-auth's reconnect, say): a Bot Chat
         // this client hasn't opened again still names the bot's profile
         // (issue 2277). Another dashboard's chats are its own.
@@ -536,7 +552,11 @@ extension AppState {
         previousClient?.disconnect()
 
         do {
-            try await connectChatResumeClient(client)
+            if keptClient == nil {
+                try await connectChatResumeClient(client)
+            } else {
+                noteConnectionStep("Kept connection taken up")
+            }
             if self.client === client {
                 owedPostConnectBootstrap = OwedPostConnectBootstrap(
                     client: client,

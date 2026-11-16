@@ -7152,6 +7152,43 @@ sign-in that failed off screen · README.md
 
 **Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
 
+## Combined dashboards
+
+Combine Dashboards in Settings > Saved Dashboards (multi-instance stage 3): the
+dashboards switched on there, two or more, are one group. A combined dashboard
+left while connected keeps its socket and bridge, so a switch back takes them
+up again with only the usual sync (no ticket, no new socket). Lists stay per
+dashboard until stage 4.
+
+**Siblings:** every dashboard switch (Saved Dashboards, the profile picker,
+the top bar's dashboard menu, a widget, a notification, a link, a shared
+draft) · Saved Dashboards' row status (Connected in the background) · Sign
+Out of This Dashboard, Remove Dashboard and an edited address (each lets its
+kept connection go) · Conduit leaving the screen (all kept connections go) ·
+Ask Which Dashboard at Launch (gap: the group as one choice, stage 3b) · Face
+ID for saved dashboards (gap: the group connecting at launch on one unlock,
+stage 3b) · a push from a combined dashboard (gap: opening through its kept
+connection, stage 3c) · the Combine Dashboards caption · README.md · the
+Watch, CarPlay, calls and Siri (not needed: they act on the dashboard on
+screen, and a switch is unchanged for them)
+
+**Code**
+- `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, letGoKeptRuntimesOutsideTheGroup, keepOutgoingDashboardRuntimeIfCombined, keep, takeKeptDashboardRuntime, dropAllKeptDashboardRuntimes), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status)
+- Tests: `ConduitTests/CrossProfilePresentationCacheTests.swift` (testCombinedDashboardsNeedTwoAndTodaysRegistryHasNone, testACombinedDashboardStaysConnectedWhileAnotherIsUsed, testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo, testAnEditedAddressKeepsNothingAndARemovalThatEndsTheGroupLetsGo, testAtTheCapTheSwitchTargetIsTakenUpAndSignOutLetsGo)
+
+**Rulings**
+- One group, set in Settings > Saved Dashboards, "Combine Dashboards"; a dashboard left out stays as today, cold until picked (2026-11-13, Eric, multi-instance plan decisions).
+- Every combined dashboard live, up to 4 at once with the one on screen; past that the one kept longest is let go (stage 0's caps).
+- A kept dashboard's events are fenced while another is on screen; taking it up runs the usual sync, which brings its chat current. A kept socket that drops is let go at once; one on another profile than the switch resumes, or to an address the dashboard no longer has, is let go on the switch, which signs in as before. A dashboard with an edited address not yet taken up keeps nothing (#2595 review).
+- At the cap, the switch's own target is never the one let go: it leaves the kept set by being taken up. Removing a member that leaves the group at one lets the other's kept connection go too (#2595 review).
+- Leaving the screen lets every kept connection go, since iOS suspends the sockets; the next switch signs in as before.
+
+**Open gaps**
+- Stage 3b: the other combined dashboards connect at launch after one Face ID unlock, and Ask Which Dashboard at Launch lists the group as one choice.
+- Stage 3c: each combined dashboard's state (down, sign-in needed) on its row and in the dashboard menu, a push opening through a kept connection, and memory and battery against stage 0's baseline.
+
+**Checked:** 2026-11-16, #2595.
+
 ## App Store screenshots and showcase clips
 
 What the capture run shows of each screen: the App Store screenshots and

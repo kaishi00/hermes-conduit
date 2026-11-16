@@ -31,6 +31,14 @@ extension AppState {
         // A reconnect off screen (CarPlay, a locked listen) keeps the
         // background keepalive.
         client.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
+        attachClientEvents(client)
+        return client
+    }
+
+    /// Points a client's events at this AppState under a new epoch, which
+    /// fences every client before it (a kept combined dashboard's
+    /// included) until it is attached again.
+    func attachClientEvents(_ client: HermesClient) {
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self, weak client] event in
@@ -52,7 +60,6 @@ extension AppState {
                 self.handleDisconnect()
             }
         }
-        return client
     }
 
     /// Cold-start restore of the saved connection. Its ticket was spent when

@@ -36,6 +36,12 @@ struct SavedDashboard: Codable, Equatable, Identifiable {
     /// there when it next signs in, never under the session in use.
     /// Registries saved before it decode without one.
     var pendingURL: String?
+    /// Part of the combined group (Settings > Saved Dashboards, Combine
+    /// Dashboards; multi-instance stage 3). Registries saved before it
+    /// decode without one, which is not combined.
+    var combined: Bool?
+
+    var isCombined: Bool { combined == true }
 }
 
 /// What a saved dashboard can sign in with, without typing anything.
@@ -73,6 +79,14 @@ struct SavedDashboardRegistry: Codable, Equatable {
 
     func dashboard(with id: UUID) -> SavedDashboard? {
         dashboards.first { $0.id == id }
+    }
+
+    /// The combined group: the dashboards switched on under Combine
+    /// Dashboards, once there are two or more of them. One alone is no
+    /// group.
+    var combinedGroupIDs: Set<UUID> {
+        let combined = dashboards.filter(\.isCombined).map(\.id)
+        return combined.count >= 2 ? Set(combined) : []
     }
 
     /// The selected dashboard's display label, if one is selected.
