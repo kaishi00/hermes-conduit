@@ -119,6 +119,13 @@ extension AppState {
         return kept
     }
 
+    /// Signed out of or moved: its kept connection goes, and a quiet sign-in
+    /// still out for it keeps nothing it finishes.
+    func letGoCombinedDashboard(_ id: UUID) {
+        if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
+        dropKeptDashboardRuntime(id)
+    }
+
     func dropKeptDashboardRuntime(_ id: UUID) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
@@ -185,6 +192,7 @@ extension AppState {
                 guard let self else { return }
                 await self.signInCombinedDashboardQuietly(id)
                 self.combinedSignInsUnderWay.remove(id)
+                self.combinedSignInsCalledOff.remove(id)
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
                 // waits for its switch.
@@ -223,6 +231,7 @@ extension AppState {
         func stillWanted() -> Bool {
             guard let current = savedDashboardRegistry.dashboard(with: id) else { return false }
             return generation == keptDashboardRuntimesGeneration
+                && !combinedSignInsCalledOff.contains(id)
                 && isSceneActive
                 && isInCombinedGroup(id)
                 && id != activeDashboardID

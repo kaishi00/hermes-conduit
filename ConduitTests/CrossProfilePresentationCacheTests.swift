@@ -991,5 +991,19 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "signed out meanwhile: nothing kept")
         XCTAssertNil(KeychainHelper.loadConnection(dashboardID: pi.id), "nor saved again")
+
+        // A browser sign-in's grant outlives Sign Out, so the call-off is
+        // what drops it.
+        box.signOut = nil
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: pi.id)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertEqual(appState.combinedSignInsUnderWay, [pi.id])
+        XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
+        appState.letGoCombinedDashboard(pi.id)
+        XCTAssertEqual(appState.combinedSignInsCalledOff, [pi.id])
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: "https://127.0.0.9:1", ticket: "spent"), dashboardID: pi.id)
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+        XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "called off: nothing kept")
+        XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
     }
 }
