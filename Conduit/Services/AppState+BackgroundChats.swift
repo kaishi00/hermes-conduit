@@ -371,7 +371,7 @@ extension AppState {
         // was away, and its events arrive under that id before the open
         // knows it: they're the screen's too, so the open's reconcile
         // buffer takes them as well as the copy (issue 2503).
-        if !onScreen, ownIndex == nil, let activeSessionId,
+        if !onScreen, ownIndex == nil, let activeSessionId, chat.profile == activeProfile,
            !chat.sessionIDs.isDisjoint(with: knownSessionIDs(for: activeSessionId).union([activeSessionId])) {
             onScreen = true
             // The open's reconcile accepts it from now on, across the
