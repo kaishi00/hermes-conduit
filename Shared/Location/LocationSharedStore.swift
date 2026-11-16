@@ -238,12 +238,14 @@ enum LocationKeychain {
     /// before that write lands doesn't read the dropped queue back.
     static func unsentDropped() -> Bool { load(account: unsentDroppedAccount) != nil }
 
-    static func setUnsentDropped(_ dropped: Bool) {
+    /// False when the Keychain refused the change (logged on a save).
+    @discardableResult
+    static func setUnsentDropped(_ dropped: Bool) -> Bool {
         if dropped {
-            _ = save(Data([1]), account: unsentDroppedAccount)
-        } else {
-            delete(account: unsentDroppedAccount)
+            return save(Data([1]), account: unsentDroppedAccount)
         }
+        let status = SecItemDelete(query(account: unsentDroppedAccount) as CFDictionary)
+        return status == errSecSuccess || status == errSecItemNotFound
     }
 
     private static func query(account: String) -> [String: Any] {

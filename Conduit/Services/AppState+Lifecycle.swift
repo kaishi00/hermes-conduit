@@ -946,9 +946,19 @@ extension AppState {
         setRunning(true)
         turnStateIsStale = false
         // Newer live edges win over the snapshot.
-        let bufferedEntries = reconciliation?.bufferedEntries ?? []
-        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
+        replayForegroundBufferedEntries()
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
+    }
+
+    /// The foreground boundary's buffered events, newer live edges over the
+    /// baseline, less any under a rebound id Hermes has since given another
+    /// chat (#2613's review).
+    func replayForegroundBufferedEntries() {
+        let open = reconciliation
+        for entry in open?.bufferedEntries ?? []
+        where open?.movedOnSessionIDs.contains(sessionID(for: entry.event)) != true {
+            applyNumberedStreamEvent(entry.event, turnGeneration: entry.generation)
+        }
     }
 
     /// Replays the events buffered while the foreground reconciliation
@@ -962,8 +972,7 @@ extension AppState {
         automaticWorkToken: ChatResumeAutomaticWorkToken?
     ) {
         guard token == shownChat.reconciliationToken else { return }
-        let bufferedEntries = reconciliation?.bufferedEntries ?? []
-        bufferedEntries.forEach { applyNumberedStreamEvent($0.event, turnGeneration: $0.generation) }
+        replayForegroundBufferedEntries()
         _ = settleReconciliationAndPublish(token, automaticWorkToken: automaticWorkToken)
     }
 

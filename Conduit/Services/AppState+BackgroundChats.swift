@@ -442,10 +442,11 @@ extension AppState {
         // doesn't know that chat (or the row is away mid-refresh).
         if let routedDurableID = index.durableID(forRuntime: routedFor, profile: activeProfile) {
             guard routedDurableID != durableID else { return false }
+        } else {
+            let row = [sessions, cronSessions].joined().first { $0.nestingIDs.contains(routedFor) }
+            let routedIDs = knownSessionIDs(for: routedFor).union([routedFor]).union(row?.nestingIDs ?? [])
+            guard !routedIDs.contains(durableID) else { return false }
         }
-        let row = [sessions, cronSessions].joined().first { $0.nestingIDs.contains(routedFor) }
-        let routedIDs = knownSessionIDs(for: routedFor).union([routedFor]).union(row?.nestingIDs ?? [])
-        guard !routedIDs.contains(durableID) else { return false }
         open.reboundSessionIDs[id] = nil
         open.acceptedSessionIDs.remove(id)
         open.movedOnSessionIDs.insert(id)
