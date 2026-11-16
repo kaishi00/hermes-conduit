@@ -1276,8 +1276,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.mints, 0, "no sign-in")
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty, "on screen, its chats are this list's own")
 
-        // The one left is kept now, and its chats list here; let go, they go.
-        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "the dashboard left is kept")
+        // A kept VPS (the fixture's VPS never signed in, so it's kept by
+        // hand) lists its chats here; let go, they go.
+        let vpsClient = try await openClient(vps.normalizedURL)
+        appState.keep(KeptDashboardRuntime(
+            client: vpsClient,
+            bridge: DashboardTicketBridge(baseURL: vps.normalizedURL, dashboardID: vps.id),
+            connection: vpsClient.connection,
+            keptAt: Date()
+        ), for: vps.id)
         appState.keptDashboardJSONReader = { _, _ in
             ["sessions": [["id": "vps-1", "title": "Deploy", "message_count": 3, "profile": "default", "last_active": 500]]]
         }

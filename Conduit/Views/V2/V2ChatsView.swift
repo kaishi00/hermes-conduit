@@ -2459,7 +2459,7 @@ struct V2ChatsRow: View {
                     appState: appState,
                     session: session,
                     nest: nil,
-                    isSavedRow: appState.isSavedChatRow(session),
+                    isSavedRow: appState.isSavedChatRow(session) || session.combinedDashboardID != nil,
                     onRename: { onRename(session) },
                     onDelete: { onDelete(session) }
                 )

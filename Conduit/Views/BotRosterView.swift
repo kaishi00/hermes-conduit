@@ -85,7 +85,10 @@ struct BotRosterView: View {
             // Hidden bots still list (under Hidden), so only an empty
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
-            if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil {
+            // Bots Home with other combined dashboards' bots shows them
+            // (its scroll lists their sections) though this one has none.
+            if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
+                && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
                 emptyState
                     .safeAreaInset(edge: .top) {
                         VStack(spacing: 12) {

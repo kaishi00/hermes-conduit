@@ -46,8 +46,11 @@ extension AppState {
             let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
             let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
             // Let go, opened, or out of the group while the read was out.
+            // Its profile changed meanwhile, or a read started later already
+            // stored its answer: either way this one is stale.
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
-                  isInCombinedGroup(id) else { continue }
+                  isInCombinedGroup(id), profilesMatch(rememberedActiveProfile(for: id) ?? "default", profile),
+                  !(combinedDashboardChats[id].map { $0.at > now } ?? false) else { continue }
             // An answer with no list (an error body) is a failed read.
             guard let batch = response?["sessions"] as? [Any] else { continue }
             let sessions = Self.dashboardOwnedSessions(batch, profile: profile).map { row -> SessionSummary in
@@ -65,9 +68,14 @@ extension AppState {
     func otherCombinedDashboardsChats(excluding listed: Set<String>) -> [SessionSummary] {
         guard isInCombinedGroup(activeDashboardID) else { return [] }
         var merged: [SessionSummary] = []
+        // An id another dashboard already gave keeps the first one's row, so
+        // the list never holds one id twice.
+        var taken = listed
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID {
             guard isInCombinedGroup(dashboard.id), let chats = combinedDashboardChats[dashboard.id] else { continue }
-            merged = V2FilterSelection.mergedByRecency(merged, chats.sessions.filter { !listed.contains($0.id) })
+            let fresh = chats.sessions.filter { !taken.contains($0.id) }
+            taken.formUnion(fresh.map(\.id))
+            merged = V2FilterSelection.mergedByRecency(merged, fresh)
         }
         return merged
     }

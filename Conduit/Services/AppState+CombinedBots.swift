@@ -55,6 +55,8 @@ extension AppState {
             // Let go, opened, or out of the group while the read was out.
             guard let snapshot, keptDashboardRuntimes[id]?.client === runtime.client, activeDashboardID != id,
                   isInCombinedGroup(id) else { continue }
+            // A read started later already stored its roster: keep that one.
+            if let stored = combinedDashboardBots[id], stored.at > now { continue }
             combinedDashboardBots[id] = CombinedDashboardBots(
                 client: client,
                 bots: BotProfile.displayOrder(snapshot.bots.filter { !$0.isHiddenByMeta }),
@@ -91,7 +93,7 @@ extension AppState {
             await self.switchDashboard(to: dashboardID)
             // Another dashboard picked meanwhile owns the screen.
             guard self.activeDashboardID == dashboardID else { return }
-            self.openLinkedBotChat(bot.name)
+            self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
         }
     }
 }
