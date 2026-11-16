@@ -1018,6 +1018,9 @@ final class AppState: ObservableObject {
     /// newer one, but still lands when a newer request failed.
     var notifierPluginStatusGeneration = 0
     var notifierPluginStatusAcceptedGeneration = 0
+    /// The list open's shared status read (refreshNotifierPluginStatusOnce),
+    /// and the bridge it reads through.
+    var notifierPluginStatusSharedRefresh: (bridge: ObjectIdentifier, task: Task<Void, Never>)?
     @Published var modelVisibility = ModelVisibility()
     /// The model sheet's pinned and recent models, for the active dashboard.
     @Published var modelQuickPicks = ModelQuickPicks()

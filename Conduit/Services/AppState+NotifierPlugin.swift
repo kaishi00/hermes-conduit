@@ -46,6 +46,26 @@ extension AppState {
         }
     }
 
+    /// Asks the plugin what it serves, joining such a read already under
+    /// way through the same bridge. The Artifacts list asks from its feed
+    /// and from Saved as it opens: one read answers both, and its
+    /// follow-on syncs run once.
+    func refreshNotifierPluginStatusOnce() async {
+        guard let bridge = dashboardTicketBridge else { return }
+        let id = ObjectIdentifier(bridge)
+        if let shared = notifierPluginStatusSharedRefresh, shared.bridge == id {
+            await shared.task.value
+            return
+        }
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.refreshNotifierPluginStatus()
+        }
+        notifierPluginStatusSharedRefresh = (id, task)
+        await task.value
+        if notifierPluginStatusSharedRefresh?.task == task { notifierPluginStatusSharedRefresh = nil }
+    }
+
     /// Asks the plugin what it serves. Cheap, so it runs on every connect.
     func refreshNotifierPluginStatus() async {
         guard let bridge = dashboardTicketBridge else { return }

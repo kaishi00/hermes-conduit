@@ -9,7 +9,7 @@ import Foundation
 struct ArtifactPinsClient {
     static let capability = "artifact-pins"
     static let path = "/api/plugins/conduit_push/artifacts/pins"
-    /// The host's limit on a note.
+    /// The host's limit on a note, in Unicode code points (Python's len).
     static let maxNoteLength = 200
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
@@ -84,10 +84,23 @@ struct ArtifactPinsClient {
         return row
     }
 
+    /// Fits the host's code-point limit without splitting a visible character.
+    /// The editor uses this too, keeping spaces intact while the user types.
+    static func limitedNote(_ note: String) -> String {
+        var remaining = maxNoteLength
+        return String(note.prefix { character in
+            let count = character.unicodeScalars.count
+            guard count <= remaining else { return false }
+            remaining -= count
+            return true
+        })
+    }
+
     /// A note as the host keeps it: one line, nil when empty.
     static func cleanNote(_ note: String?) -> String? {
         let words = (note ?? "").split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        return words.isEmpty ? nil : String(words.prefix(maxNoteLength))
+        let limited = limitedNote(words)
+        return limited.isEmpty ? nil : limited
     }
 
     /// What Saved lists for `sources`, from each source's profile's saved

@@ -289,6 +289,44 @@ extension GatewayRestartTests {
         XCTAssertEqual(ownItems.map(\.otherProfile), [nil, nil])
     }
 
+    /// The Artifacts list asks the plugin what it serves from its feed and
+    /// from Saved as it opens (issue 2516): one status read answers both,
+    /// and a read through another bridge isn't joined.
+    func testTheListOpenSharesOnePluginStatusRead() async throws {
+        let suite = "Artifacts.AppState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.dashboardTicketBridge = held.bridge
+        let feed = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        let saved = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        try await held.waitForRequests(1)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(held.sent.filter { $0.path == NotifierPluginStatus.path }.count, 1, "one read for both")
+        XCTAssertNotNil(appState.notifierPluginStatusSharedRefresh)
+
+        let other = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { other.releaseAll() }
+        appState.dashboardTicketBridge = other.bridge
+        let otherRead = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        try await other.waitForRequests(1)
+        XCTAssertEqual(other.sent.first?.path, NotifierPluginStatus.path, "another bridge reads for itself")
+
+        held.releaseAll()
+        other.releaseAll()
+        await feed.value
+        await saved.value
+        await otherRead.value
+        XCTAssertNil(appState.notifierPluginStatusSharedRefresh, "nothing left to join once the reads end")
+    }
+
     /// A Bot Chat has no row in the chat list: its ⋯ menu still finds the
     /// chat's ids, so Artifacts isn't greyed out. An unlisted chat that isn't
     /// a bot's has none.
@@ -470,6 +508,63 @@ extension GatewayRestartTests {
         } catch {}
         XCTAssertNil(ArtifactPinsClient.kept(profile: "atlas", in: answers), "and never kept")
         XCTAssertEqual(ArtifactPinsClient.kept(profile: "work", in: answers)?.count, 1)
+    }
+
+    /// The host counts Unicode code points, not Swift Characters or UTF-8
+    /// bytes: emoji sequences and combining marks use more than one point.
+    func testSavedNotesFitTheHostsCodePointLimit() throws {
+        let cases: [(String, Int, Int)] = [
+            ("a", 201, 200),
+            ("界", 201, 200),
+            ("👍🏽", 101, 100),
+            ("🇺🇸", 101, 100),
+            ("👨‍👩‍👧‍👦", 29, 28),
+            ("e\u{301}", 101, 100),
+        ]
+        for (character, count, kept) in cases {
+            let note = String(repeating: character, count: count)
+            let expected = String(repeating: character, count: kept)
+            XCTAssertEqual(ArtifactPinsClient.limitedNote(note), expected)
+            let cleaned = try XCTUnwrap(ArtifactPinsClient.cleanNote(note))
+            XCTAssertEqual(cleaned, expected)
+            XCTAssertLessThanOrEqual(cleaned.unicodeScalars.count, ArtifactPinsClient.maxNoteLength)
+        }
+    }
+
+    func testSavedNoteClippingKeepsCharactersWholeAndEditorSpacesIntact() {
+        let prefix = String(repeating: "a", count: 199)
+        for character in ["👍🏽", "🇺🇸", "👨‍👩‍👧‍👦", "e\u{301}"] {
+            XCTAssertEqual(ArtifactPinsClient.limitedNote(prefix + character), prefix,
+                           "leave room unused rather than split a visible character")
+        }
+        let oversizedCharacter = "e" + String(repeating: "\u{301}", count: 200)
+        XCTAssertEqual(ArtifactPinsClient.limitedNote(oversizedCharacter), "")
+        XCTAssertNil(ArtifactPinsClient.cleanNote(oversizedCharacter))
+        XCTAssertEqual(ArtifactPinsClient.limitedNote("  for   the site "), "  for   the site ")
+        XCTAssertEqual(ArtifactPinsClient.cleanNote("  for   the\nsite "), "for the site")
+        XCTAssertNil(ArtifactPinsClient.cleanNote(nil))
+    }
+
+    /// Both Save and Edit Note use this request: neither may send a note
+    /// the host refuses just because it includes multi-code-point emoji.
+    func testSavingClipsUnicodeNotesBeforeSendingThemToTheHost() async throws {
+        let expected = String(repeating: "👍🏽", count: 100)
+        var asked = false
+        let client = ArtifactPinsClient { _, method, body in
+            asked = true
+            XCTAssertEqual(method, "POST")
+            let note = try XCTUnwrap(body?["note"] as? String)
+            XCTAssertEqual(note, expected)
+            XCTAssertLessThanOrEqual(note.unicodeScalars.count, 200, "Python len accepts at most 200 code points")
+            var row = try XCTUnwrap(body?["item"] as? [String: Any])
+            row["pinned_at"] = 1_760_000_000.0
+            row["note"] = note
+            return ["ok": true, "pin": row]
+        }
+        let item = try XCTUnwrap(ArtifactItem(artifactRow([:])))
+        let saved = try await client.save(item, note: String(repeating: "👍🏽", count: 101), profile: "atlas")
+        XCTAssertTrue(asked)
+        XCTAssertEqual(saved.note, expected)
     }
 
     /// Saving sends the row as the list gave it, in the store's profile,
