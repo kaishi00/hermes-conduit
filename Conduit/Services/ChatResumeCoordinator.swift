@@ -64,23 +64,27 @@ final class ChatResumeCoordinator {
     /// A mixed batch may retain an expired sibling while another question
     /// remains answerable; only request-level expiry makes the whole card stale.
     static func pendingClarifyMessageID(in messages: [ChatMessage]) -> String? {
-        messages.last { message in
-            if let approval = message.approval {
-                // An answer on its way isn't waiting on the user, as a
-                // question's isn't; the voice panels still show its card.
-                return approval.status == .pending || approval.status == .error
-            }
-            if let prompt = message.inputPrompt {
-                // A password, login or code Hermes is waiting for.
-                return prompt.isAnswerable
-            }
-            if let connection = message.connection {
-                // Something to connect Hermes is waiting on.
-                return connection.needsUser
-            }
-            guard let clarify = message.clarify else { return false }
-            return clarify.needsAnswer
-        }?.id
+        messages.last { isWaitingOnUser($0) }?.id
+    }
+
+    /// Shared by selecting the resume card and placing the viewport: a
+    /// card answered since selection must fall back to the saved place.
+    static func isWaitingOnUser(_ message: ChatMessage) -> Bool {
+        if let approval = message.approval {
+            // An answer on its way isn't waiting on the user, as a
+            // question's isn't; the voice panels still show its card.
+            return approval.status == .pending || approval.status == .error
+        }
+        if let prompt = message.inputPrompt {
+            // A password, login or code Hermes is waiting for.
+            return prompt.isAnswerable
+        }
+        if let connection = message.connection {
+            // Something to connect Hermes is waiting on.
+            return connection.needsUser
+        }
+        guard let clarify = message.clarify else { return false }
+        return clarify.needsAnswer
     }
 
     func beginAutomaticWork() -> ChatResumeAutomaticWorkToken {
