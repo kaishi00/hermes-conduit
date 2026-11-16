@@ -199,13 +199,15 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("continue-on-error: true", step)
 
     @staticmethod
-    def _select_xcode(names, no_metal=(), no_download=(), empty_download=()):
+    def _select_xcode(names, no_metal=(), no_download=(), empty_download=(),
+                      no_sdk=(), empty_sdk=(), default_sdk="27.0"):
         """Runs ci-select-xcode.sh against fake /Applications entries with stub
         xcode-select, xcodebuild and xcrun. An Xcode named in no_metal can't
         run metal until a download installs it; one in no_download fails the
         download, and one in empty_download reports success but installs
         nothing. Xcode_<v>.app's simulator SDK is <v> (27.3.0 reads as 27.3),
-        Xcode.app's is 27.0,
+        Xcode.app's is default_sdk. A no_sdk candidate fails the simulator SDK
+        lookup, while an empty_sdk candidate succeeds without a version,
         and every watchOS simulator SDK is 13.2.
         Returns (exit code, the Xcode left selected, stdout, what the script
         wrote to GITHUB_ENV)."""
@@ -226,7 +228,10 @@ class WorkflowContractTests(unittest.TestCase):
                 "xcrun": (
                     'if [ "$2" = watchsimulator ]; then echo 13.2; exit 0; fi\n'
                     'if [ "$3" = --show-sdk-version ]; then\n'
-                    '  sed -E "s/^Xcode_(.*)\\.app$/\\1/; s/^([0-9]+\\.[0-9]+)\\.0$/\\1/; s/^Xcode\\.app$/27.0/" "$SELECTED"; exit 0\n'
+                    '  grep -qxFf "$SELECTED" "$NO_SDK" && exit 1\n'
+                    '  grep -qxFf "$SELECTED" "$EMPTY_SDK" && exit 0\n'
+                    '  if grep -qxF Xcode.app "$SELECTED"; then echo "$DEFAULT_SDK"; exit 0; fi\n'
+                    '  sed -E "s/^Xcode_(.*)\\.app$/\\1/; s/^([0-9]+\\.[0-9]+)\\.0$/\\1/" "$SELECTED"; exit 0\n'
                     'fi\n'
                     'grep -qxFf "$SELECTED" "$INSTALLED" && exit 0\n'
                     'grep -qxFf "$SELECTED" "$NO_METAL" && exit 1; exit 0\n'),
@@ -243,7 +248,8 @@ class WorkflowContractTests(unittest.TestCase):
                 os.chmod(path, 0o755)
             lists = {}
             for key, entries in (("NO_METAL", no_metal), ("NO_DOWNLOAD", no_download),
-                                 ("EMPTY_DOWNLOAD", empty_download)):
+                                 ("EMPTY_DOWNLOAD", empty_download), ("NO_SDK", no_sdk),
+                                 ("EMPTY_SDK", empty_sdk)):
                 lists[key] = os.path.join(root, key)
                 with open(lists[key], "w") as f:
                     f.write("".join(e + "\n" for e in entries) or "\n")
@@ -251,6 +257,7 @@ class WorkflowContractTests(unittest.TestCase):
                 ["bash", os.path.join(SCRIPTS_DIR, "ci-select-xcode.sh")],
                 env=dict(os.environ, APPLICATIONS_DIR=apps, SELECTED=selected,
                          INSTALLED=installed, GITHUB_ENV=github_env,
+                         DEFAULT_SDK=default_sdk,
                          PATH=stubs + os.pathsep + os.environ["PATH"], **lists),
                 capture_output=True, text=True)
             chosen = None
@@ -286,7 +293,7 @@ class WorkflowContractTests(unittest.TestCase):
         everything = both + ["Xcode.app"]
         code, _, out, _ = self._select_xcode(names, no_metal=everything, no_download=everything)
         self.assertEqual(code, 1, out)
-        self.assertIn("no Xcode on this image has a Metal toolchain", out)
+        self.assertIn("no Xcode on this image has both an iphonesimulator SDK and a working Metal toolchain", out)
 
     def test_select_xcode_pins_the_runtime_when_it_falls_back(self):
         """The device lookup takes the newest iOS runtime, and an image with
@@ -340,6 +347,47 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(lookup(ios, "iPhone 18 Pro", SIMULATOR_OS="27.2"), "ios-27-2")
         self.assertEqual(lookup(watch, "Apple Watch Ultra 4"), "watch-13-3")
         self.assertEqual(lookup(watch, "Apple Watch Ultra 4", WATCH_SIMULATOR_OS="13.2"), "watch-13-2")
+
+    def test_select_xcode_only_pins_an_older_default_sdk(self):
+        # Xcode.app can be newer than the named releases. Compare each
+        # version component numerically, including double-digit minors and
+        # a missing patch component, rather than pinning every different SDK.
+        for first, default, pin in (("27.3", "27.10", False),
+                                    ("27.3", "27.3.0", False),
+                                    ("27.10", "27.3", True),
+                                    ("27.3.2", "27.3.1", True)):
+            with self.subTest(first=first, default=default):
+                named = "Xcode_" + first + ".app"
+                code, chosen, out, env = self._select_xcode(
+                    ["Xcode.app", named], no_metal=[named], no_download=[named],
+                    default_sdk=default)
+                expected = "SIMULATOR_OS=" + default + "\nWATCH_SIMULATOR_OS=13.2\n" if pin else ""
+                self.assertEqual((code, chosen, env), (0, "Xcode.app", expected), out)
+                self.assertEqual("Simulator runtime pinned" in out, pin, out)
+
+    def test_select_xcode_skips_a_candidate_without_a_simulator_sdk(self):
+        names = ["Xcode.app", "Xcode_27.2.app", "Xcode_27.3.app"]
+        for failure in ("no_sdk", "empty_sdk"):
+            with self.subTest(failure=failure):
+                code, chosen, out, env = self._select_xcode(
+                    names, no_metal=["Xcode_27.3.app"],
+                    **{failure: ["Xcode_27.3.app"]})
+                self.assertEqual((code, chosen, env), (0, "Xcode_27.2.app", ""), out)
+                self.assertIn("no iphonesimulator SDK", out)
+                self.assertNotIn("downloading it", out)
+            # A broken middle candidate must not replace the first valid SDK
+            # used to decide whether the eventual fallback needs a pin.
+            with self.subTest(failure=failure, middle=True):
+                code, chosen, out, env = self._select_xcode(
+                    names, no_metal=["Xcode_27.3.app"], no_download=["Xcode_27.3.app"],
+                    **{failure: ["Xcode_27.2.app"]})
+                self.assertEqual((code, chosen, env),
+                                 (0, "Xcode.app", "SIMULATOR_OS=27.0\nWATCH_SIMULATOR_OS=13.2\n"), out)
+                self.assertIn("no iphonesimulator SDK", out)
+            with self.subTest(failure=failure, all_candidates=True):
+                code, _, out, env = self._select_xcode(names, **{failure: names})
+                self.assertEqual((code, env), (1, ""), out)
+                self.assertIn("no Xcode on this image has both an iphonesimulator SDK", out)
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
