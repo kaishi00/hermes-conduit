@@ -262,6 +262,12 @@ struct V2PulsePage: View {
         .onChange(of: shell.isTabActive) { _, active in
             if !active { leaveVisit() }
         }
+        // Backgrounded: a read already under way (a retry or reload outside
+        // the page's task) belongs to the visit before, so it marks nothing
+        // seen. The page's cards and highlights stay for the return.
+        .onChange(of: scenePhase) { _, phase in
+            if phase != .active { visit = UUID() }
+        }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
             restCard = nil
@@ -1755,7 +1761,7 @@ struct V2PulsePage: View {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
-            if newCards == nil, isVisible, scenePhase == .active {
+            if newCards == nil, isVisible, scenePhase == .active, visit == self.visit {
                 newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
             }
             loadError = nil
