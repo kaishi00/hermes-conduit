@@ -1182,6 +1182,7 @@ extension AppState {
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
         let bufferedGenerations = reconciliation?.bufferedGenerations ?? []
         let reboundSessionIDs = reconciliation?.reboundSessionIDs ?? [:]
+        let movedOnSessionIDs = reconciliation?.movedOnSessionIDs ?? []
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         if let existingReconciliation = reconciliation {
@@ -1200,7 +1201,8 @@ extension AppState {
             streamSessionIDAtBoundary: streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents,
             bufferedGenerations: bufferedGenerations,
-            reboundSessionIDs: reboundSessionIDs
+            reboundSessionIDs: reboundSessionIDs,
+            movedOnSessionIDs: movedOnSessionIDs
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
@@ -1727,7 +1729,8 @@ extension AppState {
             streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents,
             bufferedGenerations: bufferedGenerations,
-            reboundSessionIDs: reboundSessionIDs
+            reboundSessionIDs: reboundSessionIDs,
+            movedOnSessionIDs: priorReconciliation?.movedOnSessionIDs ?? []
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this

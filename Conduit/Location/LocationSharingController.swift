@@ -122,11 +122,20 @@ final class LocationSharingController: ObservableObject {
     /// Writes the unsent queue, saying whether it was written (tests pass
     /// their own, so they never touch the app group's file).
     private let writeStoredUnsent: (LocationUnsent) -> Bool
-    /// A Sign Out dropped the queue while the config couldn't be read, and
-    /// no save of the queue has reached its file since: the copy on disk is
-    /// what was dropped, so it isn't read back once the config is, and the
-    /// save is tried again until it lands.
-    private(set) var unsentDroppedWhileUnreadable = false
+    /// A Sign Out dropped the queue while the config couldn't be read, or
+    /// its write over the queue's file failed (a full disk), and no save of
+    /// the queue has reached the file since: the copy on disk is what was
+    /// dropped, so it isn't read back, once the config is or at the next
+    /// launch, and the save is tried again until it lands. Kept in the
+    /// Keychain too (`dropMarker`), so a relaunch knows.
+    private(set) var unsentDroppedWhileUnreadable = false {
+        didSet {
+            if unsentDroppedWhileUnreadable != oldValue { dropMarker.set(unsentDroppedWhileUnreadable) }
+        }
+    }
+    /// Where a dropped queue not yet written over is remembered across a
+    /// launch (tests pass their own).
+    private let dropMarker: LocationDropMarker
     /// The dashboard the Keychain's host pass was saved for: it's saved
     /// only for the dashboard sharing is bound to, so it names the binding
     /// while the config can't be read.
@@ -138,12 +147,14 @@ final class LocationSharingController: ObservableObject {
         unsent: LocationUnsent? = nil,
         readStoredConfig: @escaping () -> LocationSharedStore.Read<LocationSharedConfig> = { LocationSharedStore.readConfig() },
         readStoredUnsent: @escaping () -> LocationUnsent = { LocationSharedStore.readUnsent() },
-        writeStoredUnsent: @escaping (LocationUnsent) -> Bool = { LocationSharedStore.saveUnsent($0) }
+        writeStoredUnsent: @escaping (LocationUnsent) -> Bool = { LocationSharedStore.saveUnsent($0) },
+        dropMarker: LocationDropMarker = .keychain
     ) {
         self.engine = engine ?? LocationSyncEngine(deviceName: { UIDevice.current.name })
         self.readStoredConfig = readStoredConfig
         self.readStoredUnsent = readStoredUnsent
         self.writeStoredUnsent = writeStoredUnsent
+        self.dropMarker = dropMarker
         if let config {
             self.config = config
         } else {
@@ -155,7 +166,16 @@ final class LocationSharingController: ObservableObject {
                 configUnreadable = true
             }
         }
-        self.unsent = unsent ?? readStoredUnsent()
+        // A Sign Out's drop that never reached the queue's file before the
+        // app quit: the file's copy is what was dropped, so it isn't read,
+        // and the write over it is tried again (at the first config read
+        // and each foreground).
+        if dropMarker.isSet() {
+            self.unsentDroppedWhileUnreadable = true
+            self.unsent = unsent ?? LocationUnsent()
+        } else {
+            self.unsent = unsent ?? readStoredUnsent()
+        }
         self.engine.spotsReplied = { [weak self] watches in
             // A reply to a batch sent before Walking past went off lists
             // watches the host no longer keeps.
@@ -973,5 +993,26 @@ final class LocationSharingController: ObservableObject {
         }
         // Unbound, the shops' monitor is emptied and spots.json forgotten.
         reconfigureMonitors()
+    }
+}
+
+/// Remembers, outside the queue's own file, that a Sign Out dropped the
+/// unsent queue and the file still holds it (#2612's review).
+struct LocationDropMarker {
+    var isSet: () -> Bool
+    var set: (Bool) -> Void
+
+    static var keychain: LocationDropMarker {
+        LocationDropMarker(isSet: { LocationKeychain.unsentDropped() }, set: { LocationKeychain.setUnsentDropped($0) })
+    }
+
+    /// Kept in memory only, for tests: `stored` stands for the Keychain.
+    static func memory(_ stored: Box = Box()) -> LocationDropMarker {
+        LocationDropMarker(isSet: { stored.isSet }, set: { stored.isSet = $0 })
+    }
+
+    final class Box {
+        var isSet: Bool
+        init(_ isSet: Bool = false) { self.isSet = isSet }
     }
 }
