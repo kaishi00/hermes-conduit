@@ -7117,12 +7117,12 @@ unlock doesn't cover waits for a tap, see Combined dashboards)
 - One unlock per launch for every saved dashboard; a cold launch asks (2026-11-13, Eric, multi-instance plan quick win 2, #2423).
 - A dashboard asks again when its saved password was cleared since (sign-out, removal, a switch to browser sign-in), or when a different password was saved for it after an unlock covered it (the launch's unlock covers the password a dashboard signs in with first) (#2423).
 - The unlock holds while Conduit runs, also after a long time away, as a connected Conduit never asks again on return.
-- Combined dashboards sign in beside the one on screen on this unlock and never ask for one themselves: one behind Face ID that the unlock doesn't cover (the launch had none) waits for a tap (#STAGE3B).
+- Combined dashboards sign in beside the one on screen on this unlock and never ask for one themselves: one behind Face ID that the unlock doesn't cover (the launch had none) waits for a tap (#2599).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-16, #STAGE3B (combined dashboards sign in on the launch's unlock); 2026-11-14, #2425 (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
+**Checked:** 2026-11-16, #2599 (combined dashboards sign in on the launch's unlock); 2026-11-14, #2425 (#2423 review leftovers: every relocking path and the forced sign-in recorded; the refusal test records its timeline); 2026-11-14, #2423.
 
 ## Which dashboard a launch signs in to
 
@@ -7149,13 +7149,13 @@ README.md
 - Off by default, and only with two or more dashboards saved; with one, nothing changes (2026-11-07, Eric, #1911).
 - Only a plain open waits. Anything the launch came for that needs Hermes (a notification, Pulse's Quiet for Today, a link, Siri, a shortcut, CarPlay, the Watch, a call from Hermes, a shared draft) signs in to the last dashboard used, as it does with the setting off, and a widget switches as before. A pick, or any dashboard switch, ends the wait (2026-11-07, #1911).
 - A launch with no phone screen after a short grace (2 s) is a background launch and signs in as before. If that sign-in can't finish off screen (Face ID), coming on screen leaves the list up rather than retrying it. A release while it is under way starts no second sign-in (2026-11-07, #1911).
-- The combined group is one row on the list, where its first member stands; a tap opens its last used member (else its first), and the rest connect beside it (see Combined dashboards, #STAGE3B).
+- The combined group is one row on the list, where its first member stands; a tap opens its last used member (else its first), and the rest connect beside it (see Combined dashboards, #2599).
 - Opening the list and leaving without a pick keeps Conduit signed out until something above needs Hermes or a dashboard is tapped; the caption says what still signs in. A push that only arrives meanwhile (a phone change) waits for the pick too, and the connected pass fetches it then (2026-11-07, #1911).
 
 **Open gaps**
 - None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
 
-**Checked:** 2026-11-16, #STAGE3B (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
+**Checked:** 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
 
 ## Combined dashboards
 
@@ -7187,7 +7187,7 @@ screen, and a switch is unchanged for them)
 - One group, set in Settings > Saved Dashboards, "Combine Dashboards"; a dashboard left out stays as today, cold until picked (2026-11-13, Eric, multi-instance plan decisions).
 - Every combined dashboard live, up to 4 at once with the one on screen; past that the one kept longest is let go (stage 0's caps).
 - A kept dashboard's events are fenced while another is on screen; taking it up runs the usual sync, which brings its chat current. A kept socket that drops is let go at once; one on another profile than the switch resumes, or to an address the dashboard no longer has, is let go on the switch, which signs in as before. A dashboard with an edited address not yet taken up keeps nothing (#2595 review).
-- A read answered after a switch away and back belongs to the earlier visit and doesn't land, though the kept bridge is the same: the runtime owner carries the visit (#STAGE3B, #2595 review).
+- A read answered after a switch away and back belongs to the earlier visit and doesn't land, though the kept bridge is the same: the runtime owner carries the visit (#2599, #2595 review).
 - At the cap, the switch's own target is never the one let go: it leaves the kept set by being taken up. Removing a member that leaves the group at one lets the other's kept connection go too (#2595 review).
 - Leaving the screen lets every kept connection go after the background grace the one on screen gets (25 s), since iOS suspends the sockets; the next switch signs in as before.
 - The others connect once the one on screen has connected and synced, at launch, on a return and after a switch, in Saved Dashboards order, each on its own ticket, bridge and last profile. Only one that can sign in with nobody there does: a browser sign-in's grant, a saved session, or a saved password (behind Face ID only once this launch's unlock covers it, quick win 2). One that needs typing is left for a tap, and one that fails signs in on its next switch as before.
@@ -7196,7 +7196,7 @@ screen, and a switch is unchanged for them)
 **Open gaps**
 - Stage 3c: each combined dashboard's state (down, sign-in needed) on its row and in the dashboard menu, a push opening through a kept connection, and memory and battery against stage 0's baseline.
 
-**Checked:** 2026-11-16, #STAGE3B; 2026-11-16, #2595.
+**Checked:** 2026-11-16, #2599; 2026-11-16, #2595.
 
 ## App Store screenshots and showcase clips
 
