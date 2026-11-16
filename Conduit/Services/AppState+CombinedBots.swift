@@ -355,7 +355,10 @@ extension AppState {
             bots: bots,
             avatars: avatars,
             at: now,
-            glows: glows ?? combinedDashboardGlows(id, bots: bots, avatars: avatars)
+            // A color it gave a bot before and doesn't give now (a picture
+            // it couldn't read yet) stays, rather than the name's stand-in.
+            glows: (glows ?? combinedDashboardGlows(id, bots: bots, avatars: avatars))
+                .merging(combinedDashboardBots[id]?.glows ?? [:]) { now, _ in now }
         )
     }
 

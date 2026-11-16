@@ -1324,6 +1324,33 @@ extension CrossProfilePresentationCacheTests {
     /// The Chats list shows a kept combined dashboard's newest chats, read
     /// through its kept connection, badged, with no actions of their own;
     /// a tap opens through that dashboard (all-live stage 4b).
+    /// A combined dashboard just switched to: its bots keep the color they
+    /// wore on the grid as another dashboard's until this one's profiles
+    /// and pictures give it again, never the name's stand-in for a moment
+    /// (Eric, 2026-11-16). A seed keeps a color it gave before and can't
+    /// give yet.
+    func testABotKeepsItsColorThroughASwitch() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, _, outgoing, _) = try await combinedDashboards(operations: operations)
+        let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        let violet = ProfileGlowRGB(red: 0.5, green: 0.2, blue: 0.9)
+        let standIn = AppState.botColor(raiden, glow: nil)
+        XCTAssertNil(appState.profileGlowColors()["raiden"], "this dashboard's pictures aren't in yet")
+        XCTAssertEqual(appState.botColor(raiden), standIn)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [raiden], avatars: [:], at: Date(), glows: ["raiden": violet]
+        )
+        XCTAssertEqual(appState.botColor(raiden), violet.color, "the color it wore as another dashboard's")
+        // Once this dashboard's profiles are in, its own colors stand.
+        appState.profiles = ["default", "raiden"]
+        XCTAssertEqual(appState.botColor(raiden), AppState.botColor(raiden, glow: appState.profileGlowColors()["raiden"]))
+
+        appState.seedCombinedDashboardBots(mac.id, from: [raiden], client: outgoing, glows: [:])
+        XCTAssertEqual(appState.combinedDashboardBots[mac.id]?.glows["raiden"], violet, "kept, not the stand-in")
+    }
+
     /// A bot's work shown from the phone's copy while Hermes is asked
     /// again is marked so (its counts may be old): Bots Home's finish
     /// ripple doesn't play for the read that follows (Eric, 2026-11-16: a
