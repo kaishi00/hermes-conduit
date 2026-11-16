@@ -189,6 +189,8 @@ extension AppState {
         if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
         // Nor its bots on Bots Home (stage 4c).
         if combinedDashboardBots[id] != nil { combinedDashboardBots.removeValue(forKey: id) }
+        // Nor its chip on Pulse (stage 4d).
+        if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
         if id != activeDashboardID {
             needsYou.forgetOtherDashboards(otherThan: Set(keptDashboardRuntimes.keys))
         }

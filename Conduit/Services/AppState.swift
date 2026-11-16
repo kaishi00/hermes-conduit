@@ -242,6 +242,9 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's bots (all-live stage 4c), read
     /// through its kept client.
     @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Each other combined dashboard's count of new Pulse cards (all-live
+    /// stage 4d), read through its kept connection.
+    @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
     /// Reads a kept dashboard's bot roster through its client. Tests set it.
     var keptDashboardBotRosterReader: ((HermesClient) async throws -> BotRosterSnapshot)?
     /// Reads a kept dashboard's JSON route through its bridge. Tests set it.

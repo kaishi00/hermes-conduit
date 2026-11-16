@@ -1334,6 +1334,53 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.combinedDashboardBots[vps.id])
     }
 
+    /// Pulse has a chip per combined dashboard whose Pulse answers, the
+    /// other's saying how many of its cards are new; its tap shows that
+    /// dashboard's Pulse, switching through the kept connection (all-live
+    /// stage 4d).
+    func testPulseHasAChipPerCombinedDashboardAndOneSwitchesThroughIt() async throws {
+        final class Counts { var mints = 0; var reads: [String] = [] }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(appState.pulseDashboardChips.isEmpty, "no chips until another dashboard's Pulse answers")
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            counts.reads.append(path)
+            return ["cards": [], "unseen": 3]
+        }
+
+        await appState.readOtherCombinedDashboardsPulse()
+        XCTAssertEqual(counts.reads, ["\(PulseClient.path)/feed"])
+        appState.pulseUnseen = 1
+        let chips = appState.pulseDashboardChips
+        XCTAssertEqual(chips.map(\.dashboardID), [mac.id, vps.id], "Saved Dashboards order")
+        XCTAssertEqual(chips.map(\.unseen), [3, 1])
+        XCTAssertEqual(chips.map(\.isOnScreen), [false, true])
+        XCTAssertEqual(chips.first?.badge.letter, "M")
+        // Read again only past its age; a failed read keeps the count.
+        await appState.readOtherCombinedDashboardsPulse()
+        XCTAssertEqual(counts.reads.count, 1)
+        appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
+        await appState.readOtherCombinedDashboardsPulse(force: true)
+        XCTAssertEqual(appState.pulseDashboardChips.first?.unseen, 3)
+
+        appState.openCombinedPulse(mac.id)
+        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        XCTAssertTrue(appState.client === outgoing, "switched through the kept connection")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        await waitUntil { appState.pulseOpenRequest != nil }
+        XCTAssertNotNil(appState.pulseOpenRequest, "its Pulse page shows")
+        XCTAssertTrue(appState.pulseDashboardChips.allSatisfy { $0.dashboardID != mac.id || $0.isOnScreen },
+                      "on screen, its chip is the page's own")
+    }
+
     /// A notification from a combined dashboard kept beside the one on
     /// screen opens through its kept connection: no ticket, no new socket.
     func testANotificationFromAKeptDashboardOpensThroughItsKeptConnection() async throws {
