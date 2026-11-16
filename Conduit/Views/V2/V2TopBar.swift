@@ -645,6 +645,11 @@ private struct DashboardSwitchMenu: ViewModifier {
                         } label: {
                             Label {
                                 Text(verbatim: dashboard.label)
+                                // A combined dashboard says how it is
+                                // beside this one (stage 3c).
+                                if let status = appState.combinedDashboardStatus(dashboard.id) {
+                                    Text(verbatim: status.label)
+                                }
                             } icon: {
                                 Image(systemName: "server.rack")
                             }

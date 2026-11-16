@@ -205,7 +205,19 @@ final class AppState: ObservableObject {
     /// Combined dashboards signing in quietly beside the one on screen
     /// (stage 3b), and the count that fences one whose kept set was let go
     /// meanwhile (Conduit left the screen).
-    var combinedSignInsUnderWay: Set<UUID> = []
+    /// Published: the Saved Dashboards row and the dashboard menu say
+    /// Connecting… while one is under way (stage 3c).
+    @Published var combinedSignInsUnderWay: Set<UUID> = []
+    /// Why a combined dashboard beside the one on screen isn't connected:
+    /// its last quiet sign-in failed, or it has nothing to sign in with
+    /// quietly. Gone once it connects, is on screen, or leaves the group.
+    @Published var combinedDashboardTrouble: [UUID: CombinedDashboardTrouble] = [:]
+    /// Each combined dashboard that's down: how many retries it has had in
+    /// a row, and the one waiting.
+    var combinedDashboardRetries: [UUID: CombinedDashboardRetry] = [:]
+    /// The first retry's wait; each one after doubles it, up to
+    /// `combinedDashboardRetryMaxDelay`. Shorter in tests.
+    var combinedDashboardRetryBaseDelay: TimeInterval = 30
     /// Quiet sign-ins still out whose dashboard was signed out of or moved
     /// since: what they finish is dropped, whatever it signed in with. (A
     /// later pass finds nothing to sign in with: Sign Out clears the

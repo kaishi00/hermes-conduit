@@ -295,9 +295,8 @@ struct SavedDashboardRowLabel: View {
                 ? AppLocalization.string("Connected")
                 : AppLocalization.string("Disconnected")
         }
-        if appState.keptDashboardRuntimes[row.dashboard.id] != nil {
-            return AppLocalization.string("Connected in the background")
-        }
+        // A combined dashboard beside the one on screen (stage 3c).
+        if let status = appState.combinedDashboardStatus(row.dashboard.id) { return status.label }
         return row.hasReusableAuth
             ? AppLocalization.string("Saved")
             : AppLocalization.string("Sign In required", table: .connection)
@@ -323,7 +322,12 @@ struct SavedDashboardRowLabel: View {
             }
             return appState.isConnected ? .green : .red
         }
-        if appState.keptDashboardRuntimes[row.dashboard.id] != nil { return .green }
+        switch appState.combinedDashboardStatus(row.dashboard.id) {
+        case .live: return .green
+        case .connecting, .signInNeeded: return .orange
+        case .down: return .red
+        case nil: break
+        }
         return row.hasReusableAuth ? .secondary : .orange
     }
 }

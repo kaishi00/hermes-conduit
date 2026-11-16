@@ -22,6 +22,49 @@ struct KeptDashboardRuntime {
     let keptAt: Date
 }
 
+/// Why a combined dashboard beside the one on screen isn't connected.
+enum CombinedDashboardTrouble: Equatable {
+    /// Its last quiet sign-in failed on the way (the network, the server):
+    /// it's tried again while Conduit is on screen.
+    case down
+    /// It has nothing to sign in with quietly, or its sign-in was refused:
+    /// it waits for a tap.
+    case signInNeeded
+}
+
+/// What the Saved Dashboards row and the dashboard menu say of a combined
+/// dashboard other than the one on screen (stage 3c).
+enum CombinedDashboardStatus: Equatable {
+    case live
+    case connecting
+    case down
+    case signInNeeded
+
+    /// The row's and the menu's words for it.
+    var label: String {
+        switch self {
+        case .live: return AppLocalization.string("Connected in the background")
+        case .connecting: return AppLocalization.string("Connecting…")
+        case .down: return AppLocalization.string("Can't connect. Trying again.", table: .connection)
+        case .signInNeeded: return AppLocalization.string("Sign In required", table: .connection)
+        }
+    }
+}
+
+/// A down combined dashboard's retries in a row, and the one waiting.
+struct CombinedDashboardRetry {
+    var attempt: Int
+    var task: Task<Void, Never>?
+}
+
+/// How a quiet sign-in ended.
+enum CombinedSignInOutcome {
+    case connected
+    /// Not wanted any more (signed out, moved, Conduit left): nothing to say.
+    case dropped
+    case failed(CombinedDashboardTrouble)
+}
+
 extension AppState {
     /// Live dashboards at once in the group, the one on screen included
     /// (stage 0's cap). Past it, the one kept longest is let go.
@@ -51,6 +94,10 @@ extension AppState {
         let group = savedDashboardRegistry.combinedGroupIDs
         for keptID in Array(keptDashboardRuntimes.keys) where !group.contains(keptID) {
             dropKeptDashboardRuntime(keptID)
+        }
+        // Nor is anything said of it, or tried again.
+        for id in Set(combinedDashboardTrouble.keys).union(combinedDashboardRetries.keys) where !group.contains(id) {
+            clearCombinedDashboardTrouble(id)
         }
     }
 
@@ -96,8 +143,12 @@ extension AppState {
                 guard let self, let client,
                       self.keptDashboardRuntimes[id]?.client === client else { return }
                 self.dropKeptDashboardRuntime(id)
+                // Dropped on its own (the network, the server restarting):
+                // down, and tried again while Conduit is on screen.
+                self.noteCombinedDashboardFailed(id, .down)
             }
         }
+        clearCombinedDashboardTrouble(id)
     }
 
     /// The dashboard's kept connection, taken out of the kept set, when it
@@ -125,6 +176,8 @@ extension AppState {
         if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
         combinedSignInBridges.removeValue(forKey: id)?.invalidate()
         dropKeptDashboardRuntime(id)
+        // The next pass says what it waits for now.
+        clearCombinedDashboardTrouble(id)
     }
 
     func dropKeptDashboardRuntime(_ id: UUID) {
@@ -176,6 +229,8 @@ extension AppState {
         guard isSceneActive, isConnected,
               let activeID = activeDashboardID,
               !savedDashboardRegistry.combinedGroupIDs.isEmpty else { return }
+        // The one on screen connected: nothing to say of it or try again.
+        clearCombinedDashboardTrouble(activeID)
         // Registry order: the Saved Dashboards list as the user sees it.
         // One whose address was edited signs in on its next switch, which
         // settles the move first.
@@ -183,18 +238,28 @@ extension AppState {
         where isInCombinedGroup(dashboard.id) && dashboard.id != activeID && dashboard.pendingURL == nil {
             let id = dashboard.id
             guard keptDashboardRuntimes[id] == nil,
-                  !combinedSignInsUnderWay.contains(id),
-                  // The one on screen counts too.
-                  keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1,
-                  combinedDashboardSignsInQuietly(id) else { continue }
+                  !combinedSignInsUnderWay.contains(id) else { continue }
+            guard combinedDashboardSignsInQuietly(id) else {
+                // Waits for a tap, and says so.
+                noteCombinedDashboardFailed(id, .signInNeeded)
+                continue
+            }
+            // The one on screen counts too.
+            guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else { continue }
             combinedSignInsUnderWay.insert(id)
+            // This pass is its retry: the one waiting goes.
+            combinedDashboardRetries[id]?.task?.cancel()
+            combinedDashboardRetries[id]?.task = nil
             let generation = keptDashboardRuntimesGeneration
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.signInCombinedDashboardQuietly(id)
+                let outcome = await self.signInCombinedDashboardQuietly(id)
                 self.combinedSignInsUnderWay.remove(id)
                 self.combinedSignInsCalledOff.remove(id)
                 self.combinedSignInBridges.removeValue(forKey: id)
+                if case .failed(let trouble) = outcome, self.isInCombinedGroup(id) {
+                    self.noteCombinedDashboardFailed(id, trouble)
+                }
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
                 // waits for its switch.
@@ -220,11 +285,11 @@ extension AppState {
     /// would have left it: its own bridge and client, the socket open, its
     /// events fenced until a switch takes it up. Nothing on screen changes,
     /// and a failure leaves it to sign in on its next switch, as today.
-    private func signInCombinedDashboardQuietly(_ id: UUID) async {
-        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+    private func signInCombinedDashboardQuietly(_ id: UUID) async -> CombinedSignInOutcome {
+        guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return .dropped }
         // Called off between the pass and this start: nothing is asked of
         // the old address.
-        guard !combinedSignInsCalledOff.contains(id) else { return }
+        guard !combinedSignInsCalledOff.contains(id) else { return .dropped }
         let generation = keptDashboardRuntimesGeneration
         let baseURL = dashboard.normalizedURL
         let profile = rememberedActiveProfile(for: id) ?? "default"
@@ -253,13 +318,13 @@ extension AppState {
                let credentials = KeychainHelper.loadCredentials(dashboardID: id) {
                 guard !credentials.requiresFaceID || faceIDUnlockHolds(for: id, credentials) else {
                     bridge.invalidate()
-                    return
+                    return .failed(.signInNeeded)
                 }
                 let signedIn = try await NativeAuthClient(baseURL: credentials.baseURL, cloudflareAccess: access)
                     .connect(username: credentials.username, password: credentials.password)
                 guard stillWanted() else {
                     bridge.invalidate()
-                    return
+                    return .dropped
                 }
                 signedIn.commitCookies(dashboardID: id)
                 ticket = signedIn.ticket
@@ -270,7 +335,7 @@ extension AppState {
             }
             guard stillWanted() else {
                 bridge.invalidate()
-                return
+                return .dropped
             }
             let connection = HermesConnection(baseUrl: baseURL, ticket: ticket)
             let transportFactory: @MainActor () -> any HermesWebSocketTransport = chatResumeLifecycleOperations.makeTransport ?? { URLSessionWebSocketTransport() }
@@ -289,7 +354,9 @@ extension AppState {
                   keptDashboardRuntimes.count < Self.combinedLiveDashboardCap - 1 else {
                 opened.disconnect()
                 bridge.invalidate()
-                return
+                // Over the cap is no failure: it waits for its turn, as
+                // the pass leaves one past the cap.
+                return .dropped
             }
             KeychainHelper.saveConnection(connection, dashboardID: id)
             keep(KeptDashboardRuntime(
@@ -299,11 +366,79 @@ extension AppState {
                 keptAt: Date()
             ), for: id)
             lifecycleLog.notice("Combined dashboard connected in the background")
+            return .connected
         } catch {
             client?.disconnect()
             bridge.invalidate()
             lifecycleLog.notice("Combined dashboard background sign-in failed: \(error.localizedDescription, privacy: .private)")
+            guard stillWanted() else { return .dropped }
+            return .failed(Self.troubleAfterCombinedSignIn(error))
         }
+    }
+
+    // MARK: - Status and retries (stage 3c)
+
+    /// What the Saved Dashboards row and the dashboard menu say of a
+    /// combined dashboard other than the one on screen; nil for the one on
+    /// screen, one outside the group, or one past the cap waiting its turn.
+    func combinedDashboardStatus(_ id: UUID) -> CombinedDashboardStatus? {
+        guard isInCombinedGroup(id), id != activeDashboardID else { return nil }
+        if keptDashboardRuntimes[id] != nil { return .live }
+        if combinedSignInsUnderWay.contains(id) { return .connecting }
+        switch combinedDashboardTrouble[id] {
+        case .down: return .down
+        case .signInNeeded: return .signInNeeded
+        case nil: return nil
+        }
+    }
+
+    /// The longest wait between retries of a down dashboard.
+    static let combinedDashboardRetryMaxDelay: TimeInterval = 300
+
+    /// A quiet sign-in refused (the password or the grant turned down) waits
+    /// for a tap; anything else on the way is down and tried again.
+    nonisolated static func troubleAfterCombinedSignIn(_ error: Error) -> CombinedDashboardTrouble {
+        switch error {
+        case DashboardTicketBridgeError.signInRequired:
+            return .signInNeeded
+        case AuthClientError.loginFailed(let status, _), AuthClientError.ticketFailed(let status, _):
+            return status == 401 || status == 403 ? .signInNeeded : .down
+        default:
+            return .down
+        }
+    }
+
+    /// A combined dashboard couldn't connect: the rows and the menu say
+    /// why, and one that's down is tried again after a wait that doubles
+    /// each time, while Conduit is on screen (a return to Conduit tries
+    /// it at once).
+    func noteCombinedDashboardFailed(_ id: UUID, _ trouble: CombinedDashboardTrouble) {
+        guard isInCombinedGroup(id), id != activeDashboardID else { return }
+        if combinedDashboardTrouble[id] != trouble { combinedDashboardTrouble[id] = trouble }
+        guard trouble == .down else {
+            combinedDashboardRetries.removeValue(forKey: id)?.task?.cancel()
+            return
+        }
+        let attempt = (combinedDashboardRetries[id]?.attempt ?? 0) + 1
+        let delay = min(
+            combinedDashboardRetryBaseDelay * pow(2, Double(min(attempt - 1, 16))),
+            max(Self.combinedDashboardRetryMaxDelay, combinedDashboardRetryBaseDelay)
+        )
+        combinedDashboardRetries[id]?.task?.cancel()
+        let task = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .seconds(delay)) } catch { return }
+            guard let self else { return }
+            self.combinedDashboardRetries[id]?.task = nil
+            self.connectOtherCombinedDashboards()
+        }
+        combinedDashboardRetries[id] = CombinedDashboardRetry(attempt: attempt, task: task)
+    }
+
+    /// Connected, on screen, signed out of, or out of the group: nothing
+    /// to say of it, and no retry.
+    func clearCombinedDashboardTrouble(_ id: UUID) {
+        if combinedDashboardTrouble[id] != nil { combinedDashboardTrouble.removeValue(forKey: id) }
+        combinedDashboardRetries.removeValue(forKey: id)?.task?.cancel()
     }
 
     private func keptClientIsOpen(_ client: HermesClient) -> Bool {
