@@ -390,6 +390,38 @@ extension AppState {
         .sorted { $0.since > $1.since }
     }
 
+    /// Another combined dashboard's portrait in Bots Home's mixed grid, by
+    /// its key (CombinedBotsHomeOrder.key).
+    func combinedBotsHomeBot(forKey key: String) -> (bot: BotProfile, section: CombinedDashboardBotsSection)? {
+        guard CombinedBotsHomeOrder.isKey(key) else { return nil }
+        for section in otherCombinedDashboardsBots {
+            if let bot = section.bots.first(where: { CombinedBotsHomeOrder.key(section.dashboardID, $0.name) == key }) {
+                return (bot, section)
+            }
+        }
+        return nil
+    }
+
+    /// The bot of your own other Hermes, over an own Link, that another
+    /// combined dashboard's bot is to this Hermes: the room started on Bots
+    /// Home brings it as New Group Chat does (Eric, 2026-11-16: dragging a
+    /// far bot onto one here started no room). The Link whose bots are
+    /// most of that dashboard's, so a profile name two Hermes share goes to
+    /// the right one; nil when none or two Links tie, or it can't join a
+    /// room another Hermes hosts.
+    func ownHermesBot(forCombined bot: BotProfile, in dashboardID: UUID) -> OwnHermesBot? {
+        let own = invitableOwnBots
+        let theirs = Set((combinedDashboardBots[dashboardID]?.bots ?? []).map { $0.name.lowercased() })
+        let named = own.filter { Self.profilesMatch($0.profile, bot.name) }
+        let scored = Set(named.map(\.linkID)).map { link in
+            (link, own.filter { $0.linkID == link && theirs.contains($0.profile.lowercased()) }.count)
+        }
+        .sorted { $0.1 > $1.1 }
+        guard let best = scored.first, best.1 > 0, scored.count == 1 || scored[1].1 < best.1,
+              let found = named.first(where: { $0.linkID == best.0 }), found.ready else { return nil }
+        return found
+    }
+
     /// The chat wait its Needs you pill opens: only when none of its
     /// workstreams waits, as this dashboard's portraits; else the pill
     /// opens its overview, where that work is.
