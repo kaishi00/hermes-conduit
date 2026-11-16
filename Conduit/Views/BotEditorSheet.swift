@@ -31,6 +31,8 @@ struct BotEditorSheet: View {
     @State private var details: BotProfileDetails?
     @State private var detailsState: DetailsState = .idle
     @State private var isSaving = false
+    /// The combined dashboard picked for a new bot; nil, the one on screen.
+    @State private var createDashboard: UUID?
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
@@ -201,23 +203,63 @@ struct BotEditorSheet: View {
 
     // MARK: Sections
 
-    /// Combined, a new bot's sheet names the dashboard it's made on, the
-    /// one on screen, with its badge (Eric, 2026-11-16).
+    /// Combined, a new bot's sheet picks the dashboard it's made on, the one
+    /// on screen to start with, any other kept connected too (Eric,
+    /// 2026-11-16: "let users pick on the bot creation sheet").
     @ViewBuilder
     private var createDashboardRow: some View {
-        if isCreating, let id = appState.activeDashboardID, appState.isInCombinedGroup(id),
-           let badge = appState.combinedDashboardBadge(id) {
-            HStack(spacing: 8) {
-                CombinedDashboardBadge(dashboardID: id, size: 20)
-                    .accessibilityHidden(true)
-                Text(verbatim: badge.name)
-                    .scaledFont(.subheadline.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+        let choices = createDashboardChoices
+        if isCreating, choices.count > 1, let shown = createDashboardID,
+           let badge = appState.combinedDashboardBadge(shown) {
+            Menu {
+                ForEach(choices, id: \.self) { id in
+                    if let choice = appState.combinedDashboardBadge(id) {
+                        Button {
+                            createDashboard = id
+                        } label: {
+                            if id == shown {
+                                Label { Text(verbatim: choice.name) } icon: { Image(systemName: "checkmark") }
+                            } else {
+                                Text(verbatim: choice.name)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    CombinedDashboardBadge(dashboardID: shown, size: 20)
+                        .accessibilityHidden(true)
+                    Text(verbatim: badge.name)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .scaledFont(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
             }
+            .disabled(isSaving)
             .frame(maxWidth: .infinity)
-            .accessibilityElement(children: .combine)
         }
+    }
+
+    /// The dashboard a new bot goes to: the one picked, else the one on screen.
+    private var createDashboardID: UUID? {
+        if let createDashboard, createDashboardChoices.contains(createDashboard) { return createDashboard }
+        return appState.activeDashboardID
+    }
+
+    /// The one on screen, then each other combined dashboard kept connected,
+    /// in Saved Dashboards order.
+    private var createDashboardChoices: [UUID] {
+        guard let active = appState.activeDashboardID, appState.isInCombinedGroup(active) else { return [] }
+        let others = appState.savedDashboardRegistry.dashboards.map(\.id).filter {
+            $0 != active && appState.isInCombinedGroup($0) && appState.keptDashboardRuntimes[$0] != nil
+        }
+        return [active] + others
     }
 
     private var avatarHeader: some View {
@@ -949,10 +991,26 @@ struct BotEditorSheet: View {
         guard canSave else { return }
         isSaving = true
         error = nil
-        let draft = self.draft
+        var draft = self.draft
+        let target = isCreating ? createDashboardID : nil
         Task {
             let result: BotSaveResult
             var createdName: String?
+            // Another dashboard picked: switch there, then make it as on that
+            // dashboard. Its model is that dashboard's default, since the
+            // list here was this one's.
+            if let target, target != appState.activeDashboardID {
+                guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
+                await appState.switchToCombinedDashboardUntilSettled(target)
+                guard appState.activeDashboardID == target, appState.isConnected else {
+                    isSaving = false
+                    Haptics.warning()
+                    error = AppLocalization.string("Connect to Hermes to manage bots.")
+                    return
+                }
+                draft.provider = ""
+                draft.model = ""
+            }
             if let bot = editedBot {
                 result = await appState.updateBot(bot, draft: draft, loadedDetails: details)
             } else {

@@ -20,18 +20,6 @@ struct V2BotsView: View {
         appState.botModePhase == .available && appState.isConnected
     }
 
-    /// The dashboard a new bot is made on, when more than one is combined.
-    private var createDashboardID: UUID? {
-        guard let id = appState.activeDashboardID, appState.isInCombinedGroup(id) else { return nil }
-        return appState.combinedDashboardBadge(id) == nil ? nil : id
-    }
-
-    private var newBotTitle: String {
-        let title = AppLocalization.string("New Bot", table: .bots)
-        guard let id = createDashboardID, let badge = appState.combinedDashboardBadge(id) else { return title }
-        return "\(title), \(badge.name)"
-    }
-
     var body: some View {
         ZStack {
             V2Backdrop(isTabRoot: true)
@@ -45,18 +33,8 @@ struct V2BotsView: View {
                         .scaledFont(.title2.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 0)
-                    V2AddButton(title: newBotTitle) {
+                    V2AddButton(title: AppLocalization.string("New Bot", table: .bots)) {
                         createRequest = true
-                    }
-                    // Combined, the "+" wears the badge of the dashboard the
-                    // bot is made on, the one on screen (Eric, 2026-11-16).
-                    .overlay(alignment: .bottomTrailing) {
-                        if let id = createDashboardID {
-                            CombinedDashboardBadge(dashboardID: id, size: 16)
-                                .offset(x: 4, y: 4)
-                                .allowsHitTesting(false)
-                                .accessibilityHidden(true)
-                        }
                     }
                     .disabled(!canCreate)
                 }
