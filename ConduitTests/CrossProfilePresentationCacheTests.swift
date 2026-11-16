@@ -1177,6 +1177,14 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "atlas is gone there, and its wait with it")
         XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.profiles, ["default"])
+        // A read again that fails keeps the last list, and its rows.
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path == "/api/profiles" { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, ["default"], .distantPast)
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.profiles, ["default"], "a failed read again keeps the last list")
         appState.keptDashboardJSONReader = reader
         appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
         await appState.readOtherCombinedDashboardsNeedsYou()

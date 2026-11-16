@@ -294,9 +294,14 @@ struct NeedsYouMenuEntry: View {
     @ObservedObject var store: NeedsYouStore
     let open: () -> Void
 
+    /// Whether it last drew its button. Tests read it.
+    static var lastShown: Bool?
+
     var body: some View {
         // Any change of the store redraws it, whatever it reads.
-        if appState.offersNeedsYouList {
+        let shown = appState.offersNeedsYouList
+        let _ = (Self.lastShown = shown)
+        if shown {
             Button {
                 Haptics.selection()
                 open()
