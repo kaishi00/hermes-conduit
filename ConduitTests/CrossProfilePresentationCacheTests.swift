@@ -1470,7 +1470,7 @@ extension CrossProfilePresentationCacheTests {
                        canonicalSession: BotCanonicalSession(id: chat, resolvedID: nil, lastActive: nil, preview: nil),
                        lastActive: nil, lastPreview: nil)
         }
-        let macBots = appState.combinedDashboardBots[mac.id]
+        let macRoster = appState.combinedDashboardBots[mac.id]
         appState.botRoster = [chatBot("furina", "c1"), bot("neuvillette")]
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(outgoing), bots: [chatBot("Furina", "c1"), bot("neuvillette"), bot("raiden")],
@@ -1493,7 +1493,7 @@ extension CrossProfilePresentationCacheTests {
         ])
         XCTAssertEqual(spread.kept.map(\.id), [CombinedBotsHomeOrder.key(c, "n"), CombinedBotsHomeOrder.key(c, "q"), CombinedBotsHomeOrder.key(b, "p")])
         XCTAssertEqual(Set(spread.twins[CombinedBotsHomeOrder.key(c, "n")] ?? []), [CombinedBotsHomeOrder.key(b, "n"), CombinedBotsHomeOrder.key(a, "n")])
-        appState.combinedDashboardBots[mac.id] = macBots
+        appState.combinedDashboardBots[mac.id] = macRoster
         appState.botRoster = [bot("furina")]
         // A dashboard left while kept leaves its bots on the grid at once.
         appState.seedCombinedDashboardBots(vps.id, from: [bot("furina"), bot("nahida", hidden: true)], client: outgoing)
