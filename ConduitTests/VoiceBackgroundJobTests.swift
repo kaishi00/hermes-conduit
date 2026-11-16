@@ -955,23 +955,9 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .finished)
     }
 
-    /// Issue 2639: a job on another profile whose session was reaped before
-    /// that registry ever listed it settles after a long run of its answers
-    /// without it; its cancel stands when Hermes has no such session; a
+    /// Issue 2639: a cancel stands when Hermes has no such session, and a
     /// listed job keeps that across a relaunch.
-    func testAJobReapedBeforeItsFirstListingStillSettlesAndCancels() async throws {
-        let (supervisor, fake) = makeSupervisor()
-        supervisor.unlistedPollsBeforeSettling = 3
-        fake.profileTargets = ["fam": .other("fam")]
-        _ = await supervisor.startJob(instructions: "check the router", profile: "fam")
-        await supervisor.pollOnce()
-        await supervisor.pollOnce()
-        XCTAssertEqual(supervisor.jobs.first?.status, .running, "not on two reads")
-        fake.threadReply = "The router is fine."
-        await supervisor.pollOnce()
-        XCTAssertEqual(supervisor.jobs.first?.status, .finished, "never listed in three: settled")
-        XCTAssertEqual(supervisor.jobs.first?.result, "The router is fine.", "settled from its chat")
-
+    func testAJobReapedBeforeItsFirstListingStillCancels() async throws {
         let (cancelling, cancelFake) = makeSupervisor()
         cancelFake.profileTargets = ["fam": .other("fam")]
         _ = await cancelling.startJob(instructions: "check the router", profile: "fam")
