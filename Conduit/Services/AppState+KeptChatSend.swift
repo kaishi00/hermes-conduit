@@ -84,12 +84,21 @@ extension AppState {
         besideChatLive.moved()
         let ids = chat.sessionIDs.union([target])
         let reportedOn = activeDashboardID
+        let profileBefore = activeProfile
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
+        // A switch to another dashboard or profile during the report closed
+        // the chat and moved the connection on: nothing goes, and the box
+        // keeps the words.
+        guard activeDashboardID == reportedOn, activeProfile == profileBefore else {
+            discardTurnSurface(runtimeSessionID: target, text: words, after: CancellationError(), reportedOn: reportedOn)
+            chat.state.messages.removeAll { $0.id == rowID }
+            act(on: chat) { setRunning(false) }
+            besideChatLive.moved()
+            return false
+        }
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
-        // The client as of the send: a reconnect during the report replaced
-        // it. A switch to another dashboard meanwhile leaves the chat on its
-        // own connection, the one captured.
-        let sender = activeDashboardID == reportedOn ? (self.client ?? client) : client
+        // The client as of the send: a reconnect during the report replaced it.
+        let sender = self.client ?? client
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {

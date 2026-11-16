@@ -3747,9 +3747,9 @@ final class HermesClient: ObservableObject {
         let stagedImages = hidden || !speaksSessionAuthority
             ? [] : (Self.authorityStagedImages.removeValue(forKey: sessionId) ?? [])
         var sentToAuthority = false
-        // Read before sending: an idle send's own turn can start before
-        // its receipt comes back.
-        let joinsRunningTurn = authorityRunningSessions.contains(sessionId)
+        // Read before each send, from the client sending it: an idle send's
+        // own turn can start before its receipt comes back.
+        var joinsRunningTurn = false
         // An older Hermes refuses one unknown key at a time: each optional
         // key it refuses goes, and the prompt is resent, until it's taken.
         var answer: AnyCodable?
@@ -3760,6 +3760,7 @@ final class HermesClient: ObservableObject {
                 // socket on: it goes where the socket is now, as the first
                 // send's answer did.
                 let via = socketHolder
+                joinsRunningTurn = via.authorityRunningSessions.contains(sessionId)
                 answer = try await via.shapedRPC(timeout: Self.promptSubmitTimeout) { authority in
                     sentToAuthority = authority
                     var shaped = current

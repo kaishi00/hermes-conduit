@@ -222,6 +222,9 @@ extension AppState {
     /// and a failure leaves it to sign in on its next switch, as today.
     private func signInCombinedDashboardQuietly(_ id: UUID) async {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
+        // Called off between the pass and this start: nothing is asked of
+        // the old address.
+        guard !combinedSignInsCalledOff.contains(id) else { return }
         let generation = keptDashboardRuntimesGeneration
         let baseURL = dashboard.normalizedURL
         let profile = rememberedActiveProfile(for: id) ?? "default"

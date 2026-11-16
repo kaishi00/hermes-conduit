@@ -1547,6 +1547,8 @@ extension AppState {
                 // The client as of each send: the resend after a takeover
                 // wait can come after a reconnect replaced the first one.
                 sender = try await clientForVoiceRequest()
+                // The wait for the client can outlast the call.
+                guard stillWanted() else { throw CancellationError() }
                 return try await sender.sendPrompt(target, text: text)
             }
         } catch {
