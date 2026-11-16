@@ -169,6 +169,9 @@ private struct ArtifactsList: View {
 
     @AppStorage(ArtifactsClient.showMissingKey) private var showMissing = false
     @State private var filter: ArtifactFilter = .all
+    /// With other combined dashboards' artifacts in All: the one dashboard
+    /// shown (nil for the one on screen's own), or every one while unset.
+    @State private var onlyDashboard: UUID??
     @State private var query = ""
     @State private var feed: ArtifactFeed?
     @State private var loadedKey: ArtifactsListKey?
@@ -228,8 +231,30 @@ private struct ArtifactsList: View {
 
     private var currentKey: ArtifactsListKey {
         ArtifactsListKey(dashboard: appState.activeDashboardID, profile: appState.activeProfile,
-                         sources: appState.artifactSources(for: scope), filter: filter,
+                         sources: shownSources(appState.artifactSources(for: scope)), filter: filter,
                          query: query.trimmingCharacters(in: .whitespacesAndNewlines), showMissing: showMissing)
+    }
+
+    /// The dashboards whose artifacts the list can show, the one on screen
+    /// first (nil), when All reaches other combined dashboards too.
+    private var dashboardChoices: [UUID?] {
+        let sources = appState.artifactSources(for: scope)
+        var choices: [UUID?] = []
+        for source in sources where !choices.contains(source.dashboardID) { choices.append(source.dashboardID) }
+        return choices.count > 1 ? choices : []
+    }
+
+    /// The stores of the one dashboard picked, or every store; a pick no
+    /// longer offered (that dashboard left the group) shows them all.
+    private func shownSources(_ sources: [ArtifactSource]) -> [ArtifactSource] {
+        guard let only = onlyDashboard else { return sources }
+        let picked = sources.filter { $0.dashboardID == only }
+        return picked.isEmpty ? sources : picked
+    }
+
+    /// The stores Saved reads: this dashboard's, which keeps the pins.
+    private var ownSources: [ArtifactSource] {
+        currentKey.sources.filter { $0.dashboardID == nil }
     }
 
     private var items: [ArtifactItem] { feed?.items ?? [] }
@@ -237,21 +262,21 @@ private struct ArtifactsList: View {
     /// What Saved is read for: the stores the list reads, on this
     /// dashboard, once the plugin says it keeps them.
     private var currentSavedKey: SavedListKey {
-        SavedListKey(dashboard: appState.activeDashboardID, sources: currentKey.sources,
+        SavedListKey(dashboard: appState.activeDashboardID, sources: ownSources,
                      served: appState.supportsArtifactPins)
     }
 
     /// Saved's rows as last read for this list's stores.
     private var savedItems: [ArtifactItem] {
         guard savedKey?.sameStores(as: currentSavedKey) == true else { return [] }
-        return ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows, query: currentKey.query)
+        return ArtifactPinsClient.items(sources: ownSources, saved: savedRows, query: currentKey.query)
     }
 
     /// Every artifact saved in the stores read, so a row says whether
     /// it's saved; by id and the profile it's saved in.
     private var savedIDs: Set<String> {
         guard savedKey?.sameStores(as: currentSavedKey) == true else { return [] }
-        return Set(ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).map(\.id))
+        return Set(ArtifactPinsClient.items(sources: ownSources, saved: savedRows).map(\.id))
     }
 
     private var offersSaved: Bool { appState.supportsArtifactPins }
@@ -367,6 +392,20 @@ private struct ArtifactsList: View {
                         }
                     }
                 }
+                // Each combined dashboard's own chip, once All reaches
+                // theirs: it shows that dashboard's alone, and again every
+                // one (Eric, 2026-11-16).
+                if !savedOnly, !dashboardChoices.isEmpty {
+                    Divider()
+                        .frame(height: 22)
+                        .accessibilityHidden(true)
+                    ForEach(dashboardChoices, id: \.self) { choice in
+                        let isOn = onlyDashboard == .some(choice)
+                        chip(dashboardChipTitle(choice), isOn: isOn) {
+                            onlyDashboard = isOn ? nil : .some(choice)
+                        }
+                    }
+                }
                 if inPanel, appState.supportsArtifacts {
                     Button {
                         Haptics.selection()
@@ -387,6 +426,12 @@ private struct ArtifactsList: View {
             .padding(.vertical, 4)
         }
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
+    }
+
+    /// A dashboard's chip: its name, as its badge gives it.
+    private func dashboardChipTitle(_ id: UUID?) -> Text {
+        let badge = (id ?? appState.activeDashboardID).flatMap { appState.combinedDashboardBadge($0) }
+        return Text(verbatim: badge?.name ?? "")
     }
 
     private func chip(_ title: Text, isOn: Bool, select: @escaping () -> Void) -> some View {
@@ -635,7 +680,8 @@ private struct ArtifactsList: View {
             open(item)
         } label: {
             ArtifactThumbnail(item: item, resolver: resolver(for: item),
-                              dashboard: appState.activeDashboardID, profile: item.otherProfile ?? appState.activeProfile)
+                              dashboard: item.dashboardID ?? appState.activeDashboardID,
+                              profile: item.otherProfile ?? appState.activeProfile)
                 .aspectRatio(1, contentMode: .fit)
                 .overlay {
                     if openingID == item.id {
@@ -739,12 +785,15 @@ private struct ArtifactsList: View {
         } label: {
             Label("Open", systemImage: "arrow.up.left.and.arrow.down.right")
         }
-        Button {
-            showInChat(item)
-        } label: {
-            Label("Show in Chat", systemImage: "text.bubble")
+        // Another dashboard's chat and pins are on that dashboard.
+        if item.dashboardID == nil {
+            Button {
+                showInChat(item)
+            } label: {
+                Label("Show in Chat", systemImage: "text.bubble")
+            }
         }
-        if offersSaved {
+        if offersSaved, item.dashboardID == nil {
             if let saved = savedItem(item) {
                 Button {
                     noteText = saved.note ?? ""
@@ -818,7 +867,11 @@ private struct ArtifactsList: View {
 
     /// Another profile's files are read through that profile.
     private func resolver(for item: ArtifactItem) -> GatewayMediaDataURLResolver {
-        item.otherProfile.map { appState.gatewayMediaResolver(for: $0) } ?? appState.gatewayMediaResolver
+        // Another combined dashboard's are read through its kept connection.
+        if let dashboard = item.dashboardID {
+            return appState.keptGatewayMediaResolver(dashboardID: dashboard, profile: item.otherProfile ?? "default")
+        }
+        return item.otherProfile.map { appState.gatewayMediaResolver(for: $0) } ?? appState.gatewayMediaResolver
     }
 
     private func accessibilityName(_ item: ArtifactItem) -> String {
@@ -1033,7 +1086,7 @@ private struct ArtifactsList: View {
         var pages: [ArtifactPage?] = []
         for (index, source) in key.sources.enumerated() {
             do {
-                pages.append(try await appState.artifactsClient.page(
+                pages.append(try await appState.artifactsClient(for: source).page(
                     source, filter: key.filter, query: key.query, showMissing: key.showMissing,
                     keptIn: answers(for: source)
                 ))
@@ -1079,14 +1132,15 @@ private struct ArtifactsList: View {
     }
 
     private func keptPage(_ source: ArtifactSource, for key: ArtifactsListKey) -> ArtifactPage? {
-        ArtifactsClient.keptPage(source, filter: key.filter, query: key.query, showMissing: key.showMissing,
-                                 in: answers(for: source))
+        guard let answers = answers(for: source) else { return nil }
+        return ArtifactsClient.keptPage(source, filter: key.filter, query: key.query, showMissing: key.showMissing,
+                                        in: answers)
     }
 
     /// Where a store's list is kept: on the dashboard open, for the
-    /// store's profile.
-    private func answers(for source: ArtifactSource) -> KeptAnswers {
-        appState.screenAnswers(profile: source.profile)
+    /// store's profile. Another combined dashboard's isn't kept here.
+    private func answers(for source: ArtifactSource) -> KeptAnswers? {
+        source.dashboardID == nil ? appState.screenAnswers(profile: source.profile) : nil
     }
 
     /// Reads each store's saved set (once per profile), showing what was
@@ -1161,7 +1215,7 @@ private struct ArtifactsList: View {
     /// list showed it from another profile.
     private func savedItem(_ item: ArtifactItem) -> ArtifactItem? {
         guard savedKey?.sameStores(as: currentSavedKey) == true else { return nil }
-        return ArtifactPinsClient.items(sources: currentKey.sources, saved: savedRows).first { $0.id == item.id }
+        return ArtifactPinsClient.items(sources: ownSources, saved: savedRows).first { $0.id == item.id }
     }
 
     /// Saves `item` in the profile its store reads (or changes its note),
@@ -1221,11 +1275,11 @@ private struct ArtifactsList: View {
         let key = currentSavedKey
         if savedKey?.sameStores(as: key) != true {
             guard seeding else { return }
-            savedRows = Array(repeating: nil, count: currentKey.sources.count)
+            savedRows = Array(repeating: nil, count: ownSources.count)
             savedKey = key
             savedFailure = nil
         }
-        for (index, source) in currentKey.sources.enumerated() where source.profile == profile && index < savedRows.count {
+        for (index, source) in ownSources.enumerated() where source.profile == profile && index < savedRows.count {
             guard var rows = savedRows[index] ?? (seeding ? [] : nil) else { continue }
             change(&rows)
             savedRows[index] = rows
@@ -1239,8 +1293,9 @@ private struct ArtifactsList: View {
         loadingBefore = cursor
         defer { if loadingBefore == cursor { loadingBefore = nil } }
         do {
-            let result = try await appState.artifactsClient.page(
-                key.sources[cursor.source], filter: key.filter, query: key.query,
+            let source = key.sources[cursor.source]
+            let result = try await appState.artifactsClient(for: source).page(
+                source, filter: key.filter, query: key.query,
                 showMissing: key.showMissing, before: cursor.before
             )
             guard ticket == generation else { return }

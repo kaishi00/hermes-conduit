@@ -111,6 +111,9 @@ final class AppState: ObservableObject {
     }
 
     var otherProfileGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
+    /// Another combined dashboard's file readers, by dashboard and profile
+    /// (its Artifacts in All).
+    var keptGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
     @Published var activeProfile: String = "default" {
         didSet {

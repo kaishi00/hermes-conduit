@@ -128,18 +128,21 @@ extension AppState {
     /// can't give the file (`gone`), or it couldn't be asked just now
     /// (`failed`: no connection, a cancelled or timed-out ask, a gateway in
     /// trouble), which a later ask may get past (issue 2015).
-    func gatewayMediaRead(for path: String, profile: String) async -> GatewayMediaRead {
-        guard dashboardTicketBridge != nil else { return .failed }
+    /// `bridge`: another combined dashboard's kept connection, for its
+    /// files; nil reads the one on screen's.
+    func gatewayMediaRead(for path: String, profile: String, through bridge: DashboardTicketBridge? = nil) async -> GatewayMediaRead {
+        guard (bridge ?? dashboardTicketBridge) != nil else { return .failed }
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
         return await dataURLRead(
-            endpoint: DashboardPath.withProfile("/api/fs/read-data-url?path=\(encodedPath)", profile: profile)
+            endpoint: DashboardPath.withProfile("/api/fs/read-data-url?path=\(encodedPath)", profile: profile),
+            through: bridge
         )
     }
 
     /// A route answering `{"dataUrl": …}` as Hermes' read-data-url does: the
     /// gateway's own, or the plugin's for room pictures.
-    func dataURLRead(endpoint: String) async -> GatewayMediaRead {
-        guard let dashboardTicketBridge else { return .failed }
+    func dataURLRead(endpoint: String, through bridge: DashboardTicketBridge? = nil) async -> GatewayMediaRead {
+        guard let dashboardTicketBridge = bridge ?? dashboardTicketBridge else { return .failed }
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: endpoint,
@@ -167,9 +170,10 @@ extension AppState {
     func gatewayMediaFile(
         for path: String,
         profile: String,
-        maxBytes: Int = DashboardFileDownloadLimits.maxBytes
+        maxBytes: Int = DashboardFileDownloadLimits.maxBytes,
+        through bridge: DashboardTicketBridge? = nil
     ) async -> GatewayMediaFileResult {
-        guard let dashboardTicketBridge,
+        guard let dashboardTicketBridge = bridge ?? dashboardTicketBridge,
               let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .unavailable }
         let endpoint = DashboardPath.withProfile("/api/fs/download?path=\(encodedPath)", profile: profile)
         // Read through the presenter so its first-use sweep of old staging

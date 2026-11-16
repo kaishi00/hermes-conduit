@@ -1324,6 +1324,60 @@ extension CrossProfilePresentationCacheTests {
     /// The Chats list shows a kept combined dashboard's newest chats, read
     /// through its kept connection, badged, with no actions of their own;
     /// a tap opens through that dashboard (all-live stage 4b).
+    /// Artifacts in All lists every combined dashboard's (Eric,
+    /// 2026-11-16): each profile of a kept dashboard, read through its kept
+    /// connection, its rows named by that dashboard and apart from this
+    /// one's of the same path, its files read there too.
+    func testArtifactsInAllListAKeptDashboardsArtifactsThroughIt() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
+        )
+        // One profile on screen and All off: this dashboard's alone.
+        XCTAssertTrue(appState.artifactSources(for: .profile).allSatisfy { $0.dashboardID == nil })
+
+        appState.setAllProfilesChatsOn(true)
+        XCTAssertTrue(appState.isAllProfilesChatsOn, "a combined dashboard offers All")
+        let far = appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }
+        XCTAssertEqual(far.map(\.profile), ["default", "atlas"])
+        XCTAssertEqual(far.map(\.label), ["Mac", "Mac · atlas"])
+
+        final class Paths { var read: [String] = [] }
+        let paths = Paths()
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            paths.read.append(path)
+            return ["ok": true, "items": [[
+                "kind": "image", "source": "written", "name": "chart.png", "path": "/tmp/chart.png",
+                "session_id": "atlas-1", "message_id": 4, "timestamp": 1_000,
+            ]]]
+        }
+        let source = try XCTUnwrap(far.last)
+        let page = try await appState.artifactsClient(for: source).page(source)
+        XCTAssertTrue(paths.read.first?.contains("profile=atlas") == true)
+        let row = try XCTUnwrap(ArtifactFeed(sources: [source], pages: [page]).items.first)
+        XCTAssertEqual(row.dashboardID, mac.id)
+        XCTAssertEqual(row.otherProfile, "atlas")
+        XCTAssertEqual(row.otherProfileLabel, "Mac · atlas")
+        XCTAssertNotEqual(row.id, "/tmp/chart.png", "apart from this dashboard's file of the same path")
+        // Its files are read through the kept connection, as that profile.
+        let resolver = appState.keptGatewayMediaResolver(dashboardID: mac.id, profile: "atlas")
+        XCTAssertTrue(resolver.connectedDashboardBridge === kept.bridge)
+        XCTAssertEqual(resolver.profile, "atlas")
+
+        // Let go, it lists and reads nothing more.
+        appState.dropKeptDashboardRuntime(mac.id)
+        XCTAssertTrue(appState.artifactSources(for: .profile).allSatisfy { $0.dashboardID == nil })
+        XCTAssertNil(resolver.connectedDashboardBridge)
+        do {
+            _ = try await appState.artifactsClient(for: source).page(source)
+            XCTFail("no kept connection to read through")
+        } catch {}
+    }
+
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
         final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
         let counts = Counts()

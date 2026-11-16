@@ -53,6 +53,45 @@ extension AppState {
         })
     }
 
+    /// The client a store's list is read with: another combined
+    /// dashboard's through its kept connection, while it has one.
+    func artifactsClient(for source: ArtifactSource) -> ArtifactsClient {
+        guard let id = source.dashboardID else { return artifactsClient }
+        return ArtifactsClient(request: { [weak self] path in
+            guard let self, id != self.activeDashboardID,
+                  let bridge = self.keptDashboardRuntimes[id]?.bridge else { throw DashboardTicketBridgeError.notReady }
+            if let reader = self.keptDashboardJSONReader { return try await reader(bridge, path) }
+            return try await bridge.requestJSON(path: path, timeoutMilliseconds: 30_000)
+        })
+    }
+
+    /// Where another combined dashboard's artifact files are read: its kept
+    /// connection, as that profile.
+    func keptGatewayMediaResolver(dashboardID: UUID, profile: String) -> GatewayMediaDataURLResolver {
+        let key = "\(dashboardID.uuidString)|\(profile)"
+        if let cached = keptGatewayMediaResolvers[key] { return cached }
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: profile, keptDashboardID: dashboardID)
+        keptGatewayMediaResolvers[key] = resolver
+        return resolver
+    }
+
+    /// The other combined dashboards whose artifacts All lists: kept
+    /// connected, in Saved Dashboards order, one Hermes saved twice once
+    /// (as Bots Home shows its bots), each with its profiles as last read.
+    var otherCombinedArtifactDashboards: [(id: UUID, name: String, profiles: [String])] {
+        guard isInCombinedGroup(activeDashboardID) else { return [] }
+        let copies = Set(combinedBotsHomeTwins.values.joined())
+        return savedDashboardRegistry.dashboards.compactMap { dashboard in
+            guard dashboard.id != activeDashboardID, isInCombinedGroup(dashboard.id),
+                  keptDashboardRuntimes[dashboard.id] != nil else { return nil }
+            // A copy of a Hermes another dashboard shows already.
+            let prefix = "\(dashboard.id.uuidString)|"
+            guard !copies.contains(where: { $0.hasPrefix(prefix) }) else { return nil }
+            let name = dashboard.label.trimmingCharacters(in: .whitespacesAndNewlines)
+            return (dashboard.id, name, otherCombinedDashboardProfiles(dashboard.id) ?? ["default"])
+        }
+    }
+
     /// Whether the host's notifier plugin keeps saved artifacts (plugin
     /// 0.177+, issue 2467).
     var supportsArtifactPins: Bool {
@@ -156,6 +195,18 @@ extension AppState {
                 guard !ids.isEmpty else { continue }
                 sources.append(ArtifactSource(profile: bot.name, sessionIDs: ids, label: bot.displayLabel,
                                               isBotChat: true))
+            }
+            // All reaches every combined dashboard (Eric, 2026-11-16): each
+            // profile of each other one, read through its kept connection,
+            // its rows named by that dashboard and profile.
+            if isAllProfilesChatsOn {
+                for dashboard in otherCombinedArtifactDashboards {
+                    for profile in dashboard.profiles {
+                        let label = profile == "default" ? dashboard.name : "\(dashboard.name) · \(profile)"
+                        sources.append(ArtifactSource(profile: profile, sessionIDs: [], label: label,
+                                                      dashboardID: dashboard.id))
+                    }
+                }
             }
             return sources
         }

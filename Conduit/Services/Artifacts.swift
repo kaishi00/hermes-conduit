@@ -52,6 +52,11 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
     var savedAt: Date?
     var note: String?
     var keptPath: String?
+    /// Another combined dashboard's, listed in All through its kept
+    /// connection (Eric, 2026-11-16); nil for the dashboard on screen's.
+    /// Its files are read there, and it can't be saved or shown in a chat
+    /// here.
+    var dashboardID: UUID?
 
     /// The file to open: the original while the host has it, else the
     /// copy kept when it was saved.
@@ -63,7 +68,11 @@ struct ArtifactItem: Identifiable, Equatable, Hashable {
 
     /// One path or URL is one artifact, listed at its newest mention, even
     /// when several chats sent it (the host lists it the same way).
-    var id: String { path ?? url?.absoluteString ?? "\(messageID)|\(name)" }
+    /// Another dashboard's is apart from this one's of the same path.
+    var id: String {
+        let own = path ?? url?.absoluteString ?? "\(messageID)|\(name)"
+        return dashboardID.map { "\($0.uuidString)|\(own)" } ?? own
+    }
 
     var isVisual: Bool { kind == .image || kind == .video }
 
@@ -160,6 +169,9 @@ struct ArtifactSource: Equatable {
     /// rows go by the bot's name.
     var botChatIDs: [String] = []
     var botLabel: String?
+    /// Another combined dashboard's store, read through its kept
+    /// connection; nil for the dashboard on screen's.
+    var dashboardID: UUID?
 }
 
 /// Several stores' pages as one list, newest first. Each store pages from
@@ -243,9 +255,10 @@ struct ArtifactFeed: Equatable {
 
     static func tagged(_ items: [ArtifactItem], from source: ArtifactSource) -> [ArtifactItem] {
         let botChat = Set(source.botChatIDs)
-        guard source.label != nil || !botChat.isEmpty else { return items }
+        guard source.label != nil || !botChat.isEmpty || source.dashboardID != nil else { return items }
         return items.map { item in
             var item = item
+            item.dashboardID = source.dashboardID
             if let label = source.label {
                 item.otherProfile = source.profile
                 item.otherProfileLabel = label
