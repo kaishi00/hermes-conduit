@@ -199,7 +199,7 @@ extension AppState {
         callEndedOffProfileHandBack = nil
         // A hang-up's callback pass still on the wire: its ended jobs'
         // watches are settled on their own, as the reset cancels the pass.
-        if let settles = voiceBackgroundJobSupervisor.detachEndedCallbackSettles() {
+        if let settles = voiceBackgroundJobSupervisor.detachEndedCallbackSettles(callProfile: callProfileHandingBack ?? voiceCallProfile) {
             let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.handBack")
             Task {
                 await settles.value

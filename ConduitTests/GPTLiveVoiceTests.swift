@@ -2607,6 +2607,15 @@ extension AppStateVoiceCapabilityTests {
         let next = HermesClient(connection: appState.connection!, profile: "work")
         next.inheritSessionProfiles(from: client)
         XCTAssertEqual(next.sessionProfile(for: "rt-bot"), "furina", "an ordinary switch's client inherits it")
+
+        // A restore that ran before any client existed: the client that
+        // comes later learns the profiles too (#2626's review).
+        appState.client = nil
+        let later = HermesClient(connection: appState.connection!, profile: "default")
+        XCTAssertNil(later.sessionProfile(for: "rt-bot"))
+        appState.client = later
+        XCTAssertEqual(later.sessionProfile(for: "rt-bot"), "furina", "a client set after the restore is told")
+        XCTAssertEqual(later.sessionProfile(for: "st-bot"), "furina")
     }
 
     /// A live call keeps its profile once another one is on screen

@@ -1665,18 +1665,22 @@ struct V2Shell: View {
                 return
             }
             // A newer tap from under All on another dashboard leaves All
-            // there as its switch starts.
+            // there as its switch starts. Defensive: no tap carries that
+            // today (the bar clears All as it's tapped, and the Tasks and
+            // Settings strips have no All chip), so nothing reaches it.
+            var targetLeftAll = leftAll && targetDashboardID == pickDashboardID
             if targetDashboardID != pickDashboardID, targetLeavesAll, appState.isAllProfilesChatsOn {
                 appState.setAllProfilesChatsOn(false)
+                targetLeftAll = true
             }
             await appState.switchProfile(to: target)
             guard token == profileSwitchToken else { return }
             // A switch that didn't land (the connection dropped) leaves All
-            // as it was.
-            // Only on the dashboard the pick was made on: another one picked
-            // meanwhile keeps its own All. A newer tap kept meanwhile left
-            // All for good, so it stays off for that one.
-            if leftAll, appState.activeDashboardID == pickDashboardID, appState.activeProfile != target,
+            // as it was on the dashboard it switched on, whichever tap left
+            // it there: another one picked meanwhile keeps its own All. A
+            // newer tap kept meanwhile left All for good, so it stays off
+            // for that one.
+            if targetLeftAll, appState.activeDashboardID == targetDashboardID, appState.activeProfile != target,
                queuedProfilePick.profile == nil {
                 appState.setAllProfilesChatsOn(true)
             }

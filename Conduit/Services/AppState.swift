@@ -39,7 +39,14 @@ final class AppState: ObservableObject {
             }
         }
     }
-    @Published var client: HermesClient?
+    @Published var client: HermesClient? {
+        didSet {
+            // Jobs restored before this client existed name their profiles
+            // on it, so a cancel or submit about one reaches its profile
+            // (#2626's review).
+            if client != nil, client !== oldValue, voiceJobLedgerRestoredKey != nil { noteVoiceJobProfiles() }
+        }
+    }
     @Published var isConnected = false {
         didSet {
             if isConnected {

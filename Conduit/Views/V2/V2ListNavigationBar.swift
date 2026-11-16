@@ -59,6 +59,15 @@ struct V2ListNavigationBar: UIViewRepresentable {
         private weak var page: UIViewController?
         private weak var navigation: UINavigationController?
         private var barObservation: NSKeyValueObservation?
+        /// A lookup is waiting to try again.
+        private var retryPending = false
+        /// The give-up trace went out for this stay; a later attach that
+        /// finds the stack clears it.
+        private var reportedNoStack = false
+        /// How many times a lookup tries again, and how it finds the page:
+        /// tests change them.
+        var retries = SystemBackSwipeGate.GateView.retries
+        var findPage: (UIView) -> UIViewController? = { SystemBackSwipeGate.pushedPage(of: $0) }
 
         override init(frame: CGRect) {
             super.init(frame: frame)
@@ -76,22 +85,32 @@ struct V2ListNavigationBar: UIViewRepresentable {
                 // page's again.
                 handBack()
             } else {
-                attach()
+                attach(retriesLeft: retries)
             }
         }
 
-        private func attach(retriesLeft: Int = SystemBackSwipeGate.GateView.retries) {
+        private func attach(retriesLeft: Int) {
             guard window != nil else { return }
-            guard let page = SystemBackSwipeGate.pushedPage(of: self), let navigation = page.navigationController else {
+            guard let page = findPage(self), let navigation = page.navigationController else {
                 // Shown with its stack: the stack may not hold the page yet.
                 if retriesLeft > 0 {
+                    retryPending = true
                     DispatchQueue.main.asyncAfter(deadline: .now() + SystemBackSwipeGate.GateView.retryDelay) { [weak self] in
+                        self?.retryPending = false
                         self?.attach(retriesLeft: retriesLeft - 1)
                     }
-                } else {
-                    ChatViewportTrace.shared.log("list bar keeper found no page in a stack after \(SystemBackSwipeGate.GateView.retries) retries: its bar stays shown over the list")
+                } else if !reportedNoStack {
+                    // Not for good: each later update of the list looks
+                    // again (sync), so a stack wired after the retries ran
+                    // out still gets the bar managed (issue 2592).
+                    reportedNoStack = true
+                    ChatViewportTrace.shared.log("list bar keeper found no page in a stack after \(retries) retries: its bar stays shown over the list until a later update finds it")
                 }
                 return
+            }
+            if reportedNoStack {
+                reportedNoStack = false
+                ChatViewportTrace.shared.log("list bar keeper found its stack on a later update")
             }
             if self.page !== page {
                 self.page = page
@@ -112,7 +131,13 @@ struct V2ListNavigationBar: UIViewRepresentable {
 
         /// The list's safe area without the bar, and the bar's touches.
         func sync() {
-            guard window != nil, let page, let navigation else { return }
+            guard window != nil else { return }
+            guard let page, let navigation else {
+                // The lookup ran out before the stack held the page: look
+                // once more on this update, with no retries of its own.
+                if !retryPending { attach(retriesLeft: 0) }
+                return
+            }
             let bar = navigation.navigationBar
             let height = navigation.isNavigationBarHidden ? 0 : bar.bounds.height
             if page.additionalSafeAreaInsets.top != -height {

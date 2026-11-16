@@ -1087,6 +1087,7 @@ struct NativeOAuthSignInSheet: View {
         case .checking:
             NavigationStack {
                 ProgressView()
+                    .accessibilityLabel(AppLocalization.string("Checking how this server signs in", table: .connection))
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
                             Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -1174,6 +1175,21 @@ struct SessionTokenSignInForm: View {
             : AppLocalization.string("Hermes didn’t accept this token. Check it and try again.", table: .connection)
     }
 
+    /// A sign-in Hermes answered: the result to connect with, or nil when
+    /// the form was cancelled meanwhile. Then the grant the token replaced
+    /// goes back into Keychain (none: the slot is emptied), as a sign-in
+    /// that never happened, and nothing connects or fails.
+    @discardableResult
+    static func keep(_ result: NativeOAuthLoginResult, cancelled: Bool, dashboardID: UUID) -> NativeOAuthLoginResult? {
+        guard cancelled else { return result }
+        if let previous = result.previousTokens {
+            KeychainHelper.saveNativeOAuthTokens(previous, dashboardID: dashboardID)
+        } else {
+            KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
+        }
+        return nil
+    }
+
     /// What can't go in a header value, or nil.
     nonisolated static func problem(with token: String) -> String? {
         guard token.unicodeScalars.allSatisfy({ $0.value > 0x20 && $0.value < 0x7F }) else {
@@ -1214,9 +1230,16 @@ struct SessionTokenSignInForm: View {
                     if isWorking {
                         // Hermes is checking the token.
                         ProgressView()
+                            .accessibilityLabel(AppLocalization.string("Checking the token", table: .connection))
                     } else {
                         Button(AppLocalization.string("Sign In")) {
-                            signInTask = Task { await signIn() }
+                            // One sign-in at a time: a second tap before the
+                            // first one marks itself working goes nowhere.
+                            guard signInTask == nil else { return }
+                            signInTask = Task {
+                                await signIn()
+                                signInTask = nil
+                            }
                         }
                         .disabled(trimmedToken.isEmpty)
                         .accessibilityIdentifier("session-token.sign-in")
@@ -1244,17 +1267,8 @@ struct SessionTokenSignInForm: View {
                 cloudflareAccess: cloudflareAccess,
                 dashboardID: dashboardID
             )
-            guard !Task.isCancelled else {
-                // Cancelled after the token was kept: put back what it
-                // replaced, as a sign-in that never happened.
-                if let previous = result.previousTokens {
-                    KeychainHelper.saveNativeOAuthTokens(previous, dashboardID: dashboardID)
-                } else {
-                    KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
-                }
-                return
-            }
-            onSuccess(result)
+            guard let kept = Self.keep(result, cancelled: Task.isCancelled, dashboardID: dashboardID) else { return }
+            onSuccess(kept)
         } catch DashboardTicketBridgeError.signInRequired {
             guard !Task.isCancelled else { return }
             problem = Self.refusalProblem(behindProxy: CustomHeaderStore.shared.sendsAuthorization(toServerURL: baseURL))

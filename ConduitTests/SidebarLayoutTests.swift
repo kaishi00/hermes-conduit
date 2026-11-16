@@ -852,6 +852,38 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertFalse(bar.accessibilityElementsHidden)
         keeper.removeFromSuperview()
     }
+
+    /// A keeper whose lookups ran out before its stack held the list
+    /// (issue 2592) looks again on a later update of the list, and manages
+    /// the bar once it finds the stack.
+    @MainActor
+    func testTheListBarKeeperFindsItsStackOnALaterUpdate() {
+        let list = UIViewController()
+        let navigation = UINavigationController(rootViewController: list)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 390, height: 844))
+        window.rootViewController = navigation
+        window.isHidden = false
+        defer { window.isHidden = true }
+        window.layoutIfNeeded()
+        let bar = navigation.navigationBar
+
+        let keeper = V2ListNavigationBar.KeeperView()
+        keeper.retries = 0
+        var stackWired = false
+        keeper.findPage = { view in stackWired ? SystemBackSwipeGate.pushedPage(of: view) : nil }
+        list.view.addSubview(keeper)
+        XCTAssertTrue(bar.isUserInteractionEnabled, "no stack found: the bar isn't managed yet")
+        XCTAssertEqual(list.additionalSafeAreaInsets.top, 0)
+
+        stackWired = true
+        keeper.sync()
+        XCTAssertFalse(bar.isUserInteractionEnabled, "a later update finds the stack")
+        XCTAssertTrue(bar.accessibilityElementsHidden)
+        XCTAssertEqual(list.additionalSafeAreaInsets.top, -bar.bounds.height)
+
+        V2ListNavigationBar.dismantleUIView(keeper, coordinator: ())
+        keeper.removeFromSuperview()
+    }
 }
 
 /// A navigation bar whose height a test sets, standing in for the bar's
