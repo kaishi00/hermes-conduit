@@ -812,13 +812,18 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// A kept dashboard whose socket drops on its own (the server went
-    /// away, not a release of ours) is let go at once, with no switch.
+    /// away, not a release of ours) is let go at once, with no switch; its
+    /// chats, bots and Pulse chip stay listed until it's back (#2634).
     func testAKeptSocketThatDropsOnItsOwnIsLetGoAtOnce() async throws {
         let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
         appState.connection = outgoing.connection
         appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        let id = ObjectIdentifier(outgoing)
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profile: "default", sessions: [], at: Date())
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(client: id, bots: [], avatars: [:], at: Date())
+        appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: id, unseen: 2, at: Date())
 
         await waitUntil { socket.hasWaitingReceive }
         socket.cancel(with: .abnormalClosure, reason: nil)
@@ -826,6 +831,9 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertNil(appState.keptDashboardRuntimes[mac.id], "a dead kept connection doesn't hold its place")
         XCTAssertFalse(kept.client.isConnected)
+        XCTAssertNotNil(appState.combinedDashboardChats[mac.id], "its chats stay listed")
+        XCTAssertNotNil(appState.combinedDashboardBots[mac.id], "its bots stay listed")
+        XCTAssertEqual(appState.combinedDashboardPulse[mac.id]?.unseen, 2, "its chip stays")
     }
 
     /// A read sent on an earlier visit to a combined dashboard isn't this
