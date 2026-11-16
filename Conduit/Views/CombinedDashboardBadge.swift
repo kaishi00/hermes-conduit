@@ -14,7 +14,7 @@ struct CombinedDashboardBadge: View {
     let dashboardID: UUID
     var size: CGFloat = 16
 
-    /// One per place in the group (the cap is 4), dark enough for white text.
+    /// One per place in the group, dark enough for white text.
     static let palette: [Color] = [
         Color(red: 0.20, green: 0.45, blue: 0.85),
         Color(red: 0.75, green: 0.30, blue: 0.55),
@@ -24,8 +24,12 @@ struct CombinedDashboardBadge: View {
         Color(red: 0.55, green: 0.45, blue: 0.20),
     ]
 
+    /// Past the palette (a group of seven or more), a hue of its own,
+    /// stepped by the golden angle so none lands on another's.
     static func color(_ index: Int) -> Color {
-        palette[((index % palette.count) + palette.count) % palette.count]
+        guard index >= palette.count else { return palette[max(index, 0)] }
+        let hue = (Double(index - palette.count) * 0.618_033_988_75 + 0.08).truncatingRemainder(dividingBy: 1)
+        return Color(hue: hue, saturation: 0.65, brightness: 0.62)
     }
 
     var body: some View {

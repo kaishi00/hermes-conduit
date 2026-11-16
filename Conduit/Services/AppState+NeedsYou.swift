@@ -72,21 +72,27 @@ extension AppState {
         }
     }
 
+    /// How long a kept dashboard's profile list stands before a pass reads
+    /// it again: a profile made or deleted there shows within this.
+    static let keptDashboardProfilesMaxAge: TimeInterval = 300
+
     /// A kept dashboard's profiles, read through its bridge once per kept
-    /// connection. Nil when they couldn't be read.
-    private func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime) async -> [String]? {
+    /// connection and again every few minutes. The last list when a read
+    /// again fails; nil when none could be read.
+    private func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
         let bridge = ObjectIdentifier(runtime.bridge)
-        if let read = keptDashboardProfiles[id], read.bridge == bridge { return read.profiles }
+        let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
+        if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
         guard let response = try? await readKeptDashboardJSON(runtime.bridge, path: "/api/profiles"),
-              keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return nil }
+              keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return last?.profiles }
         let names = (response["profiles"] as? [Any] ?? []).compactMap { value -> String? in
             if let name = value as? String { return name }
             return (value as? [String: Any])?["name"] as? String
         }
         // Hermes always has `default`; an empty list is a degraded reply.
-        guard !names.isEmpty else { return nil }
+        guard !names.isEmpty else { return last?.profiles }
         let profiles = names.contains("default") ? names : ["default"] + names
-        keptDashboardProfiles[id] = (bridge, profiles)
+        keptDashboardProfiles[id] = (bridge, profiles, now)
         return profiles
     }
 

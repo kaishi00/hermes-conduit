@@ -1161,6 +1161,22 @@ extension CrossProfilePresentationCacheTests {
         // The profiles are read once per kept connection.
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertEqual(counts.reads.filter { $0 == "/api/profiles" }.count, 1)
+        // Every few minutes they're read again: a profile deleted there
+        // takes its rows with it.
+        let read = try XCTUnwrap(appState.keptDashboardProfiles[mac.id])
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, .distantPast)
+        let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path == "/api/profiles" { return ["profiles": ["default"]] }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "atlas is gone there, and its wait with it")
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.profiles, ["default"])
+        appState.keptDashboardJSONReader = reader
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id)
 
         appState.openNeedsYou(item)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
