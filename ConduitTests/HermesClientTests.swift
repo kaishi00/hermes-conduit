@@ -816,6 +816,60 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAJobLivenessProbeOnTheDashboardReadsOnlyItsTitle() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        defer { client.disconnect() }
+        let count = socket.sentTexts.count
+        let probe = Task<Bool?, Error> { try await client.sessionRunning("rt-job", profile: "fam") }
+        let params = try await answerRequest(on: socket, after: count, method: "session.title", result: ["title": "Router"])
+        let running = try await awaitResult(of: probe, "the read-only job probe")
+
+        XCTAssertNil(running, "a title proves existence, not whether its turn runs")
+        XCTAssertEqual(params["session_id"] as? String, "rt-job")
+        XCTAssertEqual(params["profile"] as? String, "fam")
+        XCTAssertEqual(Set(params.keys), ["session_id", "profile"], "never resume or rebind the chat")
+    }
+
+    func testAJobLivenessProbeOnTheAuthorityRequiresAnExplicitRunningFlag() async throws {
+        let cases: [([String: Any], Bool?)] = [
+            (["running": true], true), (["running": false], false),
+            (["info": ["running": false]], false), (["status": "idle", "title": "Router"], nil),
+        ]
+        for (answer, expected) in cases {
+            let (client, socket) = try await authorityClient()
+            defer { client.disconnect() }
+            let count = socket.sentTexts.count
+            let probe = Task<Bool?, Error> { try await client.sessionRunning("rt-job", profile: "fam") }
+            let params = try await answerRequest(on: socket, after: count, method: "session.info", result: answer)
+            let running = try await awaitResult(of: probe, "the authority job probe")
+
+            XCTAssertEqual(running, expected)
+            XCTAssertEqual(params["session_id"] as? String, "rt-job")
+            XCTAssertEqual(params["profile"] as? String, "fam")
+            XCTAssertEqual(Set(params.keys), ["session_id", "profile"])
+        }
+    }
+
+    func testAJobLivenessProbePreservesSessionNotFoundOnBothGateways() async throws {
+        for authority in [false, true] {
+            let client: HermesClient
+            let socket: FakeSocket
+            if authority { (client, socket) = try await authorityClient() }
+            else { (client, socket) = try await connectedClientForServerRequests() }
+            defer { client.disconnect() }
+            let count = socket.sentTexts.count
+            let probe = Task<Bool?, Error> { try await client.sessionRunning("rt-gone", profile: "fam") }
+            try await answerRequest(on: socket, after: count, method: authority ? "session.info" : "session.title",
+                                    error: ["code": 4001, "message": "session not found"])
+            do {
+                _ = try await awaitResult(of: probe, "the missing-session refusal")
+                XCTFail("a missing session must remain distinguishable from an unknown running state")
+            } catch {
+                XCTAssertTrue(HermesClient.isSessionNotFoundError(error))
+            }
+        }
+    }
+
     func testSessionTitleReadOmitsProfileForOrdinarySessions() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()
