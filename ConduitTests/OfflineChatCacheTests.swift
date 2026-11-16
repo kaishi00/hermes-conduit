@@ -3748,6 +3748,45 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(sent.prompts.isEmpty, "nothing goes to the new workspace")
         XCTAssertFalse(kept.state.messages.contains { $0.content == "Quick one" })
         XCTAssertFalse(kept.isRunning)
+        XCTAssertEqual(state.composerRestoreRequests.last?.draft.text, "Quick one", "kept in that chat's draft")
+    }
+
+    /// The pane closing, or its chat opening in the chat's own column,
+    /// during the report: same dashboard and profile, but no pane to keep
+    /// the words. Nothing goes, and the words go to the chat's draft.
+    func testAKeptChatsWordsGoToItsDraftWhenItsPaneGoesDuringItsReport() async throws {
+        let sent = SentPrompts()
+        let (state, _, _) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            })
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        state.connection = connection
+        state.client = HermesClient(connection: connection, profile: "default")
+        state.sessions = [session("a"), session("b")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1")]
+        state.turnState = .idle
+        state.besideChatIDs = ["a"]
+        state.setActiveSessionState(id: "b")
+        let kept = try XCTUnwrap(state.besideChat)
+        let profile = state.activeProfile
+        state.turnSurfaceSender = { [weak state] _ in
+            await MainActor.run { state?.besideChatIDs = nil }
+        }
+
+        let went = await state.sendInKeptChat(kept, text: "Quick one")
+        XCTAssertFalse(went)
+        XCTAssertEqual(state.activeProfile, profile, "no switch: the keep alone ended")
+        XCTAssertTrue(sent.prompts.isEmpty, "a closed pane sends nothing")
+        XCTAssertFalse(kept.state.messages.contains { $0.content == "Quick one" })
+        let request = try XCTUnwrap(state.composerRestoreRequests.last)
+        XCTAssertEqual(request.draft.text, "Quick one", "the words aren't lost with the pane")
+        XCTAssertEqual(request.key.sessionID, "a")
+        XCTAssertNotNil(state.composerNotice, "a notice says where they went")
     }
 
     func testAKeptChatTakesAMessageFromItsBox() async throws {

@@ -248,7 +248,13 @@ extension AppState {
             // The one on screen counts too. One down past the cap says
             // nothing until its turn: no "trying again" with no retry waiting.
             guard keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1 else {
-                if combinedDashboardTrouble[id] == .down { clearCombinedDashboardTrouble(id) }
+                // Its backoff stands: when its turn comes, a failure waits
+                // on from where it was.
+                if combinedDashboardTrouble[id] == .down {
+                    combinedDashboardTrouble.removeValue(forKey: id)
+                    combinedDashboardRetries[id]?.task?.cancel()
+                    combinedDashboardRetries[id]?.task = nil
+                }
                 continue
             }
             guard combinedDashboardSignsInQuietly(id) else {

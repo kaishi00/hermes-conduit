@@ -580,6 +580,9 @@ extension AppState {
         guard let dashboard = dashboardForSignIn(id) else { return }
         // Another dashboard's waits never show on this one's chips.
         needsYou.reset(dashboardID: id)
+        // Opening it is the tap a refused quiet sign-in waited for: should
+        // this open fail, later passes may try it again.
+        combinedSignInsRefused.remove(id)
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID

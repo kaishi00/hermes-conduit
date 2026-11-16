@@ -1027,7 +1027,7 @@ extension CrossProfilePresentationCacheTests {
     /// tap; one whose server didn't answer is down and tried again until
     /// it connects; a kept one whose socket drops is down again.
     func testACombinedDashboardSaysWhyItIsntConnectedAndOneDownIsTriedAgain() async throws {
-        final class Mints { var failures = 1; var count = 0 }
+        final class Mints { var failures = 1; var count = 0; var status = 503 }
         let mints = Mints()
         let socket = ClarifyFakeSocket()
         let transport = ClarifyFakeTransport()
@@ -1037,7 +1037,7 @@ extension CrossProfilePresentationCacheTests {
             mints.count += 1
             if mints.failures > 0 {
                 mints.failures -= 1
-                throw DashboardTicketBridgeError.http(status: 503, detail: "")
+                throw DashboardTicketBridgeError.http(status: mints.status, detail: "")
             }
             return "vps-ticket"
         }
@@ -1070,13 +1070,30 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "counted from one again")
         XCTAssertNotNil(appState.combinedDashboardRetries[vps.id]?.task)
 
-        // A refused sign-in waits for a tap: no pass, retry or return asks again.
+        // Down past the cap: it says nothing until its turn, and its
+        // backoff stands for then.
+        let others: Set<UUID> = [UUID(), UUID(), UUID()]
         appState.dropKeptDashboardRuntime(vps.id)
-        appState.combinedDashboardRetries.removeValue(forKey: vps.id)?.task?.cancel()
-        appState.combinedSignInsRefused.insert(vps.id)
+        appState.combinedDashboardTrouble[vps.id] = .down
+        appState.combinedSignInsUnderWay.formUnion(others)
+        appState.connectOtherCombinedDashboards()
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "its backoff stands")
+        appState.combinedSignInsUnderWay.subtract(others)
+
+        // A refused sign-in waits for a tap: no pass, retry or return asks again.
+        mints.failures = 1
+        mints.status = 401
+        let before = mints.count
+        appState.connectOtherCombinedDashboards(only: vps.id)
+        await waitUntil { appState.combinedSignInsRefused.contains(vps.id) }
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .signInNeeded)
+        XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty)
         appState.connectOtherCombinedDashboards()
         appState.connectOtherCombinedDashboards(only: vps.id)
         XCTAssertTrue(appState.combinedSignInsUnderWay.isEmpty, "refused: not asked again")
+        XCTAssertEqual(mints.count, before + 1, "asked once")
 
         appState.setDashboardCombined(vps.id, false)
         XCTAssertNil(appState.combinedDashboardStatus(vps.id))

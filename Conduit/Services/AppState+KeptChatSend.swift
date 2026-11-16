@@ -96,6 +96,22 @@ extension AppState {
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
             besideChatLive.moved()
+            // The pane or window that would keep the words went with the
+            // keep: closed, or its chat opened in the chat's own column
+            // (Swap, Open in Main Window). They go to that chat's draft,
+            // on screen if it's there now, and a notice says so.
+            if keptChat(answering: target) == nil {
+                returnFailedComposerSubmission(
+                    ComposerDraft(text: words, attachments: []),
+                    key: ComposerBar.composerDraftKey(
+                        for: durableComposerSessionID(for: chat.durableSessionID ?? target),
+                        profile: chat.profile
+                    ),
+                    dashboardID: chat.dashboardID,
+                    title: chat.title,
+                    stoppedQuietly: true
+                )
+            }
             return false
         }
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
