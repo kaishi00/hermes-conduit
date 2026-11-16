@@ -86,8 +86,10 @@ extension AppState {
         let reportedOn = activeDashboardID
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
         LiveTurnActivities.shared?.turnSubmitting(sessionIDs: ids)
-        // The client as of the send: a reconnect during the report replaced it.
-        let sender = self.client ?? client
+        // The client as of the send: a reconnect during the report replaced
+        // it. A switch to another dashboard meanwhile leaves the chat on its
+        // own connection, the one captured.
+        let sender = activeDashboardID == reportedOn ? (self.client ?? client) : client
         do {
             let outcome: PromptSubmissionOutcome
             if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
