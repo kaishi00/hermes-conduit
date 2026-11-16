@@ -257,9 +257,15 @@ extension AppState {
     /// another chat since: the identity index names another conversation
     /// for it, as the kept chat's send target checks (issue 2603).
     func idBoundToAnotherChat(_ id: String, than chat: BackgroundChat) -> Bool {
-        guard let durable = conversationIdentityIndex.durableID(forRuntime: id, profile: chat.profile),
-              durable != id else { return false }
-        return !followedChat(chat, isConversation: durable)
+        if let durable = conversationIdentityIndex.durableID(forRuntime: id, profile: chat.profile), durable != id {
+            return !followedChat(chat, isConversation: durable)
+        }
+        // Not rebound in the index: an id that is another listed chat's own
+        // now (an alias the chat kept that Hermes made a chat of its own)
+        // isn't this one's either.
+        guard chat.durableSessionID != nil, chat.profile == activeProfile,
+              let row = owningSessionRow(for: id), row.id == id || row.storedSessionId == id else { return false }
+        return !followedChat(chat, isConversation: id)
     }
 
     /// `durable` is `chat`'s own conversation. A listed chat's is its

@@ -4202,6 +4202,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(try XCTUnwrap(later.followedChat(answering: ["a"])).sessionIDs, ["a", "rt-a", "y"])
         own.alternateIds = ["rt-a"]
         later.sessions = [own, session("y"), session("c")]
+        XCTAssertFalse(later.applyBackgroundChatEvent(.messageDelta(sessionId: "y", text: " Not ours")),
+                       "an alias it kept that is another listed chat's own now")
         later.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "y", profile: later.activeProfile, source: .resume)
         XCTAssertFalse(later.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-a", text: " Not ours")))
         XCTAssertEqual(later.backgroundChats.first?.rows.last?.content, "Once upon")
