@@ -434,9 +434,10 @@ struct BotRosterView: View {
     /// menu.
     @ViewBuilder
     private var shownPortraits: some View {
-        // The other combined dashboards' bots join the grid after these, so
-        // the group reads as one set of bots; with any of them there, the
-        // lone and paired layouts give way to the grid.
+        // The other combined dashboards' bots join the grid, mixed with
+        // these in the group's one order, so the group reads as one set of
+        // bots; with any of them there, the lone and paired layouts give
+        // way to the grid.
         let others = appState.otherCombinedDashboardsBots
         switch BotsHomeLayout.of(
             visibleBots: visibleBots.count,
@@ -448,9 +449,39 @@ struct BotRosterView: View {
         case .pair:
             pairHome
         case .grid:
-            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) } trailing: {
-                CombinedDashboardBotCells(sections: others)
+            if others.isEmpty {
+                BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            } else {
+                mixedGrid
             }
+        }
+    }
+
+    /// The group's grid: every combined dashboard's bots in one order the
+    /// person arranges, each with its dashboard's badge.
+    private var mixedGrid: some View {
+        let items = appState.combinedBotsHomeItems(own: visibleBots)
+        let shown = items.map(\.id)
+        return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }) { item in
+            switch item.kind {
+            case .own(let bot):
+                portrait(bot, mixedKey: item.id, shown: shown)
+            case .other(_, let section):
+                CombinedDashboardBotPortrait(item: item, section: section) { dragged in
+                    moveMixed(dragged, onto: item.id, shown: shown)
+                }
+            }
+        }
+        // A bot the order doesn't name yet keeps the place it shows in, so
+        // a switch between the group's dashboards never moves it.
+        .onAppear { appState.settleCombinedBotsHomeOrder(shown) }
+        .onChange(of: shown) { _, ids in appState.settleCombinedBotsHomeOrder(ids) }
+    }
+
+    private func moveMixed(_ dragged: String, onto target: String?, shown: [String]) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.moveCombinedBot(dragged, onto: target, shown: shown)
         }
     }
 
@@ -492,7 +523,16 @@ struct BotRosterView: View {
         .padding(.bottom, 4)
     }
 
-    private func portrait(_ bot: BotProfile, size: CGFloat = 72) -> some View {
+    /// `mixedKey`: in the group's mixed grid, this portrait's key there;
+    /// it carries its dashboard's badge, and a drop that doesn't start a
+    /// room moves bots in the group's order (`shown`) instead of this
+    /// dashboard's.
+    private func portrait(
+        _ bot: BotProfile,
+        size: CGFloat = 72,
+        mixedKey: String? = nil,
+        shown: [String] = []
+    ) -> some View {
         BotPortraitCell(
             bot: bot,
             work: appState.botWork,
@@ -507,12 +547,25 @@ struct BotRosterView: View {
             onOverview: { overviewBot = bot },
             // A hidden bot can't join a room, so its tap still opens its chat.
             room: newRoom.isEmpty || bot.isHiddenByMeta ? .off : (isInNewRoom(bot.name) ? .member : .notMember),
-            onDrop: { dragged, merge in handleDrop(dragged, on: bot, merge: merge) },
+            onDrop: { dragged, merge in
+                if let mixedKey, !(merge && canMerge(dragged, with: bot)) {
+                    moveMixed(dragged, onto: mixedKey, shown: shown)
+                } else {
+                    handleDrop(dragged, on: bot, merge: merge)
+                }
+            },
             canMerge: { dragged in canMerge(dragged, with: bot) },
-            onSlide: { dragged in slideBot(dragged, onto: bot) },
+            onSlide: { dragged in
+                if let mixedKey {
+                    moveMixed(dragged, onto: mixedKey, shown: shown)
+                } else {
+                    slideBot(dragged, onto: bot)
+                }
+            },
             onToggleRoom: { toggleNewRoom(bot) },
             needsYou: appState.needsYou,
-            portraitSize: size
+            portraitSize: size,
+            dashboardBadge: mixedKey == nil ? nil : appState.activeDashboardID
         )
     }
 

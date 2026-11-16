@@ -249,6 +249,10 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's bots (all-live stage 4c), read
     /// through its kept client.
     @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Bots Home's one order for a combined group's bots, mixed across the
+    /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
+    /// this phone (CombinedBotsHomeOrder).
+    @Published var combinedBotsHomeOrder: [String] = CombinedBotsHomeOrder.load()
     /// Each other combined dashboard's count of new Pulse cards (all-live
     /// stage 4d), read through its kept connection.
     @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]

@@ -1369,7 +1369,22 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.otherCombinedDashboardsBots.first?.bots.map(\.name), ["raiden"], "kept through a drop")
         appState.keptDashboardRuntimes[mac.id] = keptMac
 
+        // One grid for the group: until arranged, each dashboard's bots in
+        // Saved Dashboards order; arranged, the group's order holds, mixed.
+        appState.botRoster = [bot("furina")]
+        let own = appState.shownBotRoster
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.bot.name), ["raiden", "furina"])
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina")]
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.id),
+                       ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])
+        appState.combinedBotsHomeOrder = []
+        // A dashboard left while kept leaves its bots on the grid at once.
+        appState.seedCombinedDashboardBots(vps.id, from: [bot("furina"), bot("nahida", hidden: true)], client: outgoing)
+        XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])
+        appState.combinedDashboardBots[vps.id] = nil
+
         appState.openCombinedBot(section.bots[0], in: mac.id)
+        XCTAssertEqual(appState.botZoom.tapped, "raiden", "the chat grows out of the portrait")
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
@@ -1380,6 +1395,28 @@ extension CrossProfilePresentationCacheTests {
         )
         appState.letGoCombinedDashboard(vps.id)
         XCTAssertNil(appState.combinedDashboardBots[vps.id])
+    }
+
+    /// Bots Home's mixed order across a combined group: the saved keys
+    /// first, new ones after as shown, and a drop takes the target's place
+    /// as on the Home Screen.
+    func testCombinedBotsHomeOrderMixesAndMovesLikeTheHomeScreen() {
+        let mac = UUID(), vps = UUID()
+        XCTAssertEqual(CombinedBotsHomeOrder.key(mac, "Raiden"), "\(mac.uuidString)|raiden")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: "Furina", onScreen: vps), "\(vps.uuidString)|furina",
+                       "this dashboard's portrait carries its bot's name")
+        let other = CombinedBotsHomeOrder.key(mac, "raiden")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: other, onScreen: vps), other,
+                       "another dashboard's carries its key")
+
+        XCTAssertEqual(CombinedBotsHomeOrder.ordered(["a", "b", "c", "d"], saved: ["c", "a"]) { $0 }, ["c", "a", "b", "d"])
+        XCTAssertEqual(CombinedBotsHomeOrder.settled(["c", "a"], shown: ["a", "b", "c", "d"]), ["c", "a", "b", "d"])
+
+        let order = ["a", "b", "c", "d"]
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "a", onto: "c"), ["b", "c", "a", "d"], "carried on: after")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "d", onto: "b"), ["a", "d", "b", "c"], "carried back: before")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: nil), ["a", "c", "d", "b"], "at the end")
+        XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: "b"), order, "on itself")
     }
 
     /// Pulse has a chip per combined dashboard whose Pulse answers, the

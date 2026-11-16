@@ -676,26 +676,23 @@ struct BotsLiveDot: View {
 /// The bots as a grid of portraits. Three across on a phone; as many as
 /// fit at about the same size on a wider column, and fewer at the largest
 /// Text Sizes, where a name needs the room.
-struct BotPortraitGrid<Cell: View, Trailing: View>: View {
-    let bots: [BotProfile]
+struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
+    let items: [Item]
     /// A portrait dropped past the last one.
     var onDropAtEnd: ((String) -> Void)?
-    @ViewBuilder let cell: (BotProfile) -> Cell
-    /// Cells after the bots, in the same grid: the other combined
-    /// dashboards' bots on Bots Home.
-    let trailing: () -> Trailing
+    @ViewBuilder let cell: (Item) -> Cell
     @Environment(\.dynamicTypeSize) private var typeSize
 
+    /// Any kind of cell: Bots Home's mixed grid of a combined group's bots
+    /// (CombinedBotsHomeItem).
     init(
-        bots: [BotProfile],
+        items: [Item],
         onDropAtEnd: ((String) -> Void)? = nil,
-        @ViewBuilder cell: @escaping (BotProfile) -> Cell,
-        @ViewBuilder trailing: @escaping () -> Trailing
+        @ViewBuilder cell: @escaping (Item) -> Cell
     ) {
-        self.bots = bots
+        self.items = items
         self.onDropAtEnd = onDropAtEnd
         self.cell = cell
-        self.trailing = trailing
     }
 
     var body: some View {
@@ -703,10 +700,9 @@ struct BotPortraitGrid<Cell: View, Trailing: View>: View {
             ? [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
             : [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 10)]
         LazyVGrid(columns: columns, alignment: .center, spacing: 22) {
-            ForEach(bots) { bot in
-                cell(bot)
+            ForEach(items) { item in
+                cell(item)
             }
-            trailing()
         }
         .padding(.top, 14)
         .padding(.bottom, 4)
@@ -721,13 +717,13 @@ struct BotPortraitGrid<Cell: View, Trailing: View>: View {
     }
 }
 
-extension BotPortraitGrid where Trailing == EmptyView {
+extension BotPortraitGrid where Item == BotProfile {
     init(
         bots: [BotProfile],
         onDropAtEnd: ((String) -> Void)? = nil,
         @ViewBuilder cell: @escaping (BotProfile) -> Cell
     ) {
-        self.init(bots: bots, onDropAtEnd: onDropAtEnd, cell: cell) { EmptyView() }
+        self.init(items: bots, onDropAtEnd: onDropAtEnd, cell: cell)
     }
 }
 
@@ -1143,6 +1139,9 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// The face at the default Text Size: 72 in the grid, larger when Bots
     /// Home has only one or two bots (BotsHomeFew), with a larger name.
     var portraitSize: CGFloat = 72
+    /// In a combined group's mixed grid, the dashboard whose bot this is:
+    /// every portrait there carries its badge, this dashboard's too.
+    var dashboardBadge: UUID?
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2OpenBeside) private var openBeside
     @Environment(\.v2Shell) private var shell
@@ -1512,6 +1511,13 @@ struct BotPortraitCell<MenuContent: View>: View {
                         .background(Circle().fill(Color(.secondarySystemBackground)))
                         .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
                         .offset(x: -2, y: -2)
+                        .accessibilityHidden(true)
+                }
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if let dashboardBadge, !mergeReady, room != .member {
+                    CombinedDashboardBadge(dashboardID: dashboardBadge, size: 22)
+                        .offset(x: 2, y: 2)
                         .accessibilityHidden(true)
                 }
             }

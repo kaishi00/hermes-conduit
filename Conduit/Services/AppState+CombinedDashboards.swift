@@ -125,6 +125,9 @@ extension AppState {
             connection: connection,
             keptAt: Date()
         ), for: outgoingID)
+        // Its bots stay on Bots Home from the switch on, read off the
+        // roster it had, so the grid never loses them waiting for a read.
+        seedCombinedDashboardBots(outgoingID, from: botRoster, client: client)
         self.client = nil
         dashboardTicketBridge = nil
         // The one on screen counts too, and the target, if kept, is about
