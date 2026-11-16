@@ -1189,6 +1189,18 @@ extension CrossProfilePresentationCacheTests {
         appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, Date())
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id)
+        // A read again that fails while atlas still has its wait: atlas is
+        // read on the last list, and its row stays.
+        appState.keptDashboardProfiles[mac.id] = (read.bridge, read.profiles, .distantPast)
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path == "/api/profiles" { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        let readsBefore = counts.reads.count
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertTrue(counts.reads[readsBefore...].contains { $0.contains("profile=atlas") }, "atlas read on the last list")
+        XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id, "its row stays")
+        appState.keptDashboardJSONReader = reader
 
         appState.openNeedsYou(item)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
