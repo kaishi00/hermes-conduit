@@ -87,30 +87,27 @@ struct EqualWidthHStack: Layout {
     }
 }
 
-/// A composer's placeholder. At regular sizes it wraps like the text it
-/// stands for, so a long hint keeps the agent's name (#1476). At
-/// accessibility sizes a narrow field broke it mid-word, a few letters a
-/// line, and the bar grew to hold them; there it keeps to one line: the
+/// A composer's placeholder keeps to one line at every Text Size: the
 /// whole hint when it fits, then `short` (without the name), then the
-/// shortest one shrunk to fit and cut off.
+/// shortest one shrunk to fit and cut off. A hint that wrapped made the
+/// resting bar taller than the voice button beside it, and it sprang back
+/// to one line on the first tap: at accessibility sizes (#1541) and on a
+/// 375 pt iPhone at any size (issue 2525). The name stays wherever a line
+/// holds it, which is what #1476 kept wrapping for; the header names the
+/// chat's agent anyway.
 struct ComposerPlaceholderText: View {
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let text: String
     var short: String? = nil
 
     var body: some View {
-        if dynamicTypeSize.isAccessibilitySize {
-            ViewThatFits(in: .horizontal) {
-                Text(text).lineLimit(1)
-                if let short, short != text {
-                    Text(short).lineLimit(1)
-                }
-                Text(short ?? text)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.5)
+        ViewThatFits(in: .horizontal) {
+            Text(text).lineLimit(1)
+            if let short, short != text {
+                Text(short).lineLimit(1)
             }
-        } else {
-            Text(text)
+            Text(short ?? text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.5)
         }
     }
 }
