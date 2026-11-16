@@ -156,7 +156,8 @@ class HostedPreparationTests(unittest.TestCase):
     def test_existing_pin_does_not_trigger_reporting_lookup_or_reuse_stale_metadata(self):
         self._assert_preparation(existing_pin=True)
 
-    def _run_seeded(self, tmp, seed_udid=None, restore_only=False):
+    def _run_seeded(self, tmp, seed_udid=None, restore_only=False, corrupt=False,
+                    state="Shutdown", second_boot_fails=False):
         """ci-prepare-smoke.sh with SIM_SEED_DIR set and the device pinned;
         a seed for seed_udid is in place first when given."""
         bindir = os.path.join(tmp, "bin")
@@ -174,11 +175,22 @@ class HostedPreparationTests(unittest.TestCase):
                 fh.write("warm\n")
             os.mkdir(seed)
             subprocess.run(["tar", "-cf", os.path.join(seed, "data.tar"), "-C", src, "data"], check=True)
+            if corrupt:
+                with open(os.path.join(seed, "data.tar"), "wb") as fh:
+                    fh.write(b"not a tar archive")
             with open(os.path.join(seed, "udid"), "w") as fh:
                 fh.write(seed_udid + "\n")
         for name, body in {
             "defaults": "exit 0",
-            "xcrun": 'echo "xcrun|$*" >> "$CALLS"',
+            "xcrun": 'echo "xcrun|$*" >> "$CALLS"\n'
+                     'if [ "$*" = "simctl erase PINNED" ]; then\n'
+                     'mkdir -p "$HOME/Library/Developer/CoreSimulator/Devices/PINNED/data"\n'
+                     'echo erased > "$HOME/Library/Developer/CoreSimulator/Devices/PINNED/data/marker"; fi\n'
+                     'if [ "$*" = "simctl list devices" ]; then\n'
+                     'echo "    iPhone 17 Pro (PINNED) ($DEVICE_STATE)"; fi\n'
+                     'if [ "$*" = "simctl bootstatus PINNED -b" ]; then\n'
+                     'n=$(grep -c "bootstatus" "$CALLS")\n'
+                     'if [ "$SECOND_BOOT_FAILS" = 1 ] && [ "$n" -ge 2 ]; then exit 1; fi; fi',
         }.items():
             path = os.path.join(bindir, name)
             with open(path, "w") as fh:
@@ -189,7 +201,8 @@ class HostedPreparationTests(unittest.TestCase):
                    SIMULATOR_UDID="PINNED", GATE_SLEEP_SCALE="0", SIM_SEED_DIR=seed,
                    GITHUB_ENV=os.path.join(tmp, "env"),
                    GITHUB_STEP_SUMMARY=os.path.join(tmp, "summary"),
-                   LOG_DIR=os.path.join(tmp, "logs"))
+                   LOG_DIR=os.path.join(tmp, "logs"), DEVICE_STATE=state,
+                   SECOND_BOOT_FAILS=str(int(second_boot_fails)))
         env.pop("SIMULATOR_INVENTORY_CACHE", None)
         env.pop("SIM_SEED_RESTORE_ONLY", None)
         if restore_only:
@@ -216,13 +229,40 @@ class HostedPreparationTests(unittest.TestCase):
             self.assertFalse(any("erase" in op for op in operations))
             self.assertNotIn("SIM_SEED_CREATED", github_env)
 
-    def test_a_seed_for_another_device_is_never_restored(self):
+    def test_a_seed_for_another_device_is_never_restored_and_is_made_again(self):
         with tempfile.TemporaryDirectory() as tmp:
-            proc, operations, marker, doc, github_env, _ = self._run_seeded(tmp, seed_udid="OTHER")
+            proc, operations, marker, doc, github_env, seed = self._run_seeded(tmp, seed_udid="OTHER")
+            self.assertEqual(marker, "cold")
+            self.assertEqual(doc["warm_seed"], "created")
+            self.assertIn("seed is for another device", proc.stdout)
+            self.assertIn("SIM_SEED_CREATED=1", github_env)
+            with open(os.path.join(seed, "udid")) as fh:
+                self.assertEqual(fh.read().strip(), "PINNED")
+
+    def test_a_broken_seed_erases_the_device_and_is_made_again(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, seed = self._run_seeded(tmp, seed_udid="PINNED", corrupt=True)
+            self.assertIn("could not restore the warm-device seed", proc.stdout)
+            self.assertEqual(marker, "erased")
+            erase = operations.index("xcrun|simctl erase PINNED")
+            self.assertLess(erase, operations.index("xcrun|simctl boot PINNED"))
+            self.assertEqual(doc["warm_seed"], "created")
+            self.assertIn("SIM_SEED_CREATED=1", github_env)
+
+    def test_a_device_that_is_not_shut_down_keeps_its_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(tmp, seed_udid="PINNED", state="Booted")
             self.assertEqual(marker, "cold")
             self.assertEqual(doc["warm_seed"], "failed")
-            self.assertIn("seed is for another device", proc.stdout)
+            self.assertFalse(any("erase" in op for op in operations))
             self.assertNotIn("SIM_SEED_CREATED", github_env)
+
+    def test_a_seed_the_device_did_not_boot_from_is_not_saved(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(tmp, second_boot_fails=True)
+            self.assertEqual(doc["warm_seed"], "create-failed")
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+            self.assertFalse(doc["boot_confirmed"])
 
     def test_a_restore_only_job_never_makes_a_seed(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -194,6 +194,7 @@ jobs:
         with:
           path: ci-sim-seed
           key: ${{ steps.sim-key.outputs.key }}
+          restore-keys: ${{ steps.sim-key.outputs.prefix }}
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -456,6 +457,7 @@ jobs:
         with:
           path: ci-sim-seed
           key: ${{ steps.sim-key.outputs.key }}
+          restore-keys: ${{ steps.sim-key.outputs.prefix }}
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -528,6 +530,7 @@ jobs:
         with:
           path: ci-sim-seed
           key: ${{ steps.sim-key.outputs.key }}
+          restore-keys: ${{ steps.sim-key.outputs.prefix }}
 
       - name: Install xcodegen
         run: brew install xcodegen

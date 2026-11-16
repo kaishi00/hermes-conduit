@@ -202,7 +202,7 @@ class WorkflowContractTests(unittest.TestCase):
         jobs = [(self._job_text("smoke"), "smoke")] + [(_job_text(NIGHTLY, job), job) for job in ("unit", "timing", "ui")]
         for text, job in jobs:
             self.assertIn("run: bash scripts/ci-sim-seed-key.sh", text, job)
-            self.assertIn("key: ${{ steps.sim-key.outputs.key }}", text, job)
+            self.assertIn("key: ${{ steps.sim-key.outputs.key }}\n          restore-keys: ${{ steps.sim-key.outputs.prefix }}", text, job)
             self.assertIn("SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed", text, job)
             self.assertLess(text.index("- name: Restore the warm simulator"),
                             text.index("run: bash scripts/ci-hosted-build.sh"), job)

@@ -458,6 +458,7 @@ jobs:
         with:
           path: ci-sim-seed
           key: ${{ steps.sim-key.outputs.key }}
+          restore-keys: ${{ steps.sim-key.outputs.prefix }}
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -513,11 +514,11 @@ jobs:
           key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
 
       - name: Save the warm simulator
-        # Made by ci-prepare-smoke.sh when none was restored. Pushes only,
+        # Made by ci-prepare-smoke.sh when none was restored, or the restored
+        # one couldn't be used: saved as a newer generation. Pushes only,
         # like the build cache: PRs restore main's.
         if: >-
           steps.build.outcome == 'success'
-          && steps.sim-seed.outputs.cache-hit != 'true'
           && env.SIM_SEED_CREATED == '1'
           && (github.event_name == 'push' || github.event_name == 'pull_request')
         uses: actions/cache/save@v5

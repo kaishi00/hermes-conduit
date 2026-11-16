@@ -39,27 +39,35 @@ sleep $(( 3 * $(decimal_seconds "${GATE_SLEEP_SCALE:-}" 1) ))
 # is installed, so a restored device boots as an already-migrated one.
 seed_s=0
 seed_state=off
+# A job that can't save a seed (SIM_SEED_RESTORE_ONLY) never spends a second
+# boot making one. A seed that can't be used is made again, and the workflow
+# saves it as a newer generation the next restore picks.
+seed_miss=create
+if [ "${SIM_SEED_RESTORE_ONLY:-}" = 1 ]; then seed_miss=skipped; fi
 if [ -n "${SIM_SEED_DIR:-}" ] && [ -n "${SIMULATOR_UDID:-}" ]; then
   device_dir="$HOME/Library/Developer/CoreSimulator/Devices/$SIMULATOR_UDID"
-  seed_state=create
+  seed_state=$seed_miss
   if [ -f "$SIM_SEED_DIR/data.tar" ] && [ "$(cat "$SIM_SEED_DIR/udid" 2>/dev/null)" = "$SIMULATOR_UDID" ]; then
     started=$(date +%s)
-    if rm -rf "$device_dir/data" && tar -xf "$SIM_SEED_DIR/data.tar" -C "$device_dir"; then
+    # The device's folder is replaced only while it is shut down: the
+    # shutdown above is best-effort.
+    if ! bounded_run 60 xcrun simctl list devices \
+       || ! printf '%s\n' "$BOUNDED_OUTPUT" | grep -F "($SIMULATOR_UDID)" | grep -qF "(Shutdown)"; then
+      echo "::warning::the device isn't shut down - booting it cold, without the warm-device seed"
+      seed_state=failed
+    elif rm -rf "$device_dir/data" && tar -xf "$SIM_SEED_DIR/data.tar" -C "$device_dir"; then
       seed_state=restored
     else
       # A half-restored device can't boot; erase gives back the image's own.
       echo "::warning::could not restore the warm-device seed - erasing the device and booting it cold"
       bounded_run 120 xcrun simctl erase "$SIMULATOR_UDID" || true
-      seed_state=failed
+      seed_state=$seed_miss
     fi
     seed_s=$(( $(date +%s) - started ))
   elif [ -f "$SIM_SEED_DIR/data.tar" ]; then
     echo "::warning::the warm-device seed is for another device - booting cold"
-    seed_state=failed
-  elif [ "${SIM_SEED_RESTORE_ONLY:-}" = 1 ]; then
-    # A job that can't save a seed doesn't spend a second boot making one.
-    seed_state=skipped
   fi
+  if [ "$seed_state" = create ]; then rm -f "$SIM_SEED_DIR/data.tar" "$SIM_SEED_DIR/udid"; fi
 fi
 
 boot_s=0
@@ -88,17 +96,21 @@ if [ -n "${SIMULATOR_UDID:-}" ]; then
        && mkdir -p "$SIM_SEED_DIR" \
        && tar -cf "$SIM_SEED_DIR/data.tar" -C "$device_dir" data \
        && printf '%s\n' "$SIMULATOR_UDID" > "$SIM_SEED_DIR/udid"; then
-      seed_state=created
-      printf 'SIM_SEED_CREATED=1\n' >> "$GITHUB_ENV"
       echo "warm-device seed: $(du -sh "$SIM_SEED_DIR/data.tar" | cut -f1)"
     else
       rm -f "$SIM_SEED_DIR/data.tar" "$SIM_SEED_DIR/udid"
       echo "::warning::could not save the warm-device seed"
     fi
     bounded_run 60 xcrun simctl boot "$SIMULATOR_UDID" || true
-    if ! bounded_run 200 xcrun simctl bootstatus "$SIMULATOR_UDID" -b; then
+    if bounded_run 200 xcrun simctl bootstatus "$SIMULATOR_UDID" -b; then
+      # Saved only once the device booted from it.
+      if [ -f "$SIM_SEED_DIR/data.tar" ]; then
+        seed_state=created
+        printf 'SIM_SEED_CREATED=1\n' >> "$GITHUB_ENV"
+      fi
+    else
       boot_confirmed=false
-      echo "::warning::simulator bootstatus did not confirm after the seed - letting xcodebuild boot the destination itself"
+      echo "::warning::simulator bootstatus did not confirm after the seed - letting xcodebuild boot the destination itself, and not saving the seed"
     fi
     seed_s=$(( $(date +%s) - started ))
   fi

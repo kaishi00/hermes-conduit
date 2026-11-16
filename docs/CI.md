@@ -94,12 +94,15 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   `bootstatus`'s 200 s budget. `ci-prepare-smoke.sh` (with `SIM_SEED_DIR`)
   restores the pinned device's `data` folder as it was right after one
   finished first boot, before anything was installed, so the device boots
-  already migrated. A seed is for one UDID (another device's is ignored, and
-  a restore that fails erases the device and boots it cold). With no seed,
+  already migrated. The folder is replaced only while the device is shut
+  down, and a seed is for one UDID. With no usable seed (none, another
+  device's, or one whose restore failed, which erases the device first),
   the job waits up to 420 s for its first boot to finish, shuts the device
-  down, keeps its `data` folder and boots it again. Smoke's push runs save
-  it (`sim-v1-<xcode>-<image>-<simulator>`, `scripts/ci-sim-seed-key.sh`),
-  once per image and Xcode; Smoke and every nightly unit, timing and UI job
+  down, keeps its `data` folder and boots it again, and keeps the seed only
+  once that second boot is confirmed. Smoke's push runs save it as a
+  generation (`sim-v2-<xcode>-<image>-<simulator>-gen-<run id>`,
+  `scripts/ci-sim-seed-key.sh`) and a restore takes the newest, so a seed
+  that couldn't be used is replaced, about once per image and Xcode; Smoke and every nightly unit, timing and UI job
   restore it, and the nightly jobs never make one (`SIM_SEED_RESTORE_ONLY`:
   they can't save it). A push saves its build cache right after the build
   and its weak-imports check too, before its tests, so a PR opened during main's UI smoke restores the
