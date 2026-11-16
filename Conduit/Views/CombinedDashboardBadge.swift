@@ -27,10 +27,9 @@ struct CombinedDashboardBadge: View {
     /// The palette's hues, which a color past it keeps clear of.
     static let paletteHues: [Double] = [0.603, 0.907, 0.438, 0.076, 0.704, 0.119]
 
-    /// Past the palette (a group of seven or more), a hue of its own:
-    /// stepped by the golden angle, each step nudged to the middle of the
-    /// widest gap it lands in, so it sits between the palette's hues and
-    /// the ones before it. Yellows and greens, light by nature, are
+    /// Past the palette (a group of seven or more), a hue of its own: the
+    /// middle of the widest gap left between the palette's hues and the
+    /// ones before it. Yellows and greens, light by nature, are
     /// darkened, so white text reads on each.
     static func color(_ index: Int) -> Color {
         guard index >= palette.count else { return palette[max(index, 0)] }
