@@ -293,8 +293,8 @@ private struct ArtifactsList: View {
         ) {
             TextField(AppLocalization.string("Note"), text: Binding(
                 get: { noteText },
-                // The host keeps 200 characters: the field stops there.
-                set: { noteText = String($0.prefix(ArtifactPinsClient.maxNoteLength)) }
+                // Match the host's code-point limit, keeping each character whole.
+                set: { noteText = ArtifactPinsClient.limitedNote($0) }
             ))
             Button("Save") {
                 if let item = noting, let store = notingStore {

@@ -472,6 +472,63 @@ extension GatewayRestartTests {
         XCTAssertEqual(ArtifactPinsClient.kept(profile: "work", in: answers)?.count, 1)
     }
 
+    /// The host counts Unicode code points, not Swift Characters or UTF-8
+    /// bytes: emoji sequences and combining marks use more than one point.
+    func testSavedNotesFitTheHostsCodePointLimit() throws {
+        let cases: [(String, Int, Int)] = [
+            ("a", 201, 200),
+            ("界", 201, 200),
+            ("👍🏽", 101, 100),
+            ("🇺🇸", 101, 100),
+            ("👨‍👩‍👧‍👦", 29, 28),
+            ("e\u{301}", 101, 100),
+        ]
+        for (character, count, kept) in cases {
+            let note = String(repeating: character, count: count)
+            let expected = String(repeating: character, count: kept)
+            XCTAssertEqual(ArtifactPinsClient.limitedNote(note), expected)
+            let cleaned = try XCTUnwrap(ArtifactPinsClient.cleanNote(note))
+            XCTAssertEqual(cleaned, expected)
+            XCTAssertLessThanOrEqual(cleaned.unicodeScalars.count, ArtifactPinsClient.maxNoteLength)
+        }
+    }
+
+    func testSavedNoteClippingKeepsCharactersWholeAndEditorSpacesIntact() {
+        let prefix = String(repeating: "a", count: 199)
+        for character in ["👍🏽", "🇺🇸", "👨‍👩‍👧‍👦", "e\u{301}"] {
+            XCTAssertEqual(ArtifactPinsClient.limitedNote(prefix + character), prefix,
+                           "leave room unused rather than split a visible character")
+        }
+        let oversizedCharacter = "e" + String(repeating: "\u{301}", count: 200)
+        XCTAssertEqual(ArtifactPinsClient.limitedNote(oversizedCharacter), "")
+        XCTAssertNil(ArtifactPinsClient.cleanNote(oversizedCharacter))
+        XCTAssertEqual(ArtifactPinsClient.limitedNote("  for   the site "), "  for   the site ")
+        XCTAssertEqual(ArtifactPinsClient.cleanNote("  for   the\nsite "), "for the site")
+        XCTAssertNil(ArtifactPinsClient.cleanNote(nil))
+    }
+
+    /// Both Save and Edit Note use this request: neither may send a note
+    /// the host refuses just because it includes multi-code-point emoji.
+    func testSavingClipsUnicodeNotesBeforeSendingThemToTheHost() async throws {
+        let expected = String(repeating: "👍🏽", count: 100)
+        var asked = false
+        let client = ArtifactPinsClient { _, method, body in
+            asked = true
+            XCTAssertEqual(method, "POST")
+            let note = try XCTUnwrap(body?["note"] as? String)
+            XCTAssertEqual(note, expected)
+            XCTAssertLessThanOrEqual(note.unicodeScalars.count, 200, "Python len accepts at most 200 code points")
+            var row = try XCTUnwrap(body?["item"] as? [String: Any])
+            row["pinned_at"] = 1_760_000_000.0
+            row["note"] = note
+            return ["ok": true, "pin": row]
+        }
+        let item = try XCTUnwrap(ArtifactItem(artifactRow([:])))
+        let saved = try await client.save(item, note: String(repeating: "👍🏽", count: 101), profile: "atlas")
+        XCTAssertTrue(asked)
+        XCTAssertEqual(saved.note, expected)
+    }
+
     /// Saving sends the row as the list gave it, in the store's profile,
     /// with the note on one line; unsaving names it by its path.
     func testSavingSendsTheRowAndUnsavingNamesIt() async throws {
