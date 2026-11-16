@@ -289,6 +289,44 @@ extension GatewayRestartTests {
         XCTAssertEqual(ownItems.map(\.otherProfile), [nil, nil])
     }
 
+    /// The Artifacts list asks the plugin what it serves from its feed and
+    /// from Saved as it opens (issue 2516): one status read answers both,
+    /// and a read through another bridge isn't joined.
+    func testTheListOpenSharesOnePluginStatusRead() async throws {
+        let suite = "Artifacts.AppState.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.dashboardTicketBridge = held.bridge
+        let feed = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        let saved = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        try await held.waitForRequests(1)
+        try await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(held.sent.filter { $0.path == NotifierPluginStatus.path }.count, 1, "one read for both")
+        XCTAssertNotNil(appState.notifierPluginStatusSharedRefresh)
+
+        let other = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { other.releaseAll() }
+        appState.dashboardTicketBridge = other.bridge
+        let otherRead = Task { @MainActor in await appState.refreshNotifierPluginStatusOnce() }
+        try await other.waitForRequests(1)
+        XCTAssertEqual(other.sent.first?.path, NotifierPluginStatus.path, "another bridge reads for itself")
+
+        held.releaseAll()
+        other.releaseAll()
+        await feed.value
+        await saved.value
+        await otherRead.value
+        XCTAssertNil(appState.notifierPluginStatusSharedRefresh, "nothing left to join once the reads end")
+    }
+
     /// A Bot Chat has no row in the chat list: its ⋯ menu still finds the
     /// chat's ids, so Artifacts isn't greyed out. An unlisted chat that isn't
     /// a bot's has none.

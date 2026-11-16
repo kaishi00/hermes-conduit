@@ -1013,7 +1013,7 @@ private struct ArtifactsList: View {
         // its loader until the next connect.
         if !appState.supportsArtifacts, appState.isConnected, appState.notifierPlugin.state == .unknown {
             isLoading = true
-            await appState.refreshNotifierPluginStatus()
+            await appState.refreshNotifierPluginStatusOnce()
             guard ticket == generation else { return }
             if appState.notifierPlugin.state == .unknown, loadedKey != key {
                 failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
@@ -1112,8 +1112,15 @@ private struct ArtifactsList: View {
             // again, as the feed's refresh asks, so pulling Saved isn't a
             // no-op until the next connect.
             if appState.isConnected, appState.notifierPlugin.state == .unknown {
-                await appState.refreshNotifierPluginStatus()
-                if ticket == savedGeneration, currentSavedKey.served { await reloadSaved() }
+                await appState.refreshNotifierPluginStatusOnce()
+                guard ticket == savedGeneration else { return }
+                if currentSavedKey.served {
+                    await reloadSaved()
+                } else if appState.notifierPlugin.state == .unknown, savedKey == nil {
+                    // Still no answer: say so, as the feed does, with Try
+                    // Again, rather than leave Saved on its loader.
+                    savedFailure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
+                }
             }
             return
         }
