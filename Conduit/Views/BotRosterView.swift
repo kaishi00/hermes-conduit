@@ -99,6 +99,12 @@ struct BotRosterView: View {
                         }
                         .padding(.horizontal, 16)
                     }
+                    // Bots Home's empty page reads the other combined
+                    // dashboards' rosters too, so their bots replace it.
+                    .task(id: createRequest != nil && botsHomeShowsLiveStatus) {
+                        guard createRequest != nil, botsHomeShowsLiveStatus else { return }
+                        await appState.readOtherCombinedDashboardsBots()
+                    }
             } else {
                 rosterList
                     .environment(\.botsHomeCovered, coveredBySheet)

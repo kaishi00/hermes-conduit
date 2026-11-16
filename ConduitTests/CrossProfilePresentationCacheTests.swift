@@ -1296,6 +1296,21 @@ extension CrossProfilePresentationCacheTests {
         )
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
         appState.combinedDashboardPulse[vps.id] = nil
+        // Else as it last named it here.
+        appState.pulseRememberedHomes[vps.id.uuidString] = "vps-1"
+        XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty, "the remembered home stays out too")
+        appState.pulseRememberedHomes[vps.id.uuidString] = nil
+        // One Hermes saved twice gives an id once: the first in Saved
+        // Dashboards order keeps its row.
+        let lab = SavedDashboard(id: UUID(), label: "Lab", normalizedURL: "https://127.0.0.3:1", combined: true)
+        appState.savedDashboardRegistry.dashboards.append(lab)
+        var twin = try XCTUnwrap(appState.combinedDashboardChats[vps.id]?.sessions.first)
+        twin.combinedDashboardID = lab.id
+        appState.combinedDashboardChats[lab.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(vpsClient), profile: "default", sessions: [twin], at: Date()
+        )
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.combinedDashboardID), [vps.id])
+        appState.combinedDashboardChats[lab.id] = nil
         appState.letGoCombinedDashboard(vps.id)
         XCTAssertNil(appState.combinedDashboardChats[vps.id])
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
