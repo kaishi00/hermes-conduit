@@ -183,6 +183,37 @@ class WorkflowContractTests(unittest.TestCase):
         for job in ("unit", "timing", "ui"):
             self.assertIn('BUILD_TIMEOUT_SECS: "1800"', _job_text(NIGHTLY, job), job)
 
+    def test_a_push_saves_its_build_before_the_tests(self):
+        """A push's UI smoke runs minutes after its build; PRs opened then
+        restored an older build and recompiled main's latest merge. The save
+        sits right after the build and before every test step."""
+        text = self._job_text("smoke")
+        save = text.index("- name: Save the build cache")
+        self.assertLess(text.index("- name: Build and boot the simulator in parallel"), save)
+        self.assertLess(save, text.index("- name: Run the curated unit smoke classes"))
+        self.assertLess(save, text.index("- name: Run the curated UI smoke suite"))
+        self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Save the warm simulator")])
+
+    def test_every_macos_test_job_restores_the_warm_simulator(self):
+        """The first boot's data migration took 80-300 s with the build
+        waiting (2026-11-15): every job that boots the pinned device restores
+        the seed, under one key per image, Xcode and simulator, and only
+        Smoke's push runs save it."""
+        jobs = [(self._job_text("smoke"), "smoke")] + [(_job_text(NIGHTLY, job), job) for job in ("unit", "timing", "ui")]
+        for text, job in jobs:
+            self.assertIn("run: bash scripts/ci-sim-seed-key.sh", text, job)
+            self.assertIn("key: ${{ steps.sim-key.outputs.key }}", text, job)
+            self.assertIn("SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed", text, job)
+            self.assertLess(text.index("- name: Restore the warm simulator"),
+                            text.index("run: bash scripts/ci-hosted-build.sh"), job)
+        smoke = self._job_text("smoke")
+        save = smoke[smoke.index("- name: Save the warm simulator"):]
+        save = save[:save.index("\n      - name:")]
+        self.assertIn("env.SIM_SEED_CREATED == '1'", save)
+        self.assertIn("github.event_name == 'push'", save)
+        for job in ("unit", "timing", "ui"):
+            self.assertNotIn("Save the warm simulator", _job_text(NIGHTLY, job), job)
+
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
         beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas

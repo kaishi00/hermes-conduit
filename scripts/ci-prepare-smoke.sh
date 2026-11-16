@@ -31,6 +31,34 @@ fi
 shutdown_s=$(( $(date +%s) - started ))
 sleep $(( 3 * $(decimal_seconds "${GATE_SLEEP_SCALE:-}" 1) ))
 
+# The warm-device seed (SIM_SEED_DIR, restored and saved by the workflow).
+# A device's first boot runs iOS's data migration, 80-300 s of a 3-core
+# runner with the build waiting on it (2026-11-15: 230 s median over 57
+# Smoke runs, and half of them outran bootstatus's 200 s). The seed is the
+# device's data folder right after one finished first boot, before anything
+# is installed, so a restored device boots as an already-migrated one.
+seed_s=0
+seed_state=off
+if [ -n "${SIM_SEED_DIR:-}" ] && [ -n "${SIMULATOR_UDID:-}" ]; then
+  device_dir="$HOME/Library/Developer/CoreSimulator/Devices/$SIMULATOR_UDID"
+  seed_state=create
+  if [ -f "$SIM_SEED_DIR/data.tar" ] && [ "$(cat "$SIM_SEED_DIR/udid" 2>/dev/null)" = "$SIMULATOR_UDID" ]; then
+    started=$(date +%s)
+    if rm -rf "$device_dir/data" && tar -xf "$SIM_SEED_DIR/data.tar" -C "$device_dir"; then
+      seed_state=restored
+    else
+      # A half-restored device can't boot; erase gives back the image's own.
+      echo "::warning::could not restore the warm-device seed - erasing the device and booting it cold"
+      bounded_run 120 xcrun simctl erase "$SIMULATOR_UDID" || true
+      seed_state=failed
+    fi
+    seed_s=$(( $(date +%s) - started ))
+  elif [ -f "$SIM_SEED_DIR/data.tar" ]; then
+    echo "::warning::the warm-device seed is for another device - booting cold"
+    seed_state=failed
+  fi
+fi
+
 boot_s=0
 readiness_s=0
 boot_confirmed=false
@@ -39,12 +67,38 @@ if [ -n "${SIMULATOR_UDID:-}" ]; then
   bounded_run 60 xcrun simctl boot "$SIMULATOR_UDID" || true
   boot_s=$(( $(date +%s) - started ))
   started=$(date +%s)
-  if bounded_run 200 xcrun simctl bootstatus "$SIMULATOR_UDID" -b; then
+  # A seed is taken only from a finished migration, so making one waits
+  # longer for it, once per runner image.
+  readiness_budget=200
+  if [ "$seed_state" = create ]; then readiness_budget=420; fi
+  if bounded_run "$readiness_budget" xcrun simctl bootstatus "$SIMULATOR_UDID" -b; then
     boot_confirmed=true
   else
     echo "::warning::simulator bootstatus did not confirm - letting xcodebuild boot the destination itself"
   fi
   readiness_s=$(( $(date +%s) - started ))
+  if [ "$seed_state" = create ] && [ "$boot_confirmed" = true ]; then
+    # Shut down so the folder is consistent, keep it, and boot again warm.
+    started=$(date +%s)
+    seed_state=create-failed
+    if bounded_run 60 xcrun simctl shutdown "$SIMULATOR_UDID" \
+       && mkdir -p "$SIM_SEED_DIR" \
+       && tar -cf "$SIM_SEED_DIR/data.tar" -C "$device_dir" data \
+       && printf '%s\n' "$SIMULATOR_UDID" > "$SIM_SEED_DIR/udid"; then
+      seed_state=created
+      printf 'SIM_SEED_CREATED=1\n' >> "$GITHUB_ENV"
+      echo "warm-device seed: $(du -sh "$SIM_SEED_DIR/data.tar" | cut -f1)"
+    else
+      rm -f "$SIM_SEED_DIR/data.tar" "$SIM_SEED_DIR/udid"
+      echo "::warning::could not save the warm-device seed"
+    fi
+    bounded_run 60 xcrun simctl boot "$SIMULATOR_UDID" || true
+    if ! bounded_run 200 xcrun simctl bootstatus "$SIMULATOR_UDID" -b; then
+      boot_confirmed=false
+      echo "::warning::simulator bootstatus did not confirm after the seed - letting xcodebuild boot the destination itself"
+    fi
+    seed_s=$(( $(date +%s) - started ))
+  fi
   # What the boot waited on: bootstatus names each stage as it waits.
   echo "bootstatus (last lines):"
   printf '%s\n' "$BOUNDED_OUTPUT" | tail -n 25
@@ -55,7 +109,7 @@ fi
 printf 'DESTINATION=%s\n' "$DESTINATION" >> "$GITHUB_ENV"
 printf 'SIMULATOR_UDID=%s\n' "${SIMULATOR_UDID:-}" >> "$GITHUB_ENV"
 # Reporting is best-effort and is outside the four measured preparation phases.
-python3 - "$LOG_DIR" "${SIMULATOR_UDID:-}" "$lookup_s" "$shutdown_s" "$boot_s" "$readiness_s" "$boot_confirmed" "$SIMULATOR_INVENTORY_CACHE" <<'PY' || echo "::warning::simulator preparation reporting unavailable - destination remains prepared"
+python3 - "$LOG_DIR" "${SIMULATOR_UDID:-}" "$lookup_s" "$shutdown_s" "$boot_s" "$readiness_s" "$boot_confirmed" "$SIMULATOR_INVENTORY_CACHE" "$seed_state" "$seed_s" <<'PY' || echo "::warning::simulator preparation reporting unavailable - destination remains prepared"
 import json
 import os
 import sys
@@ -68,11 +122,13 @@ try:
 except (OSError, ValueError, KeyError, TypeError):
     pass
 seconds = dict(zip(("lookup", "shutdown", "boot", "boot_readiness"), map(int, sys.argv[3:7])))
-doc = {"udid": udid or None, "runtime": runtime, "seconds": seconds, "boot_confirmed": sys.argv[7] == "true"}
+seconds["warm_seed"] = int(sys.argv[10])
+seed = sys.argv[9]
+doc = {"udid": udid or None, "runtime": runtime, "seconds": seconds, "boot_confirmed": sys.argv[7] == "true", "warm_seed": seed}
 with open(os.path.join(log_dir, "preparation.json"), "w") as fh:
     json.dump(doc, fh, indent=2)
     fh.write("\n")
-summary = "### Hosted simulator preparation\n\nDevice: `{}`; runtime: `{}`; boot confirmed: {}.\n\n".format(udid or "name fallback", runtime, doc["boot_confirmed"])
+summary = "### Hosted simulator preparation\n\nDevice: `{}`; runtime: `{}`; boot confirmed: {}; warm-device seed: {}.\n\n".format(udid or "name fallback", runtime, doc["boot_confirmed"], seed)
 summary += "| Phase | Seconds |\n|---|---:|\n" + "".join("| {} | {} |\n".format(phase, value) for phase, value in seconds.items())
 summary += "\nThe existing 3-second settle delay is additional to these phases.\n"
 print(summary)

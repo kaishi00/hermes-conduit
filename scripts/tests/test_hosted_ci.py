@@ -156,6 +156,87 @@ class HostedPreparationTests(unittest.TestCase):
     def test_existing_pin_does_not_trigger_reporting_lookup_or_reuse_stale_metadata(self):
         self._assert_preparation(existing_pin=True)
 
+    def _run_seeded(self, tmp, seed_udid=None):
+        """ci-prepare-smoke.sh with SIM_SEED_DIR set and the device pinned;
+        a seed for seed_udid is in place first when given."""
+        bindir = os.path.join(tmp, "bin")
+        os.mkdir(bindir)
+        home = os.path.join(tmp, "home")
+        device = os.path.join(home, "Library/Developer/CoreSimulator/Devices/PINNED")
+        os.makedirs(os.path.join(device, "data"))
+        with open(os.path.join(device, "data", "marker"), "w") as fh:
+            fh.write("cold\n")
+        seed = os.path.join(tmp, "seed")
+        if seed_udid:
+            src = os.path.join(tmp, "src")
+            os.makedirs(os.path.join(src, "data"))
+            with open(os.path.join(src, "data", "marker"), "w") as fh:
+                fh.write("warm\n")
+            os.mkdir(seed)
+            subprocess.run(["tar", "-cf", os.path.join(seed, "data.tar"), "-C", src, "data"], check=True)
+            with open(os.path.join(seed, "udid"), "w") as fh:
+                fh.write(seed_udid + "\n")
+        for name, body in {
+            "defaults": "exit 0",
+            "xcrun": 'echo "xcrun|$*" >> "$CALLS"',
+        }.items():
+            path = os.path.join(bindir, name)
+            with open(path, "w") as fh:
+                fh.write("#!/bin/bash\n" + body + "\n")
+            os.chmod(path, 0o755)
+        env = dict(os.environ, PATH=bindir + os.pathsep + os.environ["PATH"], HOME=home,
+                   CALLS=os.path.join(tmp, "calls"), SIMULATOR_NAME="iPhone 17 Pro",
+                   SIMULATOR_UDID="PINNED", GATE_SLEEP_SCALE="0", SIM_SEED_DIR=seed,
+                   GITHUB_ENV=os.path.join(tmp, "env"),
+                   GITHUB_STEP_SUMMARY=os.path.join(tmp, "summary"),
+                   LOG_DIR=os.path.join(tmp, "logs"))
+        env.pop("SIMULATOR_INVENTORY_CACHE", None)
+        proc = subprocess.run(["bash", os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")],
+                              env=env, capture_output=True, text=True, timeout=20)
+        self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
+        with open(env["CALLS"]) as fh:
+            operations = fh.read().splitlines()
+        with open(os.path.join(device, "data", "marker")) as fh:
+            marker = fh.read().strip()
+        with open(os.path.join(env["LOG_DIR"], "preparation.json")) as fh:
+            doc = json.load(fh)
+        with open(env["GITHUB_ENV"]) as fh:
+            github_env = fh.read()
+        return proc, operations, marker, doc, github_env, seed
+
+    def test_a_restored_seed_replaces_the_device_data_before_the_boot(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(tmp, seed_udid="PINNED")
+            self.assertEqual(marker, "warm")
+            self.assertEqual(doc["warm_seed"], "restored")
+            self.assertEqual(operations.count("xcrun|simctl boot PINNED"), 1)
+            self.assertFalse(any("erase" in op for op in operations))
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+
+    def test_a_seed_for_another_device_is_never_restored(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, _ = self._run_seeded(tmp, seed_udid="OTHER")
+            self.assertEqual(marker, "cold")
+            self.assertEqual(doc["warm_seed"], "failed")
+            self.assertIn("seed is for another device", proc.stdout)
+            self.assertNotIn("SIM_SEED_CREATED", github_env)
+
+    def test_without_a_seed_the_finished_first_boot_becomes_one(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            proc, operations, marker, doc, github_env, seed = self._run_seeded(tmp)
+            self.assertEqual(doc["warm_seed"], "created")
+            self.assertIn("SIM_SEED_CREATED=1", github_env)
+            with open(os.path.join(seed, "udid")) as fh:
+                self.assertEqual(fh.read().strip(), "PINNED")
+            listing = subprocess.run(["tar", "-tf", os.path.join(seed, "data.tar")],
+                                     capture_output=True, text=True, check=True).stdout
+            self.assertIn("data/marker", listing)
+            # Taken between a confirmed first boot and a shutdown, then booted again.
+            first_ready = operations.index("xcrun|simctl bootstatus PINNED -b")
+            self.assertIn("xcrun|simctl shutdown PINNED", operations[first_ready:])
+            self.assertEqual(operations.count("xcrun|simctl boot PINNED"), 2)
+            self.assertEqual(operations[-1], "xcrun|simctl bootstatus PINNED -b")
+
     def _assert_preparation(self, clipboard_exit=0, forbid_post_boot=False,
                             cache_failure=False, summary_failure=False, delayed_inventory=False, existing_pin=False):
         self.assertTrue(os.path.isfile(os.path.join(SCRIPTS_DIR, "ci-prepare-smoke.sh")))
@@ -230,7 +311,8 @@ class HostedPreparationTests(unittest.TestCase):
                 doc = json.load(fh)
             self.assertEqual(doc["udid"], "PINNED")
             self.assertEqual(doc["runtime"], "unknown" if cache_failure or existing_pin else "com.apple.CoreSimulator.SimRuntime.iOS-26-5")
-            self.assertEqual(set(doc["seconds"]), {"lookup", "shutdown", "boot", "boot_readiness"})
+            self.assertEqual(set(doc["seconds"]), {"lookup", "shutdown", "boot", "boot_readiness", "warm_seed"})
+            self.assertEqual(doc["warm_seed"], "off")
             if summary_failure:
                 self.assertIn("::warning::simulator preparation reporting unavailable", proc.stdout)
             else:

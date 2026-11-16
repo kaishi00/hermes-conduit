@@ -183,6 +183,18 @@ jobs:
             ${{ steps.cache-key.outputs.prefix }}-
             ${{ steps.cache-key.outputs.xcode-prefix }}-
 
+      - name: Pick the warm simulator
+        id: sim-key
+        run: bash scripts/ci-sim-seed-key.sh
+
+      - name: Restore the warm simulator
+        # The pinned device already through its first boot's data migration
+        # (80-300 s), as Smoke's push runs save it; restore only.
+        uses: actions/cache/restore@v5
+        with:
+          path: ci-sim-seed
+          key: ${{ steps.sim-key.outputs.key }}
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -203,6 +215,7 @@ jobs:
           BUILD_TIMEOUT_SECS: "1800"
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
+          SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's unit classes
@@ -431,6 +444,18 @@ jobs:
             ${{ steps.cache-key.outputs.prefix }}-
             ${{ steps.cache-key.outputs.xcode-prefix }}-
 
+      - name: Pick the warm simulator
+        id: sim-key
+        run: bash scripts/ci-sim-seed-key.sh
+
+      - name: Restore the warm simulator
+        # The pinned device already through its first boot's data migration
+        # (80-300 s), as Smoke's push runs save it; restore only.
+        uses: actions/cache/restore@v5
+        with:
+          path: ci-sim-seed
+          key: ${{ steps.sim-key.outputs.key }}
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -445,6 +470,7 @@ jobs:
           # 1213 s and another outran 1200 s (2026-11-13, #2331's Nightly).
           BUILD_TIMEOUT_SECS: "1800"
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
+          SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the timing families
@@ -489,6 +515,18 @@ jobs:
       - name: Select Xcode
         run: sudo bash scripts/ci-select-xcode.sh
 
+      - name: Pick the warm simulator
+        id: sim-key
+        run: bash scripts/ci-sim-seed-key.sh
+
+      - name: Restore the warm simulator
+        # The pinned device already through its first boot's data migration
+        # (80-300 s), as Smoke's push runs save it; restore only.
+        uses: actions/cache/restore@v5
+        with:
+          path: ci-sim-seed
+          key: ${{ steps.sim-key.outputs.key }}
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -500,6 +538,7 @@ jobs:
           # The UI shards never restore a cache, so every build is clean: the
           # clean-build budget, as in PR CI (#2319).
           BUILD_TIMEOUT_SECS: "1800"
+          SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes

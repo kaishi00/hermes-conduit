@@ -443,6 +443,22 @@ jobs:
             ${{ steps.cache-key.outputs.prefix }}-
             ${{ steps.cache-key.outputs.xcode-prefix }}-
 
+      - name: Pick the warm simulator
+        id: sim-key
+        run: bash scripts/ci-sim-seed-key.sh
+
+      - name: Restore the warm simulator
+        # The pinned device's data folder after one finished first boot, so
+        # it boots already migrated: the first boot's data migration took
+        # 80-300 s (230 s median) with the build waiting on it. One per
+        # runner image and Xcode, saved by a push run (see "Save the warm
+        # simulator"); ci-prepare-smoke.sh restores it and checks its device.
+        id: sim-seed
+        uses: actions/cache/restore@v5
+        with:
+          path: ci-sim-seed
+          key: ${{ steps.sim-key.outputs.key }}
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -462,7 +478,42 @@ jobs:
           BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
+          SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed
         run: bash scripts/ci-hosted-build.sh
+
+      - name: Save the build cache
+        # Pushes' builds only, right after the build: a push's UI smoke runs
+        # another 3-5 minutes, and every PR opened meanwhile would restore an
+        # older build and recompile main's latest merge. A PR restores the
+        # newest it can reach: main's, and on a PR into pulse, linked-rooms
+        # or all-live (each runs its own copy of this workflow) that branch's
+        # too, never another branch's. Smoke always builds the full app
+        # (project.yml); the app-only (slim) build the nightly unit shards
+        # restore is saved by nightly unit shard 1. Before the tests, so a
+        # test failure still saves a good build.
+        if: >-
+          steps.build.outcome == 'success'
+          && steps.cache.outputs.cache-hit != 'true'
+          && github.event_name == 'push'
+        uses: actions/cache/save@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+
+      - name: Save the warm simulator
+        # Made by ci-prepare-smoke.sh when none was restored. Pushes only,
+        # like the build cache: PRs restore main's.
+        if: >-
+          steps.build.outcome == 'success'
+          && steps.sim-seed.outputs.cache-hit != 'true'
+          && env.SIM_SEED_CREATED == '1'
+          && github.event_name == 'push'
+        uses: actions/cache/save@v5
+        with:
+          path: ci-sim-seed
+          key: ${{ steps.sim-key.outputs.key }}
 
       - name: No back-deployed Date comparisons or strong framework loads in the build
         # The smoke build's app, its .debug.dylib and its extensions: none may
@@ -659,24 +710,6 @@ jobs:
             }
             echo "::warning::runner-level flake absorbed: $retry_csv failed, then the targeted retry passed"
           fi
-
-      - name: Save the build cache
-        # Pushes' builds only. A PR restores the newest it can reach: main's,
-        # and on a PR into pulse, linked-rooms or all-live (each runs its own copy of
-        # this workflow) that branch's too, never another branch's. Smoke
-        # always builds the full app (project.yml); the app-only (slim) build
-        # the nightly unit shards restore is saved by nightly unit shard 1.
-        # After the tests, so a test failure still saves a good build.
-        if: >-
-          always() && steps.build.outcome == 'success'
-          && steps.cache.outputs.cache-hit != 'true'
-          && github.event_name == 'push'
-        uses: actions/cache/save@v5
-        with:
-          path: |
-            ci-derived-data
-            !ci-derived-data/Logs
-          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
 
       - name: Dump simulator state (failure diagnostics)
         if: failure()
