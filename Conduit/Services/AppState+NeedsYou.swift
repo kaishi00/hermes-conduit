@@ -67,6 +67,14 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
+            // A room's id is its host's own: another Hermes' room can share
+            // the open room's id, so a room wait counts as open only from a
+            // dashboard of this one's Hermes (issue 2631).
+            let mine = CombinedBotsHomeOrder.key(activeDashboardID, "")
+            let theirs = CombinedBotsHomeOrder.key(id, "")
+            let sameHermes = combinedBotsHomeTwins.contains { key, copies in
+                key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
+            }
             for profile in profiles {
                 guard isSceneActive else { return }
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
@@ -77,7 +85,8 @@ extension AppState {
                 needsYou.applyOther(
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
-                    dashboardID: id
+                    dashboardID: id,
+                    isOpenChat: { ($0.roomID == nil || sameHermes) && self.isOpenChat($0) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {

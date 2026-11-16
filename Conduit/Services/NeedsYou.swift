@@ -48,9 +48,13 @@ struct NeedsYouItem: Identifiable, Equatable {
     var dashboardID: UUID? = nil
 
     var id: String {
-        let own = "\(profile)\u{1F}\(waitID)"
-        return dashboardID.map { "\($0.uuidString)\u{1F}\(own)" } ?? own
+        dashboardID.map { "\($0.uuidString)\u{1F}\(hostKey)" } ?? hostKey
     }
+
+    /// The wait as its Hermes names it, whichever saved dashboard read it:
+    /// the plugin's ids are random, so two dashboards reaching one Hermes
+    /// (saved at two addresses) give the same key (issue 2631).
+    var hostKey: String { "\(profile)\u{1F}\(waitID)" }
 
     init(
         waitID: String,
@@ -226,23 +230,51 @@ final class NeedsYouStore: ObservableObject {
         // A wait that left the list needs no remembering.
         cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
         dropBannerNoLongerListed()
-        guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
+        // A wait another combined dashboard listed first (one Hermes saved
+        // at two addresses) had its banner there already (issue 2631).
+        let listedElsewhere = Set(otherDashboards.values.joined().map(\.hostKey))
+        guard !firstRead,
+              let newest = fresh.filter({ !isOpenChat($0) && !listedElsewhere.contains($0.hostKey) })
+                .max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
         if let banner, banner.since > newest.since { return }
         banner = newest
     }
 
     /// Every wait, the dashboard on screen's and the other combined
-    /// ones', newest first: the Needs you list.
+    /// ones', newest first: the Needs you list. A wait another dashboard
+    /// also lists (one Hermes saved at two addresses) shows once, as this
+    /// dashboard's, as the Chats list does (issue 2631).
     var everyItem: [NeedsYouItem] {
         guard !otherDashboards.isEmpty else { return items }
-        return (items + otherDashboards.values.joined()).sorted { $0.since > $1.since }
+        var taken = Set(items.map(\.hostKey))
+        var listed = items
+        for id in otherDashboards.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
+            for item in otherDashboards[id] ?? [] where taken.insert(item.hostKey).inserted {
+                listed.append(item)
+            }
+        }
+        return listed.sorted { $0.since > $1.since }
+    }
+
+    /// Whether a wait is listed already by this dashboard or by another
+    /// combined one than `dashboardID`.
+    private func heldElsewhere(_ item: NeedsYouItem, than dashboardID: UUID) -> Bool {
+        items.contains { $0.hostKey == item.hostKey }
+            || otherDashboards.contains { $0.key != dashboardID && $0.value.contains { $0.hostKey == item.hostKey } }
     }
 
     /// One profile's list on another combined dashboard, as just read
     /// through its kept connection. A new wait there shows the banner, as
-    /// one here does; it can't be in the chat on screen.
-    func applyOther(_ read: [NeedsYouItem], profile: String, dashboardID: UUID) {
+    /// one here does, unless another dashboard lists it too (one Hermes
+    /// saved at two addresses) or its chat is the one on screen, which
+    /// that twin can reach (issue 2631).
+    func applyOther(
+        _ read: [NeedsYouItem],
+        profile: String,
+        dashboardID: UUID,
+        isOpenChat: (NeedsYouItem) -> Bool = { _ in false }
+    ) {
         guard dashboardID != self.dashboardID else { return }
         let tagged = read.map { item -> NeedsYouItem in
             var item = item
@@ -259,7 +291,9 @@ final class NeedsYouStore: ObservableObject {
             otherDashboards[dashboardID] = merged.isEmpty ? nil : merged
         }
         dropBannerNoLongerListed()
-        guard !firstRead, let newest = fresh.max(by: { $0.since < $1.since }) else { return }
+        guard !firstRead,
+              let newest = fresh.filter({ !heldElsewhere($0, than: dashboardID) && !isOpenChat($0) })
+                .max(by: { $0.since < $1.since }) else { return }
         if let banner, banner.since > newest.since { return }
         banner = newest
     }

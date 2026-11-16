@@ -52,7 +52,12 @@ struct NeedsYouBanner: View {
 
     private func banner(_ item: NeedsYouItem) -> some View {
         // Not counting the open chat's wait, whose card is on screen.
-        let others = store.everyItem.filter { $0.id != item.id && !($0.dashboardID == nil && appState.isOpenChat($0)) }.count
+        // Another dashboard's copy of the open chat's wait (one Hermes saved
+        // twice) counts as on screen by its chat, never by a room id, which
+        // another host's room can share (issue 2631).
+        let others = store.everyItem.filter {
+            $0.hostKey != item.hostKey && !(($0.dashboardID == nil || $0.roomID == nil) && appState.isOpenChat($0))
+        }.count
         return HStack(spacing: 10) {
             NeedsYouRow.picture(item, appState, size: 28)
                 .overlay(alignment: .bottomTrailing) { NeedsYouDot(size: 9) }
