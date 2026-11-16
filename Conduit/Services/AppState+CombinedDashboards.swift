@@ -306,6 +306,12 @@ extension AppState {
                     self.noteCombinedDashboardFailed(id, trouble)
                     if trouble == .signInNeeded { self.combinedSignInsRefused.insert(id) }
                 }
+                // Dropped (past the cap meanwhile, or no longer wanted) with
+                // no retry waiting: no "trying again" either (issue 2615).
+                if case .dropped = outcome, self.keptDashboardRuntimes[id] == nil,
+                   self.combinedDashboardRetries[id]?.task == nil {
+                    self.standDownCombinedDashboardRetry(id)
+                }
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
                 // waits for its switch.
