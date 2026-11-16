@@ -437,6 +437,10 @@ struct BotWorkSnapshot: Equatable {
     /// run (a Bot Chat on Everything Here, or with its workstreams off,
     /// delegates itself); 0 from a plugin before the count (app issue 2206).
     let botChatAgentCount: Int
+    /// Shown from the phone's copy of an earlier read while the plugin is
+    /// asked again: its counts may be old, so the read that follows isn't
+    /// news (no finish ripple for what came back before it).
+    var isKept = false
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }

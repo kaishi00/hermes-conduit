@@ -1345,8 +1345,14 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard shell.isTabActive else { return }
             await appState.refreshBotWork(profile: bot.name)
         }
-        .onChange(of: work.snapshot(bot.name)?.readyCount) { old, new in
-            if let old, let new, new > old { noteFinished() }
+        // Counted by a read on one dashboard: the phone's copy of an earlier
+        // read catching up, or a switch onto another whose bot of the same
+        // name has more ready, isn't a result coming back (Eric, 2026-11-16:
+        // opening a far bot flashed another bot's ring).
+        .onChange(of: ReadyCount(dashboardID: appState.activeDashboardID, snapshot: work.snapshot(bot.name))) { old, new in
+            if old.dashboardID == new.dashboardID, !old.isKept, let was = old.count, let now = new.count, now > was {
+                noteFinished()
+            }
         }
         .onChange(of: isShown) { _, shown in
             if shown && finishPending { noteFinished() }
@@ -1626,6 +1632,19 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// A result came back (the bot's ready count went up): one ripple and a
     /// check on the badge, then still. Off screen, it waits for Bots Home
     /// to show again.
+    /// A bot's ready count and the dashboard it was read on.
+    private struct ReadyCount: Equatable {
+        let dashboardID: UUID?
+        let count: Int?
+        let isKept: Bool
+
+        init(dashboardID: UUID?, snapshot: BotWorkSnapshot?) {
+            self.dashboardID = dashboardID
+            count = snapshot?.readyCount
+            isKept = snapshot?.isKept ?? false
+        }
+    }
+
     private func noteFinished() {
         guard isShown else {
             finishPending = true
