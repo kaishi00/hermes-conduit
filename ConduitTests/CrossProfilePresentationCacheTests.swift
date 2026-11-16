@@ -1198,6 +1198,84 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "on screen, its waits are read as this dashboard's")
     }
 
+    /// The Chats list shows a kept combined dashboard's newest chats, read
+    /// through its kept connection, badged, with no actions of their own;
+    /// a tap opens through that dashboard (all-live stage 4b).
+    func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
+        final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.mintTicket = { _ in
+            counts.mints += 1
+            return "fresh-ticket"
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id) ?? "default", "default")
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            counts.reads.append(path)
+            guard path.contains("/api/profiles/sessions") else { return [:] }
+            return ["sessions": [
+                ["id": "mac-1", "title": "Release prep", "message_count": 4, "profile": "default", "last_active": 2_000],
+                ["id": "mac-2", "title": "Old", "message_count": 2, "profile": "default", "last_active": 1_000],
+                ["id": "mac-3", "title": "Empty", "message_count": 0, "profile": "default", "last_active": 3_000],
+            ]]
+        }
+
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(counts.reads.count, 1)
+        XCTAssertTrue(counts.reads[0].contains("profile=default"), "the profile it last used: \(counts.reads[0])")
+        let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2"])
+        XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
+        let row = try XCTUnwrap(rows.first)
+        XCTAssertEqual(appState.combinedChatDashboard(row), mac.id)
+        XCTAssertEqual(appState.combinedChatBadge(row), V2DashboardBadge(letter: "M", colorIndex: 0, name: "Mac"))
+        XCTAssertEqual(appState.rowProfile(row), appState.activeProfile, "not one of this dashboard's profiles")
+        XCTAssertFalse(appState.isSessionPinned(row))
+        XCTAssertFalse(appState.isSavedChatRow(row))
+        XCTAssertFalse(appState.isOpenChatRow(row))
+        var own = row
+        own.combinedDashboardID = nil
+        XCTAssertNil(appState.combinedChatDashboard(own), "this dashboard's own rows carry none")
+
+        // Read again only past a minute, or on a pull.
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(counts.reads.count, 1)
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(counts.reads.count, 2)
+        // A failed read keeps what the list showed.
+        let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "mac-2"])
+        appState.keptDashboardJSONReader = reader
+
+        let target = appState.combinedChatTarget(row, in: mac.id)
+        XCTAssertEqual(target.dashboardID, mac.id)
+        XCTAssertEqual(target.profile, "default")
+        XCTAssertEqual(target.sessionId, "mac-1")
+        let open = Task { @MainActor in await appState.openNotificationTarget(target) }
+        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        open.cancel()
+        XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty, "on screen, its chats are this list's own")
+
+        // The one left is kept now, and its chats list here; let go, they go.
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "the dashboard left is kept")
+        appState.keptDashboardJSONReader = { _, _ in
+            ["sessions": [["id": "vps-1", "title": "Deploy", "message_count": 3, "profile": "default", "last_active": 500]]]
+        }
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.combinedDashboardID), [vps.id])
+        appState.letGoCombinedDashboard(vps.id)
+        XCTAssertNil(appState.combinedDashboardChats[vps.id])
+        XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
+    }
+
     /// A notification from a combined dashboard kept beside the one on
     /// screen opens through its kept connection: no ticket, no new socket.
     func testANotificationFromAKeptDashboardOpensThroughItsKeptConnection() async throws {

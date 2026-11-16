@@ -153,6 +153,14 @@ struct V2ProfileBadge: Equatable {
     let url: URL?
 }
 
+/// Another combined dashboard's row (all-live stage 4b): the first letter
+/// of its name on its color, as Needs you marks its waits.
+struct V2DashboardBadge: Equatable {
+    let letter: String
+    let colorIndex: Int
+    let name: String
+}
+
 struct V2SessionRow: View {
     /// Where a Chats row's text starts (16 pt in, the 38 pt icon, 12 pt):
     /// its hairline and nest summary line up here.
@@ -180,6 +188,8 @@ struct V2SessionRow: View {
     /// without an icon (a project page gathering profiles, issue 1761)
     /// ahead of the title.
     var profileBadge: V2ProfileBadge? = nil
+    /// Another combined dashboard's chat: its badge, on the icon's corner.
+    var dashboardBadge: V2DashboardBadge? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .callout) private var titleFaceSize: CGFloat = 16
@@ -199,6 +209,10 @@ struct V2SessionRow: View {
                             .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
                             .offset(x: 4, y: 4)
                             .accessibilityHidden(true)
+                        } else if let dashboardBadge {
+                            CombinedDashboardBadge.Mark(badge: dashboardBadge, size: 18)
+                                .offset(x: 4, y: 4)
+                                .accessibilityHidden(true)
                         }
                     }
                     .padding(.leading, 16)
@@ -308,6 +322,7 @@ struct V2SessionRow: View {
 
     private var accessibilityValue: String {
         [
+            dashboardBadge?.name,
             profileBadge.map { AppLocalization.string("\($0.name) profile", table: .chat) },
             isUnread ? AppLocalization.string("Unread") : nil,
             isPinned ? AppLocalization.string("Pinned") : nil,

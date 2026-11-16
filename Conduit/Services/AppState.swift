@@ -236,6 +236,9 @@ final class AppState: ObservableObject {
     /// read through and when: a new kept connection reads them again, and
     /// so does a pass past `keptDashboardProfilesMaxAge`.
     var keptDashboardProfiles: [UUID: (bridge: ObjectIdentifier, profiles: [String], at: Date)] = [:]
+    /// Each other combined dashboard's newest chats (all-live stage 4b),
+    /// read through its kept connection for the profile it last used.
+    @Published var combinedDashboardChats: [UUID: CombinedDashboardChats] = [:]
     /// Reads a kept dashboard's JSON route through its bridge. Tests set it.
     var keptDashboardJSONReader: ((DashboardTicketBridge, String) async throws -> [String: Any])?
     /// Lets the kept connections go once Conduit has been off screen for

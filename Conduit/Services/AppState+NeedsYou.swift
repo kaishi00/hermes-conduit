@@ -31,6 +31,9 @@ extension AppState {
         await needsYou.coalescing { [weak self] in
             await self?.readNeedsYou()
             await self?.readOtherCombinedDashboardsNeedsYou()
+            // The other combined dashboards' chats ride the same poll, read
+            // less often (stage 4b, combinedDashboardChatsMaxAge).
+            await self?.readOtherCombinedDashboardsChats()
         }
     }
 
@@ -96,7 +99,7 @@ extension AppState {
         return profiles
     }
 
-    private func readKeptDashboardJSON(_ bridge: DashboardTicketBridge, path: String) async throws -> [String: Any] {
+    func readKeptDashboardJSON(_ bridge: DashboardTicketBridge, path: String) async throws -> [String: Any] {
         if let keptDashboardJSONReader { return try await keptDashboardJSONReader(bridge, path) }
         return try await bridge.requestJSON(path: path, timeoutMilliseconds: 6_000)
     }

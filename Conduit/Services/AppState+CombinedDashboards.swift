@@ -185,6 +185,8 @@ extension AppState {
         release(kept)
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
+        // Nor its chats in the Chats list (stage 4b).
+        if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
         if id != activeDashboardID {
             needsYou.forgetOtherDashboards(otherThan: Set(keptDashboardRuntimes.keys))
         }

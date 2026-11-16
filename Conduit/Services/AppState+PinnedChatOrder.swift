@@ -109,6 +109,9 @@ extension AppState {
     // MARK: - Pinning chats, and the saved order of chats, bots and rooms
 
     func isSessionPinned(_ session: SessionSummary) -> Bool {
+        // Another combined dashboard's row lists under Recent: its pins are
+        // that dashboard's, and this list's order can't hold them.
+        guard session.combinedDashboardID == nil else { return false }
         let ids = SessionPinSync.pinIDs(for: session)
         let owner = rowProfile(session)
         if owner != activeProfile {
