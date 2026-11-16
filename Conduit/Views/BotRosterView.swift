@@ -173,12 +173,19 @@ struct BotRosterView: View {
         // A Bot Chat opened from here that didn't open says why here.
         .onChange(of: appState.botsListNotice, initial: true) { _, notice in
             guard let notice else { return }
-            managementNotice = notice
             appState.botsListNotice = nil
+            // Connected again meanwhile: nothing left to say.
+            guard !(appState.isConnected && notice == AppState.connectToChatWithBotsMessage) else { return }
+            managementNotice = notice
         }
         // Another dashboard's or profile's list: this one's notice isn't about it.
         .onChange(of: appState.activeDashboardID) { _, _ in managementNotice = nil }
         .onChange(of: appState.activeProfile) { _, _ in managementNotice = nil }
+        // "Connect to Hermes" is over once it's connected (Eric, 2026-11-16:
+        // it stayed up over a connected Bots Home).
+        .onChange(of: appState.isConnected, initial: true) { _, connected in
+            if connected, managementNotice == AppState.connectToChatWithBotsMessage { managementNotice = nil }
+        }
         .sheet(item: $overviewBot, onDismiss: {
             if let bot = editAfterOverview {
                 editAfterOverview = nil
