@@ -155,7 +155,7 @@ extension AppState {
     /// fails or is overtaken leaves it followed.
     func followLeftChatIfItsReplyRuns(leaving oldID: String?, for newID: String?) {
         guard let oldID, let newID, oldID != newID else { return }
-        let ids = knownSessionIDs(for: oldID).union([oldID])
+        let ids = followedSessionIDs(for: oldID)
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
@@ -171,8 +171,12 @@ extension AppState {
         // copy is the complete one, so it's saved now that the chat is
         // left. Any other leave, and the chat kept beside, takes a fresh
         // copy of what's on screen, since what was sent there reached only
-        // the screen.
-        if !staysBeside, newSessionCreationsInFlight > 0, let chat = followedChat(answering: ids) {
+        // the screen. Only the copy this run of New Chats followed: one
+        // followed before it never took the rows a later open brought to
+        // the screen, and saving it would replace the fuller saved copy
+        // (issue 2617).
+        if !staysBeside, newSessionCreationsInFlight > 0, let run = newChatRunFollowedIDs,
+           let chat = followedChat(answering: ids), !chat.sessionIDs.isDisjoint(with: run) {
             if !chat.isRunning { saveBackgroundChatCopy(chat) }
         } else {
             followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnState == .running, staysBeside: staysBeside)
@@ -192,7 +196,7 @@ extension AppState {
     @discardableResult
     func followChatBeingLeft(turnWasRunning: Bool, joiningCreation: Bool = false) -> Set<String>? {
         guard let oldID = activeSessionId else { return nil }
-        let ids = knownSessionIDs(for: oldID).union([oldID])
+        let ids = followedSessionIDs(for: oldID)
         if joiningCreation, followedChat(answering: ids) != nil { return nil }
         let before = backgroundChats
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnWasRunning)
@@ -249,6 +253,15 @@ extension AppState {
         closeBesideChatWithoutItsChat()
     }
 
+    /// Hermes has bound `id`, one of the ids `chat` was left with, to
+    /// another chat since: the identity index names another conversation
+    /// for it, as the kept chat's send target checks (issue 2603).
+    func idBoundToAnotherChat(_ id: String, than chat: BackgroundChat) -> Bool {
+        guard let durable = conversationIdentityIndex.durableID(forRuntime: id, profile: chat.profile),
+              durable != id else { return false }
+        return !chat.sessionIDs.contains(durable) && chat.durableSessionID != durable
+    }
+
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
         if ids.contains(newID) { return true }
         let index = conversationIdentityIndex
@@ -268,15 +281,16 @@ extension AppState {
               activeRoomSurface == nil,
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
               let dashboardID = activeDashboardID else { return }
-        let listed = (sessions + cronSessions).first { session in
-            ids.contains(session.id)
-                || session.storedSessionId.map(ids.contains) == true
-                || !ids.isDisjoint(with: session.alternateIds)
-        }
+        // Its own row, never one that only borrows its id (issue 2602).
+        let listed = owningSessionRow(for: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
         let chat = BackgroundChat(
-            sessionIDs: ids.union(listed?.nestingIDs ?? []),
+            // The chat the screen's id stands for in the identity index is
+            // this one: kept, so a later rebind of one of its ids to another
+            // chat shows as one (issue 2603).
+            sessionIDs: ids.union(listed.map { followedSessionIDs(for: $0.id) } ?? [])
+                .union([conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)].compactMap { $0 }),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
             title: activeSessionTitle,
             dashboardID: dashboardID,
@@ -364,7 +378,9 @@ extension AppState {
         var onScreen = eventBelongsToActiveSession(id)
         // A rebound id reaches the followed copy on screen too, as its own
         // ids do, so the copy is current if the open is overtaken.
-        let ownIndex = backgroundChats.firstIndex(where: { $0.answers(to: id) })
+        // An id it was left with that Hermes has since bound to another
+        // chat reaches that chat's copy, never this one (issue 2603).
+        let ownIndex = backgroundChats.firstIndex(where: { $0.answers(to: id) && !idBoundToAnotherChat(id, than: $0) })
         guard let index = ownIndex ?? followedChatIndex(reboundTo: id) else { return false }
         let chat = backgroundChats[index]
         // Hermes bound the chat being opened to a new runtime id while it

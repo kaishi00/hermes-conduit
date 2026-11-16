@@ -4077,7 +4077,7 @@ final class OfflineChatCacheTests: XCTestCase {
         state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
         state.turnState = .running
         state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
-        XCTAssertNotNil(state.followChatBeingLeft(turnWasRunning: true))
+        state.newChatRunFollowedIDs = try XCTUnwrap(state.followChatBeingLeft(turnWasRunning: true))
         state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
         let settled = try XCTUnwrap(state.followedChat(answering: ["a"]))
         XCTAssertFalse(settled.isRunning)
@@ -4086,10 +4086,83 @@ final class OfflineChatCacheTests: XCTestCase {
         state.newSessionCreationsInFlight += 1
         state.setActiveSessionState(id: "b")
         state.newSessionCreationsInFlight -= 1
+        state.newChatRunFollowedIDs = nil
         XCTAssertEqual(state.backgroundChats.count, 1, "The adoption keeps the one follow")
         store.waitForPendingWrites()
         XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
                        "Once upon a time.")
+    }
+
+    /// Issue 2617: a chat left during another chat's New Chat, whose copy
+    /// was followed before that run, takes a fresh copy of the screen: the
+    /// old one never took the rows its later open showed.
+    func testAChatFollowedBeforeAnotherChatsNewChatIsCopiedAfresh() throws {
+        let (state, _, _) = makeAppState()
+        state.sessions = [session("a"), session("b"), session("k")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.rows.count, 2)
+
+        // Opened again, with older rows its open brought, while chat k's
+        // New Chat is under way (it followed k, not a).
+        state.setActiveSessionState(id: "a")
+        state.messages = [
+            ChatMessage(id: "u0", role: .user, content: "Earlier", timestamp: "0"),
+            ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1"),
+        ]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.newSessionCreationsInFlight += 1
+        state.newChatRunFollowedIDs = ["k"]
+        state.setActiveSessionState(id: "b")
+        state.newSessionCreationsInFlight -= 1
+        state.newChatRunFollowedIDs = nil
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.rows.first?.content, "Earlier", "a fresh copy of the screen")
+    }
+
+    /// Issues 2602 and 2603: a followed copy answers to its own chat's ids.
+    /// A row that only borrows its id, or an alias another row owns, never
+    /// redirects its save, and an id it was left with that Hermes binds to
+    /// another chat reaches that chat's copy, not this one.
+    func testAFollowedChatAnswersOnlyToItsOwnChatsIDs() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        var borrower = session("p")
+        borrower.alternateIds = ["a"]
+        var own = session("a")
+        own.alternateIds = ["rt-a", "b"]
+        state.sessions = [borrower, own, session("b"), session("c")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "c")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+
+        let left = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertEqual(left.durableSessionID, "a", "its own row, not the one listed first that borrows its id")
+        XCTAssertEqual(left.sessionIDs, ["a", "rt-a"], "not chat b's id, which its row carries")
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "b", profile: state.activeProfile, source: .resume)
+        XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-a", text: " Not ours")))
+        XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon")
+
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        store.waitForPendingWrites()
+        XCTAssertEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                       "Once upon a time.")
+        XCTAssertNil(store.loadTranscript("p", dashboardID: dashboard, profile: state.activeProfile))
+        XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: state.activeProfile))
     }
 
     /// A runtime id Hermes binds to a followed chat while it's away
