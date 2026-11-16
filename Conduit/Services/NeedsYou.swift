@@ -230,7 +230,12 @@ final class NeedsYouStore: ObservableObject {
         // A wait that left the list needs no remembering.
         cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
         dropBannerNoLongerListed()
-        guard !firstRead, let newest = fresh.filter({ !isOpenChat($0) }).max(by: { $0.since < $1.since }) else { return }
+        // A wait another combined dashboard listed first (one Hermes saved
+        // at two addresses) had its banner there already (issue 2631).
+        let listedElsewhere = Set(otherDashboards.values.joined().map(\.hostKey))
+        guard !firstRead,
+              let newest = fresh.filter({ !isOpenChat($0) && !listedElsewhere.contains($0.hostKey) })
+                .max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
         if let banner, banner.since > newest.since { return }
         banner = newest

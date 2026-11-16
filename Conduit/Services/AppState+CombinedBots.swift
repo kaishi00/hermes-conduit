@@ -100,6 +100,21 @@ enum CombinedBotsHomeOrder {
         return saved + shown.filter { !known.contains($0) }
     }
 
+    /// A shown key the order lacks takes the place of a key of the same
+    /// bot the grid no longer shows: one Hermes saved twice, its bot now
+    /// shown as the other dashboard's copy, so a switch moves nothing.
+    static func handingOn(_ order: [String], shown: [String]) -> [String] {
+        func bot(_ key: String) -> Substring { key.split(separator: "|", maxSplits: 1).last ?? Substring(key) }
+        let shownKeys = Set(shown)
+        var order = order
+        for key in shown where !order.contains(key) {
+            if let at = order.firstIndex(where: { !shownKeys.contains($0) && bot($0) == bot(key) }) {
+                order[at] = key
+            }
+        }
+        return order
+    }
+
     /// `dragged` dropped on `target` takes its place, as on the Home
     /// Screen: carried on from before it, it lands just after it, else just
     /// before. Nil, or a target the order lacks: at the end.
@@ -138,7 +153,20 @@ extension AppState {
             }
         }
         if !mineListed { items = mine + items }
-        return CombinedBotsHomeOrder.ordered(Self.oneCopyPerHermes(items), saved: combinedBotsHomeOrder, key: \.id)
+        let shown = Self.oneCopyPerHermes(items)
+        // A bot kept as another dashboard's copy than before (a switch
+        // between two dashboards of one Hermes) takes the place its copies
+        // were saved at, so a switch moves nothing.
+        let place = Dictionary(combinedBotsHomeOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        let copies = Dictionary(grouping: items, by: { $0.bot.name.lowercased() })
+        let shownIDs = Set(shown.map(\.id))
+        func savedKey(_ item: CombinedBotsHomeItem) -> String {
+            let dropped = (copies[item.bot.name.lowercased()] ?? []).map(\.id).filter { !shownIDs.contains($0) }
+            return ([item.id] + dropped)
+                .compactMap { id in place[id].map { (id, $0) } }
+                .min { $0.1 < $1.1 }?.0 ?? item.id
+        }
+        return CombinedBotsHomeOrder.ordered(shown, saved: combinedBotsHomeOrder, key: savedKey)
     }
 
     /// One Hermes saved at two addresses answers both with one roster: its
@@ -191,7 +219,8 @@ extension AppState {
             // "-" is a dashboard with no saved entry: not one that left.
             key.split(separator: "|", maxSplits: 1).first.map { $0 == "-" || group.contains(String($0)) } ?? false
         }
-        let settled = combinedBotsHomeRostersIn ? CombinedBotsHomeOrder.settled(kept, shown: shown) : kept
+        let settled = combinedBotsHomeRostersIn
+            ? CombinedBotsHomeOrder.settled(CombinedBotsHomeOrder.handingOn(kept, shown: shown), shown: shown) : kept
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
         CombinedBotsHomeOrder.save(settled, defaults)
@@ -200,7 +229,9 @@ extension AppState {
     /// A portrait of the mixed grid dropped on another (`onto`, its key),
     /// or at the end (nil). Either may be this dashboard's or another's.
     func moveCombinedBot(_ dragged: String, onto target: String?, shown: [String]) {
-        let order = CombinedBotsHomeOrder.settled(combinedBotsHomeOrder, shown: shown)
+        let saved = combinedBotsHomeRostersIn
+            ? CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, shown: shown) : combinedBotsHomeOrder
+        let order = CombinedBotsHomeOrder.settled(saved, shown: shown)
         let moved = CombinedBotsHomeOrder.moving(
             order,
             CombinedBotsHomeOrder.key(dragged: dragged, onScreen: activeDashboardID),

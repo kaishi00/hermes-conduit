@@ -155,7 +155,7 @@ extension ChatOnScreenTests {
     /// One Hermes saved at two addresses, both in the group: a wait both
     /// list shows once, as this dashboard's, and banners once, from this
     /// dashboard; one in the chat on screen banners from neither (issue 2631).
-    func testAWaitTwoDashboardsOfOneHermesListShowsOnce() {
+    func testAWaitTwoDashboardsOfOneHermesListShowsOnce() throws {
         let store = NeedsYouStore()
         let here = UUID(), twin = UUID()
         func wait(_ id: String, _ at: Double) -> NeedsYouItem {
@@ -178,6 +178,15 @@ extension ChatOnScreenTests {
                          isOpenChat: { $0.waitID == "w3" })
         XCTAssertEqual(store.banner?.waitID, "w2", "no banner for the chat on screen")
         XCTAssertEqual(store.everyItem.map(\.waitID), ["w3", "w2", "w1"])
+
+        // The twin's read banners a new wait first; once dismissed, this
+        // dashboard's own read of it banners nothing again.
+        store.applyOther([wait("w1", 10), wait("w2", 20), wait("w3", 30), wait("w4", 40)], profile: "default", dashboardID: twin)
+        let twinBanner = store.banner
+        XCTAssertEqual(twinBanner?.waitID, "w4")
+        store.dismissBanner(try XCTUnwrap(twinBanner))
+        store.apply([wait("w1", 10), wait("w2", 20), wait("w3", 30), wait("w4", 40)], profile: "default", dashboardID: here) { _ in false }
+        XCTAssertNil(store.banner, "its banner showed once, from the twin")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
