@@ -223,6 +223,9 @@ struct V2PulsePage: View {
                                   served: appState.notifierPlugin.reports(PulseClient.feedCapability),
                                   available: appState.showsPulseScreen)) {
             guard isVisible, scenePhase == .active else { return }
+            // A card asked for while the tab was hidden opens on the cards
+            // the page already has, without waiting on a read that may fail.
+            if let request = appState.pulseOpenRequest, page != nil { focus(request) }
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
