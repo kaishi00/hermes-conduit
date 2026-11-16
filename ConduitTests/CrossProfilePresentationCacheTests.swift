@@ -901,6 +901,7 @@ extension CrossProfilePresentationCacheTests {
         let box = Box()
         operations.mintTicket = { _ in
             // Conduit leaves the screen while the ticket is out.
+            box.appState?.isSceneActive = false
             box.appState?.dropKeptDashboardRuntimesAfterGrace()
             return "late-ticket"
         }

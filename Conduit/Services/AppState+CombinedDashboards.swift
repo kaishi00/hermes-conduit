@@ -180,9 +180,17 @@ extension AppState {
                   keptDashboardRuntimes.count + combinedSignInsUnderWay.count < Self.combinedLiveDashboardCap - 1,
                   combinedDashboardSignsInQuietly(id) else { continue }
             combinedSignInsUnderWay.insert(id)
+            let generation = keptDashboardRuntimesGeneration
             Task { @MainActor [weak self] in
-                await self?.signInCombinedDashboardQuietly(id)
-                self?.combinedSignInsUnderWay.remove(id)
+                guard let self else { return }
+                await self.signInCombinedDashboardQuietly(id)
+                self.combinedSignInsUnderWay.remove(id)
+                // Conduit left and came back while it was out: the return's
+                // own pass skipped it, so it goes again. A plain failure
+                // waits for its switch.
+                if generation != self.keptDashboardRuntimesGeneration {
+                    self.connectOtherCombinedDashboards()
+                }
             }
         }
     }
@@ -259,7 +267,10 @@ extension AppState {
             )
             client = opened
             try await opened.connect()
-            guard stillWanted(), opened.isConnected else {
+            // A switch meanwhile may have kept the dashboard it left: the
+            // cap holds, the one on screen counted.
+            guard stillWanted(), opened.isConnected,
+                  keptDashboardRuntimes.count < Self.combinedLiveDashboardCap - 1 else {
                 opened.disconnect()
                 bridge.invalidate()
                 return

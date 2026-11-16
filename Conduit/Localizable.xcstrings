@@ -196124,84 +196124,84 @@
         }
       }
     },
-    "Combined dashboards all connect when Conduit opens and stay connected while you use another one, so switching between them is instant. Switch on two or more." : {
+    "Combined dashboards connect when Conduit opens, up to four at a time, and stay connected while you use another one, so switching between them is quick. One that needs you to sign in waits until you open it. Switch on two or more." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kombinierte Dashboards verbinden sich alle, wenn Conduit öffnet, und bleiben verbunden, während du ein anderes nutzt, sodass der Wechsel zwischen ihnen sofort geht. Schalte zwei oder mehr ein."
+            "value" : "Kombinierte Dashboards verbinden sich, wenn Conduit öffnet, bis zu vier gleichzeitig, und bleiben verbunden, während du ein anderes nutzt, sodass der Wechsel zwischen ihnen schnell geht. Eines, bei dem du dich anmelden musst, wartet, bis du es öffnest. Schalte zwei oder mehr ein."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Los paneles combinados se conectan todos al abrir Conduit y siguen conectados mientras usas otro, así que cambiar entre ellos es instantáneo. Activa dos o más."
+            "value" : "Los paneles combinados se conectan al abrir Conduit, hasta cuatro a la vez, y siguen conectados mientras usas otro, así que cambiar entre ellos es rápido. Uno en el que tengas que iniciar sesión espera hasta que lo abras. Activa dos o más."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Les tableaux de bord combinés se connectent tous à l'ouverture de Conduit et restent connectés pendant que vous en utilisez un autre : passer de l'un à l'autre est instantané. Activez-en deux ou plus."
+            "value" : "Les tableaux de bord combinés se connectent à l'ouverture de Conduit, jusqu'à quatre à la fois, et restent connectés pendant que vous en utilisez un autre : passer de l'un à l'autre est rapide. Celui qui demande de vous connecter attend que vous l'ouvriez. Activez-en deux ou plus."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dasbor gabungan semuanya terhubung saat Conduit dibuka dan tetap terhubung saat kamu memakai yang lain, jadi berpindah di antaranya langsung terjadi. Aktifkan dua atau lebih."
+            "value" : "Dasbor gabungan terhubung saat Conduit dibuka, hingga empat sekaligus, dan tetap terhubung saat kamu memakai yang lain, jadi berpindah di antaranya cepat. Dasbor yang memerlukan kamu masuk akan menunggu sampai kamu membukanya. Aktifkan dua atau lebih."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le dashboard combinate si connettono tutte all'apertura di Conduit e restano connesse mentre ne usi un'altra, così passare dall'una all'altra è immediato. Attivane due o più."
+            "value" : "Le dashboard combinate si connettono all'apertura di Conduit, fino a quattro alla volta, e restano connesse mentre ne usi un'altra, così passare dall'una all'altra è rapido. Una che richiede l'accesso aspetta finché non la apri. Attivane due o più."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "統合したダッシュボードは Conduit を開くとすべて接続され、別のものを使っている間も接続されたままなので、すぐに切り替えられます。2つ以上オンにしてください。"
+            "value" : "統合したダッシュボードは Conduit を開くと一度に4つまで接続され、別のものを使っている間も接続されたままなので、すばやく切り替えられます。サインインが必要なものは、開くまで待機します。2つ以上オンにしてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "합친 대시보드는 Conduit을 열면 모두 연결되고 다른 대시보드를 쓰는 동안에도 연결된 채로 있어 바로 전환할 수 있습니다. 두 개 이상 켜세요."
+            "value" : "합친 대시보드는 Conduit을 열면 한 번에 최대 네 개까지 연결되고 다른 대시보드를 쓰는 동안에도 연결된 채로 있어 빠르게 전환할 수 있습니다. 로그인이 필요한 대시보드는 열 때까지 기다립니다. 두 개 이상 켜세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Połączone panele łączą się wszystkie po otwarciu Conduit i pozostają połączone, gdy używasz innego, więc przełączanie między nimi jest natychmiastowe. Włącz dwa lub więcej."
+            "value" : "Połączone panele łączą się po otwarciu Conduit, do czterech naraz, i pozostają połączone, gdy używasz innego, więc przełączanie między nimi jest szybkie. Panel, który wymaga zalogowania, czeka, aż go otworzysz. Włącz dwa lub więcej."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Os painéis combinados se conectam todos quando o Conduit abre e continuam conectados enquanto você usa outro, então alternar entre eles é instantâneo. Ative dois ou mais."
+            "value" : "Os painéis combinados se conectam quando o Conduit abre, até quatro de cada vez, e continuam conectados enquanto você usa outro, então alternar entre eles é rápido. Um que exija que você entre espera até você abri-lo. Ative dois ou mais."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Объединённые дашборды подключаются все сразу при открытии Conduit и остаются подключёнными, пока вы пользуетесь другим, поэтому переключение между ними мгновенное. Включите два или больше."
+            "value" : "Объединённые дашборды подключаются при открытии Conduit, до четырёх одновременно, и остаются подключёнными, пока вы пользуетесь другим, поэтому переключение между ними быстрое. Дашборд, в который нужно войти, ждёт, пока вы его не откроете. Включите два или больше."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Birleştirilmiş paneller Conduit açıldığında hepsi bağlanır ve başka birini kullanırken bağlı kalır, böylece aralarında geçiş anında olur. İki veya daha fazlasını açın."
+            "value" : "Birleştirilmiş paneller Conduit açıldığında aynı anda en fazla dört tane bağlanır ve başka birini kullanırken bağlı kalır, böylece aralarında hızlıca geçiş yapılır. Oturum açmanızı gerektiren bir panel, siz açana kadar bekler. İki veya daha fazlasını açın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "合并的仪表板会在打开 Conduit 时全部连接，并在你使用其他仪表板时保持连接，因此可以即时切换。请打开两个或更多。"
+            "value" : "合并的仪表板会在打开 Conduit 时连接，一次最多四个，并在你使用其他仪表板时保持连接，因此可以快速切换。需要你登录的仪表板会等到你打开它时再连接。请打开两个或更多。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "合併的儀表板會在打開 Conduit 時全部連線，並在你使用其他儀表板時保持連線，因此可以即時切換。請開啟兩個或更多。"
+            "value" : "合併的儀表板會在打開 Conduit 時連線，一次最多四個，並在你使用其他儀表板時保持連線，因此可以快速切換。需要你登入的儀表板會等到你打開它時再連線。請開啟兩個或更多。"
           }
         }
       }
