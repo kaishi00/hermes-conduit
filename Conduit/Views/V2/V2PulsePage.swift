@@ -1755,7 +1755,7 @@ struct V2PulsePage: View {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
-            if newCards == nil, isVisible {
+            if newCards == nil, isVisible, scenePhase == .active {
                 newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
             }
             loadError = nil
