@@ -24,12 +24,39 @@ struct CombinedDashboardBadge: View {
         Color(red: 0.55, green: 0.45, blue: 0.20),
     ]
 
-    /// Past the palette (a group of seven or more), a hue of its own,
-    /// stepped by the golden angle so none lands on another's.
+    /// The palette's hues, which a color past it keeps clear of.
+    static let paletteHues: [Double] = [0.603, 0.907, 0.438, 0.076, 0.704, 0.119]
+
+    /// Past the palette (a group of seven or more), a hue of its own:
+    /// stepped by the golden angle, each step nudged to the middle of the
+    /// widest gap it lands in, so it sits between the palette's hues and
+    /// the ones before it. Yellows and greens, light by nature, are
+    /// darkened, so white text reads on each.
     static func color(_ index: Int) -> Color {
         guard index >= palette.count else { return palette[max(index, 0)] }
-        let hue = (Double(index - palette.count) * 0.618_033_988_75 + 0.08).truncatingRemainder(dividingBy: 1)
-        return Color(hue: hue, saturation: 0.65, brightness: 0.62)
+        let hue = generatedHue(index)
+        let light = hue > 0.10 && hue < 0.45
+        return Color(hue: hue, saturation: 0.70, brightness: light ? 0.48 : 0.62)
+    }
+
+    /// The hue for a place past the palette: the middle of the widest gap
+    /// between the palette's hues and the places past it before this one.
+    static func generatedHue(_ index: Int) -> Double {
+        var taken = paletteHues
+        var hue = 0.0
+        for _ in palette.count...max(index, palette.count) {
+            let sorted = taken.sorted()
+            var best = (gap: 0.0, middle: 0.0)
+            for (at, start) in sorted.enumerated() {
+                let end = at + 1 < sorted.count ? sorted[at + 1] : sorted[0] + 1
+                if end - start > best.gap {
+                    best = (end - start, (start + (end - start) / 2).truncatingRemainder(dividingBy: 1))
+                }
+            }
+            hue = best.middle
+            taken.append(hue)
+        }
+        return hue
     }
 
     var body: some View {
