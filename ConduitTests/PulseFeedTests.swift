@@ -13,6 +13,16 @@ import XCTest
 
 @MainActor
 final class PulseFeedTests: XCTestCase {
+    /// A visited Pulse tab kept mounted behind another tab isn't on screen:
+    /// it neither polls the feed nor marks cards seen (issue 2515).
+    func testAPulsePageInAHiddenTabIsNotVisible() {
+        var shell = V2ShellContext()
+        XCTAssertTrue(V2PulsePage.isVisible(shown: true, in: shell))
+        XCTAssertFalse(V2PulsePage.isVisible(shown: false, in: shell), "a chat pushed over it")
+        shell.isTabActive = false
+        XCTAssertFalse(V2PulsePage.isVisible(shown: true, in: shell), "another tab selected over it")
+    }
+
     private func appState() throws -> AppState {
         let suite = "PulseFeedTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
