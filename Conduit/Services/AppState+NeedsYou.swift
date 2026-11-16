@@ -93,7 +93,7 @@ extension AppState {
     /// A kept dashboard's profiles, read through its bridge once per kept
     /// connection and again every few minutes. The last list when a read
     /// again fails; nil when none could be read.
-    private func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
+    func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
         let bridge = ObjectIdentifier(runtime.bridge)
         let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
         if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }

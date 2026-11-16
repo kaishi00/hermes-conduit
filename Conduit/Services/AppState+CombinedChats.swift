@@ -16,7 +16,9 @@ import Foundation
 /// through and when.
 struct CombinedDashboardChats: Equatable {
     let bridge: ObjectIdentifier
-    let profile: String
+    /// Every profile read there, in that dashboard's order. Each row
+    /// names its own.
+    let profiles: [String]
     let sessions: [SessionSummary]
     let at: Date
 }
@@ -29,9 +31,11 @@ extension AppState {
     /// again. A pull on the list reads them at once.
     static let combinedDashboardChatsMaxAge: TimeInterval = 60
 
-    /// Reads each other combined dashboard's newest chats through its kept
-    /// connection. Quiet on failure: a dashboard that can't be read keeps
-    /// what it showed, and one let go or opened says nothing more.
+    /// Reads each other combined dashboard's newest chats, every one of its
+    /// profiles (Eric, 2026-11-16: All combines all of it), through its
+    /// kept connection. Quiet on failure: a profile that can't be read
+    /// keeps what it showed, and a dashboard let go or opened says nothing
+    /// more.
     func readOtherCombinedDashboardsChats(force: Bool = false, now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
         // One that dropped by itself keeps its last list until it's back;
@@ -41,26 +45,49 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             let bridge = ObjectIdentifier(runtime.bridge)
-            let profile = rememberedActiveProfile(for: id) ?? "default"
-            if !force, let last = combinedDashboardChats[id], last.bridge == bridge,
-               profilesMatch(last.profile, profile),
+            let profiles = await keptDashboardProfileNames(id, runtime)
+                ?? [rememberedActiveProfile(for: id) ?? "default"]
+            guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
+            if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
                now.timeIntervalSince(last.at) < Self.combinedDashboardChatsMaxAge { continue }
-            let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
-            let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
-            // Let go, opened, or out of the group while the read was out.
-            // Its profile changed meanwhile, or a read started later already
-            // stored its answer: either way this one is stale.
-            guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
-                  isInCombinedGroup(id), profilesMatch(rememberedActiveProfile(for: id) ?? "default", profile),
-                  !(combinedDashboardChats[id].map { $0.at > now } ?? false) else { continue }
-            // An answer with no list (an error body) is a failed read.
-            guard let batch = response?["sessions"] as? [Any] else { continue }
-            let sessions = Self.dashboardOwnedSessions(batch, profile: profile).map { row -> SessionSummary in
-                var row = row
-                row.combinedDashboardID = id
-                return row
+            let earlier = combinedDashboardChats[id].flatMap { $0.bridge == bridge ? $0 : nil }
+            var sessions: [SessionSummary] = []
+            var answered = false
+            var stale = false
+            for profile in profiles {
+                guard isSceneActive else { return }
+                let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
+                let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
+                // Let go, opened, or out of the group while the read was
+                // out, or a read started later already stored its answer:
+                // this one is stale.
+                guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
+                      isInCombinedGroup(id), !(combinedDashboardChats[id].map { $0.at > now } ?? false) else {
+                    stale = true
+                    break
+                }
+                // An answer with no list (an error body) is a failed read:
+                // that profile keeps what it showed.
+                guard let batch = response?["sessions"] as? [Any] else {
+                    let kept = earlier?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
+                    sessions = V2FilterSelection.mergedByRecency(sessions, kept)
+                    continue
+                }
+                answered = true
+                let rows = Self.dashboardOwnedSessions(batch, profile: profile).map { row -> SessionSummary in
+                    var row = row
+                    row.combinedDashboardID = id
+                    return row
+                }
+                sessions = V2FilterSelection.mergedByRecency(sessions, rows)
             }
-            combinedDashboardChats[id] = CombinedDashboardChats(bridge: bridge, profile: profile, sessions: sessions, at: now)
+            guard !stale, answered else { continue }
+            combinedDashboardChats[id] = CombinedDashboardChats(
+                bridge: bridge,
+                profiles: profiles,
+                sessions: sessions,
+                at: now
+            )
         }
     }
 
@@ -81,9 +108,10 @@ extension AppState {
             let feed = combinedDashboardPulse[dashboard.id]
             let home = feed?.homeChatID.map { ($0, feed?.profile) }
                 ?? pulseRememberedHomes[key].map { ($0, pulseRememberedProfiles[key]) }
-            let pulseHome = home.flatMap { profilesMatch(chats.profile, $0.1 ?? chats.profile) ? $0.0 : nil }
-            let fresh = chats.sessions.filter {
-                !taken.contains($0.id) && !(pulseHome.map($0.nestingIDs.contains) ?? false)
+            let fresh = chats.sessions.filter { row in
+                guard !taken.contains(row.id) else { return false }
+                guard let home, profilesMatch(row.profile ?? "", home.1 ?? row.profile ?? "") else { return true }
+                return !row.nestingIDs.contains(home.0)
             }
             taken.formUnion(fresh.map(\.id))
             merged = V2FilterSelection.mergedByRecency(merged, fresh)
@@ -122,8 +150,8 @@ extension AppState {
     }
 
     /// Opens another combined dashboard's row: the switch to its dashboard
-    /// (through its kept connection), then the chat in the profile it was
-    /// read for, as a notification from that dashboard opens.
+    /// (through its kept connection), then the chat in its own profile, as
+    /// a notification from that dashboard opens.
     func openCombinedChat(_ session: SessionSummary, in dashboardID: UUID) {
         // The notification path refuses during a call too; saying so here
         // keeps it to the tap.
@@ -131,15 +159,82 @@ extension AppState {
         PushNotificationService.shared.routeChatLink(combinedChatTarget(session, in: dashboardID))
     }
 
-    /// Where another combined dashboard's row opens: its chat, in the
-    /// profile it was read for, on its dashboard.
+    /// Where another combined dashboard's row opens: its chat, in its own
+    /// profile, on its dashboard.
     func combinedChatTarget(_ session: SessionSummary, in dashboardID: UUID) -> ConduitNotificationTarget {
         ConduitNotificationTarget(
-            profile: combinedDashboardChats[dashboardID]?.profile ?? session.profile ?? "default",
+            profile: session.profile ?? "default",
             sessionId: session.id,
             dashboardID: dashboardID,
             type: nil,
             isChatLink: true
         )
+    }
+}
+
+/// One picture of Chats' profile strip in a combined group: a profile of
+/// the dashboard on screen, or of another combined dashboard.
+struct CombinedProfileChip: Identifiable, Equatable {
+    /// The dashboard whose profile it is; nil only outside a group.
+    let dashboardID: UUID?
+    let profile: String
+    /// Another dashboard's: a tap switches there.
+    let isOther: Bool
+
+    /// Its key in the group's one order (Bots Home's): a profile and its
+    /// bot are the same thing in Hermes.
+    var id: String { CombinedBotsHomeOrder.key(dashboardID, profile) }
+}
+
+extension AppState {
+    /// Chats' profile strip in a combined group: every dashboard's profiles
+    /// in one row, in the order the person set on Bots Home (Eric,
+    /// 2026-11-16: "a row of portraits on top like one dashboard"). Until
+    /// arranged, each dashboard's in Saved Dashboards order, this one's
+    /// (`own`) in its own order. Outside a group, or with no other
+    /// dashboard's profiles known yet, just `own`.
+    func combinedProfileStrip(own: [String]) -> [CombinedProfileChip] {
+        let mine = own.map { CombinedProfileChip(dashboardID: activeDashboardID, profile: $0, isOther: false) }
+        guard isInCombinedGroup(activeDashboardID) else { return mine }
+        var chips: [CombinedProfileChip] = []
+        var others = false
+        var mineListed = false
+        for dashboard in savedDashboardRegistry.dashboards {
+            if dashboard.id == activeDashboardID {
+                chips += mine
+                mineListed = true
+            } else if isInCombinedGroup(dashboard.id), let profiles = otherCombinedDashboardProfiles(dashboard.id) {
+                chips += profiles.map { CombinedProfileChip(dashboardID: dashboard.id, profile: $0, isOther: true) }
+                others = true
+            }
+        }
+        guard others else { return mine }
+        if !mineListed { chips = mine + chips }
+        return CombinedBotsHomeOrder.ordered(chips, saved: combinedBotsHomeOrder, key: \.id)
+    }
+
+    /// Another combined dashboard's profiles as last read: with its chats,
+    /// else with its waits. They stand through a dropped connection, as its
+    /// chats do.
+    func otherCombinedDashboardProfiles(_ id: UUID) -> [String]? {
+        let profiles = combinedDashboardChats[id]?.profiles ?? keptDashboardProfiles[id]?.profiles
+        return profiles.flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// The picture another combined dashboard's profile has on this phone.
+    func otherCombinedDashboardProfileAvatar(_ profile: String, in id: UUID) -> URL? {
+        profileAppearanceStore.loadAvatarURLs(dashboardID: id)[profile]
+    }
+
+    /// A strip pick of another combined dashboard's profile: the switch
+    /// there through its kept connection, the strip staying as it was (the
+    /// group's one order), its list no longer All. True once it's on screen;
+    /// the caller then picks the profile as the strip does on one dashboard.
+    func switchForCombinedProfile(in dashboardID: UUID) async -> Bool {
+        guard !refusesCombinedSwitchDuringCall() else { return false }
+        await switchDashboard(to: dashboardID)
+        guard activeDashboardID == dashboardID else { return false }
+        setAllProfilesChatsOn(false)
+        return true
     }
 }

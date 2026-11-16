@@ -821,7 +821,7 @@ extension CrossProfilePresentationCacheTests {
         appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         let id = ObjectIdentifier(outgoing)
-        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profile: "default", sessions: [], at: Date())
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(bridge: id, profiles: ["default"], sessions: [], at: Date())
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(client: id, bots: [], avatars: [:], at: Date())
         appState.combinedDashboardPulse[mac.id] = CombinedDashboardPulse(bridge: id, unseen: 2, at: Date())
 
@@ -1236,8 +1236,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id) ?? "default", "default")
         appState.keptDashboardJSONReader = { bridge, path in
             XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
-            counts.reads.append(path)
+            if path == "/api/profiles" { return ["profiles": ["default", "atlas"]] }
             guard path.contains("/api/profiles/sessions") else { return [:] }
+            counts.reads.append(path)
+            if path.contains("profile=atlas") {
+                return ["sessions": [
+                    ["id": "atlas-1", "title": "Garden", "message_count": 3, "profile": "atlas", "last_active": 1_500],
+                ]]
+            }
             return ["sessions": [
                 ["id": "mac-1", "title": "Release prep", "message_count": 4, "profile": "default", "last_active": 2_000],
                 ["id": "mac-2", "title": "Old", "message_count": 2, "profile": "default", "last_active": 1_000],
@@ -1245,10 +1251,33 @@ extension CrossProfilePresentationCacheTests {
             ]]
         }
 
+        // Every one of its profiles, not only the one it last used (Eric,
+        // 2026-11-16: All combines all of it).
         await appState.readOtherCombinedDashboardsChats()
-        XCTAssertEqual(counts.reads.count, 1)
-        XCTAssertTrue(counts.reads[0].contains("profile=default"), "the profile it last used: \(counts.reads[0])")
-        let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2"])
+        XCTAssertEqual(counts.reads.count, 2)
+        XCTAssertTrue(counts.reads[0].contains("profile=default"), counts.reads[0])
+        XCTAssertTrue(counts.reads[1].contains("profile=atlas"), counts.reads[1])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default", "atlas"])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"],
+                       "newest first across its profiles")
+        XCTAssertEqual(appState.combinedChatTarget(
+            try XCTUnwrap(appState.otherCombinedDashboardsChats(excluding: []).first { $0.id == "atlas-1" }), in: mac.id
+        ).profile, "atlas", "a row opens in its own profile")
+        // Chats' strip: every dashboard's profiles in one row, each
+        // dashboard's in Saved Dashboards order until arranged on Bots
+        // Home, then in that order.
+        appState.combinedBotsHomeOrder = []
+        let strip = appState.combinedProfileStrip(own: ["default"])
+        XCTAssertEqual(strip.map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas"),
+            CombinedBotsHomeOrder.key(vps.id, "default"),
+        ])
+        XCTAssertEqual(strip.map(\.isOther), [true, true, false])
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        appState.combinedBotsHomeOrder = []
+        let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
         // The Chats list shows them only in All: one profile's list is that
         // profile's own (Eric, 2026-11-16).
@@ -1272,14 +1301,21 @@ extension CrossProfilePresentationCacheTests {
 
         // Read again only past a minute, or on a pull.
         await appState.readOtherCombinedDashboardsChats()
-        XCTAssertEqual(counts.reads.count, 1)
-        await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(counts.reads.count, 2)
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(counts.reads.count, 4)
         // A failed read keeps what the list showed.
         let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
         appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
         await appState.readOtherCombinedDashboardsChats(force: true)
-        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "mac-2"])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
+        // One profile failing keeps that profile's rows, the other's fresh.
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("profile=atlas") { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
         appState.keptDashboardJSONReader = reader
 
         let target = appState.combinedChatTarget(row, in: mac.id)
@@ -1324,7 +1360,7 @@ extension CrossProfilePresentationCacheTests {
         var twin = try XCTUnwrap(appState.combinedDashboardChats[vps.id]?.sessions.first)
         twin.combinedDashboardID = lab.id
         appState.combinedDashboardChats[lab.id] = CombinedDashboardChats(
-            bridge: ObjectIdentifier(vpsClient), profile: "default", sessions: [twin], at: Date()
+            bridge: ObjectIdentifier(vpsClient), profiles: ["default"], sessions: [twin], at: Date()
         )
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.combinedDashboardID), [vps.id])
         appState.combinedDashboardChats[lab.id] = nil
