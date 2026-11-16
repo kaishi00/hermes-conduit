@@ -703,6 +703,13 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(again), profiles: ["old"], sessions: [session("old-chat", profile: "old")], at: Date()
         )
+        // So does its bots' work seeded before the visit, with none read on
+        // it: no pill from before the visit stands (a wait answered on it).
+        let earlier = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 0, "needs_you": 1, "ready": 0, "waiting": 1], "work": [[String: Any]](),
+        ], profile: "atlas"))
+        appState.combinedDashboardBotWork[mac.id] = ["atlas": earlier]
         appState.keepOutgoingDashboardRuntimeIfCombined(
             mac.id, switchingTo: vps.id, roster: [], profiles: ["default", "atlas"], chats: [chat]
         )
@@ -715,6 +722,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.at, Date.distantPast)
         XCTAssertNotNil(appState.combinedDashboardChats[mac.id]?.seededAt, "a read started before it can't overwrite it")
         XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.at, Date.distantPast, "its profiles are read anew on the next pass")
+        XCTAssertNil(appState.combinedDashboardBotWork[mac.id], "work from before the visit goes")
         // Its socket dropping keeps the strip's profiles with its list.
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])

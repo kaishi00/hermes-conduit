@@ -160,8 +160,14 @@ extension AppState {
         // roster it had, so the grid never loses them waiting for a read.
         seedCombinedDashboardBots(outgoingID, from: roster, client: client, glows: glows)
         // Their pills too, from the work it read (and what its plugin
-        // serves, so the next read needs no second ask).
-        if !work.isEmpty { combinedDashboardBotWork[outgoingID] = work }
+        // serves, so the next read needs no second ask). With none read on
+        // this visit, what was seeded before it goes: a pill from before the
+        // visit (a wait answered meanwhile) never shows until the next read.
+        if !work.isEmpty {
+            combinedDashboardBotWork[outgoingID] = work
+        } else if combinedDashboardBotWork[outgoingID] != nil {
+            combinedDashboardBotWork.removeValue(forKey: outgoingID)
+        }
         if let pluginCapabilities {
             combinedDashboardPluginCapabilities[outgoingID] = (ObjectIdentifier(bridge), pluginCapabilities)
         }
