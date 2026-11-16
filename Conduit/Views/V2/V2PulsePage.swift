@@ -128,8 +128,18 @@ struct V2PulsePage: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.openURL) private var openURL
-    /// On screen (not under a chat pushed over it): only then is it read and marked seen.
+    @Environment(\.v2Shell) private var shell
+    /// Mounted and not under a chat pushed over it.
     @State private var isShown = false
+    /// On screen: shown, in the tab that shows. The shell keeps a visited
+    /// tab mounted behind the one selected, where `onDisappear` never fires,
+    /// so the tab's own flag counts too. Only a visible page polls the feed
+    /// and marks cards seen (issue 2515); away, the Chats tab's reader polls.
+    private var isVisible: Bool { Self.isVisible(shown: isShown, in: shell) }
+
+    static func isVisible(shown: Bool, in shell: V2ShellContext) -> Bool {
+        shown && shell.isTabActive
+    }
     @ObservedObject var appLanguage = AppLanguageStore.shared
 
     @State private var page: PulseFeedPage?
@@ -209,14 +219,24 @@ struct V2PulsePage: View {
 
     var body: some View {
         pageWithDialogs
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active,
+        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isVisible && scenePhase == .active,
                                   served: appState.notifierPlugin.reports(PulseClient.feedCapability),
                                   available: appState.showsPulseScreen)) {
-            guard isShown, scenePhase == .active else { return }
+            guard isVisible, scenePhase == .active else { return }
+            // A card asked for while the tab was hidden opens on the cards
+            // the page already has, without waiting on a read that may fail.
+            // One the page doesn't have yet waits for the read that brings it.
+            if let request = appState.pulseOpenRequest,
+               request.card == nil || page?.cards.contains(where: { $0.id == request.card }) == true {
+                focus(request)
+            }
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
                 await load()
+                // Hidden or replaced meanwhile: the other dashboards' reads
+                // wait for the page to show again.
+                guard !Task.isCancelled else { break }
                 // The other combined dashboards' chips (all-live stage 4d).
                 await appState.readOtherCombinedDashboardsPulse()
                 try? await Task.sleep(for: .seconds(60))
@@ -232,16 +252,12 @@ struct V2PulsePage: View {
         .onAppear { isShown = true }
         .onDisappear {
             isShown = false
-            reasonCard = nil
-            restCard = nil
-            undoCard = nil
-            keptCards = []
-            newCards = nil
-            focusedCard = nil
-            voiceOverCard = nil
-            undo = nil  // an undo belongs to the visit that made it
-            expandedBriefs = []
-            expandedWhy = []
+            leaveVisit()
+        }
+        // Another tab selected over a page kept mounted: the visit ends as if
+        // it had gone, so the next one marks its own new cards.
+        .onChange(of: shell.isTabActive) { _, active in
+            if !active { leaveVisit() }
         }
         .onChange(of: appState.activeDashboardID) { _, _ in
             reasonCard = nil
@@ -266,7 +282,7 @@ struct V2PulsePage: View {
         }
         .onChange(of: appState.pulseOpenRequest) { _, request in
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
-            if let request, isShown { focus(request) }
+            if let request, isVisible { focus(request) }
         }
         .onChange(of: page) { _, page in
             // Done, Not now and Undo here change the cards before the next
@@ -902,9 +918,23 @@ struct V2PulsePage: View {
         .accessibilityElement(children: .contain)
     }
 
+    /// What one visit to the page leaves behind, cleared when it ends.
+    private func leaveVisit() {
+        reasonCard = nil
+        restCard = nil
+        undoCard = nil
+        keptCards = []
+        newCards = nil
+        focusedCard = nil
+        voiceOverCard = nil
+        undo = nil  // an undo belongs to the visit that made it
+        expandedBriefs = []
+        expandedWhy = []
+    }
+
     private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil) {
         // The page was left before the plugin answered: no bar comes back later.
-        guard isShown else { return }
+        guard isVisible else { return }
         var message = AppLocalization.string("Marked done", table: .pulse)
         if action == .dismissed {
             message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.", table: .pulse)
@@ -1715,15 +1745,15 @@ struct V2PulsePage: View {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
-            if newCards == nil, isShown {
+            if newCards == nil, isVisible {
                 newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
             }
             loadError = nil
             errorMessage = nil
             learnedNote = nil
             appState.applyPulseFeed(loaded)
-            if let request = appState.pulseOpenRequest, isShown { focus(request) }
-            if isShown, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
+            if let request = appState.pulseOpenRequest, isVisible { focus(request) }
+            if isVisible, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
                appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }

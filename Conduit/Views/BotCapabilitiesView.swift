@@ -238,9 +238,10 @@ struct BotMcpServersView: View {
                         Text(AppLocalization.string("Add MCP servers in Edit Bot, once the bot is made.", table: .bots))
                     } else if mcpSetup == nil && mcpSetupRead {
                         Text(AppLocalization.string("Add new MCP servers from Hermes on your computer.", table: .bots))
-                    } else if mcpSetup != nil && appState.currentDashboardRuntimeOwner() == nil {
+                    } else if mcpSetup != nil && !mcpSetupKept && appState.currentDashboardRuntimeOwner() == nil {
                         // The catalog reads without the dashboard's link
-                        // (issue 2394); an add needs it to hold to.
+                        // (issue 2394); an add needs it to hold to. A kept
+                        // read keeps its Try Again below, which needs no link.
                         Text(AppLocalization.string("Adding a server needs Conduit's link to this Hermes' dashboard. It comes back when Conduit reconnects.", table: .bots))
                     } else if mcpSetupKept && mcpSetupRead {
                         // Hermes didn't answer: Add and Sign In wait over the

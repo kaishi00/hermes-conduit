@@ -1850,6 +1850,123 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.questions[0].status, .pending)
     }
 
+    /// #2601's review: an answer whose connection was replaced while it
+    /// went settles nothing, and its question goes back to answerable
+    /// rather than read Sending with nothing sending it. A form stopped by
+    /// the takeover puts back the questions it never sent too.
+    func testAnAnswerFencedOffByANewConnectionCanBeGivenAgain() async throws {
+        final class Box { weak var appState: AppState? }
+        let box = Box()
+        var sent: [String?] = []
+        var operations = ChatResumeLifecycleOperations.live
+        operations.respondToClarification = { _, _, _, questionId, _, _ in
+            sent.append(questionId)
+            // The connection is replaced while the answer goes; a resume
+            // on the new one kept the question's wait meanwhile.
+            box.appState?.client = nil
+            return .accepted(remaining: ["tests", "notes"])
+        }
+        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        box.appState = appState
+        appState.activeSessionId = "stored-a"
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+
+        await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
+
+        XCTAssertEqual(sent, ["environment"])
+        XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.questions[0].status, .pending,
+                       "The fenced answer's question can be answered again")
+        XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
+
+        sent = []
+        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+        await appState.respondToClarifyForm(requestId: "req-batch", answers: ["environment": "staging", "notes": "Window seat"])
+
+        XCTAssertEqual(sent, ["environment"], "The rest isn't the replaced connection's to send")
+        let card = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(card.questions.map(\.status), [.pending, .pending, .pending],
+                       "Neither the fenced answer nor the unsent ones read Sending")
+        XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
+    }
+
+    /// #2636's review: two answers of one card both fenced off. Whichever
+    /// settles first waits on the other, and neither is left Sending.
+    func testTwoFencedAnswersOfOneCardBothGoBackToAnswerable() throws {
+        for lastIsFenced in [true, false] {
+            let appState = makeAppState().appState
+            var activity = makeBatchActivity()
+            activity.questions[0].status = .submitting
+            activity.questions[1].status = .submitting
+            appState.messages = [
+                ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: activity)
+            ]
+            let first = activity.questions[0].id
+            let second = activity.questions[1].id
+            appState.liveClarifySubmissions["req-batch"] = 2
+
+            // The first fenced send settles while the second is on its way.
+            appState.endClarifySubmission("req-batch")
+            appState.rearmStaleClarifyQuestions(requestId: "req-batch", questionIds: [first])
+            XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.questions[0].status, .submitting,
+                           "It waits while another send of its card is on its way")
+
+            appState.endClarifySubmission("req-batch")
+            if lastIsFenced {
+                appState.rearmStaleClarifyQuestions(requestId: "req-batch", questionIds: [second])
+            }
+            let card = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+            XCTAssertEqual(card.questions[0].status, .pending, "lastIsFenced: \(lastIsFenced)")
+            if lastIsFenced {
+                XCTAssertEqual(card.questions[1].status, .pending)
+            }
+            XCTAssertTrue(appState.staleClarifyQuestionIds.isEmpty)
+            XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
+        }
+    }
+
+    /// #2601's review: a form's answers count as on their way for the whole
+    /// form, so a resume between two of its sends doesn't offer the rest.
+    func testAFormCountsAsOnItsWayBetweenItsSends() async throws {
+        final class Box { weak var appState: AppState? }
+        let box = Box()
+        var counts: [Int?] = []
+        var operations = ChatResumeLifecycleOperations.live
+        operations.respondToClarification = { _, requestId, _, questionId, _, _ in
+            counts.append(box.appState?.liveClarifySubmissions[requestId])
+            let open = ["environment", "tests", "notes"].drop { $0 != questionId }.dropFirst()
+            return .accepted(remaining: Array(open))
+        }
+        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        box.appState = appState
+        appState.activeSessionId = "stored-a"
+        appState.messages = [
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: makeBatchActivity())
+        ]
+        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+
+        await appState.respondToClarifyForm(requestId: "req-batch", answers: ["environment": "staging", "notes": "Window seat"])
+
+        XCTAssertEqual(counts, [2, 2, 2], "The form's own count stays while each answer goes")
+        XCTAssertTrue(appState.liveClarifySubmissions.isEmpty, "…and goes with its last one")
+    }
+
     func testRequestStatusDerivation() {
         var activity = makeBatchActivity()
         XCTAssertEqual(activity.status, .pending)

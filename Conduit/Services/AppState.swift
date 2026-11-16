@@ -3709,6 +3709,10 @@ final class AppState: ObservableObject {
     /// chat keeps a `.submitting` question whose answer is still on its way,
     /// relay answers included, instead of reading it as lost (issue 2571).
     var liveClarifySubmissions = [String: Int]()
+    /// Questions a fenced-off send left marked sending while another send of
+    /// their request was still on its way, by request id: they go back to
+    /// answerable once the request's last send settles (#2636's review).
+    var staleClarifyQuestionIds = [String: Set<String>]()
     /// Connect-card answers on their way, by operation: which submission
     /// and the seq it went out at. A resume that rebuilds the card keeps
     /// its buttons waiting, and only that submission's failure reopens them.

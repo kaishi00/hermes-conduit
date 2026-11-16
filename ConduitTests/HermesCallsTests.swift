@@ -299,11 +299,21 @@ extension VoiceConversationControllerTests {
         await supervisor.callbackPassesSettled()
         supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
 
-        supervisor.settlingCallProfile = "furina"
-        await supervisor.finishCallbacks()?.value
+        await supervisor.finishCallbacks(callProfile: "furina")?.value
 
         XCTAssertEqual(calls.notified.map(\.target.runtimeSessionID), ["rt-1"])
         XCTAssertEqual(calls.notified.first?.target.profile, "furina")
+        XCTAssertNil(supervisor.settlingCallProfile, "Cleared as its pass ends")
+
+        // A pass with no call to finish leaves a running pass's profile.
+        supervisor.settlingCallProfile = "nahida"
+        XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
+        XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
+
+        // So does a call that hangs up with nothing to settle.
+        beginHermesCall(supervisor)
+        XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
+        XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
     }
 
     func testReleaseAfterTheHostSawTheEndNotifiesOnce() async {
