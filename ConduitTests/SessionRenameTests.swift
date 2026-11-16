@@ -803,6 +803,40 @@ final class SessionRenameTests: XCTestCase {
         _ = await second.value
     }
 
+    /// A New Chat that fails after the user reopened the chat it left (its
+    /// followed copy on screen while that open lands) leaves the follow to
+    /// the open, which still relies on it.
+    func testAFailedNewChatLeavesTheFollowToAReopenDuringItsCreate() async {
+        let appState = makeConnectedAppState { _, _ in }
+        appState.savedDashboardRegistry.activeDashboardID = UUID()
+        appState.sessions = [makeSession(id: "a", alternateIDs: [], title: "Story")]
+        var waiting: [CheckedContinuation<Void, Never>] = []
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await withCheckedContinuation { waiting.append($0) }
+            throw URLError(.notConnectedToInternet)
+        }
+        appState.setActiveSessionState(id: "a")
+        appState.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        appState.turnState = .running
+        appState.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+
+        let create = Task { await appState.createNewSession() }
+        for _ in 0..<2000 where waiting.isEmpty { await Task.yield() }
+        guard let followed = appState.followedChat(answering: ["a"]) else {
+            waiting.forEach { $0.resume() }
+            return XCTFail("The New Chat follows the chat it leaves")
+        }
+        // Reopened during the create: its copy shows while that open lands.
+        appState.setActiveSessionState(id: "a")
+        appState.messages = []
+        XCTAssertTrue(appState.presentBackgroundChat(followed, openedAs: "a"))
+        waiting.forEach { $0.resume() }
+        _ = await create.value
+
+        XCTAssertEqual(appState.activeSessionId, "a")
+        XCTAssertNotNil(appState.followedChat(answering: ["a"]), "The reopen still landing keeps the copy the run followed")
+    }
+
     // MARK: - A new chat in the list (issue 1454)
 
     func testANewChatStaysListedWhileOpenUntilHermesListsIt() async {

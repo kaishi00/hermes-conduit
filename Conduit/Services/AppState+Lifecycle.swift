@@ -35,6 +35,10 @@ extension AppState {
         /// step with `bufferedEvents`, so a replay is told apart as live
         /// events are (`takeVoiceEventAfterCancel`).
         var bufferedGenerations: [Int?] = []
+        /// Runtime ids Hermes rebound the chat being opened to while it was
+        /// away, routed to the screen before the open knew them (issue
+        /// 2503): accepted, and kept when the resume narrows the set.
+        var reboundSessionIDs: Set<String> = []
 
         init(
             token: UUID,
@@ -46,7 +50,8 @@ extension AppState {
             streamTextAtBoundary: String? = nil,
             streamSessionIDAtBoundary: String? = nil,
             bufferedEvents: [StreamEvent] = [],
-            bufferedGenerations: [Int?] = []
+            bufferedGenerations: [Int?] = [],
+            reboundSessionIDs: Set<String> = []
         ) {
             self.token = token
             self.requestedSessionId = requestedSessionId
@@ -58,6 +63,7 @@ extension AppState {
             self.streamSessionIDAtBoundary = streamSessionIDAtBoundary
             self.bufferedEvents = bufferedEvents
             self.bufferedGenerations = bufferedGenerations
+            self.reboundSessionIDs = reboundSessionIDs
         }
 
         /// Each buffered event with the turn it named (nil when none).

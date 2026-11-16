@@ -1181,6 +1181,7 @@ extension AppState {
         let token = UUID()
         let bufferedEvents = reconciliation?.bufferedEvents ?? []
         let bufferedGenerations = reconciliation?.bufferedGenerations ?? []
+        let reboundSessionIDs = reconciliation?.reboundSessionIDs ?? []
         let streamTextAtBoundary: String?
         let streamSessionIDAtBoundary: String?
         if let existingReconciliation = reconciliation {
@@ -1198,7 +1199,8 @@ extension AppState {
             streamTextAtBoundary: streamTextAtBoundary,
             streamSessionIDAtBoundary: streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents,
-            bufferedGenerations: bufferedGenerations
+            bufferedGenerations: bufferedGenerations,
+            reboundSessionIDs: reboundSessionIDs
         )
         refreshActiveChatScrollSessionIdentity(isReconciling: true)
         return token
@@ -1706,15 +1708,19 @@ extension AppState {
         let priorReconciliation = reconciliation?.token == token ? reconciliation : nil
         let bufferedEvents = priorReconciliation?.bufferedEvents ?? []
         let bufferedGenerations = priorReconciliation?.bufferedGenerations ?? []
+        // A rebound id already routed to the screen stays accepted, so its
+        // buffered events replay and later ones reach the screen (issue 2503).
+        let reboundSessionIDs = priorReconciliation?.reboundSessionIDs ?? []
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
             automaticSyncOperationID: automaticSyncOperationID,
-            acceptedSessionIDs: acceptedSessionIDs.union([sessionId]),
+            acceptedSessionIDs: acceptedSessionIDs.union([sessionId]).union(reboundSessionIDs),
             streamTextAtBoundary: priorReconciliation?.streamTextAtBoundary,
             streamSessionIDAtBoundary: priorReconciliation?.streamSessionIDAtBoundary,
             bufferedEvents: bufferedEvents,
-            bufferedGenerations: bufferedGenerations
+            bufferedGenerations: bufferedGenerations,
+            reboundSessionIDs: reboundSessionIDs
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this

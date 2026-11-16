@@ -374,6 +374,13 @@ extension AppState {
         if !onScreen, ownIndex == nil, let activeSessionId,
            !chat.sessionIDs.isDisjoint(with: knownSessionIDs(for: activeSessionId).union([activeSessionId])) {
             onScreen = true
+            // The open's reconcile accepts it from now on, across the
+            // resume's narrowing too, so the screen gets it live or replayed.
+            if var open = reconciliation {
+                open.reboundSessionIDs.insert(id)
+                open.acceptedSessionIDs.insert(id)
+                reconciliation = open
+            }
         }
         guard chat.dashboardID == activeDashboardID else {
             backgroundChats.remove(at: index)

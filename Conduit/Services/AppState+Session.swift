@@ -1010,8 +1010,11 @@ extension AppState {
         // New Chat tapped again meanwhile still leaves it, so it stays until
         // the run's last New Chat finishes, which lets go of what any of
         // them followed. A run that followed nothing leaves any follow
-        // alone: an open still landing relies on it (issue 2505).
+        // alone: an open still landing relies on it (issue 2505), and so
+        // does one the user started meanwhile, showing the copy the run
+        // followed (a reopen during the create).
         if activeSessionId == previousSessionID, newSessionCreationsInFlight == 1,
+           offlineChatPresentation == nil,
            let followedIDs = newChatRunFollowedIDs {
             releaseFollowedChat(answering: followedIDs)
         }
