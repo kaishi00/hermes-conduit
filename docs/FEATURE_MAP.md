@@ -4093,15 +4093,16 @@ Sizes on a narrow iPhone (both composers, resting and expanded, in both
 shells; done, #1541) · a 375 pt iPhone at any Text Size (the chat's and
 the room's placeholder, both shells; done, #2649) · the round controls'
 and the notices' tap targets (the chat's resting row and controls row, the
-room's controls row, the composer notice and the takeover offer; done,
-#2649; the expanded and full editors and voice modes have no placeholder
-of their own, the Watch and CarPlay no composer)
+room's controls row, the full editor's mic and Send, the composer notice
+and the takeover offer; done, #2649; the expanded composer and the full
+editor have the width the hint needs, voice modes no placeholder of their
+own, the Watch and CarPlay no composer)
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
 - V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
 - Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
-- Tap targets: `Conduit/Views/Components/ComposerBar.swift` (controlSize, controlSpacing, controlHitShape, dismissHitShape; the controls row's round controls, composerNoticeLine, the takeover offer's dismiss), `Conduit/Views/Components/GroupRoomComposer.swift` (controlsRow)
+- Tap targets: `Conduit/Views/Components/ComposerBar.swift` (controlSize, controlSpacing, controlHitShape, dismissHitShape; the controls row's round controls, composerNoticeLine, the takeover offer's dismiss), `Conduit/Views/Components/GroupRoomComposer.swift` (controlsRow), `Conduit/Views/Components/ComposerFullEditor.swift` (the mic and Send's row)
 - One-line placeholder: `Conduit/Views/Components/DynamicTypeSupport.swift` (ComposerPlaceholderText, conduitFixedGlyph), `Conduit/Services/AppState+BotMode.swift` (composerPlaceholder, composerShortPlaceholder), used in `Conduit/Views/Components/ComposerBar.swift` (composerContent's resting row, composerField) and `Conduit/Views/Components/GroupRoomComposer.swift` (the resting row's attachButton, field)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded, testRoundComposerControlsTapAt44PointsWithoutOverlapping)
 
