@@ -679,7 +679,7 @@ struct LoginDashboardsScreen: View {
     @ViewBuilder
     private func row(_ dashboard: SavedDashboard, first: Bool) -> some View {
         let failure = flow.failure(at: .dashboard(dashboard.id))
-        VStack(spacing: 0) {
+        rowFrame(failure: failure, first: first) {
             Button {
                 Haptics.selection()
                 Task { await flow.open(dashboard) }
@@ -705,16 +705,6 @@ struct LoginDashboardsScreen: View {
                 // again.
                 .disabled(isConnecting(dashboard))
             }
-            if let failure {
-                LoginFailureCard(failure: failure, flow: flow, isInline: true)
-                    .padding(.leading, 56)
-                    .padding(.trailing, 16)
-                    .padding(.bottom, 14)
-            }
-        }
-        .background(failure == nil ? Color.clear : Color.red.opacity(0.07))
-        .overlay(alignment: .top) {
-            if !first { V2RowDivider(leadingInset: 56) }
         }
     }
 
@@ -724,7 +714,7 @@ struct LoginDashboardsScreen: View {
     @ViewBuilder
     private func groupRow(_ members: [SavedDashboard], opens dashboard: SavedDashboard, first: Bool) -> some View {
         let failure = flow.failure(at: .dashboard(dashboard.id))
-        VStack(spacing: 0) {
+        rowFrame(failure: failure, first: first) {
             Button {
                 Haptics.selection()
                 Task { await flow.open(dashboard) }
@@ -740,6 +730,18 @@ struct LoginDashboardsScreen: View {
             .buttonStyle(.plain)
             .disabled(flow.isWorking && flow.workingDashboardID != dashboard.id)
             .accessibilityIdentifier("login.dashboard.combined")
+        }
+    }
+
+    /// What a dashboard row and the group row share: the failure card
+    /// under the row, its tint, and the divider above.
+    private func rowFrame<Content: View>(
+        failure: ConnectionFailurePresentation?,
+        first: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(spacing: 0) {
+            content()
             if let failure {
                 LoginFailureCard(failure: failure, flow: flow, isInline: true)
                     .padding(.leading, 56)

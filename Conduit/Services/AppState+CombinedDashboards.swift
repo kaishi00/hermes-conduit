@@ -123,6 +123,7 @@ extension AppState {
     /// still out for it keeps nothing it finishes.
     func letGoCombinedDashboard(_ id: UUID) {
         if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
+        combinedSignInBridges.removeValue(forKey: id)?.invalidate()
         dropKeptDashboardRuntime(id)
     }
 
@@ -193,6 +194,7 @@ extension AppState {
                 await self.signInCombinedDashboardQuietly(id)
                 self.combinedSignInsUnderWay.remove(id)
                 self.combinedSignInsCalledOff.remove(id)
+                self.combinedSignInBridges.removeValue(forKey: id)
                 // Conduit left and came back while it was out: the return's
                 // own pass skipped it, so it goes again. A plain failure
                 // waits for its switch.
@@ -225,9 +227,12 @@ extension AppState {
         let profile = rememberedActiveProfile(for: id) ?? "default"
         let access = KeychainHelper.loadCloudflareAccess(dashboardID: id, for: baseURL)
         let bridge = makeDashboardBridge(normalizedURL: baseURL, dashboardID: id, access: access)
+        combinedSignInBridges[id] = bridge
         var client: HermesClient?
         // Signed out, moved to another address or removed meanwhile: what
-        // it finishes isn't wanted (a sign-out clears what it signs in with).
+        // it finishes isn't wanted. Sign Out and a move call it off; a
+        // removal takes it out of the registry. No Keychain reads here: it
+        // runs on the main actor at each step.
         func stillWanted() -> Bool {
             guard let current = savedDashboardRegistry.dashboard(with: id) else { return false }
             return generation == keptDashboardRuntimesGeneration
@@ -238,7 +243,6 @@ extension AppState {
                 && keptDashboardRuntimes[id] == nil
                 && current.normalizedURL == baseURL
                 && current.pendingURL == nil
-                && combinedDashboardSignsInQuietly(id)
         }
         do {
             let ticket: String

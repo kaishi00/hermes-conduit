@@ -211,6 +211,10 @@ final class AppState: ObservableObject {
     /// later pass finds nothing to sign in with: Sign Out clears the
     /// session, the grant and the password.)
     var combinedSignInsCalledOff: Set<UUID> = []
+    /// The bridge each quiet sign-in still out signs in with, so calling it
+    /// off stops a grant refresh it has under way from saving the grant
+    /// again after a sign-out cleared it.
+    var combinedSignInBridges: [UUID: DashboardTicketBridge] = [:]
     var keptDashboardRuntimesGeneration: UInt64 = 0
     /// Lets the kept connections go once Conduit has been off screen for
     /// the background grace.

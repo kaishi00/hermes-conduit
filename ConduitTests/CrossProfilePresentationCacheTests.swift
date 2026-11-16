@@ -1005,6 +1005,7 @@ extension CrossProfilePresentationCacheTests {
         await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
         XCTAssertNil(appState.keptDashboardRuntimes[pi.id], "called off: nothing kept")
         XCTAssertTrue(appState.combinedSignInsCalledOff.isEmpty)
+        XCTAssertTrue(appState.combinedSignInBridges.isEmpty, "no sign-in's bridge outlives it")
 
         // A browser sign-in's grant goes with Sign Out too, so no later
         // pass signs it in again.
