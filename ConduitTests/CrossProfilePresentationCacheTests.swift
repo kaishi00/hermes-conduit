@@ -1324,6 +1324,30 @@ extension CrossProfilePresentationCacheTests {
     /// The Chats list shows a kept combined dashboard's newest chats, read
     /// through its kept connection, badged, with no actions of their own;
     /// a tap opens through that dashboard (all-live stage 4b).
+    /// A bot's work shown from the phone's copy while Hermes is asked
+    /// again is marked so (its counts may be old): Bots Home's finish
+    /// ripple doesn't play for the read that follows (Eric, 2026-11-16: a
+    /// far bot's open flashed another bot's ring). A read's own isn't.
+    func testABotsWorkShownFromThePhonesCopyIsMarkedKept() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, _, _, _, _) = try await combinedDashboards(operations: operations)
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [BotWorkstreamsClient.capability]))
+        let answer: [String: Any] = [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 0, "needs_you": 0, "ready": 2, "waiting": 0], "work": [[String: Any]](),
+        ]
+        let read = try XCTUnwrap(BotWorkSnapshot(response: answer, profile: "atlas"))
+        XCTAssertFalse(read.isKept)
+        _ = try await appState.screenAnswers(profile: "atlas").keep(BotWorkstreamsClient.keptRoute, false) { answer }
+
+        // Hermes can't be asked here: the strip keeps the phone's copy.
+        await appState.refreshBotWork(profile: "atlas")
+        let shown = try XCTUnwrap(appState.botWork.snapshot("atlas"))
+        XCTAssertEqual(shown.readyCount, 2)
+        XCTAssertTrue(shown.isKept, "from the phone's copy")
+    }
+
     /// Artifacts in All lists every combined dashboard's (Eric,
     /// 2026-11-16): each profile of a kept dashboard, read through its kept
     /// connection, its rows named by that dashboard and apart from this
