@@ -166,7 +166,7 @@ extension AppState {
 
     /// The group's bots, one copy per Hermes, in Saved Dashboards order,
     /// with each kept bot's twins.
-    private func combinedBotsHomeGroup(own: [BotProfile]) -> (shown: [CombinedBotsHomeItem], twins: [String: [String]]) {
+    private func combinedBotsHomeGroup(own: [BotProfile]) -> (kept: [CombinedBotsHomeItem], twins: [String: [String]]) {
         let others = otherCombinedDashboardsBots
         let mine = own.map { CombinedBotsHomeItem(dashboardID: activeDashboardID, kind: .own($0)) }
         guard !others.isEmpty else { return (mine, [:]) }
