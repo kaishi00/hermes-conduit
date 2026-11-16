@@ -198,6 +198,14 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertNotIn("github.event_name", step)
         self.assertIn("continue-on-error: true", step)
 
+    def test_select_xcode_fetches_a_missing_metal_toolchain(self):
+        """Image 20261112.0361.1's Xcode 27.3 had no Metal toolchain and every
+        build failed at CompileMetalFile (2026-11-16)."""
+        script = _read(os.path.join(SCRIPTS_DIR, "ci-select-xcode.sh"))
+        self.assertIn("if ! xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; then", script)
+        self.assertIn("xcodebuild -downloadComponent MetalToolchain", script)
+        self.assertLess(script.index('xcode-select -s "$target"'), script.index("-downloadComponent"))
+
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
         beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas

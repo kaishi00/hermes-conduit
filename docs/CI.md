@@ -121,7 +121,9 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   shards' and timing repeats' restored cache is the last Nightly's, and builds
   from it still outran 1200 s beside the other nightly jobs (2026-11-13). Every macOS job selects the newest
   released Xcode on its image (`ci-select-xcode.sh`), not the image's default
-  `Xcode.app`, which can lag it (27.1 beside 27.2 and its iOS 27.2 runtime). The nightly timing repeats build
+  `Xcode.app`, which can lag it (27.1 beside 27.2 and its iOS 27.2 runtime). When the selected Xcode can't run `metal` (image 20261112.0361.1's
+  Xcode 27.3 shipped without the Metal toolchain component, and every build
+  failed at CompileMetalFile), the script downloads it first. The nightly timing repeats build
   `project-tests.yml` too and restore the slim cache without saving it
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
   shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
