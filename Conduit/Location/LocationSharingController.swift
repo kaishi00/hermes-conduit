@@ -104,6 +104,10 @@ final class LocationSharingController: ObservableObject {
     /// batch now being sent was built.
     private var spotsForgotten = 0
     private var spotsSentAt = 0
+    /// A reply to the batch sent last lists the shops to watch: not once
+    /// shops were forgotten, sharing ended or a Sign Out dropped the queue
+    /// since it was sent.
+    var spotRepliesLand: Bool { spotsSentAt == spotsForgotten }
     /// Whether shops could be watched at the last reconfigure (nil before
     /// the first).
     private var spotsAllowedBefore: Bool?
@@ -186,7 +190,7 @@ final class LocationSharingController: ObservableObject {
         self.engine.spotsReplied = { [weak self] watches in
             // A reply to a batch sent before Walking past went off lists
             // watches the host no longer keeps.
-            guard let self, self.spotsSentAt == self.spotsForgotten else { return }
+            guard let self, self.spotRepliesLand else { return }
             self.spots.replied(watches, near: self.fixes.lastKnownFix)
         }
     }
@@ -383,6 +387,10 @@ final class LocationSharingController: ObservableObject {
             return
         }
         unsentDrops &+= 1
+        // A reply still coming to a batch sent before the drop lists no
+        // shops into the dropped queue, as at the end of sharing (issue
+        // 2616).
+        spotsForgotten += 1
         lastTalkingUpload = nil
         // A dropped call fix mustn't hold back the call's next moves
         // (issue 2562).

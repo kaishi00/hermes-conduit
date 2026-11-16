@@ -869,6 +869,43 @@ extension AppState {
         return !left.isDisjoint(with: right)
     }
 
+    /// The catalog row that is `sessionID`'s own chat: one whose id or
+    /// stored id it is wins over one that only carries it among its
+    /// aliases, and an alias two rows carry is neither's (issue 2602, as the
+    /// saved list's restore does).
+    func owningSessionRow(for sessionID: String) -> SessionSummary? {
+        let rows = Array([sessions, cronSessions].joined())
+        if let own = rows.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) { return own }
+        let borrowers = rows.filter { $0.alternateIds.contains(sessionID) }
+        return borrowers.count == 1 ? borrowers.first : nil
+    }
+
+    /// The ids a followed copy of `sessionID`'s chat answers to and saves
+    /// over: its own row's, less any alias another row owns or carries too
+    /// (Hermes hands runtime ids from one chat to another), so a borrowed or
+    /// shared id never redirects its events or its save (issue 2602).
+    func followedSessionIDs(for sessionID: String) -> Set<String> {
+        guard let row = owningSessionRow(for: sessionID) else { return [sessionID] }
+        let others = sessionIDsOfOtherRows(than: row)
+        return Set(row.nestingIDs.filter { !others.contains($0) }).union([sessionID])
+    }
+
+    /// The ids listed rows other than `row` answer to, its own id and
+    /// stored id left out: none of them is `row`'s chat's (issue 2602).
+    func sessionIDsOfOtherRows(than row: SessionSummary) -> Set<String> {
+        Set([sessions, cronSessions].joined().filter { $0.id != row.id }
+            .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } + $0.alternateIds })
+            .subtracting([row.id, row.storedSessionId].compactMap { $0 })
+    }
+
+    /// An alias at least two listed rows carry, none as its own id or
+    /// stored id: it is neither's chat (issue 2602).
+    func isSharedAlias(_ sessionID: String) -> Bool {
+        let rows = Array([sessions, cronSessions].joined())
+        guard !rows.contains(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) else { return false }
+        return rows.filter { $0.alternateIds.contains(sessionID) }.count > 1
+    }
+
     func knownSessionIDs(for sessionID: String) -> Set<String> {
         guard let session = [sessions, cronSessions].joined().first(where: {
             $0.id == sessionID || $0.alternateIds.contains(sessionID)

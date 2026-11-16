@@ -1143,6 +1143,20 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 1, "its backoff stands")
         appState.combinedSignInsUnderWay.subtract(others)
 
+        // Its retry wakes when no pass can try it (the one on screen not
+        // connected): it stops saying "trying again" with nothing waiting,
+        // and its backoff stands (issue 2615).
+        appState.combinedDashboardRetryBaseDelay = 0.05
+        appState.isConnected = false
+        appState.noteCombinedDashboardFailed(vps.id, .down)
+        XCTAssertEqual(appState.combinedDashboardStatus(vps.id), .down)
+        await waitUntil { appState.combinedDashboardTrouble[vps.id] == nil }
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
+        appState.isConnected = true
+        appState.combinedDashboardRetryBaseDelay = 60
+
         // A refused sign-in waits for a tap: no pass, retry or return asks again.
         mints.failures = 1
         mints.status = 401
@@ -1357,6 +1371,25 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        // One Hermes saved twice (a bot of each has the same Bot Chat): its
+        // profile shows once, as this dashboard's, at the place its copy
+        // was saved at, with no Bots Home drawn (issue 2640).
+        func chatBot(_ name: String, _ chat: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                       canonicalSession: BotCanonicalSession(id: chat, resolvedID: nil, lastActive: nil, preview: nil),
+                       lastActive: nil, lastPreview: nil)
+        }
+        let roster = appState.botRoster
+        appState.botRoster = [chatBot("default", "c1")]
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("default", "c1"), chatBot("atlas", "c2")], avatars: [:], at: Date()
+        )
+        appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(mac.id, "default")]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
+                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
+        appState.combinedDashboardBots[mac.id] = nil
+        appState.botRoster = roster
         appState.combinedBotsHomeOrder = []
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
@@ -1538,6 +1571,40 @@ extension CrossProfilePresentationCacheTests {
         appState.letGoKeptRuntimesOutsideTheGroup()
         XCTAssertEqual(appState.combinedBotsHomeOrder, ["-|furina", "\(vps.id.uuidString)|furina"])
         appState.combinedBotsHomeOrder = []
+        // One Hermes saved at two addresses (a bot of each has the same Bot
+        // Chat): its bots show once, as this dashboard's; a namesake on
+        // another Hermes still shows (issue 2640).
+        func chatBot(_ name: String, _ chat: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                       canonicalSession: BotCanonicalSession(id: chat, resolvedID: nil, lastActive: nil, preview: nil),
+                       lastActive: nil, lastPreview: nil)
+        }
+        let macRoster = appState.combinedDashboardBots[mac.id]
+        appState.botRoster = [chatBot("furina", "c1"), bot("neuvillette")]
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("Furina", "c1"), bot("neuvillette"), bot("raiden")],
+            avatars: [:], at: Date()
+        )
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).map(\.id),
+                       ["\(mac.id.uuidString)|raiden", "\(vps.id.uuidString)|furina", "\(vps.id.uuidString)|neuvillette"])
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
+        )
+        XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
+        // Rosters cached at different times overlap only through a third
+        // dashboard: still one Hermes, its bot shown once.
+        let (a, b, c) = (UUID(), UUID(), UUID())
+        func homeItem(_ dashboard: UUID, _ profile: BotProfile) -> CombinedBotsHomeItem { CombinedBotsHomeItem(dashboardID: dashboard, kind: .own(profile)) }
+        let spread = AppState.oneCopyPerHermes([
+            homeItem(c, bot("n")), homeItem(c, chatBot("q", "y")),
+            homeItem(b, bot("n")), homeItem(b, chatBot("p", "x")), homeItem(b, chatBot("q", "y")),
+            homeItem(a, bot("n")), homeItem(a, chatBot("p", "x")),
+        ])
+        XCTAssertEqual(spread.kept.map(\.id), [CombinedBotsHomeOrder.key(c, "n"), CombinedBotsHomeOrder.key(c, "q"), CombinedBotsHomeOrder.key(b, "p")])
+        XCTAssertEqual(Set(spread.twins[CombinedBotsHomeOrder.key(c, "n")] ?? []), [CombinedBotsHomeOrder.key(b, "n"), CombinedBotsHomeOrder.key(a, "n")])
+        appState.combinedDashboardBots[mac.id] = macRoster
+        appState.botRoster = [bot("furina")]
         // A dashboard left while kept leaves its bots on the grid at once.
         appState.seedCombinedDashboardBots(vps.id, from: [bot("furina"), bot("nahida", hidden: true)], client: outgoing)
         XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])
@@ -1580,6 +1647,19 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "d", onto: "b"), ["a", "d", "b", "c"], "carried back: before")
         XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: nil), ["a", "c", "d", "b"], "at the end")
         XCTAssertEqual(CombinedBotsHomeOrder.moving(order, "b", onto: "b"), order, "on itself")
+
+        // One Hermes saved twice: its bot shown as the other dashboard's
+        // copy takes the place the first copy had (issue 2640).
+        let twin = UUID()
+        let saved = [CombinedBotsHomeOrder.key(mac, "n"), CombinedBotsHomeOrder.key(vps, "m")]
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [CombinedBotsHomeOrder.key(twin, "n"): [CombinedBotsHomeOrder.key(mac, "n")]]),
+                       [CombinedBotsHomeOrder.key(twin, "n"), CombinedBotsHomeOrder.key(vps, "m")])
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved, twins: [:]), saved, "a namesake on another Hermes takes no place")
+        // An order holding both copies keeps one, at the earlier place, so
+        // a drag moves the place the grid reads.
+        XCTAssertEqual(CombinedBotsHomeOrder.handingOn(saved + [CombinedBotsHomeOrder.key(twin, "n")],
+                                                       twins: [CombinedBotsHomeOrder.key(twin, "n"): [CombinedBotsHomeOrder.key(mac, "n")]]),
+                       [CombinedBotsHomeOrder.key(twin, "n"), CombinedBotsHomeOrder.key(vps, "m")])
     }
 
     /// Pulse has a chip per combined dashboard whose Pulse answers, the

@@ -112,6 +112,23 @@ enum CombinedBotsHomeOrder {
         return saved + shown.filter { !known.contains($0) }
     }
 
+    /// A shown key holds the earliest place it or any of its twins has in
+    /// the order (`twins`: the copies of the same bot on other dashboards
+    /// of one Hermes, which the grid doesn't show), and the twins' keys
+    /// leave the order, so a switch between two dashboards of one Hermes
+    /// moves nothing and a drag moves the place the grid reads. A bot of
+    /// the same name on another Hermes is never a twin.
+    static func handingOn(_ order: [String], twins: [String: [String]]) -> [String] {
+        var order = order
+        for (key, copies) in twins {
+            let group = Set([key] + copies)
+            guard let at = order.firstIndex(where: group.contains) else { continue }
+            order[at] = key
+            order = order.enumerated().filter { $0.offset == at || !group.contains($0.element) }.map(\.element)
+        }
+        return order
+    }
+
     /// `dragged` dropped on `target` takes its place, as on the Home
     /// Screen: carried on from before it, it lands just after it, else just
     /// before. Nil, or a target the order lacks: at the end.
@@ -136,9 +153,35 @@ extension AppState {
     /// shown ones (`own`, in its own order) among them. Until it's arranged,
     /// each dashboard's in Saved Dashboards order, this one's included.
     func combinedBotsHomeItems(own: [BotProfile]) -> [CombinedBotsHomeItem] {
+        let (shown, twins) = combinedBotsHomeGroup(own: own)
+        // Only this dashboard's bots: its own order, as before the group.
+        let othersShown = shown.contains { if case .other = $0.kind { return true } else { return false } }
+        guard othersShown || !twins.isEmpty else { return shown }
+        // A bot kept as another dashboard's copy than before (a switch
+        // between two dashboards of one Hermes) takes the place its twins
+        // were saved at, so a switch moves nothing.
+        let place = Dictionary(combinedBotsHomeOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
+        func savedKey(_ item: CombinedBotsHomeItem) -> String {
+            ([item.id] + (twins[item.id] ?? []))
+                .compactMap { id in place[id].map { (id, $0) } }
+                .min { $0.1 < $1.1 }?.0 ?? item.id
+        }
+        return CombinedBotsHomeOrder.ordered(shown, saved: combinedBotsHomeOrder, key: savedKey)
+    }
+
+    /// Each bot Bots Home shows to the keys of its copies on other
+    /// dashboards of one Hermes, which it leaves out (issue 2640), from the
+    /// rosters as they are now: the settle, a drag and Chats' strip read it.
+    var combinedBotsHomeTwins: [String: [String]] {
+        combinedBotsHomeGroup(own: shownBotRoster.filter { !$0.isHiddenByMeta }).twins
+    }
+
+    /// The group's bots, one copy per Hermes, in Saved Dashboards order,
+    /// with each kept bot's twins.
+    private func combinedBotsHomeGroup(own: [BotProfile]) -> (kept: [CombinedBotsHomeItem], twins: [String: [String]]) {
         let others = otherCombinedDashboardsBots
         let mine = own.map { CombinedBotsHomeItem(dashboardID: activeDashboardID, kind: .own($0)) }
-        guard !others.isEmpty else { return mine }
+        guard !others.isEmpty else { return (mine, [:]) }
         var items: [CombinedBotsHomeItem] = []
         var mineListed = false
         for dashboard in savedDashboardRegistry.dashboards {
@@ -150,7 +193,55 @@ extension AppState {
             }
         }
         if !mineListed { items = mine + items }
-        return CombinedBotsHomeOrder.ordered(items, saved: combinedBotsHomeOrder, key: \.id)
+        return Self.oneCopyPerHermes(items)
+    }
+
+    /// One Hermes saved at two addresses answers both with one roster: its
+    /// bots show once, as this dashboard's, else as the first dashboard's in
+    /// Saved Dashboards order, as a chat given twice does (issue 2640). Two
+    /// dashboards are one Hermes when a bot of each has the same Bot Chat
+    /// (its registry id is the host's own); bots of one name on two Hermes
+    /// that share none both show.
+    /// `twins`: each kept bot's key to the keys of its copies left out.
+    static func oneCopyPerHermes(_ items: [CombinedBotsHomeItem]) -> (kept: [CombinedBotsHomeItem], twins: [String: [String]]) {
+        var chats: [UUID?: Set<String>] = [:]
+        for item in items {
+            if let id = item.bot.canonicalSession?.id { chats[item.dashboardID, default: []].insert(id) }
+        }
+        // Dashboards sharing a Bot Chat are one Hermes, and so are two that
+        // each share one with a third (rosters cached at different times).
+        var hermes: [UUID?: Int] = [:]
+        for (at, dashboard) in chats.keys.enumerated() { hermes[dashboard] = at }
+        var merged = true
+        while merged {
+            merged = false
+            for a in chats.keys {
+                for b in chats.keys where hermes[a] != hermes[b] && !(chats[a] ?? []).isDisjoint(with: chats[b] ?? []) {
+                    let from = max(hermes[a]!, hermes[b]!), to = min(hermes[a]!, hermes[b]!)
+                    for (d, h) in hermes where h == from { hermes[d] = to }
+                    merged = true
+                }
+            }
+        }
+        func oneHermes(_ a: UUID?, _ b: UUID?) -> Bool {
+            a == b || (hermes[a] != nil && hermes[a] == hermes[b])
+        }
+        // This dashboard's come first in `items` only when it heads Saved
+        // Dashboards: take them first so its copy is the one kept.
+        let first = items.filter { if case .own = $0.kind { return true } else { return false } }
+        var kept: [CombinedBotsHomeItem] = []
+        var dropped = Set<String>()
+        var twins: [String: [String]] = [:]
+        for item in first + items.filter({ if case .own = $0.kind { return false } else { return true } }) {
+            let name = item.bot.name.lowercased()
+            if let twin = kept.first(where: { $0.dashboardID != item.dashboardID && $0.bot.name.lowercased() == name && oneHermes($0.dashboardID, item.dashboardID) }) {
+                dropped.insert(item.id)
+                twins[twin.id, default: []].append(item.id)
+            } else {
+                kept.append(item)
+            }
+        }
+        return (dropped.isEmpty ? items : items.filter { !dropped.contains($0.id) }, twins)
     }
 
     /// Every other dashboard of the group has its bots on the grid: until
@@ -169,7 +260,8 @@ extension AppState {
         // A dashboard out of the group (removed, or no longer combined)
         // leaves the order with its bots, whether or not every roster is in.
         let kept = combinedBotsHomeOrderInGroup
-        let settled = combinedBotsHomeRostersIn ? CombinedBotsHomeOrder.settled(kept, shown: shown) : kept
+        let settled = combinedBotsHomeRostersIn
+            ? CombinedBotsHomeOrder.settled(CombinedBotsHomeOrder.handingOn(kept, twins: combinedBotsHomeTwins), shown: shown) : kept
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
         CombinedBotsHomeOrder.save(settled, defaults)
@@ -196,7 +288,9 @@ extension AppState {
     /// A portrait of the mixed grid dropped on another (`onto`, its key),
     /// or at the end (nil). Either may be this dashboard's or another's.
     func moveCombinedBot(_ dragged: String, onto target: String?, shown: [String]) {
-        let order = CombinedBotsHomeOrder.settled(combinedBotsHomeOrder, shown: shown)
+        let saved = combinedBotsHomeRostersIn
+            ? CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, twins: combinedBotsHomeTwins) : combinedBotsHomeOrder
+        let order = CombinedBotsHomeOrder.settled(saved, shown: shown)
         let moved = CombinedBotsHomeOrder.moving(
             order,
             CombinedBotsHomeOrder.key(dragged: dragged, onScreen: activeDashboardID),
