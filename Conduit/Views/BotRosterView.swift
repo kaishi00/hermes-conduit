@@ -473,7 +473,9 @@ struct BotRosterView: View {
             }
         }
         // A bot the order doesn't name yet keeps the place it shows in, so
-        // a switch between the group's dashboards never moves it.
+        // a switch between the group's dashboards never moves it; only once
+        // every dashboard's bots are in, so one read first never fixes the
+        // order of the ones still on their way.
         .onAppear { appState.settleCombinedBotsHomeOrder(shown) }
         .onChange(of: shown) { _, ids in appState.settleCombinedBotsHomeOrder(ids) }
     }
@@ -542,7 +544,9 @@ struct BotRosterView: View {
                 canDelete: appState.canDeleteBot(bot),
                 rooms: botRooms(bot),
                 canStartGroup: canStartGroups && !bot.isHiddenByMeta,
-                actions: actions(for: bot)
+                // Reorder Bots arranges this dashboard's order, which the
+                // group's mixed grid doesn't follow: there a drag does it.
+                actions: actions(for: bot, reorders: mixedKey == nil)
             ),
             onOverview: { overviewBot = bot },
             // A hidden bot can't join a room, so its tap still opens its chat.
@@ -905,7 +909,7 @@ struct BotRosterView: View {
         .transition(.move(edge: .bottom).combined(with: .opacity))
     }
 
-    private func actions(for bot: BotProfile) -> BotRosterRow.Actions {
+    private func actions(for bot: BotProfile, reorders: Bool = true) -> BotRosterRow.Actions {
         BotRosterRow.Actions(
             edit: { editorMode = .edit(bot) },
             togglePin: {
@@ -937,7 +941,7 @@ struct BotRosterView: View {
                     addToNewRoom([bot.name])
                 }
             },
-            reorder: createRequest == nil ? nil : { showingReorder = true }
+            reorder: createRequest == nil || !reorders ? nil : { showingReorder = true }
         )
     }
 

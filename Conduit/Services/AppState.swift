@@ -252,7 +252,7 @@ final class AppState: ObservableObject {
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).
-    @Published var combinedBotsHomeOrder: [String] = CombinedBotsHomeOrder.load()
+    @Published var combinedBotsHomeOrder: [String] = []
     /// Each other combined dashboard's count of new Pulse cards (all-live
     /// stage 4d), read through its kept connection.
     @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
@@ -2802,6 +2802,7 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        self._combinedBotsHomeOrder = Published(wrappedValue: CombinedBotsHomeOrder.load(defaults))
         // The picture you show in rooms over Links (RoomLooks.swift).
         self._roomPersonPicture = Published(wrappedValue: RoomLooksUpload.storedPersonPicture(defaults))
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)

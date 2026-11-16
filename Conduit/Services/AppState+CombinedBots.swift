@@ -133,13 +133,24 @@ extension AppState {
         return CombinedBotsHomeOrder.ordered(items, saved: combinedBotsHomeOrder, key: \.id)
     }
 
+    /// Every other dashboard of the group has its bots on the grid: until
+    /// then the grid keeps its starting order (Saved Dashboards order)
+    /// rather than fixing a partial one.
+    var combinedBotsHomeRostersIn: Bool {
+        savedDashboardRegistry.dashboards.allSatisfy { dashboard in
+            dashboard.id == activeDashboardID || !isInCombinedGroup(dashboard.id)
+                || !(combinedDashboardBots[dashboard.id]?.bots.isEmpty ?? true)
+        }
+    }
+
     /// The grid as shown names every bot the order lacks: they keep the
     /// place they have now, so a switch never moves them.
     func settleCombinedBotsHomeOrder(_ shown: [String]) {
+        guard combinedBotsHomeRostersIn else { return }
         let settled = CombinedBotsHomeOrder.settled(combinedBotsHomeOrder, shown: shown)
         guard settled != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = settled
-        CombinedBotsHomeOrder.save(settled)
+        CombinedBotsHomeOrder.save(settled, defaults)
     }
 
     /// A portrait of the mixed grid dropped on another (`onto`, its key),
@@ -153,7 +164,7 @@ extension AppState {
         )
         guard moved != combinedBotsHomeOrder else { return }
         combinedBotsHomeOrder = moved
-        CombinedBotsHomeOrder.save(moved)
+        CombinedBotsHomeOrder.save(moved, defaults)
     }
 
     /// How long another dashboard's roster stands before a read again.

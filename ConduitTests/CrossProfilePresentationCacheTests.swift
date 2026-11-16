@@ -1380,8 +1380,10 @@ extension CrossProfilePresentationCacheTests {
         // One grid for the group: until arranged, each dashboard's bots in
         // Saved Dashboards order; arranged, the group's order holds, mixed.
         appState.botRoster = [bot("furina")]
+        appState.combinedBotsHomeOrder = []
         let own = appState.shownBotRoster
         XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.bot.name), ["raiden", "furina"])
+        XCTAssertTrue(appState.combinedBotsHomeRostersIn, "every other dashboard's bots are in")
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "Furina")]
         XCTAssertEqual(appState.combinedBotsHomeItems(own: own).map(\.id),
                        ["\(vps.id.uuidString)|furina", "\(mac.id.uuidString)|raiden"])

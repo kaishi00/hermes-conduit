@@ -605,10 +605,13 @@ extension AppState {
         // one's pass comes once it has connected.
         if let previousDashboardID, previousDashboardID != id { removePulseWidget(dashboardID: previousDashboardID) }
         rememberDashboardURL(dashboard.normalizedURL)
+        // The outgoing dashboard's bots, before preparing clears them: a
+        // combined one kept below leaves them on Bots Home.
+        let outgoingRoster = botRoster
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         // A combined dashboard left while connected stays connected, so a
         // switch back is at once (multi-instance stage 3).
-        keepOutgoingDashboardRuntimeIfCombined(previousDashboardID, switchingTo: id)
+        keepOutgoingDashboardRuntimeIfCombined(previousDashboardID, switchingTo: id, roster: outgoingRoster)
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {
             // Resume on the target's own profile, not the outgoing

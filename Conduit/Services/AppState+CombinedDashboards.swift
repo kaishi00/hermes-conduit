@@ -109,7 +109,9 @@ extension AppState {
     /// Before a switch retires the connection: a combined dashboard that is
     /// connected keeps its client and bridge instead of closing them. The
     /// retirement then finds neither and closes nothing.
-    func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID) {
+    /// `roster`: the outgoing dashboard's bots as it showed them, taken
+    /// before the switch's preparation clears Bot Mode's state.
+    func keepOutgoingDashboardRuntimeIfCombined(_ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile] = []) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
               // An edited address not yet taken up: this connection is to
@@ -127,7 +129,7 @@ extension AppState {
         ), for: outgoingID)
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
-        seedCombinedDashboardBots(outgoingID, from: botRoster, client: client)
+        seedCombinedDashboardBots(outgoingID, from: roster, client: client)
         self.client = nil
         dashboardTicketBridge = nil
         // The one on screen counts too, and the target, if kept, is about
