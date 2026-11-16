@@ -676,12 +676,27 @@ struct BotsLiveDot: View {
 /// The bots as a grid of portraits. Three across on a phone; as many as
 /// fit at about the same size on a wider column, and fewer at the largest
 /// Text Sizes, where a name needs the room.
-struct BotPortraitGrid<Cell: View>: View {
+struct BotPortraitGrid<Cell: View, Trailing: View>: View {
     let bots: [BotProfile]
     /// A portrait dropped past the last one.
     var onDropAtEnd: ((String) -> Void)?
     @ViewBuilder let cell: (BotProfile) -> Cell
+    /// Cells after the bots, in the same grid: the other combined
+    /// dashboards' bots on Bots Home.
+    let trailing: () -> Trailing
     @Environment(\.dynamicTypeSize) private var typeSize
+
+    init(
+        bots: [BotProfile],
+        onDropAtEnd: ((String) -> Void)? = nil,
+        @ViewBuilder cell: @escaping (BotProfile) -> Cell,
+        @ViewBuilder trailing: @escaping () -> Trailing
+    ) {
+        self.bots = bots
+        self.onDropAtEnd = onDropAtEnd
+        self.cell = cell
+        self.trailing = trailing
+    }
 
     var body: some View {
         let columns = typeSize.isAccessibilitySize
@@ -691,6 +706,7 @@ struct BotPortraitGrid<Cell: View>: View {
             ForEach(bots) { bot in
                 cell(bot)
             }
+            trailing()
         }
         .padding(.top, 14)
         .padding(.bottom, 4)
@@ -702,6 +718,16 @@ struct BotPortraitGrid<Cell: View>: View {
             onDropAtEnd(dragged)
             return true
         })
+    }
+}
+
+extension BotPortraitGrid where Trailing == EmptyView {
+    init(
+        bots: [BotProfile],
+        onDropAtEnd: ((String) -> Void)? = nil,
+        @ViewBuilder cell: @escaping (BotProfile) -> Cell
+    ) {
+        self.init(bots: bots, onDropAtEnd: onDropAtEnd, cell: cell) { EmptyView() }
     }
 }
 

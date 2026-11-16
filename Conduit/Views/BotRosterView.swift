@@ -86,7 +86,7 @@ struct BotRosterView: View {
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
             // Bots Home with other combined dashboards' bots shows them
-            // (its scroll lists their sections) though this one has none.
+            // (its grid lists their bots) though this one has none.
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
                 && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
                 emptyState
@@ -434,13 +434,23 @@ struct BotRosterView: View {
     /// menu.
     @ViewBuilder
     private var shownPortraits: some View {
-        switch BotsHomeLayout.of(visibleBots: visibleBots.count, accessibilitySize: typeSize.isAccessibilitySize) {
+        // The other combined dashboards' bots join the grid after these, so
+        // the group reads as one set of bots; with any of them there, the
+        // lone and paired layouts give way to the grid.
+        let others = appState.otherCombinedDashboardsBots
+        switch BotsHomeLayout.of(
+            visibleBots: visibleBots.count,
+            accessibilitySize: typeSize.isAccessibilitySize,
+            othersShown: !others.isEmpty
+        ) {
         case .solo:
             if let bot = visibleBots.first { soloHome(bot) }
         case .pair:
             pairHome
         case .grid:
-            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
+            BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) } trailing: {
+                CombinedDashboardBotCells(sections: others)
+            }
         }
     }
 
@@ -972,7 +982,7 @@ struct BotRosterView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
-                if !appState.shownBotRoster.isEmpty {
+                if !appState.shownBotRoster.isEmpty || !appState.otherCombinedDashboardsBots.isEmpty {
                     portraitGrid
                         .padding(.bottom, 8)
                 }
@@ -981,8 +991,6 @@ struct BotRosterView: View {
                 TipView(gesturesTip)
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
-                // The other combined dashboards' bots (all-live stage 4c).
-                CombinedDashboardBotsSections()
                 homeGroupSection
             }
             .overlayPreferenceValue(BotsHomeAnchorKey.self) { anchors in
@@ -1003,8 +1011,10 @@ struct BotRosterView: View {
         // Each bot's chats' Running and waits, read while Bots Home shows:
         // the Chats list's poll stops here.
         // The other combined dashboards' rosters, when theirs are older
-        // than a few minutes.
-        .task(id: botsHomeShowsLiveStatus) {
+        // than a few minutes, and at once when one connects (a quiet
+        // sign-in at launch, a reconnect after a drop), not only on the
+        // next visit.
+        .task(id: "\(botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
             guard botsHomeShowsLiveStatus else { return }
             await appState.readOtherCombinedDashboardsBots()
         }
