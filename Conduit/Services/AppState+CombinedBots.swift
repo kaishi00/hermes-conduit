@@ -66,7 +66,15 @@ enum CombinedBotsHomeOrder {
     /// A dragged portrait's name as a key: another dashboard's portrait
     /// carries its key, this dashboard's its bot's name.
     static func key(dragged: String, onScreen: UUID?) -> String {
-        dragged.contains("|") ? dragged : key(onScreen, dragged)
+        isKey(dragged) ? dragged : key(onScreen, dragged)
+    }
+
+    /// Whether a dragged name is another dashboard's key (a dashboard id,
+    /// or "-", then "|"), rather than a bot's name, which may hold "|".
+    static func isKey(_ dragged: String) -> Bool {
+        guard let bar = dragged.firstIndex(of: "|") else { return false }
+        let head = dragged[..<bar]
+        return head == "-" || UUID(uuidString: String(head)) != nil
     }
 
     static func load(_ defaults: UserDefaults = .standard) -> [String] {
@@ -249,7 +257,12 @@ extension AppState {
             guard let self else { return }
             await self.switchDashboard(to: dashboardID)
             // Another dashboard picked meanwhile owns the screen.
-            guard self.activeDashboardID == dashboardID else { return }
+            guard self.activeDashboardID == dashboardID else {
+                // No chat comes: the arm goes, so a namesake here never
+                // zooms another open.
+                if zooms { self.botZoom.openFailed(bot.name) }
+                return
+            }
             self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
         }
     }

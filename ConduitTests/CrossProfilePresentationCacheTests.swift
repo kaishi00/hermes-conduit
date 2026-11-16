@@ -1418,6 +1418,9 @@ extension CrossProfilePresentationCacheTests {
         let other = CombinedBotsHomeOrder.key(mac, "raiden")
         XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: other, onScreen: vps), other,
                        "another dashboard's carries its key")
+        XCTAssertEqual(CombinedBotsHomeOrder.key(dragged: "data|core", onScreen: vps), "\(vps.uuidString)|data|core",
+                       "a bot's name may hold a bar")
+        XCTAssertFalse(CombinedBotsHomeOrder.isKey("data|core"))
 
         XCTAssertEqual(CombinedBotsHomeOrder.ordered(["a", "b", "c", "d"], saved: ["c", "a"]) { $0 }, ["c", "a", "b", "d"])
         XCTAssertEqual(CombinedBotsHomeOrder.settled(["c", "a"], shown: ["a", "b", "c", "d"]), ["c", "a", "b", "d"])

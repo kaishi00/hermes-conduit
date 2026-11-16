@@ -599,6 +599,9 @@ struct BotRosterView: View {
     /// A bot held over `target` takes its place while still in hand, and
     /// the others slide aside, as on the Home Screen.
     private func slideBot(_ dragged: String, onto target: BotProfile) {
+        // Another dashboard's portrait has no place in this dashboard's
+        // order (the hidden bots' grid).
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             appState.dropBot(dragged, onto: target.name, shown: appState.shownBotRoster.map(\.name))
@@ -609,6 +612,7 @@ struct BotRosterView: View {
     /// room (or the dropped one joins the room being started); else it
     /// takes its place.
     private func handleDrop(_ dragged: String, on target: BotProfile, merge: Bool) {
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         if merge, canMerge(dragged, with: target),
            let draggedBot = appState.shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(dragged) == .orderedSame }) {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
@@ -623,6 +627,7 @@ struct BotRosterView: View {
     }
 
     private func dropAtEnd(_ dragged: String) {
+        guard !CombinedBotsHomeOrder.isKey(dragged) else { return }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             appState.moveBot(dragged, before: nil, shown: appState.shownBotRoster.map(\.name))
