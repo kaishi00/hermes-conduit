@@ -1763,7 +1763,9 @@ struct V2PulsePage: View {
             learnedNote = nil
             appState.applyPulseFeed(loaded)
             if let request = appState.pulseOpenRequest, isVisible { focus(request) }
-            if !Task.isCancelled, isVisible, visit == self.visit, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
+            // Backgrounded meanwhile (a retry or reload outside the page's
+            // task isn't cancelled by that): nothing was seen.
+            if !Task.isCancelled, isVisible, scenePhase == .active, visit == self.visit, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
                appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
