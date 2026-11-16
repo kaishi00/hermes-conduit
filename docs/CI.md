@@ -88,29 +88,13 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   included. A full build also catches a Watch or extension compile error
   before merge. The nightly unit shards and timing repeats still build
   `project-tests.yml`.
-- **A warm simulator.** The image's devices have never been booted, so a
-  job's first boot ran iOS's data migration while the build waited: 230 s
-  median (80-300 s) over 57 Smoke runs on 2026-11-15, half of them past
-  `bootstatus`'s 200 s budget. `ci-prepare-smoke.sh` (with `SIM_SEED_DIR`)
-  restores the pinned device's `data` folder as it was right after one
-  finished first boot, before anything was installed, so the device boots
-  already migrated. The folder is replaced only while the device is shut
-  down, and a seed is for one UDID. With no usable seed (none, another
-  device's, or one whose restore failed, which erases the device first),
-  the job waits up to 420 s for its first boot to finish, shuts the device
-  down, keeps its `data` folder and boots it again, and keeps the seed only
-  once that second boot is confirmed. Smoke's push runs save it as a
-  generation (`sim-v2-<xcode>-<image>-<simulator>-gen-<run id>`,
-  `scripts/ci-sim-seed-key.sh`) and a restore takes the newest, so a seed
-  that couldn't be used is replaced, about once per image and Xcode; Smoke and every nightly unit, timing and UI job
-  restore it, and the nightly jobs never make one (`SIM_SEED_RESTORE_ONLY`:
-  they can't save it). A push saves its build cache right after the build
-  and its weak-imports check too, before its tests, so a PR opened during main's UI smoke restores the
-  latest merge's build.
 - **Incremental builds from an earlier build.** Builds on `main` save their
   DerivedData to the Actions cache, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
-  smoke job of every push to `main` that builds saves the full app, and nightly unit
+  smoke job of every push to `main` that builds saves the full app (right
+  after its build and weak-imports check, before its tests: its UI smoke runs
+  another 3-5 minutes, and a PR opened meanwhile restored an older build and
+  recompiled main's latest merge, 2026-11-16), and nightly unit
   shard 1 saves the app-only (slim) build when it runs on `main`. A push to
   `linked-rooms` or `all-live` saves its full app as well, for that branch's
   later pushes and the PRs into it (GitHub gives a run its own branch's
@@ -316,10 +300,9 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
                  |                                   the build
                  v
    smoke (ONE macOS job)
-     restore main's (or its base branch's) build cache, the warm simulator
+     restore main's (or its base branch's) build cache
      build-for-testing  ||  simulator boot      (ci-hosted-build.sh)
      check-weak-imports; pushes only: save the full build cache
-     (and the warm simulator when this run made it)
      unit smoke: 70 pinned tests, ONE invocation, no retry
      UI smoke:   pushes only: 4 pinned tests, ONE invocation, one
                  targeted retry (runs even if unit smoke failed)
@@ -339,7 +322,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `linked-rooms` or `all-live`, after the build and its weak-imports check and before the tests, and the warm simulator when it made one. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main`, `linked-rooms` or `all-live`, after the build and its weak-imports check and before the tests. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
@@ -354,23 +337,16 @@ and uses that ID for shutdown, boot, boot readiness and the test destination.
 This avoids re-resolving an already-selected device by an ambiguous name across
 multiple installed runtimes. Destination settlement remains fatal when no
 device appears; shutdown and boot remain best-effort, with the existing 60s
-command and 200s readiness budgets (420s for a first boot that makes a warm
-seed). Unresolvable IDs retain the existing
-name-based destination fallback. No additional retry is added; the only erase
-is the warm-seed fallback (a seed restore that failed), see "A warm simulator"
-above.
+command and 200s readiness budgets. Unresolvable IDs retain the existing
+name-based destination fallback. No device erase or additional retry is added.
 The shared library has an optional
 `SIMULATOR_INVENTORY_CACHE` diagnostic sink, enabled only by hosted preparation:
 successful live device lookups retain their inventory without affecting which
 device is selected. Cache-write failures warn and preserve the lookup result.
 
 `ci-lane/destination/preparation.json` and the job summary report device ID,
-runtime, boot confirmation, the warm-device seed's outcome (`off`: no seed
-directory; `restored`; `created`; `create`: none made, the first boot never
-confirmed; `create-failed`: made but not kept; `skipped`: a restore-only job
-with none; `failed`: the device wasn't shut down, or a restore-only job's seed
-couldn't be used), and separate lookup,
-shutdown, boot, readiness and warm-seed seconds. The existing three-second settling delay is additional. Runtime
+runtime, boot confirmation, and separate lookup, shutdown, boot and readiness
+seconds. The existing three-second settling delay is additional. Runtime
 reporting reuses that retained pre-boot inventory; it never adds a post-boot
 `simctl list` probe. Each preparation gets a fresh diagnostic file so an existing
 UDID pin cannot reuse stale metadata. Missing diagnostics report runtime unknown.

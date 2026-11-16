@@ -192,55 +192,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertLess(text.index("- name: No back-deployed Date comparisons"), save)
         self.assertLess(save, text.index("- name: Run the curated unit smoke classes"))
         self.assertLess(save, text.index("- name: Run the curated UI smoke suite"))
-        self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Save the warm simulator")])
-
-    def test_every_macos_test_job_restores_the_warm_simulator(self):
-        """The first boot's data migration took 80-300 s with the build
-        waiting (2026-11-15): every job that boots the pinned device restores
-        the seed, under one key per image, Xcode and simulator, and only
-        Smoke's push runs save it."""
-        jobs = [(self._job_text("smoke"), "smoke")] + [(_job_text(NIGHTLY, job), job) for job in ("unit", "timing", "ui")]
-        for text, job in jobs:
-            self.assertIn("run: bash scripts/ci-sim-seed-key.sh", text, job)
-            self.assertIn("key: ${{ steps.sim-key.outputs.key }}\n          restore-keys: ${{ steps.sim-key.outputs.prefix }}", text, job)
-            self.assertIn("SIM_SEED_DIR: ${{ github.workspace }}/ci-sim-seed", text, job)
-            self.assertLess(text.index("- name: Restore the warm simulator"),
-                            text.index("run: bash scripts/ci-hosted-build.sh"), job)
-        smoke = self._job_text("smoke")
-        save = smoke[smoke.index("- name: Save the warm simulator"):]
-        save = save[:save.index("\n      - name:")]
-        self.assertIn("env.SIM_SEED_CREATED == '1'", save)
-        self.assertIn("github.event_name == 'push'", save)
-        self.assertNotIn("pull_request", save)
-        for job in ("unit", "timing", "ui"):
-            self.assertNotIn("Save the warm simulator", _job_text(NIGHTLY, job), job)
-            # They can't save one, so they never spend a second boot making it.
-            self.assertIn('SIM_SEED_RESTORE_ONLY: "1"', _job_text(NIGHTLY, job), job)
-
-    def test_the_warm_simulator_key_names_image_xcode_and_simulator(self):
-        """A seed is only for the image, Xcode build and simulator it came
-        from; each save is a generation (the run id) under one prefix."""
-        def keys(version, image, name, run):
-            with tempfile.TemporaryDirectory() as tmp:
-                fake = os.path.join(tmp, "xcodebuild")
-                with open(fake, "w") as fh:
-                    fh.write("#!/bin/bash\necho 'Xcode %s'\necho 'Build version 27B52'\n" % version)
-                os.chmod(fake, 0o755)
-                out = os.path.join(tmp, "out")
-                subprocess.run(["bash", os.path.join(SCRIPTS_DIR, "ci-sim-seed-key.sh")], check=True,
-                               capture_output=True, env=dict(os.environ, PATH=tmp + os.pathsep + os.environ["PATH"],
-                                                             ImageVersion=image, SIMULATOR_NAME=name,
-                                                             GITHUB_RUN_ID=run, GITHUB_OUTPUT=out))
-                with open(out) as fh:
-                    return dict(line.split("=", 1) for line in fh.read().splitlines())
-        k = keys("27.2", "20261104.0337.1", "iPhone 18 Pro", "41")
-        self.assertEqual(k["prefix"], "sim-v2-27.2-27B52-20261104.0337.1-iPhone-18-Pro-gen-")
-        self.assertEqual(k["key"], k["prefix"] + "41")
-        self.assertEqual(keys("27.2", "20261104.0337.1", "iPhone 18 Pro", "42")["prefix"], k["prefix"])
-        for other in (keys("27.3", "20261104.0337.1", "iPhone 18 Pro", "41"),
-                      keys("27.2", "20261111.0100.1", "iPhone 18 Pro", "41"),
-                      keys("27.2", "20261104.0337.1", "iPhone 18 Pro Max", "41")):
-            self.assertFalse(other["prefix"].startswith(k["prefix"]), other)
+        self.assertIn("github.event_name == 'push'", text[save:text.index("- name: Run the curated unit smoke classes")])
 
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
