@@ -1899,6 +1899,41 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
     }
 
+    /// #2636's review: two answers of one card both fenced off. Whichever
+    /// settles first waits on the other, and neither is left Sending.
+    func testTwoFencedAnswersOfOneCardBothGoBackToAnswerable() throws {
+        for lastIsFenced in [true, false] {
+            let appState = makeAppState().appState
+            var activity = makeBatchActivity()
+            activity.questions[0].status = .submitting
+            activity.questions[1].status = .submitting
+            appState.messages = [
+                ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "1", clarify: activity)
+            ]
+            let first = activity.questions[0].id
+            let second = activity.questions[1].id
+            appState.liveClarifySubmissions["req-batch"] = 2
+
+            // The first fenced send settles while the second is on its way.
+            appState.endClarifySubmission("req-batch")
+            appState.rearmStaleClarifyQuestions(requestId: "req-batch", questionIds: [first])
+            XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.questions[0].status, .submitting,
+                           "It waits while another send of its card is on its way")
+
+            appState.endClarifySubmission("req-batch")
+            if lastIsFenced {
+                appState.rearmStaleClarifyQuestions(requestId: "req-batch", questionIds: [second])
+            }
+            let card = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+            XCTAssertEqual(card.questions[0].status, .pending, "lastIsFenced: \(lastIsFenced)")
+            if lastIsFenced {
+                XCTAssertEqual(card.questions[1].status, .pending)
+            }
+            XCTAssertTrue(appState.staleClarifyQuestionIds.isEmpty)
+            XCTAssertTrue(appState.liveClarifySubmissions.isEmpty)
+        }
+    }
+
     /// #2601's review: a form's answers count as on their way for the whole
     /// form, so a resume between two of its sends doesn't offer the rest.
     func testAFormCountsAsOnItsWayBetweenItsSends() async throws {

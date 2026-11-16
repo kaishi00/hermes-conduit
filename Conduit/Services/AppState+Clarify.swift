@@ -283,11 +283,16 @@ extension AppState {
         liveClarifySubmissions[requestId, default: 0] += 1
     }
 
-    private func endClarifySubmission(_ requestId: String) {
+    func endClarifySubmission(_ requestId: String) {
         if let count = liveClarifySubmissions[requestId], count > 1 {
             liveClarifySubmissions[requestId] = count - 1
         } else {
             liveClarifySubmissions.removeValue(forKey: requestId)
+            // The last send settled: what a fenced-off one left waiting on
+            // it goes back to answerable now.
+            if staleClarifyQuestionIds[requestId] != nil {
+                rearmStaleClarifyQuestions(requestId: requestId, questionIds: [])
+            }
         }
     }
 
@@ -295,10 +300,15 @@ extension AppState {
     /// answerable, once nothing of their request is on its way here: the
     /// resume that ran meanwhile kept their wait for a send that then
     /// settled nothing. A send of the new connection's own still holds the
-    /// count, so this never writes over it. If Hermes took the answer after
-    /// all, its next snapshot says so. As approvals' rearmStaleSubmission.
+    /// count, so this never writes over it: the questions wait for the last
+    /// send to settle, which rearms them then. If Hermes took the answer
+    /// after all, its next snapshot says so. As approvals'
+    /// rearmStaleSubmission.
     func rearmStaleClarifyQuestions(requestId: String, questionIds: Set<String>) {
-        guard liveClarifySubmissions[requestId] == nil,
+        staleClarifyQuestionIds[requestId, default: []].formUnion(questionIds)
+        guard liveClarifySubmissions[requestId] == nil else { return }
+        let questionIds = staleClarifyQuestionIds.removeValue(forKey: requestId) ?? []
+        guard !questionIds.isEmpty,
               let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify, !activity.isExpired else { return }
         var changed = false
