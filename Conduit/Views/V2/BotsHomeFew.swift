@@ -25,7 +25,10 @@ enum BotsHomeLayout: Equatable {
 
     /// At accessibility Text Sizes two large faces outgrow a phone's
     /// width, so two bots take the grid's two columns instead.
-    static func of(visibleBots: Int, accessibilitySize: Bool) -> BotsHomeLayout {
+    /// `othersShown`: another combined dashboard's bots join the grid, so
+    /// one or two of this dashboard's give way to it too (Eric, 2026-11-16).
+    static func of(visibleBots: Int, accessibilitySize: Bool, othersShown: Bool = false) -> BotsHomeLayout {
+        guard !othersShown else { return .grid }
         switch visibleBots {
         case 1: return .solo
         case 2: return accessibilitySize ? .grid : .pair

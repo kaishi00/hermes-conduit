@@ -86,7 +86,7 @@ struct BotRosterView: View {
             // roster is empty. Until Hermes answers, the list is the one it
             // gave last time (#1533).
             // Bots Home with other combined dashboards' bots shows them
-            // (its scroll lists their sections) though this one has none.
+            // (its grid lists their bots) though this one has none.
             if appState.shownBotRoster.isEmpty && !hasGroupRows && groupProbeFailure == nil
                 && (createRequest == nil || appState.otherCombinedDashboardsBots.isEmpty) {
                 emptyState
@@ -438,9 +438,11 @@ struct BotRosterView: View {
         // the group reads as one set of bots; with any of them there, the
         // lone and paired layouts give way to the grid.
         let others = appState.otherCombinedDashboardsBots
-        switch others.isEmpty
-            ? BotsHomeLayout.of(visibleBots: visibleBots.count, accessibilitySize: typeSize.isAccessibilitySize)
-            : .grid {
+        switch BotsHomeLayout.of(
+            visibleBots: visibleBots.count,
+            accessibilitySize: typeSize.isAccessibilitySize,
+            othersShown: !others.isEmpty
+        ) {
         case .solo:
             if let bot = visibleBots.first { soloHome(bot) }
         case .pair:

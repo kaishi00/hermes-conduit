@@ -93,6 +93,9 @@ extension BotModeTests {
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 2, accessibilitySize: true), .grid)
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 3, accessibilitySize: false), .grid)
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 0, accessibilitySize: false), .grid)
+        // Another combined dashboard's bots join the grid: one or two give way.
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 1, accessibilitySize: false, othersShown: true), .grid)
+        XCTAssertEqual(BotsHomeLayout.of(visibleBots: 2, accessibilitySize: false, othersShown: true), .grid)
         XCTAssertNil(BotsHomeWork.lastActiveLabel(nil))
         XCTAssertNil(BotsHomeWork.lastActiveLabel(0))
         let now = Date(timeIntervalSince1970: 1_800_000_000)
