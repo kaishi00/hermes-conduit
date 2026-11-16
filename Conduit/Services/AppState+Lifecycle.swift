@@ -52,6 +52,23 @@ extension AppState {
             rebound.filter { ids.contains($0.value) }
         }
 
+        /// The moved-on ids a resume of the chat known by `ids` (and its
+        /// durable ids, `durableIDs`) still turns away: one the identity
+        /// index binds to that chat is its own, asked of the index first,
+        /// since a stale catalog row can list an id under the wrong chat
+        /// (#2613's review, issue 2619).
+        static func movedOn(
+            _ movedOn: Set<String>,
+            keptFor ids: Set<String>,
+            durableIDs: Set<String>,
+            indexed: (String) -> String?
+        ) -> Set<String> {
+            movedOn.filter { id in
+                if let durableID = indexed(id) { return !durableIDs.contains(durableID) }
+                return !ids.contains(id)
+            }
+        }
+
         init(
             token: UUID,
             requestedSessionId: String,
@@ -954,6 +971,11 @@ extension AppState {
     /// baseline, less any under a rebound id Hermes has since given another
     /// chat (#2613's review).
     func replayForegroundBufferedEntries() {
+        // A rebind recorded during the probe with no stream event since:
+        // asked of the index again before the replay (issue 2619).
+        for id in (reconciliation?.reboundSessionIDs.keys).map(Array.init) ?? [] {
+            _ = dropReboundIDIfMovedOn(id)
+        }
         let open = reconciliation
         for entry in open?.bufferedEntries ?? []
         where open?.movedOnSessionIDs.contains(sessionID(for: entry.event)) != true {

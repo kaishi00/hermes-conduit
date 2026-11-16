@@ -437,30 +437,33 @@ struct BotRosterView: View {
         // The other combined dashboards' bots join the grid, mixed with
         // these in the group's one order, so the group reads as one set of
         // bots; with any of them there, the lone and paired layouts give
-        // way to the grid.
-        let others = appState.otherCombinedDashboardsBots
+        // way to the grid. One Hermes saved twice lists its bots once, so
+        // only bots another Hermes adds count (issue 2640).
+        let items = appState.combinedBotsHomeItems(own: visibleBots)
+        let othersShown = items.contains {
+            if case .other = $0.kind { return true } else { return false }
+        }
         switch BotsHomeLayout.of(
             visibleBots: visibleBots.count,
             accessibilitySize: typeSize.isAccessibilitySize,
-            othersShown: !others.isEmpty
+            othersShown: othersShown
         ) {
         case .solo:
             if let bot = visibleBots.first { soloHome(bot) }
         case .pair:
             pairHome
         case .grid:
-            if others.isEmpty {
+            if !othersShown {
                 BotPortraitGrid(bots: visibleBots, onDropAtEnd: dropAtEnd) { portrait($0) }
             } else {
-                mixedGrid
+                mixedGrid(items)
             }
         }
     }
 
     /// The group's grid: every combined dashboard's bots in one order the
     /// person arranges, each with its dashboard's badge.
-    private var mixedGrid: some View {
-        let items = appState.combinedBotsHomeItems(own: visibleBots)
+    private func mixedGrid(_ items: [CombinedBotsHomeItem]) -> some View {
         let shown = items.map(\.id)
         return BotPortraitGrid(items: items, onDropAtEnd: { dragged in moveMixed(dragged, onto: nil, shown: shown) }) { item in
             switch item.kind {
@@ -1046,15 +1049,17 @@ struct BotRosterView: View {
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
+                // With the Retry the empty page would have, when the other
+                // combined dashboards' bots take its place (issue 2623).
                 if case .failed(let message) = appState.botModePhase {
-                    botModeFailure(message)
+                    botModeFailure(message, retries: true)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
                 // This Hermes needs an update, said over the other combined
                 // dashboards' bots when they take the empty page's place.
                 if appState.botModePhase == .gatewayUnsupported {
-                    botModeFailure(AppLocalization.string("Update Hermes to use Bot Mode."))
+                    botModeFailure(Self.updateHermesForBotMode, retries: true)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 3)
                 }
@@ -1106,10 +1111,15 @@ struct BotRosterView: View {
         shell.isTabActive && !shell.isRootCovered && !coveredBySheet
     }
 
-    private func botModeFailure(_ message: String) -> some View {
+    /// This Hermes has no Bot Mode: said by the empty page, and over the
+    /// other combined dashboards' bots when they take its place.
+    private static var updateHermesForBotMode: String { AppLocalization.string("Update Hermes to use Bot Mode.") }
+
+    private func botModeFailure(_ message: String, retries: Bool = false) -> some View {
         BotModeNoticeRow(
             icon: "exclamationmark.triangle",
-            message: message
+            message: message,
+            retry: retries ? { Task { await appState.refreshBotRoster() } } : nil
         )
         .padding(.horizontal, 12)
         .padding(.vertical, 10)
@@ -1454,7 +1464,7 @@ struct BotRosterView: View {
         case .gatewayUnsupported:
             ContentUnavailableView {
                 Label(
-                    AppLocalization.string("Update Hermes to use Bot Mode."),
+                    Self.updateHermesForBotMode,
                     systemImage: "arrow.triangle.2.circlepath.trianglebadge.exclamationmark"
                 )
             } description: {
@@ -1822,6 +1832,9 @@ struct BotMonogramView: View {
 private struct BotModeNoticeRow: View {
     let icon: String
     let message: String
+    /// A Retry beside the message, for a row standing in for the empty
+    /// page's (issue 2623).
+    var retry: (() -> Void)? = nil
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
@@ -1830,6 +1843,16 @@ private struct BotModeNoticeRow: View {
             Text(message)
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
+            if let retry {
+                Spacer(minLength: 8)
+                Button(action: retry) {
+                    Text(AppLocalization.string("Retry"))
+                        .scaledFont(.footnote.weight(.semibold))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+            }
         }
     }
 }

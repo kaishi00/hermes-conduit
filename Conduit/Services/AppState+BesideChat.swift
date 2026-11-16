@@ -156,7 +156,9 @@ extension AppState {
     /// False when it can't be followed, with the pane as it was.
     private func keepChatOnScreenBeside() -> Bool {
         guard canKeepChatOnScreenBeside, let id = activeSessionId else { return false }
-        let ids = knownSessionIDs(for: id).union([id])
+        // Its own row's ids, never an alias another row owns or carries
+        // too (issue 2602).
+        let ids = followedSessionIDs(for: id)
         let previous = besideChatIDs
         besideChatIDs = ids
         followChatOnScreen(answering: ids, openAs: id, turnRunning: turnState == .running, staysBeside: true)
