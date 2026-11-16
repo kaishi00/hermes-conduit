@@ -85,9 +85,9 @@ enum DashboardSignInError: Error, Equatable {
     /// A 2xx answer without Hermes provider structure (another web app, a
     /// proxy's own page, malformed JSON). Never read as interactive sign-in.
     case unrecognizedServer
-    /// Hermes provider structure naming no password or interactive provider
-    /// (an empty list, which Hermes itself never serves: it answers 503 when
-    /// no provider is registered).
+    /// Hermes provider structure naming no password or interactive provider,
+    /// and no session token on offer either (an empty list is how a Hermes
+    /// set up with only its session token answers; its status says so).
     case noSignInMethod
 }
 

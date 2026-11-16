@@ -52,6 +52,26 @@ extension BotModeTests {
     /// Bots Home with one or two bots (Eric, 2026-11-15): a lone bot shows
     /// its open work, what waits on the user first, three at most; two bots
     /// side by side, except at accessibility sizes; three or more the grid.
+    /// Bots Home's last reply re-reads on the open chat's newest reply row
+    /// with text (issue 2519): a tool row, a steer or an empty reply row
+    /// after it changes nothing; its text replaced under its id does.
+    func testBotsHomeLastReplyFollowsTheNewestReplyRow() {
+        let reply = ChatMessage(id: "r1", role: .assistant, content: "The build is green.", timestamp: "1")
+        let key = BotLastReply.replyKey([reply])
+        XCTAssertFalse(key.isEmpty)
+        let trailing = [
+            reply,
+            ChatMessage(id: "t1", role: .tool, content: "", timestamp: "2"),
+            ChatMessage(id: "s1", role: .user, content: "and the tests?", timestamp: "3"),
+            ChatMessage(id: "e1", role: .assistant, content: "  ", timestamp: "4"),
+        ]
+        XCTAssertEqual(BotLastReply.replyKey(trailing), key, "rows after the reply leave it as it was")
+        var edited = trailing
+        edited[0] = ChatMessage(id: "r1", role: .assistant, content: "The build is red.", timestamp: "1")
+        XCTAssertNotEqual(BotLastReply.replyKey(edited), key, "a reply replaced under its id is read again")
+        XCTAssertEqual(BotLastReply.replyKey([]), "")
+    }
+
     func testBotsHomeWithFewBots() throws {
         let snapshot = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
         XCTAssertEqual(BotsHomeWork.preview(snapshot).map(\.ref), ["W2", "W1", "A1"])

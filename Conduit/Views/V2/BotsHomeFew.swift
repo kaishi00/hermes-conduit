@@ -95,12 +95,17 @@ struct BotLastReply: View {
     /// (streamed tokens don't touch `messages`).
     private var readKey: String {
         let chat = bot.canonicalSession
-        let openTail = appState.activeBotChatProfile == bot.name
-            ? (appState.messages.last(where: { $0.role == .assistant && $0.tool == nil })
-                .map { "\($0.id)\u{1E}\($0.content.hashValue)" } ?? "")
-            : ""
+        let openTail = appState.activeBotChatProfile == bot.name ? Self.replyKey(appState.messages) : ""
         return [bot.name, chat?.id ?? "", String(chat?.lastActive ?? 0), openTail,
                 String(appState.isConnected), String(shell.isTabActive)].joined(separator: "\u{1F}")
+    }
+
+    /// The open chat's newest reply as the re-read follows it: the row
+    /// voice takes as its last reply (`AppState.latestReplyMessage`), so a
+    /// tool step, a steer or an empty reply row after it changes nothing,
+    /// and its text replaced under the same id does.
+    static func replyKey(_ messages: [ChatMessage]) -> String {
+        AppState.latestReplyMessage(in: messages).map { "\($0.id)\u{1E}\($0.content.hashValue)" } ?? ""
     }
 
     private var when: String? {

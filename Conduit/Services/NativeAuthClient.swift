@@ -109,8 +109,9 @@ extension NativeAuthConnection {
 enum AuthProviderDiscoveryResult {
     /// The dashboard answered `/api/auth/providers` with recognizable Hermes
     /// provider JSON. The array may name non-password providers only, or be
-    /// empty (Hermes itself answers 503 when no provider is registered, so
-    /// an empty list names no sign-in method). `authFlows` is the answer's
+    /// empty: a Hermes set up with only its session token lists none, and
+    /// its status says it takes the token (`supportsSessionToken`); with no
+    /// token on offer an empty list names no sign-in method. `authFlows` is the answer's
     /// top-level `auth_flows` (the sign-in flows the dashboard advertises,
     /// `native_pkce` being native sign-in), or nil when the answer carries
     /// none as a list of strings; stock Hermes advertises them only on

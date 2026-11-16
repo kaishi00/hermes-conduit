@@ -1748,7 +1748,9 @@ extension AppState {
         return Self.latestReplyMessage(in: messages)
     }
 
-    private static func latestReplyMessage(in messages: [ChatMessage]) -> ChatMessage? {
+    /// The newest reply row with text: what voice reads as the chat's last
+    /// reply, and what Bots Home's last reply re-reads on.
+    static func latestReplyMessage(in messages: [ChatMessage]) -> ChatMessage? {
         latestReplyTurn(in: messages)?.reply
     }
 

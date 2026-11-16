@@ -466,8 +466,10 @@ struct ConnectionSetupProbe: ConnectionSetupTesting {
 
         // Stage 2: the discovery answer must identify a Hermes dashboard
         // and a sign-in mode, decided by the same resolver the login card
-        // and Repair use. An arbitrary website answering 200, a provider
-        // list naming no usable sign-in, and a failed native capability
+        // and Repair use (an empty provider list is a session-token-only
+        // Hermes when its status offers the token). An arbitrary website
+        // answering 200, a provider list naming no usable sign-in, and a
+        // failed native capability
         // check for a dashboard that offers nothing else all fail here —
         // never a quiet downgrade to another mode.
         onEvent(.started(.dashboard))

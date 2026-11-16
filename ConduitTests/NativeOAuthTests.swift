@@ -384,6 +384,30 @@ final class NativeOAuthTests: XCTestCase {
         XCTAssertNotNil(SessionTokenSignInForm.problem(with: "two words"))
     }
 
+    /// A session-token sign-in cancelled while Hermes checked the token
+    /// (issue 2462): nothing connects, and Keychain holds the grant the
+    /// token replaced, or nothing when there was none.
+    @MainActor
+    func testACancelledSessionTokenSignInPutsBackThePreviousGrant() {
+        let dashboardID = UUID()
+        defer { KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID) }
+        let previous = tokens()
+        let token = tokens(access: "typed-token")
+        let replacing = NativeOAuthLoginResult(tokens: token, ticket: "ticket", previousTokens: previous)
+
+        KeychainHelper.saveNativeOAuthTokens(token, dashboardID: dashboardID)
+        XCTAssertNotNil(SessionTokenSignInForm.keep(replacing, cancelled: false, dashboardID: dashboardID), "not cancelled: it connects")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.accessToken, "typed-token")
+
+        XCTAssertNil(SessionTokenSignInForm.keep(replacing, cancelled: true, dashboardID: dashboardID), "cancelled: nothing connects")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID)?.accessToken, previous.accessToken)
+
+        KeychainHelper.saveNativeOAuthTokens(token, dashboardID: dashboardID)
+        let first = NativeOAuthLoginResult(tokens: token, ticket: "ticket")
+        XCTAssertNil(SessionTokenSignInForm.keep(first, cancelled: true, dashboardID: dashboardID))
+        XCTAssertNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), "no grant before: none after")
+    }
+
     @MainActor
     func testBridgeAuthModeReflectsDashboardScopedTokens() {
         let dashboardID = UUID()
