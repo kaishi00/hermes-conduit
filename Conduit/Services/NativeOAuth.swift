@@ -1183,7 +1183,11 @@ struct SessionTokenSignInForm: View {
     static func keep(_ result: NativeOAuthLoginResult, cancelled: Bool, dashboardID: UUID) -> NativeOAuthLoginResult? {
         guard cancelled else { return result }
         if let previous = result.previousTokens {
-            KeychainHelper.saveNativeOAuthTokens(previous, dashboardID: dashboardID)
+            if !KeychainHelper.saveNativeOAuthTokens(previous, dashboardID: dashboardID) {
+                // The new token stays in the slot; the next connect signs in
+                // with it rather than the one it replaced (#2628's review).
+                nativeOAuthLogger.error("Session token sign-in cancelled: the previous grant couldn't be put back")
+            }
         } else {
             KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
         }

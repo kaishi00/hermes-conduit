@@ -288,6 +288,24 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingNotice(), "No later conversation announces it again")
     }
 
+    /// The pass's notice names the hanging-up call's profile for a job that
+    /// names none, so a hand-back while it waits can't move it (#2628's
+    /// review).
+    func testTheHangUpsNoticeNamesTheCallsProfile() async {
+        let (supervisor, _, calls) = hermesCallSupervisor()
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the router"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+        supervisor.observe(.messageComplete(sessionId: "rt-1", messageId: nil, content: "All good.", reasoning: nil))
+
+        supervisor.settlingCallProfile = "furina"
+        await supervisor.finishCallbacks()?.value
+
+        XCTAssertEqual(calls.notified.map(\.target.runtimeSessionID), ["rt-1"])
+        XCTAssertEqual(calls.notified.first?.target.profile, "furina")
+    }
+
     func testReleaseAfterTheHostSawTheEndNotifiesOnce() async {
         let (supervisor, _, calls) = hermesCallSupervisor()
         calls.holdAnswers[0] = .ended(.failed)

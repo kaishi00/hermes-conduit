@@ -2611,7 +2611,7 @@ extension AppStateVoiceCapabilityTests {
         // A restore that ran before any client existed: the client that
         // comes later learns the profiles too (#2626's review).
         appState.client = nil
-        let later = HermesClient(connection: appState.connection!, profile: "default")
+        let later = HermesClient(connection: try XCTUnwrap(appState.connection), profile: "default")
         XCTAssertNil(later.sessionProfile(for: "rt-bot"))
         appState.client = later
         XCTAssertEqual(later.sessionProfile(for: "rt-bot"), "furina", "a client set after the restore is told")

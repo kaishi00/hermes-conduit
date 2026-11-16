@@ -705,6 +705,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The host's call watches; nil when Hermes can't call.
     var callbacks: VoiceCallbackBackend?
+    /// The hanging-up call's profile, set as its pass starts: a pass's
+    /// notice names it where the job names none, so a hand-back while the
+    /// pass waits can't send the notice to the profile on screen.
+    var settlingCallProfile: String?
     /// Answers what a call from Hermes waits on (#449 step 4); nil before
     /// AppState sets it.
     var callDecisions: VoiceCallDecisions?
@@ -1055,12 +1059,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     func detachEndedCallbackSettles(callProfile: String? = nil) -> Task<Void, Never>? {
         guard let callbacks else { return nil }
         var settles: [DetachedCallbackSettle] = []
-        func pinned(_ target: VoiceCallbackTarget?) -> VoiceCallbackTarget? {
-            guard let target, target.profile == nil, let callProfile else { return target }
-            return VoiceCallbackTarget(title: target.title, sessionIDs: target.sessionIDs,
-                                       runtimeSessionID: target.runtimeSessionID,
-                                       storedSessionID: target.storedSessionID, profile: callProfile)
-        }
+        func pinned(_ target: VoiceCallbackTarget?) -> VoiceCallbackTarget? { Self.pin(target, to: callProfile) }
         for (id, entry) in Array(callbackWatches) {
             let profile = entry.profile ?? callProfile
             guard let callID = entry.callID, callID != callbackCallID else { continue }
@@ -1099,6 +1098,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
     }
 
+    /// `target` naming `profile` where it names none.
+    static func pin(_ target: VoiceCallbackTarget?, to profile: String?) -> VoiceCallbackTarget? {
+        guard let target, target.profile == nil, let profile else { return target }
+        return VoiceCallbackTarget(title: target.title, sessionIDs: target.sessionIDs,
+                                   runtimeSessionID: target.runtimeSessionID,
+                                   storedSessionID: target.storedSessionID, profile: profile)
+    }
+
     /// Whether the job ended without the user hearing how: no notice taken
     /// for it yet, or one taken but not sent. Stopped work is never untold.
     private func callbackOutcomeUntold(_ id: UUID) -> Bool {
@@ -1128,7 +1135,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
             return
         }
-        let target = Self.callbackTarget(job)
+        let target = Self.pin(Self.callbackTarget(job), to: entry.profile ?? settlingCallProfile)
         switch job.status {
         case .cancelled:
             if let watchID = entry.watchID { try? await callbacks.cancel(watchID, entry.profile) }
