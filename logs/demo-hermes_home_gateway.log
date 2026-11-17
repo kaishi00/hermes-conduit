@@ -1,0 +1,8 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 02:23:40,350 WARNING gateway.run: No messaging platforms enabled.
