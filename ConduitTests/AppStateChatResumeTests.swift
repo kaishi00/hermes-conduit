@@ -3040,19 +3040,19 @@ final class AppStateChatResumeTests: XCTestCase {
         }
         let dashboard = appState.activeDashboardID
         appState.needsYou.apply(
-            [wait("w1", session: "runtime-a", request: "conduit-push-abc", question: "Which environment?", gateway: "gw-2683"),
+            [wait("w1", session: "runtime-a", request: "conduit-push-abc2683", question: "Which environment?", gateway: "gw-2683"),
              wait("w2", session: "stored-b", request: "conduit-push-other", question: "Which branch?")],
             profile: "default", dashboardID: dashboard
         ) { _ in false }
         appState.showWaitingQuestionCards()
-        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "only the open chat's")
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc2683"], "only the open chat's")
         // Issue 2683: its answer is sealed for the gateway the list named,
         // as a tapped notification's is; the other chat's card isn't drawn.
-        XCTAssertEqual(PushNotificationService.shared.relayGatewayID(forRequestID: "conduit-push-abc"), "gw-2683")
+        XCTAssertEqual(PushNotificationService.shared.relayGatewayID(forRequestID: "conduit-push-abc2683"), "gw-2683")
         XCTAssertNil(PushNotificationService.shared.relayGatewayID(forRequestID: "conduit-push-other"))
         XCTAssertEqual(appState.messages.last?.clarify?.questions.first?.choices.map(\.value), ["staging", "production"])
         appState.showWaitingQuestionCards()
-        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc"], "one question is one card")
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-abc2683"], "one question is one card")
 
         // Hermes' own card for the question keeps the copy out.
         appState.messages = [ChatMessage(

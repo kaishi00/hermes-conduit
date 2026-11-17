@@ -110,6 +110,21 @@ struct NeedsYouItem: Identifiable, Equatable {
         )
     }
 
+    /// A profile's `/waiting` answer as its rows, each carrying the relay
+    /// gateway the list names (issue 2683); nil when it holds no list (an
+    /// error body).
+    static func items(listed response: [String: Any], profile: String) -> [NeedsYouItem]? {
+        guard let listed = response["waiting"] as? [[String: Any]] else { return nil }
+        let gatewayID = (response["gateway_id"] as? String)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        return listed.compactMap { row in
+            var item = NeedsYouItem(host: row, profile: profile)
+            item?.relayGatewayID = gatewayID
+            return item
+        }
+    }
+
     /// What the chat waits on, in the App Language.
     var kindLine: String {
         switch kind {
