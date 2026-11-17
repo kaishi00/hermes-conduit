@@ -210,6 +210,12 @@ extension AppState {
         Set(storedRelayGatewayIDs()[dashboardID.uuidString]?.values.map { $0 } ?? [])
     }
 
+    /// The relay gateway `dashboardID`'s host last said it pairs `profile`
+    /// with this iPhone through.
+    func reportedRelayGatewayID(of dashboardID: UUID, profile: String) -> String? {
+        storedRelayGatewayIDs()[dashboardID.uuidString]?.first { Self.profilesMatch($0.key, profile) }?.value
+    }
+
     /// Every relay gateway a saved dashboard's host said it pairs this
     /// iPhone through.
     var knownRelayGatewayIDs: Set<String> {
