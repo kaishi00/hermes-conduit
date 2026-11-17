@@ -66,3 +66,43 @@ Results:
   the app in a matching time zone (`timeZoneNearStatusBarTime`).
 - Keep markdown out of the first line of answers that show as previews (bot
   list, chat list).
+
+## Demo videos
+
+`.github/workflows/demo-videos.yml` records the scenes for release posts and
+App Store material, one MP4 per scene, from a single run on a hosted Mac.
+Nothing is filmed by hand and no real Hermes or device is involved. Run it from
+Actions > Demo videos > Run workflow; `scenes` picks which scenes to cut
+(all by default), `devices` the simulators.
+
+It starts two demo dashboards on the runner, **Home**
+(`http://hermes.tail-demo.ts.net:9119`) and **Studio**
+(`http://studio.tail-demo.ts.net:9129`), each from its own script in
+`videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout.
+`link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
+repo and links the two as the owner's own Hermes, so a room can hold bots from
+both. Studio asks for approvals (`DEMO_APPROVALS=manual`); its seeded turns run
+nothing that asks.
+
+`ConduitScreenshots/DemoVideoTests.swift` signs in to Home, adds Studio and
+combines the two, and plays the scenes while `simctl io recordVideo` runs.
+Each scene prints `SCENE start <name>` and `SCENE end <name>` with the time,
+and `cut-scenes.sh` cuts the recording at those marks, so the setup between
+scenes never shows. What changes on a dashboard mid-scene comes from
+`demo_director.py`, a small server on the runner the test calls: `add-bot`
+creates a bot the script marks `"later"` (Bots Home going from one bot to
+four), and `prompt` sends a line in a bot's chat so it works on its own (a
+second bot replying, an approval that shows up in Needs you).
+
+The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
+`two-replying`, `reorder`, `room-across`, `room-approval`, `needs-you`.
+
+Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
+a still at the end of each scene in `stills/`), and the git ref
+`refs/demo-videos/<run id>` with the same minus the raw recording, for
+sessions that can't download artifacts.
+
+Bot pictures come from `avatars/<name>.png` (256 px), uploaded the way the app
+uploads one. A turn sent live rather than seeded goes under `"replies"`, and
+`"system_has"` picks which bot answers when several hear the same words in a
+room. A script can borrow chats from another with `"include_chats"`.

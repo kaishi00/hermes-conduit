@@ -7285,11 +7285,14 @@ screen, and a switch is unchanged for them)
 
 What the capture run shows of each screen: the App Store screenshots and
 previews, and the short clips hermesconduit.app (kaishi00/hermes-conduit-website#2)
-and the README's "See it in action" strip show.
+and the README's "See it in action" strip show. The demo videos run records
+scenes for release posts against two demo dashboards, Home and Studio,
+combined and linked as one owner's own Hermes.
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
+cut · the demo videos run (its scenes, the two dashboards' scripts, the
+director and the scene cut) · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
 **Code**
@@ -7297,7 +7300,8 @@ clips (kaishi00/hermes-conduit-website)
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
-- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`
+- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/demo_script.py` (include_chats), `scripts/app-store/seed_demo.py` (Gateway), `scripts/app-store/avatars/`
+- Demo videos: `.github/workflows/demo-videos.yml`, `ConduitScreenshots/DemoVideoTests.swift`, `scripts/app-store/videos/home.json`, `scripts/app-store/videos/studio.json`, `scripts/app-store/link-demo-hermes.sh` (the rooms mailbox and the own Link), `scripts/app-store/demo_director.py`, `scripts/app-store/cut-scenes.sh`
 - Text: `scripts/app-store/README.md`
 - README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
 
@@ -7305,11 +7309,12 @@ clips (kaishi00/hermes-conduit-website)
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
 - Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a call state that should move goes into both lists. `home` and `listening` are screenshots only: neither moves enough to need a clip (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
+- Demo videos are scripted, not filmed: two demo dashboards on the runner, the app driven by a UI test, one video per scene; what changes on a dashboard mid-scene comes from the director acting on the dashboard itself, never from an app fixture. Bots wear Eric's own pictures (scripts/app-store/avatars), never game art. Screenshots for posts come from the videos, so this run takes none of its own (Eric, 2026-11-17, #PR).
 
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-11-16, #2653 (both capture jobs share the selector that skips candidates without an iOS simulator SDK or an older fallback without a watchOS SDK for its pin, and pins only a numerically older fallback; capture content and device lookups unchanged); 2026-11-16, #2627 (the iPhone, iPad and Watch lookups honour the runtime pin a fallback Xcode sets, #2622); 2026-11-16, #2600 (the shared Xcode selection script now fetches a missing Metal toolchain, #2598; see Smoke selection); 2026-11-12, #2326 (Code names the Xcode selection script); 2026-11-12, #2319 (both jobs run on the `xcode-27` image; default devices iPhone 18 Pro Max, iPad Pro 13-inch and Apple Watch Ultra 4); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
+**Checked:** 2026-11-17, #PR (demo videos run: Home and Studio dashboards, own Link through a mailbox on the runner, director, one cut per scene; the demo Hermes runs from a locked checkout at v0.23.2, bots cloned from the main profile with their pictures); 2026-11-16, #2653 (both capture jobs share the selector that skips candidates without an iOS simulator SDK or an older fallback without a watchOS SDK for its pin, and pins only a numerically older fallback; capture content and device lookups unchanged); 2026-11-16, #2627 (the iPhone, iPad and Watch lookups honour the runtime pin a fallback Xcode sets, #2622); 2026-11-16, #2600 (the shared Xcode selection script now fetches a missing Metal toolchain, #2598; see Smoke selection); 2026-11-12, #2326 (Code names the Xcode selection script); 2026-11-12, #2319 (both jobs run on the `xcode-27` image; default devices iPhone 18 Pro Max, iPad Pro 13-inch and Apple Watch Ultra 4); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
 ## What your sent message shows
 
