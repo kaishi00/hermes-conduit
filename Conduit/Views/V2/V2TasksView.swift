@@ -10,7 +10,20 @@
 
 import SwiftUI
 
-struct V2TasksView: View, Equatable {
+/// Mounts Tasks behind `.equatable()`, equal by AppState identity:
+/// redrawn by its own changes only, while the shell redraws on every
+/// publish. Its own small type with a synthesized `==`, so a new member of
+/// the page doesn't recompile the app (Conduit/Services/EquatableWrappers.swift).
+struct V2TasksViewGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        V2TasksView(appState: appState)
+    }
+}
+
+/// Tasks, mounted through V2TasksViewGate.
+struct V2TasksView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Followed through `updates`, which holds AppState's changes back
     /// while another tab is up: a hidden board redrew on every publish, a
@@ -32,11 +45,6 @@ struct V2TasksView: View, Equatable {
     init(appState: AppState) {
         self.appState = appState
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
-    }
-
-    /// Redrawn by its own changes only; the shell redraws on every publish.
-    nonisolated static func == (lhs: V2TasksView, rhs: V2TasksView) -> Bool {
-        lhs.appState === rhs.appState
     }
 
     private var segment: Binding<Segment> {

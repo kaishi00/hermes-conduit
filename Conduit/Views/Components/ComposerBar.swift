@@ -13,11 +13,22 @@ import UIKit
 import PhotosUI
 import UniformTypeIdentifiers
 
-/// Equatable by AppState identity, and mounted with `.equatable()`: its
-/// StateObject would otherwise make every ChatView redraw rebuild it.
-/// It redraws on its own for what it shows (ComposerUpdates), its state
-/// and its environment.
-struct ComposerBar: View, Equatable {
+/// Mounts the composer behind `.equatable()`, equal by AppState identity:
+/// the composer's StateObject would otherwise make every ChatView redraw
+/// rebuild it. The composer redraws on its own for what it shows
+/// (ComposerUpdates), its state and its environment. The gate is its own
+/// small type with a synthesized `==`, so a new member of the composer
+/// doesn't recompile the app (Conduit/Services/EquatableWrappers.swift).
+struct ComposerBarGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        ComposerBar(appState: appState)
+    }
+}
+
+/// The chat's composer, mounted through ComposerBarGate.
+struct ComposerBar: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Redraws only when something the composer shows changes, not on
     /// every AppState publish (ComposerUpdates.swift).
@@ -116,15 +127,8 @@ struct ComposerBar: View, Equatable {
 
     /// AppState lives as long as the app (ConduitApp), so the StateObject
     /// made for the first one is the one every later init names.
-    private let appStateID: ObjectIdentifier
-
     init(appState: AppState) {
-        appStateID = ObjectIdentifier(appState)
         _updates = StateObject(wrappedValue: ComposerUpdates(appState))
-    }
-
-    nonisolated static func == (lhs: ComposerBar, rhs: ComposerBar) -> Bool {
-        lhs.appStateID == rhs.appStateID
     }
 
     struct AsyncAttachmentContext: Equatable {
