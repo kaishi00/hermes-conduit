@@ -896,6 +896,10 @@ extension CrossProfilePresentationCacheTests {
         final class Counts { var mints: [String] = [] }
         let counts = Counts()
         let socket = ClarifyFakeSocket()
+        // Every request answered at once (refused), so the switch's reads
+        // don't wait out their timeouts on a socket that never answers, nor
+        // its keepalive close the kept socket meanwhile.
+        socket.refusesEveryRequest = true
         let transport = ClarifyFakeTransport()
         transport.nextSocket = { socket }
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
