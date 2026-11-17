@@ -2111,7 +2111,7 @@ struct BotZoomDestination: ViewModifier {
         // changed on a pushed screen leaves Back with no animation.
         let open = appState.botZoomRoomKey ?? appState.activeBotChatProfile ?? appState.activeWorkstream?.profile
         let armed = route == .conversation && fromHome && !reduceMotion ? appState.botZoom.source(open: open) : nil
-        let held = landedSource.flatMap { source in
+        let held = reduceMotion ? nil : landedSource.flatMap { source in
             open?.caseInsensitiveCompare(source) == .orderedSame ? source : nil
         }
         Group {
