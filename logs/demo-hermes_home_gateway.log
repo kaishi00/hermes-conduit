@@ -1,0 +1,9 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 12:34:08,629 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 12:40:33,912 WARNING conduit_push_dashboard_pkg.room_links: Linked Rooms couldn't finish reading the mailbox (unreachable); trying again in 5 s
