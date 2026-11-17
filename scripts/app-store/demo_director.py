@@ -19,7 +19,10 @@ JSON to http://127.0.0.1:$DIRECTOR_PORT/<action>:
   config entry names the person the host's Link calls them ("person").
 - join-room {"dashboard", "room", "agents"}: that dashboard's person joins the
   room the app invited them to, found by name on their invites, and it
-  returns once their copy says it started.
+  returns once their copy says it started. First it gives their Hermes how
+  those agents look in rooms (PUT /rooms/looks), as their Conduit would:
+  avatars/<the bot's "avatar">.look.jpg, a 96 px JPEG of at most 8 KB, with
+  the bot's "look_color".
 - room-say {"dashboard", "room", "text"}: posts text as that dashboard's
   person in a room someone else hosts, the way their Conduit does
   (POST /rooms/copies/messages).
@@ -38,6 +41,7 @@ Usage: demo_director.py CONFIG.json [PORT]
 """
 
 import asyncio
+import base64
 import json
 import os
 import re
@@ -51,7 +55,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from demo_script import load as load_script  # noqa: E402
-from seed_demo import Gateway  # noqa: E402
+from seed_demo import AVATARS, Gateway  # noqa: E402
 
 import httpx  # noqa: E402  (the Hermes venv has it)
 
@@ -153,6 +157,27 @@ async def room_say(config, body):
             raise RuntimeError(f"the post was refused: {message.get('error') or answer}")
 
 
+def agent_looks(entry, agents):
+    """How the dashboard's Conduit would say its agents look in rooms: each
+    named profile's avatars/<avatar>.look.jpg and its "look_color"."""
+    script = load_script(entry["script"])
+    bots = {bot.get("name"): bot for bot in script.get("bots", [])}
+    if script.get("default_bot"):
+        bots["default"] = script["default_bot"]
+    looks = {}
+    for agent in agents:
+        bot = bots.get(agent) or {}
+        picture = AVATARS / f"{bot.get('avatar') or agent}.look.jpg"
+        look = {}
+        if picture.is_file():
+            look["picture"] = base64.b64encode(picture.read_bytes()).decode()
+        if bot.get("look_color"):
+            look["color"] = bot["look_color"]
+        if look:
+            looks[agent] = look
+    return looks
+
+
 async def join_room(config, body):
     """The guest joins the room the app invited them to, found by its name
     on their invites, with their bots, and returns once the copy started."""
@@ -172,9 +197,14 @@ async def join_room(config, body):
             await asyncio.sleep(2)
         else:
             raise TimeoutError(f"{body['dashboard']} was never invited to {body['room']!r}")
+        agents = body.get("agents", ["default"])
+        looks = agent_looks(entry, agents)
+        if looks:
+            r = await http.put("/api/plugins/conduit_push/rooms/looks", json={"agents": looks})
+            r.raise_for_status()
     room = invite["room_id"]
     conduit_push(entry, "rooms", "join", "--room", room, f"--link={invite['link']}", "--yes",
-                 *[f"--agent={agent}" for agent in body.get("agents", ["default"])])
+                 *[f"--agent={agent}" for agent in agents])
     for _ in range(60):
         if re.search(rf"^{room}: .*\bstarted\b", conduit_push(entry, "rooms", "copies"), re.M):
             return

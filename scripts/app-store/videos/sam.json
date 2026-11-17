@@ -4,6 +4,8 @@
   "default_bot": {
     "title": "Nori",
     "color": "green",
+    "avatar": "nori",
+    "look_color": "#2FBF71",
     "turns": [
       {
         "match": "packing list",

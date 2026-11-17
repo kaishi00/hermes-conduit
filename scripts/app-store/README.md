@@ -134,6 +134,9 @@ The workflow's steps also run by hand on a Mac of your own, which takes
 about 25 minutes with a warm Xcode build, against about two hours hosted.
 
 Bot pictures come from `avatars/<name>.png` (256 px), uploaded the way the app
-uploads one. A turn sent live rather than seeded goes under `"replies"`, and
+uploads one. Another person's bot in a room is drawn with the look their
+Conduit gives their Hermes; for Sam's Nori the director gives it before she
+joins, from `avatars/<avatar>.look.jpg` (96 px, at most 8 KB) and the bot's
+`"look_color"`. A turn sent live rather than seeded goes under `"replies"`, and
 `"system_has"` picks which bot answers when several hear the same words in a
 room. A script can borrow chats from another with `"include_chats"`.
