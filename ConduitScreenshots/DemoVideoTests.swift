@@ -135,18 +135,20 @@ final class DemoVideoTests: XCTestCase {
 
         scene("reorder") {
             settle(2)
-            reorder("Riri", onto: "Conduit-chan")
+            // Studio's bots: a far portrait has no long-press menu, so a
+            // press lifts it rather than opening one.
+            reorder("Lucien", onto: "Riri")
             settle(3)
-            reorder("Mira", onto: "Piko")
+            reorder("Kael", onto: "Piko")
             settle(4)
         }
 
         readOwnBots()
         scene("room-across") {
             settle(2)
-            // Held over Lucien's face past the merge dwell: a room.
+            // Studio's Lucien held over Home's Mira past the merge dwell: a room.
             let create = app.buttons["bots.newRoom.create"]
-            if drag(bot: "Mira", onto: "Lucien", overFace: true, hold: 1.5, until: { create.waitForExistence(timeout: 5) }) {
+            if drag(bot: "Lucien", onto: "Mira", overFace: true, hold: 1.5, until: { create.waitForExistence(timeout: 5) }) {
                 let name = app.textFields["bots.newRoom.name"]
                 if name.exists {
                     name.tap()
@@ -155,7 +157,7 @@ final class DemoVideoTests: XCTestCase {
                 settle(1)
                 create.tap()
             } else {
-                XCTFail("Dropping Mira on Lucien started no room")
+                XCTFail("Dropping Lucien on Mira started no room")
             }
             settle(4)
             send("@Mira @Lucien plan the launch post for Friday")
@@ -333,6 +335,10 @@ final class DemoVideoTests: XCTestCase {
         add.tap()
         let far = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "A room can bring bots from one of your other Hermes")).firstMatch
         print("DEMO New Group Chat offers the other Hermes' bots: \(far.waitForExistence(timeout: 20))")
+        if !far.exists {
+            let labels = app.staticTexts.allElementsBoundByIndex.prefix(60).map(\.label)
+            print("DEMO New Group Chat shows: \(labels)")
+        }
         let cancel = app.navigationBars.buttons["Cancel"].firstMatch
         if cancel.exists { cancel.tap() } else { app.swipeDown() }
         settle(2)
