@@ -159,13 +159,7 @@ extension AppState {
             // A dashboard switch while the read was out: not this one's.
             guard dashboard == activeDashboardID else { return }
             // An answer with no list (an error body) is a failed read.
-            guard let listed = response["waiting"] as? [[String: Any]] else { continue }
-            let gatewayID = (response["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let read = listed.compactMap { row -> NeedsYouItem? in
-                var item = NeedsYouItem(host: row, profile: profile)
-                item?.relayGatewayID = gatewayID.flatMap { $0.isEmpty ? nil : $0 }
-                return item
-            }
+            guard let read = NeedsYouItem.items(listed: response, profile: profile) else { continue }
             needsYou.apply(read, profile: profile, dashboardID: dashboard) { [weak self] item in
                 self?.isOpenChat(item) ?? false
             }

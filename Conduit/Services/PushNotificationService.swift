@@ -669,8 +669,10 @@ final class PushNotificationService: ObservableObject {
     }
 
     /// Encrypted decisions keep their gateway across relaunches: the answer
-    /// has to be sealed for that pairing, and plaintext is rejected. Only
-    /// verified pushes are kept, newest last, capped.
+    /// has to be sealed for that pairing, and plaintext is rejected. Kept
+    /// from verified pushes, and from question cards drawn from a Needs you
+    /// row whose gateway this iPhone holds a current key for (issue 2683);
+    /// newest last, capped.
     static let encryptedDecisionGatewaysKey = "conduit.e2e.decisionGateways"
     private static let encryptedDecisionGatewaysLimit = 64
 
@@ -701,12 +703,19 @@ final class PushNotificationService: ObservableObject {
     func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String) {
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
-        if NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) != nil {
+        if Self.keepsGatewayAcrossRelaunch(gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) {
             Self.persistEncryptedGatewayID(gatewayID, requestID: requestID)
         }
     }
 
-    private static func persistEncryptedGatewayID(_ gatewayID: String, requestID: String) {
+    /// Whether a row-drawn card's gateway is kept across relaunches: only
+    /// for a pairing this iPhone holds a current key for, whose answers
+    /// must be sealed; a plaintext pairing's stays for the session.
+    nonisolated static func keepsGatewayAcrossRelaunch(_ gatewayID: String, installationID: String?, records: [E2EKeyRecord]) -> Bool {
+        NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) != nil
+    }
+
+    static func persistEncryptedGatewayID(_ gatewayID: String, requestID: String) {
         var pairs = (UserDefaults.standard.array(forKey: encryptedDecisionGatewaysKey) as? [[String]] ?? [])
             .filter { $0.count == 2 && $0[0] != requestID }
         pairs.append([requestID, gatewayID])

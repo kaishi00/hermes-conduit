@@ -68,6 +68,37 @@ extension ChatOnScreenTests {
         XCTAssertEqual(sealed["gateway_id"], "gw-atlas")
     }
 
+    /// Issue 2683: the list's gateway reaches every row, an empty one none.
+    func testTheWaitingListsGatewayReachesItsRows() throws {
+        let rows = [needsYouWait("q1", "s1", at: 1, kind: "question"), needsYouWait("a1", "s2", at: 2)]
+        let items = try XCTUnwrap(NeedsYouItem.items(listed: ["waiting": rows, "gateway_id": " gw-1 "], profile: "atlas"))
+        XCTAssertEqual(items.map(\.relayGatewayID), ["gw-1", "gw-1"])
+        let older = try XCTUnwrap(NeedsYouItem.items(listed: ["waiting": rows], profile: "atlas"))
+        XCTAssertEqual(older.map(\.relayGatewayID), [nil, nil], "an older plugin names none")
+        XCTAssertEqual(NeedsYouItem.items(listed: ["waiting": rows, "gateway_id": "  "], profile: "atlas")?.map(\.relayGatewayID), [nil, nil])
+        XCTAssertNil(NeedsYouItem.items(listed: ["error": "boom"], profile: "atlas"), "an error body is a failed read")
+    }
+
+    /// Issue 2683: a row-drawn card's gateway outlives a relaunch only for
+    /// a pairing this iPhone holds a current key for, and then answers
+    /// sealed from the kept copy.
+    func testARowDrawnCardsGatewayIsKeptAcrossRelaunchOnlyWhenEncrypted() {
+        let current = E2EKeyRecord(kid: "k1", secret: Data(repeating: 3, count: 32), installationID: "inst", gatewayID: "gw-e2e",
+                                   dashboardID: nil, profile: nil, createdAt: Date())
+        XCTAssertTrue(PushNotificationService.keepsGatewayAcrossRelaunch("gw-e2e", installationID: "inst", records: [current]))
+        XCTAssertFalse(PushNotificationService.keepsGatewayAcrossRelaunch("gw-plain", installationID: "inst", records: [current]))
+        XCTAssertFalse(PushNotificationService.keepsGatewayAcrossRelaunch("gw-e2e", installationID: "other", records: [current]))
+        XCTAssertFalse(PushNotificationService.keepsGatewayAcrossRelaunch("gw-e2e", installationID: "inst",
+                                                                          records: [current.retired(at: Date())]))
+
+        let key = PushNotificationService.encryptedDecisionGatewaysKey
+        let saved = UserDefaults.standard.array(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        PushNotificationService.persistEncryptedGatewayID("gw-e2e", requestID: "conduit-push-2683aaaaaaaa")
+        // The session map is empty for it after a relaunch; the kept copy answers.
+        XCTAssertEqual(PushNotificationService.shared.relayGatewayID(forRequestID: "conduit-push-2683aaaaaaaa"), "gw-e2e")
+    }
+
     /// Issue 2556: a question's row carries its card as the push did, for
     /// the chat to draw when Hermes drew none there.
     func testAQuestionsRowCarriesItsCard() throws {
