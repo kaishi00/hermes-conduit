@@ -780,6 +780,13 @@ final class SidebarLayoutTests: XCTestCase {
         XCTAssertTrue(result.isEmpty)
     }
 
+    /// Issue 2671: a Mac keeps the Sessions list's bar hidden, as before
+    /// #2580; an iPhone and an iPad keep it shown for the pushed header.
+    func testListKeepsItsBarShownExceptOnAMac() {
+        XCTAssertTrue(V2ListNavigationBarPolicy.keepsBarShown(onMac: false))
+        XCTAssertFalse(V2ListNavigationBarPolicy.keepsBarShown(onMac: true))
+    }
+
     /// The Sessions list keeps its navigation bar shown (#2580): while the
     /// list is on top its keeper takes the bar's height out of the list's
     /// safe area and keeps the bar's touches and VoiceOver off; a page pushed

@@ -1226,7 +1226,7 @@ struct V2Shell: View {
         switch tab {
         case .chats where split:
             splitColumns(path: $chatsPath, list: list, offersNewChat: true, hostsSettings: true) {
-                tabBarClearance(V2ChatsView(appState: appState).equatable())
+                tabBarClearance(V2ChatsViewGate(appState: appState).equatable())
             }
         case .bots where split:
             splitColumns(path: $botsPath, list: list, offersNewChat: false, hostsSettings: false) {
@@ -1236,7 +1236,7 @@ struct V2Shell: View {
             NavigationStack(path: $chatsPath) {
                 // Only the list's own changes redraw it, not the shell's
                 // (`V2ShownUpdates`).
-                listRoot(tabBarClearance(V2ChatsView(appState: appState).equatable()), alone: canSplit)
+                listRoot(tabBarClearance(V2ChatsViewGate(appState: appState).equatable()), alone: canSplit)
                     .windowSideContent()
                     .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
@@ -1245,7 +1245,7 @@ struct V2Shell: View {
             // above the bar and fade under it. Only the tab's own changes
             // redraw it, not the shell's (`V2ShownUpdates`).
             NavigationStack {
-                tabBarClearance(V2TasksView(appState: appState).equatable())
+                tabBarClearance(V2TasksViewGate(appState: appState).equatable())
                     .windowSideContent()
             }
         case .bots:
