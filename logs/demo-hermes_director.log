@@ -1,0 +1,54 @@
+/add-bot {"dashboard": "home", "bot": "mira"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "piko"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "riri"}
+"POST /add-bot HTTP/1.1" 200 -
+/prompt {"dashboard": "studio", "text": "Draft the release notes for 2.4", "profile": "lucien"}
+"POST /prompt HTTP/1.1" 200 -
+/join-room {"room": "Weekend at Big Sur", "dashboard": "sam"}
+Traceback (most recent call last):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_director.py", line 232, in do_POST
+    asyncio.run(action(self.config, body))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 720, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_director.py", line 176, in join_room
+    conduit_push(entry, "rooms", "join", "--room", room, f"--link={invite['link']}", "--yes",
+    ~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                 *[f"--agent={agent}" for agent in body.get("agents", ["default"])])
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_director.py", line 103, in conduit_push
+    raise RuntimeError(f"conduit-push {' '.join(args)}: {done.stdout}{done.stderr}")
+RuntimeError: conduit-push rooms join --room conduit-78c91bfb-940d-4aea-a704-9ec9c9058674 --link=B0ufj6-teZ4A0hg1 --yes --agent=default: Couldn't join it: Profile default isn't set up for rooms with other people's agents: turn Linked Rooms on for it first
+
+"POST /join-room HTTP/1.1" 500 -
+/room-say {"text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?", "room": "Weekend at Big Sur", "dashboard": "sam"}
+Traceback (most recent call last):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_director.py", line 232, in do_POST
+    asyncio.run(action(self.config, body))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 720, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_director.py", line 141, in room_say
+    raise LookupError(f"{body['dashboard']} keeps no copy of {body['room']!r}")
+LookupError: sam keeps no copy of 'Weekend at Big Sur'
+"POST /room-say HTTP/1.1" 500 -
+/prompt {"text": "Clear out the old mockups", "dashboard": "studio", "profile": "chibi-conduit"}
+"POST /prompt HTTP/1.1" 200 -
+/stop-recording {}
+"POST /stop-recording HTTP/1.1" 200 -

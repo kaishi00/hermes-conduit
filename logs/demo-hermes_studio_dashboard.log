@@ -1,0 +1,190 @@
+→ Skipping web UI build (--skip-build); using dist at /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_dist
+HERMES_DASHBOARD_READY port=9129
+  Hermes Web UI → http://127.0.0.1:9129
+ERROR:    Exception in ASGI application
+  + Exception Group Traceback (most recent call last):
+  |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/_utils.py", line 104, in create_collapsing_task_group
+  |     async with anyio.create_task_group() as tg:
+  |                ~~~~~~~~~~~~~~~~~~~~~~~^^
+  |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/anyio/_backends/_asyncio.py", line 847, in __aexit__
+  |     raise BaseExceptionGroup(
+  |         "unhandled errors in a TaskGroup", self._exceptions
+  |     ) from None
+  | ExceptionGroup: unhandled errors in a TaskGroup (1 sub-exception)
+  +-+---------------- 1 ----------------
+    | Traceback (most recent call last):
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    |     result = await app(  # type: ignore[func-returns-value]
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |         self.scope, self.receive, self.send
+    |         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |     )
+    |     ^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    |     return await self.app(scope, receive, send)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/fastapi/applications.py", line 1160, in __call__
+    |     await super().__call__(scope, receive, send)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/applications.py", line 96, in __call__
+    |     await self.middleware_stack(scope, receive, send)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    |     raise exc
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    |     await self.app(scope, receive, _send)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/cors.py", line 91, in __call__
+    |     await self.simple_response(scope, receive, send, request_headers=headers)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/cors.py", line 149, in simple_response
+    |     await self.app(scope, receive, send)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 558, in _dashboard_health_middleware
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 498, in _token_auth_seam
+    |     return await token_auth_middleware(request, call_next)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/dashboard_auth/token_auth.py", line 81, in token_auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 478, in auth_middleware
+    |     return await call_next(request)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 455, in _dashboard_auth_gate
+    |     return await gated_auth_middleware(request, call_next)
+    |            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/dashboard_auth/middleware.py", line 355, in gated_auth_middleware
+    |     response = await call_next(request)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    |     raise app_exc from app_exc.__cause__ or app_exc.__context__
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    |     await self.app(scope, receive_or_disconnect, send_no_error)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server_dashboard.py", line 976, in __call__
+    |     await self.app(scope, receive, send)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    |     response = await self.dispatch_func(request, call_next)
+    |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 438, in _plugin_api_runtime_gate
+    |     hosted = await forward_secondary_plugin_request(request, plugin_name)
+    |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server_plugin_profiles.py", line 268, in forward_secondary_plugin_request
+    |     body = await request.body()
+    |            ^^^^^^^^^^^^^^^^^^^^
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/requests.py", line 259, in body
+    |     async for chunk in stream:
+    |         chunks.append(chunk)
+    |   File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/requests.py", line 252, in stream
+    |     raise ClientDisconnect()
+    | starlette.requests.ClientDisconnect
+    +------------------------------------
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/uvicorn/protocols/http/httptools_impl.py", line 422, in run_asgi
+    result = await app(  # type: ignore[func-returns-value]
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+        self.scope, self.receive, self.send
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+    )
+    ^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/uvicorn/middleware/proxy_headers.py", line 63, in __call__
+    return await self.app(scope, receive, send)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/fastapi/applications.py", line 1160, in __call__
+    await super().__call__(scope, receive, send)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/applications.py", line 96, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 186, in __call__
+    raise exc
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/cors.py", line 91, in __call__
+    await self.simple_response(scope, receive, send, request_headers=headers)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/cors.py", line 149, in simple_response
+    await self.app(scope, receive, send)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 558, in _dashboard_health_middleware
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 498, in _token_auth_seam
+    return await token_auth_middleware(request, call_next)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/dashboard_auth/token_auth.py", line 81, in token_auth_middleware
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 478, in auth_middleware
+    return await call_next(request)
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 455, in _dashboard_auth_gate
+    return await gated_auth_middleware(request, call_next)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/dashboard_auth/middleware.py", line 355, in gated_auth_middleware
+    response = await call_next(request)
+               ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 179, in call_next
+    raise app_exc from app_exc.__cause__ or app_exc.__context__
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 149, in coro
+    await self.app(scope, receive_or_disconnect, send_no_error)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server_dashboard.py", line 976, in __call__
+    await self.app(scope, receive, send)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/middleware/base.py", line 203, in __call__
+    response = await self.dispatch_func(request, call_next)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server.py", line 438, in _plugin_api_runtime_gate
+    hosted = await forward_secondary_plugin_request(request, plugin_name)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server_plugin_profiles.py", line 268, in forward_secondary_plugin_request
+    body = await request.body()
+           ^^^^^^^^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/requests.py", line 259, in body
+    async for chunk in stream:
+        chunks.append(chunk)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/installs/3f24728575140bc4/environments/9f9caa92ce124ad78edac6ee86449eb6/venv/lib/python3.14/site-packages/starlette/requests.py", line 252, in stream
+    raise ClientDisconnect()
+starlette.requests.ClientDisconnect

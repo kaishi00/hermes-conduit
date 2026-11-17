@@ -1,0 +1,1 @@
+failed - director join-room ["room": "Weekend at Big Sur", "dashboard": "sam"]: {"error": "conduit-push rooms join --room conduit-78c91bfb-940d-4aea-a704-9ec9c9058674 --link=B0ufj6-teZ4A0hg1 --yes --agent=default: Couldn't join it: Profile default isn't set up for rooms with other people's agents: turn Linked Rooms on for it first\n"}
