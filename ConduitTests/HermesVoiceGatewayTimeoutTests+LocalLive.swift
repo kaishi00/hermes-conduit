@@ -186,6 +186,20 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(tool["name"] as? String, "start_job")
         XCTAssertEqual((tool["parameters"] as? [String: Any])?["type"] as? String, "object", "JSON Schema types are lowercase")
 
+        // The same tools come out byte for byte the same on every call, so
+        // a local server's prompt cache can reuse them (#2669).
+        let wide = GeminiLiveProtocol.FunctionDeclaration(
+            name: "conduit_reminders", description: "Read and change reminders.",
+            parameters: ["type": "OBJECT", "properties": Dictionary(uniqueKeysWithValues: (0..<24).map {
+                ("field\($0)", ["type": "STRING", "description": "Field \($0)."] as [String: Any])
+            }), "required": ["field0"]], behavior: .nonBlocking)
+        let encodings = try (0..<6).map { _ in
+            try LocalLiveProtocol.encode(LocalLiveProtocol.agentConfigure(.init(instructions: "Be brief.", functions: [declaration, wide])))
+        }
+        XCTAssertEqual(Set(encodings).count, 1, "one call's tools encode like the last call's")
+        XCTAssertTrue(encodings[0].hasPrefix("{\"instructions\":"), "keys go out sorted")
+        XCTAssertEqual(try GeminiLiveProtocol.encode(["b": 1, "a": ["d": 2, "c": 3]]), "{\"a\":{\"c\":3,\"d\":2},\"b\":1}")
+
         let call = LocalLiveProtocol.agentFrame(try data(["type": "conduit.tool.call", "call_id": "ll1", "name": "start_job",
                                                            "arguments": "{\"instructions\":\"check mail\"}"]))
         XCTAssertEqual(call, .toolCall(GeminiLiveProtocol.FunctionCall(id: "ll1", name: "start_job", arguments: ["instructions": "check mail"])))
