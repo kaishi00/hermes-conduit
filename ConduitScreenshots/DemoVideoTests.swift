@@ -277,7 +277,7 @@ final class DemoVideoTests: XCTestCase {
     /// grid. Either way it presses again, for a different time.
     @discardableResult
     private func drag(bot: String, onto target: String, overFace: Bool, hold: TimeInterval,
-                      until done: () -> Bool) -> Bool {
+                      before: () -> Void = {}, until done: () -> Bool) -> Bool {
         for press in [0.8, 0.6, 1.2] {
             let from = named(bot)
             let to = named(target)
@@ -285,6 +285,7 @@ final class DemoVideoTests: XCTestCase {
                 XCTFail("Can't drag \(bot) onto \(target): one isn't on screen")
                 return false
             }
+            before()
             let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
             // The portrait button is the face; its name sits just under it.
             let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: overFace ? 0.45 : 1.25))
@@ -304,14 +305,17 @@ final class DemoVideoTests: XCTestCase {
     }
 
     /// Drags `bot` over `target`'s name, so it takes that place; true once
-    /// it has moved.
+    /// it sits where `target` was (a scroll of the grid moves both, so it
+    /// doesn't count).
     @discardableResult
     private func reorder(_ bot: String, onto target: String) -> Bool {
-        var before = named(bot).frame
-        let moved = drag(bot: bot, onto: target, overFace: false, hold: 0.8) {
+        var place: CGRect?
+        let moved = drag(bot: bot, onto: target, overFace: false, hold: 0.8, before: {
+            place = named(target).frame
+        }) {
+            guard let place, !place.isEmpty else { return false }
             let now = named(bot).frame
-            defer { before = now }
-            return abs(now.midX - before.midX) > 20 || abs(now.midY - before.midY) > 20
+            return abs(now.midX - place.midX) < 20 && abs(now.midY - place.midY) < 20
         }
         if !moved { XCTFail("\(bot) never took \(target)'s place") }
         return moved
