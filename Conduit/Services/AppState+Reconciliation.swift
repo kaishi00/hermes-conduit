@@ -1727,9 +1727,14 @@ extension AppState {
         // the id under the addressed chat, and the addressed chat counts by
         // its own durable id too, so an open by runtime id of the chat the id
         // moved to takes it (issue 2619).
+        // Its durable ids are its own row's id and stored id and what the
+        // index binds the addressed id to, never the row's aliases: an alias
+        // another chat shares isn't this chat's durable id (#2647's review).
         let identityIndex = conversationIdentityIndex
-        let addressedDurableIDs = addressedIDs
-            .union([identityIndex.durableID(forRuntime: sessionId, profile: profile)].compactMap { $0 })
+        let addressedRow = owningSessionRow(for: sessionId)
+        let addressedDurableIDs = Set([sessionId, addressedRow?.id, addressedRow?.storedSessionId,
+                                       identityIndex.durableID(forRuntime: sessionId, profile: profile)]
+            .compactMap { $0 }.filter { !$0.isEmpty })
         let movedOnSessionIDs = Reconciliation.movedOn(
             priorReconciliation?.movedOnSessionIDs ?? [],
             keptFor: addressedIDs,

@@ -3569,6 +3569,24 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertGreaterThan(notice.revision, before)
         XCTAssertTrue(state.messages.isEmpty)
 
+        // Each kept chat has its own notice: one chat's reply redraws that
+        // chat only; a close or a pane opening redraws every kept chat and
+        // drops the notices of chats no longer kept (issue 2625).
+        let live = BesideChatLive()
+        let other = BackgroundChat(sessionIDs: ["w"], durableSessionID: nil, title: "", dashboardID: beside.dashboardID,
+                                   profile: beside.profile, isBotChat: false, rows: [], streamingText: "")
+        let besideNotice = live.notice(for: beside)
+        let otherNotice = live.notice(for: other)
+        XCTAssertTrue(live.notice(for: beside) === besideNotice, "one notice per chat")
+        live.moved(beside)
+        XCTAssertEqual(besideNotice.revision, 1)
+        XCTAssertEqual(otherNotice.revision, 0, "another window's chat isn't redrawn")
+        live.moved(keeping: [beside, other])
+        XCTAssertEqual(besideNotice.revision, 2)
+        XCTAssertEqual(otherNotice.revision, 1)
+        live.moved(keeping: [beside])
+        XCTAssertFalse(live.notice(for: other) === otherNotice, "a chat no longer kept loses its notice")
+
         // A message another device sends to it shows in the pane once.
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
