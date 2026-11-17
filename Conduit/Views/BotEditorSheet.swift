@@ -33,6 +33,8 @@ struct BotEditorSheet: View {
     @State private var isSaving = false
     /// The combined dashboard picked for a new bot; nil, the one on screen.
     @State private var createDashboard: UUID?
+    /// The dashboard the sheet's model list, Start From and skills were read on.
+    @State private var fieldsDashboard: UUID?
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
@@ -190,7 +192,10 @@ struct BotEditorSheet: View {
             usePicture(image)
             pickedImage = nil
         }
-        .onAppear(perform: seedShown)
+        .onAppear {
+            if fieldsDashboard == nil { fieldsDashboard = appState.activeDashboardID }
+            seedShown()
+        }
         .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
@@ -998,22 +1003,25 @@ struct BotEditorSheet: View {
             var createdName: String?
             // Another dashboard picked: switch there, then make it as on that
             // dashboard. Its model, its Start From and its skills and tools
-            // are that dashboard's defaults: what the sheet read was this
-            // one's, and none of it is written to the other.
-            if let target, target != appState.activeDashboardID {
-                guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
-                await appState.switchToCombinedDashboardUntilSettled(target)
-                guard appState.activeDashboardID == target, appState.isConnected else {
-                    isSaving = false
-                    Haptics.warning()
-                    error = AppLocalization.string("Connect to Hermes to manage bots.")
-                    return
+            // are that dashboard's defaults: what the sheet read was the
+            // first one's, and none of it is written to the other. The reset
+            // stays on the sheet, so a retry there sends it as well.
+            if let target {
+                if target != appState.activeDashboardID {
+                    guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
+                    await appState.switchToCombinedDashboardUntilSettled(target)
+                    guard appState.activeDashboardID == target, appState.isConnected else {
+                        isSaving = false
+                        Haptics.warning()
+                        error = AppLocalization.string("Connect to Hermes to manage bots.")
+                        return
+                    }
                 }
-                draft.provider = ""
-                draft.model = ""
-                draft.cloneFrom = BotCreateRequest.mainProfile
-                draft.capabilities = nil
-                draft.capabilitiesBaseline = nil
+                if target != (fieldsDashboard ?? target) {
+                    draft = draft.readOnAnotherDashboard
+                    self.draft = self.draft.readOnAnotherDashboard
+                    fieldsDashboard = target
+                }
             }
             if let bot = editedBot {
                 result = await appState.updateBot(bot, draft: draft, loadedDetails: details)
