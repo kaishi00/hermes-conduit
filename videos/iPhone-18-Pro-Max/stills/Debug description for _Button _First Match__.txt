@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate 'identifier MATCHES "v2\\.profile\\.[0-9A-Fa-f-]{36}\\.default"'
+      ↪︎Find: First Match
