@@ -231,31 +231,33 @@ class SmokeJobRunnerTests(unittest.TestCase):
 
     def test_a_lost_runtime_reruns_each_test_step_once_after_a_reboot(self):
         # Nothing was tested, so a second attempt retries no test; the step
-        # passes when it does, and says what happened.
+        # passes when it does, and says what happened. A recovered loss
+        # leaves the job green, so each step also puts the runtime paths on
+        # the run page (the script lists them with jq, as the runners have).
+        summary_path = os.path.join(self.tmp, "step-summary.md")
         for step, extra in ((UNIT_STEP, {"UNIT_CLASSES": self._classes("Unit", 3)}),
                             (UNIT_SMOKE_STEP, {"UNIT_CLASSES": self.SMOKE_UNIT_CLASSES}),
                             (TIMING_STEP, {"TIMING_CLASSES": "TranscriptPerformanceFixtureTests"}),
                             (UI_SHARD_STEP, {"UI_CLASSES": "ChatUITests"})):
             with self.subTest(step=step):
+                if os.path.exists(summary_path):
+                    os.remove(summary_path)
                 proc = self._run_step(step, STUB_FAIL_FIRST_N=1, STUB_SILENT_FAIL=1,
                                       STUB_FAILURE_OUTPUT=LOST_RUNTIME_OUTPUT, **extra)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertEqual(len(self._invocations()), 2, self._invocations())
                 self.assertIn("::warning title=Simulator runtime lost::", proc.stdout)
                 self.assertIn("simulator runtime diagnostics", proc.stdout)
+                if shutil.which("jq"):
+                    with open(summary_path, encoding="utf-8") as fh:
+                        summary = fh.read()
+                    self.assertIn("Simulator runtime lost before any test ran", summary)
+                    self.assertIn("com.apple.CoreSimulator.SimRuntime.iOS-27-2 (24B8117): "
+                                  "/stub/missing/iOS 27.2.simruntime [MISSING]", summary)
         # The second attempt appends, so the uploaded batch log keeps the
         # first attempt's lost-runtime lines.
         with open(os.path.join(self.tmp, "unit-batch-1.log"), encoding="utf-8") as fh:
             self.assertIn("runtime path not found", fh.read())
-        # A recovered loss leaves the job green, so the runtime paths also go
-        # to the run page (the script lists them with jq, as the runners have).
-        if not shutil.which("jq"):
-            self.skipTest("jq not installed")
-        with open(os.path.join(self.tmp, "step-summary.md"), encoding="utf-8") as fh:
-            summary = fh.read()
-        self.assertIn("Simulator runtime lost before any test ran", summary)
-        self.assertIn("iOS-27-2 (24B8117)", summary)
-        self.assertIn("[MISSING]", summary)
 
     def test_a_runtime_lost_twice_fails_the_step(self):
         for step, extra in ((UNIT_STEP, {"UNIT_CLASSES": self._classes("Unit", 3)}),
