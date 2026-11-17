@@ -380,7 +380,7 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         add.tap()
-        let field = app.textFields.firstMatch
+        let field = app.textFields["Group name"].firstMatch
         guard field.waitForExistence(timeout: 10) else {
             XCTFail("New Group Chat has no name field")
             return
@@ -389,7 +389,7 @@ final class DemoVideoTests: XCTestCase {
         field.typeText(name)
         settle(1)
         // Conduit-chan's row shows its profile, "default", under the name.
-        let rows = app.staticTexts.matching(identifier: "default")
+        let rows = app.staticTexts.matching(NSPredicate(format: "label == %@", "default"))
         if rows.firstMatch.waitForExistence(timeout: 10),
            let bot = rows.allElementsBoundByIndex.first(where: \.isHittable) {
             bot.tap()
