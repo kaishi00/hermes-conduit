@@ -1573,7 +1573,7 @@ struct GroupRespondingRow: View {
 }
 
 /// A room member's picture: the bot's own (its profile's avatar), else its
-/// colored initial.
+/// starter face. Another person's member wears the look their Conduit sent.
 struct GroupMemberAvatar: View {
     @EnvironmentObject private var appState: AppState
     let member: GroupMember?

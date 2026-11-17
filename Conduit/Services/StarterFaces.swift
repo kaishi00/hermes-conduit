@@ -25,6 +25,8 @@ struct StarterFace: Equatable, Hashable {
     enum Antenna: Equatable, Hashable { case none, pair, ball, nub }
     enum Head: Equatable, Hashable { case square, round, wide }
     enum Eyes: Equatable, Hashable { case dots, pills, wideDots, bigDots }
+    /// What VoiceOver calls a face of the set, by its color.
+    enum ColorName: Equatable, Hashable { case purple, skyBlue, orange, mint, yellow, pink, blue, cyan, red, lime, magenta, gray }
 
     /// Degrees, 0..<360.
     let hue: Double
@@ -34,6 +36,8 @@ struct StarterFace: Equatable, Hashable {
     let bolts: Bool
     let head: Head
     let eyes: Eyes
+    /// The set's faces only; one past the twelve has none.
+    var colorName: ColorName? = nil
 
     /// The face's color, behind the head. A near-gray face sits a little
     /// darker so its white head still stands out.
@@ -72,18 +76,18 @@ enum StarterFaces {
     /// The twelve, in the order they're handed out: the colors far apart
     /// for the first few bots, the parts varied a little.
     static let set: [StarterFace] = [
-        StarterFace(hue: 262, saturation: 0.62, antenna: .pair, bolts: true, head: .square, eyes: .dots),
-        StarterFace(hue: 205, saturation: 0.58, antenna: .none, bolts: false, head: .square, eyes: .dots),
-        StarterFace(hue: 12, saturation: 0.70, antenna: .ball, bolts: true, head: .wide, eyes: .pills),
-        StarterFace(hue: 158, saturation: 0.52, antenna: .none, bolts: true, head: .round, eyes: .dots),
-        StarterFace(hue: 40, saturation: 0.78, antenna: .nub, bolts: false, head: .square, eyes: .wideDots),
-        StarterFace(hue: 318, saturation: 0.58, antenna: .pair, bolts: false, head: .round, eyes: .bigDots),
-        StarterFace(hue: 225, saturation: 0.60, antenna: .none, bolts: true, head: .wide, eyes: .dots),
-        StarterFace(hue: 180, saturation: 0.55, antenna: .ball, bolts: false, head: .square, eyes: .pills),
-        StarterFace(hue: 350, saturation: 0.72, antenna: .none, bolts: false, head: .round, eyes: .wideDots),
-        StarterFace(hue: 95, saturation: 0.48, antenna: .pair, bolts: true, head: .square, eyes: .bigDots),
-        StarterFace(hue: 290, saturation: 0.58, antenna: .nub, bolts: true, head: .wide, eyes: .dots),
-        StarterFace(hue: 215, saturation: 0.18, antenna: .ball, bolts: false, head: .round, eyes: .dots)
+        StarterFace(hue: 262, saturation: 0.62, antenna: .pair, bolts: true, head: .square, eyes: .dots, colorName: .purple),
+        StarterFace(hue: 205, saturation: 0.58, antenna: .none, bolts: false, head: .square, eyes: .dots, colorName: .skyBlue),
+        StarterFace(hue: 12, saturation: 0.70, antenna: .ball, bolts: true, head: .wide, eyes: .pills, colorName: .orange),
+        StarterFace(hue: 158, saturation: 0.52, antenna: .none, bolts: true, head: .round, eyes: .dots, colorName: .mint),
+        StarterFace(hue: 40, saturation: 0.78, antenna: .nub, bolts: false, head: .square, eyes: .wideDots, colorName: .yellow),
+        StarterFace(hue: 318, saturation: 0.58, antenna: .pair, bolts: false, head: .round, eyes: .bigDots, colorName: .pink),
+        StarterFace(hue: 225, saturation: 0.60, antenna: .none, bolts: true, head: .wide, eyes: .dots, colorName: .blue),
+        StarterFace(hue: 180, saturation: 0.55, antenna: .ball, bolts: false, head: .square, eyes: .pills, colorName: .cyan),
+        StarterFace(hue: 350, saturation: 0.72, antenna: .none, bolts: false, head: .round, eyes: .wideDots, colorName: .red),
+        StarterFace(hue: 95, saturation: 0.48, antenna: .pair, bolts: true, head: .square, eyes: .bigDots, colorName: .lime),
+        StarterFace(hue: 290, saturation: 0.58, antenna: .nub, bolts: true, head: .wide, eyes: .dots, colorName: .magenta),
+        StarterFace(hue: 215, saturation: 0.18, antenna: .ball, bolts: false, head: .round, eyes: .dots, colorName: .gray)
     ]
 
     /// Face `index`. Past the twelve, the parts and colors keep varying:

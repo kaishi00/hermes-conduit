@@ -76,4 +76,31 @@ extension BotModeTests {
         XCTAssertEqual(kept.bots.map(\.starterFace), [0, 1])
         XCTAssertEqual(StarterFaces.assign(kept.bots).map(\.starterFace), [0, 1])
     }
+
+    /// ProfileAvatarView's look: the dashboard on screen's or another
+    /// combined dashboard's, by exact name, else by the one name that
+    /// differs only in case. Two such names, or a dashboard not read here,
+    /// give none.
+    func testTheFaceDirectoryLooksUpEachDashboardsBotsByName() throws {
+        let directory = BotFaceDirectory()
+        let here = try starterRoster([starterRow("default", isDefault: true), starterRow("Atlas", created: 1)])
+        directory.update(here)
+        XCTAssertEqual(directory.look(for: "default")?.face, StarterFaces.face(0))
+        XCTAssertEqual(directory.look(for: "atlas")?.face, StarterFaces.face(1), "one case variant folds")
+
+        let twins = try starterRoster([starterRow("atlas", created: 1), starterRow("Atlas", created: 2)])
+        directory.update(twins)
+        XCTAssertEqual(directory.look(for: "Atlas")?.face, StarterFaces.face(1), "an exact name wins")
+        XCTAssertNil(directory.look(for: "ATLAS"), "two case variants give none")
+
+        let far = UUID()
+        let there = try starterRoster([starterRow("default", face: 5, isDefault: true)])
+        directory.updateOthers([far: there])
+        XCTAssertEqual(directory.look(for: "default", on: far)?.face, StarterFaces.face(5))
+        XCTAssertEqual(directory.look(for: "default", on: far)?.color, StarterFaces.face(5).hex)
+        XCTAssertNil(directory.look(for: "default", on: UUID()), "a dashboard not read here has none")
+
+        directory.updateOthers([:])
+        XCTAssertNil(directory.look(for: "default", on: far), "a dashboard that left the group is dropped")
+    }
 }
