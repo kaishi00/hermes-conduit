@@ -3560,12 +3560,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(beside.newestSettledRows(10).map(\.id), ["u1", "r1"], "A card that waits for an answer isn't drawn where nothing acts")
         XCTAssertEqual(beside.newestSettledRows(1).map(\.id), ["r1"])
 
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: beside)
+        let before = notice.revision
         XCTAssertTrue(state.applyBackgroundChatEvent(.messageStart(sessionId: "a")))
         XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: "More")))
         XCTAssertTrue(beside.isRunning)
         XCTAssertEqual(beside.state.streamingBuffer, "More")
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         XCTAssertTrue(state.messages.isEmpty)
 
         // A message another device sends to it shows in the pane once.
@@ -3620,10 +3621,11 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(state.windowChat("b"))
 
         // A message another device sends to it shows in the window.
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: try XCTUnwrap(state.windowChat(key)))
+        let before = notice.revision
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 9, text: "From my Mac", origin: nil))
         XCTAssertEqual(state.windowChat(key)?.state.messages.last?.content, "From my Mac")
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         // Hermes' word of a message whose row is here already adds none;
         // the same words again after a reply are a new message.
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
@@ -3876,14 +3878,15 @@ final class OfflineChatCacheTests: XCTestCase {
         let kept = try XCTUnwrap(state.besideChat)
         XCTAssertTrue(state.canSendInKeptChat(kept))
 
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: kept)
+        let before = notice.revision
         let went = await state.sendInKeptChat(kept, text: "  Quick one  ")
         XCTAssertTrue(went)
         XCTAssertEqual(sent.prompts.map(\.sessionID), ["a"])
         XCTAssertEqual(sent.prompts.map(\.text), ["Quick one"])
         XCTAssertEqual(kept.state.messages.last?.content, "Quick one")
         XCTAssertTrue(kept.isRunning)
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         XCTAssertFalse(state.canSendInKeptChat(kept), "Not while its turn runs")
 
         // A send that fails with no word from Hermes comes off.
