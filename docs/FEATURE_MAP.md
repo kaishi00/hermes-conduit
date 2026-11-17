@@ -7307,7 +7307,7 @@ clips (kaishi00/hermes-conduit-website)
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
-- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/demo_script.py` (include_chats), `scripts/app-store/seed_demo.py` (Gateway), `scripts/app-store/avatars/`
+- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/demo_script.py` (include_chats), `scripts/app-store/seed_demo.py` (Gateway), the bot pictures in scripts/app-store/avatars
 - Demo videos: `.github/workflows/demo-videos.yml`, `ConduitScreenshots/DemoVideoTests.swift`, `scripts/app-store/videos/home.json`, `scripts/app-store/videos/studio.json`, `scripts/app-store/link-demo-hermes.sh` (the rooms mailbox and the own Link), `scripts/app-store/demo_director.py`, `scripts/app-store/cut-scenes.sh`
 - Text: `scripts/app-store/README.md`
 - README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
