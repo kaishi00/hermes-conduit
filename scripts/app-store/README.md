@@ -105,11 +105,11 @@ four), and `prompt` sends a line in a bot's chat so it works on its own (a
 second bot replying, an approval that shows up in Needs you). At the end the
 test calls `stop-recording`, so the video ends at its last mark, which is
 what `cut-scenes.sh` dates the recording from.
-The recorder writes frames only when the screen changes, so its timeline
-drifts from the clock; the test saves a still as each scene starts and ends
-(`scene-<name>-start.png`, `-end.png`), and `align_scenes.py` finds those
-frames near where the clock puts them, so each cut starts and ends on its
-scene.
+The recording repeats a few frame times, after which ffmpeg would fall back
+to packet times that lag by up to 44 s, so the cut reads it with
+`-fflags +igndts`. The stills at each scene's start and end
+(`scene-<name>-start.png`, `-end.png`) show where each cut should begin and
+end.
 
 The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 `two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
@@ -125,7 +125,7 @@ his Conduit would (`POST /rooms/copies/messages`), so the room shows two
 people and a bot each. `start-room` makes such a room without the app.
 
 Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
-a still at the end of each scene in `stills/`), and the git ref
+stills at the start and end of each scene in `stills/`), and the git ref
 `refs/demo-videos/<run id>` with the same minus the raw recording (and any scene
 over 90 MB, past what git takes), for
 sessions that can't download artifacts.

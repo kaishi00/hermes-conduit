@@ -204,10 +204,8 @@ jobs:
                   if os.path.exists(src):
                       os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
           PY
-            fi
-            # After the stills: the cut finds each scene by its start and end shots.
+            fi || echo "$name stills not named" >> failures.txt
             scripts/app-store/cut-scenes.sh "videos/raw-$slug.mov" "videos/raw-$slug.marks" "videos/$slug" \
-              0.5 "videos/$slug/stills" \
               || echo "$name scenes not cut" >> failures.txt
             xcrun simctl shutdown "$udid" || true
           done
