@@ -1487,12 +1487,20 @@ class SmokeSelectionTests(unittest.TestCase):
         proc, doc = self._changed_selection(
             ["Conduit/Services/AppState+PendingSend.swift"])
         self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
-        # #1154 changed AppState.swift and broke this class, which then
-        # failed only at night.
-        self.assertIn("AppStateChatResumeTests", doc["changed_unit"])
+        # #1154 changed AppState.swift and broke an AppState class, which
+        # then failed only at night: an AppState extension brings in its
+        # family, cheapest first, as far as the budget reaches. With the
+        # baseline measured (#2666) the 35 s AppStateChatResumeTests no
+        # longer fits beside its cheaper siblings and runs at night.
         self.assertIn("AppStateMultiDashboardTests", doc["changed_unit"])
+        self.assertGreaterEqual(len(doc["changed_unit"]), 5)
         for name in doc["changed_unit"]:
             self.assertTrue(name.startswith("AppState"), name)
+        with open(os.path.join(SCRIPTS_DIR, "test-timings.json"), encoding="utf-8") as fh:
+            baseline = json.load(fh)["classes"]
+        with open(os.path.join(SCRIPTS_DIR, "smoke-suite.json"), encoding="utf-8") as fh:
+            budget = json.load(fh)["changed_budget_s"]
+        self.assertLessEqual(sum(baseline.get(n, 3.0) for n in doc["changed_unit"]), budget)
 
     def test_a_family_member_does_not_crowd_out_the_changes_own_class(self):
         def mutate(suite):

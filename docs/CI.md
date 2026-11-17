@@ -511,10 +511,19 @@ suites.
 
 ## Timing data
 
-* `scripts/test-timings.json` - checked-in **baseline fallback** (seconds per
-  class), seeded from a full-suite xcresult measured on local hardware.
-  Unseen classes get a conservative default (20 s) so a batch of new tests
-  cannot all pile into one lane.
+* `scripts/test-timings.json` - checked-in **baseline** (seconds per class).
+  Smoke charges each changed unit class its time against `changed_budget_s`
+  (a class missing from it is charged 3 s), and the nightly planner splits
+  the unit shards with it. The unit classes come from a green nightly's two
+  unit shards on the hosted runners: `scripts/refresh-test-timings.py
+  --baseline scripts/test-timings.json <shard logs>` reads each class's
+  `Test Suite ... passed|failed` and `Executed ... (S) seconds` lines and
+  replaces the classes it measured, keeping the rest (UI classes, the
+  nightly-only timing families). Rerun it when classes are added or grow:
+  the August seed had drifted until half the unit classes had no entry and
+  app-code PRs ran 4-6 minutes of changed classes against the 120 s budget
+  (refreshed 2026-11-17). Unseen classes get a conservative default (20 s)
+  in lane planning so a batch of new tests cannot all pile into one lane.
 * **Timing history** - there is none any more. The `timing-history-v1-*`
   Actions cache and the main-only job that wrote it were removed in CI v3: they
   existed to rebalance the hosted lane matrix, which no longer exists.
