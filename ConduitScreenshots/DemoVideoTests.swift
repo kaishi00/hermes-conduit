@@ -92,7 +92,7 @@ final class DemoVideoTests: XCTestCase {
             let studioChats = "Release checklist for 2.4", homeChats = "Garden watering schedule"
             // Each tap lands on the dashboard it didn't start on. On a profile
             // without either list (Lucien's, say) the first tap may land on either.
-            var shown: String? = waitForText(studioChats, timeout: 10) ? studioChats
+            var shown: String? = waitForText(studioChats, timeout: 4) ? studioChats
                 : (waitForText(homeChats, timeout: 2) ? homeChats : nil)
             for _ in 0..<2 {
                 let other = otherDashboardChip("default")
@@ -102,8 +102,10 @@ final class DemoVideoTests: XCTestCase {
                     break
                 }
                 other.tap()
-                let expected = shown.map { $0 == studioChats ? [homeChats] : [studioChats] } ?? [studioChats, homeChats]
-                let landed = expected.first { waitForText($0, timeout: expected.count == 1 ? 30 : 15) }
+                // Neither list showing is Studio on another profile (Lucien's, after
+                // mixed-bots-home), so Home is the likelier landing: tried first.
+                let expected = shown.map { $0 == studioChats ? [homeChats] : [studioChats] } ?? [homeChats, studioChats]
+                let landed = expected.first { waitForText($0, timeout: expected.count == 1 ? 30 : 20) }
                 XCTAssertNotNil(landed, "The other dashboard's chats (\(expected.joined(separator: " or "))) never showed")
                 shown = landed
                 settle(4)

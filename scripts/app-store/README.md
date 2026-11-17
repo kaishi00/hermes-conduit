@@ -82,8 +82,10 @@ It starts two demo dashboards on the runner, **Home**
 `videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout.
 `link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
 repo and links the two as the owner's own Hermes, so a room can hold bots from
-both. Studio asks for approvals (`DEMO_APPROVALS=manual`); its seeded turns run
-nothing that asks.
+both. Both ask for approvals (`DEMO_APPROVALS=manual`): Home for Mira's publish
+in the room it hosts, Studio for Chibi's in Needs you. Their seeded turns run
+nothing that asks, and `seed_demo.py` refuses a seeded tool call on an instance
+that asks; tool calls go in `replies`, sent while the video records.
 
 `ConduitScreenshots/DemoVideoTests.swift` signs in to Home, adds Studio and
 combines the two, and plays the scenes while `simctl io recordVideo` runs.
