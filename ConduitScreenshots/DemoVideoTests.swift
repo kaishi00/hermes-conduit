@@ -334,7 +334,8 @@ final class DemoVideoTests: XCTestCase {
         let deadline = Date().addingTimeInterval(120)
         while draft.exists, Date() < deadline { settle(2) }
         if draft.exists { print("DEMO \(name) is still a draft: \(draft.value ?? "")") }
-        let tile = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
+        let tile = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier BEGINSWITH 'bots.room.'", name)).firstMatch
         guard tile.waitForExistence(timeout: 20) else {
             XCTFail("No \(name) in Group Chats")
             return
