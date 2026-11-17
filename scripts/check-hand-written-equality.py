@@ -58,6 +58,7 @@ ALLOWED = {
 }
 
 HAND_WRITTEN = re.compile(r"\bstatic\s+func\s+==\s*(<[^>]*>)?\s*\(")
+STRING_START = re.compile(r'(#*)("""|")')
 # The wrappers file holds exactly these, one per wrapper; a fourth there
 # would be a type that slipped past the check.
 WRAPPER_EQUALITIES = 3
@@ -96,7 +97,7 @@ def code_only(text):
                 blank(text[i:j])
                 i = j
             else:
-                m = re.match(r'(#*)("""|")', text[i:])
+                m = STRING_START.match(text, i) if text[i] in '"#' else None
                 if m and (m.group(1) or text[i] == '"'):
                     hashes, multiline = len(m.group(1)), m.group(2) == '"""'
                     blank(m.group(0))
