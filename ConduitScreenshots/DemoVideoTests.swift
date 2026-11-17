@@ -159,7 +159,8 @@ final class DemoVideoTests: XCTestCase {
             } else {
                 XCTFail("Dropping Lucien on Mira started no room")
             }
-            settle(4)
+            settle(2)
+            openRoom("Launch plan")
             send("@Mira @Lucien plan the launch post for Friday")
             XCTAssertTrue(waitForText("subreddit", timeout: 60), "The room's bots never answered")
             settle(6)
@@ -321,6 +322,23 @@ final class DemoVideoTests: XCTestCase {
         }
         if !moved { XCTFail("\(bot) never took \(target)'s place") }
         return moved
+    }
+
+    /// Opens a room from Bots Home's Group Chats once it has started: a room
+    /// with Studio's bots waits for them to join first ("Waiting for
+    /// Studio"), and only then opens to its chat.
+    private func openRoom(_ name: String) {
+        let waiting = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Waiting for")).firstMatch
+        let deadline = Date().addingTimeInterval(90)
+        while waiting.exists, Date() < deadline { settle(2) }
+        if waiting.exists { print("DEMO \(name) still waits for its far bots") }
+        let tile = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        guard tile.waitForExistence(timeout: 20) else {
+            XCTFail("No \(name) in Group Chats")
+            return
+        }
+        tile.tap()
+        settle(3)
     }
 
     /// Opens New Group Chat and closes it again, so Conduit reads your other
