@@ -318,11 +318,15 @@ struct V2ProfileStrip: View {
                 // starts at the first profile; bring the selected one in.
                 // After the first layout pass, or the scroll does nothing.
                 .onAppear {
-                    Task { @MainActor in proxy.scrollTo(appState.activeProfile, anchor: .center) }
+                    Task { @MainActor in proxy.scrollTo(selectedChipID, anchor: .center) }
                 }
-                .onChange(of: appState.activeProfile) { _, profile in
+                // In a group, the chip is the dashboard's and the profile's:
+                // a switch to another dashboard on the same profile name
+                // scrolls to that dashboard's, never the one just left
+                // (Eric, 2026-11-16: the strip bounced off the pick).
+                .onChange(of: selectedChipID) { _, id in
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
-                        proxy.scrollTo(profile, anchor: .center)
+                        proxy.scrollTo(id, anchor: .center)
                     }
                 }
             }
@@ -330,6 +334,12 @@ struct V2ProfileStrip: View {
             chips
                 .padding(.trailing, widestNameSlack)
         }
+    }
+
+    /// The selected profile's chip: in a group, keyed by its dashboard too.
+    private var selectedChipID: String {
+        groupChips.isEmpty ? appState.activeProfile
+            : CombinedBotsHomeOrder.key(appState.activeDashboardID, appState.activeProfile)
     }
 
     /// Chats in a combined group: every dashboard's profiles in one row,
@@ -362,7 +372,7 @@ struct V2ProfileStrip: View {
                             .id(item.id)
                     } else {
                         chip(item.profile, unread: unread.contains(item.profile), badge: item.dashboardID)
-                            .id(item.profile)
+                            .id(item.id)
                     }
                 }
             }
@@ -438,7 +448,7 @@ struct V2ProfileStrip: View {
         return Button {
             Haptics.selection()
             Task { @MainActor in
-                guard await appState.switchForCombinedProfile(in: dashboardID) else { return }
+                guard await appState.switchForCombinedProfile(in: dashboardID, profile: profile) else { return }
                 if !appState.profilesMatch(appState.activeProfile, profile) {
                     shell.pickProfile(profile)
                 }

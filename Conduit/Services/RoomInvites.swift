@@ -67,6 +67,9 @@ struct RoomInvite: Identifiable, Equatable {
     var justMe = false
     /// The host's plugin takes Just me (0.167.5+), so the card offers it.
     var justMeOffered = false
+    /// Removed from Group Chats on the Hermes (plugin 0.177.23), so on
+    /// every phone, not only the one it was removed on.
+    var removed = false
 }
 
 /// What Group Chats lists of the invites.
@@ -81,7 +84,7 @@ enum RoomInviteRows {
             case "waiting", "joined":
                 return true
             case "started", "cancelled", "lapsed", "ended":
-                return !dismissed.contains(invite.id)
+                return !invite.removed && !dismissed.contains(invite.id)
             default:
                 return false
             }
@@ -227,6 +230,8 @@ enum RoomInviteText {
 /// mailbox, which takes it to the host.
 struct RoomInvitesClient {
     static let capability = "room-invites"
+    /// POST /rooms/invites/remove (plugin 0.177.23).
+    static let removeCapability = "room-invites-remove"
     static let path = "/api/plugins/conduit_push/rooms/invites"
 
     typealias Request = RoomLinksClient.Request
@@ -252,6 +257,16 @@ struct RoomInvitesClient {
         guard response["ok"] as? Bool == true, let object = response["invite"] as? [String: Any],
               let answered = Self.invite(object) else { throw HermesError.invalidResponse }
         return answered
+    }
+
+    /// Takes a finished invite off Group Chats on the Hermes, so every
+    /// phone stops listing it (room-invites-remove).
+    func remove(_ invite: RoomInvite) async throws -> RoomInvite {
+        let body: [String: Any] = ["link": invite.link, "room_id": invite.roomID]
+        let response = try await request("\(Self.path)/remove", "POST", body, nil)
+        guard response["ok"] as? Bool == true, let object = response["invite"] as? [String: Any],
+              let removed = Self.invite(object) else { throw HermesError.invalidResponse }
+        return removed
     }
 
     /// An invite the list can't show (no room, Link, name or status) is
@@ -292,7 +307,8 @@ struct RoomInvitesClient {
             choices: choices,
             gone: goneAgents(object["gone"]),
             justMe: object["just_me"] as? Bool ?? false,
-            justMeOffered: object["just_me_offered"] as? Bool ?? false
+            justMeOffered: object["just_me_offered"] as? Bool ?? false,
+            removed: object["removed"] as? Bool ?? false
         )
     }
 

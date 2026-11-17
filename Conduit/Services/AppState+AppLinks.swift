@@ -127,7 +127,7 @@ extension AppState {
             guard expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
             // Offline, the roster can't say whether the bot is still there.
             guard self.isConnected else {
-                self.errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
+                self.errorMessage = Self.connectToChatWithBotsMessage
                 return
             }
             var bot = Self.linkedBot(named: profile, in: self.botRoster)

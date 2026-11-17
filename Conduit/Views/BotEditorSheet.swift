@@ -31,6 +31,10 @@ struct BotEditorSheet: View {
     @State private var details: BotProfileDetails?
     @State private var detailsState: DetailsState = .idle
     @State private var isSaving = false
+    /// The combined dashboard picked for a new bot; nil, the one on screen.
+    @State private var createDashboard: UUID?
+    /// The dashboard the sheet's model list, Start From and skills were read on.
+    @State private var fieldsDashboard: UUID?
     @State private var error: String?
     @State private var showingImagePicker = false
     @State private var pickedImage: UIImage?
@@ -94,6 +98,7 @@ struct BotEditorSheet: View {
                         .foregroundStyle(.red)
                         .padding(.horizontal, 16)
                 }
+                createDashboardRow
                 avatarHeader
                 colorSection
                 nameSection
@@ -187,7 +192,10 @@ struct BotEditorSheet: View {
             usePicture(image)
             pickedImage = nil
         }
-        .onAppear(perform: seedShown)
+        .onAppear {
+            if fieldsDashboard == nil { fieldsDashboard = appState.activeDashboardID }
+            seedShown()
+        }
         .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
@@ -199,6 +207,65 @@ struct BotEditorSheet: View {
     }
 
     // MARK: Sections
+
+    /// Combined, a new bot's sheet picks the dashboard it's made on, the one
+    /// on screen to start with, any other kept connected too (Eric,
+    /// 2026-11-16: "let users pick on the bot creation sheet").
+    @ViewBuilder
+    private var createDashboardRow: some View {
+        let choices = createDashboardChoices
+        if isCreating, !choices.isEmpty, let shown = createDashboardID,
+           let badge = appState.combinedDashboardBadge(shown) {
+            Menu {
+                ForEach(choices, id: \.self) { id in
+                    if let choice = appState.combinedDashboardBadge(id) {
+                        Button {
+                            createDashboard = id
+                        } label: {
+                            if id == shown {
+                                Label { Text(verbatim: choice.name) } icon: { Image(systemName: "checkmark") }
+                            } else {
+                                Text(verbatim: choice.name)
+                            }
+                        }
+                    }
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    CombinedDashboardBadge(dashboardID: shown, size: 20)
+                        .accessibilityHidden(true)
+                    Text(verbatim: badge.name)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .lineLimit(1)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .scaledFont(.caption.weight(.semibold))
+                        .accessibilityHidden(true)
+                }
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 14)
+                .frame(minHeight: 44)
+                .background(.thinMaterial, in: Capsule())
+            }
+            .disabled(isSaving)
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    /// The dashboard a new bot goes to: the one picked, else the one on screen.
+    private var createDashboardID: UUID? {
+        if let createDashboard, createDashboardChoices.contains(createDashboard) { return createDashboard }
+        return appState.activeDashboardID
+    }
+
+    /// The one on screen, then each other combined dashboard kept connected,
+    /// in Saved Dashboards order.
+    private var createDashboardChoices: [UUID] {
+        guard let active = appState.activeDashboardID, appState.isInCombinedGroup(active) else { return [] }
+        let others = appState.savedDashboardRegistry.dashboards.map(\.id).filter {
+            $0 != active && appState.isInCombinedGroup($0) && appState.keptDashboardRuntimes[$0] != nil
+        }
+        return [active] + others
+    }
 
     private var avatarHeader: some View {
         VStack(spacing: 12) {
@@ -929,10 +996,33 @@ struct BotEditorSheet: View {
         guard canSave else { return }
         isSaving = true
         error = nil
-        let draft = self.draft
+        var draft = self.draft
+        let target = isCreating ? createDashboardID : nil
         Task {
             let result: BotSaveResult
             var createdName: String?
+            // Another dashboard picked: switch there, then make it as on that
+            // dashboard. Its model, its Start From and its skills and tools
+            // are that dashboard's defaults: what the sheet read was the
+            // first one's, and none of it is written to the other. The reset
+            // stays on the sheet, so a retry there sends it as well.
+            if let target {
+                if target != appState.activeDashboardID {
+                    guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
+                    await appState.switchToCombinedDashboardUntilSettled(target)
+                    guard appState.activeDashboardID == target, appState.isConnected else {
+                        isSaving = false
+                        Haptics.warning()
+                        error = AppLocalization.string("Connect to Hermes to manage bots.")
+                        return
+                    }
+                }
+                if target != (fieldsDashboard ?? target) {
+                    draft = draft.readOnAnotherDashboard
+                    self.draft = self.draft.readOnAnotherDashboard
+                    fieldsDashboard = target
+                }
+            }
             if let bot = editedBot {
                 result = await appState.updateBot(bot, draft: draft, loadedDetails: details)
             } else {

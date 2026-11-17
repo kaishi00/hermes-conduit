@@ -106,8 +106,12 @@ extension AppState {
         let bridge = ObjectIdentifier(runtime.bridge)
         let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
         if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
+        // Kept anew (opened and left again) while the read was out: the
+        // list that switch seeded is newer than this read.
+        let keptAt = runtime.keptAt
         guard let response = try? await readKeptDashboardJSON(runtime.bridge, path: "/api/profiles"),
               keptDashboardRuntimes[id]?.bridge === runtime.bridge else { return last?.profiles }
+        guard keptDashboardRuntimes[id]?.keptAt == keptAt else { return keptDashboardProfiles[id]?.profiles }
         let names = (response["profiles"] as? [Any] ?? []).compactMap { value -> String? in
             if let name = value as? String { return name }
             return (value as? [String: Any])?["name"] as? String
@@ -249,7 +253,8 @@ extension AppState {
             guard !refusesCombinedSwitchDuringCall() else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                await self.switchDashboard(to: dashboardID)
+                // Open as soon as its sync settles, as its bots do.
+                await self.switchToCombinedDashboardUntilSettled(dashboardID)
                 guard self.activeDashboardID == dashboardID else { return }
                 var own = item
                 own.dashboardID = nil

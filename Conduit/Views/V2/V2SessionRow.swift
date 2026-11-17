@@ -188,7 +188,8 @@ struct V2SessionRow: View {
     /// without an icon (a project page gathering profiles, issue 1761)
     /// ahead of the title.
     var profileBadge: V2ProfileBadge? = nil
-    /// Another combined dashboard's chat: its badge, on the icon's corner.
+    /// Another combined dashboard's chat: its badge, on the icon's corner,
+    /// or on its profile's picture there in All.
     var dashboardBadge: V2DashboardBadge? = nil
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -207,6 +208,14 @@ struct V2SessionRow: View {
                                 size: 18
                             )
                             .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
+                            // Another combined dashboard's profile: its
+                            // dashboard's mark on the picture's corner.
+                            .overlay(alignment: .bottomTrailing) {
+                                if let dashboardBadge {
+                                    CombinedDashboardBadge.Mark(badge: dashboardBadge, size: 11)
+                                        .offset(x: 3, y: 3)
+                                }
+                            }
                             .offset(x: 4, y: 4)
                             .accessibilityHidden(true)
                         } else if let dashboardBadge {

@@ -586,6 +586,7 @@ extension AppState {
         dashboardSwitchGeneration &+= 1
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
+        chatSyncSettledDashboardID = nil
         // The outgoing dashboard's chat and Chats list as they show now are
         // what the next visit there opens to.
         recordOfflineChatCopy()
@@ -601,6 +602,23 @@ extension AppState {
         // and preparing clears them: a combined one kept below leaves them
         // on Bots Home.
         let outgoingRoster = shownBotRoster
+        let outgoingProfiles = profiles
+        // Its own chats as listed (every profile's, with All on), each
+        // naming its profile: another dashboard's All lists them at once.
+        let outgoingChats = chatListSessions.filter { $0.combinedDashboardID == nil }.map { row -> SessionSummary in
+            var row = row
+            if row.profile == nil { row.profile = activeProfile }
+            return row
+        }
+        // Its bots' pills, and what its plugin serves, which the far bots'
+        // pills read by (Eric, 2026-11-16).
+        let outgoingWork = Dictionary(
+            outgoingRoster.compactMap { bot in botWork.snapshot(bot.name).map { (bot.name.lowercased(), $0) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        let outgoingGlows = profileGlowColors()
+        var outgoingCapabilities: Set<String>?
+        if case .reported(_, let capabilities) = notifierPlugin.state { outgoingCapabilities = capabilities }
         selectDashboardTarget(id)
         // Pulse's badge, marks and chat are the outgoing dashboard's.
         pulseUnseen = 0
@@ -613,7 +631,10 @@ extension AppState {
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         // A combined dashboard left while connected stays connected, so a
         // switch back is at once (multi-instance stage 3).
-        keepOutgoingDashboardRuntimeIfCombined(previousDashboardID, switchingTo: id, roster: outgoingRoster)
+        keepOutgoingDashboardRuntimeIfCombined(
+            previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats,
+            work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows
+        )
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {
             // Resume on the target's own profile, not the outgoing
@@ -630,13 +651,13 @@ extension AppState {
         }
         // A combined dashboard kept connected is taken up again: its socket
         // and bridge are already open, so only the sync runs.
-        if let kept = takeKeptDashboardRuntime(id, profile: activeProfile) {
+        if let kept = takeKeptDashboardRuntime(id, profile: activeProfile),
+           let reusing = keptClient(kept, on: activeProfile) {
             presentOfflineChatIfAvailable(dashboardID: id)
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            dashboardTicketBridge = kept.bridge
-            await connect(with: kept.connection, profile: activeProfile, reusing: kept.client)
+            await connect(with: kept.connection, profile: activeProfile, reusing: reusing)
             settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }

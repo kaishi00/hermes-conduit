@@ -1477,7 +1477,7 @@ extension AppState {
     func pulseNewChatRefusal(for card: PulseCard, in picked: PulseDoItTarget? = nil) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
         if pulseDoItBot(for: card, in: picked) != nil {
-            return isConnected ? nil : AppLocalization.string("Connect to Hermes to chat with bots.")
+            return isConnected ? nil : Self.connectToChatWithBotsMessage
         }
         // The bot Settings picked, while the bot list couldn't say whether
         // it's still there, or one picked from the long press that's gone

@@ -529,6 +529,9 @@ extension AppState {
         }
 
         let previousClient = client
+        // A kept client stays the same object across a switch away and
+        // back: only this visit's sync may say it settled.
+        let visitSwitchGeneration = dashboardSwitchGeneration
         // A combined dashboard's kept client is already open: it takes this
         // connection's epoch and skips the socket's opening.
         let client: HermesClient
@@ -616,6 +619,9 @@ extension AppState {
             // before the reads below.
             await botEvidence.value
             guard let continuation = synced else { return }
+            if self.client === client, dashboardSwitchGeneration == visitSwitchGeneration {
+                chatSyncSettledDashboardID = activeDashboardID
+            }
             continuationPurpose = continuation.purpose
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent

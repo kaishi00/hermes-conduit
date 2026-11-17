@@ -633,6 +633,19 @@ struct BotEditorDraft: Equatable {
     /// loaded; only changed sections are written.
     var capabilities: BotCapabilities?
     var capabilitiesBaseline: BotCapabilities?
+
+    /// The draft made on another dashboard than the one its model list,
+    /// Start From and skills were read on: those go back to that
+    /// dashboard's defaults, the rest stays.
+    var readOnAnotherDashboard: BotEditorDraft {
+        var draft = self
+        draft.provider = ""
+        draft.model = ""
+        draft.cloneFrom = BotCreateRequest.mainProfile
+        draft.capabilities = nil
+        draft.capabilitiesBaseline = nil
+        return draft
+    }
 }
 
 /// Upstream `create-dialog.tsx` `ensureAgentCreated`: the `profiles.create`

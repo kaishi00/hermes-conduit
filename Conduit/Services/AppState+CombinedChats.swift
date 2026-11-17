@@ -21,6 +21,10 @@ struct CombinedDashboardChats: Equatable {
     let profiles: [String]
     let sessions: [SessionSummary]
     let at: Date
+    /// When a switch seeded it from the list on screen (`at` is then long
+    /// ago, so the next pass reads anew): a read started before this
+    /// can't overwrite it (#2644 review).
+    var seededAt: Date? = nil
 }
 
 extension AppState {
@@ -61,10 +65,11 @@ extension AppState {
                 let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, opened, or out of the group while the read was
-                // out, or a read started later already stored its answer:
-                // this one is stale.
+                // out, or a read started later (or a switch's seed) already
+                // stored its answer: this one is stale.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
-                      isInCombinedGroup(id), !(combinedDashboardChats[id].map { $0.at > now } ?? false) else {
+                      isInCombinedGroup(id),
+                      !(combinedDashboardChats[id].map { $0.at > now || ($0.seededAt.map { $0 > now } ?? false) } ?? false) else {
                     stale = true
                     break
                 }
@@ -241,8 +246,11 @@ extension AppState {
     /// there through its kept connection, the strip staying as it was (the
     /// group's one order), its list no longer All. True once it's on screen;
     /// the caller then picks the profile as the strip does on one dashboard.
-    func switchForCombinedProfile(in dashboardID: UUID) async -> Bool {
+    func switchForCombinedProfile(in dashboardID: UUID, profile: String? = nil) async -> Bool {
         guard !refusesCombinedSwitchDuringCall() else { return false }
+        // The switch resumes on the picked profile, not first on the one
+        // it last used there (Eric, 2026-11-16).
+        if let profile { rememberActiveProfile(profile, for: dashboardID) }
         await switchDashboard(to: dashboardID)
         guard activeDashboardID == dashboardID else { return false }
         setAllProfilesChatsOn(false)

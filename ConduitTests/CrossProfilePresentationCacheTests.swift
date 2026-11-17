@@ -698,8 +698,34 @@ extension CrossProfilePresentationCacheTests {
         appState.client = again
         appState.connection = again.connection
         appState.installDashboardTicketBridgeForTesting(DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id))
-        appState.keepOutgoingDashboardRuntimeIfCombined(mac.id, switchingTo: vps.id, roster: [])
+        let chat = session("mac-chat", profile: "atlas")
+        // A list read on an earlier visit gives way to the one on screen.
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(again), profiles: ["old"], sessions: [session("old-chat", profile: "old")], at: Date()
+        )
+        // So does its bots' work seeded before the visit, with none read on
+        // it: no pill from before the visit stands (a wait answered on it).
+        let earlier = try XCTUnwrap(BotWorkSnapshot(response: [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 0, "needs_you": 1, "ready": 0, "waiting": 1], "work": [[String: Any]](),
+        ], profile: "atlas"))
+        appState.combinedDashboardBotWork[mac.id] = ["atlas": earlier]
+        appState.keepOutgoingDashboardRuntimeIfCombined(
+            mac.id, switchingTo: vps.id, roster: [], profiles: ["default", "atlas"], chats: [chat]
+        )
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        // Its profiles stay on Chats' strip and its chats in All from the
+        // switch on, read anew on the next pass (Eric, 2026-11-16).
+        XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["mac-chat"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.first?.combinedDashboardID, mac.id)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.at, Date.distantPast)
+        XCTAssertNotNil(appState.combinedDashboardChats[mac.id]?.seededAt, "a read started before it can't overwrite it")
+        XCTAssertEqual(appState.keptDashboardProfiles[mac.id]?.at, Date.distantPast, "its profiles are read anew on the next pass")
+        XCTAssertNil(appState.combinedDashboardBotWork[mac.id], "work from before the visit goes")
+        // Its socket dropping keeps the strip's profiles with its list.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertEqual(appState.otherCombinedDashboardProfiles(mac.id), ["default", "atlas"])
 
         appState.setDashboardCombined(vps.id, false)
 
@@ -870,6 +896,10 @@ extension CrossProfilePresentationCacheTests {
         final class Counts { var mints: [String] = [] }
         let counts = Counts()
         let socket = ClarifyFakeSocket()
+        // Every request answered at once (refused), so the switch's reads
+        // don't wait out their timeouts on a socket that never answers, nor
+        // its keepalive close the kept socket meanwhile.
+        socket.refusesEveryRequest = true
         let transport = ClarifyFakeTransport()
         transport.nextSocket = { socket }
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
@@ -902,6 +932,41 @@ extension CrossProfilePresentationCacheTests {
 
         XCTAssertTrue(appState.client === kept.client, "the switch takes the background connection up")
         XCTAssertEqual(counts.mints.count, 1, "no second ticket")
+
+        // A pick of another of its profiles from Mac's strip lands on that
+        // profile at once, its socket handed to a client on it, never first
+        // on the one it last used (Eric, 2026-11-16).
+        await appState.switchDashboard(to: mac.id)
+        let keptAgain = try XCTUnwrap(appState.keptDashboardRuntimes[vps.id])
+        XCTAssertEqual(keptAgain.client.profile, "coder")
+        let picked = await appState.switchForCombinedProfile(in: vps.id, profile: "default")
+        XCTAssertTrue(picked)
+        XCTAssertEqual(appState.activeProfile, "default")
+        XCTAssertEqual(appState.client?.profile, "default")
+        XCTAssertFalse(appState.client === keptAgain.client, "a client on the picked profile")
+        XCTAssertTrue(appState.client?.isConnected ?? false, "on the kept socket")
+        XCTAssertEqual(counts.mints.count, 1, "no new ticket")
+    }
+
+    /// Turning combine on signs the other dashboard in at once, not first
+    /// on the next connect or a switch to it (Eric, 2026-11-16).
+    func testTurningCombineOnSignsTheOtherDashboardInAtOnce() async throws {
+        let socket = ClarifyFakeSocket()
+        let transport = ClarifyFakeTransport()
+        transport.nextSocket = { socket }
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "vps-ticket" }
+        operations.makeTransport = { transport }
+        let (appState, _, vps, _, _) = try await combinedDashboards(operations: operations)
+        appState.isConnected = true
+        KeychainHelper.saveConnection(HermesConnection(baseUrl: vps.normalizedURL, ticket: "spent"), dashboardID: vps.id)
+        transport.open(socket)
+        appState.setDashboardCombined(vps.id, false)
+        XCTAssertTrue(appState.keptDashboardRuntimes.isEmpty)
+
+        appState.setDashboardCombined(vps.id, true)
+        await waitForKept(vps.id, in: appState)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "signed in beside the one on screen")
     }
 
     /// A dashboard that needs typing, or Face ID this launch hasn't had,
@@ -1175,6 +1240,34 @@ extension CrossProfilePresentationCacheTests {
         let item = try XCTUnwrap(appState.needsYou.otherDashboards[mac.id]?.first)
         XCTAssertEqual(item.dashboardID, mac.id)
         XCTAssertEqual(item.profile, "atlas")
+        // Its bot's pill on Bots Home's mixed grid says so, and opens it
+        // (Eric, 2026-11-16: the far bots showed no status).
+        func bot(_ name: String) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                       appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        XCTAssertEqual(appState.combinedBotStatus(bot("atlas"), in: mac.id), .needsYou(1))
+        XCTAssertEqual(appState.combinedBotChatWaits(bot("atlas"), in: mac.id).map(\.id), [item.id])
+        XCTAssertEqual(appState.combinedBotChatWaitThePillOpens(bot("atlas"), in: mac.id)?.id, item.id, "no workstream waits, so the pill opens the chat")
+        XCTAssertEqual(appState.combinedBotStatus(bot("default"), in: mac.id), .idle)
+        // Its work, read through the kept connection: a workstream waiting
+        // adds to the pill, and the pill then opens the overview, not the
+        // chat (as this dashboard's portraits).
+        let needsYouReader = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [BotWorkstreamsClient.capability]] }
+            return ["ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+                    "counts": ["working": 0, "needs_you": 1, "ready": 0, "waiting": 1],
+                    "workstream_sessions": ["ws-1"], "work": [[String: Any]]()]
+        }
+        await appState.refreshCombinedDashboardBotWork(mac.id, profile: "atlas")
+        XCTAssertEqual(appState.combinedDashboardBotWork[mac.id]?["atlas"]?.needsYouCount, 1)
+        XCTAssertEqual(appState.combinedBotStatus(bot("atlas"), in: mac.id), .needsYou(2), "its work's wait and its chat's")
+        XCTAssertNil(appState.combinedBotChatWaitThePillOpens(bot("atlas"), in: mac.id), "a workstream waits: the overview")
+        appState.combinedDashboardBotWork[mac.id] = nil
+        appState.keptDashboardJSONReader = needsYouReader
         XCTAssertEqual(appState.needsYou.everyItem.map(\.id), [item.id], "the list shows it")
         XCTAssertTrue(appState.needsYou.items.isEmpty, "this dashboard's profile chips don't count it")
         XCTAssertNil(appState.needsYou.banner, "a first read shows no banner")
@@ -1235,6 +1328,108 @@ extension CrossProfilePresentationCacheTests {
     /// The Chats list shows a kept combined dashboard's newest chats, read
     /// through its kept connection, badged, with no actions of their own;
     /// a tap opens through that dashboard (all-live stage 4b).
+    /// A combined dashboard just switched to: its bots keep the color they
+    /// wore on the grid as another dashboard's until this one's profiles
+    /// and pictures give it again, never the name's stand-in for a moment
+    /// (Eric, 2026-11-16). A seed keeps a color it gave before and can't
+    /// give yet.
+    func testABotKeepsItsColorThroughASwitch() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, _, outgoing, _) = try await combinedDashboards(operations: operations)
+        let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        let violet = ProfileGlowRGB(red: 0.5, green: 0.2, blue: 0.9)
+        let standIn = AppState.botColor(raiden, glow: nil)
+        XCTAssertNil(appState.profileGlowColors()["raiden"], "this dashboard's pictures aren't in yet")
+        XCTAssertEqual(appState.botColor(raiden), standIn)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [raiden], avatars: [:], at: Date(), glows: ["raiden": violet]
+        )
+        XCTAssertEqual(appState.botColor(raiden), violet.color, "the color it wore as another dashboard's")
+        // Once this dashboard's profiles are in, its own colors stand.
+        appState.profiles = ["default", "raiden"]
+        XCTAssertEqual(appState.botColor(raiden), AppState.botColor(raiden, glow: appState.profileGlowColors()["raiden"]))
+
+        appState.seedCombinedDashboardBots(mac.id, from: [raiden], client: outgoing, glows: [:])
+        XCTAssertEqual(appState.combinedDashboardBots[mac.id]?.glows["raiden"], violet, "kept, not the stand-in")
+    }
+
+    /// A bot's work shown from the phone's copy while Hermes is asked
+    /// again is marked so (its counts may be old): Bots Home's finish
+    /// ripple doesn't play for the read that follows (Eric, 2026-11-16: a
+    /// far bot's open flashed another bot's ring). A read's own isn't.
+    func testABotsWorkShownFromThePhonesCopyIsMarkedKept() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, _, _, _, _) = try await combinedDashboards(operations: operations)
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [BotWorkstreamsClient.capability]))
+        let answer: [String: Any] = [
+            "ok": true, "policy": "strict", "bot": "Atlas", "bot_chat": "botchat",
+            "counts": ["working": 0, "needs_you": 0, "ready": 2, "waiting": 0], "work": [[String: Any]](),
+        ]
+        let read = try XCTUnwrap(BotWorkSnapshot(response: answer, profile: "atlas"))
+        XCTAssertFalse(read.isKept)
+        _ = try await appState.screenAnswers(profile: "atlas").keep(BotWorkstreamsClient.keptRoute, false) { answer }
+
+        // Hermes can't be asked here: the strip keeps the phone's copy.
+        await appState.refreshBotWork(profile: "atlas")
+        let shown = try XCTUnwrap(appState.botWork.snapshot("atlas"))
+        XCTAssertEqual(shown.readyCount, 2)
+        XCTAssertTrue(shown.isKept, "from the phone's copy")
+    }
+
+    /// Artifacts lists every combined dashboard's, All on or off (Eric,
+    /// 2026-11-16): each profile of a kept dashboard, read through its kept
+    /// connection, its rows named by that dashboard and apart from this
+    /// one's of the same path, its files read there too.
+    func testArtifactsListAKeptDashboardsArtifactsThroughIt() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
+        )
+        // All off, the other dashboard is listed all the same.
+        XCTAssertFalse(appState.isAllProfilesChatsOn)
+        let far = appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }
+        XCTAssertEqual(far.map(\.profile), ["default", "atlas"])
+        XCTAssertEqual(far.map(\.label), ["Mac", "Mac · atlas"])
+
+        final class Paths { var read: [String] = [] }
+        let paths = Paths()
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            paths.read.append(path)
+            return ["ok": true, "items": [[
+                "kind": "image", "source": "written", "name": "chart.png", "path": "/tmp/chart.png",
+                "session_id": "atlas-1", "message_id": 4, "timestamp": 1_000,
+            ]]]
+        }
+        let source = try XCTUnwrap(far.last)
+        let page = try await appState.artifactsClient(for: source).page(source)
+        XCTAssertTrue(paths.read.first?.contains("profile=atlas") == true)
+        let row = try XCTUnwrap(ArtifactFeed(sources: [source], pages: [page]).items.first)
+        XCTAssertEqual(row.dashboardID, mac.id)
+        XCTAssertEqual(row.otherProfile, "atlas")
+        XCTAssertEqual(row.otherProfileLabel, "Mac · atlas")
+        XCTAssertNotEqual(row.id, "/tmp/chart.png", "apart from this dashboard's file of the same path")
+        // Its files are read through the kept connection, as that profile.
+        let resolver = appState.keptGatewayMediaResolver(dashboardID: mac.id, profile: "atlas")
+        XCTAssertTrue(resolver.connectedDashboardBridge === kept.bridge)
+        XCTAssertEqual(resolver.profile, "atlas")
+
+        // Let go, it lists and reads nothing more.
+        appState.dropKeptDashboardRuntime(mac.id)
+        XCTAssertTrue(appState.artifactSources(for: .profile).allSatisfy { $0.dashboardID == nil })
+        XCTAssertNil(resolver.connectedDashboardBridge)
+        do {
+            _ = try await appState.artifactsClient(for: source).page(source)
+            XCTFail("no kept connection to read through")
+        } catch {}
+    }
+
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
         final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
         let counts = Counts()
@@ -1355,6 +1550,16 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
         appState.keptDashboardJSONReader = reader
+        // A switch's seed stands against a read started before it (#2644
+        // review), and gives way to one started after.
+        let listed = try XCTUnwrap(appState.combinedDashboardChats[mac.id])
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: listed.bridge, profiles: listed.profiles, sessions: [], at: .distantPast, seededAt: Date()
+        )
+        await appState.readOtherCombinedDashboardsChats(force: true, now: Date(timeIntervalSinceNow: -5))
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.isEmpty, true, "the older read is stale")
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
 
         let target = appState.combinedChatTarget(row, in: mac.id)
         XCTAssertEqual(target.dashboardID, mac.id)

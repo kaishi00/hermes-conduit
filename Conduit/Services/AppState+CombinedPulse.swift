@@ -90,7 +90,8 @@ extension AppState {
         guard dashboardID != activeDashboardID, !refusesCombinedSwitchDuringCall() else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.switchDashboard(to: dashboardID)
+            // Open as soon as its sync settles, as its bots do.
+            await self.switchToCombinedDashboardUntilSettled(dashboardID)
             // Another dashboard picked meanwhile owns the screen.
             guard self.activeDashboardID == dashboardID else { return }
             self.openPulse(card: nil)

@@ -447,7 +447,8 @@ extension AppState {
         guard servesBotWorkstreams else { return }
         let answers = screenAnswers(profile: profile)
         let client = botWorkClient(profile: profile)
-        if botWork.snapshot(profile) == nil, let kept = client.kept(in: answers) {
+        if botWork.snapshot(profile) == nil, var kept = client.kept(in: answers) {
+            kept.isKept = true
             setBotWork(kept)
         }
         guard isConnected else {
