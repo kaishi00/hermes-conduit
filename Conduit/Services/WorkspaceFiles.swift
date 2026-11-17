@@ -323,10 +323,9 @@ struct WorkspaceRoot: Identifiable, Equatable, Hashable {
 /// a search match at its line.
 struct WorkspaceReveal: Equatable, Identifiable {
     let id = UUID()
-    let path: String
-    var line: Int?
-
-    static func == (lhs: WorkspaceReveal, rhs: WorkspaceReveal) -> Bool { lhs.id == rhs.id }
+    /// Equal by id: tapping the same path again reveals it again.
+    @EqualityIgnored var path: String
+    @EqualityIgnored var line: Int?
 }
 
 /// File paths in a reply, made tappable: they open in the Folder tab.

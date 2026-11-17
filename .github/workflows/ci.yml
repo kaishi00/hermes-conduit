@@ -306,6 +306,12 @@ jobs:
         # (#1533).
         run: python3 scripts/check-transcript-environment.py --repo-root .
 
+      - name: No hand-written Equatable
+        # A type with a hand-written `==` makes any new member of it
+        # recompile nearly the whole app (718 of 766 files, 2026-11-17):
+        # synthesize it, wrapping fields in Conduit/Services/EquatableWrappers.swift.
+        run: python3 scripts/check-hand-written-equality.py --repo-root .
+
       - name: Recommended plugin version matches the plugin
         # Conduit only offers the plugin update to hosts below
         # NotifierPluginStatus.recommendedVersion, so it must follow every

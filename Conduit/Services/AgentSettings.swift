@@ -216,7 +216,8 @@ struct AgentSettingsAppliedNotice: Equatable, Identifiable {
     }
 
     let id = UUID()
-    let changes: [Change]
+    /// Notices are equal by id: each one is its own banner.
+    @EqualityIgnored var changes: [Change]
 
     var message: String {
         if changes.count == 1, let change = changes.first {
@@ -224,8 +225,6 @@ struct AgentSettingsAppliedNotice: Equatable, Identifiable {
         }
         return AppLocalization.string("Hermes changed \(changes.count) settings", table: .bots)
     }
-
-    static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }
 }
 
 /// The sync with the plugin and the changes it brings, for the active

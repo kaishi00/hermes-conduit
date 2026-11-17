@@ -20,7 +20,8 @@ import Foundation
 
 /// A Link invite: `conduit://link/` and a payload only the plugin reads.
 struct RoomLinkURL: Identifiable, Equatable, CustomStringConvertible, CustomDebugStringConvertible, CustomReflectable {
-    let id = UUID()
+    /// Invites are equal by their text; the id only keys a sheet.
+    @EqualityIgnored var id = UUID()
     /// `conduit://link/` and the payload, the spelling the plugin reads.
     let text: String
 
@@ -58,10 +59,6 @@ struct RoomLinkURL: Identifiable, Equatable, CustomStringConvertible, CustomDebu
     }
 
     private static let payloadScalars = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
-
-    static func == (lhs: RoomLinkURL, rhs: RoomLinkURL) -> Bool {
-        lhs.text == rhs.text
-    }
 
     var description: String { "RoomLinkURL(\(text.count) characters)" }
     var debugDescription: String { description }

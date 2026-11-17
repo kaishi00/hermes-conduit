@@ -545,6 +545,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("check-fixed-text-sizes.py", checks)
         self.assertIn("check-weak-imports.py targets", checks)
         self.assertIn("check-transcript-environment.py", checks)
+        self.assertIn("check-hand-written-equality.py", checks)
         self.assertIn("check-plugin-version.py", checks)
         self.assertIn("check-card-schema.py", checks)
         self.assertIn("check-feature-map.py", checks)

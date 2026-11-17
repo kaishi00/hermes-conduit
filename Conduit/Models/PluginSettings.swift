@@ -203,7 +203,8 @@ enum PluginSettings {
 
     /// A parsed JSON list or object, carried to the request body as is.
     struct JSONBox: Hashable {
-        let value: Any
+        /// Equal and hashed by `text`, the value's sorted-key JSON.
+        @EqualityIgnored var value: Any
         private let text: String
 
         init(_ value: Any) {
@@ -229,9 +230,6 @@ enum PluginSettings {
                 return value
             }
         }
-
-        static func == (lhs: JSONBox, rhs: JSONBox) -> Bool { lhs.text == rhs.text }
-        func hash(into hasher: inout Hasher) { hasher.combine(text) }
     }
 
     /// The values as the request body takes them.

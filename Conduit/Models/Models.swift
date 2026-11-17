@@ -1816,14 +1816,11 @@ struct ProfileFallbackChain: Equatable {
 /// fails. Entries can carry hand-written routing (`base_url`, `key_env`,
 /// `api_mode`…); `extras` keeps it so a save never drops it.
 struct ProfileFallbackModel: Equatable, Identifiable {
-    let id = UUID()
+    /// Entries are equal by what they say; the id only keys a list row.
+    @EqualityIgnored var id = UUID()
     var provider: String
     var model: String
     var extras: [String: AnyCodable] = [:]
-
-    static func == (lhs: ProfileFallbackModel, rhs: ProfileFallbackModel) -> Bool {
-        lhs.provider == rhs.provider && lhs.model == rhs.model && lhs.extras == rhs.extras
-    }
 
     /// Reads the raw config value: a list of `{provider, model, …}` objects,
     /// or legacy "provider/model" strings.

@@ -20,10 +20,10 @@ import UIKit
 /// opens, for the same reason.
 struct ChatPinReplyAction: Equatable {
     let messageID: String
-    private let pinned: @MainActor () -> Bool
-    private let handler: @MainActor () -> Void
-    private let passagePinned: @MainActor (String) -> Bool
-    private let passageHandler: @MainActor (String, _ toggles: Bool) -> Void
+    @EqualityIgnored private var pinned: @MainActor () -> Bool
+    @EqualityIgnored private var handler: @MainActor () -> Void
+    @EqualityIgnored private var passagePinned: @MainActor (String) -> Bool
+    @EqualityIgnored private var passageHandler: @MainActor (String, _ toggles: Bool) -> Void
 
     init(
         messageID: String,
@@ -90,10 +90,6 @@ struct ChatPinReplyAction: Equatable {
     /// Pins the selected passage unless it is pinned already.
     @MainActor
     func pinPassage(_ passage: String) { passageHandler(passage, false) }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.messageID == rhs.messageID
-    }
 }
 
 private struct ChatPinReplyActionKey: EnvironmentKey {

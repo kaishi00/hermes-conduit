@@ -154,15 +154,16 @@ struct V2ShellContext: Equatable {
         var isChatCovered = false
     }
 
-    var pickProfile: (String) -> Void = { _ in }
+    // Contexts are equal by `values`: the closures never count as a change.
+    @EqualityIgnored var pickProfile: (String) -> Void = { _ in }
     /// A pick from under the All chip: All goes off as the switch goes
     /// ahead (and during a call, only once the user accepts).
-    var pickProfileLeavingAll: (String) -> Void = { _ in }
+    @EqualityIgnored var pickProfileLeavingAll: (String) -> Void = { _ in }
     /// Drops a profile tap kept for after the running switch: a later tap
     /// on All decides instead.
-    var dropQueuedProfilePick: () -> Void = {}
+    @EqualityIgnored var dropQueuedProfilePick: () -> Void = {}
     /// Opens Chats filtered to Scheduled, where cron runs are listed.
-    var showScheduledRuns: () -> Void = {}
+    @EqualityIgnored var showScheduledRuns: () -> Void = {}
     var values = Values()
 
     var contentFaded: Bool {
@@ -222,10 +223,6 @@ struct V2ShellContext: Equatable {
     var isPickingProfile: Bool {
         get { values.isPickingProfile }
         set { values.isPickingProfile = newValue }
-    }
-
-    static func == (lhs: V2ShellContext, rhs: V2ShellContext) -> Bool {
-        lhs.values == rhs.values
     }
 }
 

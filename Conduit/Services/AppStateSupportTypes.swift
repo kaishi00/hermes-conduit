@@ -126,17 +126,10 @@ struct ConversationAgentIdentity: Equatable {
         let colorString: String?
         /// The bot's cached picture. Compares by INSTANCE, like the avatar
         /// cache that stores it.
-        let image: UIImage?
+        @OptionalIdentityEquatable var image: UIImage?
         /// The bot's starter face (StarterFaces), drawn while it has no
         /// picture.
         var starterFace: Int? = nil
-
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.name == rhs.name
-                && lhs.colorString == rhs.colorString
-                && lhs.image === rhs.image
-                && lhs.starterFace == rhs.starterFace
-        }
     }
 
     /// The user-facing name: the bot's pinned label, or the workspace
@@ -151,13 +144,6 @@ struct ConversationAgentIdentity: Equatable {
     /// The workspace profile, so a profile with no photo wears its bot's
     /// starter face (BotFaceDirectory); "" inside a Bot Chat.
     var profile: String = ""
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.name == rhs.name
-            && lhs.photoURL == rhs.photoURL
-            && lhs.botFace == rhs.botFace
-            && lhs.profile == rhs.profile
-    }
 
     /// The identity ordinary (workspace) conversations present.
     static func workspace(name: String, photoURL: URL?, profile: String = "") -> ConversationAgentIdentity {
