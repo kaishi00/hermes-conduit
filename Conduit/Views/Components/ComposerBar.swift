@@ -828,8 +828,12 @@ struct ComposerBar: View, Equatable {
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
+                        // Without the mic beside it, clear of the field by
+                        // half a gap, so its 44 pt hit shape never reaches
+                        // over the field (a tap there would stop the turn).
                         trailingSlot
                             .conduitFixedGlyph()
+                            .padding(.leading, showsRestingDictateButton ? 0 : Self.controlSpacing / 2 - 2)
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
