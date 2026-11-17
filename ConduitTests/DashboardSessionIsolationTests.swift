@@ -365,7 +365,7 @@ final class DashboardSessionIsolationTests: XCTestCase {
         // 2026-11-16 and 11-17 Nightlies, and every probe in #2695 that
         // waited before its first read), while one kept busy answered.
         let deadline = ContinuousClock.now + .seconds(3)
-        // The last read starts at or after the deadline.
+        // The last read ends at or after the deadline.
         while true {
             let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
             if cookies.contains(where: { $0.value == "after-invalidate" }) {

@@ -248,7 +248,9 @@ class SmokeJobRunnerTests(unittest.TestCase):
         with open(os.path.join(self.tmp, "unit-batch-1.log"), encoding="utf-8") as fh:
             self.assertIn("runtime path not found", fh.read())
         # A recovered loss leaves the job green, so the runtime paths also go
-        # to the run page.
+        # to the run page (the script lists them with jq, as the runners have).
+        if not shutil.which("jq"):
+            self.skipTest("jq not installed")
         with open(os.path.join(self.tmp, "step-summary.md"), encoding="utf-8") as fh:
             summary = fh.read()
         self.assertIn("Simulator runtime lost before any test ran", summary)
