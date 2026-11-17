@@ -1,0 +1,32 @@
+/add-bot {"dashboard": "home", "bot": "mira"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"bot": "piko", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"bot": "riri", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/prompt {"profile": "lucien", "text": "Draft the release notes for 2.4", "dashboard": "studio"}
+"POST /prompt HTTP/1.1" 200 -
+/join-room {"room": "Weekend at Big Sur", "dashboard": "sam"}
+"POST /join-room HTTP/1.1" 200 -
+/room-say {"dashboard": "sam", "room": "Weekend at Big Sur", "text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?"}
+"POST /room-say HTTP/1.1" 200 -
+/prompt {"dashboard": "studio", "profile": "chibi-conduit", "text": "Clear out the old mockups"}
+"POST /prompt HTTP/1.1" 200 -
+/stop-recording {}
+Traceback (most recent call last):
+  File "/Volumes/XcodeDrive/Xcode/demo-videos/repo/scripts/app-store/demo_director.py", line 232, in do_POST
+    asyncio.run(action(self.config, body))
+    ~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "/opt/homebrew/Cellar/python@3.14/3.14.6/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 719, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "/Volumes/XcodeDrive/Xcode/demo-videos/repo/scripts/app-store/demo_director.py", line 202, in stop_recording
+    raise TimeoutError(f"recorder {pid} still running 15 s after SIGINT")
+TimeoutError: recorder 12871 still running 15 s after SIGINT
+"POST /stop-recording HTTP/1.1" 500 -
