@@ -27,7 +27,9 @@ final class DemoVideoTests: XCTestCase {
     private var studioURL: String { env["CONDUIT_DEMO_URL_B"] ?? "" }
     private var demoUser: String { env["CONDUIT_DEMO_USER"] ?? "demo" }
     private var demoPassword: String { env["CONDUIT_DEMO_PASSWORD"] ?? "" }
-    private var director: URL { URL(string: env["CONDUIT_DEMO_DIRECTOR"] ?? "http://127.0.0.1:8780")! }
+    private var director: URL {
+        URL(string: env["CONDUIT_DEMO_DIRECTOR"] ?? "") ?? URL(string: "http://127.0.0.1:8780")!
+    }
 
     override func setUpWithError() throws {
         continueAfterFailure = true
@@ -66,7 +68,7 @@ final class DemoVideoTests: XCTestCase {
         // Setup: add Studio and combine the two, then come back to Home.
         addDashboard(studioURL)
         combineDashboards()
-        switchToDashboard(containing: "tail-demo")
+        switchToDashboard(containing: "hermes.tail-demo")
         openTab("Bots")
         XCTAssertTrue(named("Lucien").waitForExistence(timeout: 60),
                       "Studio's bots never joined Home's Bots Home")
@@ -114,15 +116,16 @@ final class DemoVideoTests: XCTestCase {
 
         scene("reorder") {
             settle(2)
-            drag(bot: "Riri", onto: "Conduit-chan")
+            drag(bot: "Riri", onto: "Conduit-chan", hold: 0.1)
             settle(3)
-            drag(bot: "Kael", onto: "Mira")
+            drag(bot: "Kael", onto: "Mira", hold: 0.1)
             settle(4)
         }
 
         scene("room-across") {
             settle(2)
-            drag(bot: "Mira", onto: "Lucien")
+            // Held over Lucien's face past the merge dwell: a room.
+            drag(bot: "Mira", onto: "Lucien", hold: 1.0)
             let create = app.buttons["bots.newRoom.create"]
             if create.waitForExistence(timeout: 15) {
                 let name = app.textFields["bots.newRoom.name"]
@@ -237,9 +240,10 @@ final class DemoVideoTests: XCTestCase {
         bot.tap()
     }
 
-    /// Holds a bot's portrait and drops it on another's: a reorder, or
-    /// a room when the target allows one.
-    private func drag(bot: String, onto target: String) {
+    /// Holds a bot's portrait and drops it on another's. Released at once it
+    /// takes the target's place (a reorder); held still over the target's
+    /// face past BotDragPayload.mergeDwell (500 ms) it starts a room.
+    private func drag(bot: String, onto target: String, hold: TimeInterval) {
         let from = named(bot)
         let to = named(target)
         guard from.waitForExistence(timeout: 10), to.waitForExistence(timeout: 10) else {
@@ -248,7 +252,7 @@ final class DemoVideoTests: XCTestCase {
         }
         let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
         let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
-        start.press(forDuration: 1.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: 1.0)
+        start.press(forDuration: 1.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: hold)
     }
 
     /// The first element labelled exactly so: on Bots Home, a bot's portrait.
@@ -308,9 +312,19 @@ final class DemoVideoTests: XCTestCase {
 
     // MARK: - Dashboards
 
-    private func signIn(to url: String) {
-        let serverField = app.textFields["login.server-url"]
-        guard serverField.waitForExistence(timeout: 20) else { return }
+    /// Signs in on the first-launch login (`login.` fields) or the Add
+    /// Dashboard sheet (`add-dashboard.`; LoginContext.identifierPrefix).
+    /// Already signed in at launch, there's no address field: that's fine
+    /// only for the first-launch login.
+    private func signIn(to url: String, prefix: String = "login") {
+        let serverField = app.textFields["\(prefix).server-url"]
+        guard serverField.waitForExistence(timeout: 20) else {
+            if prefix != "login" {
+                snap("debug-no-address-field")
+                XCTFail("No \(prefix).server-url field to sign in to \(url)")
+            }
+            return
+        }
         serverField.tap()
         waitForKeyboardFocus(serverField)
         serverField.typeText(url + "\n")
@@ -350,7 +364,7 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         add.tap()
-        signIn(to: url)
+        signIn(to: url, prefix: "add-dashboard")
         dismissSystemAlerts()
         // The sheet closes once the new dashboard is signed in.
         _ = app.buttons["add-dashboard.cancel"].waitForNonExistence(timeout: 60)

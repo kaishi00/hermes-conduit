@@ -99,8 +99,10 @@ The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 
 Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
 a still at the end of each scene in `stills/`), and the git ref
-`refs/demo-videos/<run id>` with the same minus the raw recording, for
+`refs/demo-videos/<run id>` with the same minus the raw recording (and any scene
+over 90 MB, past what git takes), for
 sessions that can't download artifacts.
+Each run makes its own ref; delete old ones with `git push --delete`.
 
 Bot pictures come from `avatars/<name>.png` (256 px), uploaded the way the app
 uploads one. A turn sent live rather than seeded goes under `"replies"`, and
