@@ -1,0 +1,14 @@
+Run 3 (6275985) raw: videos/raw-iPhone-18-Pro-Max.mov
+raw duration: 658.773333 s
+raw frames: 15255 (frames.csv lines; stream nb_frames 15255)
+raw stream time_base 1/600
+
+proxy.mp4: 180 px wide, the raw's 15255 decoded frames in order, ONE FRAME PER 1/30 s (setpts=N/30/TB).
+Proxy frame N (0-based) = frames.csv line N+1, whose first field is that frame's raw pts_time.
+pkt_duration_time comes out empty for this file (the second csv field is blank).
+
+Why not passthrough timestamps: the raw has 5 duplicate frame pts (frames 3094/3095, 3188/3189, 3387/3388,
+6579/6580, 8424/8425, 1-based lines) and its packet dts lag pts by up to ~44 s. After the first pts fault,
+ffmpeg's best-effort timestamps switch to dts, so the suggested passthrough command made a proxy whose
+frame times were up to 44 s off the raw's (format duration 622 s against 658.77 s).
+Spot check: proxy frame 3000 = raw frame 3000.
