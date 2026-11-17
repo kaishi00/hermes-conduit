@@ -138,6 +138,12 @@ extension ComposerFullEditorTests {
         XCTAssertGreaterThanOrEqual(hit.height, 44)
         let neighbour = hit.offsetBy(dx: ComposerBar.controlSize + ComposerBar.controlSpacing, dy: 0)
         XCTAssertLessThanOrEqual(hit.maxX, neighbour.minX)
+        // The resting Stop with no mic beside it: its hit shape ends at
+        // the field's edge (#2657); beside the mic, the mic's padding
+        // makes the gap.
+        let stopLeadingGap = ComposerBar.restingRowSpacing + ComposerBar.restingStopLeadingPadding(micBeside: false)
+        XCTAssertGreaterThanOrEqual(stopLeadingGap, ComposerBar.controlSpacing / 2)
+        XCTAssertEqual(ComposerBar.restingStopLeadingPadding(micBeside: true), 0)
         let glyph = CGRect(x: 0, y: 0, width: 28, height: 28)
         let dismiss = ComposerBar.dismissHitShape.path(in: glyph).boundingRect
         XCTAssertGreaterThanOrEqual(dismiss.width, 44)

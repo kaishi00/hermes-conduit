@@ -804,7 +804,7 @@ struct ComposerBar: View, Equatable {
                 // below it, so a long draft wraps across the full width (#335).
                 // Resting (V2), attach and dictate sit beside the field and the
                 // row waits.
-                HStack(spacing: 2) {
+                HStack(spacing: Self.restingRowSpacing) {
                     if rests {
                         // Capped as in the controls row: at accessibility
                         // sizes its button chrome grew and left the field
@@ -824,7 +824,7 @@ struct ComposerBar: View, Equatable {
                         dictateButton
                             .conduitFixedGlyph()
                             .padding(.leading, 6)
-                            .padding(.trailing, stopOnly ? Self.controlSpacing - 2 : 4)
+                            .padding(.trailing, stopOnly ? Self.controlSpacing - Self.restingRowSpacing : 4)
                             .transition(.opacity)
                     }
                     if rests && stopOnly {
@@ -833,7 +833,7 @@ struct ComposerBar: View, Equatable {
                         // over the field (a tap there would stop the turn).
                         trailingSlot
                             .conduitFixedGlyph()
-                            .padding(.leading, showsRestingDictateButton ? 0 : Self.controlSpacing / 2 - 2)
+                            .padding(.leading, Self.restingStopLeadingPadding(micBeside: showsRestingDictateButton))
                             .padding(.trailing, 4)
                             .transition(.opacity)
                     }
@@ -1142,6 +1142,15 @@ struct ComposerBar: View, Equatable {
     /// the gap between round controls, so neighbours never overlap
     /// (issue 2525).
     static var controlHitShape: some Shape { Rectangle().inset(by: -controlSpacing / 2) }
+    /// The resting row's gap between the field and its controls.
+    static let restingRowSpacing: CGFloat = 2
+    /// The resting Stop's leading padding: none beside the mic, whose own
+    /// trailing padding makes the 12 pt gap; else enough that its hit
+    /// shape ends at the field's edge, so a tap in the field never stops
+    /// the turn (#2657).
+    static func restingStopLeadingPadding(micBeside: Bool) -> CGFloat {
+        micBeside ? 0 : controlSpacing / 2 - restingRowSpacing
+    }
     /// A notice's 28 pt dismiss glyph taps at 44 pt (issue 2525).
     static var dismissHitShape: some Shape { Rectangle().inset(by: -8) }
 
