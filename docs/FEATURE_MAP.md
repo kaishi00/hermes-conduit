@@ -4100,15 +4100,17 @@ shells; done, #1541) · a 375 pt iPhone at any Text Size (the chat's and
 the room's placeholder, both shells; done, #2649) · the round controls'
 and the notices' tap targets (the chat's resting row and controls row, the
 room's controls row, the full editor's mic and Send, the composer notice
-and the takeover offer; done, #2649; the expanded composer and the full
-editor have the width the hint needs, voice modes no placeholder of their
-own, the Watch and CarPlay no composer)
+and the takeover offer; done, #2649; the expanded composer has the width
+the hint needs, and the full editor's field fills its sheet, so a hint
+wrapped there grows nothing; the voice message bar's 36 pt stop and send
+not changed; voice modes have no placeholder of their own, the Watch and
+CarPlay no composer)
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
 - V2: `Conduit/Views/V2/V2ConversationScreen.swift` (chatColumnWidth, composerStaysExpanded, voiceButtonBottomPadding), `Conduit/Views/Components/ComposerBar.swift` (rests, inUseOrHeld, keepsVoiceButtonBeside, showsEmptyDraftSend, controlsRowShowsDictate, composerInUse), `Conduit/Views/Components/GroupRoomComposer.swift` (rests, inUse)
 - Drawer shell: `Conduit/Views/RootView.swift` (chatNavigationContent)
-- Tap targets: `Conduit/Views/Components/ComposerBar.swift` (controlSize, controlSpacing, controlHitShape, dismissHitShape; the controls row's round controls, composerNoticeLine, the takeover offer's dismiss), `Conduit/Views/Components/GroupRoomComposer.swift` (controlsRow), `Conduit/Views/Components/ComposerFullEditor.swift` (the mic and Send's row)
+- Tap targets: `Conduit/Views/Components/ComposerBar.swift` (controlSize, controlSpacing, controlHitShape, dismissHitShape; the controls row's round controls, composerNoticeLine, the takeover offer's dismiss), `Conduit/Views/Components/GroupRoomComposer.swift` (controlsRow), `Conduit/Views/Components/ComposerFullEditor.swift` (the mic and Send's row), `Conduit/Views/Components/ComposerDictationStopButton.swift` (the wide dictation Stop's contentShape)
 - One-line placeholder: `Conduit/Views/Components/DynamicTypeSupport.swift` (ComposerPlaceholderText, conduitFixedGlyph), `Conduit/Services/AppState+BotMode.swift` (composerPlaceholder, composerShortPlaceholder), used in `Conduit/Views/Components/ComposerBar.swift` (composerContent's resting row, composerField) and `Conduit/Views/Components/GroupRoomComposer.swift` (the resting row's attachButton, field)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerRestsOnIPhoneAndStaysExpandedOnMacAndWideIPad, testBigButtonSitsLevelWithTheBottomOfAComposerThatStaysExpanded, testRoundComposerControlsTapAt44PointsWithoutOverlapping)
 
@@ -4146,10 +4148,11 @@ own, the Watch and CarPlay no composer)
   now stays wherever a line holds it, and the header names the agent
   anyway. The same in group rooms (Eric, 2026-11-16, #2649, issue 2525;
   #1541 at the accessibility sizes).
-- Every round composer control taps at 44 by 44 pt around its 32 pt
-  face, and round controls side by side stand 12 pt apart so the hit
-  shapes never overlap; the model chip and attach keep 8 pt, as neither
-  reaches into the gap. A notice's 28 pt dismiss glyph taps at 44 pt too
+- Every 32 pt round control in the composers' rows taps at 44 by 44 pt,
+  and dictation's wide Stop 6 pt past its face on every side; round
+  controls side by side stand 12 pt apart so the hit shapes never
+  overlap. The model chip and attach keep 8 pt, as neither hit shape
+  reaches across the gap into the other. A notice's 28 pt dismiss glyph taps at 44 pt too
   (Eric, 2026-11-16, #2649, issue 2525).
 
 **Open gaps**
@@ -4159,10 +4162,13 @@ own, the Watch and CarPlay no composer)
 - Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
   in a group room (#1541, checked in code and a unit test only).
 - Not yet seen on a device: whether a glass control's interactive glass
-  keeps taps to its own shape inside the 44 pt hit shape (#2649, checked
-  in the simulator only).
+  keeps taps to its own shape inside the 44 pt hit shape (#2649).
+- Seen in a 375 pt simulator only at the default and xLarge Text Sizes
+  with a short name, where the whole hint fits one line and the bar is
+  level with the voice button (#2649); the step to the short hint (a
+  long name, a running turn's Queue) is checked in code only.
 
-**Checked:** 2026-11-16, #2649 (Eric: the placeholder keeps to one line at every Text Size, so a 375 pt iPhone's resting bar stays one line; round controls and notices' dismiss tap at 44 pt, issue 2525); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2026 (the placeholder of a chat on its way names the chat's agent, issue 2025; see Bots: create and edit); 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-11-16, #2652 (#2649 review leftovers: the dictation Stop in Code, the full editor and voice message bar in Siblings, the simulator check as a gap); 2026-11-16, #2649 (Eric: the placeholder keeps to one line at every Text Size, so a 375 pt iPhone's resting bar stays one line; round controls and notices' dismiss tap at 44 pt, issue 2525); 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2026 (the placeholder of a chat on its way names the chat's agent, issue 2025; see Bots: create and edit); 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 
