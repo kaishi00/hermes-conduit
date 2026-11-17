@@ -480,11 +480,10 @@ struct BotEditorSheet: View {
     /// its color, and it's what the bot shows until it has a picture
     /// (Eric, 2026-11-17).
     private var faceSection: some View {
-        let names = faceNames
-        return ConduitSettingsSection(title: AppLocalization.string("Face", table: .bots), symbol: "face.smiling", tint: .pink) {
+        ConduitSettingsSection(title: AppLocalization.string("Face", table: .bots), symbol: "face.smiling", tint: .pink) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
                 ForEach(StarterFaces.set.indices, id: \.self) { index in
-                    faceButton(index, name: names.indices.contains(index) ? names[index] : AppLocalization.string("Face", table: .bots))
+                    faceButton(index, name: faceName(StarterFaces.set[index]))
                 }
             }
             Text(AppLocalization.string("Shown until the bot has a picture. Its color is the bot's color in Conduit.", table: .bots))
@@ -493,23 +492,24 @@ struct BotEditorSheet: View {
         }
     }
 
-    /// VoiceOver names for the faces, by their colors, in StarterFaces.set's
-    /// order. Resolved once per render so a language change applies at once.
-    private var faceNames: [String] {
-        [
-            AppLocalization.string("Purple"),
-            AppLocalization.string("Sky Blue", table: .bots),
-            AppLocalization.string("Orange", table: .bots),
-            AppLocalization.string("Mint", table: .bots),
-            AppLocalization.string("Yellow", table: .bots),
-            AppLocalization.string("Pink"),
-            AppLocalization.string("Blue"),
-            AppLocalization.string("Cyan", table: .bots),
-            AppLocalization.string("Red", table: .bots),
-            AppLocalization.string("Lime", table: .bots),
-            AppLocalization.string("Magenta", table: .bots),
-            AppLocalization.string("Gray", table: .bots)
-        ]
+    /// A face's VoiceOver name, by its color. Resolved at each render so a
+    /// language change applies at once.
+    private func faceName(_ face: StarterFace) -> String {
+        switch face.colorName {
+        case .purple: AppLocalization.string("Purple")
+        case .skyBlue: AppLocalization.string("Sky Blue", table: .bots)
+        case .orange: AppLocalization.string("Orange", table: .bots)
+        case .mint: AppLocalization.string("Mint", table: .bots)
+        case .yellow: AppLocalization.string("Yellow", table: .bots)
+        case .pink: AppLocalization.string("Pink")
+        case .blue: AppLocalization.string("Blue")
+        case .cyan: AppLocalization.string("Cyan", table: .bots)
+        case .red: AppLocalization.string("Red", table: .bots)
+        case .lime: AppLocalization.string("Lime", table: .bots)
+        case .magenta: AppLocalization.string("Magenta", table: .bots)
+        case .gray: AppLocalization.string("Gray", table: .bots)
+        case nil: AppLocalization.string("Face", table: .bots)
+        }
     }
 
     private func faceButton(_ index: Int, name: String) -> some View {

@@ -15,7 +15,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 /// Another combined dashboard's bot in Bots Home's mixed grid: its picture
-/// (the one saved on this phone, else its initials) with the dashboard's
+/// (the one saved on this phone, else its starter face) with the dashboard's
 /// badge, its name with an ⓘ and its status pill, drawn like this
 /// dashboard's portraits: the same size, its ring in its own dashboard's
 /// color, and a moving picture plays as theirs do. It
