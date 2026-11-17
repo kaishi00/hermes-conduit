@@ -80,7 +80,9 @@ It starts demo dashboards on the runner: **Home**
 (`http://hermes.tail-demo.ts.net:9119`) and **Studio**
 (`http://studio.tail-demo.ts.net:9129`), each from its own script in
 `videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout, and
-Sam for the multiplayer scene (below).
+Sam for the multiplayer scene (below). Each gateway runs under a loop that
+starts it again if it exits, since Hermes' liveness watchdog can stop one
+while the app builds on the busy runner.
 `link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
 repo and links the two as the owner's own Hermes, so a room can hold bots from
 both. Studio starts with `DEMO_ROOM_GUEST=1`, which runs `conduit-push rooms setup`

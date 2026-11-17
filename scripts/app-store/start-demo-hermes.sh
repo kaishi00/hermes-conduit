@@ -139,21 +139,31 @@ done < "$DEMO_WORK/cron.tsv"
 # Bots that join rooms another of the owner's Hermes hosts are reached
 # through this Hermes' API server, with a key per profile (conduit-push rooms
 # setup); until then the host lists them as not ready and dropping one on a
-# bot there starts no room. The gateway restarts to start the API server.
+# bot there starts no room. The gateway restarts (below) to start the API
+# server.
 if [ "${DEMO_ROOM_GUEST:-}" = 1 ]; then
   for home in "$HERMES_HOME" "$HERMES_HOME"/profiles/*; do
     [ -d "$home" ] || continue
     HERMES_HOME="$home" "$HERMES" conduit-push rooms setup --yes --no-restart >> "$DEMO_WORK/rooms-setup.log" 2>&1 \
       || { echo "::error::rooms setup failed for $home"; tail -20 "$DEMO_WORK/rooms-setup.log"; exit 1; }
   done
-  kill "$gateway_pid" 2>/dev/null || true
-  for _ in $(seq 1 30); do kill -0 "$gateway_pid" 2>/dev/null || break; sleep 1; done
-  if kill -0 "$gateway_pid" 2>/dev/null; then
-    kill -9 "$gateway_pid" 2>/dev/null || true
-    sleep 2
-    kill -0 "$gateway_pid" 2>/dev/null && { echo "::error::the old gateway did not stop"; exit 1; }
-  fi
-  nohup "$HERMES" gateway run >> "$DEMO_WORK/gateway.log" 2>&1 &
+fi
+
+# From here the gateway runs under a loop that starts it again when it exits,
+# as a service supervisor would: on the busy runner (the app builds for most
+# of an hour) Hermes' liveness watchdog can stop it (exit 75), and rooms,
+# links and approvals all live in the gateway.
+kill "$gateway_pid" 2>/dev/null || true
+for _ in $(seq 1 30); do kill -0 "$gateway_pid" 2>/dev/null || break; sleep 1; done
+if kill -0 "$gateway_pid" 2>/dev/null; then
+  kill -9 "$gateway_pid" 2>/dev/null || true
+  sleep 2
+  kill -0 "$gateway_pid" 2>/dev/null && { echo "::error::the old gateway did not stop"; exit 1; }
+fi
+nohup bash -c 'while :; do "$1" gateway run; echo "== gateway exited $?, starting it again ($(date -u +%H:%M:%S))"; sleep 3; done' \
+  gateway-loop "$HERMES" >> "$DEMO_WORK/gateway.log" 2>&1 &
+
+if [ "${DEMO_ROOM_GUEST:-}" = 1 ]; then
   api="$(sed -n 's/.*at \([0-9.]*:[0-9]*\).*/\1/p' "$DEMO_WORK/rooms-setup.log" | tail -1)"
   for _ in $(seq 1 60); do
     [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${api:-127.0.0.1:8642}/" || true)" != "000" ] && break
