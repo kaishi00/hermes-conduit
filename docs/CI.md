@@ -182,7 +182,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
 Each build posts two notices on its job: the slowest build phases from
 `-showBuildTimingSummary` (with the cache it restored, how many Swift files
-each target compiled, and the seconds spent on the destination, waiting for the simulator and the packages before the
+each target compiled (`ci-build-compiled-counts.py`), and the seconds spent on the destination, waiting for the simulator and the packages before the
 build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
