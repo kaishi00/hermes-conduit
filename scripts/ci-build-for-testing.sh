@@ -277,7 +277,7 @@ du -sh "$DERIVED_DATA_PATH"/* "$DERIVED_DATA_PATH"/Build/* 2>/dev/null || true
 # most of the app, docs/CI.md). Xcode logs one SwiftCompile line per file.
 compiled=$(grep -E '^SwiftCompile normal ' "$LOG_DIR/build.log" \
   | sed -nE "s/.*\(in target '([^']+)'.*/\1/p" | sort | uniq -c | sort -rn \
-  | awk '{printf "%s%s %s", (NR > 1 ? ", " : ""), $1, $2}' || true)
+  | awk '{n = $1; sub(/^ *[0-9]+ /, ""); printf "%s%s %s", (NR > 1 ? ", " : ""), n, $0}' || true)
 echo "build-for-testing: Swift files compiled: ${compiled:-none}"
 # The notice is readable from the job's annotations, where a long test log
 # would bury the build step's output.
