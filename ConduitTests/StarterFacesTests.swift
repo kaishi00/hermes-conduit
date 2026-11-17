@@ -94,7 +94,7 @@ extension BotModeTests {
         XCTAssertNil(directory.look(for: "ATLAS"), "two case variants give none")
 
         let far = UUID()
-        let there = try starterRoster([starterRow("default", isDefault: true, face: 5)])
+        let there = try starterRoster([starterRow("default", face: 5, isDefault: true)])
         directory.updateOthers([far: there])
         XCTAssertEqual(directory.look(for: "default", on: far)?.face, StarterFaces.face(5))
         XCTAssertEqual(directory.look(for: "default", on: far)?.color, StarterFaces.face(5).hex)
