@@ -1,0 +1,10 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 02:05:44,323 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 02:09:57,718 WARNING conduit_push_dashboard_pkg.room_links: Linked Rooms couldn't finish reading the mailbox (unreachable); trying again in 5 s
+2026-11-17 02:12:29,230 WARNING hermes_state: state.db: in-process writer mutex unavailable within write patience for hermes_state_gateway:SessionGatewayMixin.register_backend_heartbeat -> hermes_state:SessionDB._write_sql.<locals>._do on thread 'hermes-gateway-heartbeat'; held by thread 'asyncio_1' in session_viewer_close:_persist_close -> session_viewer_close:_persist_close.<locals>.write (held for 0.7s). Not a foreign SQLite writer; the refused write is retried or deferred by its caller. Logged at most once per 30s per database.
