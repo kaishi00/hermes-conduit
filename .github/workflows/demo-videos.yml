@@ -32,7 +32,7 @@ concurrency:
 jobs:
   capture:
     runs-on: xcode-27
-    timeout-minutes: 120
+    timeout-minutes: 160
     env:
       DEVICES: ${{ inputs.devices || 'iPhone 18 Pro Max' }}
       SCENES: ${{ inputs.scenes }}
@@ -73,10 +73,10 @@ jobs:
             bash scripts/app-store/start-demo-hermes.sh
 
       - name: Start Studio
-        timeout-minutes: 15
+        timeout-minutes: 20
         run: |
           DEMO_WORK="$PWD/demo-hermes/studio" DEMO_SCRIPT=scripts/app-store/videos/studio.json \
-          DEMO_HOST=studio.tail-demo.ts.net DEMO_PORT=9129 STUB_PORT=8766 DEMO_APPROVALS=manual \
+          DEMO_HOST=studio.tail-demo.ts.net DEMO_PORT=9129 STUB_PORT=8766 DEMO_APPROVALS=manual DEMO_ROOM_GUEST=1 \
             bash scripts/app-store/start-demo-hermes.sh
 
       - name: Link them
@@ -103,7 +103,7 @@ jobs:
             > demo-hermes/director.log 2>&1 &
 
       - name: Record
-        timeout-minutes: 90
+        timeout-minutes: 120
         run: |
           set -euo pipefail
           mkdir -p videos
@@ -160,7 +160,7 @@ jobs:
             TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
             TEST_RUNNER_CONDUIT_DEMO_DIRECTOR=http://127.0.0.1:8780 \
             TEST_RUNNER_CONDUIT_DEMO_SCENES="$SCENES" \
-            perl -e 'alarm shift; exec @ARGV' 1800 xcodebuild test-without-building \
+            perl -e 'alarm shift; exec @ARGV' 2700 xcodebuild test-without-building \
               -project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd \
               -only-testing:ConduitScreenshots/DemoVideoTests/testRecordDemoScenes \
               -resultBundlePath "results/$slug.xcresult" > "results-$slug.log" 2>&1

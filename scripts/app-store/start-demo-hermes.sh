@@ -11,7 +11,9 @@
 # Env: HERMES_COMMIT (pinned), DEMO_HOST, DEMO_PORT, DEMO_USER, DEMO_PASSWORD,
 #      DEMO_WORK (scratch dir), STUB_PORT, DEMO_SCRIPT (the script to replay
 #      and seed), DEMO_SRC (a Hermes checkout two instances share),
-#      DEMO_MAILBOX_URL (a local rooms mailbox), DEMO_APPROVALS (off or manual). Writes $DEMO_WORK/*.log and
+#      DEMO_MAILBOX_URL (a local rooms mailbox), DEMO_APPROVALS (off or manual),
+#      DEMO_ROOM_GUEST (1: every profile set up to join rooms another Hermes
+#      hosts, through its API server). Writes $DEMO_WORK/*.log and
 #      $DEMO_WORK/bot-chats.json (each bot's Bot Chat, for demo_director.py).
 set -euo pipefail
 
@@ -108,6 +110,7 @@ if [ -n "${DEMO_MAILBOX_URL:-}" ]; then
 fi
 nohup python3 "$SCRIPT_DIR/llm_stub.py" "$DEMO_SCRIPT" "$STUB_PORT" > "$DEMO_WORK/stub.log" 2>&1 &
 nohup "$HERMES" gateway run > "$DEMO_WORK/gateway.log" 2>&1 &
+gateway_pid=$!
 nohup "$HERMES" dashboard --no-open --skip-build --port "$DEMO_PORT" > "$DEMO_WORK/dashboard.log" 2>&1 &
 
 BASE="http://$DEMO_HOST:$DEMO_PORT"
@@ -132,6 +135,28 @@ while IFS=$'\t' read -r name schedule prompt paused; do
   "$HERMES" cron create --name "$name" ${paused:+--paused} "$schedule" "$prompt" >> "$DEMO_WORK/seed.log" 2>&1 \
     || { echo "::error::cron job '$name' was not created"; tail -20 "$DEMO_WORK/seed.log"; exit 1; }
 done < "$DEMO_WORK/cron.tsv"
+
+# Bots that join rooms another of the owner's Hermes hosts are reached
+# through this Hermes' API server, with a key per profile (conduit-push rooms
+# setup); until then the host lists them as not ready and dropping one on a
+# bot there starts no room. The gateway restarts to start the API server.
+if [ "${DEMO_ROOM_GUEST:-}" = 1 ]; then
+  for home in "$HERMES_HOME" "$HERMES_HOME"/profiles/*; do
+    [ -d "$home" ] || continue
+    HERMES_HOME="$home" "$HERMES" conduit-push rooms setup --yes --no-restart >> "$DEMO_WORK/rooms-setup.log" 2>&1 \
+      || { echo "::error::rooms setup failed for $home"; tail -20 "$DEMO_WORK/rooms-setup.log"; exit 1; }
+  done
+  kill "$gateway_pid" 2>/dev/null || true
+  for _ in $(seq 1 30); do kill -0 "$gateway_pid" 2>/dev/null || break; sleep 1; done
+  nohup "$HERMES" gateway run >> "$DEMO_WORK/gateway.log" 2>&1 &
+  api="$(sed -n 's/.*at \([0-9.]*:[0-9]*\).*/\1/p' "$DEMO_WORK/rooms-setup.log" | tail -1)"
+  for _ in $(seq 1 60); do
+    [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${api:-127.0.0.1:8642}/" || true)" != "000" ] && break
+    sleep 2
+  done
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "http://${api:-127.0.0.1:8642}/" || true)" != "000" ] \
+    || { echo "::error::the API server did not start for rooms"; tail -30 "$DEMO_WORK/gateway.log"; exit 1; }
+fi
 
 jar="$DEMO_WORK/cookies"
 curl -sf -c "$jar" -H 'Content-Type: application/json' \

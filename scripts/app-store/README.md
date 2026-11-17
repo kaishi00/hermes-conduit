@@ -82,7 +82,9 @@ It starts two demo dashboards on the runner, **Home**
 `videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout.
 `link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
 repo and links the two as the owner's own Hermes, so a room can hold bots from
-both. Both ask for approvals (`DEMO_APPROVALS=manual`): Home for Mira's publish
+both. Studio starts with `DEMO_ROOM_GUEST=1`, which runs `conduit-push rooms setup`
+for each of its profiles (an API server with keys) and restarts its gateway, so
+Home lists Studio's bots as ready to join a room. Both ask for approvals (`DEMO_APPROVALS=manual`): Home for Mira's publish
 in the room it hosts, Studio for Chibi's in Needs you. Their seeded turns run
 nothing that asks, and `seed_demo.py` refuses a seeded tool call on an instance
 that asks; tool calls go in `replies`, sent while the video records.
