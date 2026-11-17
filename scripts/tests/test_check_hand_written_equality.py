@@ -48,6 +48,8 @@ class HandWrittenEqualityTests(unittest.TestCase):
         self.assertEqual(check.count('let doc = "static func == (lhs: A, rhs: A)"'), 0)
         self.assertEqual(check.count('let doc = """\nstatic func == (lhs: A, rhs: A)\n"""'), 0)
         self.assertEqual(check.count('let raw = #"a \\" static func == ( "#'), 0)
+        self.assertEqual(check.count('let raw = ##"a "# static func == ( "##'), 0)
+        self.assertEqual(check.count('let raw = #"""\nstatic func == (lhs: A, rhs: A)\n"""#'), 0)
         self.assertEqual(check.count('let url = "https://x"; static func == (lhs: A, rhs: A) -> Bool { true }'), 1)
 
     def test_a_comment_between_the_words_still_counts(self):
@@ -57,6 +59,8 @@ class HandWrittenEqualityTests(unittest.TestCase):
     def test_an_interpolation_stays_code_and_its_string_closes(self):
         text = 'let s = "a \\(f("x")) b"\nstatic func == (lhs: A, rhs: A) -> Bool { true }'
         self.assertEqual(check.count(text), 1)
+        raw = 'let s = #"a \\#(f("x")) \\(b) "#\nstatic func == (lhs: A, rhs: A) -> Bool { true }'
+        self.assertEqual(check.count(raw), 1)
 
     def test_the_wrappers_file_holds_only_the_wrappers(self):
         three = "static func == (l: A, r: A) -> Bool { true }\n" * 3
