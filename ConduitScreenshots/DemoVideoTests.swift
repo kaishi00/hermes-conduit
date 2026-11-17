@@ -74,6 +74,7 @@ final class DemoVideoTests: XCTestCase {
         openTab("Bots")
         XCTAssertTrue(named("Lucien").waitForExistence(timeout: 60),
                       "Studio's bots never joined Home's Bots Home")
+        dismissFinishSetupCard()
         settle(4)
 
         scene("mixed-bots-home") {
@@ -90,13 +91,16 @@ final class DemoVideoTests: XCTestCase {
             settle(4)
             // The other dashboard's default profile (Conduit-chan on Home,
             // Kael on Studio): its chip is v2.profile.<dashboard id>.default
-            // and a tap switches straight there. Twice: over and back.
+            // and a tap switches straight there.
             let studioChats = "Release checklist for 2.4", homeChats = "Garden watering schedule"
             // Each tap lands on the dashboard it didn't start on. On a profile
             // without either list (Lucien's, say) the first tap may land on either.
             var shown: String? = waitForText(studioChats, timeout: 4) ? studioChats
                 : (waitForText(homeChats, timeout: 2) ? homeChats : nil)
-            for _ in 0..<2 {
+            // Over and back, ending on Home: the scenes after it start rooms
+            // and chats from Home, the host of the room.
+            for tap in 0..<3 {
+                if tap >= 2 && shown == homeChats { break }
                 let other = otherDashboardChip("default")
                 guard other.waitForExistence(timeout: 20) else {
                     snap("debug-no-other-dashboard-chip")
@@ -131,16 +135,16 @@ final class DemoVideoTests: XCTestCase {
 
         scene("reorder") {
             settle(2)
-            drag(bot: "Riri", onto: "Conduit-chan", hold: 0.1)
+            drag(bot: "Riri", onto: "Conduit-chan", overFace: false, hold: 0.8)
             settle(3)
-            drag(bot: "Kael", onto: "Mira", hold: 0.1)
+            drag(bot: "Mira", onto: "Piko", overFace: false, hold: 0.8)
             settle(4)
         }
 
         scene("room-across") {
             settle(2)
             // Held over Lucien's face past the merge dwell: a room.
-            drag(bot: "Mira", onto: "Lucien", hold: 1.0)
+            drag(bot: "Mira", onto: "Lucien", overFace: true, hold: 1.5)
             let create = app.buttons["bots.newRoom.create"]
             if create.waitForExistence(timeout: 15) {
                 let name = app.textFields["bots.newRoom.name"]
@@ -257,10 +261,12 @@ final class DemoVideoTests: XCTestCase {
         bot.tap()
     }
 
-    /// Holds a bot's portrait and drops it on another's. Released at once it
-    /// takes the target's place (a reorder); held still over the target's
-    /// face past BotDragPayload.mergeDwell (500 ms) it starts a room.
-    private func drag(bot: String, onto target: String, hold: TimeInterval) {
+    /// Picks a bot's portrait up and carries it to another's. Held over
+    /// the target's name, off its face, past BotDragPayload.slideDwell
+    /// (300 ms) it takes the target's place (a reorder); held still over the
+    /// face past mergeDwell (500 ms) it starts a room, when the two can make
+    /// one (a far bot needs a bot of the dashboard on screen).
+    private func drag(bot: String, onto target: String, overFace: Bool, hold: TimeInterval) {
         let from = named(bot)
         let to = named(target)
         guard from.waitForExistence(timeout: 10), to.waitForExistence(timeout: 10) else {
@@ -268,7 +274,8 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
-        let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+        // The portrait button is the face; its name sits just under it.
+        let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: overFace ? 0.45 : 1.25))
         start.press(forDuration: 1.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: hold)
     }
 

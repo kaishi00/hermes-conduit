@@ -23,7 +23,7 @@ while read -r name start; do
   [ -n "$end" ] || { echo "scene $name has no end mark" >&2; continue; }
   from=$(python3 -c "print(max(0.0, $start - $record - $lead))")
   length=$(python3 -c "print($end - $record - $from + $lead)")
-  ffmpeg -v error -y -ss "$from" -t "$length" -i "$raw" \
+  ffmpeg -nostdin -v error -y -ss "$from" -t "$length" -i "$raw" \
     -vf "fps=30,format=yuv420p" -c:v libx264 -profile:v high -crf 18 -an -movflags +faststart \
     "$out/$name.mp4"
   echo "$out/$name.mp4: ${length}s from ${from}s"
