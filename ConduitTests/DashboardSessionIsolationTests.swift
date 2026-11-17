@@ -25,35 +25,13 @@ final class DashboardSessionIsolationTests: XCTestCase {
     private let parentHostA = "https://a.example.com"
     private let parentHostB = "https://b.example.com"
 
-    override func setUp() async throws {
-        try await super.setUp()
+    override func setUp() {
+        super.setUp()
         defaultsSuite = "DashboardSessionIsolationTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuite)!
         backend = InMemoryKeychainBackend()
         KeychainHelper.useBackendForTesting(backend)
         createdDashboardIDs = []
-        try await warmWebKitOnce()
-    }
-
-    /// Whether this test process has had its first WebKit cookie-store answer.
-    private static var webKitWarmed = false
-    /// A store only the warm-up uses, so it never holds a test's cookies.
-    private static let warmUpStoreID = UUID(uuidString: "6B1F3C1E-0D8A-4F43-9C55-2E0B7A1D9F01")!
-
-    /// The first cookie-store call in a test process waits for WebKit's
-    /// network process to launch. On hosted CI simulators that took longer
-    /// than a test's 20-second bound: the alphabetically first test here,
-    /// testABridgeInvalidatedBeforeItsRestoreWritesNoCookies, failed its only
-    /// allCookies read on the 2026-11-16 and 2026-11-17 Nightlies while every
-    /// later call in the class answered. The launch is paid here once, under
-    /// its own bound and name, so each test's 20 seconds measure the store.
-    private func warmWebKitOnce() async throws {
-        guard !Self.webKitWarmed else { return }
-        let store = attachWebView(to: WKWebsiteDataStore(forIdentifier: Self.warmUpStoreID))
-        _ = try await awaitWebKit("its first call (WebKit's network process launch)", timeout: .seconds(120)) {
-            await store.httpCookieStore.allCookies()
-        }
-        Self.webKitWarmed = true
     }
 
     override func tearDown() {
@@ -381,11 +359,19 @@ final class DashboardSessionIsolationTests: XCTestCase {
         let bridge = DashboardTicketBridge(baseURL: "https://\(host)", dashboardID: a)
         bridge.invalidate()
         // The restore would land over WebKit IPC shortly after the bridge
-        // was built.
-        try await Task.sleep(for: .seconds(3))
-
-        let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
-        XCTAssertFalse(cookies.contains { $0.value == "after-invalidate" }, "an invalidated bridge restores nothing")
+        // was built, so the store is read for 3 seconds. Read it throughout
+        // rather than sleeping first: on hosted CI simulators a store left
+        // idle for a few seconds stopped answering allCookies at all (the
+        // 2026-11-16 and 11-17 Nightlies, and every probe in #2695 that
+        // waited before its first read), while one kept busy answered.
+        let deadline = ContinuousClock.now + .seconds(3)
+        repeat {
+            let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
+            if cookies.contains(where: { $0.value == "after-invalidate" }) {
+                return XCTFail("an invalidated bridge restores nothing")
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        } while ContinuousClock.now < deadline
         withExtendedLifetime(bridge) {}
     }
 
@@ -562,127 +548,4 @@ private func awaitWebKit<T>(
         throw WebKitCookieStoreTimeout()
     }
     return result
-}
-
-// MARK: - TEMPORARY probes (#2695): which step leaves allCookies unanswered
-
-private final class ProbeCookieObserver: NSObject, WKHTTPCookieStoreObserver {
-    func cookiesDidChange(in cookieStore: WKHTTPCookieStore) {}
-}
-
-extension DashboardSessionIsolationTests {
-    private func probe(_ name: String, _ store: WKWebsiteDataStore) async {
-        let race = WebKitProbeRace()
-        let started = ContinuousClock.now
-        let answered: Bool = await withCheckedContinuation { continuation in
-            Task { @MainActor in
-                _ = await store.httpCookieStore.allCookies()
-                guard !race.finished else { return }
-                race.finished = true
-                continuation.resume(returning: true)
-            }
-            Task { @MainActor in
-                try? await Task.sleep(for: .seconds(15))
-                guard !race.finished else { return }
-                race.finished = true
-                continuation.resume(returning: false)
-            }
-        }
-        print("PROBE \(name): \(answered ? "answered in \(ContinuousClock.now - started)" : "NO ANSWER in 15 s")")
-    }
-
-    private func probeWebView(_ store: WKWebsiteDataStore, load: Bool) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.websiteDataStore = store
-        let webView = WKWebView(frame: .zero, configuration: configuration)
-        if load { webView.loadHTMLString("<html></html>", baseURL: nil) }
-        return webView
-    }
-
-    func testZProbe1BridgeInvalidated() async throws {
-        let id = UUID()
-        let store = WKWebsiteDataStore(forIdentifier: id)
-        let web = probeWebView(store, load: true)
-        let bridge = DashboardTicketBridge(baseURL: "https://probe1.example", dashboardID: id)
-        bridge.invalidate()
-        try await Task.sleep(for: .seconds(3))
-        await probe("1 attach+bridge+invalidate", store)
-        withExtendedLifetime((web, bridge)) {}
-    }
-
-    func testZProbe2BridgeNotInvalidated() async throws {
-        let id = UUID()
-        let store = WKWebsiteDataStore(forIdentifier: id)
-        let web = probeWebView(store, load: true)
-        let bridge = DashboardTicketBridge(baseURL: "https://probe2.example", dashboardID: id)
-        try await Task.sleep(for: .seconds(3))
-        await probe("2 attach+bridge (live)", store)
-        bridge.invalidate()
-        withExtendedLifetime((web, bridge)) {}
-    }
-
-    func testZProbe3ObserverAddRemove() async throws {
-        let store = WKWebsiteDataStore(forIdentifier: UUID())
-        let web = probeWebView(store, load: true)
-        let observer = ProbeCookieObserver()
-        store.httpCookieStore.add(observer)
-        store.httpCookieStore.remove(observer)
-        try await Task.sleep(for: .seconds(3))
-        await probe("3 attach+observer add/remove", store)
-        withExtendedLifetime((web, observer)) {}
-    }
-
-    func testZProbe4SecondUnloadedWebView() async throws {
-        let store = WKWebsiteDataStore(forIdentifier: UUID())
-        let web = probeWebView(store, load: true)
-        let second = probeWebView(store, load: false)
-        try await Task.sleep(for: .seconds(3))
-        await probe("4 attach+second unloaded web view", store)
-        withExtendedLifetime((web, second)) {}
-    }
-
-    func testZProbe5WarmThenBridgeInvalidated() async throws {
-        let id = UUID()
-        let store = WKWebsiteDataStore(forIdentifier: id)
-        let web = probeWebView(store, load: true)
-        await probe("5a attach, before the bridge", store)
-        let bridge = DashboardTicketBridge(baseURL: "https://probe5.example", dashboardID: id)
-        bridge.invalidate()
-        try await Task.sleep(for: .seconds(3))
-        await probe("5b warm+bridge+invalidate", store)
-        withExtendedLifetime((web, bridge)) {}
-    }
-
-    func testZProbe6BridgeInvalidatedNoTestWebView() async throws {
-        let id = UUID()
-        let bridge = DashboardTicketBridge(baseURL: "https://probe6.example", dashboardID: id)
-        bridge.invalidate()
-        try await Task.sleep(for: .seconds(3))
-        await probe("6 bridge+invalidate, no test web view", WKWebsiteDataStore(forIdentifier: id))
-        withExtendedLifetime(bridge) {}
-    }
-
-    func testZProbe7AttachOnly() async throws {
-        let store = WKWebsiteDataStore(forIdentifier: UUID())
-        let web = probeWebView(store, load: true)
-        try await Task.sleep(for: .seconds(3))
-        await probe("7 attach only", store)
-        withExtendedLifetime(web) {}
-    }
-
-    func testZProbe8ObserverAddOnly() async throws {
-        let store = WKWebsiteDataStore(forIdentifier: UUID())
-        let web = probeWebView(store, load: true)
-        let observer = ProbeCookieObserver()
-        store.httpCookieStore.add(observer)
-        try await Task.sleep(for: .seconds(3))
-        await probe("8 attach+observer add", store)
-        store.httpCookieStore.remove(observer)
-        withExtendedLifetime((web, observer)) {}
-    }
-}
-
-@MainActor
-private final class WebKitProbeRace {
-    var finished = false
 }

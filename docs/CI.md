@@ -337,7 +337,7 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
      restore the PR's own last build, else main's (or its base branch's)
      build-for-testing  ||  simulator boot      (ci-hosted-build.sh)
      check-weak-imports; save the full build cache
-     unit smoke: 70 pinned tests, ONE invocation, no retry
+     unit smoke: 70 pinned tests, ONE invocation, no test retry (a lost runtime: once more)
      UI smoke:   pushes only: 4 pinned tests, ONE invocation, one
                  targeted retry (runs even if unit smoke failed)
                  |
@@ -356,7 +356,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no test retried; an invocation that lost its simulator runtime before any test ran runs once more after a reboot, `scripts/ci-recover-lost-runtime.sh`) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites

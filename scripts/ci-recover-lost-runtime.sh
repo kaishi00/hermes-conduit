@@ -44,7 +44,17 @@ if bounded_run 60 xcrun simctl list runtimes -j; then
       | while read -r identifier build path; do
           if [ -e "$path" ]; then state="present"; else state="MISSING"; fi
           echo "$identifier ($build): $path [$state]"
-        done
+        done | tee "$LOG_DIR/lost-runtime-paths.txt"
+    # Kept on the run page too: a recovered loss leaves the job green, and
+    # nobody opens a green job's log.
+    if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+      {
+        echo "### Simulator runtime lost before any test ran (rebooted, ran once more)"
+        echo '```'
+        cat "$LOG_DIR/lost-runtime-paths.txt"
+        echo '```'
+      } >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+    fi
   else
     printf '%s\n' "$runtimes_json"
   fi
