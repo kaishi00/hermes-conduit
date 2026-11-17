@@ -1,0 +1,38 @@
+Setting this Hermes up for rooms with other people's agents (profile default):
+- Hermes' API server: turned on with a new key, saved in /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/.env, at 127.0.0.1:8642. Rooms reach your agents through it.
+- Tools rooms can use: Session Search, Vision / Image Analysis, Web Search & Scraping, X (Twitter) Search.
+  Others you can add with --ceiling: Browser Automation, Terminal & Processes, File Operations, Video Analysis, Image Generation, Video Generation, Text-to-Speech, Skills, Task Planning, Kanban, Context Engine, Connections, Clarifying Questions, Computer Use (macOS/Windows/Linux), A2A.
+- MCP servers: none.
+- Tools added later (a plugin, an MCP server, a Hermes update) stay out of rooms until you add them here.
+Saved.
+Restart the gateway to start the API server, at 127.0.0.1:8642: hermes gateway restart
+Setting this Hermes up for rooms with other people's agents (profile chibi-conduit):
+- Hermes' API server: set up, at 127.0.0.1:8642.
+- Profile chibi-conduit gets a key of its own for it, saved in /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit/.env: the API server lets a room reach a profile's agent only with that profile's key.
+- Tools rooms can use: Session Search, Vision / Image Analysis, Web Search & Scraping, X (Twitter) Search.
+  Others you can add with --ceiling: Browser Automation, Terminal & Processes, File Operations, Video Analysis, Image Generation, Video Generation, Text-to-Speech, Skills, Task Planning, Kanban, Context Engine, Connections, Clarifying Questions, Computer Use (macOS/Windows/Linux), A2A.
+- MCP servers: none.
+- Tools added later (a plugin, an MCP server, a Hermes update) stay out of rooms until you add them here.
+- The API server is already on, so these tools are also all that other apps using it get (Open WebUI and the like).
+Saved.
+Restart the gateway to start the API server, at 127.0.0.1:8642: hermes -p default gateway restart
+Setting this Hermes up for rooms with other people's agents (profile lucien):
+- Hermes' API server: set up, at 127.0.0.1:8642.
+- Profile lucien gets a key of its own for it, saved in /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien/.env: the API server lets a room reach a profile's agent only with that profile's key.
+- Tools rooms can use: Session Search, Vision / Image Analysis, Web Search & Scraping, X (Twitter) Search.
+  Others you can add with --ceiling: Browser Automation, Terminal & Processes, File Operations, Video Analysis, Image Generation, Video Generation, Text-to-Speech, Skills, Task Planning, Kanban, Context Engine, Connections, Clarifying Questions, Computer Use (macOS/Windows/Linux), A2A.
+- MCP servers: none.
+- Tools added later (a plugin, an MCP server, a Hermes update) stay out of rooms until you add them here.
+- The API server is already on, so these tools are also all that other apps using it get (Open WebUI and the like).
+Saved.
+Restart the gateway to start the API server, at 127.0.0.1:8642: hermes -p default gateway restart
+Setting this Hermes up for rooms with other people's agents (profile pulse-chan):
+- Hermes' API server: set up, at 127.0.0.1:8642.
+- Profile pulse-chan gets a key of its own for it, saved in /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan/.env: the API server lets a room reach a profile's agent only with that profile's key.
+- Tools rooms can use: Session Search, Vision / Image Analysis, Web Search & Scraping, X (Twitter) Search.
+  Others you can add with --ceiling: Browser Automation, Terminal & Processes, File Operations, Video Analysis, Image Generation, Video Generation, Text-to-Speech, Skills, Task Planning, Kanban, Context Engine, Connections, Clarifying Questions, Computer Use (macOS/Windows/Linux), A2A.
+- MCP servers: none.
+- Tools added later (a plugin, an MCP server, a Hermes update) stay out of rooms until you add them here.
+- The API server is already on, so these tools are also all that other apps using it get (Open WebUI and the like).
+Saved.
+Restart the gateway to start the API server, at 127.0.0.1:8642: hermes -p default gateway restart

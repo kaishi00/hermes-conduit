@@ -1,0 +1,16 @@
+/add-bot {"dashboard": "home", "bot": "mira"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "piko"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "riri"}
+"POST /add-bot HTTP/1.1" 200 -
+/prompt {"dashboard": "studio", "profile": "lucien", "text": "Draft the release notes for 2.4"}
+"POST /prompt HTTP/1.1" 200 -
+/start-room {"guest": "sam", "room": "Weekend at Big Sur", "dashboard": "home"}
+"POST /start-room HTTP/1.1" 200 -
+/room-say {"text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?", "dashboard": "sam", "room": "Weekend at Big Sur"}
+"POST /room-say HTTP/1.1" 200 -
+/prompt {"profile": "chibi-conduit", "text": "Clear out the old mockups", "dashboard": "studio"}
+"POST /prompt HTTP/1.1" 200 -
+/stop-recording {}
+"POST /stop-recording HTTP/1.1" 200 -
