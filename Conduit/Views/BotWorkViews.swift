@@ -470,6 +470,7 @@ struct BotWorkPanel: View {
 
     private var openList: some View {
         List {
+            PhoneConsentSection(profile: profile)
             if let snapshot = work.snapshot(profile) {
                 // A question alone is something that needs them: never "No work yet" above its card.
                 if snapshot.items.isEmpty == false || snapshot.questionCount > 0 {

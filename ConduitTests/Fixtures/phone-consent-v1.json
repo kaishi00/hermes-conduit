@@ -1,0 +1,9 @@
+{
+  "public_key": "A6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=",
+  "signature": "JNc5y4aTw7TzDXRYJn7yWtk8kbMT1ZwtMcdLwQlDqptToFdQ732Mfb75AWNItGwScKbkfF5MGJpvmkBYhDz3DA==",
+  "seed": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=",
+  "message": "{\"action\":\"grant_approve\",\"challenge\":\"00000000000000000000000000000000\",\"device\":\"dddddddddddddddddddddddddddddddd\",\"digest\":\"d6e3661a7e5b3fecc2478470ea9c60d20daf704c34777b958ee4eba5110fe045\",\"expires\":1800000060,\"grant\":\"G11111111111111111111111111111111\",\"installation\":\"test-installation\",\"owner\":\"test-owner\",\"pairing\":{\"binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"gateway_id\":\"gateway-test\",\"installation_id\":\"phone-test\"},\"pairing_binding\":\"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"profile_id\":\"test-profile\",\"protocol\":\"conduit-phone-consent/1\",\"public_key\":\"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg\"}",
+  "test_only": "Public deterministic test seed; never used by the app.",
+  "snapshot_text": "{\"ask_id\":\"test-ask\",\"installation\":\"test-installation\",\"origin\":{\"epoch\":\"origin-epoch\",\"identity\":\"origin-id\",\"ref\":\"W1\",\"session\":\"origin-session\"},\"provenance\":{\"session\":\"origin-session\",\"tool_call_id\":\"call-1\",\"turn_id\":\"turn-1\"},\"recipient\":{\"chat\":\"recipient-chat\",\"identity\":\"recipient-id\",\"policy_epoch\":\"r-epoch\",\"profile\":\"assistant\"},\"recipient_ask\":\"A1\",\"scope\":\"Read only. No commands are approved.\",\"sender\":{\"chat\":\"sender-chat\",\"identity\":\"sender-id\",\"policy_epoch\":\"s-epoch\",\"profile\":\"default\"},\"sender_ask\":\"A1\",\"task\":\"Read release notes: caf\\u00e9 \\ud83d\\ude00.\"}",
+  "digest": "d6e3661a7e5b3fecc2478470ea9c60d20daf704c34777b958ee4eba5110fe045"
+}

@@ -116,6 +116,21 @@ enum KeychainHelper {
     private static let shortcutInboxKeyAccount = "hermes-conduit.shortcut-inbox-key.v1"
     private static let service = "com.milim.conduit"
 
+    static func phoneConsentKey(dashboardID: UUID, profile: String) -> Curve25519.Signing.PrivateKey? {
+        guard let data = load(account: phoneConsentAccount(dashboardID, profile)) else { return nil }
+        return try? Curve25519.Signing.PrivateKey(rawRepresentation: data)
+    }
+
+    static func savePhoneConsentKey(_ key: Curve25519.Signing.PrivateKey, dashboardID: UUID, profile: String) -> Bool {
+        save(key.rawRepresentation, account: phoneConsentAccount(dashboardID, profile),
+             accessibility: kSecAttrAccessibleWhenUnlockedThisDeviceOnly)
+    }
+
+    private static func phoneConsentAccount(_ dashboardID: UUID, _ profile: String) -> String {
+        let digest = SHA256.hash(data: Data(profile.utf8)).map { String(format: "%02x", $0) }.joined()
+        return "hermes-conduit.phone-consent.v1.\(dashboardID.uuidString).\(digest)"
+    }
+
     static func saveConnection(_ conn: HermesConnection) {
         guard let data = try? JSONEncoder().encode(conn) else { return }
         save(data, account: key)

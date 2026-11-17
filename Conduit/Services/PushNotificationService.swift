@@ -939,6 +939,13 @@ final class PushNotificationService: ObservableObject {
     /// delivery records.
     static let e2eSeenStore: E2ESeenStore = .shared
 
+    /// Local pairing membership only; owner enrollment and consent use separate signing keys.
+    func ownsConsentPairing(installationID: String, gatewayID: String) -> Bool {
+        registration?.installationID == installationID && (Self.e2eKeyStore.readRecords() ?? []).contains {
+            $0.installationID == installationID && $0.gatewayID == gatewayID && $0.retiredAt == nil
+        }
+    }
+
     static let e2ePath = "/api/plugins/conduit_push/e2e"
     /// Settings > Notifications disables Rotate while a run is under way.
     @Published private(set) var isProvisioningEncryption = false

@@ -339,6 +339,11 @@ final class NativeOAuthAPIClient {
     ) async throws -> [String: Any] {
         var request = try endpointRequest(path: path)
         request.httpMethod = method
+        if path.hasPrefix(PhoneConsentClient.path), let url = request.url,
+           let scheme = url.scheme, let host = url.host {
+            let port = url.port.map { ":\($0)" } ?? ""
+            request.setValue("\(scheme)://\(host)\(port)", forHTTPHeaderField: "Origin")
+        }
         request.timeoutInterval = TimeInterval(max(1_000, timeoutMilliseconds)) / 1_000
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if asSessionToken {
