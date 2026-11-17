@@ -62,7 +62,7 @@ struct V2TasksView: View, Equatable {
                         .padding(.horizontal, 14)
                 }
                 page(.scheduled, selected: selected) {
-                    V2ScheduledList()
+                    V2ScheduledList(isTabShown: shell.isTabActive)
                 }
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: selected)
@@ -159,8 +159,14 @@ struct V2ScheduledList: View {
     @State private var showingBlueprints = false
     /// A job a blueprint just made, opened once the gallery has closed.
     @State private var createdJob: CronJob?
+    /// Whether the Tasks tab itself is up, whichever page shows: a page
+    /// left while it stayed up slides back in, a tab shown again doesn't.
+    var isTabShown = true
     /// The dashboard, profile and connection the list last read for.
     @State private var readScope: String?
+    /// The page was last hidden by the other page sliding in, with the tab
+    /// still up, so showing it again slides.
+    @State private var hiddenByPageSlide = false
     /// A page's slide into view, until it has settled and the list has
     /// laid out (`ConduitMotion.easeSpring`).
     private static let pageSlideWait: Duration = .seconds(1)
@@ -276,12 +282,18 @@ struct V2ScheduledList: View {
         .task(id: "\(readScopeNow)|\(shell.isTabActive)") {
             // A reconnect reads at once, like the first show.
             guard appState.isConnected else { readScope = nil; return }
-            guard shell.isTabActive else { return }
-            // Shown again with what it already read: the read waits for the
-            // page to slide in. Its publishes each redraw the page, and fell
-            // in the slide's first frames.
+            guard shell.isTabActive else {
+                hiddenByPageSlide = isTabShown
+                return
+            }
+            // Slid back in with what it already read: the read waits for the
+            // page to settle. Its publishes each redraw the page, and fell
+            // in the slide's first frames. The tab shown again doesn't
+            // slide, so it reads at once.
+            let slidIn = hiddenByPageSlide
+            hiddenByPageSlide = false
             let scope = readScopeNow
-            if scope == readScope {
+            if scope == readScope, slidIn {
                 do { try await Task.sleep(for: Self.pageSlideWait) } catch { return }
             }
             readScope = scope
