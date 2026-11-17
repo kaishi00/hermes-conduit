@@ -25,7 +25,7 @@ extension View {
     /// Hidden as before on a Mac (`V2ListNavigationBarPolicy`).
     @ViewBuilder
     func v2ListNavigationBar() -> some View {
-        if V2ListNavigationBarPolicy.keepsBarShown {
+        if V2ListNavigationBarPolicy.keepsBarShown() {
             shownEmptyListNavigationBar()
         } else {
             toolbar(.hidden, for: .navigationBar)
@@ -56,7 +56,9 @@ extension View {
 /// Mac opens chats beside the list and pushes one only in a narrow window,
 /// so it keeps the hidden bar it had before #2580.
 enum V2ListNavigationBarPolicy {
-    static let keepsBarShown = !ProcessInfo.processInfo.isiOSAppOnMac
+    static func keepsBarShown(onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        !onMac
+    }
 }
 
 /// Behind the list: takes the shown bar's height back out of the list's

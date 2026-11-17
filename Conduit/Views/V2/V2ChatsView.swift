@@ -602,7 +602,8 @@ struct V2ChatsView: View, Equatable {
         // Pulse button doesn't stop it (Sessions bar, #2020).
         .background(PulseFeedReader())
         // Shown and empty, not hidden: a chat pushed over the list finds
-        // its bar already in place (`V2ListNavigationBar`).
+        // its bar already in place (`V2ListNavigationBar`). Hidden on a Mac
+        // (`V2ListNavigationBarPolicy`, issue 2671).
         .v2ListNavigationBar()
         .navigationTitle(V2Tab.chats.title)
         .background { searchCommand }
