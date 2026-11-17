@@ -116,7 +116,9 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   generated project) a timestamp derived from its content
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
-  no error in a source file is retried once from scratch. A new Xcode build
+  no error in a source file is retried once from scratch. The build's notice
+  and log line name how many Swift files each target compiled, so a slow
+  incremental build shows what it rebuilt. A new Xcode build
   misses the cache and builds clean, and a build that restored no cache (the
   nightly UI shards' every build) gets 1800 s instead of 1200 s: the first
   Xcode 27 build outran 1200 s (#2319). Every nightly build gets 1800 s: the unit
