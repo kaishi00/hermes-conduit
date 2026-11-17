@@ -1,0 +1,12 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 06:04:41,298 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 06:04:43,960 WARNING agent.model_metadata: Could not determine context length for model 'hermes-4-405b' (base_url=http://127.0.0.1:8766/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-11-17 06:05:16,253 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 06:05:20,544 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 06:05:24,651 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.

@@ -1,0 +1,1524 @@
+Command line invocation:
+    /Applications/Xcode_27.2.app/Contents/Developer/usr/bin/xcodebuild test-without-building -project Conduit.xcodeproj -scheme Conduit -destination id=CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA -derivedDataPath dd "-only-testing:ConduitScreenshots/DemoVideoTests/testRecordDemoScenes" -resultBundlePath results/iPhone-18-Pro-Max.xcresult
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  WebRTC: https://github.com/stasel/WebRTC @ 153.0.0
+
+2026-11-17 06:22:15.353 xcodebuild[43532:118064] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+Writing result bundle at path:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-18-Pro-Max.xcresult
+
+2026-11-17 06:22:41.526579+0000 ConduitScreenshots-Runner[45082:122041] [Default] Running tests...
+    t =      nans Interface orientation changed to Portrait
+Test Suite 'Selected tests' started at 2026-11-17 06:22:57.975.
+Test Suite 'ConduitScreenshots.xctest' started at 2026-11-17 06:22:57.979.
+Test Suite 'DemoVideoTests' started at 2026-11-17 06:22:57.979.
+Test Case '-[ConduitScreenshots.DemoVideoTests testRecordDemoScenes]' started.
+    t =     0.00s Start Test at 2026-11-17 06:22:57.983
+    t =     0.12s Set Up
+    t =     0.16s     Open com.milim.relay
+    t =     0.16s         Launch com.milim.relay
+2026-11-17 06:23:02.347 xcodebuild[43532:118064] [MT] IDELaunchParametersSnapshot: debugger version lookup failed for path '<nil>': noURL
+2026-11-17 06:23:02.347 xcodebuild[43532:118064] [MT] IDELaunchParametersSnapshot: no debugger version
+objc[45082]: Class UIAccessibilityLoaderWebShared is implemented in both /private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.w9wE4r/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.2.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebCore.axbundle/WebCore (0x108338310) and /private/var/run/com.apple.security.cryptexd/mnt/com.apple.iPhoneOS.SimulatorRuntime-v24.2.8117.0.w9wE4r/Library/Developer/CoreSimulator/Profiles/Runtimes/iOS 27.2.simruntime/Contents/Resources/RuntimeRoot/System/Library/AccessibilityBundles/WebKit.axbundle/WebKit (0x10836c398). This may cause spurious casting failures and mysterious crashes. One of the duplicates must be removed or renamed.
+    t =    14.41s             Setting up automation session
+    t =    24.32s             Wait for com.milim.relay to idle
+    t =    34.37s Waiting 20.0s for "login.server-url" TextField to exist
+    t =    35.38s     Checking `Expect predicate `existsNoRetry == 1` for object "login.server-url" TextField`
+    t =    35.38s         Checking existence of `"login.server-url" TextField`
+    t =    44.17s Tap "login.server-url" TextField
+    t =    44.17s     Wait for com.milim.relay to idle
+    t =    44.30s     Find the "login.server-url" TextField
+    t =    47.13s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    49.58s     Synthesize event
+    t =    50.95s     Wait for com.milim.relay to idle
+<unknown>:0: warning: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : Invalid frame dimension (negative or non-finite).
+    t =    63.25s Find the "login.server-url" TextField
+    t =    64.82s Type 'http://hermes.tail...' into "login.server-url" TextField
+    t =    64.82s     Wait for com.milim.relay to idle
+    t =    64.82s     Find the "login.server-url" TextField
+    t =    65.06s     Check for interrupting elements affecting "login.server-url" TextField
+    t =    65.52s     Synthesize event
+    t =    66.36s     Wait for com.milim.relay to idle
+    t =    66.70s Waiting 30.0s for "login.username" TextField to exist
+    t =    67.78s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    67.87s         Checking existence of `"login.username" TextField`
+    t =    68.68s         Capturing element debug description
+    t =    68.78s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    68.78s         Checking existence of `"login.username" TextField`
+    t =    68.96s         Capturing element debug description
+    t =    69.71s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    69.71s         Checking existence of `"login.username" TextField`
+    t =    69.79s         Capturing element debug description
+    t =    70.74s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =    70.74s         Checking existence of `"login.username" TextField`
+    t =    73.42s Tap "login.username" TextField
+    t =    73.42s     Wait for com.milim.relay to idle
+    t =    73.46s     Find the "login.username" TextField
+    t =    73.69s     Check for interrupting elements affecting "login.username" TextField
+    t =    73.82s     Synthesize event
+    t =    74.16s     Wait for com.milim.relay to idle
+    t =    74.16s Find the "login.username" TextField
+    t =    74.61s Find the "login.username" TextField
+    t =    74.82s Type 'demo' into "login.username" TextField
+    t =    74.82s     Wait for com.milim.relay to idle
+    t =    74.93s     Find the "login.username" TextField
+    t =    75.10s     Check for interrupting elements affecting "login.username" TextField
+    t =    75.24s     Synthesize event
+    t =    75.54s     Wait for com.milim.relay to idle
+    t =    75.76s Tap "login.password" SecureTextField
+    t =    75.76s     Wait for com.milim.relay to idle
+    t =    75.76s     Find the "login.password" SecureTextField
+    t =    75.90s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    76.01s     Synthesize event
+    t =    76.33s     Wait for com.milim.relay to idle
+    t =    76.71s Find the "login.password" SecureTextField
+    t =    76.87s Type '<redacted>' into "login.password" SecureTextField
+    t =    76.87s     Wait for com.milim.relay to idle
+    t =    77.11s     Find the "login.password" SecureTextField
+    t =    77.21s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =    77.27s     Synthesize event
+    t =    77.83s     Wait for com.milim.relay to idle
+    t =    78.45s Waiting 2.0s for "Allow" Button to exist
+    t =    79.52s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    79.53s         Checking existence of `"Allow" Button`
+    t =    79.89s         Capturing element debug description
+    t =    80.55s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =    80.55s         Checking existence of `"Allow" Button`
+    t =    80.96s         Capturing element debug description
+    t =    81.14s     Checking existence of `"Allow" Button`
+    t =    81.54s Collecting debug information to assist test failure triage
+    t =    81.54s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =    81.74s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =    82.78s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    82.78s         Checking existence of `"Don’t Allow" Button`
+    t =    83.10s         Capturing element debug description
+    t =    83.75s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =    83.76s         Checking existence of `"Don’t Allow" Button`
+    t =    83.97s         Capturing element debug description
+    t =    83.97s     Checking existence of `"Don’t Allow" Button`
+    t =    84.19s Collecting debug information to assist test failure triage
+    t =    84.23s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =    84.60s Waiting 2.0s for "Not Now" Button to exist
+    t =    85.69s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    85.69s         Checking existence of `"Not Now" Button`
+    t =    85.73s         Capturing element debug description
+    t =    86.60s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =    86.61s         Checking existence of `"Not Now" Button`
+    t =    86.64s         Capturing element debug description
+    t =    86.64s     Checking existence of `"Not Now" Button`
+    t =    86.67s Collecting debug information to assist test failure triage
+    t =    86.67s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =    86.73s Waiting 2.0s for "OK" Button to exist
+    t =    87.78s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    87.79s         Checking existence of `"OK" Button`
+    t =    87.82s         Capturing element debug description
+    t =    89.02s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =    89.02s         Checking existence of `"OK" Button`
+    t =    89.09s         Capturing element debug description
+    t =    89.09s     Checking existence of `"OK" Button`
+    t =    89.41s Collecting debug information to assist test failure triage
+    t =    89.41s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =    89.95s Waiting 8.0s for "finish-setup.not-now" Button to exist
+    t =    90.99s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =    91.00s         Checking existence of `"finish-setup.not-now" Button`
+    t =    98.25s         Capturing element debug description
+    t =    98.25s     Checking existence of `"finish-setup.not-now" Button`
+    t =   102.32s Get all elements bound by index for: Elements matching predicate '"finish-setup.not-now" IN identifiers'
+    t =   103.17s Checking existence of `"finish-setup.not-now" Button`
+    t =   103.47s Find the "finish-setup.not-now" Button
+    t =   103.90s Tap "finish-setup.not-now" Button
+    t =   103.90s     Wait for com.milim.relay to idle
+    t =   103.91s     Find the "finish-setup.not-now" Button
+    t =   104.29s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =   105.34s     Synthesize event
+    t =   106.86s         Failed: Failed to compute hit point for Button, {{343.7, 313.7}, {76.3, 44.0}}, identifier: 'finish-setup.not-now', label: 'Not now': Activation point invalid and no suggested hit points based on element frame
+    t =   106.86s         Requesting snapshot of accessibility hierarchy for app with pid 45822
+    t =   108.13s     Retrying `Tap "finish-setup.not-now" Button` (attempt #2)
+    t =   108.13s         Wait for com.milim.relay to idle
+    t =   108.14s         Find the "finish-setup.not-now" Button
+    t =   108.60s         Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =   110.55s         Synthesize event
+    t =   111.05s         Wait for com.milim.relay to idle
+    t =   112.45s Checking existence of `"finish-setup.not-now" Button`
+    t =   113.73s Waiting 10.0s for "Bots" Button to exist
+    t =   114.79s     Checking `Expect predicate `existsNoRetry == 1` for object "Bots" Button`
+    t =   114.80s         Checking existence of `"Bots" Button`
+    t =   114.93s Tap "Bots" Button
+    t =   114.93s     Wait for com.milim.relay to idle
+    t =   115.22s     Find the "Bots" Button
+    t =   115.90s     Check for interrupting elements affecting "Bots" Button
+    t =   116.36s     Synthesize event
+    t =   116.91s     Wait for com.milim.relay to idle
+    t =   116.94s Waiting 40.0s for Any (First Match) to exist
+    t =   118.00s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   118.00s         Checking existence of `Any (First Match)`
+    t =   119.09s Waiting 8.0s for "finish-setup.not-now" Button to exist
+    t =   120.13s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   120.13s         Checking existence of `"finish-setup.not-now" Button`
+    t =   122.63s Get all elements bound by index for: Elements matching predicate '"finish-setup.not-now" IN identifiers'
+    t =   124.69s Checking existence of `"finish-setup.not-now" Button`
+    t =   125.15s Find the "finish-setup.not-now" Button
+    t =   125.98s Tap "finish-setup.not-now" Button[0.50, 0.50]
+    t =   125.98s     Wait for com.milim.relay to idle
+    t =   126.04s     Find the "finish-setup.not-now" Button
+    t =   126.34s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =   126.76s     Synthesize event
+    t =   126.77s         Find the "finish-setup.not-now" Button
+    t =   126.99s         Find the "finish-setup.not-now" Button
+    t =   127.24s         Find the "finish-setup.not-now" Button
+    t =   127.87s     Wait for com.milim.relay to idle
+SCENE start bots-home-layouts 1794896713.707067
+    t =   177.19s Press Window (First Match)[0.50, 0.25] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.70] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   177.19s     Wait for com.milim.relay to idle
+    t =   177.20s     Find the Window (First Match)
+    t =   177.29s     Check for interrupting elements affecting Window
+    t =   177.70s     Synthesize event
+    t =   177.70s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   177.79s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   177.87s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   177.90s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   177.97s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   179.17s     Wait for com.milim.relay to idle
+    t =   181.12s Waiting 30.0s for Any (First Match) to exist
+    t =   182.17s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   182.23s         Checking existence of `Any (First Match)`
+    t =   200.61s Press Window (First Match)[0.50, 0.25] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.70] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   200.61s     Wait for com.milim.relay to idle
+    t =   200.62s     Find the Window (First Match)
+    t =   200.66s     Check for interrupting elements affecting Window
+    t =   200.88s     Synthesize event
+    t =   200.89s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   200.96s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   201.01s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   201.12s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   201.28s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   202.55s     Wait for com.milim.relay to idle
+    t =   203.04s Waiting 30.0s for Any (First Match) to exist
+    t =   204.10s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   204.10s         Checking existence of `Any (First Match)`
+    t =   229.04s Press Window (First Match)[0.50, 0.25] for 0.1 seconds, then drag to Window (First Match)[0.50, 0.70] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =   229.04s     Wait for com.milim.relay to idle
+    t =   229.05s     Find the Window (First Match)
+    t =   229.18s     Check for interrupting elements affecting Window
+    t =   229.39s     Synthesize event
+    t =   229.39s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   229.43s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   229.50s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   229.55s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   229.59s         Find the Window at {{0.0, 0.0}, {440.0, 956.0}}
+    t =   230.83s     Wait for com.milim.relay to idle
+    t =   230.92s Waiting 30.0s for Any (First Match) to exist
+    t =   232.01s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   232.01s         Checking existence of `Any (First Match)`
+SCENE end bots-home-layouts 1794896814.264039
+    t =   237.00s Added attachment named 'scene-bots-home-layouts-end'
+    t =   237.01s Waiting 10.0s for "Settings" Button to exist
+    t =   238.05s     Checking `Expect predicate `existsNoRetry == 1` for object "Settings" Button`
+    t =   238.06s         Checking existence of `"Settings" Button`
+    t =   238.13s Tap "Settings" Button
+    t =   238.13s     Wait for com.milim.relay to idle
+    t =   238.14s     Find the "Settings" Button
+    t =   238.26s     Check for interrupting elements affecting "Settings" Button
+    t =   239.72s     Synthesize event
+    t =   240.06s     Wait for com.milim.relay to idle
+    t =   241.37s Waiting 3.0s for "settings.add-dashboard" Button to exist
+    t =   242.45s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   242.45s         Checking existence of `"settings.add-dashboard" Button`
+    t =   243.66s         Capturing element debug description
+    t =   244.38s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   244.38s         Checking existence of `"settings.add-dashboard" Button`
+    t =   244.70s         Capturing element debug description
+    t =   244.70s     Checking existence of `"settings.add-dashboard" Button`
+    t =   246.14s Collecting debug information to assist test failure triage
+    t =   246.14s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+    t =   246.67s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   247.67s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   247.67s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   248.03s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   249.08s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   249.08s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   249.45s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   250.50s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   250.50s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   250.87s Waiting 10.0s for "settings.saved-dashboards" Button to exist
+    t =   251.90s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   251.90s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   252.17s Tap "settings.saved-dashboards" Button
+    t =   252.17s     Wait for com.milim.relay to idle
+    t =   252.18s     Find the "settings.saved-dashboards" Button
+    t =   252.45s     Check for interrupting elements affecting "settings.saved-dashboards" Button
+    t =   252.62s     Synthesize event
+    t =   252.71s         Scroll element to visible
+    t =   252.77s         Find the "settings.saved-dashboards" Button
+    t =   253.24s         Computed hit point {220, 709.33333333333337} after scrolling to visible
+    t =   253.53s     Wait for com.milim.relay to idle
+    t =   253.65s Waiting 10.0s for "settings.add-dashboard" Button to exist
+    t =   254.71s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   254.71s         Checking existence of `"settings.add-dashboard" Button`
+    t =   255.68s Tap "settings.add-dashboard" Button
+    t =   255.68s     Wait for com.milim.relay to idle
+    t =   255.70s     Find the "settings.add-dashboard" Button
+    t =   256.05s     Check for interrupting elements affecting "settings.add-dashboard" Button
+    t =   256.19s     Synthesize event
+    t =   256.54s     Wait for com.milim.relay to idle
+    t =   257.71s Waiting 20.0s for "add-dashboard.server-url" TextField to exist
+    t =   258.77s     Checking `Expect predicate `existsNoRetry == 1` for object "add-dashboard.server-url" TextField`
+    t =   258.77s         Checking existence of `"add-dashboard.server-url" TextField`
+    t =   259.06s Tap "add-dashboard.server-url" TextField
+    t =   259.06s     Wait for com.milim.relay to idle
+    t =   259.06s     Find the "add-dashboard.server-url" TextField
+    t =   259.23s     Check for interrupting elements affecting "add-dashboard.server-url" TextField
+    t =   259.34s     Synthesize event
+    t =   259.68s     Wait for com.milim.relay to idle
+    t =   260.89s Find the "add-dashboard.server-url" TextField
+    t =   261.49s Type 'http://studio.tail...' into "add-dashboard.server-url" TextField
+    t =   261.50s     Wait for com.milim.relay to idle
+    t =   261.52s     Find the "add-dashboard.server-url" TextField
+    t =   261.70s     Check for interrupting elements affecting "add-dashboard.server-url" TextField
+    t =   261.83s     Synthesize event
+    t =   262.69s     Wait for com.milim.relay to idle
+    t =   263.13s Waiting 30.0s for "login.username" TextField to exist
+    t =   264.21s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =   264.21s         Checking existence of `"login.username" TextField`
+    t =   266.46s Tap "login.username" TextField
+    t =   266.46s     Wait for com.milim.relay to idle
+    t =   266.49s     Find the "login.username" TextField
+    t =   266.89s     Check for interrupting elements affecting "login.username" TextField
+    t =   267.12s     Synthesize event
+    t =   267.62s     Wait for com.milim.relay to idle
+    t =   267.62s Find the "login.username" TextField
+    t =   267.91s Find the "login.username" TextField
+    t =   268.25s Type 'demo' into "login.username" TextField
+    t =   268.25s     Wait for com.milim.relay to idle
+    t =   268.26s     Find the "login.username" TextField
+    t =   268.48s     Check for interrupting elements affecting "login.username" TextField
+    t =   268.62s     Synthesize event
+    t =   268.94s     Wait for com.milim.relay to idle
+    t =   269.17s Tap "login.password" SecureTextField
+    t =   269.17s     Wait for com.milim.relay to idle
+    t =   269.17s     Find the "login.password" SecureTextField
+    t =   269.44s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =   269.56s     Synthesize event
+    t =   269.91s     Wait for com.milim.relay to idle
+    t =   270.43s Find the "login.password" SecureTextField
+    t =   270.83s Type '<redacted>' into "login.password" SecureTextField
+    t =   270.84s     Wait for com.milim.relay to idle
+    t =   270.84s     Find the "login.password" SecureTextField
+    t =   271.05s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =   271.19s     Synthesize event
+    t =   271.78s     Wait for com.milim.relay to idle
+    t =   272.26s Waiting 2.0s for "Allow" Button to exist
+    t =   273.29s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =   273.30s         Checking existence of `"Allow" Button`
+    t =   273.41s         Capturing element debug description
+    t =   274.33s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =   274.33s         Checking existence of `"Allow" Button`
+    t =   274.49s         Capturing element debug description
+    t =   274.49s     Checking existence of `"Allow" Button`
+    t =   274.67s Collecting debug information to assist test failure triage
+    t =   274.68s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   274.81s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =   275.82s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =   275.82s         Checking existence of `"Don’t Allow" Button`
+    t =   275.86s         Capturing element debug description
+    t =   276.81s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =   276.81s         Checking existence of `"Don’t Allow" Button`
+    t =   276.85s         Capturing element debug description
+    t =   276.85s     Checking existence of `"Don’t Allow" Button`
+    t =   276.87s Collecting debug information to assist test failure triage
+    t =   276.87s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   276.92s Waiting 2.0s for "Not Now" Button to exist
+    t =   278.12s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =   278.14s         Checking existence of `"Not Now" Button`
+    t =   278.59s         Capturing element debug description
+    t =   278.93s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =   278.93s         Checking existence of `"Not Now" Button`
+    t =   278.95s         Capturing element debug description
+    t =   278.96s     Checking existence of `"Not Now" Button`
+    t =   278.99s Collecting debug information to assist test failure triage
+    t =   278.99s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   279.05s Waiting 2.0s for "OK" Button to exist
+    t =   280.10s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =   280.10s         Checking existence of `"OK" Button`
+    t =   280.14s         Capturing element debug description
+    t =   281.07s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =   281.07s         Checking existence of `"OK" Button`
+    t =   281.11s         Capturing element debug description
+    t =   281.11s     Checking existence of `"OK" Button`
+    t =   281.19s Collecting debug information to assist test failure triage
+    t =   281.19s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   281.28s Waiting 60.0s for "add-dashboard.cancel" Button to not exist
+    t =   282.28s     Checking `Expect predicate `existsNoRetry == 0` for object "add-dashboard.cancel" Button`
+    t =   282.28s         Checking existence of `"add-dashboard.cancel" Button`
+    t =   283.19s Waiting 8.0s for "finish-setup.not-now" Button to exist
+    t =   284.24s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   284.24s         Checking existence of `"finish-setup.not-now" Button`
+    t =   287.31s Get all elements bound by index for: Elements matching predicate '"finish-setup.not-now" IN identifiers'
+    t =   288.04s Checking existence of `"finish-setup.not-now" Button`
+    t =   289.71s Find the "finish-setup.not-now" Button
+    t =   292.04s Tap "finish-setup.not-now" Button[0.50, 0.50]
+    t =   292.04s     Wait for com.milim.relay to idle
+    t =   292.05s     Find the "finish-setup.not-now" Button
+    t =   292.76s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =   293.08s     Synthesize event
+    t =   293.19s         Find the "finish-setup.not-now" Button
+    t =   294.01s         Find the "finish-setup.not-now" Button
+    t =   294.83s         Find the "finish-setup.not-now" Button
+    t =   296.49s     Wait for com.milim.relay to idle
+    t =   298.26s Checking existence of `"finish-setup.not-now" Button`
+    t =   298.87s Find the "finish-setup.not-now" Button
+    t =   299.42s Tap "finish-setup.not-now" Button[0.50, 0.50]
+    t =   299.42s     Wait for com.milim.relay to idle
+    t =   299.45s     Find the "finish-setup.not-now" Button
+    t =   300.48s     Check for interrupting elements affecting "finish-setup.not-now" Button
+    t =   300.75s     Synthesize event
+    t =   300.84s         Find the "finish-setup.not-now" Button
+    t =   301.28s         Find the "finish-setup.not-now" Button
+    t =   301.86s         Find the "finish-setup.not-now" Button
+    t =   303.22s     Wait for com.milim.relay to idle
+    t =   307.24s Waiting 10.0s for "Settings" Button to exist
+    t =   308.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Settings" Button`
+    t =   308.32s         Checking existence of `"Settings" Button`
+    t =   308.38s Tap "Settings" Button
+    t =   308.38s     Wait for com.milim.relay to idle
+    t =   308.39s     Find the "Settings" Button
+    t =   308.42s     Check for interrupting elements affecting "Settings" Button
+    t =   308.86s     Synthesize event
+    t =   309.29s     Wait for com.milim.relay to idle
+    t =   309.31s Waiting 3.0s for "settings.add-dashboard" Button to exist
+    t =   310.36s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   310.37s         Checking existence of `"settings.add-dashboard" Button`
+    t =   311.29s         Capturing element debug description
+    t =   311.36s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   311.36s         Checking existence of `"settings.add-dashboard" Button`
+    t =   312.01s         Capturing element debug description
+    t =   312.32s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   312.32s         Checking existence of `"settings.add-dashboard" Button`
+    t =   312.62s         Capturing element debug description
+    t =   312.62s     Checking existence of `"settings.add-dashboard" Button`
+    t =   313.40s Collecting debug information to assist test failure triage
+    t =   313.40s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+    t =   313.66s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   314.67s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   314.67s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   315.27s         Capturing element debug description
+    t =   315.68s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   315.68s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   316.30s         Capturing element debug description
+    t =   316.66s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   316.66s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   316.97s         Capturing element debug description
+    t =   316.97s     Checking existence of `"settings.saved-dashboards" Button`
+    t =   318.15s Collecting debug information to assist test failure triage
+    t =   318.15s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+    t =   318.38s Checking existence of `"conversation.close" Button`
+    t =   318.52s Find the Target Application 'com.milim.relay'
+    t =   318.62s Get all elements bound by index for: Descendants matching type Button
+    t =   318.82s Find the Button (Element at index 0)
+    t =   318.94s Find the Button (Element at index 1)
+    t =   319.06s Find the Button (Element at index 2)
+    t =   319.19s Find the Button (Element at index 3)
+    t =   319.30s Find the Button (Element at index 4)
+    t =   319.42s Find the Button (Element at index 5)
+    t =   319.55s Find the Button (Element at index 6)
+    t =   319.73s Find the "BackButton" Button
+    t =   319.89s Tap "BackButton" Button
+    t =   319.89s     Wait for com.milim.relay to idle
+    t =   319.89s     Find the "BackButton" Button
+    t =   320.08s     Check for interrupting elements affecting "BackButton" Button
+    t =   320.25s     Synthesize event
+    t =   320.57s     Wait for com.milim.relay to idle
+    t =   322.36s Checking existence of `"settings.add-dashboard" Button`
+    t =   323.69s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   324.71s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   324.72s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   325.29s Waiting 3.0s for "settings.saved-dashboards" Button to exist
+    t =   326.35s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   326.35s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   326.65s Waiting 10.0s for "settings.saved-dashboards" Button to exist
+    t =   327.66s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.saved-dashboards" Button`
+    t =   327.66s         Checking existence of `"settings.saved-dashboards" Button`
+    t =   327.92s Tap "settings.saved-dashboards" Button
+    t =   327.92s     Wait for com.milim.relay to idle
+    t =   327.93s     Find the "settings.saved-dashboards" Button
+    t =   328.26s     Check for interrupting elements affecting "settings.saved-dashboards" Button
+    t =   328.49s     Synthesize event
+    t =   328.54s         Scroll element to visible
+    t =   328.57s         Find the "settings.saved-dashboards" Button
+    t =   329.25s         Computed hit point {220, 709.33333333333337} after scrolling to visible
+    t =   329.57s     Wait for com.milim.relay to idle
+    t =   330.05s Waiting 10.0s for "settings.combine-dashboard" Switch to exist
+    t =   331.10s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.combine-dashboard" Switch`
+    t =   331.10s         Checking existence of `"settings.combine-dashboard" Switch`
+    t =   331.39s Get number of matches for: Elements matching predicate '"settings.combine-dashboard" IN identifiers'
+    t =   331.57s Find the "settings.combine-dashboard" Switch
+    t =   331.71s Tap "settings.combine-dashboard" Switch[0.90, 0.50]
+    t =   331.71s     Wait for com.milim.relay to idle
+    t =   331.71s     Find the "settings.combine-dashboard" Switch
+    t =   331.91s     Check for interrupting elements affecting "settings.combine-dashboard" Switch
+    t =   332.04s     Synthesize event
+    t =   332.05s         Find the "settings.combine-dashboard" Switch
+    t =   332.21s         Find the "settings.combine-dashboard" Switch
+    t =   332.35s         Find the "settings.combine-dashboard" Switch
+    t =   332.80s     Wait for com.milim.relay to idle
+    t =   335.27s Find the "settings.combine-dashboard" Switch
+    t =   335.51s Tap "settings.combine-dashboard" Switch[0.90, 0.50]
+    t =   335.51s     Wait for com.milim.relay to idle
+    t =   335.51s     Find the "settings.combine-dashboard" Switch
+    t =   335.68s     Check for interrupting elements affecting "settings.combine-dashboard" Switch
+    t =   335.89s     Synthesize event
+    t =   335.90s         Find the "settings.combine-dashboard" Switch
+    t =   336.15s         Find the "settings.combine-dashboard" Switch
+    t =   336.37s         Find the "settings.combine-dashboard" Switch
+    t =   336.85s     Wait for com.milim.relay to idle
+    t =   344.35s Waiting 10.0s for "Settings" Button to exist
+    t =   345.41s     Checking `Expect predicate `existsNoRetry == 1` for object "Settings" Button`
+    t =   345.42s         Checking existence of `"Settings" Button`
+    t =   345.45s Tap "Settings" Button
+    t =   345.45s     Wait for com.milim.relay to idle
+    t =   345.46s     Find the "Settings" Button
+    t =   345.49s     Check for interrupting elements affecting "Settings" Button
+    t =   345.68s     Synthesize event
+    t =   346.01s     Wait for com.milim.relay to idle
+    t =   346.04s Waiting 3.0s for "settings.add-dashboard" Button to exist
+    t =   347.10s     Checking `Expect predicate `existsNoRetry == 1` for object "settings.add-dashboard" Button`
+    t =   347.12s         Checking existence of `"settings.add-dashboard" Button`
+    t =   347.65s Waiting 10.0s for Button (First Match) to exist
+    t =   348.70s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   348.70s         Checking existence of `Button (First Match)`
+    t =   348.89s Tap Button (First Match)
+    t =   348.89s     Wait for com.milim.relay to idle
+    t =   348.89s     Find the Button (First Match)
+    t =   349.11s     Check for interrupting elements affecting "settings.dashboard.row" Button
+    t =   349.25s     Synthesize event
+    t =   349.55s     Wait for com.milim.relay to idle
+    t =   356.23s Waiting 10.0s for Button (First Match) to exist
+    t =   357.26s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   357.27s         Checking existence of `Button (First Match)`
+    t =   357.36s Tap Button (First Match)
+    t =   357.36s     Wait for com.milim.relay to idle
+    t =   357.36s     Find the Button (First Match)
+    t =   357.44s     Check for interrupting elements affecting "login.dashboard.combined" Button
+    t =   357.59s     Synthesize event
+    t =   357.99s     Wait for com.milim.relay to idle
+    t =   357.99s Waiting 30.0s for "login.username" TextField to exist
+    t =   359.01s     Checking `Expect predicate `existsNoRetry == 1` for object "login.username" TextField`
+    t =   359.02s         Checking existence of `"login.username" TextField`
+    t =   362.63s Tap "login.username" TextField
+    t =   362.63s     Wait for com.milim.relay to idle
+    t =   362.64s     Find the "login.username" TextField
+    t =   362.82s     Check for interrupting elements affecting "login.username" TextField
+    t =   362.95s     Synthesize event
+    t =   363.29s     Wait for com.milim.relay to idle
+    t =   364.26s Find the "login.username" TextField
+    t =   364.59s Find the "login.username" TextField
+    t =   364.69s Type '' into "login.username" TextField
+    t =   364.69s     Wait for com.milim.relay to idle
+    t =   364.69s     Find the "login.username" TextField
+    t =   364.80s     Check for interrupting elements affecting "login.username" TextField
+    t =   364.89s     Synthesize event
+    t =   365.17s     Wait for com.milim.relay to idle
+    t =   365.18s Type 'demo' into "login.username" TextField
+    t =   365.18s     Wait for com.milim.relay to idle
+    t =   365.19s     Find the "login.username" TextField
+    t =   365.29s     Check for interrupting elements affecting "login.username" TextField
+    t =   365.36s     Synthesize event
+    t =   365.65s     Wait for com.milim.relay to idle
+    t =   365.65s Tap "login.password" SecureTextField
+    t =   365.65s     Wait for com.milim.relay to idle
+    t =   365.66s     Find the "login.password" SecureTextField
+    t =   365.71s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =   365.76s     Synthesize event
+    t =   366.06s     Wait for com.milim.relay to idle
+    t =   366.25s Find the "login.password" SecureTextField
+    t =   366.51s Type '<redacted>' into "login.password" SecureTextField
+    t =   366.51s     Wait for com.milim.relay to idle
+    t =   366.72s     Find the "login.password" SecureTextField
+    t =   366.80s     Check for interrupting elements affecting "login.password" SecureTextField
+    t =   366.88s     Synthesize event
+    t =   367.48s     Wait for com.milim.relay to idle
+    t =   367.78s Waiting 2.0s for "Allow" Button to exist
+    t =   368.78s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =   368.78s         Checking existence of `"Allow" Button`
+    t =   368.99s         Capturing element debug description
+    t =   369.79s     Checking `Expect predicate `existsNoRetry == 1` for object "Allow" Button`
+    t =   369.79s         Checking existence of `"Allow" Button`
+    t =   369.83s         Capturing element debug description
+    t =   369.83s     Checking existence of `"Allow" Button`
+    t =   369.86s Collecting debug information to assist test failure triage
+    t =   369.86s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   369.99s Waiting 2.0s for "Don’t Allow" Button to exist
+    t =   371.03s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =   371.03s         Checking existence of `"Don’t Allow" Button`
+    t =   371.08s         Capturing element debug description
+    t =   372.00s     Checking `Expect predicate `existsNoRetry == 1` for object "Don’t Allow" Button`
+    t =   372.01s         Checking existence of `"Don’t Allow" Button`
+    t =   372.07s         Capturing element debug description
+    t =   372.07s     Checking existence of `"Don’t Allow" Button`
+    t =   372.15s Collecting debug information to assist test failure triage
+    t =   372.15s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   372.24s Waiting 2.0s for "Not Now" Button to exist
+    t =   373.28s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =   373.29s         Checking existence of `"Not Now" Button`
+    t =   373.43s         Capturing element debug description
+    t =   374.25s     Checking `Expect predicate `existsNoRetry == 1` for object "Not Now" Button`
+    t =   374.25s         Checking existence of `"Not Now" Button`
+    t =   374.31s         Capturing element debug description
+    t =   374.31s     Checking existence of `"Not Now" Button`
+    t =   374.38s Collecting debug information to assist test failure triage
+    t =   374.38s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   374.54s Waiting 2.0s for "OK" Button to exist
+    t =   375.63s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =   375.63s         Checking existence of `"OK" Button`
+    t =   375.71s         Capturing element debug description
+    t =   376.54s     Checking `Expect predicate `existsNoRetry == 1` for object "OK" Button`
+    t =   376.54s         Checking existence of `"OK" Button`
+    t =   376.63s         Capturing element debug description
+    t =   376.63s     Checking existence of `"OK" Button`
+    t =   376.69s Collecting debug information to assist test failure triage
+    t =   376.70s     Requesting snapshot of accessibility hierarchy for app with pid 11043
+    t =   376.87s Waiting 60.0s for "Bots" Button to exist
+    t =   377.93s     Checking `Expect predicate `existsNoRetry == 1` for object "Bots" Button`
+    t =   377.93s         Checking existence of `"Bots" Button`
+    t =   380.01s Waiting 8.0s for "finish-setup.not-now" Button to exist
+    t =   381.09s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   381.09s         Checking existence of `"finish-setup.not-now" Button`
+    t =   384.56s         Capturing element debug description
+    t =   385.09s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   385.09s         Checking existence of `"finish-setup.not-now" Button`
+    t =   386.44s         Capturing element debug description
+    t =   387.08s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   387.08s         Checking existence of `"finish-setup.not-now" Button`
+    t =   387.89s         Capturing element debug description
+    t =   388.01s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   388.01s         Checking existence of `"finish-setup.not-now" Button`
+    t =   388.30s         Capturing element debug description
+    t =   388.30s     Checking existence of `"finish-setup.not-now" Button`
+    t =   390.76s Collecting debug information to assist test failure triage
+    t =   390.76s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+    t =   394.25s Waiting 10.0s for "Bots" Button to exist
+    t =   395.29s     Checking `Expect predicate `existsNoRetry == 1` for object "Bots" Button`
+    t =   395.29s         Checking existence of `"Bots" Button`
+    t =   395.38s Tap "Bots" Button
+    t =   395.38s     Wait for com.milim.relay to idle
+    t =   395.39s     Find the "Bots" Button
+    t =   395.48s     Check for interrupting elements affecting "Bots" Button
+    t =   395.63s     Synthesize event
+    t =   396.06s     Wait for com.milim.relay to idle
+    t =   396.09s Waiting 60.0s for Any (First Match) to exist
+    t =   397.13s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   397.13s         Checking existence of `Any (First Match)`
+    t =   397.36s Waiting 8.0s for "finish-setup.not-now" Button to exist
+    t =   398.41s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   398.42s         Checking existence of `"finish-setup.not-now" Button`
+    t =   399.79s         Capturing element debug description
+    t =   400.41s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   400.41s         Checking existence of `"finish-setup.not-now" Button`
+    t =   400.98s         Capturing element debug description
+    t =   401.39s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   401.39s         Checking existence of `"finish-setup.not-now" Button`
+    t =   401.80s         Capturing element debug description
+    t =   402.41s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   402.41s         Checking existence of `"finish-setup.not-now" Button`
+    t =   402.77s         Capturing element debug description
+    t =   403.41s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   403.41s         Checking existence of `"finish-setup.not-now" Button`
+    t =   403.78s         Capturing element debug description
+    t =   404.42s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   404.42s         Checking existence of `"finish-setup.not-now" Button`
+    t =   404.77s         Capturing element debug description
+    t =   405.37s     Checking `Expect predicate `existsNoRetry == 1` for object "finish-setup.not-now" Button`
+    t =   405.38s         Checking existence of `"finish-setup.not-now" Button`
+    t =   405.69s         Capturing element debug description
+    t =   405.69s     Checking existence of `"finish-setup.not-now" Button`
+    t =   406.22s Collecting debug information to assist test failure triage
+    t =   406.22s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+SCENE start mixed-bots-home 1794896988.386195
+    t =   414.41s Waiting 20.0s for Any (First Match) to exist
+    t =   415.47s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   415.47s         Checking existence of `Any (First Match)`
+    t =   416.48s Tap Any (First Match)
+    t =   416.48s     Wait for com.milim.relay to idle
+    t =   416.49s     Find the Any (First Match)
+    t =   416.76s     Check for interrupting elements affecting "Lucien" Button
+    t =   417.01s     Synthesize event
+    t =   417.39s     Wait for com.milim.relay to idle
+    t =   417.91s Waiting 30.0s for Any (First Match) to exist
+    t =   418.99s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   418.99s         Checking existence of `Any (First Match)`
+    t =   420.24s         Capturing element debug description
+    t =   420.99s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   420.99s         Checking existence of `Any (First Match)`
+    t =   421.82s         Capturing element debug description
+    t =   421.91s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   421.92s         Checking existence of `Any (First Match)`
+    t =   422.91s         Capturing element debug description
+    t =   423.99s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   424.00s         Checking existence of `Any (First Match)`
+    t =   429.84s Checking existence of `"conversation.close" Button`
+    t =   430.01s Find the Target Application 'com.milim.relay'
+    t =   430.09s Get all elements bound by index for: Descendants matching type Button
+    t =   430.23s Find the Button (Element at index 0)
+    t =   430.34s Find the "BackButton" Button
+    t =   430.62s Tap "BackButton" Button
+    t =   430.62s     Wait for com.milim.relay to idle
+    t =   430.62s     Find the "BackButton" Button
+    t =   430.79s     Check for interrupting elements affecting "BackButton" Button
+    t =   431.04s     Synthesize event
+    t =   431.39s     Wait for com.milim.relay to idle
+SCENE end mixed-bots-home 1794897014.210134
+    t =   436.81s Added attachment named 'scene-mixed-bots-home-end'
+SCENE start chats-strip 1794897014.7965
+    t =   436.82s Waiting 10.0s for "Sessions" Button to exist
+    t =   437.84s     Checking `Expect predicate `existsNoRetry == 1` for object "Sessions" Button`
+    t =   437.84s         Checking existence of `"Sessions" Button`
+    t =   438.10s Tap "Sessions" Button
+    t =   438.10s     Wait for com.milim.relay to idle
+    t =   438.11s     Find the "Sessions" Button
+    t =   438.18s     Check for interrupting elements affecting "Sessions" Button
+    t =   438.43s     Synthesize event
+    t =   438.79s     Wait for com.milim.relay to idle
+    t =   443.18s Waiting 4.0s for Any (First Match) to exist
+    t =   444.23s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   444.23s         Checking existence of `Any (First Match)`
+    t =   445.11s Waiting 20.0s for Button (First Match) to exist
+    t =   446.15s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   446.15s         Checking existence of `Button (First Match)`
+    t =   446.31s Tap Button (First Match)
+    t =   446.31s     Wait for com.milim.relay to idle
+    t =   446.31s     Find the Button (First Match)
+    t =   446.53s     Check for interrupting elements affecting "v2.profile.C8AD02EE-AD71-4643-B93B-5BE85FB6D46B.default" Button
+    t =   446.67s     Synthesize event
+    t =   447.02s     Wait for com.milim.relay to idle
+    t =   447.38s Waiting 30.0s for Any (First Match) to exist
+    t =   448.45s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   448.45s         Checking existence of `Any (First Match)`
+    t =   453.06s Waiting 20.0s for Button (First Match) to exist
+    t =   454.17s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   454.17s         Checking existence of `Button (First Match)`
+    t =   454.39s Tap Button (First Match)
+    t =   454.40s     Wait for com.milim.relay to idle
+    t =   454.40s     Find the Button (First Match)
+    t =   454.59s     Check for interrupting elements affecting "v2.profile.DD8DBADE-8359-4D75-90FD-16AF83007F8C.default" Button
+    t =   454.77s     Synthesize event
+    t =   454.87s         Scroll element to visible
+    t =   454.89s         Find the "v2.profile.DD8DBADE-8359-4D75-90FD-16AF83007F8C.default" Button
+    t =   455.24s         Computed hit point {402, 90} after scrolling to visible
+    t =   455.55s     Wait for com.milim.relay to idle
+    t =   456.00s Waiting 30.0s for Any (First Match) to exist
+    t =   457.00s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   457.00s         Checking existence of `Any (First Match)`
+    t =   461.51s Waiting 20.0s for Button (First Match) to exist
+    t =   462.56s     Checking `Expect predicate `existsNoRetry == 1` for object Button (First Match)`
+    t =   462.56s         Checking existence of `Button (First Match)`
+    t =   462.75s Tap Button (First Match)
+    t =   462.75s     Wait for com.milim.relay to idle
+    t =   462.75s     Find the Button (First Match)
+    t =   463.07s     Check for interrupting elements affecting "v2.profile.C8AD02EE-AD71-4643-B93B-5BE85FB6D46B.default" Button
+    t =   463.23s     Synthesize event
+    t =   463.55s     Wait for com.milim.relay to idle
+    t =   463.86s Waiting 30.0s for Any (First Match) to exist
+    t =   464.90s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   464.90s         Checking existence of `Any (First Match)`
+SCENE end chats-strip 1794897047.316272
+    t =   469.70s Added attachment named 'scene-chats-strip-end'
+SCENE start two-replying 1794897047.679239
+    t =   469.70s Waiting 10.0s for "Bots" Button to exist
+    t =   470.75s     Checking `Expect predicate `existsNoRetry == 1` for object "Bots" Button`
+    t =   470.75s         Checking existence of `"Bots" Button`
+    t =   470.80s Tap "Bots" Button
+    t =   470.80s     Wait for com.milim.relay to idle
+    t =   470.81s     Find the "Bots" Button
+    t =   470.83s     Check for interrupting elements affecting "Bots" Button
+    t =   471.01s     Synthesize event
+    t =   471.37s     Wait for com.milim.relay to idle
+    t =   473.43s Waiting 20.0s for Any (First Match) to exist
+    t =   474.48s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   474.48s         Checking existence of `Any (First Match)`
+    t =   474.67s Tap Any (First Match)
+    t =   474.68s     Wait for com.milim.relay to idle
+    t =   474.68s     Find the Any (First Match)
+    t =   474.99s     Check for interrupting elements affecting "Piko" Button
+    t =   475.19s     Synthesize event
+    t =   475.53s     Wait for com.milim.relay to idle
+    t =   475.95s Checking existence of `TextView (First Match)`
+    t =   476.42s Waiting 20.0s for TextView (First Match) to exist
+    t =   477.50s     Checking `Expect predicate `existsNoRetry == 1` for object TextView (First Match)`
+    t =   477.50s         Checking existence of `TextView (First Match)`
+    t =   477.78s Tap TextView (First Match)
+    t =   477.78s     Wait for com.milim.relay to idle
+    t =   477.90s     Find the TextView (First Match)
+    t =   478.19s     Check for interrupting elements affecting TextView
+    t =   478.53s     Synthesize event
+    t =   478.85s     Wait for com.milim.relay to idle
+    t =   481.09s Waiting 3.0s for Keyboard (First Match) to exist
+    t =   482.17s     Checking `Expect predicate `existsNoRetry == 1` for object Keyboard (First Match)`
+    t =   482.18s         Checking existence of `Keyboard (First Match)`
+    t =   482.47s Find the TextView at {{67.0, 861.7}, {234.0, 44.0}}
+    t =   483.37s Type 'Plan a picnic for ...' into TextView
+    t =   483.37s     Wait for com.milim.relay to idle
+    t =   483.38s     Find the TextView
+    t =   484.01s     Check for interrupting elements affecting TextView
+    t =   484.42s     Synthesize event
+    t =   485.51s     Wait for com.milim.relay to idle
+    t =   486.02s Tap "Send message" Button
+    t =   486.02s     Wait for com.milim.relay to idle
+    t =   486.03s     Find the "Send message" Button
+    t =   486.39s     Check for interrupting elements affecting "Send message" Button
+    t =   486.67s     Synthesize event
+    t =   487.12s     Wait for com.milim.relay to idle
+    t =   491.57s Checking existence of `"conversation.close" Button`
+    t =   491.91s Find the Target Application 'com.milim.relay'
+    t =   492.07s Get all elements bound by index for: Descendants matching type Button
+    t =   492.29s Find the Button (Element at index 0)
+    t =   492.53s Find the "BackButton" Button
+    t =   492.98s Tap "BackButton" Button
+    t =   492.98s     Wait for com.milim.relay to idle
+    t =   492.98s     Find the "BackButton" Button
+    t =   493.39s     Check for interrupting elements affecting "BackButton" Button
+    t =   494.01s     Synthesize event
+    t =   494.42s     Wait for com.milim.relay to idle
+    t =   507.24s Waiting 10.0s for "Sessions" Button to exist
+    t =   508.33s     Checking `Expect predicate `existsNoRetry == 1` for object "Sessions" Button`
+    t =   508.34s         Checking existence of `"Sessions" Button`
+    t =   508.95s Tap "Sessions" Button
+    t =   508.95s     Wait for com.milim.relay to idle
+    t =   508.95s     Find the "Sessions" Button
+    t =   509.35s     Check for interrupting elements affecting "Sessions" Button
+    t =   510.56s     Synthesize event
+    t =   511.13s     Wait for com.milim.relay to idle
+    t =   517.41s Waiting 10.0s for "Bots" Button to exist
+    t =   518.44s     Checking `Expect predicate `existsNoRetry == 1` for object "Bots" Button`
+    t =   518.45s         Checking existence of `"Bots" Button`
+    t =   518.49s Tap "Bots" Button
+    t =   518.49s     Wait for com.milim.relay to idle
+    t =   518.50s     Find the "Bots" Button
+    t =   518.56s     Check for interrupting elements affecting "Bots" Button
+    t =   518.69s     Synthesize event
+    t =   519.03s     Wait for com.milim.relay to idle
+SCENE end two-replying 1794897101.02052
+    t =   523.35s Added attachment named 'scene-two-replying-end'
+SCENE start reorder 1794897101.3382201
+    t =   525.37s Waiting 10.0s for Any (First Match) to exist
+    t =   526.43s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   526.43s         Checking existence of `Any (First Match)`
+    t =   526.80s Waiting 10.0s for Any (First Match) to exist
+    t =   527.85s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   527.85s         Checking existence of `Any (First Match)`
+    t =   528.20s Press Any (First Match)[0.50, 0.40] for 1.2 seconds, then drag to Any (First Match)[0.50, 1.25] with velocity of 250.00 pixels per second, and then hold for 0.8 seconds 
+    t =   528.20s     Wait for com.milim.relay to idle
+    t =   528.21s     Find the Any (First Match)
+    t =   528.49s     Check for interrupting elements affecting "Riri" Button
+    t =   528.76s     Synthesize event
+    t =   528.78s         Find the "Riri" Button
+    t =   529.04s         Find the "Riri" Button
+    t =   529.30s         Find the Any (First Match)
+    t =   529.60s         Find the "Conduit-chan" Button
+    t =   529.86s         Find the "Riri" Button
+    t =   533.57s     Wait for com.milim.relay to idle
+    t =   593.60s App animations complete notification not received, will attempt to continue.
+    t =   596.63s Waiting 10.0s for Any (First Match) to exist
+    t =   597.68s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   597.72s         Checking existence of `Any (First Match)`
+    t =   598.61s Waiting 10.0s for Any (First Match) to exist
+    t =   599.67s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   599.67s         Checking existence of `Any (First Match)`
+    t =   599.91s Press Any (First Match)[0.50, 0.40] for 1.2 seconds, then drag to Any (First Match)[0.50, 1.25] with velocity of 250.00 pixels per second, and then hold for 0.8 seconds 
+    t =   599.91s     Wait for com.milim.relay to idle
+    t =   659.95s App animations complete notification not received, will attempt to continue.
+    t =   659.96s     Find the Any (First Match)
+    t =   660.50s     Check for interrupting elements affecting "Mira" Button
+    t =   660.90s     Synthesize event
+    t =   660.91s         Find the "Mira" Button
+    t =   661.14s         Find the "Mira" Button
+    t =   661.39s         Find the Any (First Match)
+    t =   661.64s         Find the "Piko" Button
+    t =   662.00s         Find the "Mira" Button
+    t =   665.22s     Wait for com.milim.relay to idle
+    t =   725.25s App animations complete notification not received, will attempt to continue.
+SCENE end reorder 1794897307.248102
+    t =   729.74s Added attachment named 'scene-reorder-end'
+SCENE start room-across 1794897307.717145
+    t =   731.75s Waiting 10.0s for Any (First Match) to exist
+    t =   732.79s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   732.81s         Checking existence of `Any (First Match)`
+    t =   733.13s Waiting 10.0s for Any (First Match) to exist
+    t =   734.18s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   734.18s         Checking existence of `Any (First Match)`
+    t =   734.44s Press Any (First Match)[0.50, 0.40] for 1.2 seconds, then drag to Any (First Match)[0.50, 0.45] with velocity of 250.00 pixels per second, and then hold for 1.5 seconds 
+    t =   734.44s     Wait for com.milim.relay to idle
+    t =   794.49s App animations complete notification not received, will attempt to continue.
+    t =   794.50s     Find the Any (First Match)
+    t =   795.30s     Check for interrupting elements affecting "Mira" Button
+    t =   795.67s     Synthesize event
+    t =   795.69s         Find the "Mira" Button
+    t =   796.05s         Find the "Mira" Button
+    t =   796.34s         Find the Any (First Match)
+    t =   796.60s         Find the "Lucien" Button
+    t =   796.87s         Find the "Mira" Button
+    t =   802.10s     Wait for com.milim.relay to idle
+    t =   803.38s Waiting 15.0s for "bots.newRoom.create" Button to exist
+    t =   804.41s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   804.49s         Checking existence of `"bots.newRoom.create" Button`
+    t =   804.71s         Capturing element debug description
+    t =   805.45s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   805.45s         Checking existence of `"bots.newRoom.create" Button`
+    t =   805.58s         Capturing element debug description
+    t =   806.42s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   806.42s         Checking existence of `"bots.newRoom.create" Button`
+    t =   806.61s         Capturing element debug description
+    t =   807.45s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   807.45s         Checking existence of `"bots.newRoom.create" Button`
+    t =   807.81s         Capturing element debug description
+    t =   808.45s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   808.45s         Checking existence of `"bots.newRoom.create" Button`
+    t =   808.60s         Capturing element debug description
+    t =   809.44s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   809.44s         Checking existence of `"bots.newRoom.create" Button`
+    t =   810.28s         Capturing element debug description
+    t =   810.38s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   810.38s         Checking existence of `"bots.newRoom.create" Button`
+    t =   810.56s         Capturing element debug description
+    t =   811.41s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   811.45s         Checking existence of `"bots.newRoom.create" Button`
+    t =   811.79s         Capturing element debug description
+    t =   812.44s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   812.44s         Checking existence of `"bots.newRoom.create" Button`
+    t =   812.56s         Capturing element debug description
+    t =   813.41s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   813.41s         Checking existence of `"bots.newRoom.create" Button`
+    t =   813.55s         Capturing element debug description
+    t =   814.40s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   814.40s         Checking existence of `"bots.newRoom.create" Button`
+    t =   814.54s         Capturing element debug description
+    t =   815.40s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   815.40s         Checking existence of `"bots.newRoom.create" Button`
+    t =   815.56s         Capturing element debug description
+    t =   816.40s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   816.41s         Checking existence of `"bots.newRoom.create" Button`
+    t =   816.56s         Capturing element debug description
+    t =   817.40s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   817.40s         Checking existence of `"bots.newRoom.create" Button`
+    t =   817.53s         Capturing element debug description
+    t =   818.38s     Checking `Expect predicate `existsNoRetry == 1` for object "bots.newRoom.create" Button`
+    t =   818.38s         Checking existence of `"bots.newRoom.create" Button`
+    t =   818.53s         Capturing element debug description
+    t =   818.53s     Checking existence of `"bots.newRoom.create" Button`
+    t =   818.76s Collecting debug information to assist test failure triage
+    t =   818.76s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/DemoVideoTests.swift:158: error: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : failed - Dropping Mira on Lucien started no room
+    t =   823.98s Checking existence of `TextView (First Match)`
+    t =   824.71s Waiting 20.0s for TextField (First Match) to exist
+    t =   825.76s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   825.77s         Checking existence of `TextField (First Match)`
+    t =   826.46s         Capturing element debug description
+    t =   826.76s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   826.76s         Checking existence of `TextField (First Match)`
+    t =   827.55s         Capturing element debug description
+    t =   827.76s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   827.76s         Checking existence of `TextField (First Match)`
+    t =   828.40s         Capturing element debug description
+    t =   828.71s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   828.72s         Checking existence of `TextField (First Match)`
+    t =   829.54s         Capturing element debug description
+    t =   829.75s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   829.75s         Checking existence of `TextField (First Match)`
+    t =   831.01s         Capturing element debug description
+    t =   831.75s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   831.75s         Checking existence of `TextField (First Match)`
+    t =   832.38s         Capturing element debug description
+    t =   832.78s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   832.78s         Checking existence of `TextField (First Match)`
+    t =   833.31s         Capturing element debug description
+    t =   833.73s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   833.73s         Checking existence of `TextField (First Match)`
+    t =   834.59s         Capturing element debug description
+    t =   834.80s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   834.80s         Checking existence of `TextField (First Match)`
+    t =   835.56s         Capturing element debug description
+    t =   835.76s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   835.76s         Checking existence of `TextField (First Match)`
+    t =   836.38s         Capturing element debug description
+    t =   836.78s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   836.78s         Checking existence of `TextField (First Match)`
+    t =   837.27s         Capturing element debug description
+    t =   837.78s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   837.78s         Checking existence of `TextField (First Match)`
+    t =   838.32s         Capturing element debug description
+    t =   838.73s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   838.73s         Checking existence of `TextField (First Match)`
+    t =   839.24s         Capturing element debug description
+    t =   839.74s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   839.75s         Checking existence of `TextField (First Match)`
+    t =   840.15s         Capturing element debug description
+    t =   840.77s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   840.77s         Checking existence of `TextField (First Match)`
+    t =   841.21s         Capturing element debug description
+    t =   841.72s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   841.72s         Checking existence of `TextField (First Match)`
+    t =   842.38s         Capturing element debug description
+    t =   842.80s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   842.80s         Checking existence of `TextField (First Match)`
+    t =   843.26s         Capturing element debug description
+    t =   843.80s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   843.80s         Checking existence of `TextField (First Match)`
+    t =   844.13s         Capturing element debug description
+    t =   844.72s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   844.72s         Checking existence of `TextField (First Match)`
+    t =   845.03s         Capturing element debug description
+    t =   845.03s     Checking existence of `TextField (First Match)`
+    t =   845.48s Collecting debug information to assist test failure triage
+    t =   845.48s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/DemoVideoTests.swift:296: error: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : failed - No composer to send @Mira @Lucien plan the launch post for Friday
+    t =   845.73s Waiting 60.0s for Any (First Match) to exist
+    t =   846.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   846.80s         Checking existence of `Any (First Match)`
+    t =   847.37s         Capturing element debug description
+    t =   847.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   847.78s         Checking existence of `Any (First Match)`
+    t =   848.29s         Capturing element debug description
+    t =   848.74s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   848.74s         Checking existence of `Any (First Match)`
+    t =   849.24s         Capturing element debug description
+    t =   849.77s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   849.77s         Checking existence of `Any (First Match)`
+    t =   850.39s         Capturing element debug description
+    t =   850.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   850.80s         Checking existence of `Any (First Match)`
+    t =   851.35s         Capturing element debug description
+    t =   851.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   851.78s         Checking existence of `Any (First Match)`
+    t =   852.34s         Capturing element debug description
+    t =   852.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   852.75s         Checking existence of `Any (First Match)`
+    t =   853.36s         Capturing element debug description
+    t =   853.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   853.78s         Checking existence of `Any (First Match)`
+    t =   854.61s         Capturing element debug description
+    t =   854.82s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   854.82s         Checking existence of `Any (First Match)`
+    t =   855.69s         Capturing element debug description
+    t =   855.79s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   855.79s         Checking existence of `Any (First Match)`
+    t =   856.70s         Capturing element debug description
+    t =   856.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   856.80s         Checking existence of `Any (First Match)`
+    t =   857.40s         Capturing element debug description
+    t =   857.82s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   857.82s         Checking existence of `Any (First Match)`
+    t =   858.58s         Capturing element debug description
+    t =   858.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   858.78s         Checking existence of `Any (First Match)`
+    t =   859.43s         Capturing element debug description
+    t =   859.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   859.73s         Checking existence of `Any (First Match)`
+    t =   860.37s         Capturing element debug description
+    t =   860.77s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   860.77s         Checking existence of `Any (First Match)`
+    t =   861.35s         Capturing element debug description
+    t =   861.76s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   861.76s         Checking existence of `Any (First Match)`
+    t =   862.50s         Capturing element debug description
+    t =   862.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   862.81s         Checking existence of `Any (First Match)`
+    t =   863.37s         Capturing element debug description
+    t =   863.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   863.80s         Checking existence of `Any (First Match)`
+    t =   864.66s         Capturing element debug description
+    t =   864.76s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   864.76s         Checking existence of `Any (First Match)`
+    t =   865.53s         Capturing element debug description
+    t =   865.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   865.73s         Checking existence of `Any (First Match)`
+    t =   866.66s         Capturing element debug description
+    t =   866.76s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   866.76s         Checking existence of `Any (First Match)`
+    t =   867.30s         Capturing element debug description
+    t =   867.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   867.81s         Checking existence of `Any (First Match)`
+    t =   868.33s         Capturing element debug description
+    t =   868.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   868.75s         Checking existence of `Any (First Match)`
+    t =   869.32s         Capturing element debug description
+    t =   869.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   869.73s         Checking existence of `Any (First Match)`
+    t =   870.30s         Capturing element debug description
+    t =   870.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   870.81s         Checking existence of `Any (First Match)`
+    t =   871.39s         Capturing element debug description
+    t =   871.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   871.80s         Checking existence of `Any (First Match)`
+    t =   873.22s         Capturing element debug description
+    t =   873.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   873.75s         Checking existence of `Any (First Match)`
+    t =   874.39s         Capturing element debug description
+    t =   874.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   874.81s         Checking existence of `Any (First Match)`
+    t =   875.46s         Capturing element debug description
+    t =   875.76s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   875.76s         Checking existence of `Any (First Match)`
+    t =   876.35s         Capturing element debug description
+    t =   876.76s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   876.76s         Checking existence of `Any (First Match)`
+    t =   877.47s         Capturing element debug description
+    t =   877.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   877.78s         Checking existence of `Any (First Match)`
+    t =   878.77s         Capturing element debug description
+    t =   879.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   879.81s         Checking existence of `Any (First Match)`
+    t =   880.48s         Capturing element debug description
+    t =   880.79s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   880.79s         Checking existence of `Any (First Match)`
+    t =   881.40s         Capturing element debug description
+    t =   881.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   881.81s         Checking existence of `Any (First Match)`
+    t =   882.45s         Capturing element debug description
+    t =   882.74s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   882.75s         Checking existence of `Any (First Match)`
+    t =   883.28s         Capturing element debug description
+    t =   883.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   883.81s         Checking existence of `Any (First Match)`
+    t =   884.35s         Capturing element debug description
+    t =   884.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   884.75s         Checking existence of `Any (First Match)`
+    t =   885.27s         Capturing element debug description
+    t =   885.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   885.80s         Checking existence of `Any (First Match)`
+    t =   886.30s         Capturing element debug description
+    t =   886.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   886.73s         Checking existence of `Any (First Match)`
+    t =   887.28s         Capturing element debug description
+    t =   887.81s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   887.81s         Checking existence of `Any (First Match)`
+    t =   888.33s         Capturing element debug description
+    t =   888.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   888.75s         Checking existence of `Any (First Match)`
+    t =   889.46s         Capturing element debug description
+    t =   889.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   889.75s         Checking existence of `Any (First Match)`
+    t =   890.96s         Capturing element debug description
+    t =   891.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   891.80s         Checking existence of `Any (First Match)`
+    t =   892.95s         Capturing element debug description
+    t =   893.77s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   893.77s         Checking existence of `Any (First Match)`
+    t =   895.10s         Capturing element debug description
+    t =   895.82s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   895.82s         Checking existence of `Any (First Match)`
+    t =   897.55s         Capturing element debug description
+    t =   897.75s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   897.75s         Checking existence of `Any (First Match)`
+    t =   898.95s         Capturing element debug description
+    t =   899.80s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   899.80s         Checking existence of `Any (First Match)`
+    t =   902.21s         Capturing element debug description
+    t =   902.73s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   902.73s         Checking existence of `Any (First Match)`
+    t =   904.69s         Capturing element debug description
+    t =   904.78s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =   904.78s         Checking existence of `Any (First Match)`
+    t =   906.04s         Capturing element debug description
+    t =   906.05s     Checking existence of `Any (First Match)`
+    t =   907.62s Collecting debug information to assist test failure triage
+    t =   907.62s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/DemoVideoTests.swift:162: error: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : XCTAssertTrue failed - The room's bots never answered
+SCENE end room-across 1794897492.092586
+    t =   914.92s Added attachment named 'scene-room-across-end'
+SCENE start room-approval 1794897492.9085212
+    t =   914.93s Checking existence of `TextView (First Match)`
+    t =   916.10s Waiting 20.0s for TextField (First Match) to exist
+    t =   917.15s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   917.15s         Checking existence of `TextField (First Match)`
+    t =   917.79s         Capturing element debug description
+    t =   918.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   918.10s         Checking existence of `TextField (First Match)`
+    t =   918.86s         Capturing element debug description
+    t =   919.17s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   919.17s         Checking existence of `TextField (First Match)`
+    t =   919.98s         Capturing element debug description
+    t =   920.18s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   920.19s         Checking existence of `TextField (First Match)`
+    t =   920.98s         Capturing element debug description
+    t =   921.16s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   921.17s         Checking existence of `TextField (First Match)`
+    t =   922.12s         Capturing element debug description
+    t =   923.17s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   923.17s         Checking existence of `TextField (First Match)`
+    t =   923.81s         Capturing element debug description
+    t =   924.11s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   924.11s         Checking existence of `TextField (First Match)`
+    t =   924.76s         Capturing element debug description
+    t =   925.17s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   925.17s         Checking existence of `TextField (First Match)`
+    t =   925.83s         Capturing element debug description
+    t =   926.14s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   926.14s         Checking existence of `TextField (First Match)`
+    t =   926.89s         Capturing element debug description
+    t =   927.10s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   927.10s         Checking existence of `TextField (First Match)`
+    t =   927.75s         Capturing element debug description
+    t =   928.16s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   928.17s         Checking existence of `TextField (First Match)`
+    t =   929.08s         Capturing element debug description
+    t =   929.17s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   929.17s         Checking existence of `TextField (First Match)`
+    t =   929.71s         Capturing element debug description
+    t =   930.11s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   930.11s         Checking existence of `TextField (First Match)`
+    t =   930.92s         Capturing element debug description
+    t =   931.13s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   931.14s         Checking existence of `TextField (First Match)`
+    t =   932.47s         Capturing element debug description
+    t =   933.20s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   933.20s         Checking existence of `TextField (First Match)`
+    t =   934.29s         Capturing element debug description
+    t =   935.14s     Checking `Expect predicate `existsNoRetry == 1` for object TextField (First Match)`
+    t =   935.14s         Checking existence of `TextField (First Match)`
+    t =   936.41s         Capturing element debug description
+    t =   936.42s     Checking existence of `TextField (First Match)`
+    t =   937.97s Collecting debug information to assist test failure triage
+    t =   937.97s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/DemoVideoTests.swift:296: error: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : failed - No composer to send @Mira publish the draft to the blog
+    t =   938.31s Waiting 60.0s for "Run" Button to exist
+    t =   939.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   939.35s         Checking existence of `"Run" Button`
+    t =   940.41s         Capturing element debug description
+    t =   941.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   941.35s         Checking existence of `"Run" Button`
+    t =   942.16s         Capturing element debug description
+    t =   942.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   942.35s         Checking existence of `"Run" Button`
+    t =   943.43s         Capturing element debug description
+    t =   944.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   944.35s         Checking existence of `"Run" Button`
+    t =   945.48s         Capturing element debug description
+    t =   946.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   946.33s         Checking existence of `"Run" Button`
+    t =   947.24s         Capturing element debug description
+    t =   947.34s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   947.34s         Checking existence of `"Run" Button`
+    t =   948.41s         Capturing element debug description
+    t =   949.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   949.35s         Checking existence of `"Run" Button`
+    t =   950.07s         Capturing element debug description
+    t =   950.36s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   950.36s         Checking existence of `"Run" Button`
+    t =   951.04s         Capturing element debug description
+    t =   951.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   951.35s         Checking existence of `"Run" Button`
+    t =   952.05s         Capturing element debug description
+    t =   952.36s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   952.36s         Checking existence of `"Run" Button`
+    t =   953.06s         Capturing element debug description
+    t =   953.37s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   953.37s         Checking existence of `"Run" Button`
+    t =   954.22s         Capturing element debug description
+    t =   954.33s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   954.33s         Checking existence of `"Run" Button`
+    t =   954.99s         Capturing element debug description
+    t =   955.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   955.40s         Checking existence of `"Run" Button`
+    t =   956.43s         Capturing element debug description
+    t =   957.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   957.35s         Checking existence of `"Run" Button`
+    t =   958.63s         Capturing element debug description
+    t =   959.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   959.35s         Checking existence of `"Run" Button`
+    t =   960.55s         Capturing element debug description
+    t =   961.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   961.40s         Checking existence of `"Run" Button`
+    t =   962.52s         Capturing element debug description
+    t =   963.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   963.35s         Checking existence of `"Run" Button`
+    t =   964.37s         Capturing element debug description
+    t =   965.31s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   965.32s         Checking existence of `"Run" Button`
+    t =   966.32s         Capturing element debug description
+    t =   967.38s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   967.38s         Checking existence of `"Run" Button`
+    t =   968.20s         Capturing element debug description
+    t =   968.41s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   968.41s         Checking existence of `"Run" Button`
+    t =   969.15s         Capturing element debug description
+    t =   969.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   969.35s         Checking existence of `"Run" Button`
+    t =   970.22s         Capturing element debug description
+    t =   970.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   970.32s         Checking existence of `"Run" Button`
+    t =   971.08s         Capturing element debug description
+    t =   971.38s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   971.38s         Checking existence of `"Run" Button`
+    t =   972.10s         Capturing element debug description
+    t =   972.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   972.40s         Checking existence of `"Run" Button`
+    t =   973.03s         Capturing element debug description
+    t =   973.33s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   973.33s         Checking existence of `"Run" Button`
+    t =   974.24s         Capturing element debug description
+    t =   974.34s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   974.34s         Checking existence of `"Run" Button`
+    t =   975.09s         Capturing element debug description
+    t =   975.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   975.35s         Checking existence of `"Run" Button`
+    t =   976.36s         Capturing element debug description
+    t =   977.32s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   977.32s         Checking existence of `"Run" Button`
+    t =   978.35s         Capturing element debug description
+    t =   979.41s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   979.41s         Checking existence of `"Run" Button`
+    t =   980.78s         Capturing element debug description
+    t =   981.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   981.40s         Checking existence of `"Run" Button`
+    t =   982.72s         Capturing element debug description
+    t =   983.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   983.36s         Checking existence of `"Run" Button`
+    t =   985.46s         Capturing element debug description
+    t =   986.38s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   986.38s         Checking existence of `"Run" Button`
+    t =   987.51s         Capturing element debug description
+    t =   988.34s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   988.34s         Checking existence of `"Run" Button`
+    t =   989.04s         Capturing element debug description
+    t =   989.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   989.35s         Checking existence of `"Run" Button`
+    t =   989.94s         Capturing element debug description
+    t =   990.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   990.35s         Checking existence of `"Run" Button`
+    t =   991.12s         Capturing element debug description
+    t =   991.33s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   991.33s         Checking existence of `"Run" Button`
+    t =   992.08s         Capturing element debug description
+    t =   992.34s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   992.35s         Checking existence of `"Run" Button`
+    t =   993.25s         Capturing element debug description
+    t =   993.35s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   993.35s         Checking existence of `"Run" Button`
+    t =   994.08s         Capturing element debug description
+    t =   994.38s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   994.38s         Checking existence of `"Run" Button`
+    t =   995.27s         Capturing element debug description
+    t =   995.36s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   995.36s         Checking existence of `"Run" Button`
+    t =   996.33s         Capturing element debug description
+    t =   997.40s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =   997.40s         Checking existence of `"Run" Button`
+    t =   998.36s         Capturing element debug description
+    t =   998.36s     Checking existence of `"Run" Button`
+    t =   999.36s Collecting debug information to assist test failure triage
+    t =   999.36s     Requesting snapshot of accessibility hierarchy for app with pid 45822
+/Users/runner/work/hermes-conduit/hermes-conduit/ConduitScreenshots/DemoVideoTests.swift:176: error: -[ConduitScreenshots.DemoVideoTests testRecordDemoScenes] : failed - No approval card in the room
+    t =  1004.64s Checking existence of `"conversation.close" Button`
+    t =  1004.80s Find the Target Application 'com.milim.relay'
+    t =  1004.90s Get all elements bound by index for: Descendants matching type Button
+    t =  1005.10s Find the Button (Element at index 0)
+    t =  1005.28s Find the Button (Element at index 1)
+    t =  1005.41s Find the Button (Element at index 2)
+    t =  1005.54s Find the Button (Element at index 3)
+    t =  1005.70s Find the Button (Element at index 4)
+    t =  1005.84s Find the Button (Element at index 5)
+    t =  1005.96s Find the Button (Element at index 6)
+    t =  1006.10s Find the Button (Element at index 7)
+    t =  1006.21s Find the Button (Element at index 8)
+    t =  1006.34s Find the Button (Element at index 9)
+    t =  1006.47s Find the Button (Element at index 10)
+    t =  1006.68s Find the Button (Element at index 11)
+    t =  1006.88s Find the Button (Element at index 12)
+    t =  1007.01s Find the Button (Element at index 13)
+    t =  1007.18s Find the Button (Element at index 14)
+    t =  1007.37s Find the Button (Element at index 15)
+    t =  1007.55s Find the Button (Element at index 16)
+    t =  1007.69s Find the Button (Element at index 17)
+    t =  1007.82s Find the Button (Element at index 18)
+    t =  1007.96s Find the Button (Element at index 19)
+    t =  1008.15s Find the "v2.profile.all" Button
+    t =  1008.49s Press Target Application 'com.milim.relay'[0.01, 0.50] for 0.1 seconds, then drag to Target Application 'com.milim.relay'[0.80, 0.50] with velocity of 500.00 pixels per second, and then hold for 0.0 seconds 
+    t =  1008.49s     Wait for com.milim.relay to idle
+    t =  1008.51s     Find the Target Application 'com.milim.relay'
+    t =  1008.61s     Check for interrupting elements affecting "Conduit" Application
+    t =  1008.94s     Synthesize event
+    t =  1008.95s         Find the Target Application 'com.milim.relay'
+    t =  1009.05s         Find the Target Application 'com.milim.relay'
+    t =  1009.17s         Find the Target Application 'com.milim.relay'
+    t =  1009.27s         Find the Target Application 'com.milim.relay'
+    t =  1009.40s         Find the Target Application 'com.milim.relay'
+    t =  1010.64s     Wait for com.milim.relay to idle
+SCENE end room-approval 1794897589.659497
+    t =  1012.18s Added attachment named 'scene-room-approval-end'
+SCENE start needs-you 1794897590.159724
+    t =  1012.18s Waiting 10.0s for "Sessions" Button to exist
+    t =  1013.26s     Checking `Expect predicate `existsNoRetry == 1` for object "Sessions" Button`
+    t =  1013.26s         Checking existence of `"Sessions" Button`
+    t =  1013.56s Tap "Sessions" Button
+    t =  1013.56s     Wait for com.milim.relay to idle
+    t =  1013.56s     Find the "Sessions" Button
+    t =  1013.71s     Check for interrupting elements affecting "Sessions" Button
+    t =  1014.21s     Synthesize event
+    t =  1014.76s     Wait for com.milim.relay to idle
+    t =  1022.68s Waiting 60.0s for "needsYou.banner.open" Button to exist
+    t =  1023.74s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1023.74s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1024.22s         Capturing element debug description
+    t =  1024.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1024.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1025.03s         Capturing element debug description
+    t =  1025.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1025.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1025.86s         Capturing element debug description
+    t =  1026.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1026.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1027.02s         Capturing element debug description
+    t =  1027.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1027.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1028.19s         Capturing element debug description
+    t =  1028.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1028.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1028.89s         Capturing element debug description
+    t =  1029.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1029.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1029.93s         Capturing element debug description
+    t =  1030.77s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1030.77s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1031.01s         Capturing element debug description
+    t =  1031.77s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1031.77s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1031.99s         Capturing element debug description
+    t =  1032.72s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1032.72s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1032.92s         Capturing element debug description
+    t =  1033.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1033.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1034.00s         Capturing element debug description
+    t =  1034.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1034.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1035.05s         Capturing element debug description
+    t =  1035.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1035.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1035.96s         Capturing element debug description
+    t =  1036.71s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1036.72s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1036.89s         Capturing element debug description
+    t =  1037.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1037.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1037.88s         Capturing element debug description
+    t =  1038.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1038.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1038.99s         Capturing element debug description
+    t =  1039.71s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1039.71s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1040.04s         Capturing element debug description
+    t =  1040.77s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1040.78s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1040.96s         Capturing element debug description
+    t =  1041.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1041.71s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1041.88s         Capturing element debug description
+    t =  1042.73s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1042.73s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1042.96s         Capturing element debug description
+    t =  1043.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1043.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1043.89s         Capturing element debug description
+    t =  1044.72s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1044.72s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1044.86s         Capturing element debug description
+    t =  1045.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1045.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1045.88s         Capturing element debug description
+    t =  1046.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1046.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1047.09s         Capturing element debug description
+    t =  1047.71s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1047.71s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1047.93s         Capturing element debug description
+    t =  1048.77s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1048.77s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1049.00s         Capturing element debug description
+    t =  1049.75s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1049.75s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1050.33s         Capturing element debug description
+    t =  1050.73s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1050.73s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1052.28s         Capturing element debug description
+    t =  1052.70s     Checking `Expect predicate `existsNoRetry == 1` for object "needsYou.banner.open" Button`
+    t =  1052.70s         Checking existence of `"needsYou.banner.open" Button`
+    t =  1056.31s Tap "needsYou.banner.open" Button
+    t =  1056.32s     Wait for com.milim.relay to idle
+    t =  1056.34s     Find the "needsYou.banner.open" Button
+    t =  1057.22s     Check for interrupting elements affecting "needsYou.banner.open" Button
+    t =  1058.04s     Synthesize event
+    t =  1058.56s     Wait for com.milim.relay to idle
+    t =  1059.76s Waiting 30.0s for "Run" Button to exist
+    t =  1060.76s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1060.76s         Checking existence of `"Run" Button`
+    t =  1063.99s         Capturing element debug description
+    t =  1064.85s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1064.85s         Checking existence of `"Run" Button`
+    t =  1065.96s         Capturing element debug description
+    t =  1066.80s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1066.80s         Checking existence of `"Run" Button`
+    t =  1070.18s         Capturing element debug description
+    t =  1070.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1070.84s         Checking existence of `"Run" Button`
+    t =  1071.93s         Capturing element debug description
+    t =  1072.77s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1072.77s         Checking existence of `"Run" Button`
+    t =  1074.51s         Capturing element debug description
+    t =  1074.82s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1074.82s         Checking existence of `"Run" Button`
+    t =  1076.37s         Capturing element debug description
+    t =  1076.80s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1076.80s         Checking existence of `"Run" Button`
+    t =  1077.73s         Capturing element debug description
+    t =  1077.83s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1077.83s         Checking existence of `"Run" Button`
+    t =  1078.82s         Capturing element debug description
+    t =  1079.77s     Checking `Expect predicate `existsNoRetry == 1` for object "Run" Button`
+    t =  1079.77s         Checking existence of `"Run" Button`
+    t =  1084.10s Tap "Run" Button
+    t =  1084.10s     Wait for com.milim.relay to idle
+    t =  1084.12s     Find the "Run" Button
+    t =  1085.24s     Check for interrupting elements affecting "Run" Button
+    t =  1085.93s     Synthesize event
+    t =  1086.41s     Wait for com.milim.relay to idle
+    t =  1086.84s Waiting 60.0s for Any (First Match) to exist
+    t =  1087.88s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =  1087.89s         Checking existence of `Any (First Match)`
+    t =  1089.21s         Capturing element debug description
+    t =  1089.85s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =  1089.85s         Checking existence of `Any (First Match)`
+    t =  1091.47s         Capturing element debug description
+    t =  1091.88s     Checking `Expect predicate `existsNoRetry == 1` for object Any (First Match)`
+    t =  1091.89s         Checking existence of `Any (First Match)`
+SCENE end needs-you 1794897675.7177858
+    t =  1098.18s Added attachment named 'scene-needs-you-end'
+    t =  1098.19s Terminate com.milim.relay:45822
+SCENE stop all 1794897677.181526
+    t =  1099.23s Tear Down
+Test Case '-[ConduitScreenshots.DemoVideoTests testRecordDemoScenes]' failed (1103.043 seconds).
+Test Suite 'DemoVideoTests' failed at 2026-11-17 06:41:21.039.
+	 Executed 1 test, with 5 failures (0 unexpected) in 1103.043 (1103.059) seconds
+Test Suite 'ConduitScreenshots.xctest' failed at 2026-11-17 06:41:21.053.
+	 Executed 1 test, with 5 failures (0 unexpected) in 1103.043 (1103.074) seconds
+Test Suite 'Selected tests' failed at 2026-11-17 06:41:21.054.
+	 Executed 1 test, with 5 failures (0 unexpected) in 1103.043 (1103.079) seconds
+2026-11-17 06:42:07.856 xcodebuild[43532:118064] [MT] IDETestOperationsObserverDebug: 1191.572 elapsed -- Testing started completed.
+2026-11-17 06:42:07.857 xcodebuild[43532:118064] [MT] IDETestOperationsObserverDebug: 0.000 sec, +0.000 sec -- start
+2026-11-17 06:42:07.857 xcodebuild[43532:118064] [MT] IDETestOperationsObserverDebug: 1191.572 sec, +1191.572 sec -- end
+
+Test session results, code coverage, and logs:
+	/Users/runner/work/hermes-conduit/hermes-conduit/results/iPhone-18-Pro-Max.xcresult
+
+Failing tests:
+	DemoVideoTests.testRecordDemoScenes()
+	DemoVideoTests.testRecordDemoScenes()
+	DemoVideoTests.testRecordDemoScenes()
+	DemoVideoTests.testRecordDemoScenes()
+	DemoVideoTests.testRecordDemoScenes()
+
+** TEST EXECUTE FAILED **
+
+Testing started

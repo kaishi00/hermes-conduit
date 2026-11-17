@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"bots.newRoom.create" IN identifiers'

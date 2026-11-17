@@ -1,0 +1,70 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 06:03:16,364 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 06:25:30,736 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/mira; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
+2026-11-17 06:25:41,812 WARNING hermes_cli.plugins: Failed to load plugin 'conduit_push': load timed out after 10s (import + register() never returned)
+2026-11-17 06:25:42,030 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_auxiliary_task() after its load timed out; ignored
+2026-11-17 06:25:42,047 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_auxiliary_task() after its load timed out; ignored
+2026-11-17 06:25:42,048 WARNING hermes_cli.plugins: Plugin 'conduit_push' called on_unload() after its load timed out; ignored
+2026-11-17 06:25:42,556 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,557 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,557 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,558 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,558 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,558 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,558 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,558 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:42,560 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,560 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_skill() after its load timed out; ignored
+2026-11-17 06:25:42,560 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,561 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,786 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,786 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,787 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_skill() after its load timed out; ignored
+2026-11-17 06:25:42,787 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,787 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,787 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,787 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_skill() after its load timed out; ignored
+2026-11-17 06:25:42,788 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,794 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,796 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_skill() after its load timed out; ignored
+2026-11-17 06:25:42,797 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,799 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,799 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,803 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,805 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,808 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_skill() after its load timed out; ignored
+2026-11-17 06:25:42,809 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,812 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,813 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,898 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,899 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,899 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,902 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:42,904 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,128 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,128 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,128 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,129 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,129 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,129 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,129 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,129 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_auxiliary_task() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_tool() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,130 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,131 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,131 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_hook() after its load timed out; ignored
+2026-11-17 06:25:43,131 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_middleware() after its load timed out; ignored
+2026-11-17 06:25:43,967 WARNING hermes_cli.plugins: Plugin 'conduit_push' called register_cli_command() after its load timed out; ignored
+2026-11-17 06:26:08,670 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/piko; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
+2026-11-17 06:26:32,651 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/riri; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
+2026-11-17 06:36:23,375 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/riri-2; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
