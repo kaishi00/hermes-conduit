@@ -21,7 +21,9 @@ extension AppState {
     /// failure: the drawer keeps the newest page, and the next list load
     /// tries the full read again.
     func loadDeferredCatalogPages(after client: HermesClient, profile: String, dashboardID: UUID?) {
+        let afterSwitch = profileSwitchFollowUpStart()
         Task { @MainActor [weak self] in
+            await afterSwitch?()
             // A sync abandoned for another profile or dashboard leaves the
             // read to that workspace's own sync.
             guard let self, self.client === client,

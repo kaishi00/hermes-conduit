@@ -1094,6 +1094,13 @@ struct V2Shell: View {
                             $0.showsChatRows = V2SplitLayout.showsChatRows(split: split, path: path(of: tab))
                             $0.hasChatVoiceBeside = chatVoiceBeside
                             $0.isChatCovered = !chatShown
+                            // A hidden tab shows no switch: left alone, its
+                            // readers redrew at each step of the fade.
+                            if !isSelected {
+                                $0.contentFaded = false
+                                $0.contentShift = 0
+                                $0.isPickingProfile = false
+                            }
                         }
                         // The opened tab shows at once and the one left
                         // hides at once. A fade read as slow, and a slide
@@ -1238,9 +1245,10 @@ struct V2Shell: View {
             }
         case .tasks:
             // Inside the stack, as on Chats and Bots: the lists in it stop
-            // above the bar and fade under it.
+            // above the bar and fade under it. Only the tab's own changes
+            // redraw it, not the shell's (`V2ShownUpdates`).
             NavigationStack {
-                tabBarClearance(V2TasksView())
+                tabBarClearance(V2TasksView(appState: appState).equatable())
                     .windowSideContent()
             }
         case .bots:

@@ -2530,7 +2530,9 @@ extension AppState {
         sessionId: String,
         using client: HermesClient
     ) -> Task<Void, Never> {
-        Task { @MainActor [weak self] in
+        let afterSwitch = profileSwitchFollowUpStart()
+        return Task { @MainActor [weak self] in
+            await afterSwitch?()
             await self?.refreshChatResumeContext(sessionId: sessionId, using: client)
         }
     }
@@ -2582,7 +2584,9 @@ extension AppState {
             }
         )
 
+        let afterSwitch = profileSwitchFollowUpStart()
         return Task { @MainActor [weak self] in
+            await afterSwitch?()
             let approvals: [ApprovalActivity]
             do {
                 if let pendingApprovalsWithProfile = self?.chatResumeLifecycleOperations.pendingApprovalsWithProfile {

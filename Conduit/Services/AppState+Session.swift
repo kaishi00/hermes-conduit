@@ -525,7 +525,9 @@ extension AppState {
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
             savedChatListReplacedByLiveList(newestPageOnly: olderPagesDeferred, dashboardID: dashboardID)
-            sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
+            var loadState = sessionCatalogLoadState
+            loadState.markLoaded(owner)
+            if loadState != sessionCatalogLoadState { sessionCatalogLoadState = loadState }
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
@@ -1116,7 +1118,7 @@ extension AppState {
     }
 
     func setActiveSessionTitle(_ title: String) {
-        activeSessionTitle = title
+        if activeSessionTitle != title { activeSessionTitle = title }
         activeSessionTitlesByProfile[activeProfile] = title
         persistActiveSessionTitles()
         publishWidgetSnapshot()

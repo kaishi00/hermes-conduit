@@ -839,10 +839,15 @@ extension AppState {
         // state (#454).
         if profile == activeProfile {
             let index = SessionLiveStatusIndex(rows: rows)
-            if index != liveSessionStatusIndex || liveSessionStatusProfile != profile {
+            // Assigned only when a row's status can change: every publish
+            // redraws the chat list, and an empty registry reads the same
+            // under either profile (a switch's first poll lands in its
+            // slide-in).
+            if index != liveSessionStatusIndex
+                || (liveSessionStatusProfile != profile && !index.statusByID.isEmpty) {
                 liveSessionStatusIndex = index
-                liveSessionStatusProfile = profile
             }
+            liveSessionStatusProfile = profile
         }
         // Lock Screen progress of a turn that ended unseen (#605).
         if liveTurnActivitiesRegistrySnapshot(Self.liveTurnSessionIDs(rows), profile, activeDashboardID?.uuidString) {

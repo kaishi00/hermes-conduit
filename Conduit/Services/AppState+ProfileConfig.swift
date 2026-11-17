@@ -68,13 +68,15 @@ extension AppState {
             }
             guard revision == displayPreferencesWriteRevision else { return }
             let reasoning = ReasoningDisplayMode(display: display)
-            displayPreferences = ProfileDisplayPreferences(
+            let preferences = ProfileDisplayPreferences(
                 showReasoning: reasoning == .show,
                 thinkingOnRequest: reasoning != .off,
                 showToolProgress: display["tool_progress"] as? String != "off",
                 expandToolsByDefault: display["expand_tools"] as? Bool ?? false,
                 showReviews: ProfileDisplayPreferences.showsReviews(display["memory_notifications"])
             )
+            // Mostly what this profile last said: unchanged isn't written.
+            if displayPreferences != preferences { displayPreferences = preferences }
         } catch {
             // A read cut off by a dashboard switch fails here; it must not
             // reset the next dashboard's preferences for a profile of the
@@ -658,7 +660,7 @@ extension AppState {
             // before the replacement client is installed.
             guard self.client === client, revision == busyInputModeWriteRevision,
                   profile == activeProfile else { return }
-            busyInputMode = mode
+            if busyInputMode != mode { busyInputMode = mode }
             defaults.set(mode.rawValue, forKey: key)
         } catch {}
     }
@@ -666,7 +668,8 @@ extension AppState {
     /// Another profile: the busy mode it last had here, until Hermes
     /// answers for it.
     func restoreBusyInputMode() {
-        busyInputMode = defaults.string(forKey: busyInputModeCacheKey).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
+        let mode = defaults.string(forKey: busyInputModeCacheKey).flatMap(BusyInputMode.init(rawValue:)) ?? .interrupt
+        if busyInputMode != mode { busyInputMode = mode }
     }
 
     /// The busy mode last read from or saved to Hermes, per server and profile.
