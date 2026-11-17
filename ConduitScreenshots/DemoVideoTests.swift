@@ -477,7 +477,14 @@ final class DemoVideoTests: XCTestCase {
         waitForKeyboardFocus(composer)
         composer.typeText(text)
         settle(0.5)
-        app.buttons["Send message"].firstMatch.tap()
+        // A chat's composer labels it Send message; a room's is room.composer.send.
+        let roomSend = app.buttons["room.composer.send"].firstMatch
+        let button = roomSend.exists ? roomSend : app.buttons["Send message"].firstMatch
+        guard button.waitForExistence(timeout: 5) else {
+            XCTFail("No send button for \(text)")
+            return
+        }
+        button.tap()
     }
 
     /// Another combined dashboard's chip for `profile` in the profile strip
