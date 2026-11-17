@@ -52,7 +52,7 @@ jobs:
         run: sudo --preserve-env=GITHUB_ENV bash scripts/ci-select-xcode.sh
 
       - name: Install tools
-        run: brew install xcodegen ffmpeg node@22
+        run: brew install xcodegen ffmpeg
 
       - name: Generate Xcode project
         run: xcodegen generate --spec project-tests.yml
@@ -60,7 +60,7 @@ jobs:
       - name: Start the rooms mailbox
         run: |
           set -euo pipefail
-          export PATH="$(brew --prefix node@22)/bin:$PATH"
+          node --version  # the mailbox needs 22.13 or later; the image links a newer one
           git clone -q --depth 1 https://github.com/kaishi00/hermes-conduit-notifier notifier
           PLUGIN_DIR="$PWD/notifier" MAILBOX_WORK="$PWD/demo-hermes/mailbox" \
             bash scripts/app-store/link-demo-hermes.sh mailbox
@@ -93,7 +93,7 @@ jobs:
           w = os.path.join(os.getcwd(), "demo-hermes")
           def entry(name, url, script):
               return {"base": url, "user": os.environ["DEMO_USER"], "password": os.environ["DEMO_PASSWORD"],
-                      "script": f"scripts/app-store/videos/{script}", "bot_chats": f"{w}/{name}/bot-chats.json"}
+                      "script": os.path.abspath(f"scripts/app-store/videos/{script}"), "bot_chats": f"{w}/{name}/bot-chats.json"}
           json.dump({"home": entry("home", os.environ["HOME_URL"], "home.json"),
                      "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json")},
                     open(f"{w}/director.json", "w"), indent=1)

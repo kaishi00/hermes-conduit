@@ -25,6 +25,8 @@ DEMO_WORK="${DEMO_WORK:-$PWD/demo-hermes}"
 STUB_PORT="${STUB_PORT:-8765}"
 DEMO_SRC="${DEMO_SRC:-$DEMO_WORK/src}"
 DEMO_SCRIPT="${DEMO_SCRIPT:-$SCRIPT_DIR/demo-script.json}"
+# Absolute, since the services start from $DEMO_WORK.
+DEMO_SCRIPT="$(cd "$(dirname "$DEMO_SCRIPT")" && pwd)/$(basename "$DEMO_SCRIPT")"
 
 mkdir -p "$DEMO_WORK"
 export HERMES_HOME="$DEMO_WORK/home"
