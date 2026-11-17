@@ -9,16 +9,30 @@
 # comes late, so the video is dated from its end: the test makes a last change
 # on screen, prints the `SCENE stop all` mark and stops the recorder through
 # demo_director.py's stop-recording, so the video ends at that mark.
+# The timeline still drifts on a long recording, so with STILLS_DIR (the
+# test's scene-<name>-start/-end screenshots) align_scenes.py finds each scene
+# by its pictures, and the clock only says where to look.
 #
-# Usage: cut-scenes.sh RAW.mov MARKS OUT_DIR [LEAD_SECONDS]
+# Usage: cut-scenes.sh RAW.mov MARKS OUT_DIR [LEAD_SECONDS] [STILLS_DIR]
 set -euo pipefail
-raw="$1"; marks="$2"; out="$3"; lead="${4:-0.5}"
+raw="$1"; marks="$2"; out="$3"; lead="${4:-0.5}"; stills="${5:-}"
 mkdir -p "$out"
 stop=$(awk '$1 == "SCENE" && $2 == "stop" {print $4}' "$marks" | tail -1)
 [ -n "$stop" ] || { echo "$marks has no SCENE stop mark" >&2; exit 1; }
 duration=$(ffprobe -v error -show_entries format=duration -of csv=p=0 "$raw")
 record=$(python3 -c "print($stop - $duration)")
 cut=0
+if [ -n "$stills" ] && [ -d "$stills" ]; then
+  while read -r name from length how; do
+    ffmpeg -nostdin -v error -y -ss "$from" -t "$length" -i "$raw" \
+      -vf "fps=30,format=yuv420p" -c:v libx264 -profile:v high -crf 18 -an -movflags +faststart \
+      "$out/$name.mp4"
+    echo "$out/$name.mp4: ${length}s from ${from}s (placed by $how)"
+    cut=$((cut + 1))
+  done < <(python3 "$(dirname "$0")/align_scenes.py" "$raw" "$marks" "$stills" "$lead")
+  [ "$cut" -gt 0 ] || { echo "no scenes cut from $raw" >&2; exit 1; }
+  exit 0
+fi
 while read -r name start; do
   end=$(awk -v n="$name" '$1 == "SCENE" && $2 == "end" && $3 == n {print $4}' "$marks" | tail -1)
   [ -n "$end" ] || { echo "scene $name has no end mark" >&2; continue; }

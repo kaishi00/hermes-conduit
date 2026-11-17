@@ -7309,7 +7309,7 @@ clips (kaishi00/hermes-conduit-website)
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
 - Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/demo_script.py` (include_chats), `scripts/app-store/seed_demo.py` (Gateway), the bot pictures in scripts/app-store/avatars
-- Demo videos: `.github/workflows/demo-videos.yml`, `ConduitScreenshots/DemoVideoTests.swift`, `scripts/app-store/videos/home.json`, `scripts/app-store/videos/studio.json`, `scripts/app-store/videos/sam.json` (another person's Hermes, for the multiplayer scene), `scripts/app-store/link-demo-hermes.sh` (the rooms mailbox, the own Link and Sam's Link as a person), `scripts/app-store/demo_director.py`, `scripts/app-store/cut-scenes.sh`
+- Demo videos: `.github/workflows/demo-videos.yml`, `ConduitScreenshots/DemoVideoTests.swift`, `scripts/app-store/videos/home.json`, `scripts/app-store/videos/studio.json`, `scripts/app-store/videos/sam.json` (another person's Hermes, for the multiplayer scene), `scripts/app-store/link-demo-hermes.sh` (the rooms mailbox, the own Link and Sam's Link as a person), `scripts/app-store/demo_director.py`, `scripts/app-store/cut-scenes.sh`, `scripts/app-store/align_scenes.py` (places each scene by its start and end screenshots)
 - Text: `scripts/app-store/README.md`
 - README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
 

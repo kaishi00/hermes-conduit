@@ -189,8 +189,6 @@ jobs:
             grep -E "error:|Test Case|SCENE" "results-$slug.log" || true
             if [ "$trc" -ne 0 ]; then echo "$name scenes exited $trc (see the scene stills)" >> failures.txt; fi
             grep -o "SCENE [a-z]* [a-z-]* [0-9.]*" "results-$slug.log" > "videos/raw-$slug.marks" || true
-            scripts/app-store/cut-scenes.sh "videos/raw-$slug.mov" "videos/raw-$slug.marks" "videos/$slug" \
-              || echo "$name scenes not cut" >> failures.txt
             mkdir -p "videos/$slug/stills"
             xcrun xcresulttool export attachments --path "results/$slug.xcresult" --output-path "videos/$slug/stills" || true
             if [ -f "videos/$slug/stills/manifest.json" ]; then
@@ -207,6 +205,10 @@ jobs:
                       os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
           PY
             fi
+            # After the stills: the cut finds each scene by its start and end shots.
+            scripts/app-store/cut-scenes.sh "videos/raw-$slug.mov" "videos/raw-$slug.marks" "videos/$slug" \
+              0.5 "videos/$slug/stills" \
+              || echo "$name scenes not cut" >> failures.txt
             xcrun simctl shutdown "$udid" || true
           done
           ls -lR videos

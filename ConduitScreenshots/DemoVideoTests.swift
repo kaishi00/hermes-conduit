@@ -226,6 +226,7 @@ final class DemoVideoTests: XCTestCase {
         }
         // The video is dated from its end (cut-scenes.sh): a last change on
         // screen, the mark, and the recorder stopped right then.
+        if !app.buttons["Bots"].firstMatch.exists { goBack() }
         openTab("Bots")
         print("SCENE stop all \(Date().timeIntervalSince1970)")
         direct("stop-recording", [:])
@@ -243,7 +244,11 @@ final class DemoVideoTests: XCTestCase {
     /// since the next one may build on it, but isn't marked.
     private func scene(_ name: String, _ body: () -> Void) {
         let marked = wantedScenes?.contains(name) ?? true
-        if marked { print("SCENE start \(name) \(Date().timeIntervalSince1970)") }
+        if marked {
+            print("SCENE start \(name) \(Date().timeIntervalSince1970)")
+            // cut-scenes.sh finds this frame (and the end one) in the video.
+            snap("scene-\(name)-start")
+        }
         body()
         if marked { print("SCENE end \(name) \(Date().timeIntervalSince1970)") }
         snap("scene-\(name)-end")

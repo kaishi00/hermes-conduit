@@ -192,14 +192,14 @@ async def stop_recording(config, body):
     except ProcessLookupError:
         return
     # Not our child, so polled rather than waited on: SIGINT makes simctl
-    # finish the file and exit.
-    for _ in range(150):
+    # finish the file and exit, which takes a while for a long one.
+    for _ in range(600):
         try:
             os.kill(pid, 0)
         except ProcessLookupError:
             return
         await asyncio.sleep(0.1)
-    raise TimeoutError(f"recorder {pid} still running 15 s after SIGINT")
+    raise TimeoutError(f"recorder {pid} still running 60 s after SIGINT")
 
 
 ACTIONS = {"add-bot": add_bot, "prompt": prompt, "start-room": start_room, "join-room": join_room,

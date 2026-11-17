@@ -105,6 +105,11 @@ four), and `prompt` sends a line in a bot's chat so it works on its own (a
 second bot replying, an approval that shows up in Needs you). At the end the
 test calls `stop-recording`, so the video ends at its last mark, which is
 what `cut-scenes.sh` dates the recording from.
+The recorder writes frames only when the screen changes, so its timeline
+drifts from the clock; the test saves a still as each scene starts and ends
+(`scene-<name>-start.png`, `-end.png`), and `align_scenes.py` finds those
+frames near where the clock puts them, so each cut starts and ends on its
+scene.
 
 The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 `two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
