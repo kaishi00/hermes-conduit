@@ -1178,12 +1178,12 @@ struct V2PulsePage: View {
         VStack(spacing: 0) {
             Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: 0) {
+                PulseBarRow {
                     cardButtons(card, untold: untold, bar: true)
                     if card.isRatable { cardThumbs(card).modifier(PulseBarDivider()) }
                 }
                 VStack(spacing: 0) {
-                    HStack(spacing: 0) { cardButtons(card, untold: untold, bar: true) }
+                    PulseBarRow { cardButtons(card, untold: untold, bar: true) }
                     if card.isRatable {
                         Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
                         HStack(spacing: 0) { Spacer(minLength: 0); cardThumbs(card) }
@@ -1376,9 +1376,10 @@ struct V2PulsePage: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                // One row when it fits; a pick's extra buttons can crowd a
-                // narrow phone or large text, so the thumbs then go below
-                // and the buttons scroll sideways.
+                // One row when it fits; with three buttons on a narrow phone
+                // (375 pt), a pick's extra buttons or large text, the thumbs
+                // go below and the buttons scroll sideways. Labels stay on
+                // one line either way (PulseActionStyle).
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 8) {
                         cardButtons(card, untold: untold)
@@ -1464,22 +1465,18 @@ struct V2PulsePage: View {
     @ViewBuilder private func proposalRow(_ card: PulseCard) -> some View {
         if let proposal = card.proposal {
             if proposal.state == .waiting {
-                HStack(spacing: 8) {
-                    addButton(card, proposal)
-                    Button {
-                        Haptics.light()
-                        dismissProposal(card)
-                    } label: {
-                        Text(AppLocalization.string("Not now"))
-                            .scaledFont(.footnote.weight(.semibold))
+                // Side by side, or one over the other at large text, each
+                // label on one line.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        addButton(card, proposal)
+                        proposalNotNowButton(card)
+                        Spacer(minLength: 0)
                     }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .tint(.gray)
-                    .disabled(isBusy(card))
-                    .accessibilityHint(Text(AppLocalization.string("Pulse won't add it", table: .pulse)))
-                    .accessibilityIdentifier("pulse.card.proposal-not-now")
-                    Spacer(minLength: 0)
+                    VStack(alignment: .leading, spacing: 8) {
+                        addButton(card, proposal)
+                        proposalNotNowButton(card)
+                    }
                 }
             } else {
                 VStack(alignment: .leading, spacing: 4) {
@@ -1513,6 +1510,21 @@ struct V2PulsePage: View {
         }
     }
 
+    /// A suggestion's Not now: it won't be added, for good.
+    private func proposalNotNowButton(_ card: PulseCard) -> some View {
+        Button {
+            Haptics.light()
+            dismissProposal(card)
+        } label: {
+            Text(AppLocalization.string("Not now"))
+                .scaledFont(.footnote.weight(.semibold))
+        }
+        .modifier(PulseActionStyle(bar: false, prominent: false, tint: .gray))
+        .disabled(isBusy(card))
+        .accessibilityHint(Text(AppLocalization.string("Pulse won't add it", table: .pulse)))
+        .accessibilityIdentifier("pulse.card.proposal-not-now")
+    }
+
     private func addButton(_ card: PulseCard, _ proposal: PulseProposal) -> some View {
         Button {
             Haptics.selection()
@@ -1528,9 +1540,7 @@ struct V2PulsePage: View {
             .labelStyle(.titleAndIcon)
             .scaledFont(.footnote.weight(.semibold))
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .tint(.conduitAccent)
+        .modifier(PulseActionStyle(bar: false, prominent: true, tint: .conduitAccent))
         .accessibilityHint(Text(proposal.isEvent ? AppLocalization.string("Adds it to your calendar", table: .pulse)
                                                  : AppLocalization.string("Adds it to your reminders", table: .pulse)))
         .disabled(isBusy(card))
@@ -2471,6 +2481,10 @@ struct PulseLeftOutSheet: View {
 
 /// A Pulse card's action: a small pill in a card of words, a full-width
 /// segment of the bar in the Pulse frame (design D).
+/// A card's button. Its label stays on one line at its own width: a row
+/// that can't hold its buttons that way is laid out another way by its
+/// ViewThatFits, never squeezed until a word breaks ("Do / ne" beside Do it
+/// and Not now, which an HStack offering each button an equal share did).
 struct PulseActionStyle: ViewModifier {
     let bar: Bool
     let prominent: Bool
@@ -2486,16 +2500,21 @@ struct PulseActionStyle: ViewModifier {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.small)
                 .tint(tint)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         } else {
             content
                 .buttonStyle(.bordered)
                 .controlSize(.small)
                 .tint(tint)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
         }
     }
 }
 
-/// One segment of the Pulse frame's bar: as wide as it can be, 44 pt tall.
+/// One segment of the Pulse frame's bar: its label on one line, as wide as
+/// `PulseBarRow` makes it, 44 pt tall.
 struct PulseBarButtonStyle: ButtonStyle {
     let prominent: Bool
     let tint: Color
@@ -2503,8 +2522,8 @@ struct PulseBarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .lineLimit(2)
-            .multilineTextAlignment(.center)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(prominent ? tint : (tint == .gray ? Color.secondary : Color.primary.opacity(0.85)))
             .padding(.horizontal, 12)
             .padding(.vertical, 6)
@@ -2520,6 +2539,37 @@ struct PulseBarDivider: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .leading) {
             Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 1)
+        }
+    }
+}
+
+/// The Pulse frame's bar: each segment at its one-line width, and what's
+/// left shared by the segments that stretch (the thumbs keep their 44 pt).
+/// Its ideal width is the segments' together, so the bar's ViewThatFits
+/// moves on to the next layout when they don't fit, rather than an HStack's
+/// equal shares squeezing a long label below its width.
+struct PulseBarRow: Layout {
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let ideals = subviews.map { $0.sizeThatFits(.unspecified) }
+        let width = ideals.reduce(0) { $0 + $1.width }
+        let height = ideals.map(\.height).max() ?? 0
+        guard let offered = proposal.width, offered.isFinite else { return CGSize(width: width, height: height) }
+        return CGSize(width: max(width, offered), height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let widths = subviews.map { $0.sizeThatFits(.unspecified).width }
+        let stretches = zip(subviews, widths).map { subview, ideal in
+            subview.sizeThatFits(ProposedViewSize(width: .infinity, height: nil)).width > ideal + 0.5
+        }
+        let stretching = stretches.filter { $0 }.count
+        let spare = stretching > 0 ? max(0, bounds.width - widths.reduce(0, +)) / CGFloat(stretching) : 0
+        var x = bounds.minX
+        for (index, subview) in subviews.enumerated() {
+            let width = widths[index] + (stretches[index] ? spare : 0)
+            subview.place(at: CGPoint(x: x, y: bounds.minY), anchor: .topLeading,
+                          proposal: ProposedViewSize(width: width, height: bounds.height))
+            x += width
         }
     }
 }

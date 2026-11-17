@@ -160,7 +160,12 @@ extension AppState {
             guard dashboard == activeDashboardID else { return }
             // An answer with no list (an error body) is a failed read.
             guard let listed = response["waiting"] as? [[String: Any]] else { continue }
-            let read = listed.compactMap { NeedsYouItem(host: $0, profile: profile) }
+            let gatewayID = (response["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let read = listed.compactMap { row -> NeedsYouItem? in
+                var item = NeedsYouItem(host: row, profile: profile)
+                item?.relayGatewayID = gatewayID.flatMap { $0.isEmpty ? nil : $0 }
+                return item
+            }
             needsYou.apply(read, profile: profile, dashboardID: dashboard) { [weak self] item in
                 self?.isOpenChat(item) ?? false
             }
@@ -196,6 +201,12 @@ extension AppState {
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
             }
+            // Its answer goes through the relay, sealed for the profile's
+            // pairing like a notification's: the card came from no push
+            // that named its gateway (issue 2683).
+            if let gatewayID = needsYouCardGatewayID(item) {
+                PushNotificationService.shared.retainRelayGatewayID(gatewayID, forRequestID: pushed.requestId)
+            }
             let openIDs = presentationCacheSessionIDs(for: openID)
             let profile = presentationProfile(for: openID)
             recordNotificationDecision(
@@ -211,6 +222,43 @@ extension AppState {
                 includePendingClarifications: true
             )
         }
+    }
+
+    /// The relay gateway a question's card drawn from its row answers
+    /// through: the one the row's list named, else the profile's pairing
+    /// key on this iPhone, else the gateway the host last reported for it.
+    func needsYouCardGatewayID(_ item: NeedsYouItem) -> String? {
+        let notifications = PushNotificationService.shared
+        return Self.needsYouCardGatewayID(
+            listed: item.relayGatewayID,
+            dashboardID: activeDashboardID,
+            profile: item.profile,
+            installationID: notifications.installationID,
+            records: PushNotificationService.e2eKeyStore.records(),
+            reported: activeDashboardID.flatMap { reportedRelayGatewayID(of: $0, profile: item.profile) }
+        )
+    }
+
+    nonisolated static func needsYouCardGatewayID(
+        listed: String?,
+        dashboardID: UUID?,
+        profile: String,
+        installationID: String?,
+        records: [E2EKeyRecord],
+        reported: String?
+    ) -> String? {
+        if let listed, !listed.isEmpty { return listed }
+        // An older plugin's list names none: a key this iPhone holds for
+        // the profile names its gateway, so an encrypted pairing never
+        // gets a plaintext answer.
+        let keyed = records
+            .filter { record in
+                record.installationID == installationID && record.retiredAt == nil
+                    && record.dashboardID == dashboardID?.uuidString
+                    && record.profile.map { profilesMatch($0, profile) } == true
+            }
+            .max { $0.createdAt < $1.createdAt }
+        return keyed?.gatewayID ?? reported
     }
 
     /// Reads while Conduit is on screen, every `pollInterval` seconds. The

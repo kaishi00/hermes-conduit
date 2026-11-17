@@ -30,6 +30,44 @@ extension ChatOnScreenTests {
         XCTAssertNil(NeedsYouItem(host: ["id": "x", "kind": "other", "session_ids": ["s"]], profile: "atlas"))
     }
 
+    /// Issue 2683: a card drawn from its row answers through the gateway
+    /// the list named, else the profile's pairing key, else the gateway the
+    /// host reported; and its answer is then sealed, never plaintext.
+    func testANeedsYouCardAnswersThroughItsProfilesGatewaySealed() throws {
+        let dashboard = UUID()
+        func key(_ gateway: String, profile: String?, installation: String = "inst", dashboardID: UUID? = nil,
+                 at: TimeInterval = 1, retired: Bool = false) -> E2EKeyRecord {
+            var record = E2EKeyRecord(kid: "kid-\(gateway)", secret: Data(repeating: 7, count: 32), installationID: installation,
+                                      gatewayID: gateway, dashboardID: (dashboardID ?? dashboard).uuidString, profile: profile,
+                                      createdAt: Date(timeIntervalSince1970: at))
+            if retired { record = record.retired(at: Date()) }
+            return record
+        }
+        func resolve(listed: String? = nil, records: [E2EKeyRecord], reported: String? = nil) -> String? {
+            AppState.needsYouCardGatewayID(listed: listed, dashboardID: dashboard, profile: "Atlas",
+                                           installationID: "inst", records: records, reported: reported)
+        }
+        let records = [
+            key("gw-old", profile: "atlas", at: 1),
+            key("gw-atlas", profile: "atlas", at: 2),
+            key("gw-retired", profile: "atlas", at: 3, retired: true),
+            key("gw-other-phone", profile: "atlas", installation: "other", at: 4),
+            key("gw-other-dashboard", profile: "atlas", dashboardID: UUID(), at: 5),
+            key("gw-default", profile: "default", at: 6),
+        ]
+        XCTAssertEqual(resolve(listed: "gw-listed", records: records, reported: "gw-reported"), "gw-listed")
+        XCTAssertEqual(resolve(records: records, reported: "gw-reported"), "gw-atlas", "the profile's newest current key")
+        XCTAssertEqual(resolve(records: [key("gw-default", profile: "default")], reported: "gw-reported"), "gw-reported")
+        XCTAssertNil(resolve(records: []))
+
+        let body = PushNotificationService.respondBody(requestID: "conduit-push-abc123def456", answer: "staging",
+                                                       relayGatewayID: resolve(records: records))
+        let sealed = try PushNotificationService.sealedRespondBody(body, requestID: "conduit-push-abc123def456",
+                                                                   installationID: "inst", records: records)
+        XCTAssertNotEqual(sealed["answer"], "staging", "an encrypted pairing never gets the answer in plaintext")
+        XCTAssertEqual(sealed["gateway_id"], "gw-atlas")
+    }
+
     /// Issue 2556: a question's row carries its card as the push did, for
     /// the chat to draw when Hermes drew none there.
     func testAQuestionsRowCarriesItsCard() throws {
