@@ -2802,7 +2802,8 @@ Bots list's rows, a combined dashboard's bots, a Bot Chat's agent and glow,
 group room bubbles, pills and Group Info, the drag into a room) · profile
 pictures where a profile is a bot (the profile picker and strip, chat rows,
 an ordinary chat's agent; ProfileAvatarView) · New Bot and Edit Bot's Face row
-and preview (see Bots: create and edit) · the ring, glow and room color (see
+and preview (see Bots: create and edit) · Duplicate (the copy keeps the
+source's face with the rest of its look) · the ring, glow and room color (see
 Profile glow color) · rooms over Links (the face goes as the bot's picture;
 see Linked Rooms) · Hermes Desktop (not needed: it ignores `face` and draws
 its own initial, on the face's color for a bot made here) · Watch, CarPlay,
@@ -2823,6 +2824,8 @@ Home line)
 - The faces are drawn by the app, never saved as pictures: the bot still has no picture, and the first one it's given replaces the face (Eric, 2026-11-17).
 - Which face is `ui_meta['hermes-bots'].face`, written when Conduit makes the bot (the face New Bot shows, the first free one unless another was picked) and when a face is picked in Edit Bot, so every device shows the same one. A bot without it wears the first face no other bot on its Hermes holds, in the order the bots were made (the main bot first, then ui_meta's `created`, then the name), so reordering or hiding never moves a face. Two bots that hold the same face both keep it: it was picked.
 - A face's color is the bot's color while Hermes keeps none for it: its ring, glow, room color and the color its face sits on. A color Hermes keeps (picked earlier here, or on Desktop) stays, under the face. Picking a face writes its color too, so Desktop's initial matches.
+- New Bot writes the face its preview showed, taken when Create is tapped; on another combined dashboard that's the first face its visible bots leave free, as that's all this phone has of them.
+- Duplicate copies the look, its `face` included, as it copies the color and title: the copy looks like its source until a face is picked for it.
 - The twelve are handed out in order, colors far apart for the first few bots; past twelve the parts and colors keep varying (the hue steps by the golden angle).
 
 **Open gaps**

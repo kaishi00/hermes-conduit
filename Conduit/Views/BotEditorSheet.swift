@@ -997,6 +997,9 @@ struct BotEditorSheet: View {
         error = nil
         var draft = self.draft
         let target = isCreating ? createDashboardID : nil
+        // A new bot keeps the face its preview showed, whatever the roster
+        // reads while it's made or the dashboard it switches to lists.
+        if isCreating, draft.face == nil { draft.face = shownFace }
         Task {
             let result: BotSaveResult
             var createdName: String?
