@@ -174,11 +174,8 @@ struct ChatRowFacts: Equatable {
 /// The AppState the rows act on (send a reaction, answer a card), held
 /// without observing it.
 struct ChatRowActions: Equatable {
-    let appState: AppState
-
-    nonisolated static func == (lhs: ChatRowActions, rhs: ChatRowActions) -> Bool {
-        lhs.appState === rhs.appState
-    }
+    /// Compared by instance.
+    @IdentityEquatable var appState: AppState
 }
 
 private struct ChatRowStateKey: EnvironmentKey {

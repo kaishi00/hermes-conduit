@@ -20,13 +20,16 @@ struct BackgroundChat: Equatable {
     let sessionIDs: Set<String>
     /// The id its saved copy is kept under, when its row is listed.
     let durableSessionID: String?
-    let title: String
+    /// Two entries for the same chat state are equal whatever they're
+    /// titled.
+    @EqualityIgnored var title: String
     let dashboardID: UUID
     let profile: String
     /// Kept in memory only, as a Bot Chat's copy is: never saved as a file.
-    let isBotChat: Bool
+    @EqualityIgnored var isBotChat: Bool
     /// The chat's own transcript and turn, which its events apply to.
-    let state: ChatState
+    /// Compared by instance.
+    @IdentityEquatable var state: ChatState
     /// When the chat was left. The list keeps the newest first by when each
     /// joined it.
     let leftAt: Date
@@ -84,15 +87,6 @@ struct BackgroundChat: Equatable {
             state: state,
             leftAt: leftAt
         )
-    }
-
-    static func == (lhs: BackgroundChat, rhs: BackgroundChat) -> Bool {
-        lhs.state === rhs.state
-            && lhs.sessionIDs == rhs.sessionIDs
-            && lhs.durableSessionID == rhs.durableSessionID
-            && lhs.dashboardID == rhs.dashboardID
-            && lhs.profile == rhs.profile
-            && lhs.leftAt == rhs.leftAt
     }
 
     func answers(to sessionID: String) -> Bool {

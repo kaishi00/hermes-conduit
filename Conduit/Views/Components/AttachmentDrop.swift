@@ -188,12 +188,8 @@ enum AttachmentDrop {
 /// or the room it was dropped on, so a request never reaches another.
 struct AttachmentDropRequest: Equatable {
     let id = UUID()
-    let owner: AnyHashable
-    let providers: [NSItemProvider]
-
-    static func == (lhs: AttachmentDropRequest, rhs: AttachmentDropRequest) -> Bool {
-        lhs.id == rhs.id
-    }
+    @EqualityIgnored var owner: AnyHashable
+    @EqualityIgnored var providers: [NSItemProvider]
 }
 
 extension Notification.Name {

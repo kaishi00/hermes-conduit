@@ -156,6 +156,27 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core.
+- **No hand-written `==`.** What an incremental build recompiles depends
+  on the change, and one kind cost a near-full rebuild: adding any member,
+  stored or computed, to a type with a hand-written `static func ==`
+  recompiled 718 of the app's 766 files (measured on a Mac with CI's build
+  command, Xcode 27.2, 2026-11-17), as almost every file uses `==` and Swift
+  resolves the operator across all of them. With a synthesized `==` the
+  same change recompiled 3 (`TranscriptCellEnvironment`) to 46 files, 217
+  for `BackgroundChat`, a new AppState property about 280, a body edit 1. One such change (#2665, `ConversationAgentIdentity`)
+  sent the next PRs' Smoke builds to 1,500 s of compile from main's cache.
+  So types let Swift synthesize `==` and wrap a field that compares another
+  way in `Conduit/Services/EquatableWrappers.swift`'s `@EqualityIgnored`,
+  `@IdentityEquatable` or `@OptionalIdentityEquatable` (that file stays in
+  `Conduit/Services`: the same file in `Conduit/Models` brought the 719-file
+  rebuilds back for every type using a wrapper, for reasons the build log
+  doesn't show);
+  `check-hand-written-equality.py` fails a new hand-written `==` and lists
+  the files that still hold one. Two more full rebuilds are known and left:
+  a removed or renamed Swift file turns incremental compilation off for its
+  target ("inputs were used in the previous compilation but not in this
+  one"), and any change to the app's interface recompiles every test file,
+  since they `@testable import Conduit`.
 
 Each build posts two notices on its job: the slowest build phases from
 `-showBuildTimingSummary` (with the cache it restored and the seconds spent
