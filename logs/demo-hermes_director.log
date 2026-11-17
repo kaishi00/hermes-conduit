@@ -1,0 +1,12 @@
+/add-bot {"dashboard": "home", "bot": "mira"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"bot": "piko", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "riri"}
+"POST /add-bot HTTP/1.1" 200 -
+/prompt {"dashboard": "studio", "text": "Draft the release notes for 2.4", "profile": "lucien"}
+"POST /prompt HTTP/1.1" 200 -
+/prompt {"text": "Clear out the old mockups", "profile": "chibi-conduit", "dashboard": "studio"}
+"POST /prompt HTTP/1.1" 200 -
+/stop-recording {}
+"POST /stop-recording HTTP/1.1" 200 -

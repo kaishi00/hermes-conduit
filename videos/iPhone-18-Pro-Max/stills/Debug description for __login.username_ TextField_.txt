@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type TextField
+    ↪︎Find: Elements matching predicate '"login.username" IN identifiers'
