@@ -189,6 +189,15 @@ extension GroupChatModelsTests {
         XCTAssertTrue(justMe.justMe)
         XCTAssertTrue(justMe.justMeOffered)
         XCTAssertTrue(justMe.joined.isEmpty)
+
+        // Removed on the Hermes (plugin 0.177.23): no row on any phone,
+        // whatever this one dismissed; an older plugin says nothing.
+        XCTAssertFalse(try XCTUnwrap(RoomInvitesClient.invite(invitesInvite("conduit-4", status: "cancelled"))).removed)
+        var gone = invitesInvite("conduit-4", status: "cancelled", reason: "withdrawn")
+        gone["removed"] = true
+        let removedHere = try XCTUnwrap(RoomInvitesClient.invite(gone))
+        XCTAssertTrue(removedHere.removed)
+        XCTAssertTrue(RoomInviteRows.rows([removedHere], dismissed: []).isEmpty)
     }
 
     // MARK: - Answering
@@ -461,6 +470,40 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomInviteRows, [], "the read from before the sign-out is dropped")
     }
 
+    /// Removing a finished invite removes it on the Hermes too, where the
+    /// plugin takes that, so every phone stops listing it; one waiting on
+    /// you stays, and an older plugin is only asked nothing.
+    @MainActor
+    func testRemovingAFinishedInviteRemovesItOnTheHermes() async {
+        let routes = InvitesRoutes(invites: [
+            invitesInvite("conduit-1", status: "cancelled", reason: "withdrawn"),
+            invitesInvite("conduit-2"),
+        ])
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.count == 2 })
+        let finished = "lk1a2b3c4d5e6f/conduit-1"
+
+        // An older plugin: hidden on this phone only.
+        appState.dismissRoomInvite(finished)
+        XCTAssertEqual(appState.linkedRoomInviteRows.map(\.roomID), ["conduit-2"])
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(routes.removes, [])
+
+        var report = invitesPluginReport
+        report["capabilities"] = [RoomInvitesClient.capability, RoomInvitesClient.removeCapability]
+        appState.applyNotifierPluginReport(report)
+        appState.dismissRoomInvite(finished)
+        await invitesWait("the remove", until: { appState.linkedRoomInvite(finished)?.removed == true })
+        XCTAssertEqual(routes.removes, ["conduit-1"])
+        // One waiting on you isn't removed anywhere.
+        appState.dismissRoomInvite("lk1a2b3c4d5e6f/conduit-2")
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(routes.removes, ["conduit-1"])
+    }
+
     /// A room on its way when Conduit connects (an invite you joined, read
     /// by the connection's own reads) is followed, though no foreground
     /// read or answer started a follow.
@@ -667,6 +710,8 @@ private final class InvitesRoutes {
     /// it was made.
     var invites: [[String: Any]]
     private(set) var unlinks = 0
+    /// The rooms whose invites a remove named.
+    private(set) var removes: [String] = []
     /// The next invites read waits until `answerHeldRead()`.
     var holdsNextRead = false
     /// Invites reads fail from now on.
@@ -700,6 +745,12 @@ private final class InvitesRoutes {
             answeringHeld = false
             if answerTimesOut { throw DashboardTicketBridgeError.http(status: 504, detail: "") }
             return ["ok": true, "invite": answered ?? [:]]
+        }
+        if path == "\(RoomInvitesClient.path)/remove", method == "POST" {
+            removes.append(body?["room_id"] as? String ?? "")
+            var removed = invites.first { $0["room_id"] as? String == body?["room_id"] as? String } ?? [:]
+            removed["removed"] = true
+            return ["ok": true, "invite": removed]
         }
         if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
             unlinks += 1

@@ -734,6 +734,21 @@ enum BotPortraitRoom: Equatable {
     /// One is: this bot is in it, or could be added.
     case member
     case notMember
+
+    /// What a portrait's tap does while a room is being started, for
+    /// VoiceOver; nil when none is (each portrait says its own).
+    var hint: String? {
+        switch self {
+        case .off: return nil
+        case .member: return AppLocalization.string("Takes this bot out of the new room.", table: .bots)
+        case .notMember: return AppLocalization.string("Adds this bot to the new room.", table: .bots)
+        }
+    }
+
+    /// The part of a portrait's VoiceOver value that says it's in the room.
+    var valuePart: String? {
+        self == .member ? AppLocalization.string("In the new room", table: .bots) : nil
+    }
 }
 
 /// Bots Home's one tip (Eric, 2026-11-06, #1850): touch and hold a bot for
@@ -1019,6 +1034,10 @@ enum BotPortraitStatus: Equatable {
     case inRooms([String])
     /// Its own ask to another bot is unanswered (an ask_out waiting).
     case waitingOn(String)
+    /// A chat of its replying, its Bot Chat's own turn included: not a
+    /// workstream, so it never says "working" (Eric, 2026-11-16: the
+    /// coordinator talking read as a workstream running).
+    case replying
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
@@ -1042,11 +1061,12 @@ enum BotPortraitStatus: Equatable {
         }) {
             return .helping(ask.otherBot)
         }
-        if let work, work.workingCount > 0 { return .working(work.workingCount + chats.working) }
+        // Its workstreams only: its chats replying aren't work running.
+        if let work, work.workingCount > 0 { return .working(work.workingCount) }
         let agents = snapshot?.botChatAgentCount ?? 0
         if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
-        if chats.working > 0 { return .working(chats.working) }
+        if chats.working > 0 { return .replying }
         guard let snapshot = work else { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
@@ -1080,6 +1100,7 @@ enum BotPortraitStatus: Equatable {
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms", table: .bots)
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)", table: .bots)
+        case .replying: return AppLocalization.string("Replying", table: .bots)
         // Idle says nothing: the portrait's still ring says it.
         case .idle: return ""
         }
@@ -1088,7 +1109,7 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working, .agents, .inRooms: return .conduitAccent
+        case .helping, .working, .agents, .inRooms, .replying: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
@@ -1101,6 +1122,7 @@ enum BotPortraitStatus: Equatable {
         case .agents: return "person.2.fill"
         case .inRooms: return "bubble.left.and.bubble.right.fill"
         case .waitingOn: return "hourglass"
+        case .replying: return "ellipsis.bubble.fill"
         case .idle: return nil
         }
     }
@@ -1323,8 +1345,14 @@ struct BotPortraitCell<MenuContent: View>: View {
             guard shell.isTabActive else { return }
             await appState.refreshBotWork(profile: bot.name)
         }
-        .onChange(of: work.snapshot(bot.name)?.readyCount) { old, new in
-            if let old, let new, new > old { noteFinished() }
+        // Counted by a read on one dashboard: the phone's copy of an earlier
+        // read catching up, or a switch onto another whose bot of the same
+        // name has more ready, isn't a result coming back (Eric, 2026-11-16:
+        // opening a far bot flashed another bot's ring).
+        .onChange(of: ReadyCount(dashboardID: appState.activeDashboardID, snapshot: work.snapshot(bot.name))) { old, new in
+            if old.dashboardID == new.dashboardID, !old.isKept, let was = old.count, let now = new.count, now > was {
+                noteFinished()
+            }
         }
         .onChange(of: isShown) { _, shown in
             if shown && finishPending { noteFinished() }
@@ -1390,11 +1418,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private var portraitHint: String {
-        switch room {
-        case .off: return AppLocalization.string("Opens this bot's chat.", table: .bots)
-        case .member: return AppLocalization.string("Takes this bot out of the new room.", table: .bots)
-        case .notMember: return AppLocalization.string("Adds this bot to the new room.", table: .bots)
-        }
+        room.hint ?? AppLocalization.string("Opens this bot's chat.", table: .bots)
     }
 
     private func beginTargeting() {
@@ -1608,6 +1632,19 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// A result came back (the bot's ready count went up): one ripple and a
     /// check on the badge, then still. Off screen, it waits for Bots Home
     /// to show again.
+    /// A bot's ready count and the dashboard it was read on.
+    private struct ReadyCount: Equatable {
+        let dashboardID: UUID?
+        let count: Int?
+        let isKept: Bool
+
+        init(dashboardID: UUID?, snapshot: BotWorkSnapshot?) {
+            self.dashboardID = dashboardID
+            count = snapshot?.readyCount
+            isKept = snapshot?.isKept ?? false
+        }
+    }
+
     private func noteFinished() {
         guard isShown else {
             finishPending = true
@@ -1625,6 +1662,31 @@ struct BotPortraitCell<MenuContent: View>: View {
     }
 
     private func pill(_ status: BotPortraitStatus) -> some View {
+        BotStatusPill(status: status)
+    }
+
+    private func accessibilityValue(_ status: BotPortraitStatus) -> String {
+        let parts = [
+            bot.isPinned ? AppLocalization.string("Pinned") : "",
+            room.valuePart ?? "",
+            status == .idle ? "" : status.title,
+        ]
+        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
+    }
+}
+
+/// A bot's status pill on Bots Home, this dashboard's and another combined
+/// dashboard's alike.
+struct BotStatusPill: View {
+    let status: BotPortraitStatus
+
+    /// The ⓘ's words, which another combined dashboard's portrait shares.
+    static var overviewTitle: String { AppLocalization.string("Overview", table: .bots) }
+    static func overviewLabel(_ bot: BotProfile) -> String {
+        AppLocalization.string("\(bot.displayLabel)’s overview", table: .bots)
+    }
+
+    var body: some View {
         HStack(spacing: 4) {
             if let symbol = status.symbol {
                 Image(systemName: symbol)
@@ -1646,15 +1708,6 @@ struct BotPortraitCell<MenuContent: View>: View {
         // Past accessibility2 the pill's words outgrow a two-column cell
         // and truncate to nothing; the overview sheet says them in full.
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)
-    }
-
-    private func accessibilityValue(_ status: BotPortraitStatus) -> String {
-        let parts = [
-            bot.isPinned ? AppLocalization.string("Pinned") : "",
-            room == .member ? AppLocalization.string("In the new room", table: .bots) : "",
-            status == .idle ? "" : status.title,
-        ]
-        return parts.filter { !$0.isEmpty }.joined(separator: ", ")
     }
 }
 
@@ -1827,7 +1880,7 @@ struct BotOverviewSheet: View {
                    chats.waiting + chats.working > 0 {
                     let parts = [
                         chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
-                        chats.working > 0 ? BotPortraitStatus.working(chats.working).title : nil,
+                        chats.working > 0 ? BotPortraitStatus.replying.title : nil,
                     ].compactMap { $0 }
                     Label {
                         Text(verbatim: parts.joined(separator: " · "))
@@ -2181,7 +2234,7 @@ struct BotPortraitMotion: ViewModifier {
 
     private var isWorking: Bool {
         switch status {
-        case .working, .helping, .agents: return true
+        case .working, .helping, .agents, .replying: return true
         default: return false
         }
     }

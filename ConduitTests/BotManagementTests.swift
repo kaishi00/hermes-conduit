@@ -222,6 +222,29 @@ extension BotModeTests {
         XCTAssertNil(params["provider"])
     }
 
+    /// A bot made on another combined dashboard than the sheet read sends
+    /// that dashboard's defaults, never the first one's model, Start From or
+    /// skills, and keeps what the person wrote (Eric, 2026-11-16).
+    func testADraftMadeOnAnotherDashboardDropsWhatWasReadOnTheFirst() {
+        var draft = BotEditorDraft()
+        draft.name = "Scout"
+        draft.description = "Deals"
+        draft.cloneFrom = "atlas"
+        draft.provider = "openrouter"
+        draft.model = "x/y"
+        draft.capabilities = BotCapabilities()
+        draft.capabilitiesBaseline = BotCapabilities()
+        let moved = draft.readOnAnotherDashboard
+        XCTAssertEqual(moved.cloneFrom, BotCreateRequest.mainProfile)
+        XCTAssertEqual(moved.provider, "")
+        XCTAssertEqual(moved.model, "")
+        XCTAssertNil(moved.capabilities)
+        XCTAssertNil(moved.capabilitiesBaseline)
+        XCTAssertEqual(moved.name, "Scout")
+        XCTAssertEqual(moved.description, "Deals")
+        XCTAssertEqual(moved.readOnAnotherDashboard, moved, "a retry sends the same")
+    }
+
     func testCreateParamsCarryAFreshStartAndAModelPin() {
         var draft = BotEditorDraft()
         draft.cloneFrom = ""

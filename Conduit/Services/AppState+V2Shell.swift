@@ -17,7 +17,25 @@ extension AppState {
     /// ring matches the bot (build 248: the rings took the name's hue
     /// whenever Hermes kept no color).
     func botColor(_ bot: BotProfile) -> Color {
-        Self.botColor(bot, glow: profileGlowColors()[bot.name])
+        if let carried = carriedCombinedGlow(bot.name) { return carried.color }
+        return Self.botColor(bot, glow: profileGlowColors()[bot.name])
+    }
+
+    /// A combined dashboard just switched to: the color its bot wore on the
+    /// grid as another dashboard's, until this one's profiles are in. Until
+    /// then its colors are drawn from part of its profiles (the one in use
+    /// alone), so a bot took another of its picture's colors, or the name's
+    /// stand-in, for a moment: the same bot each switch (Eric, 2026-11-16:
+    /// "green shouldn't even be raiden's color").
+    private func carriedCombinedGlow(_ name: String) -> ProfileGlowRGB? {
+        guard let id = activeDashboardID, let seen = combinedDashboardBots[id],
+              let glow = seen.glows[name] else { return nil }
+        // In once every bot is a listed profile and every picture it had
+        // there is known here too (both load after the switch).
+        let listed = Set(profiles.map { $0.lowercased() })
+        let profilesIn = seen.bots.allSatisfy { listed.contains($0.name.lowercased()) }
+        let picturesIn = seen.avatars.keys.allSatisfy { profileAvatarURLs[$0] != nil }
+        return profilesIn && picturesIn ? nil : glow
     }
 
     static func botColor(_ bot: BotProfile, glow: ProfileGlowRGB?) -> Color {

@@ -2248,10 +2248,11 @@ extension BotModeTests {
     /// Live status for every bot: what the bot's chats do (its profile's
     /// registry and the plugin's waits) shows on its portrait, without the
     /// plugin's workstreams too. A chat waiting on the user needs them,
-    /// running chats add to its work, and a room it talks in comes first
+    /// a running chat says it's replying, never working (its workstreams
+    /// only, Eric 2026-11-16), and a room it talks in comes first
     /// when nothing else works, since a room's turns run in its chats.
     func testThePortraitSaysWhatTheBotsChatsDo() throws {
-        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 0)), .working(2))
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 0)), .replying)
         XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 1)), .needsYou(1))
         XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Trip"], chats: BotLiveChats(working: 1, waiting: 0)),
                        .inRooms(["Trip"]))
@@ -2262,11 +2263,12 @@ extension BotModeTests {
         var working = workResponse()
         working["counts"] = ["working": 2, "needs_you": 0, "ready": 0]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina"),
-                                            chats: BotLiveChats(working: 1, waiting: 0)), .working(3))
+                                            chats: BotLiveChats(working: 1, waiting: 0)), .working(2),
+                       "its chats replying aren't workstreams")
         var quiet = workResponse()
         quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina"),
-                                            chats: BotLiveChats(working: 1, waiting: 0)), .working(1),
+                                            chats: BotLiveChats(working: 1, waiting: 0)), .replying,
                        "A running chat says more than an unanswered ask")
         var off = workResponse()
         off["policy"] = "off"

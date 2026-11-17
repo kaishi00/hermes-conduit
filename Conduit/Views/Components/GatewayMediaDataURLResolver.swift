@@ -75,6 +75,9 @@ final class GatewayMediaDataURLResolver {
     /// Dashboard this resolver was built for: a retained resolver must never
     /// start a request against a different server after a switch.
     let dashboardID: UUID?
+    /// Reads another combined dashboard's files through its kept
+    /// connection (its Artifacts in All), rather than the one on screen's.
+    let readsKeptDashboard: Bool
 
     init(appState: AppState, profile: String, source: Source = .hermes, roomFileReads: RoomFileReads = RoomFileReads()) {
         self.appState = appState
@@ -82,17 +85,44 @@ final class GatewayMediaDataURLResolver {
         self.source = source
         self.roomFileReads = roomFileReads
         self.dashboardID = appState.activeDashboardID
+        readsKeptDashboard = false
+    }
+
+    /// Another combined dashboard's files, read through its kept connection
+    /// while it has one.
+    init(appState: AppState, profile: String, keptDashboardID: UUID) {
+        self.appState = appState
+        self.profile = profile
+        source = .hermes
+        roomFileReads = RoomFileReads()
+        dashboardID = keptDashboardID
+        readsKeptDashboard = true
     }
 
     private var currentAppState: AppState? {
-        guard let appState, appState.activeDashboardID == dashboardID else { return nil }
+        guard let appState, bridge(in: appState) != nil || !readsKeptDashboard,
+              readsKeptDashboard || appState.activeDashboardID == dashboardID else { return nil }
         return appState
+    }
+
+    /// Where its reads go: the kept connection of the dashboard it reads, or
+    /// the one on screen's.
+    private func bridge(in appState: AppState) -> DashboardTicketBridge? {
+        guard readsKeptDashboard else { return appState.dashboardTicketBridge }
+        guard let dashboardID, appState.activeDashboardID != dashboardID else { return nil }
+        return appState.keptDashboardRuntimes[dashboardID]?.bridge
+    }
+
+    /// Whether a read's answer is still for the dashboard it was asked of.
+    private func stillCurrent(_ appState: AppState) -> Bool {
+        readsKeptDashboard ? bridge(in: appState) != nil : appState.activeDashboardID == dashboardID
     }
 
     /// The connected Hermes' dashboard, while it is still the one this
     /// resolver was built for (a Desktop card's plugin route, #1522).
     var connectedDashboardBridge: DashboardTicketBridge? {
-        currentAppState?.dashboardTicketBridge
+        guard let appState = currentAppState else { return nil }
+        return bridge(in: appState)
     }
 
     func dataURL(for path: String) async -> String? {
@@ -105,17 +135,18 @@ final class GatewayMediaDataURLResolver {
         guard let appState = currentAppState else { return .failed }
         let result: GatewayMediaRead
         switch source {
-        case .hermes: result = await appState.gatewayMediaRead(for: path, profile: profile)
+        case .hermes: result = await appState.gatewayMediaRead(for: path, profile: profile, through: bridge(in: appState))
         case .roomFiles: result = await appState.roomFileRead(for: path)
         }
-        return appState.activeDashboardID == dashboardID ? result : .failed
+        return stillCurrent(appState) ? result : .failed
     }
 
     /// The file itself on disk, for media too large for a data URL (#569).
     func file(for path: String, maxBytes: Int = DashboardFileDownloadLimits.maxBytes) async -> GatewayMediaFileResult {
         guard source == .hermes, let appState = currentAppState else { return .unavailable }
-        let result = await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
-        guard appState.activeDashboardID == dashboardID else {
+        let result = await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes,
+                                                     through: bridge(in: appState))
+        guard stillCurrent(appState) else {
             if case .downloaded(let download) = result {
                 MediaPreviewPresenter.removeDirectory(download.directory)
             }
@@ -127,7 +158,7 @@ final class GatewayMediaDataURLResolver {
     /// A picture stored inside a persisted message, for when its file is
     /// gone from the server (#652).
     func inlineImageDataURL(_ ref: InlineImageRef) async -> String? {
-        guard source == .hermes, let appState = currentAppState else { return nil }
+        guard source == .hermes, !readsKeptDashboard, let appState = currentAppState else { return nil }
         let result = await appState.transcriptInlineImageDataURL(ref)
         return appState.activeDashboardID == dashboardID ? result : nil
     }

@@ -111,6 +111,9 @@ final class AppState: ObservableObject {
     }
 
     var otherProfileGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
+    /// Another combined dashboard's file readers, by dashboard and profile
+    /// (its Artifacts in All).
+    var keptGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
     @Published var activeProfile: String = "default" {
         didSet {
@@ -243,12 +246,24 @@ final class AppState: ObservableObject {
     /// read through and when: a new kept connection reads them again, and
     /// so does a pass past `keptDashboardProfilesMaxAge`.
     var keptDashboardProfiles: [UUID: (bridge: ObjectIdentifier, profiles: [String], at: Date)] = [:]
+    /// The dashboard whose connection's sync has settled (its chat list and
+    /// bots in), before the reads that follow it: another combined
+    /// dashboard's bot opens from here rather than after them. Cleared as
+    /// a switch starts.
+    var chatSyncSettledDashboardID: UUID?
     /// Each other combined dashboard's newest chats (all-live stage 4b),
     /// read through its kept connection for the profile it last used.
     @Published var combinedDashboardChats: [UUID: CombinedDashboardChats] = [:]
     /// Each other combined dashboard's bots (all-live stage 4c), read
     /// through its kept client.
     @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Another combined dashboard's bots' work, as their pills show it on
+    /// Bots Home: read through its kept connection, by bot (Eric,
+    /// 2026-11-16: the far bots showed no "Needs you" or work status).
+    @Published var combinedDashboardBotWork: [UUID: [String: BotWorkSnapshot]] = [:]
+    /// What another combined dashboard's plugin serves, read through its
+    /// kept connection (keyed by that connection's bridge).
+    var combinedDashboardPluginCapabilities: [UUID: (bridge: ObjectIdentifier, capabilities: Set<String>)] = [:]
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).

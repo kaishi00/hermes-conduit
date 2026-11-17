@@ -142,6 +142,12 @@ extension AppState {
         case opened, superseded, failed
     }
 
+    /// A Bot Chat that can't open while Hermes isn't connected says this;
+    /// Bots Home takes it down once the connection is back.
+    static var connectToChatWithBotsMessage: String {
+        AppLocalization.string("Connect to Hermes to chat with bots.")
+    }
+
     /// `openBotChat`, saying whether a failed open was superseded. An open
     /// that brings no navigation of its own (a tap, a link, a new bot)
     /// begins one before Hermes' lookup, not after it: a newer tap then
@@ -153,7 +159,7 @@ extension AppState {
         viewportTransitionGeneration: UInt64? = nil
     ) async -> BotChatOpenOutcome {
         guard let client, isConnected else {
-            errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
+            errorMessage = Self.connectToChatWithBotsMessage
             return .failed
         }
         let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()

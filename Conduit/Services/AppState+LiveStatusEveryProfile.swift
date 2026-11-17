@@ -168,13 +168,35 @@ extension AppState {
         let waits = needsYou.items.filter {
             $0.roomID == nil && Self.profilesMatch($0.profile, bot) && Set($0.sessionIDs).isDisjoint(with: workstreams)
         }.count
+        let running = botChatTurnsRunningHere(bot, leavingOut: workstreams)
         guard var counts = index?.counts(leavingOut: workstreams) else {
-            return waits > 0 ? BotLiveChats(working: 0, waiting: waits) : nil
+            return waits > 0 || running > 0 ? BotLiveChats(working: running, waiting: waits) : nil
         }
         // The registry's waiting chats and the plugin's waits are the same
-        // ones seen twice: the larger count stands.
+        // ones seen twice, as are its running chats and the turns this phone
+        // follows: the larger count stands.
         counts.waiting = max(counts.waiting, waits)
+        counts.working = max(counts.working, running)
         return counts
+    }
+
+    /// The bot's Bot Chat turns this phone follows as they run: the open
+    /// chat's and the left ones it still follows (all-live stage 2). So its
+    /// portrait shows it working mid-turn, not only once a workstream
+    /// starts, and before the registry's next read (Eric, 2026-11-16).
+    func botChatTurnsRunningHere(_ bot: String, leavingOut workstreams: Set<String> = []) -> Int {
+        var running = 0
+        if isBusy, let open = activeSessionId, !workstreams.contains(open),
+           let profile = activeBotChatProfile, Self.profilesMatch(profile, bot) {
+            running += 1
+        }
+        for chat in backgroundChats
+        where chat.isBotChat && chat.isRunning && chat.dashboardID == activeDashboardID
+            && chat.sessionIDs.isDisjoint(with: workstreams)
+            && Self.profilesMatch(botScopeProfile(forSessionIDs: chat.sessionIDs, workspaceProfile: chat.profile) ?? chat.profile, bot) {
+            running += 1
+        }
+        return running
     }
 
     /// The newest wait in a bot's chats, which its portrait's "needs you"
