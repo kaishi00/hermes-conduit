@@ -80,7 +80,15 @@ extension AppState {
     /// (as Bots Home shows its bots), each with its profiles as last read.
     var otherCombinedArtifactDashboards: [(id: UUID, name: String, profiles: [String])] {
         guard isInCombinedGroup(activeDashboardID) else { return [] }
-        let copies = Set(combinedBotsHomeTwins.values.joined())
+        // A copy is left out only for a twin that's listed itself: on
+        // screen, or kept connected. With that one's connection dropped,
+        // this copy lists the Hermes (#2644 review).
+        let listable = Set(savedDashboardRegistry.dashboards.map(\.id).filter {
+            $0 == activeDashboardID || keptDashboardRuntimes[$0] != nil
+        }.map { "\($0.uuidString)|" })
+        let copies = Set(combinedBotsHomeTwins.filter { key, _ in
+            listable.contains { key.hasPrefix($0) }
+        }.values.joined())
         return savedDashboardRegistry.dashboards.compactMap { dashboard in
             guard dashboard.id != activeDashboardID, isInCombinedGroup(dashboard.id),
                   keptDashboardRuntimes[dashboard.id] != nil else { return nil }

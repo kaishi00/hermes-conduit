@@ -312,6 +312,9 @@ extension AppState {
         if combinedDashboardBotWork[id] != nil { combinedDashboardBotWork.removeValue(forKey: id) }
         combinedDashboardPluginCapabilities.removeValue(forKey: id)
         if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
+        // Its artifact file readers too (#2644 review).
+        let prefix = "\(id.uuidString)|"
+        keptGatewayMediaResolvers = keptGatewayMediaResolvers.filter { !$0.key.hasPrefix(prefix) }
     }
 
     /// Every kept connection goes: Conduit has been off screen past the

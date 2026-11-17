@@ -1396,6 +1396,9 @@ extension CrossProfilePresentationCacheTests {
         let far = appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }
         XCTAssertEqual(far.map(\.profile), ["default", "atlas"])
         XCTAssertEqual(far.map(\.label), ["Mac", "Mac · atlas"])
+        // New Bot on that dashboard checks the name against its profiles.
+        XCTAssertTrue(appState.newBotSlug(for: "Atlas", on: mac.id).isTaken)
+        XCTAssertFalse(appState.newBotSlug(for: "Zephyr", on: mac.id).isTaken)
 
         final class Paths { var read: [String] = [] }
         let paths = Paths()

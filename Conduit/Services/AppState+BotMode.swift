@@ -1244,10 +1244,19 @@ extension AppState {
     }
 
     /// The profile id a new bot named `name` gets, and whether it is free.
-    func newBotSlug(for name: String) -> (slug: String, isValid: Bool, isTaken: Bool) {
+    /// `dashboardID`: another combined dashboard the bot is made on, its
+    /// names read from the profiles and bots it last listed; nil, the one
+    /// on screen.
+    func newBotSlug(for name: String, on dashboardID: UUID? = nil) -> (slug: String, isValid: Bool, isTaken: Bool) {
         let slug = BotProfileSlug.slug(from: name)
-        let taken = botRoster.contains { $0.name.caseInsensitiveCompare(slug) == .orderedSame }
-            || profiles.contains { $0.caseInsensitiveCompare(slug) == .orderedSame }
+        let names: [String]
+        if let dashboardID, dashboardID != activeDashboardID {
+            names = (otherCombinedDashboardProfiles(dashboardID) ?? [])
+                + (combinedDashboardBots[dashboardID]?.bots.map(\.name) ?? [])
+        } else {
+            names = botRoster.map(\.name) + profiles
+        }
+        let taken = names.contains { $0.caseInsensitiveCompare(slug) == .orderedSame }
         return (slug, BotProfileSlug.isValid(slug), taken)
     }
 
