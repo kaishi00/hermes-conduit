@@ -43,8 +43,7 @@ ALLOWED = {
     # @Environment and closures.
     "Conduit/Views/BotCapabilitiesView.swift": 1,
     "Conduit/Views/ChatView.swift": 6,
-    "Conduit/Views/Components/ComposerBar.swift": 1,
-    "Conduit/Views/V2/V2ChatsView.swift": 2,
+    "Conduit/Views/V2/V2ChatsView.swift": 1,
     "Conduit/Views/V2/V2ProjectPage.swift": 1,
     "Conduit/Views/V2/V2VoiceButton.swift": 1,
     # A class, compared by instance where views store it.
@@ -59,17 +58,104 @@ ALLOWED = {
 }
 
 HAND_WRITTEN = re.compile(r"\bstatic\s+func\s+==\s*(<[^>]*>)?\s*\(")
-LINE_COMMENT = re.compile(r"//.*")
+STRING_START = re.compile(r'(#*)("""|")')
+# The wrappers file holds exactly these, one per wrapper; a fourth there
+# would be a type that slipped past the check.
+WRAPPER_EQUALITIES = 3
+
+
+def code_only(text):
+    """`text` with Swift comments and string literals blanked to spaces
+    (newlines kept), as the compiler reads them: a declaration in a comment
+    or a string doesn't count, and one with a comment between its words
+    does. Block comments nest; a string's interpolations stay code."""
+    out = []
+    i, n = 0, len(text)
+    # Each entry: ("code", paren depth) or ("string", hashes, multiline).
+    stack = [("code", 0)]
+
+    def blank(segment):
+        out.append("".join("\n" if ch == "\n" else " " for ch in segment))
+
+    while i < n:
+        mode = stack[-1]
+        if mode[0] == "code":
+            if text.startswith("//", i):
+                end = text.find("\n", i)
+                end = n if end < 0 else end
+                blank(text[i:end])
+                i = end
+            elif text.startswith("/*", i):
+                depth, j = 1, i + 2
+                while j < n and depth:
+                    if text.startswith("/*", j):
+                        depth, j = depth + 1, j + 2
+                    elif text.startswith("*/", j):
+                        depth, j = depth - 1, j + 2
+                    else:
+                        j += 1
+                blank(text[i:j])
+                i = j
+            else:
+                m = STRING_START.match(text, i) if text[i] in '"#' else None
+                if m and (m.group(1) or text[i] == '"'):
+                    hashes, multiline = len(m.group(1)), m.group(2) == '"""'
+                    blank(m.group(0))
+                    i += len(m.group(0))
+                    stack.append(("string", hashes, multiline))
+                elif text[i] == "(":
+                    stack[-1] = ("code", mode[1] + 1)
+                    out.append("(")
+                    i += 1
+                elif text[i] == ")":
+                    if mode[1] == 0 and len(stack) > 1:
+                        stack.pop()  # an interpolation ends: back in its string
+                        out.append(" ")
+                    else:
+                        stack[-1] = ("code", mode[1] - 1)
+                        out.append(")")
+                    i += 1
+                else:
+                    out.append(text[i])
+                    i += 1
+        else:
+            _, hashes, multiline = mode
+            closer = ('"""' if multiline else '"') + "#" * hashes
+            escape = "\\" + "#" * hashes
+            if text.startswith(closer, i):
+                blank(closer)
+                i += len(closer)
+                stack.pop()
+            elif text.startswith(escape + "(", i):
+                blank(escape + "(")
+                i += len(escape) + 1
+                stack.append(("code", 0))
+            elif text.startswith(escape, i) and i + len(escape) < n:
+                blank(text[i:i + len(escape) + 1])
+                i += len(escape) + 1
+            elif text[i] == "\n" and not multiline:
+                stack.pop()  # an unterminated string: the compiler rejects it anyway
+                out.append("\n")
+                i += 1
+            else:
+                blank(text[i])
+                i += 1
+    return "".join(out)
 
 
 def count(text):
-    return len(HAND_WRITTEN.findall(LINE_COMMENT.sub("", text)))
+    return len(HAND_WRITTEN.findall(code_only(text)))
 
 
 def find_problems(sources, allowed=None):
     allowed = ALLOWED if allowed is None else allowed
     problems = []
     counts = {path: count(text) for path, text in sources.items() if path != WRAPPERS}
+    if WRAPPERS in sources and count(sources[WRAPPERS]) != WRAPPER_EQUALITIES:
+        problems.append(
+            f"{WRAPPERS}: {count(sources[WRAPPERS])} hand-written `static func ==`, expected "
+            f"{WRAPPER_EQUALITIES} (one per wrapper). Only the generic wrappers go there."
+        )
     for path in sorted(counts):
         found, limit = counts[path], allowed.get(path, 0)
         if found > limit:

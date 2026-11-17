@@ -331,7 +331,7 @@ struct ChatView: View {
             AuthorityQueueDock(store: appState.authorityQueue, appState: appState, openChatID: appState.activeSessionId)
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
-            ComposerBar(appState: appState).equatable()
+            ComposerBarGate(appState: appState).equatable()
         }
         // ⌘. stops the reply, as the composer's Stop does, a draft in the
         // field or not. Only the chat on screen: a hidden tab keeps its

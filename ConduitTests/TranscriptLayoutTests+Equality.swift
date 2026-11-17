@@ -86,4 +86,18 @@ extension TranscriptLayoutTests {
         XCTAssertNotEqual(identity, ConversationAgentIdentity(name: "Bot", photoURL: nil, botFace: otherPicture))
         XCTAssertNotEqual(identity, ConversationAgentIdentity(name: "Bot", photoURL: nil, botFace: face, profile: "p"))
     }
+
+    func testScreenGatesCompareTheAppStateByInstance() throws {
+        let suiteName = "equality-screen-gates"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let one = AppState(defaults: defaults, loadSavedConnection: false)
+        let other = AppState(defaults: defaults, loadSavedConnection: false)
+        XCTAssertEqual(ComposerBarGate(appState: one), ComposerBarGate(appState: one))
+        XCTAssertNotEqual(ComposerBarGate(appState: one), ComposerBarGate(appState: other))
+        XCTAssertEqual(V2ChatsViewGate(appState: one), V2ChatsViewGate(appState: one))
+        XCTAssertNotEqual(V2ChatsViewGate(appState: one), V2ChatsViewGate(appState: other))
+        XCTAssertEqual(V2TasksViewGate(appState: one), V2TasksViewGate(appState: one))
+        XCTAssertNotEqual(V2TasksViewGate(appState: one), V2TasksViewGate(appState: other))
+    }
 }

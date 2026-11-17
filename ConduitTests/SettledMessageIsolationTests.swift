@@ -325,7 +325,7 @@ final class SettledMessageIsolationTests: XCTestCase {
         var body: some View {
             VStack {
                 Text(appState.activeProfile)
-                ComposerBar(appState: appState).equatable()
+                ComposerBarGate(appState: appState).equatable()
             }
         }
     }
