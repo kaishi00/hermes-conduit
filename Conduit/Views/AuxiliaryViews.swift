@@ -2528,7 +2528,7 @@ struct ConduitMenuPicker<ID: Hashable, Label: View>: View {
             }
             .scaledFont(.subheadline.weight(.medium))
             .padding(.horizontal, 12)
-            .padding(.vertical, 6).frame(minHeight: 42)
+            .padding(.vertical, 6).frame(minHeight: 44)
             .contentShape(Rectangle())
         }
         // VoiceOver reads "Name, Value" like a picker instead of one run-on label.
@@ -2845,7 +2845,7 @@ private struct DelegationModelSettings: View {
             } else {
                 ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
             }
-            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults", table: .settings), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 42) }
+            Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save delegate defaults", table: .settings), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 44) }
                 .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: defaults != nil))
                 .conduitGlassControl(cornerRadius: 15, tint: .conduitAccent.opacity(0.18))
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
@@ -3583,7 +3583,7 @@ struct ProfileConfigSettingsPage: View {
                     }
                 } label: {
                     HStack { Text(ProfileConfigValueDisplay.label(forFieldKey: field.key, displayedValue)); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
-                        .scaledFont(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
+                        .scaledFont(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44)
                 }
                 .disabled(savingKey != nil || choices.isEmpty).conduitGlassControl(cornerRadius: 14)
                 .accessibilityLabel(Text(field.label))
@@ -3599,7 +3599,7 @@ struct ProfileConfigSettingsPage: View {
                     }
                 } label: {
                     HStack { Text(displayedValue); Spacer(); Image(systemName: "chevron.up.chevron.down").foregroundStyle(.secondary) }
-                        .scaledFont(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42)
+                        .scaledFont(.subheadline.weight(.medium)).padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44)
                 }
                 .disabled(savingKey != nil || options.isEmpty).conduitGlassControl(cornerRadius: 14)
                 .accessibilityLabel(Text(field.label))
@@ -3667,7 +3667,7 @@ struct ProfileConfigSettingsPage: View {
                 .focused($focusedKey, equals: field.key)
                 .submitLabel(.done)
                 .onSubmit { saveDraft(field, defaultValue: defaultValue) }
-                .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
+                .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44).conduitGlassSurface(cornerRadius: 14)
                 // VoiceOver names the field, not its placeholder.
                 .accessibilityLabel(Text(field.label))
             Button("Save") { saveDraft(field, defaultValue: defaultValue) }
@@ -3689,7 +3689,7 @@ struct ProfileConfigSettingsPage: View {
                 .lineLimit(3...8)
                 .scaledFont(.subheadline.monospaced())
                 .textInputAutocapitalization(.never).autocorrectionDisabled()
-                .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 42).conduitGlassSurface(cornerRadius: 14)
+                .padding(.horizontal, 12).padding(.vertical, 8).frame(minHeight: 44).conduitGlassSurface(cornerRadius: 14)
             Button("Save") {
                 let raw = drafts[field.key] ?? textValue(field.key, defaultValue: "")
                 save(field, value: .list(Self.listEntries(raw)))
