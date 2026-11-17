@@ -46,6 +46,9 @@ ALLOWED = {
     "Conduit/Views/Components/ComposerBar.swift": 1,
     "Conduit/Views/V2/V2ChatsView.swift": 2,
     "Conduit/Views/V2/V2ProjectPage.swift": 1,
+    # #2676 (lukasesch #2673) merged just before #2672: Tasks redraws by its
+    # own changes only, compared by AppState instance like V2ChatsView.
+    "Conduit/Views/V2/V2TasksView.swift": 1,
     "Conduit/Views/V2/V2VoiceButton.swift": 1,
     # A class, compared by instance where views store it.
     "Conduit/Views/ChatRowDisclosure.swift": 1,
