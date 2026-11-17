@@ -569,7 +569,7 @@ struct BotEditorSheet: View {
 
     @ViewBuilder
     private var createNameFooter: some View {
-        let identity = appState.newBotSlug(for: draft.name)
+        let identity = appState.newBotSlug(for: draft.name, on: createDashboardID)
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             Text(AppLocalization.string("The bot gets its own Hermes profile, chat, memory and skills.", table: .bots))
         } else if !identity.isValid {
@@ -955,7 +955,7 @@ struct BotEditorSheet: View {
         // An edit saves only once the editor snapshot settled: before it,
         // the form still holds placeholders that would overwrite the bot.
         guard isCreating else { return detailsState == .loaded || detailsState == .failed }
-        let identity = appState.newBotSlug(for: draft.name)
+        let identity = appState.newBotSlug(for: draft.name, on: createDashboardID)
         return identity.isValid && !identity.isTaken
     }
 
