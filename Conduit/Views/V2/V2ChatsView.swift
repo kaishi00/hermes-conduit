@@ -975,9 +975,13 @@ struct V2ChatsView: View, Equatable {
                 Image(systemName: "line.3.horizontal.decrease")
                     .font(.system(size: 14, weight: .semibold))
                     .conduitFixedGlyph()
+                // On a 375 pt phone a long or combined filter shrinks a
+                // little before it truncates (issue 2654); the menu names
+                // the whole selection.
                 Text(showingProjects ? AppLocalization.string("Projects") : selectionTitles(separator: ", "))
                     .scaledFont(.subheadline.weight(.semibold))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.8)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
                     .font(.system(size: 11, weight: .semibold))
