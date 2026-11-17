@@ -5,11 +5,11 @@ A type with a hand-written `==` makes adding any member to it (stored or
 computed, even one nothing reads) recompile nearly the whole app: almost
 every file uses `==`, and Swift resolves the operator across all of them.
 Measured with Xcode 27.2 on 2026-11-17: 718 of 766 app files for one such
-type, 4 for the same type with a synthesized `==`. One PR touching such a
+type; synthesized, 3-16 for the types measured. One PR touching such a
 type (#2665) made the next Smoke builds recompile from scratch.
 
 So let Swift synthesize `==`, and wrap a field that needs another comparison
-in Conduit/Models/EquatableWrappers.swift's `@EqualityIgnored`,
+in Conduit/Services/EquatableWrappers.swift's `@EqualityIgnored`,
 `@IdentityEquatable` or `@OptionalIdentityEquatable`. Those wrappers keep
 their own `==`; they are generic and never change, so they cost nothing.
 
@@ -34,7 +34,7 @@ SOURCE_DIRS = (
     "ConduitLocationPush",
 )
 
-WRAPPERS = "Conduit/Models/EquatableWrappers.swift"
+WRAPPERS = "Conduit/Services/EquatableWrappers.swift"
 
 # Path -> how many hand-written `==` it may still hold.
 ALLOWED = {
@@ -58,7 +58,7 @@ ALLOWED = {
     "Shared/Widgets/WidgetSnapshot.swift": 1,
 }
 
-HAND_WRITTEN = re.compile(r"\bstatic\s+func\s+==\s*\(")
+HAND_WRITTEN = re.compile(r"\bstatic\s+func\s+==\s*(<[^>]*>)?\s*\(")
 LINE_COMMENT = re.compile(r"//.*")
 
 

@@ -39,6 +39,9 @@ class HandWrittenEqualityTests(unittest.TestCase):
     def test_nonisolated_counts_too(self):
         self.assertEqual(check.count(NONISOLATED), 1)
 
+    def test_a_generic_equality_counts_too(self):
+        self.assertEqual(check.count("static func == <Other: Equatable>(lhs: Self, rhs: Other) -> Bool { false }"), 1)
+
     def test_synthesized_and_commented_pass(self):
         self.assertEqual(check.find_problems({"Conduit/A.swift": SYNTHESIZED}, allowed={}), [])
 

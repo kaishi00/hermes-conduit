@@ -6,14 +6,17 @@
 //
 //  Write no `static func ==` of your own on an app type: let Swift
 //  synthesize it, and wrap the fields that need another comparison in one
-//  of these. A hand-written `==` makes adding any member to its type
-//  (stored or computed, even one nothing reads) recompile nearly every file
-//  in the app, because almost every file uses `==` and Swift resolves the
-//  operator across all of them: 718 of 766 files, against 4 for the same
-//  type with a synthesized `==` (measured with Xcode 27.2, 2026-11-17).
-//  These two wrappers keep their own `==`, but they are generic and never
-//  change, so they cost nothing. scripts/check-hand-written-equality.py
-//  holds the rule.
+//  of these. With a hand-written `==`, adding any member to its type
+//  (stored or computed, even one nothing reads) recompiled 718 of the
+//  app's 766 files; synthesized, the same change to ConversationAgentIdentity
+//  recompiled 16 and to TranscriptCellEnvironment 3 (Xcode 27.2, CI's build
+//  command, 2026-11-17). These wrappers keep their own `==`, but they are
+//  generic and never change, so they cost nothing.
+//  scripts/check-hand-written-equality.py holds the rule.
+//
+//  Keep this file in Conduit/Services: measured, the same file in
+//  Conduit/Models brought back the near-full rebuilds (719 files) for every
+//  type using a wrapper, for reasons the build log doesn't show.
 //
 
 import Foundation
