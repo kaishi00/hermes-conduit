@@ -272,12 +272,9 @@ fi
 
 echo "build-for-testing ok in ${duration}s ($build_kind)"
 du -sh "$DERIVED_DATA_PATH"/* "$DERIVED_DATA_PATH"/Build/* 2>/dev/null || true
-# How many Swift files each target compiled, so a slow incremental build shows
-# what it rebuilt (a hand-written `==` or an AppState member can recompile
-# most of the app, docs/CI.md). Xcode logs one SwiftCompile line per file.
-compiled=$(grep -E '^SwiftCompile normal ' "$LOG_DIR/build.log" \
-  | sed -nE "s/.*\(in target '([^']+)'.*/\1/p" | sort | uniq -c | sort -rn \
-  | awk '{printf "%s%s %s", (NR > 1 ? ", " : ""), $1, $2}' || true)
+# How many Swift files each target compiled, so a slow incremental build
+# shows what it rebuilt (ci-build-compiled-counts.py).
+compiled=$(python3 "$SCRIPT_DIR/ci-build-compiled-counts.py" "$LOG_DIR/build.log" 2>/dev/null || true)
 echo "build-for-testing: Swift files compiled: ${compiled:-none}"
 # The notice is readable from the job's annotations, where a long test log
 # would bury the build step's output.
