@@ -111,10 +111,11 @@ The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 The multiplayer scene adds a third dashboard, **Sam**
 (`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
 Hermes, linked to Home as someone else (`link-demo-hermes.sh link` with
-`OWN=0`), never added to the app. The director's `start-room` makes the room
-off camera (Home invites Sam, Sam joins with his bot Nori, both by the
-plugin's CLI), and `room-say` posts Sam's lines the way his Conduit would
-(`POST /rooms/copies/messages`), so the room shows two people and a bot each.
+`OWN=0`), never added to the app. The test makes the room in New Group Chat
+(Conduit-chan, inviting Sam), the director's `join-room` has Sam join with
+his bot Nori by the plugin's CLI, and `room-say` posts Sam's lines the way
+his Conduit would (`POST /rooms/copies/messages`), so the room shows two
+people and a bot each. `start-room` makes such a room without the app.
 
 Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
 a still at the end of each scene in `stills/`), and the git ref

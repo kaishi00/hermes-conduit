@@ -183,14 +183,13 @@ final class DemoVideoTests: XCTestCase {
         }
 
         // A room with another person: Sam, on his own Hermes, linked as
-        // someone else rather than as yours. Made off camera (Home invites,
-        // Sam joins with his bot Nori); his lines come from the director, as
-        // they would from his Conduit.
-        direct("start-room", ["dashboard": "home", "guest": "sam", "room": "Weekend at Big Sur"], timeout: 360)
-        pullToRefresh()
-        settle(3)
+        // someone else rather than as yours. New Group Chat invites him with
+        // Conduit-chan; he joins with his bot Nori, and his lines come from
+        // the director, as they would from his Conduit.
         scene("multiplayer") {
             settle(2)
+            inviteSam(to: "Weekend at Big Sur")
+            direct("join-room", ["dashboard": "sam", "room": "Weekend at Big Sur"], timeout: 300)
             openRoom("Weekend at Big Sur")
             send("@conduit-chan can you find us a campsite near Big Sur for the 22nd?")
             XCTAssertTrue(waitForText("Kirk Creek", timeout: 60), "Conduit-chan never answered in the room with Sam")
@@ -303,8 +302,8 @@ final class DemoVideoTests: XCTestCase {
     private func drag(bot: String, onto target: String, overFace: Bool, hold: TimeInterval,
                       before: () -> Void = {}, until done: () -> Bool) -> Bool {
         for press in [0.8, 0.6, 1.2] {
-            let from = named(bot)
-            let to = named(target)
+            let from = portrait(bot)
+            let to = portrait(target)
             guard from.waitForExistence(timeout: 10), to.waitForExistence(timeout: 10) else {
                 XCTFail("Can't drag \(bot) onto \(target): one isn't on screen")
                 return false
@@ -321,7 +320,7 @@ final class DemoVideoTests: XCTestCase {
                 continue
             }
             if done() { return true }
-            print("DEMO drag \(bot) onto \(target): the press \(press)s didn't take, pressing again")
+            print("DEMO drag \(bot) onto \(target): the press \(press)s didn't take, pressing again (from \(from.frame) to \(to.frame))")
             settle(1)
         }
         if botMenuIsOpen() { closeBotMenu() }
@@ -335,10 +334,10 @@ final class DemoVideoTests: XCTestCase {
     private func reorder(_ bot: String, onto target: String) -> Bool {
         var place: CGRect?
         let moved = drag(bot: bot, onto: target, overFace: false, hold: 0.8, before: {
-            place = named(target).frame
+            place = portrait(target).frame
         }) {
             guard let place, !place.isEmpty else { return false }
-            let now = named(bot).frame
+            let now = portrait(bot).frame
             return abs(now.midX - place.midX) < 20 && abs(now.midY - place.midY) < 20
         }
         if !moved { XCTFail("\(bot) never took \(target)'s place") }
@@ -357,8 +356,8 @@ final class DemoVideoTests: XCTestCase {
         if draft.exists { print("DEMO \(name) is still a draft: \(draft.value ?? "")") }
         let tile = app.buttons.matching(NSPredicate(
             format: "label == %@ AND identifier BEGINSWITH 'bots.room.'", name)).firstMatch
-        // A room made off the app (the director's start-room) shows only
-        // once Group Chats is read again: a pull to refresh, as a person would.
+        // A room Group Chats hasn't read yet shows once it's read again: a
+        // pull to refresh, as a person would.
         var shown = tile.waitForExistence(timeout: 10)
         for _ in 0..<3 where !shown {
             pullToRefresh()
@@ -369,6 +368,48 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         tile.tap()
+        settle(3)
+    }
+
+    /// New Group Chat: a room named `name` with Conduit-chan, inviting Sam.
+    /// It waits on Bots Home as a draft until Sam answers.
+    private func inviteSam(to name: String) {
+        let add = app.buttons["bots.newGroupChat"]
+        guard add.waitForExistence(timeout: 10) else {
+            XCTFail("No New Group Chat button on Bots Home")
+            return
+        }
+        add.tap()
+        let field = app.textFields.firstMatch
+        guard field.waitForExistence(timeout: 10) else {
+            XCTFail("New Group Chat has no name field")
+            return
+        }
+        field.tap()
+        field.typeText(name)
+        settle(1)
+        // Conduit-chan's row shows its profile, "default", under the name.
+        let rows = app.staticTexts.matching(identifier: "default")
+        if rows.firstMatch.waitForExistence(timeout: 10),
+           let bot = rows.allElementsBoundByIndex.first(where: \.isHittable) {
+            bot.tap()
+        } else {
+            XCTFail("No Conduit-chan in New Group Chat")
+        }
+        settle(1)
+        let sam = app.staticTexts["Sam"].firstMatch
+        for _ in 0..<4 where sam.exists && !sam.isHittable {
+            app.swipeUp()
+            settle(1)
+        }
+        if sam.exists { sam.tap() } else {
+            let labels = app.staticTexts.allElementsBoundByIndex.prefix(60).map(\.label)
+            print("DEMO New Group Chat shows: \(labels)")
+            XCTFail("No Sam in New Group Chat")
+        }
+        settle(2)
+        let create = app.navigationBars.buttons["Create"].firstMatch
+        if create.waitForExistence(timeout: 5) { create.tap() } else { XCTFail("No Create in New Group Chat") }
         settle(3)
     }
 
@@ -407,6 +448,14 @@ final class DemoVideoTests: XCTestCase {
     /// The first element labelled exactly so: on Bots Home, a bot's portrait.
     private func named(_ label: String) -> XCUIElement {
         app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", label)).firstMatch
+    }
+
+    /// A bot's portrait on Bots Home: the button labelled with its name that
+    /// is on screen (the other tabs stay mounted, and may hold one too).
+    private func portrait(_ label: String) -> XCUIElement {
+        let all = app.buttons.matching(NSPredicate(format: "label == %@", label))
+        _ = all.firstMatch.waitForExistence(timeout: 10)
+        return all.allElementsBoundByIndex.first { $0.isHittable } ?? all.firstMatch
     }
 
     private func pullToRefresh() {

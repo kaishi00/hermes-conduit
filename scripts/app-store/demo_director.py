@@ -17,6 +17,9 @@ JSON to http://127.0.0.1:$DIRECTOR_PORT/<action>:
   with people over a Link (rooms invite on the host, rooms join on the guest,
   by the CLI), returning once the guest's copy says it started. The guest's
   config entry names the person the host's Link calls them ("person").
+- join-room {"dashboard", "room", "agents"}: that dashboard's person joins the
+  room the app invited them to, found by name on their invites, and it
+  returns once their copy says it started.
 - room-say {"dashboard", "room", "text"}: posts text as that dashboard's
   person in a room someone else hosts, the way their Conduit does
   (POST /rooms/copies/messages).
@@ -150,6 +153,35 @@ async def room_say(config, body):
             raise RuntimeError(f"the post was refused: {message.get('error') or answer}")
 
 
+async def join_room(config, body):
+    """The guest joins the room the app invited them to, found by its name
+    on their invites, with their bots, and returns once the copy started."""
+    entry = dashboard(config, body["dashboard"])
+    async with httpx.AsyncClient(base_url=entry["base"], timeout=60, trust_env=False) as http:
+        r = await http.post("/auth/password-login",
+                            json={"provider": "basic", "username": entry["user"], "password": entry["password"]})
+        r.raise_for_status()
+        invite = None
+        for _ in range(60):
+            r = await http.get("/api/plugins/conduit_push/rooms/invites")
+            r.raise_for_status()
+            invite = next((i for i in r.json().get("invites", [])
+                           if i.get("name") == body["room"] and not i.get("joined")), None)
+            if invite is not None:
+                break
+            await asyncio.sleep(2)
+        else:
+            raise TimeoutError(f"{body['dashboard']} was never invited to {body['room']!r}")
+    room = invite["room_id"]
+    conduit_push(entry, "rooms", "join", "--room", room, f"--link={invite['link']}", "--yes",
+                 *[f"--agent={agent}" for agent in body.get("agents", ["default"])])
+    for _ in range(60):
+        if re.search(rf"^{room}: .*\bstarted\b", conduit_push(entry, "rooms", "copies"), re.M):
+            return
+        await asyncio.sleep(2)
+    raise TimeoutError(f"{room} never started on {body['dashboard']}")
+
+
 async def stop_recording(config, body):
     path = os.environ.get("DEMO_RECORDER_PID_FILE")
     if not path or not Path(path).is_file():
@@ -170,7 +202,8 @@ async def stop_recording(config, body):
     raise TimeoutError(f"recorder {pid} still running 15 s after SIGINT")
 
 
-ACTIONS = {"add-bot": add_bot, "prompt": prompt, "start-room": start_room, "room-say": room_say,
+ACTIONS = {"add-bot": add_bot, "prompt": prompt, "start-room": start_room, "join-room": join_room,
+           "room-say": room_say,
            "stop-recording": stop_recording}
 
 
