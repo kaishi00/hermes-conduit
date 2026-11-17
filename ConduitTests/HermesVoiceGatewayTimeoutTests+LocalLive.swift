@@ -198,6 +198,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let wideSetup = LocalLiveProtocol.agentConfigure(.init(instructions: "Be brief.", functions: [declaration, wide]))
         let sorted = String(decoding: try JSONSerialization.data(withJSONObject: wideSetup, options: [.sortedKeys]), as: UTF8.self)
         XCTAssertEqual(try LocalLiveProtocol.encode(wideSetup), sorted, "one call's tools encode like the last call's")
+        XCTAssertEqual(try GeminiLiveProtocol.encode(wideSetup), sorted, "Gemini's and Qwen's encoder sorts too")
         XCTAssertEqual(try LocalLiveProtocol.encode(["b": 1, "a": ["d": 2, "c": 3]]), "{\"a\":{\"c\":3,\"d\":2},\"b\":1}")
         XCTAssertEqual(try GeminiLiveProtocol.encode(["b": 1, "a": ["d": 2, "c": 3]]), "{\"a\":{\"c\":3,\"d\":2},\"b\":1}")
 
