@@ -135,18 +135,18 @@ final class DemoVideoTests: XCTestCase {
 
         scene("reorder") {
             settle(2)
-            drag(bot: "Riri", onto: "Conduit-chan", overFace: false, hold: 0.8)
+            reorder("Riri", onto: "Conduit-chan")
             settle(3)
-            drag(bot: "Mira", onto: "Piko", overFace: false, hold: 0.8)
+            reorder("Mira", onto: "Piko")
             settle(4)
         }
 
+        readOwnBots()
         scene("room-across") {
             settle(2)
             // Held over Lucien's face past the merge dwell: a room.
-            drag(bot: "Mira", onto: "Lucien", overFace: true, hold: 1.5)
             let create = app.buttons["bots.newRoom.create"]
-            if create.waitForExistence(timeout: 15) {
+            if drag(bot: "Mira", onto: "Lucien", overFace: true, hold: 1.5, until: { create.waitForExistence(timeout: 5) }) {
                 let name = app.textFields["bots.newRoom.name"]
                 if name.exists {
                     name.tap()
@@ -270,29 +270,68 @@ final class DemoVideoTests: XCTestCase {
     /// (300 ms) it takes the target's place (a reorder); held still over the
     /// face past mergeDwell (500 ms) it starts a room, when the two can make
     /// one (a far bot needs a bot of the dashboard on screen).
-    private func drag(bot: String, onto target: String, overFace: Bool, hold: TimeInterval) {
-        let from = named(bot)
-        let to = named(target)
-        guard from.waitForExistence(timeout: 10), to.waitForExistence(timeout: 10) else {
-            XCTFail("Can't drag \(bot) onto \(target): one isn't on screen")
-            return
-        }
-        let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
-        // The portrait button is the face; its name sits just under it.
-        let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: overFace ? 0.45 : 1.25))
-        // A press the system takes for the portrait's context menu, rather
-        // than a lift, leaves the menu open and the drop undone (and the
-        // next press could land on one of its items): close it and press
-        // again for a different time.
-        for press in [0.7, 0.5, 1.0] {
+    /// Lifts `bot` and drops it on `target` (over its face, or its name),
+    /// until `done` says the drop took. A press can miss the lift: the system
+    /// takes it for the portrait's context menu (closed again here, so the
+    /// next press can't land on one of its items) or for a scroll of the
+    /// grid. Either way it presses again, for a different time.
+    @discardableResult
+    private func drag(bot: String, onto target: String, overFace: Bool, hold: TimeInterval,
+                      until done: () -> Bool) -> Bool {
+        for press in [0.8, 0.6, 1.2] {
+            let from = named(bot)
+            let to = named(target)
+            guard from.waitForExistence(timeout: 10), to.waitForExistence(timeout: 10) else {
+                XCTFail("Can't drag \(bot) onto \(target): one isn't on screen")
+                return false
+            }
+            let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
+            // The portrait button is the face; its name sits just under it.
+            let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: overFace ? 0.45 : 1.25))
             start.press(forDuration: press, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: hold)
             settle(1)
-            guard botMenuIsOpen() else { return }
-            print("DEMO drag \(bot) onto \(target): the press \(press)s opened the menu, pressing again")
-            closeBotMenu()
+            if botMenuIsOpen() {
+                print("DEMO drag \(bot) onto \(target): the press \(press)s opened the menu, pressing again")
+                closeBotMenu()
+                continue
+            }
+            if done() { return true }
+            print("DEMO drag \(bot) onto \(target): the press \(press)s didn't take, pressing again")
+            settle(1)
         }
         if botMenuIsOpen() { closeBotMenu() }
-        XCTFail("Every press on \(bot) opened its menu instead of lifting it")
+        return false
+    }
+
+    /// Drags `bot` over `target`'s name, so it takes that place; true once
+    /// it has moved.
+    @discardableResult
+    private func reorder(_ bot: String, onto target: String) -> Bool {
+        var before = named(bot).frame
+        let moved = drag(bot: bot, onto: target, overFace: false, hold: 0.8) {
+            let now = named(bot).frame
+            defer { before = now }
+            return abs(now.midX - before.midX) > 20 || abs(now.midY - before.midY) > 20
+        }
+        if !moved { XCTFail("\(bot) never took \(target)'s place") }
+        return moved
+    }
+
+    /// Opens New Group Chat and closes it again, so Conduit reads your other
+    /// Hermes' bots afresh (a far bot starts a room on Bots Home only once
+    /// it's read as ready), and says whether they were offered.
+    private func readOwnBots() {
+        let add = app.buttons["bots.newGroupChat"]
+        guard add.waitForExistence(timeout: 10) else {
+            print("DEMO no New Group Chat button on Bots Home")
+            return
+        }
+        add.tap()
+        let far = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "A room can bring bots from one of your other Hermes")).firstMatch
+        print("DEMO New Group Chat offers the other Hermes' bots: \(far.waitForExistence(timeout: 20))")
+        let cancel = app.navigationBars.buttons["Cancel"].firstMatch
+        if cancel.exists { cancel.tap() } else { app.swipeDown() }
+        settle(2)
     }
 
     /// A bot's long-press menu (Edit Bot, Duplicate, Delete Bot, …) is up.

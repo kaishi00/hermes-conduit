@@ -83,6 +83,7 @@ jobs:
         timeout-minutes: 5
         run: |
           HOME_A="$PWD/demo-hermes/home/home" HOME_B="$PWD/demo-hermes/studio/home" \
+          DASHBOARD_A=http://hermes.tail-demo.ts.net:9119 COOKIES_A="$PWD/demo-hermes/home/cookies" \
             bash scripts/app-store/link-demo-hermes.sh link
 
       - name: Start the director

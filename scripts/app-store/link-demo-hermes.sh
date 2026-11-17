@@ -12,7 +12,9 @@
 # `link-demo-hermes.sh link`.
 #
 # Env: DEMO_SRC (the shared Hermes checkout), MAILBOX_PORT (9130),
-#      HOME_A and HOME_B (each instance's HERMES_HOME), MAILBOX_WORK.
+#      HOME_A and HOME_B (each instance's HERMES_HOME), MAILBOX_WORK,
+#      DASHBOARD_A and COOKIES_A (A's dashboard URL and signed-in cookie jar:
+#      the link waits until A lists B's bots as ready for rooms).
 set -euo pipefail
 
 MAILBOX_PORT="${MAILBOX_PORT:-9130}"
@@ -62,6 +64,19 @@ case "${1:-}" in
     done
     list "$a"; list "$b"
     both_say 'own Hermes on both sides' || { echo "::error::the Link isn't marked own on both sides"; exit 1; }
+    # With A's dashboard given, wait until it lists B's bots as ready to join
+    # a room (B set up for rooms, DEMO_ROOM_GUEST), as Conduit reads them.
+    if [ -n "${DASHBOARD_A:-}" ]; then
+      own_bots() { curl -s -b "${COOKIES_A:?}" "$DASHBOARD_A/api/plugins/conduit_push/rooms/own-bots" || true; }
+      for _ in $(seq 1 60); do
+        bots="$(own_bots)"
+        [[ "$bots" == *'"ready":true'* && "$bots" != *'"ready":false'* ]] && break
+        sleep 2
+      done
+      echo "$bots"
+      [[ "$bots" == *'"ready":true'* && "$bots" != *'"ready":false'* ]] \
+        || { echo "::error::the first instance doesn't list the second's bots as ready for rooms"; exit 1; }
+    fi
     ;;
   *)
     echo "usage: link-demo-hermes.sh mailbox|link" >&2

@@ -148,6 +148,11 @@ if [ "${DEMO_ROOM_GUEST:-}" = 1 ]; then
   done
   kill "$gateway_pid" 2>/dev/null || true
   for _ in $(seq 1 30); do kill -0 "$gateway_pid" 2>/dev/null || break; sleep 1; done
+  if kill -0 "$gateway_pid" 2>/dev/null; then
+    kill -9 "$gateway_pid" 2>/dev/null || true
+    sleep 2
+    kill -0 "$gateway_pid" 2>/dev/null && { echo "::error::the old gateway did not stop"; exit 1; }
+  fi
   nohup "$HERMES" gateway run >> "$DEMO_WORK/gateway.log" 2>&1 &
   api="$(sed -n 's/.*at \([0-9.]*:[0-9]*\).*/\1/p' "$DEMO_WORK/rooms-setup.log" | tail -1)"
   for _ in $(seq 1 60); do
