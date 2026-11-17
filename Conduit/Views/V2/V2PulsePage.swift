@@ -1537,7 +1537,6 @@ struct V2PulsePage: View {
                 Image(systemName: proposal.isEvent ? "calendar.badge.plus" : "plus.circle")
                     .foregroundStyle(.white)
             }
-            .labelStyle(.titleAndIcon)
             .scaledFont(.footnote.weight(.semibold))
         }
         .modifier(PulseActionStyle(bar: false, prominent: true, tint: .conduitAccent))
@@ -1604,7 +1603,6 @@ struct V2PulsePage: View {
                 Image(systemName: "arrow.right.circle")
                     .foregroundStyle(bar ? Color.conduitAccent : .white)
             }
-            .labelStyle(.titleAndIcon)
             .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
         }
         .modifier(PulseActionStyle(bar: bar, prominent: true, tint: .conduitAccent))
@@ -2485,6 +2483,9 @@ struct PulseLeftOutSheet: View {
 /// that can't hold its buttons that way is laid out another way by its
 /// ViewThatFits, never squeezed until a word breaks ("Do / ne" beside Do it
 /// and Not now, which an HStack offering each button an equal share did).
+/// Off the bar it's a pill Pulse draws itself (`PulsePillButtonStyle`):
+/// iOS's bordered buttons set a Label's icon apart from its title, and at
+/// its one-line width dropped Done's title altogether (#2688).
 struct PulseActionStyle: ViewModifier {
     let bar: Bool
     let prominent: Bool
@@ -2495,20 +2496,42 @@ struct PulseActionStyle: ViewModifier {
             content
                 .buttonStyle(PulseBarButtonStyle(prominent: prominent, tint: tint))
                 .modifier(PulseBarDivider())
-        } else if prominent {
-            content
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .tint(tint)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
         } else {
             content
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-                .tint(tint)
-                .lineLimit(1)
+                .buttonStyle(PulsePillButtonStyle(prominent: prominent, tint: tint))
                 .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+}
+
+/// A card's pill button: icon and title side by side, centred, on one line,
+/// filled with the tint when prominent and tinted lightly otherwise.
+struct PulsePillButtonStyle: ButtonStyle {
+    let prominent: Bool
+    let tint: Color
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .labelStyle(PulsePillLabelStyle())
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .foregroundStyle(prominent ? Color.white : (tint == .gray ? Color.secondary : tint))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 7)
+            .frame(minHeight: 32)
+            .background(Capsule(style: .continuous).fill(prominent ? tint : tint.opacity(tint == .gray ? 0.2 : 0.18)))
+            .contentShape(Capsule(style: .continuous))
+            .opacity(configuration.isPressed ? 0.7 : (isEnabled ? 1 : 0.4))
+    }
+}
+
+/// A pill's Label: its icon just before its title.
+struct PulsePillLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon
+            configuration.title
         }
     }
 }
@@ -2522,6 +2545,7 @@ struct PulseBarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .labelStyle(PulsePillLabelStyle())
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
             .foregroundStyle(prominent ? tint : (tint == .gray ? Color.secondary : Color.primary.opacity(0.85)))
