@@ -325,14 +325,16 @@ final class DemoVideoTests: XCTestCase {
     }
 
     /// Opens a room from Bots Home's Group Chats once it has started: a room
-    /// with Studio's bots waits for them to join first ("Waiting for
-    /// Studio"), and only then opens to its chat.
+    /// with Studio's bots is a draft row first ("Waiting for Studio", then
+    /// "Starting…"), with the same name as the room's tile that replaces it,
+    /// so it waits for the row to go before tapping the tile.
     private func openRoom(_ name: String) {
-        let waiting = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Waiting for")).firstMatch
-        let deadline = Date().addingTimeInterval(90)
-        while waiting.exists, Date() < deadline { settle(2) }
-        if waiting.exists { print("DEMO \(name) still waits for its far bots") }
-        let tile = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
+        let draft = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND (value BEGINSWITH 'Waiting' OR value BEGINSWITH 'Starting')", name)).firstMatch
+        let deadline = Date().addingTimeInterval(120)
+        while draft.exists, Date() < deadline { settle(2) }
+        if draft.exists { print("DEMO \(name) is still a draft: \(draft.value ?? "")") }
+        let tile = app.buttons.matching(NSPredicate(format: "label == %@", name)).firstMatch
         guard tile.waitForExistence(timeout: 20) else {
             XCTFail("No \(name) in Group Chats")
             return
