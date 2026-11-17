@@ -4,8 +4,10 @@
 Hermes talks to this like any custom provider (model.provider: custom), so the
 real agent loop, tools and session store produce every chat; only the model's
 words come from the script. A reply is chosen by the newest user message:
-the script entry whose "match" text it contains, then the step numbered by how
-many tool results follow that message. Anything unmatched (titles, memory
+the script entry whose "match" text it contains (and, with "system_has", whose
+text the system prompt holds, so each bot in a room answers in its own words),
+then the step numbered by how many tool results follow that message. Entries
+come from "chats", "bots" and "replies" (turns sent live, never seeded). Anything unmatched (titles, memory
 reviews, compression) gets a short neutral answer so Hermes never stalls.
 
 Standard library only. Usage: llm_stub.py SCRIPT.json [PORT]
@@ -21,9 +23,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 MODEL = "hermes-4-405b"
 
 
-def load_script(path):
-    with open(path, encoding="utf-8") as f:
-        return json.load(f)
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from demo_script import load as load_script  # noqa: E402
 
 
 def text_of(content):
@@ -45,9 +46,14 @@ def pick_step(script, messages):
     system = " ".join(text_of(m.get("content")) for m in messages if m.get("role") == "system").lower()
     tool_results = sum(1 for m in messages[last_user + 1:] if m.get("role") == "tool")
     # A bot's chat keeps the fixed "Bot Chat" title.
-    entries = script.get("chats", []) + [dict(bot, title="Bot Chat") for bot in script.get("bots", [])]
+    entries = (script.get("chats", []) + [dict(bot, title="Bot Chat") for bot in script.get("bots", [])]
+               + script.get("replies", []))
     for entry in entries:
         for turn in entry.get("turns", []):
+            # "system_has" picks one bot's answer when several hear the same
+            # words (a room): its text must be in that bot's system prompt.
+            if turn.get("system_has") and turn["system_has"].lower() not in system:
+                continue
             if turn["match"].lower() in prompt:
                 steps = turn["steps"]
                 # Title requests quote the first exchange; answer with the title.

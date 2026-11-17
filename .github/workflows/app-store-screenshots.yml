@@ -132,9 +132,9 @@ jobs:
               grep -o "PREVIEW_MARK [a-z]* [0-9.]*" "results-$slug-preview.log" >> "shots/preview-$slug.marks" || true
               # The next device's screenshots must not show this chat.
               preview_chats=0
-              for sid in $(HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions list --limit 50 \
+              for sid in $(HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/src/.venv/bin/hermes" sessions list --limit 50 \
                   | awk '/^Packing list/ {print $NF}'); do
-                HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/venv/bin/hermes" sessions delete -y "$sid" < /dev/null \
+                HERMES_HOME="$DEMO_WORK/home" "$DEMO_WORK/src/.venv/bin/hermes" sessions delete -y "$sid" < /dev/null \
                   || echo "$name preview chat $sid not removed" >> failures.txt
                 preview_chats=$((preview_chats + 1))
               done

@@ -1,0 +1,280 @@
+name: Demo videos
+
+# Manual: records the demo video scenes (ConduitScreenshots/DemoVideoTests.swift)
+# on a simulator against two demo Hermes dashboards on the same runner, Home
+# and Studio (scripts/app-store/videos/), linked as one owner's own so rooms
+# can hold bots from both, and cuts one MP4 per scene. Never part of the
+# merge gate. scripts/app-store/README.md has the details.
+
+on:
+  workflow_dispatch:
+    inputs:
+      devices:
+        description: "Simulator names, comma-separated"
+        default: "iPhone 18 Pro Max"
+      scenes:
+        description: "Scenes to cut, comma-separated (empty: all)"
+        default: ""
+
+# The capture job runs the demo Hermes, its plugins and Homebrew packages, so
+# it only reads; the publish job, which runs none of them, pushes the ref.
+permissions:
+  contents: read
+
+concurrency:
+  group: demo-videos-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: xcode-27
+    timeout-minutes: 180
+    env:
+      DEVICES: ${{ inputs.devices || 'iPhone 18 Pro Max' }}
+      SCENES: ${{ inputs.scenes }}
+      DEMO_USER: demo
+      # Not a secret: the demo dashboards live only on this runner.
+      DEMO_PASSWORD: conduit-demo-2026
+      DEMO_SRC: ${{ github.workspace }}/demo-hermes/src
+      DEMO_MAILBOX_URL: http://127.0.0.1:9130
+      HOME_URL: http://hermes.tail-demo.ts.net:9119
+      STUDIO_URL: http://studio.tail-demo.ts.net:9129
+      SAM_URL: http://sam.tail-demo.ts.net:9139
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo --preserve-env=GITHUB_ENV bash scripts/ci-select-xcode.sh
+
+      - name: Install tools
+        run: brew install xcodegen ffmpeg
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Start the rooms mailbox
+        run: |
+          set -euo pipefail
+          node --version  # the mailbox needs 22.13 or later; the image links a newer one
+          git clone -q --depth 1 https://github.com/kaishi00/hermes-conduit-notifier notifier
+          PLUGIN_DIR="$PWD/notifier" MAILBOX_WORK="$PWD/demo-hermes/mailbox" \
+            bash scripts/app-store/link-demo-hermes.sh mailbox
+
+      - name: Start Home
+        timeout-minutes: 25
+        run: |
+          DEMO_WORK="$PWD/demo-hermes/home" DEMO_SCRIPT=scripts/app-store/videos/home.json \
+          DEMO_HOST=hermes.tail-demo.ts.net DEMO_PORT=9119 STUB_PORT=8765 DEMO_APPROVALS=manual \
+            bash scripts/app-store/start-demo-hermes.sh
+
+      - name: Start Studio
+        timeout-minutes: 20
+        run: |
+          DEMO_WORK="$PWD/demo-hermes/studio" DEMO_SCRIPT=scripts/app-store/videos/studio.json \
+          DEMO_HOST=studio.tail-demo.ts.net DEMO_PORT=9129 STUB_PORT=8766 DEMO_APPROVALS=manual DEMO_ROOM_GUEST=1 \
+            bash scripts/app-store/start-demo-hermes.sh
+
+      # Sam: another person's Hermes, for the multiplayer scene (a room with
+      # someone else). Set up for rooms after Studio, so its API server takes
+      # the next free port.
+      - name: Start Sam
+        timeout-minutes: 20
+        run: |
+          DEMO_WORK="$PWD/demo-hermes/sam" DEMO_SCRIPT=scripts/app-store/videos/sam.json \
+          DEMO_HOST=sam.tail-demo.ts.net DEMO_PORT=9139 STUB_PORT=8767 DEMO_ROOM_GUEST=1 \
+            bash scripts/app-store/start-demo-hermes.sh
+
+      - name: Link them
+        timeout-minutes: 8
+        run: |
+          HOME_A="$PWD/demo-hermes/home/home" HOME_B="$PWD/demo-hermes/studio/home" \
+          DASHBOARD_A=http://hermes.tail-demo.ts.net:9119 COOKIES_A="$PWD/demo-hermes/home/cookies" \
+            bash scripts/app-store/link-demo-hermes.sh link
+          HOME_A="$PWD/demo-hermes/home/home" HOME_B="$PWD/demo-hermes/sam/home" NAME_B=Sam OWN=0 \
+            bash scripts/app-store/link-demo-hermes.sh link
+
+      - name: Start the director
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os
+          w = os.path.join(os.getcwd(), "demo-hermes")
+          def entry(name, url, script, **more):
+              return {"base": url, "user": os.environ["DEMO_USER"], "password": os.environ["DEMO_PASSWORD"],
+                      "script": os.path.abspath(f"scripts/app-store/videos/{script}"), "bot_chats": f"{w}/{name}/bot-chats.json",
+                      "hermes_home": f"{w}/{name}/home", **more}
+          json.dump({"home": entry("home", os.environ["HOME_URL"], "home.json"),
+                     "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json"),
+                     "sam": entry("sam", os.environ["SAM_URL"], "sam.json", person="Sam")},
+                    open(f"{w}/director.json", "w"), indent=1)
+          PY
+          DEMO_RECORDER_PID_FILE="$PWD/demo-hermes/recorder.pid" CONDUIT_ROOMS_MAILBOX_URL="$DEMO_MAILBOX_URL" \
+          nohup "$DEMO_SRC/.venv/bin/python" -u scripts/app-store/demo_director.py demo-hermes/director.json 8780 \
+            > demo-hermes/director.log 2>&1 &
+
+      - name: Record
+        timeout-minutes: 120
+        run: |
+          set -euo pipefail
+          mkdir -p videos
+          IFS=',' read -r -a NAMES <<< "$DEVICES"
+          for name in "${NAMES[@]}"; do
+            name="$(echo "$name" | xargs)"
+            udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, os, sys
+          name = sys.argv[1]
+          runtimes = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in runtimes if "iOS" in r), reverse=True)
+          pin = os.environ.get("SIMULATOR_OS")
+          if pin:
+              ios = [r for r in ios if r.endswith("iOS-" + pin.replace(".", "-"))]
+          for exact in (True, False):
+              for r in ios:
+                  for d in runtimes[r]:
+                      if d["name"] == name if exact else d["name"].startswith(name):
+                          print(d["udid"]); sys.exit()
+          print("available:", sorted({d["name"] for r in ios for d in runtimes[r]}), file=sys.stderr)
+          ' "$name")
+            if [ -z "$udid" ]; then echo "::error::no simulator named $name"; exit 1; fi
+            slug=$(echo "$name" | tr ' ' '-' | tr -cd 'A-Za-z0-9-')
+            echo "== $name ($udid)"
+            xcrun simctl boot "$udid" || true
+            xcrun simctl bootstatus "$udid" -b
+            xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+              --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+            set +e
+            # Only the UI test target: the unit tests alone outlast the build's time.
+            perl -e 'alarm shift; exec @ARGV' 2400 xcodebuild build-for-testing \
+              -project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd \
+              -only-testing:ConduitScreenshots \
+              -enableCodeCoverage NO COMPILER_INDEX_STORE_ENABLE=NO \
+              CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+              DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" > "build-$slug.log" 2>&1
+            rc=$?
+            if [ "$rc" -ne 0 ]; then
+              grep -E "error:" "build-$slug.log" | head -40
+              echo "$name build exited $rc" >> failures.txt
+              set -e
+              continue
+            fi
+            xcrun simctl io "$udid" recordVideo --codec h264 --force "videos/raw-$slug.mov" > "record-$slug.log" 2>&1 &
+            recorder=$!
+            # The test stops it through the director at its last mark, so the
+            # video ends there and the cut can date it from its end.
+            echo "$recorder" > "$PWD/demo-hermes/recorder.pid"
+            sleep 2
+            TEST_RUNNER_CONDUIT_DEMO_VIDEOS=1 \
+            TEST_RUNNER_CONDUIT_DEMO_URL="$HOME_URL" \
+            TEST_RUNNER_CONDUIT_DEMO_URL_B="$STUDIO_URL" \
+            TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
+            TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
+            TEST_RUNNER_CONDUIT_DEMO_DIRECTOR=http://127.0.0.1:8780 \
+            TEST_RUNNER_CONDUIT_DEMO_SCENES="$SCENES" \
+            perl -e 'alarm shift; exec @ARGV' 2700 xcodebuild test-without-building \
+              -project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd \
+              -only-testing:ConduitScreenshots/DemoVideoTests/testRecordDemoScenes \
+              -resultBundlePath "results/$slug.xcresult" > "results-$slug.log" 2>&1
+            trc=$?
+            kill -INT "$recorder" 2>/dev/null || true  # already stopped by the test, normally
+            for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
+            kill -TERM "$recorder" 2>/dev/null || true
+            wait "$recorder" || true
+            set -e
+            grep -E "error:|Test Case|SCENE" "results-$slug.log" || true
+            if [ "$trc" -ne 0 ]; then echo "$name scenes exited $trc (see the scene stills)" >> failures.txt; fi
+            grep -o "SCENE [a-z]* [a-z-]* [0-9.]*" "results-$slug.log" > "videos/raw-$slug.marks" || true
+            mkdir -p "videos/$slug/stills"
+            xcrun xcresulttool export attachments --path "results/$slug.xcresult" --output-path "videos/$slug/stills" || true
+            if [ -f "videos/$slug/stills/manifest.json" ]; then
+              python3 - "videos/$slug/stills" <<'PY'
+          import json, os, sys
+          root = sys.argv[1]
+          for test in json.load(open(os.path.join(root, "manifest.json"))):
+              for a in test.get("attachments", []):
+                  src = os.path.join(root, a["exportedFileName"])
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  base = name.split("_")[0] if name.count("_") >= 2 else os.path.splitext(name)[0]
+                  base = "".join(c if c.isalnum() or c in "-_. " else "_" for c in base)
+                  if os.path.exists(src):
+                      os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
+          PY
+            fi || echo "$name stills not named" >> failures.txt
+            scripts/app-store/cut-scenes.sh "videos/raw-$slug.mov" "videos/raw-$slug.marks" "videos/$slug" \
+              || echo "$name scenes not cut" >> failures.txt
+            xcrun simctl shutdown "$udid" || true
+          done
+          ls -lR videos
+
+      - name: Stage the git ref's files
+        if: always()
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/videos-ref"
+          mkdir -p "$out/logs"
+          cp -R videos "$out/" 2>/dev/null || true
+          find "$out" -name '*.mov' -delete
+          find "$out" -name '*.mp4' -size +90M -delete
+          for f in demo-hermes/*.log demo-hermes/*/*.log demo-hermes/mailbox/*.log results-*.log record-*.log build-*.log; do
+            if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(echo "$f" | tr '/' '_')"; fi
+          done
+
+      - name: Upload the git ref's files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-videos-ref
+          path: ${{ runner.temp }}/videos-ref
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Upload videos
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-videos
+          path: videos
+          if-no-files-found: warn
+
+      - name: Fail on missing scenes
+        if: always()
+        run: |
+          if [ -s failures.txt ]; then
+            while read -r line; do echo "::error::$line"; done < failures.txt
+            exit 1
+          fi
+
+  publish:
+    # Cloud sessions can't download artifacts but can fetch git refs:
+    # refs/demo-videos/<run id> holds the cut scenes, stills and logs. Its own
+    # job, so nothing the capture job ran shares a runner with the write token.
+    needs: [capture]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the ref's files
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: demo-videos-ref
+          path: ref
+
+      - name: Publish to a git ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -uo pipefail
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          mkdir -p ref
+          git=(env GIT_DIR="$RUNNER_TEMP/ref.git" GIT_WORK_TREE="$PWD/ref" git -c user.name=ci -c user.email=ci@localhost)
+          "${git[@]}" init -q && "${git[@]}" add -A && "${git[@]}" commit -qm "Demo videos, run $RUN_ID" --allow-empty \
+            && "${git[@]}" push -q "https://github.com/$GITHUB_REPOSITORY" "HEAD:refs/demo-videos/$RUN_ID" \
+            && echo "::notice::git fetch origin refs/demo-videos/$RUN_ID"

@@ -1,0 +1,148 @@
+{
+  "fallback": "Done. Anything else?",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Conduit-chan",
+    "avatar": "conduit-chan",
+    "color": "yellow",
+    "turns": [
+      {
+        "match": "what's on today",
+        "prompt": "What's on today?",
+        "steps": [
+          {
+            "content": "A quiet one: the dentist at 2:30, and the Big Sur campsite booking closes tonight. I put the packing list in your notes."
+          }
+        ]
+      }
+    ]
+  },
+  "bots": [
+    {
+      "name": "mira",
+      "title": "Mira",
+      "avatar": "mira",
+      "color": "blue",
+      "later": true,
+      "description": "Reads up on anything and comes back with sources.",
+      "soul": "You are Mira, a careful researcher who always cites sources.",
+      "turns": [
+        {
+          "match": "e-bikes under",
+          "prompt": "Which commuter e-bikes under $2,000 are worth a look?",
+          "steps": [
+            {
+              "content": "Three stand out for a 10 km commute: the Aventon Level 3, the Ride1Up 700 and the Lectric XP Trike if you want cargo room. All three have hydraulic brakes and a removable battery. I left the comparison in your notes."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "piko",
+      "title": "Piko",
+      "avatar": "piko",
+      "color": "orange",
+      "later": true,
+      "description": "Plans meals around what's in the fridge.",
+      "soul": "You are Piko, a cheerful home cook who plans simple weeknight meals.",
+      "turns": [
+        {
+          "match": "dinners this week",
+          "prompt": "Plan three easy dinners this week. We have chicken, spinach and a lot of lemons.",
+          "steps": [
+            {
+              "content": "Three quick ones that use it all up: lemon garlic chicken with spinach orzo on Monday, chicken and spinach quesadillas on Wednesday, and lemon pasta with crispy chicken thighs on Friday."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "riri",
+      "title": "Riri",
+      "avatar": "riri",
+      "color": "pink",
+      "later": true,
+      "description": "Keeps your training plan on track.",
+      "soul": "You are Riri, an upbeat running coach.",
+      "turns": [
+        {
+          "match": "long run",
+          "prompt": "How far should Sunday's long run be?",
+          "steps": [
+            {
+              "content": "14 km at an easy pace. You held 12 comfortably last week, so this is the usual 10 to 15% step up. Take a gel at the halfway point!"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "replies": [
+    {
+      "turns": [
+        {
+          "match": "plan a picnic",
+          "system_has": "You are Piko",
+          "steps": [
+            {
+              "delay": 0.2,
+              "reasoning": "Saturday, four people, park with no grill. Keep it cold and easy to carry.",
+              "content": "Here's a picnic that travels well for four:\n\n- **Lemon chicken wraps** with spinach and feta, made Friday night\n- **Orzo salad** with cherry tomatoes and basil\n- **Watermelon and mint** in a sealed tub\n- **Iced tea** in the big flask\n\nEverything keeps in one cooler bag. I added feta, mint and wraps to the shopping list."
+            }
+          ]
+        },
+        {
+          "match": "plan the launch post",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "I looked at the last ten release posts in the subreddit. The ones with a short video in the first line got about 3x the upvotes, and Friday mornings did best. I'll pull the top questions from the last thread so the post answers them up front."
+            }
+          ]
+        },
+        {
+          "match": "publish the draft to the blog",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "content": "Publishing it now. This clears the old preview build first.",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "rm -rf blog/.preview && mkdir -p blog/posts && echo 'Conduit 2.4' > blog/posts/conduit-2-4.md"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Published: the post is live at `blog/posts/conduit-2-4.md`. Lucien, it's yours to share in the subreddit thread on Friday."
+            }
+          ]
+        },
+        {
+          "match": "campsite near Big Sur",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "Kirk Creek has two sites open on the 22nd, both on the bluff with ocean views. $35 a night, and it books out by noon most Fridays, so I'd grab one now."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "include_chats": {
+    "from": "../demo-script.json",
+    "titles": [
+      "Garden watering schedule",
+      "Reply to the landlord",
+      "Japanese study plan, week 3",
+      "Espresso machine shortlist",
+      "Weekend trip to Big Sur"
+    ]
+  }
+}

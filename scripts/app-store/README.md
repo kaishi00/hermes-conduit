@@ -66,3 +66,74 @@ Results:
   the app in a matching time zone (`timeZoneNearStatusBarTime`).
 - Keep markdown out of the first line of answers that show as previews (bot
   list, chat list).
+
+## Demo videos
+
+`.github/workflows/demo-videos.yml` records the scenes for release posts and
+App Store material, one MP4 per scene, from a single run on a hosted Mac.
+Nothing is filmed by hand: real Hermes with a scripted model, on a
+simulator, no production Hermes or physical device. Run it from
+Actions > Demo videos > Run workflow; `scenes` picks which scenes to cut
+(all by default), `devices` the simulators.
+
+It starts demo dashboards on the runner: **Home**
+(`http://hermes.tail-demo.ts.net:9119`) and **Studio**
+(`http://studio.tail-demo.ts.net:9129`), each from its own script in
+`videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout, and
+Sam for the multiplayer scene (below). Each gateway runs under a loop that
+starts it again if it exits, since Hermes' liveness watchdog can stop one
+while the app builds on the busy runner.
+`link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
+repo and links the two as the owner's own Hermes, so a room can hold bots from
+both. Studio starts with `DEMO_ROOM_GUEST=1`, which runs `conduit-push rooms setup`
+for each of its profiles (an API server with keys) and restarts its gateway, so
+Home lists Studio's bots as ready to join a room; the link step waits until
+it does. A drag in the test presses again when the press opened the bot's
+menu or scrolled the grid instead of lifting it. Both ask for approvals (`DEMO_APPROVALS=manual`): Home for Mira's publish
+in the room it hosts, Studio for Chibi's in Needs you. Their seeded turns run
+nothing that asks, and `seed_demo.py` refuses a seeded tool call on an instance
+that asks; tool calls go in `replies`, sent while the video records.
+
+`ConduitScreenshots/DemoVideoTests.swift` signs in to Home, adds Studio and
+combines the two, and plays the scenes while `simctl io recordVideo` runs.
+Each scene prints `SCENE start <name>` and `SCENE end <name>` with the time,
+and `cut-scenes.sh` cuts the recording at those marks, so the setup between
+scenes never shows. What changes on a dashboard mid-scene comes from
+`demo_director.py`, a small server on the runner the test calls: `add-bot`
+creates a bot the script marks `"later"` (Bots Home going from one bot to
+four), and `prompt` sends a line in a bot's chat so it works on its own (a
+second bot replying, an approval that shows up in Needs you). At the end the
+test calls `stop-recording`, so the video ends at its last mark, which is
+what `cut-scenes.sh` dates the recording from.
+The recording repeats a few frame times, after which ffmpeg would fall back
+to packet times that lag by up to 44 s, so the cut reads it with
+`-fflags +igndts`. The cut uses only the marks; the stills at each scene's
+start and end (`scene-<name>-start.png`, `-end.png`) are there to check it
+against.
+
+The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
+`two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
+`needs-you`.
+
+The multiplayer scene adds a third dashboard, **Sam**
+(`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
+Hermes, linked to Home as someone else (`link-demo-hermes.sh link` with
+`OWN=0`), never added to the app. The test makes the room in New Group Chat
+(Conduit-chan, inviting Sam), the director's `join-room` has Sam join with
+his bot Nori by the plugin's CLI, and `room-say` posts Sam's lines the way
+his Conduit would (`POST /rooms/copies/messages`), so the room shows two
+people and a bot each. `start-room` makes such a room without the app.
+
+Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
+stills at the start and end of each scene in `stills/`), and the git ref
+`refs/demo-videos/<run id>` with the same minus the raw recording (and any scene
+over 90 MB, past what git takes), for
+sessions that can't download artifacts.
+Each run makes its own ref; delete old ones with `git push --delete`.
+The workflow's steps also run by hand on a Mac of your own, which takes
+about 25 minutes with a warm Xcode build, against about two hours hosted.
+
+Bot pictures come from `avatars/<name>.png` (256 px), uploaded the way the app
+uploads one. A turn sent live rather than seeded goes under `"replies"`, and
+`"system_has"` picks which bot answers when several hear the same words in a
+room. A script can borrow chats from another with `"include_chats"`.

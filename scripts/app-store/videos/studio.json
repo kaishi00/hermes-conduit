@@ -1,0 +1,156 @@
+{
+  "fallback": "Done. Anything else?",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Kael",
+    "avatar": "kael",
+    "color": "yellow",
+    "turns": [
+      {
+        "match": "nightly build",
+        "prompt": "How did the nightly build do?",
+        "steps": [
+          {
+            "content": "Green across the board: 1,284 tests in 6 min 12 s. The flaky upload test passed all 50 reruns since yesterday's fix."
+          }
+        ]
+      }
+    ]
+  },
+  "bots": [
+    {
+      "name": "lucien",
+      "title": "Lucien",
+      "avatar": "lucien",
+      "color": "blue",
+      "description": "Writes release notes, posts and docs.",
+      "soul": "You are Lucien, a precise writer who keeps things short.",
+      "turns": [
+        {
+          "match": "changelog tone",
+          "prompt": "Keep the changelog tone friendly but short, okay?",
+          "steps": [
+            {
+              "content": "Got it: friendly, one line per change, no jargon. I'll use that for every release note from now on."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chibi-conduit",
+      "title": "Chibi",
+      "avatar": "chibi-conduit",
+      "color": "orange",
+      "description": "Designs screens, icons and launch art.",
+      "soul": "You are Chibi, a playful designer.",
+      "turns": [
+        {
+          "match": "app icon",
+          "prompt": "Can you try a darker app icon?",
+          "steps": [
+            {
+              "content": "Done! Three darker takes are in the Figma file: midnight, charcoal and a gold-on-black one. I like the gold best."
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pulse-chan",
+      "title": "Pulse-chan",
+      "avatar": "pulse-chan",
+      "color": "pink",
+      "description": "Watches the servers and the stats.",
+      "soul": "You are Pulse-chan, who keeps an eye on uptime and usage.",
+      "turns": [
+        {
+          "match": "uptime",
+          "prompt": "How's uptime this week?",
+          "steps": [
+            {
+              "content": "99.98% this week. One 40-second blip on Tuesday while the database restarted, nobody noticed."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "replies": [
+    {
+      "turns": [
+        {
+          "match": "draft the release notes",
+          "system_has": "You are Lucien",
+          "steps": [
+            {
+              "delay": 0.2,
+              "reasoning": "Friendly but short, one line per change, as agreed.",
+              "content": "**Conduit 2.4**\n\n- **Combined dashboards:** bots from all your Hermes servers on one Home.\n- **Rooms across servers:** put bots from different Hermes in one chat.\n- **Needs you** now shows waits from every dashboard.\n- Faster switching, and a lot of small fixes.\n\nWant me to post it to the subreddit too?"
+            }
+          ]
+        },
+        {
+          "match": "clear out the old mockups",
+          "system_has": "You are Chibi",
+          "steps": [
+            {
+              "content": "Sure, removing last year's mockups now.",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "rm -rf mockups/2025-old"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Cleared out `mockups/2025-old`. The current designs are untouched."
+            }
+          ]
+        },
+        {
+          "match": "plan the launch post",
+          "system_has": "You are Lucien",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "I'll take the words. Draft title: **\"Conduit 2.4: all your Hermes in one place\"**. Short intro, a GIF of the combined Bots Home, three bullets, and a link to TestFlight. Posting to the subreddit Friday at 9 AM Eastern, when most people are on."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "chats": [
+    {
+      "title": "Release checklist for 2.4",
+      "turns": [
+        {
+          "match": "release checklist",
+          "prompt": "Make me a release checklist for 2.4.",
+          "steps": [
+            {
+              "content": "Here's the 2.4 checklist:\n\n1. Freeze main and tag `v2.4.0-rc1`\n2. TestFlight build to the beta group\n3. Two days of crash reports\n4. App Store screenshots and What's New\n5. Submit for review\n6. Release notes on the blog and subreddit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "Database restart on Tuesday",
+      "turns": [
+        {
+          "match": "database restart",
+          "prompt": "What happened with the database restart on Tuesday?",
+          "steps": [
+            {
+              "content": "The managed Postgres applied a minor update at 03:12 and restarted. Requests failed for about 40 seconds and the app retried them all. Nothing was lost."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
