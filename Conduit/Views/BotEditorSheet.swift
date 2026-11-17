@@ -209,7 +209,7 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var createDashboardRow: some View {
         let choices = createDashboardChoices
-        if isCreating, choices.count > 1, let shown = createDashboardID,
+        if isCreating, !choices.isEmpty, let shown = createDashboardID,
            let badge = appState.combinedDashboardBadge(shown) {
             Menu {
                 ForEach(choices, id: \.self) { id in
@@ -997,8 +997,9 @@ struct BotEditorSheet: View {
             let result: BotSaveResult
             var createdName: String?
             // Another dashboard picked: switch there, then make it as on that
-            // dashboard. Its model is that dashboard's default, since the
-            // list here was this one's.
+            // dashboard. Its model, its Start From and its skills and tools
+            // are that dashboard's defaults: what the sheet read was this
+            // one's, and none of it is written to the other.
             if let target, target != appState.activeDashboardID {
                 guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
                 await appState.switchToCombinedDashboardUntilSettled(target)
@@ -1010,6 +1011,9 @@ struct BotEditorSheet: View {
                 }
                 draft.provider = ""
                 draft.model = ""
+                draft.cloneFrom = BotCreateRequest.mainProfile
+                draft.capabilities = nil
+                draft.capabilitiesBaseline = nil
             }
             if let bot = editedBot {
                 result = await appState.updateBot(bot, draft: draft, loadedDetails: details)
