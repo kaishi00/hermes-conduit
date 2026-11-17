@@ -786,6 +786,12 @@ final class SidebarLayoutTests: XCTestCase {
     /// over it gets the bar back as any screen has it, and the list takes it
     /// again once it's on top. Dismantled, the list's inset goes back to 0.
     @MainActor
+    /// Issue 2671: a Mac keeps the Sessions list's bar hidden, as before
+    /// #2580; an iPhone and an iPad keep it shown for the pushed header.
+    func testListKeepsItsBarShownExceptOnAMac() {
+        XCTAssertEqual(V2ListNavigationBarPolicy.keepsBarShown, !ProcessInfo.processInfo.isiOSAppOnMac)
+    }
+
     func testListKeepsItsShownBarOutOfTheWayOnlyWhileItsOnTop() {
         let list = UIViewController()
         let navigation = UINavigationController(navigationBarClass: SizableNavigationBar.self, toolbarClass: nil)

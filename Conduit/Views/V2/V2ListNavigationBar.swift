@@ -22,7 +22,17 @@ import UIKit
 extension View {
     /// The list's navigation bar: shown, with nothing in it and nothing
     /// behind it, so a chat pushed over the list finds the bar in place.
+    /// Hidden as before on a Mac (`V2ListNavigationBarPolicy`).
+    @ViewBuilder
     func v2ListNavigationBar() -> some View {
+        if V2ListNavigationBarPolicy.keepsBarShown {
+            shownEmptyListNavigationBar()
+        } else {
+            toolbar(.hidden, for: .navigationBar)
+        }
+    }
+
+    private func shownEmptyListNavigationBar() -> some View {
         toolbarBackground(.hidden, for: .navigationBar)
             .navigationBarTitleDisplayMode(.inline)
             // The title stays for the pushed screen's Back; this keeps it
@@ -36,6 +46,17 @@ extension View {
             }
             .background { V2ListNavigationBar() }
     }
+}
+
+/// Whether the Sessions list keeps its navigation bar shown. Not when the
+/// iPad app runs on a Mac (`isiOSAppOnMac`): there, from the build that
+/// first showed it, the profile strip at the top of the sidebar went blank
+/// with its row kept, the filter row under it still drawn (issue 2671). The
+/// header jump the shown bar fixes was measured on an iPhone, mid-push; a
+/// Mac opens chats beside the list and pushes one only in a narrow window,
+/// so it keeps the hidden bar it had before #2580.
+enum V2ListNavigationBarPolicy {
+    static let keepsBarShown = !ProcessInfo.processInfo.isiOSAppOnMac
 }
 
 /// Behind the list: takes the shown bar's height back out of the list's
