@@ -119,7 +119,7 @@ curl -sf "$BASE/api/status" >/dev/null || { echo "::error::dashboard did not sta
 
 # Seed the chats through the gateway RPC the app itself uses, then the
 # scheduled jobs through the CLI.
-DEMO_BOT_CHATS="$DEMO_WORK/bot-chats.json" "$PY" -u "$SCRIPT_DIR/seed_demo.py" "$DEMO_SCRIPT" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
+DEMO_APPROVALS="${DEMO_APPROVALS:-off}" DEMO_BOT_CHATS="$DEMO_WORK/bot-chats.json" "$PY" -u "$SCRIPT_DIR/seed_demo.py" "$DEMO_SCRIPT" "$BASE" "$DEMO_USER" "$DEMO_PASSWORD" \
   2>&1 | tee "$DEMO_WORK/seed.log"
 "$PY" "$SCRIPT_DIR/seed_board.py" "$DEMO_SCRIPT" "$HERMES" 2>&1 | tee -a "$DEMO_WORK/seed.log" \
   || { echo "::error::the Kanban board was not fully seeded"; exit 1; }

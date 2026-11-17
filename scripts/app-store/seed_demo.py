@@ -137,8 +137,24 @@ class Gateway:
         return stored
 
 
+def check_nothing_asks(script):
+    """On an instance that asks before running things (DEMO_APPROVALS=manual),
+    a seeded turn that calls a tool would leave an approval waiting before
+    the video starts. Such turns belong in "replies", sent while it records."""
+    if os.environ.get("DEMO_APPROVALS", "off") == "off":
+        return
+    seeded = [("default_bot", script.get("default_bot") or {})]
+    seeded += [(b["name"], b) for b in script.get("bots", []) if not b.get("later")]
+    seeded += [(c.get("title", "chat"), c) for c in script.get("chats", []) if c.get("seed") is not False]
+    asking = [name for name, item in seeded
+              if any(step.get("tool_calls") for turn in item.get("turns", []) for step in turn.get("steps", []))]
+    if asking:
+        sys.exit(f"Seeded turns call tools on an instance with approvals on: {', '.join(asking)}")
+
+
 async def seed(script_path, base, user, password):
     script = load_script(script_path)
+    check_nothing_asks(script)
     bot_chats = {}
     async with Gateway(base, user, password) as gw:
         if script.get("default_bot"):

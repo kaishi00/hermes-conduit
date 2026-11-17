@@ -89,6 +89,11 @@ final class DemoVideoTests: XCTestCase {
             // The other dashboard's default profile (Conduit-chan on Home,
             // Kael on Studio): its chip is v2.profile.<dashboard id>.default
             // and a tap switches straight there. Twice: over and back.
+            let studioChats = "Release checklist for 2.4", homeChats = "Garden watering schedule"
+            // Each tap lands on the dashboard it didn't start on. On a profile
+            // without either list (Lucien's, say) the first tap may land on either.
+            var shown: String? = waitForText(studioChats, timeout: 10) ? studioChats
+                : (waitForText(homeChats, timeout: 2) ? homeChats : nil)
             for _ in 0..<2 {
                 let other = otherDashboardChip("default")
                 guard other.waitForExistence(timeout: 20) else {
@@ -97,8 +102,10 @@ final class DemoVideoTests: XCTestCase {
                     break
                 }
                 other.tap()
-                XCTAssertTrue(waitForAnyText(["Release checklist for 2.4", "Garden watering schedule"], timeout: 30),
-                              "The other dashboard's chats never showed")
+                let expected = shown.map { $0 == studioChats ? [homeChats] : [studioChats] } ?? [studioChats, homeChats]
+                let landed = expected.first { waitForText($0, timeout: expected.count == 1 ? 30 : 15) }
+                XCTAssertNotNil(landed, "The other dashboard's chats (\(expected.joined(separator: " or "))) never showed")
+                shown = landed
                 settle(4)
             }
         }
@@ -286,14 +293,6 @@ final class DemoVideoTests: XCTestCase {
         composer.typeText(text)
         settle(0.5)
         app.buttons["Send message"].firstMatch.tap()
-    }
-
-    private func waitForAnyText(_ texts: [String], timeout: TimeInterval) -> Bool {
-        let format = texts.map { _ in "label CONTAINS %@ OR value CONTAINS %@" }.joined(separator: " OR ")
-        let args = texts.flatMap { [$0, $0] }
-        return app.descendants(matching: .any)
-            .matching(NSPredicate(format: format, argumentArray: args))
-            .firstMatch.waitForExistence(timeout: timeout)
     }
 
     /// Another combined dashboard's chip for `profile` in the profile strip
