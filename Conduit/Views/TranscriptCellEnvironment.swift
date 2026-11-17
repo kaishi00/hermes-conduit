@@ -43,8 +43,8 @@ struct TranscriptCellEnvironment: Equatable {
     // Conduit's
     var chatRowState: ChatRowState
     var chatRowActions: ChatRowActions?
-    var chatRowDisclosure: ChatRowDisclosure?
-    var imageGallery: ImageGallerySource?
+    @OptionalIdentityEquatable var chatRowDisclosure: ChatRowDisclosure?
+    @OptionalIdentityEquatable var imageGallery: ImageGallerySource?
     var selectableTextDrawsUntilTouched: Bool
     var composerStaysExpanded: Bool
     var chatWidthTextSteps: Int
@@ -54,9 +54,9 @@ struct TranscriptCellEnvironment: Equatable {
     var quotedReplyJump: QuotedReplyJumpAction?
     var chatQuoteAction: ChatQuoteAction?
     var markdownJoinsProseRuns: Bool
-    var gatewayMediaFiles: GatewayMediaDataURLResolver?
-    var roomFilePictures: GatewayMediaDataURLResolver?
-    var roomFileReads: GatewayMediaDataURLResolver?
+    @OptionalIdentityEquatable var gatewayMediaFiles: GatewayMediaDataURLResolver?
+    @OptionalIdentityEquatable var roomFilePictures: GatewayMediaDataURLResolver?
+    @OptionalIdentityEquatable var roomFileReads: GatewayMediaDataURLResolver?
     var v2Shell: V2ShellContext
     var v2OpenBeside: V2OpenBeside?
     var botZoomNamespace: Namespace.ID?
@@ -81,7 +81,7 @@ struct TranscriptCellEnvironment: Equatable {
     var scenePhase: ScenePhase
     var isEnabled: Bool
     /// Not compared: an action has no equality, and the app's is set once.
-    var openURL: OpenURLAction
+    @EqualityIgnored var openURL: OpenURLAction
 
     /// The values at the transcript, the chat's disclosure in place of any
     /// other (the stack set it on the rows).
@@ -195,46 +195,6 @@ struct TranscriptCellEnvironment: Equatable {
         }
         runs.formUnion(old.stepSummariesAsked.symmetricDifference(new.stepSummariesAsked))
         return .rows(messages: messages, runs: runs, turn: old.isBusy != new.isBusy)
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.chatRowState == rhs.chatRowState
-            && lhs.chatRowActions == rhs.chatRowActions
-            && lhs.chatRowDisclosure === rhs.chatRowDisclosure
-            && lhs.imageGallery === rhs.imageGallery
-            && lhs.selectableTextDrawsUntilTouched == rhs.selectableTextDrawsUntilTouched
-            && lhs.composerStaysExpanded == rhs.composerStaysExpanded
-            && lhs.chatWidthTextSteps == rhs.chatWidthTextSteps
-            && lhs.columnText == rhs.columnText
-            && lhs.chatTextSize == rhs.chatTextSize
-            && lhs.markdownTablePlainCells == rhs.markdownTablePlainCells
-            && lhs.quotedReplyJump == rhs.quotedReplyJump
-            && lhs.chatQuoteAction == rhs.chatQuoteAction
-            && lhs.markdownJoinsProseRuns == rhs.markdownJoinsProseRuns
-            && lhs.gatewayMediaFiles === rhs.gatewayMediaFiles
-            && lhs.roomFilePictures === rhs.roomFilePictures
-            && lhs.roomFileReads === rhs.roomFileReads
-            && lhs.v2Shell == rhs.v2Shell
-            && lhs.v2OpenBeside == rhs.v2OpenBeside
-            && lhs.botZoomNamespace == rhs.botZoomNamespace
-            && lhs.botsHomeCovered == rhs.botsHomeCovered
-            && lhs.botChatZoomed == rhs.botChatZoomed
-            && lhs.rosterRowsInScroll == rhs.rosterRowsInScroll
-            && lhs.v2TabBarClearance == rhs.v2TabBarClearance
-            && lhs.windowSideInsets == rhs.windowSideInsets
-            && lhs.v2ComposerRests == rhs.v2ComposerRests
-            && lhs.groupMemberTints == rhs.groupMemberTints
-            && lhs.groupRoomLooks == rhs.groupRoomLooks
-            && lhs.conduitAccent == rhs.conduitAccent
-            && lhs.settingsGlowTint == rhs.settingsGlowTint
-            && lhs.locale == rhs.locale
-            && lhs.dynamicTypeSize == rhs.dynamicTypeSize
-            && lhs.font == rhs.font
-            && lhs.colorScheme == rhs.colorScheme
-            && lhs.layoutDirection == rhs.layoutDirection
-            && lhs.horizontalSizeClass == rhs.horizontalSizeClass
-            && lhs.scenePhase == rhs.scenePhase
-            && lhs.isEnabled == rhs.isEnabled
     }
 }
 

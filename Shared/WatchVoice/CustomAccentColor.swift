@@ -14,7 +14,8 @@
 import Foundation
 
 struct CustomAccentColor: Hashable, Sendable {
-    /// The pick in 8-bit sRGB: what's stored, synced and compared.
+    /// The pick in 8-bit sRGB: what's stored, synced and compared (the
+    /// synthesized `==` and hash also read the shades, which follow from it).
     let red: Int
     let green: Int
     let blue: Int
@@ -62,17 +63,6 @@ struct CustomAccentColor: Hashable, Sendable {
             Self.contrast($0, Self.lightBackdrop) >= Self.minimumContrast
                 && Self.contrast($0, Self.white) >= Self.minimumContrast
         }
-    }
-
-    /// Picks compare by what's stored; the shades follow from it.
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        (lhs.red, lhs.green, lhs.blue) == (rhs.red, rhs.green, rhs.blue)
-    }
-
-    func hash(into hasher: inout Hasher) {
-        hasher.combine(red)
-        hasher.combine(green)
-        hasher.combine(blue)
     }
 
     var hex: String { String(format: "#%02X%02X%02X", red, green, blue) }

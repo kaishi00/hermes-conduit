@@ -191,7 +191,7 @@ struct QuotedReplyJump: Equatable {
 /// ChatQuoteAction, so rows don't re-render when it is made again.
 struct QuotedReplyJumpAction: Equatable {
     private let owner: ObjectIdentifier
-    private let handler: @MainActor (String, String) -> Bool
+    @EqualityIgnored private var handler: @MainActor (String, String) -> Bool
 
     init(owner: AnyObject, handler: @escaping @MainActor (String, String) -> Bool) {
         self.owner = ObjectIdentifier(owner)
@@ -201,10 +201,6 @@ struct QuotedReplyJumpAction: Equatable {
     @MainActor
     func callAsFunction(quote: String, quotedIn messageID: String) -> Bool {
         handler(quote, messageID)
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.owner == rhs.owner
     }
 }
 
@@ -228,8 +224,8 @@ extension EnvironmentValues {
 /// same reason.
 struct ChatQuoteAction: Equatable {
     private let owner: ObjectIdentifier
-    private let availability: @MainActor () -> Bool
-    private let handler: @MainActor (String) -> Void
+    @EqualityIgnored private var availability: @MainActor () -> Bool
+    @EqualityIgnored private var handler: @MainActor (String) -> Void
 
     init(
         owner: AnyObject,
@@ -249,10 +245,6 @@ struct ChatQuoteAction: Equatable {
     @MainActor
     func callAsFunction(_ text: String) {
         handler(text)
-    }
-
-    static func == (lhs: Self, rhs: Self) -> Bool {
-        lhs.owner == rhs.owner
     }
 }
 
