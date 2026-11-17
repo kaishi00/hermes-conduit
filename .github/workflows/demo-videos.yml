@@ -32,7 +32,7 @@ concurrency:
 jobs:
   capture:
     runs-on: xcode-27
-    timeout-minutes: 160
+    timeout-minutes: 180
     env:
       DEVICES: ${{ inputs.devices || 'iPhone 18 Pro Max' }}
       SCENES: ${{ inputs.scenes }}
@@ -43,6 +43,7 @@ jobs:
       DEMO_MAILBOX_URL: http://127.0.0.1:9130
       HOME_URL: http://hermes.tail-demo.ts.net:9119
       STUDIO_URL: http://studio.tail-demo.ts.net:9129
+      SAM_URL: http://sam.tail-demo.ts.net:9139
     steps:
       - uses: actions/checkout@v7
         with:
@@ -79,11 +80,23 @@ jobs:
           DEMO_HOST=studio.tail-demo.ts.net DEMO_PORT=9129 STUB_PORT=8766 DEMO_APPROVALS=manual DEMO_ROOM_GUEST=1 \
             bash scripts/app-store/start-demo-hermes.sh
 
+      # Sam: another person's Hermes, for the multiplayer scene (a room with
+      # someone else). Set up for rooms after Studio, so its API server takes
+      # the next free port.
+      - name: Start Sam
+        timeout-minutes: 20
+        run: |
+          DEMO_WORK="$PWD/demo-hermes/sam" DEMO_SCRIPT=scripts/app-store/videos/sam.json \
+          DEMO_HOST=sam.tail-demo.ts.net DEMO_PORT=9139 STUB_PORT=8767 DEMO_ROOM_GUEST=1 \
+            bash scripts/app-store/start-demo-hermes.sh
+
       - name: Link them
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
           HOME_A="$PWD/demo-hermes/home/home" HOME_B="$PWD/demo-hermes/studio/home" \
           DASHBOARD_A=http://hermes.tail-demo.ts.net:9119 COOKIES_A="$PWD/demo-hermes/home/cookies" \
+            bash scripts/app-store/link-demo-hermes.sh link
+          HOME_A="$PWD/demo-hermes/home/home" HOME_B="$PWD/demo-hermes/sam/home" NAME_B=Sam OWN=0 \
             bash scripts/app-store/link-demo-hermes.sh link
 
       - name: Start the director
@@ -92,14 +105,16 @@ jobs:
           python3 - <<'PY'
           import json, os
           w = os.path.join(os.getcwd(), "demo-hermes")
-          def entry(name, url, script):
+          def entry(name, url, script, **more):
               return {"base": url, "user": os.environ["DEMO_USER"], "password": os.environ["DEMO_PASSWORD"],
-                      "script": os.path.abspath(f"scripts/app-store/videos/{script}"), "bot_chats": f"{w}/{name}/bot-chats.json"}
+                      "script": os.path.abspath(f"scripts/app-store/videos/{script}"), "bot_chats": f"{w}/{name}/bot-chats.json",
+                      "hermes_home": f"{w}/{name}/home", **more}
           json.dump({"home": entry("home", os.environ["HOME_URL"], "home.json"),
-                     "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json")},
+                     "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json"),
+                     "sam": entry("sam", os.environ["SAM_URL"], "sam.json", person="Sam")},
                     open(f"{w}/director.json", "w"), indent=1)
           PY
-          DEMO_RECORDER_PID_FILE="$PWD/demo-hermes/recorder.pid" \
+          DEMO_RECORDER_PID_FILE="$PWD/demo-hermes/recorder.pid" CONDUIT_ROOMS_MAILBOX_URL="$DEMO_MAILBOX_URL" \
           nohup "$DEMO_SRC/.venv/bin/python" -u scripts/app-store/demo_director.py demo-hermes/director.json 8780 \
             > demo-hermes/director.log 2>&1 &
 

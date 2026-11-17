@@ -182,6 +182,24 @@ final class DemoVideoTests: XCTestCase {
             goBack()
         }
 
+        // A room with another person: Sam, on his own Hermes, linked as
+        // someone else rather than as yours. Made off camera (Home invites,
+        // Sam joins with his bot Nori); his lines come from the director, as
+        // they would from his Conduit.
+        direct("start-room", ["dashboard": "home", "guest": "sam", "room": "Weekend at Big Sur"])
+        scene("multiplayer") {
+            settle(2)
+            openRoom("Weekend at Big Sur")
+            send("@conduit-chan can you find us a campsite near Big Sur for the 22nd?")
+            XCTAssertTrue(waitForText("Kirk Creek", timeout: 60), "Conduit-chan never answered in the room with Sam")
+            settle(3)
+            direct("room-say", ["dashboard": "sam", "room": "Weekend at Big Sur",
+                                "text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?"])
+            XCTAssertTrue(waitForText("Carmel", timeout: 90), "Sam's Nori never answered")
+            settle(6)
+            goBack()
+        }
+
         scene("needs-you") {
             openTab("Sessions")
             settle(3)

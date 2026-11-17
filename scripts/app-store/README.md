@@ -104,7 +104,16 @@ test calls `stop-recording`, so the video ends at its last mark, which is
 what `cut-scenes.sh` dates the recording from.
 
 The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
-`two-replying`, `reorder`, `room-across`, `room-approval`, `needs-you`.
+`two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
+`needs-you`.
+
+The multiplayer scene adds a third dashboard, **Sam**
+(`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
+Hermes, linked to Home as someone else (`link-demo-hermes.sh link` with
+`OWN=0`), never added to the app. The director's `start-room` makes the room
+off camera (Home invites Sam, Sam joins with his bot Nori, both by the
+plugin's CLI), and `room-say` posts Sam's lines the way his Conduit would
+(`POST /rooms/copies/messages`), so the room shows two people and a bot each.
 
 Results: artifact `demo-videos` (`<device>/<scene>.mp4`, the raw recording and
 a still at the end of each scene in `stills/`), and the git ref

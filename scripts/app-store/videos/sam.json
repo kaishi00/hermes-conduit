@@ -1,0 +1,50 @@
+{
+  "fallback": "On it.",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Nori",
+    "color": "green",
+    "turns": [
+      {
+        "match": "packing list",
+        "prompt": "Start a packing list for camping",
+        "steps": [
+          {
+            "content": "Started one: tent, two sleeping bags, the camp stove, headlamps and the blue cooler."
+          }
+        ]
+      }
+    ]
+  },
+  "replies": [
+    {
+      "turns": [
+        {
+          "match": "drive time from the city",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "About 3 hours down Highway 1 if you leave by 9. Stop in Carmel for lunch: the bakery on Ocean Ave opens at 8 and has parking out back. I'll bring the tent and the stove."
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "chats": [
+    {
+      "title": "Camping gear list",
+      "turns": [
+        {
+          "match": "camping gear",
+          "prompt": "What camping gear do we still need?",
+          "steps": [
+            {
+              "content": "Still missing: a second sleeping pad, a lantern and fuel for the stove. Everything else is in the garage bin."
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

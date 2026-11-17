@@ -122,6 +122,15 @@
               "content": "Published: the post is live at `blog/posts/conduit-2-4.md`. Lucien, it's yours to share in the subreddit thread on Friday."
             }
           ]
+        },
+        {
+          "match": "campsite near Big Sur",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "Kirk Creek has two sites open on the 22nd, both on the bluff with ocean views. $35 a night, and it books out by noon most Fridays, so I'd grab one now."
+            }
+          ]
         }
       ]
     }

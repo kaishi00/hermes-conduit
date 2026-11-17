@@ -13,6 +13,13 @@ JSON to http://127.0.0.1:$DIRECTOR_PORT/<action>:
 - prompt    {"dashboard", "profile", "text"}: sends text in that bot's Bot
   Chat and returns once the turn has started, so it runs on while the video
   goes on (a reply streaming, an approval or a question waiting).
+- start-room {"dashboard", "guest", "room", "agents", "guest_agents"}: a room
+  with people over a Link (rooms invite on the host, rooms join on the guest,
+  by the CLI), returning once the guest's copy says it started. The guest's
+  config entry names the person the host's Link calls them ("person").
+- room-say {"dashboard", "room", "text"}: posts text as that dashboard's
+  person in a room someone else hosts, the way their Conduit does
+  (POST /rooms/copies/messages).
 - stop-recording {}: stops `simctl io recordVideo` (its pid is in the file
   DEMO_RECORDER_PID_FILE names) and returns once the video is written, so the
   video ends at the test's last mark and cut-scenes.sh can date it from there.
@@ -20,7 +27,8 @@ JSON to http://127.0.0.1:$DIRECTOR_PORT/<action>:
 Answers 200 {"ok": true} once done, 500 with the error otherwise.
 
 Config: a JSON file mapping each dashboard's name to {base, user, password,
-script, bot_chats}; bot_chats is the file seed_demo.py wrote (DEMO_BOT_CHATS).
+script, bot_chats, hermes_home, person}; bot_chats is the file seed_demo.py
+wrote (DEMO_BOT_CHATS), hermes_home its HERMES_HOME for the CLI.
 Run with the Hermes venv's Python.
 
 Usage: demo_director.py CONFIG.json [PORT]
@@ -29,15 +37,20 @@ Usage: demo_director.py CONFIG.json [PORT]
 import asyncio
 import json
 import os
+import re
 import signal
+import subprocess
 import sys
 import traceback
+import uuid
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from demo_script import load as load_script  # noqa: E402
 from seed_demo import Gateway  # noqa: E402
+
+import httpx  # noqa: E402  (the Hermes venv has it)
 
 
 def dashboard(config, name):
@@ -78,6 +91,58 @@ async def prompt(config, body):
         await asyncio.sleep(1)
 
 
+def conduit_push(entry, *args):
+    """The plugin's CLI on that dashboard's Hermes (the venv's hermes)."""
+    exe = Path(sys.executable).with_name("hermes")
+    env = {**os.environ, "HERMES_HOME": entry["hermes_home"]}
+    done = subprocess.run([str(exe), "conduit-push", *args], env=env, capture_output=True, text=True, timeout=120)
+    if done.returncode:
+        raise RuntimeError(f"conduit-push {' '.join(args)}: {done.stdout}{done.stderr}")
+    return done.stdout
+
+
+async def start_room(config, body):
+    host = dashboard(config, body["dashboard"])
+    guest = dashboard(config, body["guest"])
+    person = guest["person"]
+    found = re.search(rf"^{re.escape(person)}: linked.*\(Link ([A-Za-z0-9_-]+)\)",
+                      conduit_push(host, "links", "list"), re.M)
+    if found is None:
+        raise LookupError(f"{body['dashboard']} has no Link with {person}")
+    made = conduit_push(host, "rooms", "invite", "--name", body["room"], "--link", found[1],
+                        *[f"--agent={agent}" for agent in body.get("agents", ["default"])])
+    room = re.search(r"\(room (conduit-[0-9a-f-]+)\)", made)[1]
+    for _ in range(60):
+        if room in conduit_push(guest, "rooms", "invites"):
+            break
+        await asyncio.sleep(2)
+    else:
+        raise TimeoutError(f"{body['guest']} never heard the invite to {room}")
+    conduit_push(guest, "rooms", "join", "--room", room, "--yes",
+                 *[f"--agent={agent}" for agent in body.get("guest_agents", ["default"])])
+    for _ in range(60):
+        if re.search(rf"^{room}: .*\bstarted\b", conduit_push(guest, "rooms", "copies"), re.M):
+            return
+        await asyncio.sleep(2)
+    raise TimeoutError(f"{room} never started on {body['guest']}")
+
+
+async def room_say(config, body):
+    entry = dashboard(config, body["dashboard"])
+    found = re.search(rf"^(conduit-[0-9a-f-]+): {re.escape(body['room'])},",
+                      conduit_push(entry, "rooms", "copies"), re.M)
+    if found is None:
+        raise LookupError(f"{body['dashboard']} keeps no copy of {body['room']!r}")
+    async with httpx.AsyncClient(base_url=entry["base"], timeout=60, trust_env=False) as http:
+        r = await http.post("/auth/password-login",
+                            json={"provider": "basic", "username": entry["user"], "password": entry["password"]})
+        r.raise_for_status()
+        r = await http.post("/api/plugins/conduit_push/rooms/copies/messages",
+                            json={"room_id": found[1], "event_id": f"demo-{uuid.uuid4().hex[:12]}",
+                                  "text": body["text"]})
+        r.raise_for_status()
+
+
 async def stop_recording(config, body):
     path = os.environ.get("DEMO_RECORDER_PID_FILE")
     if not path or not Path(path).is_file():
@@ -98,7 +163,8 @@ async def stop_recording(config, body):
     raise TimeoutError(f"recorder {pid} still running 15 s after SIGINT")
 
 
-ACTIONS = {"add-bot": add_bot, "prompt": prompt, "stop-recording": stop_recording}
+ACTIONS = {"add-bot": add_bot, "prompt": prompt, "start-room": start_room, "room-say": room_say,
+           "stop-recording": stop_recording}
 
 
 class Handler(BaseHTTPRequestHandler):
