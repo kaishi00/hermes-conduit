@@ -382,6 +382,7 @@ extension AppState {
             releaseFollowedChatOnScreen()
             Task {
                 await waitOutProfileSwitchSlideIn()
+                guard self.client === nextClient else { return }
                 await loadChatResumeSlashCommands()
             }
             return true
