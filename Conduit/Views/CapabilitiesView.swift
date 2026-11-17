@@ -146,8 +146,11 @@ struct CapabilitiesView: View {
             }
             .padding(.leading, 14)
             .padding(.trailing, 6)
-            .frame(minHeight: 40)
-            .conduitGlassSurface(cornerRadius: 20)
+            .frame(minHeight: 44)
+            .conduitGlassSurface(cornerRadius: 22)
+            // The whole 44 pt bar focuses the field, not only its text line.
+            .contentShape(Rectangle())
+            .onTapGesture { searchFocused = true }
             if searchFocused {
                 Button(AppLocalization.string("Cancel")) {
                     searchText = ""
