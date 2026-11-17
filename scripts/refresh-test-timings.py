@@ -7,8 +7,9 @@ is charged 3 s. The baseline was seeded in August 2026 and drifted: by
 2026-11-16 half the unit classes had no entry and others had grown tenfold,
 so app-code PRs ran 1,300-2,200 tests (5-9 minutes) against a 120 s budget.
 
-Usage, with the logs of a green nightly's unit shards (GitHub's job logs or
-xcodebuild's own output):
+Usage, with the full logs of a green nightly's unit shards (each job's raw log
+downloaded whole, or xcodebuild's own output; the job log API keeps only a
+job's last 5,000 lines, and the script warns when a log looks cut short):
 
     python3 scripts/refresh-test-timings.py --baseline scripts/test-timings.json \
         shard1.log shard2.log
@@ -67,14 +68,32 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     measured = {}
     for path in args.logs:
-        with open(path, encoding="utf-8", errors="replace") as fh:
-            for name, seconds in measure(fh).items():
-                measured[name] = max(measured.get(name, 0.0), seconds)
+        try:
+            with open(path, encoding="utf-8", errors="replace") as fh:
+                found = measure(fh)
+        except OSError as exc:
+            print(f"refresh-test-timings: {exc}", file=sys.stderr)
+            return 2
+        print(f"{path}: {len(found)} classes")
+        for name, seconds in found.items():
+            measured[name] = max(measured.get(name, 0.0), seconds)
     if not measured:
         print("no class timings in the logs; baseline unchanged", file=sys.stderr)
         return 1
-    with open(args.baseline, encoding="utf-8") as fh:
-        baseline = json.load(fh)
+    try:
+        with open(args.baseline, encoding="utf-8") as fh:
+            baseline = json.load(fh)
+    except (OSError, ValueError) as exc:
+        print(f"refresh-test-timings: {args.baseline}: {exc}", file=sys.stderr)
+        return 2
+    known = sum(1 for name in (baseline.get("classes") or {}) if not name.endswith("UITests"))
+    if known and len(measured) < known // 2:
+        # GitHub's job log API returns only a job's last 5,000 lines, so a
+        # log fetched that way can hold only the shard's last batches.
+        print(f"::warning::only {len(measured)} classes measured against {known} "
+              f"unit classes in the baseline; were the logs cut short? Use the "
+              f"full log (the web UI's download) or xcodebuild's own output",
+              file=sys.stderr)
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     updated = refresh(baseline, measured, now)
     with open(args.baseline, "w", encoding="utf-8") as fh:

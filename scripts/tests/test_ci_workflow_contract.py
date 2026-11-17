@@ -1493,6 +1493,7 @@ class SmokeSelectionTests(unittest.TestCase):
         # baseline measured (#2666) the 35 s AppStateChatResumeTests no
         # longer fits beside its cheaper siblings and runs at night.
         self.assertIn("AppStateMultiDashboardTests", doc["changed_unit"])
+        self.assertIn("AppStateChatResumeTests", doc["changed_skipped"])
         self.assertGreaterEqual(len(doc["changed_unit"]), 5)
         for name in doc["changed_unit"]:
             self.assertTrue(name.startswith("AppState"), name)

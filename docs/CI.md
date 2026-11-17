@@ -48,9 +48,11 @@ touching them. The **change's own classes**: `plan-tests.py smoke
 `ConduitTests/` file, and `<Stem>Tests` for a changed app file `<Stem>.swift`,
 cheapest first within `changed_budget_s` of baseline time (a class with no
 baseline counts 3 s) and `changed_max_classes`. What budget is left goes to
-the stem's family, `<Stem><Topic>Tests` (a change to `AppState.swift` or
-`AppState+Composer.swift` reaches `AppStateChatResumeTests`), also cheapest
-first. The rest are named in a notice and the step summary. A changed class
+the stem's family, `<Stem><Topic>Tests`, also cheapest first: a change to
+`AppState.swift` or `AppState+Composer.swift` brings in about fifteen of the
+`AppState...Tests` (`AppStateMultiDashboardTests` among them), and a heavy
+member that no longer fits, such as the 35 s `AppStateChatResumeTests`, runs
+at night. The rest are named in a notice and the step summary. A changed class
 runs whole, in place of any tests pinned from it.
 Timing families are never added, and neither are changed UI classes: UI
 tests take 36-150 s each, so a UI test a PR adds or edits first runs at

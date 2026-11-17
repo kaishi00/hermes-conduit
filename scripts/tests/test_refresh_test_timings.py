@@ -52,6 +52,27 @@ class RefreshTestTimingsTests(unittest.TestCase):
             with open(base) as fh:
                 self.assertEqual(json.load(fh), {"classes": {"A": 1.0}})
 
+    def test_two_shard_logs_keep_each_class_longest_time(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = os.path.join(tmp, "timings.json")
+            with open(base, "w") as fh:
+                json.dump({"classes": {"BotModeTests": 3.0}}, fh)
+            logs = []
+            for i, seconds in enumerate(("4.5", "12.25")):
+                path = os.path.join(tmp, f"shard{i}.log")
+                with open(path, "w") as fh:
+                    fh.write("Test Suite 'BotModeTests' passed at 2026-11-16 08:40:18.600.\n"
+                             f"\t Executed 268 tests, with 0 failures (0 unexpected) in 1 ({seconds}) seconds\n")
+                logs.append(path)
+            self.assertEqual(ref.main(["--baseline", base] + logs), 0)
+            with open(base) as fh:
+                self.assertEqual(json.load(fh)["classes"], {"BotModeTests": 12.25})
+
+    def test_a_missing_log_fails_cleanly(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self.assertEqual(ref.main(["--baseline", os.path.join(tmp, "b.json"),
+                                       os.path.join(tmp, "missing.log")]), 2)
+
 
 if __name__ == "__main__":
     unittest.main()
