@@ -274,7 +274,9 @@ struct V2ScheduledList: View {
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         // The list is the dashboard's: another one reads its own, as the drawer's does.
         .task(id: "\(readScopeNow)|\(shell.isTabActive)") {
-            guard shell.isTabActive, appState.isConnected else { return }
+            // A reconnect reads at once, like the first show.
+            guard appState.isConnected else { readScope = nil; return }
+            guard shell.isTabActive else { return }
             // Shown again with what it already read: the read waits for the
             // page to slide in. Its publishes each redraw the page, and fell
             // in the slide's first frames.
