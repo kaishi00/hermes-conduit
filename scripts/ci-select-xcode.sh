@@ -23,7 +23,8 @@
 # An image that carries a newer Xcode usually carries its iOS runtime too, and
 # the device lookup (scripts/ci-lib.sh) takes the newest runtime, which an
 # older Xcode doesn't build for. So when the script falls back to an Xcode
-# whose iOS simulator SDK is older than the first candidate's, it pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
+# whose iOS simulator SDK is older than the first candidate with an SDK, it
+# pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
 # screenshots' Watch job reads) to the selected Xcode's simulator SDK versions
 # through GITHUB_ENV (the workflows keep that variable across sudo). A
 # fallback to another copy of the same SDK pins nothing: an image carried
@@ -81,7 +82,11 @@ while IFS= read -r target; do
     fi
   fi
   if sdk_is_older "$sdk" "$newest_sdk"; then
-    watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version)
+    watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version) || watch_sdk=""
+    if [ -z "$watch_sdk" ]; then
+      echo "::warning title=Watch simulator SDK unavailable::$target has no watchsimulator SDK for the runtime pin; trying the next one"
+      continue
+    fi
     echo "::notice title=Simulator runtime pinned::fell back to $target; simulators run iOS $sdk and watchOS $watch_sdk, the runtimes its SDKs build for"
     if [ -n "${GITHUB_ENV:-}" ]; then
       printf 'SIMULATOR_OS=%s\nWATCH_SIMULATOR_OS=%s\n' "$sdk" "$watch_sdk" >> "$GITHUB_ENV"
@@ -90,5 +95,5 @@ while IFS= read -r target; do
   exit 0
 done <<< "$candidates"
 
-echo "::error::no Xcode on this image has both an iphonesimulator SDK and a working Metal toolchain"
+echo "::error::no usable Xcode on this image has the required simulator SDKs and a working Metal toolchain"
 exit 1
