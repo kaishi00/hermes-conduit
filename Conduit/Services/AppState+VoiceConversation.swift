@@ -490,6 +490,9 @@ extension AppState {
             defaults.set(true, forKey: enabledKey)
             await applyFirstVoiceSetupDefaults(profile: profile, service: service)
             guard profile == activeProfile, bridge === dashboardTicketBridge else { return }
+            // The defaults it saved publish nothing of their own, and the
+            // writes below skip equal values: Voice settings reads them now.
+            objectWillChange.send()
         }
         let capability = service.snapshot.capability
         if voiceCapabilitySnapshot != capability { voiceCapabilitySnapshot = capability }
