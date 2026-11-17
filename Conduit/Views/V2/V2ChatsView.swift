@@ -510,7 +510,8 @@ struct V2ChatsView: View, Equatable {
                 profile: profile,
                 name: profile,
                 url: appState.combinedDashboardBots[dashboardID]?.avatars[profile]
-                    ?? appState.otherCombinedDashboardProfileAvatar(profile, in: dashboardID)
+                    ?? appState.otherCombinedDashboardProfileAvatar(profile, in: dashboardID),
+                dashboardID: dashboardID
             )
         }
         let profile = appState.rowProfile(session)

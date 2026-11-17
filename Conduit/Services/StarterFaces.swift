@@ -252,9 +252,10 @@ struct StarterFaceView: View {
     }
 }
 
-/// The faces of the bots on the dashboard on screen, by profile name, for
-/// the views that draw a profile rather than a bot (ProfileAvatarView).
-/// AppState keeps it in step with the roster it shows.
+/// The faces of the bots by profile name, for the views that draw a profile
+/// rather than a bot (ProfileAvatarView): the dashboard on screen's, and each
+/// other combined dashboard's as its last read listed them. AppState keeps
+/// it in step with both.
 @MainActor
 @Observable
 final class BotFaceDirectory {
@@ -267,21 +268,35 @@ final class BotFaceDirectory {
     }
 
     private(set) var looks: [String: Look] = [:]
+    /// Each other combined dashboard's, by its id.
+    private(set) var otherLooks: [UUID: [String: Look]] = [:]
 
-    /// The profile's look by its exact name, else by a name that differs
-    /// only in case when just one bot has it.
-    func look(for profile: String) -> Look? {
+    /// The profile's look on `dashboardID` (nil: the one on screen) by its
+    /// exact name, else by a name that differs only in case when just one
+    /// bot has it. Nil when that dashboard's bots aren't known here.
+    func look(for profile: String, on dashboardID: UUID? = nil) -> Look? {
+        guard let looks = dashboardID.map({ otherLooks[$0] ?? [:] }) ?? Optional(self.looks) else { return nil }
         if let exact = looks[profile] { return exact }
         let folded = looks.filter { $0.key.caseInsensitiveCompare(profile) == .orderedSame }
         return folded.count == 1 ? folded.first?.value : nil
     }
 
     func update(_ bots: [BotProfile]) {
-        var next: [String: Look] = [:]
+        let next = Self.looks(of: bots)
+        if next != looks { looks = next }
+    }
+
+    func updateOthers(_ bots: [UUID: [BotProfile]]) {
+        let next = bots.mapValues(Self.looks(of:))
+        if next != otherLooks { otherLooks = next }
+    }
+
+    private static func looks(of bots: [BotProfile]) -> [String: Look] {
+        var looks: [String: Look] = [:]
         for bot in bots {
             guard let face = bot.faceLook else { continue }
-            next[bot.name] = Look(face: face, color: bot.shownColor)
+            looks[bot.name] = Look(face: face, color: bot.shownColor)
         }
-        if next != looks { looks = next }
+        return looks
     }
 }

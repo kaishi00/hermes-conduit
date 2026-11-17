@@ -151,6 +151,8 @@ struct V2ProfileBadge: Equatable {
     let profile: String
     let name: String
     let url: URL?
+    /// Another combined dashboard's profile, for its starter face.
+    var dashboardID: UUID? = nil
 }
 
 /// Another combined dashboard's row (all-live stage 4b): the first letter
@@ -205,7 +207,8 @@ struct V2SessionRow: View {
                                 profile: profileBadge.profile,
                                 displayName: profileBadge.name,
                                 url: profileBadge.url,
-                                size: 18
+                                size: 18,
+                                dashboardID: profileBadge.dashboardID
                             )
                             .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
                             // Another combined dashboard's profile: its
@@ -237,7 +240,8 @@ struct V2SessionRow: View {
                             profile: profileBadge.profile,
                             displayName: profileBadge.name,
                             url: profileBadge.url,
-                            size: titleFaceSize
+                            size: titleFaceSize,
+                            dashboardID: profileBadge.dashboardID
                         )
                         // On the title's line rather than above its baseline.
                         .alignmentGuide(.firstTextBaseline) { $0[.bottom] - titleFaceSize * 0.2 }
