@@ -1,0 +1,6 @@
+/add-bot {"bot": "mira", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"bot": "piko", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "riri"}
+"POST /add-bot HTTP/1.1" 200 -

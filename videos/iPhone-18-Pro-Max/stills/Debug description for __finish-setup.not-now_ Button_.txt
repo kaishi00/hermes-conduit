@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"finish-setup.not-now" IN identifiers'
