@@ -1,0 +1,36 @@
+Failed to synthesize event: Neither element nor any descendant has keyboard focus. Event dispatch snapshot: TextField, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+Element debug description:
+Attributes: TextField, 0x11188f5c0, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+Element subtree:
+ →TextField, 0x11188f5c0, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+    Other, 0x11188f340, {{34.0, 684.5}, {338.0, 10.5}}, label: 'Horizontal scroll bar, 1 page', value: 0%
+      Other, 0x11188f200, {{37.0, 692.0}, {332.0, 3.0}}
+Path to element:
+ →Application, 0x11189bc00, pid: 95270, label: 'Conduit'
+  ↳Window (Main), 0x111899f40, {{0.0, 0.0}, {440.0, 956.0}}
+   ↳Other, 0x111899400, {{0.0, 0.0}, {440.0, 956.0}}
+    ↳Other, 0x111899cc0, {{0.0, 0.0}, {440.0, 956.0}}
+     ↳Other, 0x11189be80, {{0.0, 0.0}, {440.0, 956.0}}
+      ↳Other, 0x111898a00, {{0.0, 0.0}, {440.0, 956.0}}
+       ↳Other, 0x1118988c0, {{0.0, 0.0}, {440.0, 956.0}}
+        ↳Other, 0x111898c80, {{0.0, 0.0}, {440.0, 956.0}}
+         ↳Other, 0x11189a940, {{0.0, 0.0}, {440.0, 956.0}}
+          ↳Other, 0x11189b5c0, {{0.0, 0.0}, {440.0, 956.0}}
+           ↳Other, 0x11189a080, {{0.0, 0.0}, {440.0, 956.0}}
+            ↳ScrollView, 0x111899900, {{0.0, 0.0}, {440.0, 956.0}}
+             ↳Other, 0x111899040, {{0.0, 166.0}, {440.0, 557.0}}
+              ↳TextField, 0x11188f5c0, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  Output: {
+    Application, 0x1121df700, pid: 95270, label: 'Conduit'
+  }
+  ↪︎Find: Descendants matching type TextField
+    Output: {
+      TextField, 0x111f34640, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+      TextField, 0x111f3ee40, {{16.0, 126.0}, {408.0, 40.0}}, placeholderValue: 'Search Hermes', value: Search Hermes
+    }
+    ↪︎Find: First Match
+      Output: {
+        TextField, 0x111fe5400, {{34.0, 677.0}, {338.0, 21.0}}, identifier: 'bots.home.ask', placeholderValue: 'Message Conduit-chan…', value: Message Conduit-ch...
+      }

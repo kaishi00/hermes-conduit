@@ -1,0 +1,364 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 21:58:30,214 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 21:58:33,470 WARNING agent.model_metadata: Could not determine context length for model 'hermes-4-405b' (base_url=http://127.0.0.1:8766/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-11-17 21:59:03,756 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:11,466 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:17,913 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:38,897 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no supervisor=none parent_pid=12346 parent_name=? loadavg_1m=12.18
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 21:59:46,199 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:46,505 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 21:59:46,676 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:46,958 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 21:59:47,119 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 21:59:47,189 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 21:59:47,435 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 22:11:01,449 CRITICAL gateway.shutdown_watchdog: Gateway event loop missed 3 consecutive liveness probes; dumping all thread stacks and exiting with code 75 so the service supervisor can restart it.
+Gateway loop liveness watchdog fired after 30s (pid=19083); dumping all thread stacks.
+--- monitored gateway loop thread stack ---
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/.venv/bin/hermes", line 10, in <module>
+    sys.exit(main())
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/main.py", line 3364, in main
+    rc = args.func(args)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/main.py", line 1634, in cmd_gateway
+    gateway_command(args)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4797, in gateway_command
+    return _gateway_command_inner(args)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 5576, in _gateway_command_inner
+    handler(args)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4953, in _cmd_run
+    run_gateway(
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4529, in run_gateway
+    success = asyncio.run(start_gateway(replace=replace, force=force, verbosity=verbosity,
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 205, in run
+    return runner.run(main)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 128, in run
+    return self._loop.run_until_complete(task)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 707, in run_until_complete
+    self.run_forever()
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 678, in run_forever
+    self._run_once()
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 2064, in _run_once
+    handle._run()
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/events.py", line 94, in _run
+    self._context.run(self._callback, *self._args)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run_adapters.py", line 616, in _handoff_watcher
+    for profile_name, profile_home in await _resolve_handoff_watch_scopes(self):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run.py", line 1740, in _resolve_handoff_watch_scopes
+    return await offload(_handoff_watch_scopes, runner)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run.py", line 3962, in _run_in_executor_with_context
+    return await loop.run_in_executor(self._get_executor(), ctx.run, func, *args)
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 899, in run_in_executor
+    executor.submit(func, *args), loop=self)
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/turn_executor.py", line 58, in submit
+    with self._lock:
+Thread 0x000000017b817000 [hermes-gateway_4] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/turn_executor.py", line 106 in _park
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/turn_executor.py", line 87 in _work
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000070110c7000 [asyncio_3] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 116 in _worker
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000016f787000 [hermes-gateway_3] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/turn_executor.py", line 106 in _park
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/turn_executor.py", line 87 in _work
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000070100bb000 [conduit-room-bridge-server] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/selectors.py", line 398 in select
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socketserver.py", line 235 in serve_forever
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700f0af000 [hosted-room-driver-supervisor] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tui_gateway/hosted_room_driver.py", line 635 in _worker_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700e0a3000 [hosted-room-driver-supervisor] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tui_gateway/hosted_room_driver.py", line 635 in _worker_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700d097000 [hosted-room-driver-supervisor] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tui_gateway/hosted_room_driver.py", line 635 in _worker_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700c08b000 [hosted-room-driver-supervisor] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tui_gateway/hosted_room_driver.py", line 635 in _worker_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700b07f000 [gateway-housekeeping] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run_delivery_queue_watch.py", line 73 in wait_for_next_tick
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run.py", line 4469 in _start_gateway_housekeeping
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700a073000 [cron-scheduler] (most recent call first):
+  File "<frozen posixpath>", line 457 in realpath
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 938 in resolve
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/agent/secret_scope.py", line 491 in _is_process_home
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_preflight.py", line 198 in _primary_routes
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_preflight.py", line 174 in _primary_route_tables_for_current_home
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_preflight.py", line 308 in shared_route_adapters_for_current_home
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_provider.py", line 574 in tick_adapters_for
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_provider.py", line 633 in _start_multiplex
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_provider.py", line 459 in start
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/cron/scheduler_thread.py", line 34 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x0000007009067000 [hermes-gateway-metrics_0] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 116 in _worker
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Current thread 0x00000001747c3000 [gateway-loop-liveness-watchdog] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/shutdown_watchdog.py", line 288 in _write_watchdog_dump
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/shutdown_watchdog.py", line 140 in _watchdog
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001797ff000 [conduit-pulse] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan/plugins/conduit_push/pulse.py", line 685 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x0000007006043000 [conduit-pulse] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien/plugins/conduit_push/pulse.py", line 685 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700402b000 [conduit-pulse] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit/plugins/conduit_push/pulse.py", line 685 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000700301f000 [nous-auth-keepalive] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/nous_auth_keepalive.py", line 204 in _keepalive_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x0000007002013000 [nous-guest-handoff] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/guest_handoff.py", line 307 in _worker_loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x0000007001007000 [conduit-room-links] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/socket.py", line 729 in readinto
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 304 in _read_status
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 343 in begin
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/http/client.py", line 1478 in getresponse
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 1337 in do_open
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 1362 in http_open
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 464 in _call_chain
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 504 in _open
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/urllib/request.py", line 487 in open
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_mailbox.py", line 380 in _request
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_mailbox.py", line 270 in _owner
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_mailbox.py", line 234 in fetch
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_links.py", line 902 in _read
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_links.py", line 857 in poll_once
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_links.py", line 871 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017f847000 [conduit-link-asks] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/link_asks.py", line 630 in _loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017e83b000 [conduit-rooms] (most recent call first):
+  File "<frozen posixpath>", line 457 in realpath
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/pathlib/__init__.py", line 938 in resolve
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/web_server_profiles.py", line 250 in _config_profile_scope
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/contextlib.py", line 141 in __enter__
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_join.py", line 214 in ready
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_join.py", line 75 in check
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_own_bots.py", line 84 in _ready
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_own_bots.py", line 73 in local
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_own_bots.py", line 103 in pass_once
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_invites.py", line 1148 in pass_once
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_invites.py", line 1495 in _loop
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017d82f000 [conduit-room-bridge-home] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_bridge_home.py", line 744 in _watch
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017c823000 [conduit-room-bridge-watch] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/room_bridge_member.py", line 580 in _watch
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017a80b000 [conduit-idle-claims] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/dashboard/api/chats.py", line 179 in _sweep_idle_claims
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001787f3000 [planned-stop-watcher] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run.py", line 4231 in _run_planned_stop_watcher
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000016d657000 [Thread-8 (_monitor)] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/logging/handlers.py", line 1568 in dequeue
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/logging/handlers.py", line 1622 in _monitor
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001777e7000 [asyncio_2] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 116 in _worker
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001767db000 [asyncio_1] (most recent call first):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_state_wal.py", line 100 in _darwin_pragma
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_state_wal.py", line 121 in _enforce_macos_synchronous_full
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_state_repair.py", line 624 in _reapply_durability_barriers
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_state_repair.py", line 635 in apply_durability_barriers
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 170 in _initialize_schema
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 147 in <lambda>
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/sqlite_util.py", line 63 in open_db
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 145 in open_state_db
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 131 in _connect
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 202 in _transaction
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/tools/async_delegation.py", line 585 in sweep_orphaned_completions
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run_notifications.py", line 1611 in <lambda>
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run_notifications.py", line 1627 in _each_secondary_ledger
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/run_notifications.py", line 1615 in _sweep_orphaned_completion_ledgers
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 73 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 86 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 119 in _worker
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001757cf000 [asyncio_0] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/concurrent/futures/thread.py", line 116 in _worker
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000016e77b000 [gateway-runtime-status-writer] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 369 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/gateway/status.py", line 127 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x000000017179f000 [conduit-pulse] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/pulse.py", line 685 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x0000000170793000 [conduit-bot-chat-adopt] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 376 in wait
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 671 in wait
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/plugins/conduit_push/bot_chat_adopt.py", line 290 in _run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1025 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1083 in _bootstrap_inner
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/threading.py", line 1045 in _bootstrap
+
+Thread 0x00000001ff173f80 [hermes] (most recent call first):
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/selectors.py", line 548 in select
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 2026 in _run_once
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 678 in run_forever
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/base_events.py", line 707 in run_until_complete
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 128 in run
+  File "/opt/homebrew/Cellar/python@3.14/3.14.10/Frameworks/Python.framework/Versions/3.14/lib/python3.14/asyncio/runners.py", line 205 in run
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4529 in run_gateway
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4953 in _cmd_run
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 5576 in _gateway_command_inner
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/gateway.py", line 4797 in gateway_command
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/main.py", line 1634 in cmd_gateway
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/hermes_cli/main.py", line 3364 in main
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/src/.venv/bin/hermes", line 10 in <module>
+== gateway exited 75, starting it again (22:11:07)
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 22:11:44,521 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 22:11:54,325 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 22:11:59,221 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 22:12:00,732 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 22:12:03,610 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 22:12:04,419 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-17 22:12:05,147 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 22:30:33,242 WARNING conduit_push_dashboard_pkg.room_links: Linked Rooms couldn't finish reading the mailbox (unreachable); trying again in 5 s

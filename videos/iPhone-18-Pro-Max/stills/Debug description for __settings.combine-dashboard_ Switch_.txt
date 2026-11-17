@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Switch
+    ↪︎Find: Elements matching predicate '"settings.combine-dashboard" IN identifiers'
+      ↪︎Find: First Match

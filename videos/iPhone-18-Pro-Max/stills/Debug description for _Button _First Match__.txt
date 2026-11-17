@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate 'identifier == "settings.dashboard.row" AND label CONTAINS[c] "hermes.tail-demo"'
+      ↪︎Find: First Match

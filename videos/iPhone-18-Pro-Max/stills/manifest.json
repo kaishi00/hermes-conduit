@@ -1,0 +1,2671 @@
+[
+  {
+    "attachments" : [
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F83AEA8A-A280-4961-90EB-3B4903850227",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.57.57 PM",
+        "timestamp" : 1794956277.004
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "70AD434B-D917-42DC-9FA6-579D4E990701",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.57.43 PM",
+        "timestamp" : 1794956263.046
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5A6D9DDA-5075-41EC-BEBD-81EE42CCB29B",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.57.32 PM",
+        "timestamp" : 1794956252.156
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "450A9271-20F7-4F72-880F-5F67A241AA3E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.57.11 PM",
+        "timestamp" : 1794956231.778
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "10B5C2BA-3CC1-4288-8EDA-839E6B48DEC3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.57.12 PM",
+        "timestamp" : 1794956232.148
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "50FCFC96-5521-42D0-97D6-0B43A5CB1B7A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_924DEC0E-5FE0-444D-B353-F92BF2485D46.relay",
+        "timestamp" : 1794956209.859
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "DED47EA7-6D85-48BA-9274-69BA4BCAFBF4",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.49 PM",
+        "timestamp" : 1794956209.86
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F78D0AFA-793F-4458-B2B6-1A9AB96BA057.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_C8A5C79D-E9FB-470E-810C-EFA2ADAB8821.txt",
+        "timestamp" : 1794956207.171
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "45BA4A81-52DE-4C75-A43B-1F557849F146.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_98A53838-362F-4A1E-9BEB-5A3CA1F6736A.txt",
+        "timestamp" : 1794956206.612
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1BD71379-915E-42A8-AF09-06CCE09FBC3F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.43 PM",
+        "timestamp" : 1794956203.446
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C813865F-7C42-4A5C-9949-F1163EDED07F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.56.43 PM",
+        "timestamp" : 1794956203.832
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "ECC55C1B-6D0E-4D11-B35C-06C3519C5649.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_E388EDEB-77BF-4516-9EB8-53F73B877F5E.relay",
+        "timestamp" : 1794956202.533
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "794B6340-54BA-4AE3-923F-B86BA12C448D",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.42 PM",
+        "timestamp" : 1794956202.534
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "67E18375-633E-45ED-98ED-5F737F8BB266.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_C94FDFFF-F212-49FF-89AA-43679EB95106.txt",
+        "timestamp" : 1794956199.947
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "35097207-B40A-4E1A-AE36-F2FD59F296EE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_293908C9-2FD9-4C5E-8B56-AD71FFF7A0A6.txt",
+        "timestamp" : 1794956199.486
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2EED301C-CBDF-450A-9A20-32331CA7213E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.36 PM",
+        "timestamp" : 1794956196.229
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "00E3F9EB-B2CC-41F4-8123-113F25A5EDD3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.56.36 PM",
+        "timestamp" : 1794956196.619
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D69FD18A-7558-48E2-AAC4-E62FCA65D1C8.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_5AAC59D6-2872-466C-8411-97861B6317DD.relay",
+        "timestamp" : 1794956195.351
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "89D3E25E-3517-4E53-BC72-513EC708A3E9",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.35 PM",
+        "timestamp" : 1794956195.352
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3C678BE7-19F9-412C-8703-D43590EA740A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_7C951BE5-EBA4-4084-8E25-C87623C340D8.txt",
+        "timestamp" : 1794956192.963
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5BF8E415-C3A3-470E-9504-49508B42F48C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Keyboard (First Match)`_0_917A262B-3DC1-45D2-9E05-E5BBFFDD8842.txt",
+        "timestamp" : 1794956192.286
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BF663B85-23C0-4894-9ECB-B57F30E3C79F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.29 PM",
+        "timestamp" : 1794956189.068
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2CA44230-B8F8-4F2B-A1E1-658CC473973B",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.56.29 PM",
+        "timestamp" : 1794956189.633
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "22E7387E-4BC9-4510-966C-E0738A5490BC.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_452B0128-8FBD-41BB-BB8D-B2930F596599.relay",
+        "timestamp" : 1794956179.693
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "17024ABD-7ECF-4C7B-BDDA-FFB6DEC1B37E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.56.19 PM",
+        "timestamp" : 1794956179.694
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B612DAF0-2C91-4412-B076-BF703906F18C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_4BF27AE7-C270-437C-B4EC-74E333C33B73.txt",
+        "timestamp" : 1794956168.919
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B0F7F53C-26B3-45A6-A5E2-34E0E401DAD3.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_AA859480-A1AC-4843-BE33-2373F69ECF42.txt",
+        "timestamp" : 1794956161.684
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "285039C6-CC24-41E5-BA5D-3D4F69DB8A53.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_45BE07A2-B805-4313-8EDA-D592BC13904D.txt",
+        "timestamp" : 1794956159.622
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "862D5F52-A1DF-4B9E-AC6D-032FAB0FD61D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_B81DB3F1-7825-42EF-90F1-FE3B4980E12E.txt",
+        "timestamp" : 1794956157.63
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "458B6F22-E60C-4470-92DB-46A996EDCA40.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_104A5EBC-D198-4922-8006-D28E4EFFB6B4.txt",
+        "timestamp" : 1794956156.104
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E0D0D75D-B69C-4905-BC1A-44307A1D800C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_123B2CD7-4D98-4A05-9C52-367E874343DA.txt",
+        "timestamp" : 1794956153.961
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5368C6FC-40F3-49FD-891F-C4F4788C744F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_B0382CD7-9FC4-4882-AB29-9CDCBE2510F0.txt",
+        "timestamp" : 1794956151.532
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C7532DD6-B42B-4DDB-8DF4-9DFF5C97B46E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.55.46 PM",
+        "timestamp" : 1794956146.212
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B8E5948F-8869-40EE-BDD5-0887E68D3673",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.55.46 PM",
+        "timestamp" : 1794956146.599
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D3DC9670-C1E5-44C6-8039-145107B2A709.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "scene-chats-strip-end_0_D3A134AC-08EA-4EE6-BFCF-E5B879FFA284.png",
+        "timestamp" : 1794956144.791
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C9357A74-CA30-4BEC-A350-E3452DBAADB2.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-no-other-dashboard-chip_0_8A17C41B-5078-40F5-AF69-D9527D2584E0.png",
+        "timestamp" : 1794956144.265
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1B411602-40C7-49E3-B157-E7C89795BDC3.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_84546A43-1196-40B3-9059-71A1FC4AB119.relay",
+        "timestamp" : 1794956143.723
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A909C7FC-8B46-4DB7-9D83-0E5076848012",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.55.43 PM",
+        "timestamp" : 1794956143.724
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E2B4C777-AA6D-47A9-9C79-D2EB3B48422D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_BC9FA220-5D3C-4CFC-8D57-7FA673FE03A1.txt",
+        "timestamp" : 1794956142.285
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D80200FD-20B3-4947-82E7-52FF2AA582E9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_70F737B9-4B29-4A09-A551-725F30E20754.txt",
+        "timestamp" : 1794956140.295
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6D0CC64C-F808-42F8-A368-2F038B3AAB92.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_5215929C-4962-4BA3-BBCE-7D30999E5E68.txt",
+        "timestamp" : 1794956139.233
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3CABBEA5-BD8A-4CF1-AD2A-F47E1C86FDCE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_420156DC-3C2D-458E-BF45-3064F89A6FA6.txt",
+        "timestamp" : 1794956136.683
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "446794D7-CE82-4393-8AB2-F92111CFF0A1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_9D156E05-BE8D-420A-B42D-D074D86A73DB.txt",
+        "timestamp" : 1794956128.751
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CC82B3F4-66D2-4415-A699-9A9461EE7651.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_42624E6C-515E-4E44-BD8C-EB58E016AE04.txt",
+        "timestamp" : 1794956126.317
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E857DEF4-533B-461B-BF51-91DD336E16F1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_451E0836-1FAD-4D29-9CA7-EC3ED8068C75.txt",
+        "timestamp" : 1794956124.945
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8976D0AD-53F8-4A25-900B-896F0CB21787.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_2249C3D4-F7C3-498F-A642-C0A27FA68A5F.relay",
+        "timestamp" : 1794956122.183
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D71601FA-2FA2-434D-9A62-60E6CC03E75A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.55.22 PM",
+        "timestamp" : 1794956122.183
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "169B1DF4-A8F9-43D3-9859-6334A3A3D04A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_AF107518-7A47-4CF3-BD14-592B2DADD3F0.txt",
+        "timestamp" : 1794956119.154
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9BE18484-CCD4-4718-B111-8A38C312A8F5.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_DCDCA6C4-2F32-4973-A748-DA3068ADBC98.relay",
+        "timestamp" : 1794956116.792
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "28B7819A-66A4-43D8-9722-A0AD39ACC43F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.55.16 PM",
+        "timestamp" : 1794956116.792
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2FBC988D-1A8B-4B27-88BC-AAFA7A19C536.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_864A586B-9478-4463-A161-CEAB2D1D6C0E.txt",
+        "timestamp" : 1794956112.171
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2A1EE2B0-EACC-491D-887F-0D4191CBD5DC.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_20A30362-AC5B-4F86-BF8E-476E36586648.txt",
+        "timestamp" : 1794956110.919
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BAAAFABF-ABDF-4319-A188-D4278C44007F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.55.03 PM",
+        "timestamp" : 1794956103.271
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1D3B2B84-A21E-49F1-9F11-41C26A5E16F3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.55.03 PM",
+        "timestamp" : 1794956103.799
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "4DFBFBB5-320C-4CA0-98BE-83B42EBF29F1.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "scene-mixed-bots-home-end_0_0400E467-C8D6-47F9-A3CA-C928AA5D2F17.png",
+        "timestamp" : 1794956101.399
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2AC48BED-3E3A-447D-ADF2-A59FCBA96DF1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.54.53 PM",
+        "timestamp" : 1794956093.953
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "03274F4C-2C95-4505-B7D3-6B6E35E1D9F1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.54.56 PM",
+        "timestamp" : 1794956096.561
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8416BAD6-C55C-4615-BD2E-2FD9F18D96E0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_78B72093-3BA5-4FDA-A5BA-C7FCB94C0112.relay",
+        "timestamp" : 1794956076.371
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "DA97A9B9-D848-4CC5-B82B-8EC811CBC449",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.54.36 PM",
+        "timestamp" : 1794956076.371
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3002B891-343B-44DF-B180-91FD2A788809.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F1A8395F-1DB0-418F-99FE-0084A8E5A5D8.txt",
+        "timestamp" : 1794956067.423
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "243477CC-651D-4266-8B4A-6594C0CFFB1F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_A9A7DB8B-4DCA-4EC5-9C23-A68A6E3CAF40.txt",
+        "timestamp" : 1794956065.96
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C2D395F2-BE4B-4FE0-BD3A-B27E1FCBA533.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_E8C1080D-3944-4724-9003-73F55430C68F.txt",
+        "timestamp" : 1794956054.404
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "EDCB7EF0-73AA-4CD4-B40C-2DAA869C73D9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CBC6CD8E-EB28-45CB-9071-FC20B64C2D94.txt",
+        "timestamp" : 1794956045.855
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B366054C-6C42-449A-8EC9-FDC34DD5EE14.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_50888742-78F1-4B76-B9A7-00F2ECA55C56.relay",
+        "timestamp" : 1794956037.064
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "AE79A259-2AAB-4E56-A977-56F2EDD16103",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.53.57 PM",
+        "timestamp" : 1794956037.065
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5D616181-A6CB-49F9-AF21-BF13E57BC1BF.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_691368C1-5509-40AD-9457-A7043969A595.txt",
+        "timestamp" : 1794956033.845
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "07C6ED3E-24AA-4CEE-A235-97B42C0ABAEF.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7F25DFBC-C194-4133-9608-B9986EB9B03B.txt",
+        "timestamp" : 1794956028.599
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B73AED99-28C6-4790-B166-DA9599C5B1AD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_138A0B1C-87E2-4111-B368-DB75150021C0.txt",
+        "timestamp" : 1794956027.41
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2B51CC4F-13E5-49AD-8727-C87D217EE7A0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_E477F7C9-722F-42BA-998D-AEFFC77A0B69.txt",
+        "timestamp" : 1794956025.625
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2577A95B-D9F9-40FB-9C71-6B4C7CD6CE30.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7EA28E1B-F53A-4044-BB7F-212292124448.txt",
+        "timestamp" : 1794956024.483
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "375F488E-F448-4FDE-AA2D-2611AD089142.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_842058DE-1285-4DCD-90D9-F0E79E47EE3D.txt",
+        "timestamp" : 1794956023.338
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "36F305E7-EF4A-4ABE-B30B-A920577F17CE",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.53.23 PM",
+        "timestamp" : 1794956003.157
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BFAD23F4-7663-4289-BC0D-EBA136531DA3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.53.24 PM",
+        "timestamp" : 1794956004.53
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D22F8217-1ECE-4A9D-A038-5B46CE7DAEF0",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.53.20 PM",
+        "timestamp" : 1794956000.211
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "144E21D7-F5ED-4E3C-9631-C5095B6687C7",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.53.20 PM",
+        "timestamp" : 1794956000.631
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "45FBCCDB-A8BE-46FA-8BF6-54C1EAE819CA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_F2ACFF1C-F4F6-4598-ACA6-C56404B39734.relay",
+        "timestamp" : 1794955995.763
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "4D09996A-C694-4DCA-8692-99AC6787BE5A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.53.15 PM",
+        "timestamp" : 1794955995.763
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2DE16EE3-1C89-40D0-BC58-E90B1F73CED6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C37ABA93-B874-4BA1-9917-E5D6D8AEE72E.txt",
+        "timestamp" : 1794955993.231
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "80E752DD-2626-4DB7-A664-2227BDEEF20B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_1B0E7219-7E1F-44BA-8360-097F3CCB7D8B.txt",
+        "timestamp" : 1794955990.847
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B54B674F-BAF8-4D83-B18E-D084691FDB4D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_4274CC75-2044-4D68-A835-121B759AD4D0.txt",
+        "timestamp" : 1794955987.431
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C49CA6DF-4E8B-4642-A673-84F143C3A1EA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_67ADCAF9-4FE2-4258-986F-52097682D1E7.txt",
+        "timestamp" : 1794955984.726
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8802C21D-C0EE-4A9C-9877-AF2BF023877D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_02A69F72-B284-49E4-896A-1DB6FC2B3956.txt",
+        "timestamp" : 1794955977.086
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "98C0CEC6-79E6-42EB-A237-9ADF94B721D6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F5AC33A4-C2AE-42E9-A725-2352D85B0506.txt",
+        "timestamp" : 1794955969.471
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "08DFBCF2-9807-422F-BD5C-F3EFD015946A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F3DE15A1-8DE6-45F4-87F1-F7F29F6BE2D5.txt",
+        "timestamp" : 1794955965.316
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "63A0F6B2-87C3-42A6-BC3E-3CAABBBE2579.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_AEF77739-1FB1-4B59-A5FD-F44371C9C7A3.txt",
+        "timestamp" : 1794955963.407
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B70BC252-D747-4F6C-BDEE-4B4211865D9F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_6319F630-781B-4069-A6FD-483D5FC15C01.txt",
+        "timestamp" : 1794955961.273
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "693D7733-0795-4CB2-901B-963B97274C15.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_475B25E0-A0D5-4B57-BA73-A1E4C09113A6.txt",
+        "timestamp" : 1794955959.073
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "83216DB5-016B-459F-9322-F2C28E1571DE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_67E2F841-95B1-459B-969F-8082FA86403F.txt",
+        "timestamp" : 1794955957.53
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B6329385-00D1-484C-A8BA-01ED52BC2EED.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7C7A7B18-C4D8-4E22-8931-29712E4E4E0D.txt",
+        "timestamp" : 1794955954.691
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5FE156DF-2B63-45C9-847D-1FC81497FAF9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_B9D81BB3-4B59-487F-8A7E-C10C79B14969.txt",
+        "timestamp" : 1794955952.49
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E50FF405-FE8E-4C4F-A4A8-AAB9D72169A6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_929AE3D9-A222-4D14-9D9B-8A3915AE52D9.txt",
+        "timestamp" : 1794955950.558
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2E7CB3A8-8A7E-47F8-9761-B647DDD31826.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_9BB47DBD-C03D-415F-8E33-8DC727EA447D.txt",
+        "timestamp" : 1794955948.139
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D725D0A7-EDFD-4A92-8B2D-6172CF7BDB5A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_429FDB2F-7AFA-49CD-BA79-C07F1705C47A.txt",
+        "timestamp" : 1794955946.895
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3C810F8E-EDCC-43CA-9424-67238A2255FD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_16EEA662-1117-4387-84CD-0304C7426F8F.txt",
+        "timestamp" : 1794955945.966
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "EBA7AF9C-C7EE-463E-A111-1BAA03B35240.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CFA1F269-0E57-4DE2-8080-7CE3B91951F8.txt",
+        "timestamp" : 1794955944.092
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A035C11B-5703-45DF-9F37-443B4BAC00DF.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_1A23C3CE-65B9-430A-B14B-168526BF2B6C.txt",
+        "timestamp" : 1794955942.337
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2852703E-41F0-4D98-9428-4F2FE3AFC685.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_283194A8-F0CC-46F9-BD92-C363D3BEC7FE.txt",
+        "timestamp" : 1794955940.137
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BFF28383-1BDA-45B5-817E-9E71724446F4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_05F36B50-CC14-4643-806A-C78F0BA01A08.txt",
+        "timestamp" : 1794955938.341
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0FDC5D43-E13C-4E7A-9944-1B92882C217A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_0BB42BE7-DB98-4774-9E41-8444AB012DEF.txt",
+        "timestamp" : 1794955936.993
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "680C9BCD-291E-4EE8-B915-BC26A41325B7.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_1783E817-73B3-465B-9B7C-6CDDED678E9C.txt",
+        "timestamp" : 1794955935.607
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A4DFA38B-D992-4AAE-86D3-FF28F041EF08",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.52.12 PM",
+        "timestamp" : 1794955932.482
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "23B5066C-CC95-494A-BAFA-B1DCFA4199F6",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.52.13 PM",
+        "timestamp" : 1794955933.033
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A40D9CFE-4E87-497A-A268-1DB536ECD7FA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_22DC73EA-5EC6-4180-9714-44C5F710462B.relay",
+        "timestamp" : 1794955931.018
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D9DD801E-BA15-4C5E-8A24-F0DD43D59223",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.52.11 PM",
+        "timestamp" : 1794955931.019
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A7E9979E-A29E-476A-B038-839560BB56FD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_A43E43CA-0EAE-4375-8BCC-5DA7B2830810.txt",
+        "timestamp" : 1794955928.165
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "477F062D-932E-45D6-A8E6-612DDBE8D98D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_BDFE6D79-6DF9-44CA-A7E2-BD844EC5E598.txt",
+        "timestamp" : 1794955927.099
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2CC77011-A80A-4119-A38A-A500D7D1FC26.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_45529262-6BA4-4DA6-AC3B-046BFB8A0436.txt",
+        "timestamp" : 1794955924.951
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B98ADD9E-C5B4-409E-B3AB-B49BE7F5F73A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_CEFBC62D-F83F-4325-AF2E-6B84ADAA874F.txt",
+        "timestamp" : 1794955923.73
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F9F719A3-BCAA-4491-AF2D-A993AE24B3DD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_300C107C-32D1-445C-A643-6A1F8E1A836A.txt",
+        "timestamp" : 1794955921.109
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "734065D0-F3BD-4064-8F95-481B681A2EA3.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Button (First Match)`_0_2A8FA23C-5F1C-436E-BAA4-6B3F468DB041.txt",
+        "timestamp" : 1794955919.729
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "624C7043-39C2-4E9D-B0BD-33D1EA2D4D83.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-no-saved-dashboards_0_9EBCF3F7-F060-48DF-9168-71CC80F0275F.png",
+        "timestamp" : 1794955917.801
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2EFE2E26-97DA-4D9A-BD43-D9671029DCC0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_8D983AD6-0E16-4627-8490-05D5CF177B56.relay",
+        "timestamp" : 1794955917.344
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "429B0494-A200-4FE9-945B-09242E8D98F4",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.51.57 PM",
+        "timestamp" : 1794955917.345
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F92AC9B0-1192-4144-808B-3D3D8CFA19B8.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_E2E23870-1CB6-4CD9-9339-203C7A99EE96.txt",
+        "timestamp" : 1794955906.61
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "19D9A789-D8AF-4F92-B44B-92C756CE04A1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_8A7ED9D1-8B80-48A2-A01F-41296681AD09.txt",
+        "timestamp" : 1794955899.279
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B8A86F7D-8AF0-42C2-97EA-6768A422167C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.51.28 PM",
+        "timestamp" : 1794955888.077
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8A0500CC-4B4E-4E4A-9259-26F5A112554B",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.51.30 PM",
+        "timestamp" : 1794955890.095
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "96610836-B036-458F-A967-54FED92906C1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_019B9A00-1220-4462-BE02-204EC3A60BA1.relay",
+        "timestamp" : 1794955879.731
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "358E89C1-6123-46EB-A0C6-E38D291A6AD6",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.51.19 PM",
+        "timestamp" : 1794955879.731
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8B0BC929-3733-4ABE-8F95-A9E3A977C6BC.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_23527B48-C6BC-4C72-A15D-F7E99271B316.txt",
+        "timestamp" : 1794955874.89
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5348A032-FCE2-4908-B4E0-F3AF60A4C56F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_6A9E5483-72F2-45EB-80C4-4A682894A513.txt",
+        "timestamp" : 1794955873.718
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BE5F4960-F5C9-4525-BD29-7AA2312525CB",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.51.06 PM",
+        "timestamp" : 1794955866.97
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CDFA1A90-DF70-46A4-8AA6-E117E2F82A76",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.51.08 PM",
+        "timestamp" : 1794955868.832
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2C251C31-0B88-474D-8956-21DC71663E3D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_6B8E3C32-CB39-4FD8-AEDE-621B315BCD0E.relay",
+        "timestamp" : 1794955861.11
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "719B9437-FDFE-42B2-AA7A-23AE903852C1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.51.01 PM",
+        "timestamp" : 1794955861.11
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2FC11E30-8A2E-4EE2-95A4-3B1654DD2780.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_36264CDB-DE23-46A3-A8C2-66A4EDA66839.txt",
+        "timestamp" : 1794955858.942
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0F8DD9B0-E837-40F5-B5B2-94DD392C49FA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_AF4F4D06-6BEC-4EE6-B421-58F813AA72D0.txt",
+        "timestamp" : 1794955857.813
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "81CF43DB-F775-4246-A5C0-2D1BCDE12B79",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.51 PM",
+        "timestamp" : 1794955851.971
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "072625C0-999C-4C1F-9A8E-78B2303436FA",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.50.53 PM",
+        "timestamp" : 1794955853.753
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B6738B41-980C-44FD-8EDE-B62AAD1B8FD7.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_A138CA41-8BC2-49F3-A32E-3917C4E4F736.relay",
+        "timestamp" : 1794955846.525
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "32B6B2AD-CE90-4B09-A8D2-A5EF6B4BAD85",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.46 PM",
+        "timestamp" : 1794955846.525
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0FF38E42-E863-461F-97AE-D4C0ED10C502.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_C0FA8E60-368C-4863-AAE4-06C9858593CF.txt",
+        "timestamp" : 1794955843.601
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "58FD53EB-BB76-4B0D-9A51-7ECEB477AD3C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_3B66ACA0-664E-4DA3-93A7-47A86A255D36.txt",
+        "timestamp" : 1794955842.567
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BEBA1B28-C434-4F86-AC03-E0D6DFA3C6A2.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_A548AC13-22A2-46E1-9344-438EFF1A27AB.relay",
+        "timestamp" : 1794955840.254
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "28843CD6-346F-43DD-BDFB-2DDD825C6A11",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.40 PM",
+        "timestamp" : 1794955840.255
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B3441951-AB23-4342-9F03-B9D751AFC07A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_663156D3-A7D9-4515-A260-90E23FC3D2B6.txt",
+        "timestamp" : 1794955838.154
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "606E7723-B6BC-4F5F-BCB3-3809C62B4055.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_0A7D03BE-DDD9-46DA-91E4-1535696445F7.txt",
+        "timestamp" : 1794955837.191
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C0132492-DEA3-4B62-8F98-2788C6E47EF2",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.34 PM",
+        "timestamp" : 1794955834.295
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0D96D288-6195-4960-AAF9-F4B88A034407",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.50.34 PM",
+        "timestamp" : 1794955834.798
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E1CA1656-651F-470F-98D8-E1C7A750EADC.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_26A91CB4-ECBC-48E6-82BE-0A79F70E05C8.relay",
+        "timestamp" : 1794955832.671
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CFB87BAC-C628-45CA-9D10-26F5E61CA08A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.32 PM",
+        "timestamp" : 1794955832.671
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "55F99FC3-FB62-49E5-8487-278830DEA3D2.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.combine-dashboard\" Switch`_0_C58D6859-79A3-4F11-A34C-A0072F3A34EC.txt",
+        "timestamp" : 1794955830.135
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8C675356-B277-49EA-B970-C7F5B40E7574.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.combine-dashboard\" Switch`_0_525BD7E0-2280-4B4B-B41E-AEB4B726DD31.txt",
+        "timestamp" : 1794955829.31
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B58E6B7A-3FAC-4CA1-8DDF-079764DD2A48.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.combine-dashboard\" Switch`_0_C13DC09C-EF52-4754-B2FD-60E0224110A1.txt",
+        "timestamp" : 1794955827.365
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A8CEB7AE-899A-4314-A46E-F2EF58BD08D4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.combine-dashboard\" Switch`_0_5FAC9F4D-5FBD-4A25-B212-FB1735E5C1F8.txt",
+        "timestamp" : 1794955825.332
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "28F43807-5A07-4DCB-8062-FE0D9564C59A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.combine-dashboard\" Switch`_0_5F2C0D77-4465-4E79-946E-C93D4119AB55.txt",
+        "timestamp" : 1794955822.836
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "7B7C89A0-8153-41E1-A2BB-89014BB78D1E.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-no-saved-dashboards_0_F9A3861A-77CD-49F2-9593-6B302E47076B.png",
+        "timestamp" : 1794955819.814
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BE1301AA-EDEE-4B6B-978D-E85816632CA8.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_1CAA60AF-3AD6-47FC-87FE-C0682059BC32.relay",
+        "timestamp" : 1794955819.284
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "28A07583-9774-461A-81A2-33285EC60C2B",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.50.19 PM",
+        "timestamp" : 1794955819.288
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6205A07E-DD3F-4A2A-A06B-B7E270393818.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_35258157-A87F-4BCD-B8AF-CD94EC0B2E03.txt",
+        "timestamp" : 1794955814.533
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "38C917E7-7E97-473C-AA25-E8105FEA9C0A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_CE13FBD4-0EE5-4964-8A5B-589048F08A40.txt",
+        "timestamp" : 1794955812.841
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "79A99370-8AF9-4A2D-AB46-A281961BE825.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_77E97278-659E-40BA-9BFA-74AC77504579.txt",
+        "timestamp" : 1794955811.154
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C69E8526-B5A6-4322-BD82-B1A560BAC0B6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_A6C3F83D-7B75-4387-9868-24A29A815ADE.txt",
+        "timestamp" : 1794955806.518
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "169E27B4-B9D0-4128-982A-B2B3F84A58A3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.59 PM",
+        "timestamp" : 1794955799.805
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A6555892-8F79-4B72-917E-1764E9529B6E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.50.01 PM",
+        "timestamp" : 1794955801.928
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "34D0DA51-7A55-46E3-B418-6047A0D88CD4.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_98151ACE-EA3F-47E4-87E0-4BA72E8E72FF.relay",
+        "timestamp" : 1794955793.198
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CC55CE43-8251-446F-9F48-1DC2693290D3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.53 PM",
+        "timestamp" : 1794955793.199
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9A709585-A525-4DB3-9CA0-817F90AEA807.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_6828E3BF-B1C7-4C56-8325-E2BE46B9247A.txt",
+        "timestamp" : 1794955790.601
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C8D0AD01-F8FA-4531-BCDB-6413589EF784.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_BEB0F0E4-623A-46E5-AA29-63EC8D580AEC.txt",
+        "timestamp" : 1794955789.344
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9CC26784-946A-489A-90F6-476DCC1F248C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.43 PM",
+        "timestamp" : 1794955783.188
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "35920AE2-C27D-4217-B195-6D365750CA0E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.49.45 PM",
+        "timestamp" : 1794955785.249
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8774E3B3-1D37-4556-8F11-B1FF84E2E81E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_EECFEE75-A038-41B2-B8E0-27E1023CB23F.relay",
+        "timestamp" : 1794955776.609
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "30FA0859-A1C3-4B99-9759-F303CB81EB7E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.36 PM",
+        "timestamp" : 1794955776.61
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E5894CC4-FE4D-478E-BC5F-7B6DC135D3F6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_C3774F26-F508-4E8D-9E7B-2A41AD2F6C71.txt",
+        "timestamp" : 1794955774.949
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "872D4FC0-656C-444C-B5CD-693C72206B03.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_9069B25C-536C-4860-A3B0-DBC64B94D52C.txt",
+        "timestamp" : 1794955773.711
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "155E14CA-E4E0-4641-8BF2-463B2FEED768",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.27 PM",
+        "timestamp" : 1794955767.701
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6793E770-92A3-48C7-9F6A-3CF55EB78AEA",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.49.29 PM",
+        "timestamp" : 1794955769.471
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "23DB698E-71B7-4C8E-BBD1-FAB84FEB9D73.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_64B0687C-E35C-4976-85CC-B3C3186480E2.relay",
+        "timestamp" : 1794955762.66
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F4A2E1DE-EFF1-45B2-92A3-AC80D989C694",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.22 PM",
+        "timestamp" : 1794955762.66
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "74CFEBF8-7C9A-4897-BB5A-478C4DCEA120.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_FC4BA1A5-1319-415F-9795-F91C4D31C143.txt",
+        "timestamp" : 1794955760.731
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "02A14703-A428-45B4-888F-7D8E3E6B03C0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_B004C3C8-AF25-4973-8389-534FE6AE36B8.txt",
+        "timestamp" : 1794955759.551
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "23002E7C-D14E-46E8-8C97-81437BF35267.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_6A70E764-33C7-47E8-A95E-2C5C81FE3E6F.relay",
+        "timestamp" : 1794955757.365
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B8F07A57-518B-4222-A846-BD38E800C4BD",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.17 PM",
+        "timestamp" : 1794955757.366
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5AC430F1-CB0C-4AF0-8363-47BBD34977FD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_E4405A72-8F12-4275-B4A1-AD13F3864C14.txt",
+        "timestamp" : 1794955754.405
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F4AE44EF-990A-4BFB-B79F-1932A4627C50.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_95183B3B-C97C-4B21-BE10-9DE8B7B45D72.txt",
+        "timestamp" : 1794955753.097
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5827EF0D-2952-443A-9AFA-7D2D9CF9E95D",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.10 PM",
+        "timestamp" : 1794955750.4
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E1FE305F-80BA-4542-BBF9-8EFF7BB416A8",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.49.11 PM",
+        "timestamp" : 1794955751.045
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BD748E6A-BC7C-4B1D-B19E-654AB4BC905F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_A6BADF06-874D-4880-9EC1-F256BEF315B6.relay",
+        "timestamp" : 1794955748.73
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "99D65C8C-C4B0-494B-B662-824212FF1AF3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.49.08 PM",
+        "timestamp" : 1794955748.73
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "980360BE-DD2D-471C-A8F1-936C1E12CA5F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_BC19FFB4-CD05-4390-942A-752E7944D0F8.txt",
+        "timestamp" : 1794955747.331
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BD3FDDB0-17CD-4C65-BFC3-CE213B2078EA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_603DFD9F-B12F-4156-9435-5DE8CA8AEAB1.txt",
+        "timestamp" : 1794955745.241
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "53434BE2-F8CB-4175-A81D-B73F9A83FA81.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_8E422D85-38EE-4391-8B96-000C6A67CC5F.txt",
+        "timestamp" : 1794955740.578
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1537116D-4109-41AC-A3E2-B4BA63A99795.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "debug-no-saved-dashboards_0_0AA79578-C8EF-403B-BAE6-059CFB106F4C.png",
+        "timestamp" : 1794955737.008
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A0486FC3-8D0A-4216-A395-2D73D31CEE71.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_07A67485-6E14-4D69-B98D-F01284AA4A5B.relay",
+        "timestamp" : 1794955736.496
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BC19C6EF-5B0B-417F-81BA-F856A0DA6853",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.48.56 PM",
+        "timestamp" : 1794955736.496
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9B66856E-A852-4475-87D4-A513999CC4E6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_9E02D0F4-B7C0-45CC-A750-28411D50B9CB.txt",
+        "timestamp" : 1794955733.2
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C3CC2495-DA50-459F-98D8-50F8048F1B69.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_D30DC0B6-870C-4115-826B-8A94EF61CF63.txt",
+        "timestamp" : 1794955729.165
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "4B59278B-7F76-4956-A59C-6DD1FDC3CE94",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.48.32 PM",
+        "timestamp" : 1794955712.979
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D765F38A-9AC8-40BB-ABE4-0973ECE4ECB1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.48.35 PM",
+        "timestamp" : 1794955715.749
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "7D7A8974-AF82-4E27-BB62-97B61E9A56C9.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_31BE6DA1-3141-401D-AB53-AF7773A33F9D.relay",
+        "timestamp" : 1794955704.916
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "82CFB1D2-D925-420F-93D3-633219E322B8",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.48.24 PM",
+        "timestamp" : 1794955704.917
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "341B9E8C-AF12-42A9-8D7F-CF0A026CD172.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_40EBF007-AAD9-45FF-80C6-720A75793964.txt",
+        "timestamp" : 1794955702.865
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2FA3AF11-E95C-4A7C-AF69-03B5201A7B45.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_676A0308-98FD-44A2-BC69-59AAC6B8CBC6.txt",
+        "timestamp" : 1794955701.596
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "827754D3-1713-4BE2-AA71-426736320445",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.48.15 PM",
+        "timestamp" : 1794955695.088
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F75DF454-F283-4629-BC52-0D991F8CFA7A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.48.17 PM",
+        "timestamp" : 1794955697.041
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C5EF4B29-D309-48BC-AAFF-7EC3ADC2052D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_9A23D6C3-3AF2-4256-A0C0-4D88678001D2.relay",
+        "timestamp" : 1794955689.769
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "DD53E7AF-55A5-41F7-A293-4F6981F106C1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.48.09 PM",
+        "timestamp" : 1794955689.77
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9C622C6D-1058-42EE-8131-3FD15F475F34.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_362D0545-6CC0-4065-A807-44AA2F6D5D79.txt",
+        "timestamp" : 1794955687.847
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FE551600-0E6D-434E-A86B-B2C00633417C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.47.58 PM",
+        "timestamp" : 1794955678.962
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "52C130A8-98AC-4679-9871-D399619BD1D2",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.48.01 PM",
+        "timestamp" : 1794955681.236
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FE35BEA6-8E43-4B6A-8923-2076AA538BBB.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_C5B6C557-FC47-4271-8F5B-FDF7B24A6B74.relay",
+        "timestamp" : 1794955669.833
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8213F010-A5C4-41AB-ACF3-B5F9CC4A50F3",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.47.49 PM",
+        "timestamp" : 1794955669.834
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0CE0C631-F397-4297-880F-435CBBA2A87C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.saved-dashboards\" Button`_0_9D968E5A-428F-4C87-B596-42CE62C93E6C.txt",
+        "timestamp" : 1794955663.245
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5EB4D55E-9F2F-4CD4-8440-E01AEE134B5A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_D34B87D7-F0FE-4FD3-A7D8-1D4D7DAFFFF2.relay",
+        "timestamp" : 1794955659.797
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6634783A-32C1-4DB7-95C0-F865D24DE395",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.47.39 PM",
+        "timestamp" : 1794955659.798
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CBC3C270-2B1A-458C-9A1F-3AB25FE81D3B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_6177DC12-5FE8-49BE-B8C7-A5044591D238.txt",
+        "timestamp" : 1794955651.397
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FECEFC08-E502-45AE-B7D8-AB71B98119EE.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"settings.add-dashboard\" Button`_0_E8EADC63-4365-44B9-B302-4E9E1BE23631.txt",
+        "timestamp" : 1794955650.571
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6AB8AB96-0F07-42FA-84AF-1280EA6913FA",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.47.27 PM",
+        "timestamp" : 1794955647.515
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F58A0630-8E9C-43E5-9D91-E02CBE62E2F7",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.47.28 PM",
+        "timestamp" : 1794955648.063
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C93A1D46-EBF7-47C2-B8CE-FFB3566D1006.png",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "scene-bots-home-layouts-end_0_2369D02F-01DD-473C-9FC6-9D831DE42B98.png",
+        "timestamp" : 1794955645.63
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "36A37877-6673-4FC7-8F18-C01B24AE255B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_ED682C28-53FD-4F35-9F3A-6F24B2E79DE4.relay",
+        "timestamp" : 1794955640.386
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D3DDB2DB-0D93-4298-90C4-905790993C5F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.47.20 PM",
+        "timestamp" : 1794955640.387
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0C9C5F07-8AF3-4A67-BADA-47DE0621A786.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7176E0BC-EA50-4A02-9750-7E016D44F81F.txt",
+        "timestamp" : 1794955634.855
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FCC9F5CB-69D0-4093-B1F3-036438ACAA7C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_91A95615-0D20-4B51-BC58-B919E2BF781F.txt",
+        "timestamp" : 1794955633.806
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6361AFEC-FC3B-4DA9-A887-A9FF691B3D42.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_0B043060-046B-4AC8-95B3-FAF908E1A990.txt",
+        "timestamp" : 1794955631.359
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "ABD09D11-95CE-4343-BA31-F3CB7456D4CB.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_3C4F713B-BF8C-40A6-A731-B5090851CA03.txt",
+        "timestamp" : 1794955629.179
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1EC459F3-A615-4CCF-857C-1DD0F8A83EA0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_90A84343-48E1-4DE7-869F-096286A8777B.txt",
+        "timestamp" : 1794955624.83
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "7C67C473-BF05-4D57-8373-120E05FB15D3.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_D59CB39A-C400-4C22-A438-31AE87F47C83.txt",
+        "timestamp" : 1794955619.81
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D60488F4-54D2-435F-9A3F-734E35728578.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_E8EC6D6F-0F96-4CB3-A21F-A5048119E877.txt",
+        "timestamp" : 1794955617.232
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BD65CEF3-7655-401B-99F6-3C3DC1DB4264.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_B20AB4BF-84BB-4FE7-A25B-680F1A9C1C24.txt",
+        "timestamp" : 1794955614.761
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3C7D2CC6-2405-452C-9962-AAFC501C7A93.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_52517371-8A67-4346-825F-BFC9D025C2DE.txt",
+        "timestamp" : 1794955612.977
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "20982D54-DA78-4B87-9247-7A8AE8B0956C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_E1FA69CB-7E69-47E3-959B-6713E971F20C.txt",
+        "timestamp" : 1794955610.574
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3FC690A4-3054-40A3-B1F3-A94FC17AFD40.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CCD7D718-1D0C-42D3-8CDC-EEE2C93EE5EB.txt",
+        "timestamp" : 1794955606.63
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FA893E67-9858-4C9C-A016-9ECF4ABDF7F5",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.46.42 PM",
+        "timestamp" : 1794955602.898
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "79188DFA-9A1E-48A0-BE66-C8DBF19BF8AF",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.46.44 PM",
+        "timestamp" : 1794955604.52
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B75E6BB4-4663-489D-8DC1-65C588BDC13F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_22B688AC-5394-4A3E-9623-E59C3BCF94DD.relay",
+        "timestamp" : 1794955578.507
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D9025F31-9FA5-42D6-83B7-AF0B76BA730C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.46.18 PM",
+        "timestamp" : 1794955578.508
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "807B6CDB-C03B-4FD1-B27C-5B2714EF1555.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_6CA1AF8C-E37C-482B-985A-36A59C99778A.txt",
+        "timestamp" : 1794955577.297
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FEBFF198-3C6D-4359-836F-4153CF9C77CA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_D48E6C93-0667-49EF-8865-AD9227F47DC8.txt",
+        "timestamp" : 1794955576.036
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "45693F9E-E714-4837-9AD2-B98D6DD15044.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C672B663-3BDA-4597-AC94-27254A8DDAD0.txt",
+        "timestamp" : 1794955575.055
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "7530FEC3-81A9-4041-8B69-5E69B0AF0ACC.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CDD5C18B-2917-4188-A255-38B629D252E3.txt",
+        "timestamp" : 1794955573.958
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6719CA56-7105-4CDA-9C68-29ED7142BB64.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_08647205-AFA9-40FB-83AF-AB1DE825B5B2.txt",
+        "timestamp" : 1794955572.259
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6395AA9B-B861-438A-BE98-8A9B2912DF7E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C660A2D2-3F57-441E-8CE4-C08C35102E1D.txt",
+        "timestamp" : 1794955570.637
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "F16B7ECC-6626-4FFF-85FC-E6EC124565D1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_F429D288-B190-4227-929E-C03B17AA0D3F.txt",
+        "timestamp" : 1794955569.453
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "994C5C0F-11C5-4411-ABE9-27EC48E4D63C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_1E6E8580-68A2-4B4E-84A0-E1E9BFBBCC7A.txt",
+        "timestamp" : 1794955567.706
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "60A0552C-6566-491A-A63D-13C909BDF9A6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_369D70E2-5A83-42BF-A235-81EFB4B05912.txt",
+        "timestamp" : 1794955566.694
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "4642D2DC-4CA1-49BF-A0F3-A7EE8AC614DA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_BC26D286-54F5-4E03-88F0-97440624FC5C.txt",
+        "timestamp" : 1794955565.918
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C2EDE0C3-9356-4BF5-A4AF-9DC3B2904C25.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_29328683-B0BE-4583-9989-9B839CCC8A88.txt",
+        "timestamp" : 1794955564.144
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "37631BF5-2071-45DE-96DD-8FA0DC2F71DD.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_EC0AD7C7-4603-4880-B985-8C375C26B0A1.txt",
+        "timestamp" : 1794955562.371
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "B879F951-3042-4019-8F78-E45278890F5F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_FDAD553D-4DA3-49E0-99A8-96253F88A60A.txt",
+        "timestamp" : 1794955559.884
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "93636007-B33F-4A0F-A67E-F8A33F67F86D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_1231C4F0-823B-479B-AF37-304E2F68C8B1.txt",
+        "timestamp" : 1794955557.802
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5E55099B-D5A1-4883-8BEE-3A24CA2137C2.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_A190B694-9322-4AB1-A6F2-73522B19AF80.txt",
+        "timestamp" : 1794955555.93
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "82175FC6-2588-4D88-A8BC-0E85979DC45E.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_032459E5-D09C-4576-8FCE-5EA35A88B88C.txt",
+        "timestamp" : 1794955553.822
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "35F095BC-43B3-439B-A020-AB5D2BD5A895.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_EC773281-6B0D-4DDE-93CC-B3515048DC97.txt",
+        "timestamp" : 1794955551.721
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "04106036-C4DB-446A-9899-4178DBB1A719",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.45.44 PM",
+        "timestamp" : 1794955544.177
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "90AB6B91-A509-4AF6-A9C2-95AB09B5639C",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.45.47 PM",
+        "timestamp" : 1794955547.068
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FCBBB578-06FC-4C68-9D6B-D097AD6894A1.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_34C331BE-FE44-4212-AD4C-3E7B511CD161.relay",
+        "timestamp" : 1794955459.318
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "EC0EA964-5E64-498C-90E9-EFD687DC9EE9",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.44.19 PM",
+        "timestamp" : 1794955459.319
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "15FE08F5-580C-4A54-AA6C-CD2F5EEC062D.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_CD0FE0DA-5C81-47A9-92A1-B6C0799AE3D4.txt",
+        "timestamp" : 1794955443.524
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "00120C40-72E0-4EFB-A20B-7508F5445039.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_A10A9984-858A-4FD3-AECA-F70AD3EB1A04.txt",
+        "timestamp" : 1794955438.825
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "DC424C3C-FE21-4C96-A3CB-75C746F7BEA6.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_3B8C849C-9EC1-466B-85D9-5475ECAA6877.txt",
+        "timestamp" : 1794955437.173
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "CB3B8A32-1112-416A-BA48-91E4509CF8AF.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_2C2F15B3-C325-4E25-863B-22B8D6DB53FB.txt",
+        "timestamp" : 1794955434.496
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "2ABC7688-F7A9-464C-B7A3-02A4582E9FDA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_34EBC4D3-CDDE-4E56-B8DB-DEF1BA4EC9AE.txt",
+        "timestamp" : 1794955432.783
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BD3DDFFA-61AE-4823-9BB8-90E468E6F256.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7600B79D-CE41-4CED-978D-790AB007244E.txt",
+        "timestamp" : 1794955431.063
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "25F1129B-E584-4EB1-AC03-DEA7E371F983.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_7EC7DB4D-CD8A-4E67-AA3C-2695E44047AB.txt",
+        "timestamp" : 1794955428.407
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "EE065774-351A-40F6-A630-88E5DA9A53AF.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_989D54A3-CE0C-4263-BEDE-303C4045A21A.txt",
+        "timestamp" : 1794955426.951
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "87EFBE64-14FA-4008-AE60-A668D9C53414.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_C82E9115-4ADE-497C-BF69-107C2A60A996.txt",
+        "timestamp" : 1794955425.049
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "41D5FEFA-AAE7-43C4-86AB-1FA1054EEBFB.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_811BEFC1-5D65-4CBB-B1CB-072B769B70B2.txt",
+        "timestamp" : 1794955421.376
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "5025399B-738B-49FA-A987-268B97A60172.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `Any (First Match)`_0_FBBF0A84-7F08-4092-9DE9-0B51C8EFFEBC.txt",
+        "timestamp" : 1794955416.164
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C5EE79EF-803B-4020-8AF0-55D4ACDC1B90",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.43.33 PM",
+        "timestamp" : 1794955413.14
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "93E854FC-E7B9-4B9D-BD98-5846D1DC6F6A",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.42.23 PM",
+        "timestamp" : 1794955343.766
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "739AD7B8-F1C6-416B-B123-F4DE75301469",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.42.12 PM",
+        "timestamp" : 1794955332.239
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "AFD7B0B6-CFCE-4ED5-850C-3D2D6A098056",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.41.41 PM",
+        "timestamp" : 1794955301.981
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9ED66F3C-47DD-44A2-9761-2440150C72E1",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.41.33 PM",
+        "timestamp" : 1794955293.652
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "4F406F13-065E-46BE-ADB9-0A989B7672D4",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.41.17 PM",
+        "timestamp" : 1794955277.826
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A33329E5-33BD-4181-A2BD-65B545460921.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"finish-setup.not-now\" Button`_0_1DFF5EC5-428A-4ABC-BE7C-9BEF6FE32C09.txt",
+        "timestamp" : 1794955240.783
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A202A2A2-EFF8-4E18-95D7-4FFEF0FD32C8.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"finish-setup.not-now\" Button`_0_A3D3B0B7-FCF5-44F2-8E1C-00137CBC8C3D.txt",
+        "timestamp" : 1794955238.191
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "9D6A956F-4287-4807-B13D-11D8A969302C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_A8BA8A6A-B8AA-4307-B0CA-6BEBC666E74E.springboard",
+        "timestamp" : 1794955232.437
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "451E2BF3-9FD2-4C8E-BCA4-E019CFE74289",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.40.32 PM",
+        "timestamp" : 1794955232.437
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "7FC096E0-4A8B-4BB7-BA77-16A293761957.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"OK\" Button`_0_1BC87C47-B1C7-4097-ACC9-BFF449C7A7E1.txt",
+        "timestamp" : 1794955232.246
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A80091E0-2B88-44D6-A832-F3A3F3849C8C.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"OK\" Button`_0_C83DC8AE-641A-4E4E-A9D6-38DA54AC9BD6.txt",
+        "timestamp" : 1794955231.272
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6EFD1327-2760-4429-8C51-48274B6E0042.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_2AC54324-4296-4725-A4C9-450568153222.springboard",
+        "timestamp" : 1794955230.113
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "A0151628-5E16-40AA-B8D9-BD78539E2269",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.40.30 PM",
+        "timestamp" : 1794955230.113
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "65F14814-BE4C-4E68-9349-6E7697E127AA.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Not Now\" Button`_0_E79315A1-FDA3-4695-BF0B-337D08BA7BD6.txt",
+        "timestamp" : 1794955229.984
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "358C75F7-7759-4156-A68A-F87E1BF6237B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Not Now\" Button`_0_4000C11E-E583-4091-975B-D4EA2A2B52EB.txt",
+        "timestamp" : 1794955229.074
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "373D500B-8D24-45AD-A02C-CD6037C9EC2F.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_23B90256-A3CE-430F-8A81-96AD9A39E134.springboard",
+        "timestamp" : 1794955227.92
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C0BA36F2-5557-4BE9-9DA7-2CC91AD88A4F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.40.27 PM",
+        "timestamp" : 1794955227.921
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D59B27E4-F2DE-475B-8909-B869696FC03B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Don’t Allow\" Button`_0_04BB1E20-DFD7-4D2D-BAF6-4FCDA87F9B92.txt",
+        "timestamp" : 1794955227.801
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "3B88AA91-AD6A-42E6-82F6-98A00D03B87A.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Don’t Allow\" Button`_0_6DCD9C3A-A773-46AA-A7A3-F1A866A6913A.txt",
+        "timestamp" : 1794955226.777
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "BECBD743-89B8-4DE6-AE0A-71744AEDCF00.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.apple_0_34D4B85E-E81C-46D4-9141-D4A398D6C9DC.springboard",
+        "timestamp" : 1794955225.471
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "C45BE255-90F2-4CA0-B0A2-ED42497E5E74",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.40.25 PM",
+        "timestamp" : 1794955225.472
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "86E0CB5E-285B-4757-A4D8-93BB76DDD19B.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"Allow\" Button`_0_F2DAD700-C889-435F-A152-5E3BE0C58A22.txt",
+        "timestamp" : 1794955222.253
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "DA08C5A8-0E97-411F-A612-76094B46BE65",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.40.19 PM",
+        "timestamp" : 1794955219.685
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "D161682F-1CDD-46A8-AE5F-B3CB0435D463",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.40.16 PM",
+        "timestamp" : 1794955216.796
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "6F1A97D4-9C3B-4B06-B17A-29BB6CD9BA3E",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.40.15 PM",
+        "timestamp" : 1794955215.779
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "1B77C72F-5B03-4479-9FE3-58B1547EE19F",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.40.13 PM",
+        "timestamp" : 1794955213.395
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "AAD954DE-8590-4483-B92E-CBB8A050F2BB.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_7D78F129-835C-4C8C-935B-4AAA40426AD2.txt",
+        "timestamp" : 1794955207.147
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8FD97A5F-57C8-4D60-9724-643990E542B0.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_ECDBEFAA-7167-4258-B217-8AA93970F166.txt",
+        "timestamp" : 1794955199.502
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "FDB39C46-025B-4C0F-A058-D883A680B831.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.username\" TextField`_0_F680EC9D-8EB0-4220-B767-DB395FBB64E2.txt",
+        "timestamp" : 1794955198.91
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "EC6A4E50-C467-4187-ADB8-C55BDE7818EF",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.39.53 PM",
+        "timestamp" : 1794955193.714
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "0AECC3C5-585D-4090-9A6D-7DC0D775C5F9",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Synthesized Event 2026-11-17 at 10.39.29 PM",
+        "timestamp" : 1794955169.035
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "8357A351-0814-4A67-A89A-6EB8E285B372.txt",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Debug description for `\"login.server-url\" TextField`_0_CA332CD9-4CD2-4970-A387-0E59B46BB3CC.txt",
+        "timestamp" : 1794955149.023
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "596B2AFB-CBF5-439F-A986-94580FD9CD4B.mp4",
+        "isAssociatedWithFailure" : false,
+        "suggestedHumanReadableName" : "Screen Recording 2026-11-17 at 10.38.13 PM.mp4",
+        "timestamp" : 1794955093.141
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "E21BBF1E-2222-4A2D-8BCE-DAF65621C4D0.txt",
+        "isAssociatedWithFailure" : true,
+        "suggestedHumanReadableName" : "Complete Issue Description.txt"
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "00B8DB51-E036-470C-A551-1FAFE6A8D004.txt",
+        "isAssociatedWithFailure" : true,
+        "suggestedHumanReadableName" : "App UI hierarchy for com.milim_0_9E0A6B71-295D-4F56-AF55-F251F5F132E3.relay",
+        "timestamp" : 1794956282.192
+      },
+      {
+        "configurationName" : "Test Scheme Action",
+        "deviceId" : "CAD4F983-CE4C-41E7-84A5-DFFD6F0CF3CA",
+        "deviceName" : "iPhone 18 Pro Max",
+        "exportedFileName" : "865B7A05-348C-4DAA-B083-D78DE5397EA0",
+        "isAssociatedWithFailure" : true,
+        "suggestedHumanReadableName" : "UI Snapshot 2026-11-17 at 10.58.02 PM",
+        "timestamp" : 1794956282.192
+      }
+    ],
+    "testIdentifier" : "DemoVideoTests/testRecordDemoScenes()",
+    "testIdentifierURL" : "test://com.apple.xcode/Conduit/ConduitScreenshots/DemoVideoTests/testRecordDemoScenes"
+  }
+]
