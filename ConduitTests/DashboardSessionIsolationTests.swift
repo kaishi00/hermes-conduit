@@ -359,11 +359,19 @@ final class DashboardSessionIsolationTests: XCTestCase {
         let bridge = DashboardTicketBridge(baseURL: "https://\(host)", dashboardID: a)
         bridge.invalidate()
         // The restore would land over WebKit IPC shortly after the bridge
-        // was built.
-        try await Task.sleep(for: .seconds(3))
-
-        let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
-        XCTAssertFalse(cookies.contains { $0.value == "after-invalidate" }, "an invalidated bridge restores nothing")
+        // was built, so the store is read for 3 seconds. Read it throughout
+        // rather than sleeping first: on hosted CI simulators a store left
+        // idle for a few seconds stopped answering allCookies at all (the
+        // 2026-11-16 and 11-17 Nightlies, and every probe in #2695 that
+        // waited before its first read), while one kept busy answered.
+        let deadline = ContinuousClock.now + .seconds(3)
+        repeat {
+            let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
+            if cookies.contains(where: { $0.value == "after-invalidate" }) {
+                return XCTFail("an invalidated bridge restores nothing")
+            }
+            try await Task.sleep(for: .milliseconds(200))
+        } while ContinuousClock.now < deadline
         withExtendedLifetime(bridge) {}
     }
 

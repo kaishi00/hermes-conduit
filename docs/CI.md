@@ -17,7 +17,7 @@ per account, waiting for a runner had become the main cost.
 | Workflow | When | What runs | Gates a merge? |
 |---|---|---|---|
 | `.github/workflows/ci.yml` | every PR and every push to `main`, `linked-rooms` or `all-live` (each of those branches runs its own copy) | the Linux validation and CI-tooling self-test, and **one macOS job** (`Smoke`, left out of a docs-only PR or one-commit docs-only push) that builds once and runs the pinned unit smoke tests on that build and simulator, and on a push the pinned UI smoke tests too | yes, through the single `CI Gate` check |
-| `.github/workflows/nightly.yml` | nightly on `main` at 3:17 AM ET, dispatched by a timer on the Hermes host ([scripts/nightly-timer/](../scripts/nightly-timer/README.md)) with its own cron as a backup that skips when that run happened, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a nightly run's jobs that never got a runner) | no; a failed nightly run emails the owner |
+| `.github/workflows/nightly.yml` | nightly on `main` at 3:17 AM ET, dispatched by a timer on the Hermes host ([scripts/nightly-timer/](../scripts/nightly-timer/README.md)) with its own cron as a backup that skips when that run happened, and on demand (Actions > Nightly > Run workflow) | **every unit class** except the timing families in `unit_shards` balanced jobs, the timing/performance/dormancy families repeated 3 times, and the **complete UI suite** in `nightly_ui_shards` jobs, no job retrying its own tests (`nightly-rerun.yml` reruns only a nightly run's jobs that never got a runner; an invocation whose simulator runtime was lost before any test ran runs once more after a reboot, `scripts/ci-recover-lost-runtime.sh`) | no; a failed nightly run emails the owner |
 | `.github/workflows/nightly-rerun.yml` | a nightly Nightly run that failed: the cron's or the timer's "Nightly (overnight)" (never another dispatched one, so a release candidate's run keeps its result) | reruns the run's failed jobs when every one of them was cancelled without ever getting a runner (macOS capacity), at most twice; a run with a job that ran and failed is left alone | no |
 | `.github/workflows/contributor-label.yml` | a push or PR comment by the author of a PR labeled `waiting on contributor`, and that label being added | swaps the label for `waiting on Eric` (and back); it only edits labels and checks nothing out | no |
 
@@ -193,7 +193,9 @@ from storage some networks can't reach.
 
 The smoke job then runs its test steps on the one build and booted
 simulator. **Unit smoke** runs the pinned unit tests as one
-`test-without-building` invocation with no retry; a failure posts xcodebuild's
+`test-without-building` invocation with no retry of a test (an invocation
+that lost its simulator runtime before any test ran gets one more attempt
+after a reboot, `scripts/ci-recover-lost-runtime.sh`); a failure posts xcodebuild's
 list of failing tests and the first error lines as an annotation, and the
 invocation posts how long it took and how much of that ran tests. **UI smoke**
 runs the pinned UI tests as one invocation with one targeted retry (see
@@ -335,7 +337,7 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
      restore the PR's own last build, else main's (or its base branch's)
      build-for-testing  ||  simulator boot      (ci-hosted-build.sh)
      check-weak-imports; save the full build cache
-     unit smoke: 70 pinned tests, ONE invocation, no retry
+     unit smoke: 70 pinned tests, ONE invocation, no test retry (a lost runtime: once more)
      UI smoke:   pushes only: 4 pinned tests, ONE invocation, one
                  targeted retry (runs even if unit smoke failed)
                  |
@@ -354,7 +356,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR or push needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores the PR's own last build, else main's build cache (on a PR into `linked-rooms` or `all-live`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no test retried; an invocation that lost its simulator runtime before any test ran runs once more after a reboot, `scripts/ci-recover-lost-runtime.sh`) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache after the build and its weak-imports check and before the tests: a push's for later PRs, a PR's for its own next push. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
@@ -483,7 +485,10 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
   main-only job that wrote it are gone; nothing produces the planner's
   `--history` input any more.
 * **No watchdogs or recovery plumbing.** A wedged hosted runner fails the job
-  and is re-run by a human, deliberately.
+  and is re-run by a human, deliberately. The one exception: a test invocation
+  whose simulator runtime was lost before any test ran reboots the device and
+  runs once more (`scripts/ci-recover-lost-runtime.sh`, the Nightly reruns
+  entry in docs/FEATURE_MAP.md).
 
 ### Cost
 
