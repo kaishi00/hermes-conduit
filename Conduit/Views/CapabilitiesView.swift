@@ -123,6 +123,8 @@ struct CapabilitiesView: View {
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                    // Taps fall through to the focus catcher behind the bar.
+                    .allowsHitTesting(false)
                 TextField(searchPrompt, text: $searchText)
                     .textFieldStyle(.plain)
                     .scaledFont(.subheadline)
@@ -146,8 +148,17 @@ struct CapabilitiesView: View {
             }
             .padding(.leading, 14)
             .padding(.trailing, 6)
-            .frame(minHeight: 40)
-            .conduitGlassSurface(cornerRadius: 20)
+            .frame(minHeight: 44)
+            // The rest of the 44 pt bar focuses the field. Behind the row, not a
+            // gesture on it, so Clear only clears (an ancestor's tap would also
+            // fire on the button and bring the keyboard back).
+            .background {
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { searchFocused = true }
+                    .accessibilityHidden(true)
+            }
+            .conduitGlassSurface(cornerRadius: 22)
             if searchFocused {
                 Button(AppLocalization.string("Cancel")) {
                     searchText = ""
