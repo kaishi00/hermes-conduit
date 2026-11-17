@@ -107,9 +107,9 @@ test calls `stop-recording`, so the video ends at its last mark, which is
 what `cut-scenes.sh` dates the recording from.
 The recording repeats a few frame times, after which ffmpeg would fall back
 to packet times that lag by up to 44 s, so the cut reads it with
-`-fflags +igndts`. The stills at each scene's start and end
-(`scene-<name>-start.png`, `-end.png`) show where each cut should begin and
-end.
+`-fflags +igndts`. The cut uses only the marks; the stills at each scene's
+start and end (`scene-<name>-start.png`, `-end.png`) are there to check it
+against.
 
 The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 `two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
@@ -130,6 +130,8 @@ stills at the start and end of each scene in `stills/`), and the git ref
 over 90 MB, past what git takes), for
 sessions that can't download artifacts.
 Each run makes its own ref; delete old ones with `git push --delete`.
+The workflow's steps also run by hand on a Mac of your own, which takes
+about 25 minutes with a warm Xcode build, against about two hours hosted.
 
 Bot pictures come from `avatars/<name>.png` (256 px), uploaded the way the app
 uploads one. A turn sent live rather than seeded goes under `"replies"`, and

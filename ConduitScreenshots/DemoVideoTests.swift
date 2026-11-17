@@ -246,7 +246,7 @@ final class DemoVideoTests: XCTestCase {
         let marked = wantedScenes?.contains(name) ?? true
         if marked {
             print("SCENE start \(name) \(Date().timeIntervalSince1970)")
-            // cut-scenes.sh finds this frame (and the end one) in the video.
+            // With the end one, a check that the cut begins and ends on the scene.
             snap("scene-\(name)-start")
         }
         body()

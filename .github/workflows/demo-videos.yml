@@ -7,10 +7,6 @@ name: Demo videos
 # merge gate. scripts/app-store/README.md has the details.
 
 on:
-  # TEMP: runs on pushes to this branch until the workflow is on main, where
-  # workflow_dispatch can reach it.
-  push:
-    branches: [claude/project-thread-guh5ib]
   workflow_dispatch:
     inputs:
       devices:
