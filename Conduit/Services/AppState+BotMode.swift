@@ -1289,6 +1289,9 @@ extension AppState {
             return .failed(AppLocalization.string("A profile named \(identity.slug) already exists."))
         }
         let slug = identity.slug
+        // The face New Bot showed, taken before anything waits: a roster
+        // read while the bot is made could list it and move the next free one.
+        let face = draft.face ?? nextStarterFace()
         let title = BotProfileSlug.title(forName: draft.name)
         let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let soul = BotSoul.compose(
@@ -1335,7 +1338,6 @@ extension AppState {
         }
         // Its starter face, so every phone shows the same one, and the
         // face's color for Desktop's initial when no color was picked.
-        let face = draft.face ?? nextStarterFace()
         meta[StarterFaces.metaKey] = face
         if draft.color == nil { meta["color"] = StarterFaces.face(face).hex }
         if draft.newAvatarPNG != nil, photoSaved {

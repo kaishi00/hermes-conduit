@@ -268,15 +268,19 @@ final class BotFaceDirectory {
 
     private(set) var looks: [String: Look] = [:]
 
+    /// The profile's look by its exact name, else by a name that differs
+    /// only in case when just one bot has it.
     func look(for profile: String) -> Look? {
-        looks[profile.lowercased()]
+        if let exact = looks[profile] { return exact }
+        let folded = looks.filter { $0.key.caseInsensitiveCompare(profile) == .orderedSame }
+        return folded.count == 1 ? folded.first?.value : nil
     }
 
     func update(_ bots: [BotProfile]) {
         var next: [String: Look] = [:]
         for bot in bots {
             guard let face = bot.faceLook else { continue }
-            next[bot.name.lowercased()] = Look(face: face, color: bot.shownColor)
+            next[bot.name] = Look(face: face, color: bot.shownColor)
         }
         if next != looks { looks = next }
     }
