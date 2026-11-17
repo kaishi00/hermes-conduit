@@ -51,6 +51,8 @@ final class DemoVideoTests: XCTestCase {
         openTab("Bots")
         XCTAssertTrue(named("Conduit-chan").waitForExistence(timeout: 40),
                       "Home's lone bot never showed on Bots Home")
+        // Bots Home shows its own Finish setting up card, kept out of the shots.
+        dismissFinishSetupCard()
         settle(3)
 
         scene("bots-home-layouts") {
@@ -435,13 +437,17 @@ final class DemoVideoTests: XCTestCase {
     }
 
     private func dismissFinishSetupCard() {
-        let notNow = app.buttons["finish-setup.not-now"]
-        if notNow.waitForExistence(timeout: 8) {
+        // The card can show on more than one screen at once (Settings and
+        // the tab behind it), so each copy is answered by its own element.
+        let cards = app.buttons.matching(identifier: "finish-setup.not-now")
+        guard cards.firstMatch.waitForExistence(timeout: 8) else { return }
+        for notNow in cards.allElementsBoundByIndex where notNow.exists {
             if notNow.isHittable {
                 notNow.tap()
             } else {
                 notNow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
             }
+            settle(1)
         }
     }
 
