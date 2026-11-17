@@ -1,0 +1,17 @@
+Warning: custom (unreviewed) source — not from the Hermes catalog.
+Cloning https://github.com/kaishi00/hermes-conduit-notifier.git...
+Preparing the isolated Hermes runtime…
+  → Installing Python dependencies…
+  ✓ Installing Python dependencies
+
+╭──────────────────────────────── ✓ Installed ─────────────────────────────────╮
+│ Plugin installed: kaishi00/hermes-conduit-notifier                           │
+│ Location:                                                                    │
+│ /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/plugins/c │
+│ onduit_push                                                                  │
+╰──────────────────────────────────────────────────────────────────────────────╯
+
+  → Installing Python dependencies…
+  ✓ Installing Python dependencies
+✓ Plugin conduit_push enabled.
+
