@@ -240,7 +240,8 @@ extension ChatRowState {
         state.activeProfile = profile
         state.agentIdentity = ConversationAgentIdentity.workspace(
             name: appState.profileDisplayName(profile),
-            photoURL: appState.profileAvatarURL(for: profile)
+            photoURL: appState.profileAvatarURL(for: profile),
+            profile: profile
         )
         state.agentGlowTint = appState.profileGlowTint(profile)
         state.isBusy = isBusy

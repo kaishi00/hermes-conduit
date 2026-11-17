@@ -454,7 +454,7 @@ struct V2ProfileStrip: View {
                 }
             }
         } label: {
-            ProfileAvatarView(profile: profile, displayName: profile, url: avatar, size: pictureSize)
+            ProfileAvatarView(profile: profile, displayName: profile, url: avatar, size: pictureSize, dashboardID: dashboardID)
                 .opacity(0.62)
                 .overlay(alignment: .bottomTrailing) {
                     CombinedDashboardBadge(dashboardID: dashboardID, size: 14)

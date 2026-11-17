@@ -750,9 +750,10 @@ struct BotRosterView: View {
                         BotAvatarView(
                             name: bot.name,
                             label: bot.displayLabel,
-                            colorString: bot.appearanceColor,
+                            colorString: bot.shownColor,
                             image: appState.botAvatarImage(for: bot),
-                            size: start.width
+                            size: start.width,
+                            face: bot.faceLook
                         )
                         .scaleEffect(flight.landed ? slot.diameter / max(start.width, 1) : 1)
                         .opacity(flight.landed && index >= 3 ? 0 : 1)
@@ -1021,9 +1022,10 @@ struct BotRosterView: View {
                             BotAvatarView(
                                 name: farBot.bot.name,
                                 label: farBot.bot.displayLabel,
-                                colorString: farBot.bot.appearanceColor,
+                                colorString: farBot.bot.shownColor,
                                 image: farBot.section.avatars[farBot.bot.name].flatMap { ProfileAvatarImageCache.image(at: $0) },
-                                size: 30
+                                size: 30,
+                                face: farBot.bot.faceLook
                             )
                             .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
                             .frame(width: 44, height: 44)
@@ -1974,10 +1976,11 @@ struct BotMonogramView: View {
         BotAvatarView(
             name: bot.name,
             label: bot.displayLabel,
-            colorString: bot.appearanceColor,
+            colorString: bot.shownColor,
             image: appState.botAvatarImage(for: bot),
             size: avatarSize,
-            playback: animates ? appState.botAvatarPlayback(for: bot) : nil
+            playback: animates ? appState.botAvatarPlayback(for: bot) : nil,
+            face: bot.faceLook
         )
         // Connecting fetches again: a kept row's fetch fails offline.
         .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {

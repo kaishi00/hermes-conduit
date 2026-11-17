@@ -597,7 +597,9 @@ extension AppState {
             // shows the profile's name.
             adoptProfileHermesNames(snapshot.bots.map { (profile: $0.name, displayName: $0.displayName) })
             adoptProfileBotTitles(snapshot.bots.map { (profile: $0.name, title: $0.botTitle ?? "") })
-            botRoster = BotProfile.displayOrder(snapshot.bots)
+            // Decoding gave each bot its starter face; a roster that didn't
+            // come through the decoder gets them here.
+            botRoster = BotProfile.displayOrder(StarterFaces.assign(snapshot.bots))
             readUnreadBotsWork()
             desktopGroupChats = snapshot.desktopGroups
             botRosterSupportsProtocol = snapshot.supportsBotProtocol
@@ -733,7 +735,8 @@ extension AppState {
         if let memo = keptBotRosterMemo, memo.key == key { return memo.roster }
         var roster = keptRead(KeptBotRoster.self, KeptRoute.botRoster, profile: KeptRoute.everyProfile)
         if let bots = roster?.bots {
-            roster?.bots = bots.map { bot in
+            // A copy kept before starter faces carries none.
+            roster?.bots = StarterFaces.assign(bots).map { bot in
                 var bot = bot
                 bot.isKeptCopy = true
                 if BotManagement.isDefaultProfile(bot.name) { bot.conduitName = mainName }
@@ -1260,6 +1263,15 @@ extension AppState {
         return (slug, BotProfileSlug.isValid(slug), taken)
     }
 
+    /// The starter face a new bot gets on `dashboardID` (the one on screen
+    /// by default): the first one none of its bots wears.
+    func nextStarterFace(on dashboardID: UUID? = nil) -> Int {
+        if let dashboardID, dashboardID != activeDashboardID {
+            return StarterFaces.nextFree(after: combinedDashboardBots[dashboardID]?.bots ?? [])
+        }
+        return StarterFaces.nextFree(after: botRoster)
+    }
+
     /// Creates a bot the way Desktop's New Bot dialog does: the profile
     /// (`profiles.create`, with a composed SOUL), then its look in ui_meta
     /// and its picture in the asset store. The look and picture are
@@ -1277,6 +1289,9 @@ extension AppState {
             return .failed(AppLocalization.string("A profile named \(identity.slug) already exists."))
         }
         let slug = identity.slug
+        // The face New Bot showed, taken before anything waits: a roster
+        // read while the bot is made could list it and move the next free one.
+        let face = draft.face ?? nextStarterFace()
         let title = BotProfileSlug.title(forName: draft.name)
         let description = draft.description.trimmingCharacters(in: .whitespacesAndNewlines)
         let soul = BotSoul.compose(
@@ -1321,6 +1336,10 @@ extension AppState {
             meta["color"] = color
             meta["custom"] = true
         }
+        // Its starter face, so every phone shows the same one, and the
+        // face's color for Desktop's initial when no color was picked.
+        meta[StarterFaces.metaKey] = face
+        if draft.color == nil { meta["color"] = StarterFaces.face(face).hex }
         if draft.newAvatarPNG != nil, photoSaved {
             meta["imageKind"] = "photo"
             meta["custom"] = true
@@ -1455,6 +1474,9 @@ extension AppState {
         if draft.color != bot.appearanceColor {
             patch.updateValue(draft.color, forKey: "color")
             patch["custom"] = true
+        }
+        if let face = draft.face, face != StarterFaces.storedFace(in: bot.botMeta) {
+            patch[StarterFaces.metaKey] = face
         }
         let changesNameOrColor = !patch.isEmpty
         if uploaded {

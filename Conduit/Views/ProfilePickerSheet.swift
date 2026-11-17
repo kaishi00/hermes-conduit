@@ -631,6 +631,9 @@ struct ProfileAvatarView: View {
     /// Plays a moving picture (AnimatedAvatarFrames); only where the face is
     /// the focus, never in rows or the transcript.
     var animates = false
+    /// Another combined dashboard's profile: its starter face is that
+    /// dashboard's (BotFaceDirectory). Nil: the one on screen.
+    var dashboardID: UUID? = nil
     private var initials: String {
         let letters = displayName.split(separator: " ").prefix(2).compactMap(\.first)
         return letters.isEmpty ? "H" : String(letters).uppercased()
@@ -650,6 +653,11 @@ struct ProfileAvatarView: View {
                 .clipped()
                 // Always beside the profile's name, or inside a labelled button.
                 .accessibilityHidden(true)
+            } else if let look = BotFaceDirectory.shared.look(for: profile, on: dashboardID) {
+                // A bot's profile with no picture wears its starter face.
+                StarterFaceView(face: look.face, background: look.color.map { BotAvatarView.color(for: $0, name: profile) })
+                    .frame(width: size, height: size)
+                    .accessibilityHidden(true)
             } else {
                 Text(initials).font(.system(size: max(10, size * 0.36), weight: .bold, design: .rounded))
                     .foregroundStyle(Color.conduitAccent).frame(width: size, height: size)

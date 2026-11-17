@@ -100,7 +100,7 @@ struct BotEditorSheet: View {
                 }
                 createDashboardRow
                 avatarHeader
-                colorSection
+                faceSection
                 nameSection
                 ConduitSettingsSection(title: AppLocalization.string("Description"), symbol: "text.alignleft", tint: .blue) {
                     TextField(
@@ -276,7 +276,8 @@ struct BotEditorSheet: View {
                     colorString: draft.color,
                     image: previewImage,
                     size: 88,
-                    playback: previewPlayback
+                    playback: previewPlayback,
+                    face: StarterFaces.face(shownFace)
                 )
                 if isPreparingAnimation {
                     ProgressView()
@@ -475,68 +476,60 @@ struct BotEditorSheet: View {
         return hasStoredAvatar ? AppLocalization.string("Photo set", table: .bots) : AppLocalization.string("No photo", table: .bots)
     }
 
-    private var colorSection: some View {
-        let names = swatchNames
-        return ConduitSettingsSection(title: AppLocalization.string("Color", table: .bots), symbol: "paintpalette", tint: .pink) {
+    /// The twelve starter faces, in place of a color grid: a face brings
+    /// its color, and it's what the bot shows until it has a picture
+    /// (Eric, 2026-11-17).
+    private var faceSection: some View {
+        let names = faceNames
+        return ConduitSettingsSection(title: AppLocalization.string("Face", table: .bots), symbol: "face.smiling", tint: .pink) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
-                swatch(nil, name: AppLocalization.string("Automatic color", table: .bots))
-                ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
-                    swatch(
-                        item.element,
-                        name: names.indices.contains(item.offset) ? names[item.offset] : AppLocalization.string("Color", table: .bots)
-                    )
+                ForEach(StarterFaces.set.indices, id: \.self) { index in
+                    faceButton(index, name: names.indices.contains(index) ? names[index] : AppLocalization.string("Face", table: .bots))
                 }
             }
-            Text(AppLocalization.string("Shown behind the bot's initial when it has no picture.", table: .bots))
+            Text(AppLocalization.string("Shown until the bot has a picture. Its color is the bot's color in Conduit.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
     }
 
-    /// VoiceOver names for `BotAvatarColor.swatches`, in hue order (0°, 30°, …).
-    /// Resolved once per render of the grid so a language change applies
-    /// immediately.
-    private var swatchNames: [String] {
+    /// VoiceOver names for the faces, by their colors, in StarterFaces.set's
+    /// order. Resolved once per render so a language change applies at once.
+    private var faceNames: [String] {
         [
-            AppLocalization.string("Red", table: .bots),
-            AppLocalization.string("Orange", table: .bots),
-            AppLocalization.string("Yellow", table: .bots),
-            AppLocalization.string("Lime", table: .bots),
-            AppLocalization.string("Green"),
-            AppLocalization.string("Mint", table: .bots),
-            AppLocalization.string("Cyan", table: .bots),
-            AppLocalization.string("Sky Blue", table: .bots),
-            AppLocalization.string("Blue"),
             AppLocalization.string("Purple"),
+            AppLocalization.string("Sky Blue", table: .bots),
+            AppLocalization.string("Orange", table: .bots),
+            AppLocalization.string("Mint", table: .bots),
+            AppLocalization.string("Yellow", table: .bots),
+            AppLocalization.string("Pink"),
+            AppLocalization.string("Blue"),
+            AppLocalization.string("Cyan", table: .bots),
+            AppLocalization.string("Red", table: .bots),
+            AppLocalization.string("Lime", table: .bots),
             AppLocalization.string("Magenta", table: .bots),
-            AppLocalization.string("Pink")
+            AppLocalization.string("Gray", table: .bots)
         ]
     }
 
-    private func swatch(_ value: String?, name: String) -> some View {
-        let isSelected = draft.color == value
+    private func faceButton(_ index: Int, name: String) -> some View {
+        let isSelected = shownFace == index
+        let face = StarterFaces.face(index)
         return Button {
             Haptics.light()
-            draft.color = value
+            draft.face = index
+            draft.color = face.hex
         } label: {
-            ZStack {
-                Circle()
-                    .fill(BotAvatarView.color(for: value, name: avatarName))
-                if value == nil {
-                    // Fixed size: it fills a fixed-size colour swatch.
-                    Text(AppLocalization.string("Auto"))
-                        .font(.system(size: 9, weight: .semibold))
-                        .foregroundStyle(.white)
+            StarterFaceView(face: face)
+                .frame(width: 36, height: 36)
+                .clipShape(Circle())
+                .overlay {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(isSelected ? 0.9 : 0), lineWidth: 2)
+                        .padding(-4)
                 }
-            }
-            .frame(width: 32, height: 32)
-            .overlay {
-                Circle()
-                    .strokeBorder(Color.primary.opacity(isSelected ? 0.9 : 0), lineWidth: 2)
-                    .padding(-4)
-            }
-            .frame(width: 44, height: 44)
-            .contentShape(Rectangle())
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(Text(name))
@@ -917,6 +910,12 @@ struct BotEditorSheet: View {
         editedBot?.name ?? appState.newBotSlug(for: draft.name).slug
     }
 
+    /// The face the bot shows: the one picked here, else the bot's own, else,
+    /// for a new bot, the first one free on the dashboard it's made on.
+    private var shownFace: Int {
+        draft.face ?? editedBot?.starterFace ?? appState.nextStarterFace(on: createDashboardID)
+    }
+
     private var avatarLabel: String {
         let typed = draft.name.trimmingCharacters(in: .whitespacesAndNewlines)
         if !typed.isEmpty { return typed }
@@ -998,6 +997,9 @@ struct BotEditorSheet: View {
         error = nil
         var draft = self.draft
         let target = isCreating ? createDashboardID : nil
+        // A new bot keeps the face its preview showed, whatever the roster
+        // reads while it's made or the dashboard it switches to lists.
+        if isCreating, draft.face == nil { draft.face = shownFace }
         Task {
             let result: BotSaveResult
             var createdName: String?
@@ -1068,8 +1070,10 @@ struct BotEditorSheet: View {
     }
 }
 
-/// A bot's face: its picture when it has one, else its initial on its color
-/// (the explicit pick, else Desktop's name-derived hue).
+/// A bot's face: its picture when it has one, else its starter face
+/// (StarterFaces) on its color, else, for what isn't one of your bots (a
+/// person, another person's agent), the initial on its color (the explicit
+/// pick, else Desktop's name-derived hue).
 struct BotAvatarView: View {
     let name: String
     let label: String
@@ -1079,6 +1083,8 @@ struct BotAvatarView: View {
     /// The moving picture to play over `image`, where the face is the focus
     /// (AnimatedAvatarFrames); nil keeps the still.
     var playback: AnimatedAvatarPlayback? = nil
+    /// The bot's starter face, drawn while it has no picture.
+    var face: StarterFace? = nil
 
     var body: some View {
         Group {
@@ -1091,6 +1097,8 @@ struct BotAvatarView: View {
                         AnimatedAvatarFrames(playback: playback)
                     }
                 }
+            } else if let face {
+                StarterFaceView(face: face, background: colorString.map { Self.color(for: $0, name: name) })
             } else {
                 ZStack {
                     Self.color(for: colorString, name: name)

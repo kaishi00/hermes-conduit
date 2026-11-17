@@ -86,10 +86,11 @@ struct CombinedDashboardBotPortrait: View {
         BotAvatarView(
             name: bot.name,
             label: bot.displayLabel,
-            colorString: bot.appearanceColor,
+            colorString: bot.shownColor,
             image: url.flatMap { ProfileAvatarImageCache.image(at: $0) },
             size: size,
-            playback: animated ? playback : nil
+            playback: animated ? playback : nil,
+            face: bot.faceLook
         )
     }
 

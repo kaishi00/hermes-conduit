@@ -1595,9 +1595,10 @@ struct GroupMemberAvatar: View {
             BotAvatarView(
                 name: bot.name,
                 label: bot.displayLabel,
-                colorString: bot.appearanceColor,
+                colorString: bot.shownColor,
                 image: appState.botAvatarImage(for: bot),
-                size: size
+                size: size,
+                face: bot.faceLook
             )
             // Connecting fetches again: a kept bot's fetch fails offline.
             .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {

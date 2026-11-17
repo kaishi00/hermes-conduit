@@ -589,7 +589,10 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(boIdentity.name, "Bo")
         XCTAssertEqual(boIdentity.botFace?.name, "bo")
         XCTAssertNil(boIdentity.botFace?.image)
-        XCTAssertNil(boIdentity.botFace?.colorString)
+        // No color in Hermes: its starter face's, the second one (by name,
+        // after atlas-2).
+        XCTAssertEqual(boIdentity.botFace?.starterFace, 1)
+        XCTAssertEqual(boIdentity.botFace?.colorString, StarterFaces.set[1].hex)
     }
 
     /// A resume that rotates the Bot Chat's runtime id carries the captured

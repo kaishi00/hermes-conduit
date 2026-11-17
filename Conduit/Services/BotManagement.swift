@@ -606,9 +606,12 @@ struct BotEditorDraft: Equatable {
     var name: String = ""
     var description: String = ""
     var soul: String = ""
-    /// A CSS color string from `BotAvatarColor.swatches`, or nil for the
-    /// name's own hue.
+    /// The bot's color string: its starter face's once one is picked, a
+    /// color Hermes kept, or nil for its face's own.
     var color: String?
+    /// The starter face picked in the editor (StarterFaces); nil leaves the
+    /// bot's own, or gives a new bot the first free one.
+    var face: Int?
     /// A freshly chosen picture (normalized PNG). Nil = unchanged.
     var newAvatarPNG: Data?
     /// The user removed the existing picture.

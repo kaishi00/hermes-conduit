@@ -235,7 +235,7 @@ struct NeedsYouRow: View {
     @MainActor @ViewBuilder
     static func picture(_ item: NeedsYouItem, _ appState: AppState, size: CGFloat) -> some View {
         if let dashboardID = item.dashboardID, dashboardID != appState.activeDashboardID {
-            ProfileAvatarView(profile: item.profile, displayName: item.profile, url: nil, size: size)
+            ProfileAvatarView(profile: item.profile, displayName: item.profile, url: nil, size: size, dashboardID: dashboardID)
                 .overlay(alignment: .topLeading) {
                     CombinedDashboardBadge(dashboardID: dashboardID, size: size * 0.55)
                         .offset(x: -size * 0.15, y: -size * 0.15)
