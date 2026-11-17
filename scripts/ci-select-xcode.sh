@@ -23,7 +23,8 @@
 # An image that carries a newer Xcode usually carries its iOS runtime too, and
 # the device lookup (scripts/ci-lib.sh) takes the newest runtime, which an
 # older Xcode doesn't build for. So when the script falls back to an Xcode
-# whose iOS simulator SDK is older than the first candidate's, it pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
+# whose iOS simulator SDK is older than the first candidate with an SDK, it
+# pins SIMULATOR_OS (and WATCH_SIMULATOR_OS, which the App Store
 # screenshots' Watch job reads) to the selected Xcode's simulator SDK versions
 # through GITHUB_ENV (the workflows keep that variable across sudo). A
 # fallback to another copy of the same SDK pins nothing: an image carried
@@ -49,11 +50,26 @@ candidates=$(printf '%s\n%s\n' "$candidates" "$apps/Xcode.app" | sed '/^$/d')
 
 has_metal() { xcrun -sdk iphonesimulator metal -v >/dev/null 2>&1; }
 
+sdk_is_older() {
+  awk -v selected="$1" -v first="$2" 'BEGIN {
+    n = split(selected, a, /[.]/); m = split(first, b, /[.]/)
+    for (i = 1; i <= n || i <= m; i++) {
+      if (a[i] + 0 < b[i] + 0) exit 0
+      if (a[i] + 0 > b[i] + 0) exit 1
+    }
+    exit 1
+  }'
+}
+
 while IFS= read -r target; do
   echo "selecting $target"
   xcode-select -s "$target"
   xcodebuild -version
-  sdk=$(xcrun --sdk iphonesimulator --show-sdk-version)
+  sdk=$(xcrun --sdk iphonesimulator --show-sdk-version) || sdk=""
+  if [ -z "$sdk" ]; then
+    echo "::warning title=iOS simulator SDK unavailable::$target has no iphonesimulator SDK; trying the next one"
+    continue
+  fi
   newest_sdk="${newest_sdk:-$sdk}"
   if ! has_metal; then
     echo "the Metal toolchain is missing - downloading it"
@@ -65,8 +81,12 @@ while IFS= read -r target; do
       continue
     fi
   fi
-  if [ "$sdk" != "$newest_sdk" ]; then
-    watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version)
+  if sdk_is_older "$sdk" "$newest_sdk"; then
+    watch_sdk=$(xcrun --sdk watchsimulator --show-sdk-version) || watch_sdk=""
+    if [ -z "$watch_sdk" ]; then
+      echo "::warning title=Watch simulator SDK unavailable::$target has no watchsimulator SDK for the runtime pin; trying the next one"
+      continue
+    fi
     echo "::notice title=Simulator runtime pinned::fell back to $target; simulators run iOS $sdk and watchOS $watch_sdk, the runtimes its SDKs build for"
     if [ -n "${GITHUB_ENV:-}" ]; then
       printf 'SIMULATOR_OS=%s\nWATCH_SIMULATOR_OS=%s\n' "$sdk" "$watch_sdk" >> "$GITHUB_ENV"
@@ -75,5 +95,5 @@ while IFS= read -r target; do
   exit 0
 done <<< "$candidates"
 
-echo "::error::no Xcode on this image has a Metal toolchain, and none could download one"
+echo "::error::no usable Xcode on this image has the required simulator SDKs and a working Metal toolchain"
 exit 1
