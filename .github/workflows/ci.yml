@@ -544,15 +544,26 @@ jobs:
 
           echo "unit smoke: ${#CLASSES[@]} tests and classes in one invocation"
           started=$(date +%s)
+          run_unit_smoke_once() {
+            xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
+              "${args[@]}" 2>&1 | tee "$UNIT_SMOKE_LOG"
+          }
           rc=0
-          xcodebuild test-without-building \
-            -xctestrun "$XCRUN_FILE" \
-            -destination "$DESTINATION" \
-            -parallel-testing-enabled NO \
-            -collect-test-diagnostics never \
-            -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
-            "${args[@]}" 2>&1 | tee "$UNIT_SMOKE_LOG" || rc=$?
+          run_unit_smoke_once || rc=$?
+          # A simulator runtime lost before any test ran (the 2026-11-17
+          # Nightly) gets one more attempt after a reboot; any other failure
+          # stands.
+          if [ "$rc" -ne 0 ] && bash scripts/ci-recover-lost-runtime.sh "$UNIT_SMOKE_LOG"; then
+            echo "::warning title=unit smoke::its simulator runtime was lost before any test ran; running it once more"
+            rc=0
+            run_unit_smoke_once || rc=$?
+          fi
           # How long the invocation took and how much of that ran tests.
           total=$(( $(date +%s) - started ))
           executed=$(grep -E '^[[:space:]]*Executed [0-9]+ tests?, with' "$UNIT_SMOKE_LOG" | tail -n 1 || true)

@@ -25,13 +25,35 @@ final class DashboardSessionIsolationTests: XCTestCase {
     private let parentHostA = "https://a.example.com"
     private let parentHostB = "https://b.example.com"
 
-    override func setUp() {
-        super.setUp()
+    override func setUp() async throws {
+        try await super.setUp()
         defaultsSuite = "DashboardSessionIsolationTests.\(UUID().uuidString)"
         defaults = UserDefaults(suiteName: defaultsSuite)!
         backend = InMemoryKeychainBackend()
         KeychainHelper.useBackendForTesting(backend)
         createdDashboardIDs = []
+        try await warmWebKitOnce()
+    }
+
+    /// Whether this test process has had its first WebKit cookie-store answer.
+    private static var webKitWarmed = false
+    /// A store only the warm-up uses, so it never holds a test's cookies.
+    private static let warmUpStoreID = UUID(uuidString: "6B1F3C1E-0D8A-4F43-9C55-2E0B7A1D9F01")!
+
+    /// The first cookie-store call in a test process waits for WebKit's
+    /// network process to launch. On hosted CI simulators that took longer
+    /// than a test's 20-second bound: the alphabetically first test here,
+    /// testABridgeInvalidatedBeforeItsRestoreWritesNoCookies, failed its only
+    /// allCookies read on the 2026-11-16 and 2026-11-17 Nightlies while every
+    /// later call in the class answered. The launch is paid here once, under
+    /// its own bound and name, so each test's 20 seconds measure the store.
+    private func warmWebKitOnce() async throws {
+        guard !Self.webKitWarmed else { return }
+        let store = attachWebView(to: WKWebsiteDataStore(forIdentifier: Self.warmUpStoreID))
+        _ = try await awaitWebKit("its first call (WebKit's network process launch)", timeout: .seconds(120)) {
+            await store.httpCookieStore.allCookies()
+        }
+        Self.webKitWarmed = true
     }
 
     override func tearDown() {

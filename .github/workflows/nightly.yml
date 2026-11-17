@@ -277,6 +277,16 @@ jobs:
               echo "::notice title=unit batch $batch_no took ${total}s::its output has no test totals"
             fi
           }
+          run_batch_once() {
+            xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
+              "${batch_args[@]}" 2>&1 | tee "$batch_log"
+          }
           run_batch() {
             batch_no="$1"
             shift
@@ -290,14 +300,18 @@ jobs:
             batch_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/unit-batch-$batch_no.log"
             batch_start=$(date +%s)
             echo "::group::unit batch $batch_no ($# classes)"
-            if ! xcodebuild test-without-building \
-              -xctestrun "$XCRUN_FILE" \
-              -destination "$DESTINATION" \
-              -parallel-testing-enabled NO \
-              -collect-test-diagnostics never \
-              -test-timeouts-enabled YES \
-              -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
-              "${batch_args[@]}" 2>&1 | tee "$batch_log"; then
+            batch_ok=true
+            if ! run_batch_once; then
+              # A runtime lost before any test ran (2026-11-17) gets one more
+              # attempt after a reboot; any other failure stands.
+              if bash scripts/ci-recover-lost-runtime.sh "$batch_log"; then
+                echo "::warning title=unit batch $batch_no::its simulator runtime was lost before any test ran; running the batch once more"
+                run_batch_once || batch_ok=false
+              else
+                batch_ok=false
+              fi
+            fi
+            if [ "$batch_ok" != true ]; then
               echo "::endgroup::"
               batch_timing_notice "$batch_start"
               echo "::error::unit batch $batch_no failed: $*"
@@ -464,14 +478,24 @@ jobs:
           # Per-test allowance only, no wall-clock watchdog: a hang past the
           # allowance is killed by xcodebuild, and a wedged simulator ends at
           # the job timeout. Same accepted tradeoff as the unit shards.
-          xcodebuild test-without-building \
-            -xctestrun "$XCRUN_FILE" \
-            -destination "$DESTINATION" \
-            -parallel-testing-enabled NO \
-            -collect-test-diagnostics never \
-            -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 900 \
-            "${args[@]}"
+          timing_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/timing-families.log"
+          run_timing_once() {
+            xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 900 \
+              "${args[@]}" 2>&1 | tee "$timing_log"
+          }
+          if ! run_timing_once; then
+            # A runtime lost before any test ran (2026-11-17) gets one more
+            # attempt after a reboot, as the unit batches do.
+            bash scripts/ci-recover-lost-runtime.sh "$timing_log" || exit 1
+            echo "::warning title=timing families::the simulator runtime was lost before any test ran; running them once more"
+            run_timing_once
+          fi
 
   ui:
     name: UI suite (shard ${{ matrix.shard }})
@@ -503,7 +527,9 @@ jobs:
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes
-        # No retry here on purpose: this run exists to surface UI flakes.
+        # No retry here on purpose: this run exists to surface UI flakes. The
+        # one exception is a simulator runtime lost before any test ran
+        # (scripts/ci-recover-lost-runtime.sh), where nothing was tested.
         env:
           UI_CLASSES: "${{ matrix.classes }}"
         run: |
@@ -517,11 +543,19 @@ jobs:
           for cls in "${CLASSES[@]}"; do
             args+=("-only-testing:ConduitUITests/${cls}")
           done
-          xcodebuild test-without-building \
-            -xctestrun "$XCRUN_FILE" \
-            -destination "$DESTINATION" \
-            -parallel-testing-enabled NO \
-            -collect-test-diagnostics never \
-            -test-timeouts-enabled YES \
-            -default-test-execution-time-allowance 600 \
-            "${args[@]}"
+          ui_log="${RUNNER_TEMP:-${TMPDIR:-/tmp}}/ui-shard.log"
+          run_ui_once() {
+            xcodebuild test-without-building \
+              -xctestrun "$XCRUN_FILE" \
+              -destination "$DESTINATION" \
+              -parallel-testing-enabled NO \
+              -collect-test-diagnostics never \
+              -test-timeouts-enabled YES \
+              -default-test-execution-time-allowance 600 \
+              "${args[@]}" 2>&1 | tee "$ui_log"
+          }
+          if ! run_ui_once; then
+            bash scripts/ci-recover-lost-runtime.sh "$ui_log" || exit 1
+            echo "::warning title=UI shard::the simulator runtime was lost before any test ran; running the shard once more"
+            run_ui_once
+          fi
