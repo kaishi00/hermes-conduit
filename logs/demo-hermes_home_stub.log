@@ -1,0 +1,17 @@
+Traceback (most recent call last):
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/llm_stub.py", line 180, in <module>
+    main()
+    ~~~~^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/llm_stub.py", line 173, in main
+    Handler.script = load_script(sys.argv[1])
+                     ~~~~~~~~~~~^^^^^^^^^^^^^
+  File "/Users/runner/work/hermes-conduit/hermes-conduit/scripts/app-store/demo_script.py", line 15, in load
+    script = json.loads(path.read_text(encoding="utf-8"))
+                        ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.2/Frameworks/Python.framework/Versions/3.15/lib/python3.15/pathlib/__init__.py", line 986, in read_text
+    with self.open(mode='r', encoding=encoding, errors=errors, newline=newline) as f:
+         ~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/opt/homebrew/Cellar/python@3.15/3.15.2/Frameworks/Python.framework/Versions/3.15/lib/python3.15/pathlib/__init__.py", line 970, in open
+    return io.open(self, mode, buffering, encoding, errors, newline)
+           ~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+FileNotFoundError: [Errno 2] No such file or directory: 'scripts/app-store/videos/home.json'
