@@ -279,7 +279,9 @@ struct V2ScheduledList: View {
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         // The list is the dashboard's: another one reads its own, as the drawer's does.
-        .task(id: "\(readScopeNow)|\(shell.isTabActive)") {
+        // The tab's own visibility is in the id too, so a tab hidden or shown
+        // while this page is out of sight still records how it was hidden.
+        .task(id: "\(readScopeNow)|\(shell.isTabActive)|\(isTabShown)") {
             // A reconnect reads at once, like the first show.
             guard appState.isConnected else { readScope = nil; return }
             guard shell.isTabActive else {
