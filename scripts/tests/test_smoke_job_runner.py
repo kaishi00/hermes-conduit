@@ -89,6 +89,9 @@ fi
 if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "devices" ]; then
   printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"name":"%s","udid":"STUB-DEVICE-0000-0000","isAvailable":true}]}}\\n' "${SIMULATOR_NAME:-iPhone 17 Pro}"
 fi
+if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "runtimes" ]; then
+  printf '{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2","buildversion":"24B8117","bundlePath":"/stub/missing/iOS 27.2.simruntime"}]}\\n'
+fi
 exit 0
 """
 
@@ -135,6 +138,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
         env["RUNNER_TEMP"] = self.tmp
         # The unit smoke step's log (ci-lane/ in the workflow).
         env["UNIT_SMOKE_LOG"] = os.path.join(self.tmp, "lane", "unit-smoke.log")
+        env["GITHUB_STEP_SUMMARY"] = os.path.join(self.tmp, "step-summary.md")
         env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
         env["STUB_LOG"] = self.log
         env["XCRUN_FILE"] = os.path.join(self.tmp, "fake.xctestrun")
@@ -227,18 +231,29 @@ class SmokeJobRunnerTests(unittest.TestCase):
 
     def test_a_lost_runtime_reruns_each_test_step_once_after_a_reboot(self):
         # Nothing was tested, so a second attempt retries no test; the step
-        # passes when it does, and says what happened.
+        # passes when it does, and says what happened. A recovered loss
+        # leaves the job green, so each step also puts the runtime paths on
+        # the run page (the script lists them with jq, as the runners have).
+        summary_path = os.path.join(self.tmp, "step-summary.md")
         for step, extra in ((UNIT_STEP, {"UNIT_CLASSES": self._classes("Unit", 3)}),
                             (UNIT_SMOKE_STEP, {"UNIT_CLASSES": self.SMOKE_UNIT_CLASSES}),
                             (TIMING_STEP, {"TIMING_CLASSES": "TranscriptPerformanceFixtureTests"}),
                             (UI_SHARD_STEP, {"UI_CLASSES": "ChatUITests"})):
             with self.subTest(step=step):
+                if os.path.exists(summary_path):
+                    os.remove(summary_path)
                 proc = self._run_step(step, STUB_FAIL_FIRST_N=1, STUB_SILENT_FAIL=1,
                                       STUB_FAILURE_OUTPUT=LOST_RUNTIME_OUTPUT, **extra)
                 self.assertEqual(proc.returncode, 0, proc.stdout + proc.stderr)
                 self.assertEqual(len(self._invocations()), 2, self._invocations())
                 self.assertIn("::warning title=Simulator runtime lost::", proc.stdout)
                 self.assertIn("simulator runtime diagnostics", proc.stdout)
+                if shutil.which("jq"):
+                    with open(summary_path, encoding="utf-8") as fh:
+                        summary = fh.read()
+                    self.assertIn("Simulator runtime lost before any test ran", summary)
+                    self.assertIn("com.apple.CoreSimulator.SimRuntime.iOS-27-2 (24B8117): "
+                                  "/stub/missing/iOS 27.2.simruntime [MISSING]", summary)
         # The second attempt appends, so the uploaded batch log keeps the
         # first attempt's lost-runtime lines.
         with open(os.path.join(self.tmp, "unit-batch-1.log"), encoding="utf-8") as fh:

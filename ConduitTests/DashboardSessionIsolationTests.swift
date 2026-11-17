@@ -355,23 +355,32 @@ final class DashboardSessionIsolationTests: XCTestCase {
             DashboardCookiePersistence.clearNativeCookies(dashboardID: a, baseURL: "https://\(host)")
         }
         let store = attachWebView(to: DashboardCookiePersistence.webKitStore(for: a))
+        // Write first, as every other identified-store test here does. On
+        // hosted CI simulators since the 2026-11-16 Nightly, a store whose
+        // first call was a read, or that sat idle for a few seconds, stopped
+        // answering allCookies (the probes in #2695); stores written to
+        // straight away kept answering. The marker also shows each read
+        // below saw the store, not an empty answer.
+        let marker = try hostCookie(name: "marker", value: "before-bridge", domain: host)
+        try await awaitWebKit("setCookie marker") { await store.httpCookieStore.setCookie(marker) }
 
         let bridge = DashboardTicketBridge(baseURL: "https://\(host)", dashboardID: a)
         bridge.invalidate()
         // The restore would land over WebKit IPC shortly after the bridge
-        // was built, so the store is read for 3 seconds. Read it throughout
-        // rather than sleeping first: on hosted CI simulators a store left
-        // idle for a few seconds stopped answering allCookies at all (the
-        // 2026-11-16 and 11-17 Nightlies, and every probe in #2695 that
-        // waited before its first read), while one kept busy answered.
+        // was built, so the store is read throughout the next 3 seconds,
+        // never left idle; the last read ends at or after the deadline.
         let deadline = ContinuousClock.now + .seconds(3)
-        repeat {
+        var sawMarker = false
+        while true {
             let cookies = try await awaitWebKit("allCookies") { await store.httpCookieStore.allCookies() }
             if cookies.contains(where: { $0.value == "after-invalidate" }) {
                 return XCTFail("an invalidated bridge restores nothing")
             }
-            try await Task.sleep(for: .milliseconds(200))
-        } while ContinuousClock.now < deadline
+            sawMarker = sawMarker || cookies.contains { $0.value == "before-bridge" }
+            guard ContinuousClock.now < deadline else { break }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        XCTAssertTrue(sawMarker, "the reads saw the store's own cookie, so an empty answer proves nothing")
         withExtendedLifetime(bridge) {}
     }
 

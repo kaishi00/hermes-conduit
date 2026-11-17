@@ -791,7 +791,7 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertEqual(job.count("continue-on-error"), save.count("continue-on-error"),
                          "a failed step must fail the job")
 
-    def test_unit_smoke_step_runs_the_curated_classes_once_without_retry(self):
+    def test_unit_smoke_step_runs_the_curated_classes_once_and_retries_no_test(self):
         unit = _step_text(self._job_text("smoke"), "Run the curated unit smoke classes")
         self.assertIn('UNIT_CLASSES: "${{ needs.plan.outputs.unit-csv }}"', unit)
         self.assertIn("-only-testing:ConduitTests/", unit)
@@ -804,7 +804,10 @@ class WorkflowContractTests(unittest.TestCase):
             self.assertIn(flag, unit)
         self.assertIn('UNIT_TEST_ALLOWANCE_S: "180"', unit)
         # A genuine assertion must FAIL the run: no Xcode-native retry, and no
-        # job-level retry either.
+        # job-level retry either. The one second invocation is for a
+        # simulator runtime lost before any test ran, and only the recovery
+        # script decides that.
+        self.assertIn('bash scripts/ci-recover-lost-runtime.sh "$UNIT_SMOKE_LOG"', unit)
         self.assertNotIn("-test-iterations", unit)
         self.assertNotIn("-retry-tests-on-failure", unit)
         self.assertNotIn("smoke-retry-classes.py", unit)
