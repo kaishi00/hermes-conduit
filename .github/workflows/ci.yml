@@ -25,7 +25,7 @@ name: CI
 #                        and the CI-tooling suites, bash wrapper tests included.
 #   smoke      (macos)   builds its test products while its simulator boots in
 #                        the background, then runs the unit smoke tests (one
-#                        invocation, no retry) and, on a push to main, the UI
+#                        invocation, no test retried) and, on a push to main, the UI
 #                        smoke tests (one invocation, one targeted retry). A
 #                        unit failure does not skip the UI step; the job fails
 #                        if either did.
@@ -512,8 +512,9 @@ jobs:
         # (2026-10-15). Every other unit class runs in the nightly unit shards
         # (nightly.yml).
         #
-        # No retry of any kind: a unit failure is a test bug to fix, not
-        # runner noise. -test-timeouts-enabled bounds a hung test; and
+        # No retry of a test: a unit failure is a test bug to fix, not
+        # runner noise (the one exception, a runtime lost before any test
+        # ran, is below). -test-timeouts-enabled bounds a hung test; and
         # -collect-test-diagnostics never, because Xcode's on-failure default
         # gathers a simulator payload under its own 600s timeout (docs/CI.md).
         id: unit
@@ -552,7 +553,7 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
-              "${args[@]}" 2>&1 | tee "$UNIT_SMOKE_LOG"
+              "${args[@]}" 2>&1 | tee ${1:+-a} "$UNIT_SMOKE_LOG"
           }
           rc=0
           run_unit_smoke_once || rc=$?
@@ -562,7 +563,7 @@ jobs:
           if [ "$rc" -ne 0 ] && bash scripts/ci-recover-lost-runtime.sh "$UNIT_SMOKE_LOG"; then
             echo "::warning title=unit smoke::its simulator runtime was lost before any test ran; running it once more"
             rc=0
-            run_unit_smoke_once || rc=$?
+            run_unit_smoke_once append || rc=$?
           fi
           # How long the invocation took and how much of that ran tests.
           total=$(( $(date +%s) - started ))

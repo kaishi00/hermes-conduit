@@ -285,7 +285,7 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance "${UNIT_TEST_ALLOWANCE_S:-180}" \
-              "${batch_args[@]}" 2>&1 | tee "$batch_log"
+              "${batch_args[@]}" 2>&1 | tee ${1:+-a} "$batch_log"
           }
           run_batch() {
             batch_no="$1"
@@ -306,7 +306,7 @@ jobs:
               # attempt after a reboot; any other failure stands.
               if bash scripts/ci-recover-lost-runtime.sh "$batch_log"; then
                 echo "::warning title=unit batch $batch_no::its simulator runtime was lost before any test ran; running the batch once more"
-                run_batch_once || batch_ok=false
+                run_batch_once append || batch_ok=false
               else
                 batch_ok=false
               fi
@@ -487,14 +487,14 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance 900 \
-              "${args[@]}" 2>&1 | tee "$timing_log"
+              "${args[@]}" 2>&1 | tee ${1:+-a} "$timing_log"
           }
           if ! run_timing_once; then
             # A runtime lost before any test ran (2026-11-17) gets one more
             # attempt after a reboot, as the unit batches do.
             bash scripts/ci-recover-lost-runtime.sh "$timing_log" || exit 1
             echo "::warning title=timing families::the simulator runtime was lost before any test ran; running them once more"
-            run_timing_once
+            run_timing_once append
           fi
 
   ui:
@@ -552,10 +552,10 @@ jobs:
               -collect-test-diagnostics never \
               -test-timeouts-enabled YES \
               -default-test-execution-time-allowance 600 \
-              "${args[@]}" 2>&1 | tee "$ui_log"
+              "${args[@]}" 2>&1 | tee ${1:+-a} "$ui_log"
           }
           if ! run_ui_once; then
             bash scripts/ci-recover-lost-runtime.sh "$ui_log" || exit 1
             echo "::warning title=UI shard::the simulator runtime was lost before any test ran; running the shard once more"
-            run_ui_once
+            run_ui_once append
           fi

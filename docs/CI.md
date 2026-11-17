@@ -193,7 +193,9 @@ from storage some networks can't reach.
 
 The smoke job then runs its test steps on the one build and booted
 simulator. **Unit smoke** runs the pinned unit tests as one
-`test-without-building` invocation with no retry; a failure posts xcodebuild's
+`test-without-building` invocation with no retry of a test (an invocation
+that lost its simulator runtime before any test ran gets one more attempt
+after a reboot, `scripts/ci-recover-lost-runtime.sh`); a failure posts xcodebuild's
 list of failing tests and the first error lines as an annotation, and the
 invocation posts how long it took and how much of that ran tests. **UI smoke**
 runs the pinned UI tests as one invocation with one targeted retry (see
@@ -483,7 +485,10 @@ caught. `SmokeSelectionTests` asserts they never enter the smoke set, and
   main-only job that wrote it are gone; nothing produces the planner's
   `--history` input any more.
 * **No watchdogs or recovery plumbing.** A wedged hosted runner fails the job
-  and is re-run by a human, deliberately.
+  and is re-run by a human, deliberately. The one exception: a test invocation
+  whose simulator runtime was lost before any test ran reboots the device and
+  runs once more (`scripts/ci-recover-lost-runtime.sh`, the Nightly reruns
+  entry in docs/FEATURE_MAP.md).
 
 ### Cost
 

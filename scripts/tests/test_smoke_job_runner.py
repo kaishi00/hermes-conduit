@@ -239,6 +239,10 @@ class SmokeJobRunnerTests(unittest.TestCase):
                 self.assertEqual(len(self._invocations()), 2, self._invocations())
                 self.assertIn("::warning title=Simulator runtime lost::", proc.stdout)
                 self.assertIn("simulator runtime diagnostics", proc.stdout)
+        # The second attempt appends, so the uploaded batch log keeps the
+        # first attempt's lost-runtime lines.
+        with open(os.path.join(self.tmp, "unit-batch-1.log"), encoding="utf-8") as fh:
+            self.assertIn("runtime path not found", fh.read())
 
     def test_a_runtime_lost_twice_fails_the_step(self):
         for step, extra in ((UNIT_STEP, {"UNIT_CLASSES": self._classes("Unit", 3)}),
