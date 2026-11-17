@@ -109,9 +109,12 @@ async def start_room(config, body):
                       conduit_push(host, "links", "list"), re.M)
     if found is None:
         raise LookupError(f"{body['dashboard']} has no Link with {person}")
-    made = conduit_push(host, "rooms", "invite", "--name", body["room"], "--link", found[1],
+    made = conduit_push(host, "rooms", "invite", "--name", body["room"], f"--link={found[1]}",
                         *[f"--agent={agent}" for agent in body.get("agents", ["default"])])
-    room = re.search(r"\(room (conduit-[0-9a-f-]+)\)", made)[1]
+    started = re.search(r"\(room (conduit-[0-9a-f-]+)\)", made)
+    if started is None:
+        raise LookupError(f"rooms invite named no room: {made}")
+    room = started[1]
     for _ in range(60):
         if room in conduit_push(guest, "rooms", "invites"):
             break
@@ -141,6 +144,10 @@ async def room_say(config, body):
                             json={"room_id": found[1], "event_id": f"demo-{uuid.uuid4().hex[:12]}",
                                   "text": body["text"]})
         r.raise_for_status()
+        answer = r.json()
+        message = answer.get("message") or {}
+        if answer.get("ok") is not True or message.get("status") not in ("sending", "posted"):
+            raise RuntimeError(f"the post was refused: {message.get('error') or answer}")
 
 
 async def stop_recording(config, body):

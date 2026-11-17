@@ -71,15 +71,16 @@ Results:
 
 `.github/workflows/demo-videos.yml` records the scenes for release posts and
 App Store material, one MP4 per scene, from a single run on a hosted Mac.
-Nothing is filmed by hand: two real Hermes with a scripted model, on a
+Nothing is filmed by hand: real Hermes with a scripted model, on a
 simulator, no production Hermes or physical device. Run it from
 Actions > Demo videos > Run workflow; `scenes` picks which scenes to cut
 (all by default), `devices` the simulators.
 
-It starts two demo dashboards on the runner, **Home**
+It starts demo dashboards on the runner: **Home**
 (`http://hermes.tail-demo.ts.net:9119`) and **Studio**
 (`http://studio.tail-demo.ts.net:9129`), each from its own script in
-`videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout.
+`videos/` (`home.json`, `studio.json`) and sharing one Hermes checkout, and
+Sam for the multiplayer scene (below).
 `link-demo-hermes.sh` starts a rooms mailbox on the runner from the notifier
 repo and links the two as the owner's own Hermes, so a room can hold bots from
 both. Studio starts with `DEMO_ROOM_GUEST=1`, which runs `conduit-push rooms setup`

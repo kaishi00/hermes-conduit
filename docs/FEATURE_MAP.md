@@ -7293,12 +7293,13 @@ screen, and a switch is unchanged for them)
 What the capture run shows of each screen: the App Store screenshots and
 previews, and the short clips hermesconduit.app (kaishi00/hermes-conduit-website#2)
 and the README's "See it in action" strip show. The demo videos run records
-scenes for release posts against two demo dashboards, Home and Studio,
-combined and linked as one owner's own Hermes.
+scenes for release posts against demo dashboards: Home and Studio,
+combined and linked as one owner's own Hermes, and Sam, another person's
+Hermes linked to Home, for the multiplayer scene.
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · the demo videos run (its scenes, the two dashboards' scripts, the
+cut · the demo videos run (its scenes, the dashboards' scripts, the
 director and the scene cut) · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
@@ -7316,7 +7317,7 @@ clips (kaishi00/hermes-conduit-website)
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
 - Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a call state that should move goes into both lists. `home` and `listening` are screenshots only: neither moves enough to need a clip (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
-- Demo videos are scripted, not filmed: two demo dashboards on the runner, the app driven by a UI test, one video per scene; what changes on a dashboard mid-scene comes from the director acting on the dashboard itself, never from an app fixture. Bots wear Eric's own pictures (scripts/app-store/avatars), never game art. Screenshots for posts come from the videos, so this run takes none of its own (Eric, 2026-11-17, #2660).
+- Demo videos are scripted, not filmed: demo dashboards on the runner, the app driven by a UI test, one video per scene; what changes on a dashboard mid-scene comes from the director acting on the dashboard itself, never from an app fixture. Bots wear Eric's own pictures (scripts/app-store/avatars), never game art. Screenshots for posts come from the videos, so this run takes none of its own (Eric, 2026-11-17, #2660).
 
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).

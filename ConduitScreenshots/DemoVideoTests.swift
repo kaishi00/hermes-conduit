@@ -196,7 +196,8 @@ final class DemoVideoTests: XCTestCase {
             XCTAssertTrue(waitForText("Kirk Creek", timeout: 60), "Conduit-chan never answered in the room with Sam")
             settle(3)
             direct("room-say", ["dashboard": "sam", "room": "Weekend at Big Sur",
-                                "text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?"])
+                                "text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?"],
+                   timeout: 300)
             XCTAssertTrue(waitForText("Carmel", timeout: 90), "Sam's Nori never answered")
             settle(6)
             goBack()
