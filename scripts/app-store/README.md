@@ -71,7 +71,8 @@ Results:
 
 `.github/workflows/demo-videos.yml` records the scenes for release posts and
 App Store material, one MP4 per scene, from a single run on a hosted Mac.
-Nothing is filmed by hand and no real Hermes or device is involved. Run it from
+Nothing is filmed by hand: two real Hermes with a scripted model, on a
+simulator, no production Hermes or physical device. Run it from
 Actions > Demo videos > Run workflow; `scenes` picks which scenes to cut
 (all by default), `devices` the simulators.
 

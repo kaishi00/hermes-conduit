@@ -102,6 +102,26 @@
               "content": "I looked at the last ten release posts in the subreddit. The ones with a short video in the first line got about 3x the upvotes, and Friday mornings did best. I'll pull the top questions from the last thread so the post answers them up front."
             }
           ]
+        },
+        {
+          "match": "publish the draft to the blog",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "content": "Publishing it now. This clears the old preview build first.",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "rm -rf blog/.preview && mkdir -p blog/posts && echo 'Conduit 2.4' > blog/posts/conduit-2-4.md"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Published: the post is live at `blog/posts/conduit-2-4.md`. Lucien, it's yours to share in the subreddit thread on Friday."
+            }
+          ]
         }
       ]
     }

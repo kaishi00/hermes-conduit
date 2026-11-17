@@ -69,7 +69,7 @@ jobs:
         timeout-minutes: 25
         run: |
           DEMO_WORK="$PWD/demo-hermes/home" DEMO_SCRIPT=scripts/app-store/videos/home.json \
-          DEMO_HOST=hermes.tail-demo.ts.net DEMO_PORT=9119 STUB_PORT=8765 \
+          DEMO_HOST=hermes.tail-demo.ts.net DEMO_PORT=9119 STUB_PORT=8765 DEMO_APPROVALS=manual \
             bash scripts/app-store/start-demo-hermes.sh
 
       - name: Start Studio

@@ -119,26 +119,6 @@
               "content": "I'll take the words. Draft title: **\"Conduit 2.4: all your Hermes in one place\"**. Short intro, a GIF of the combined Bots Home, three bullets, and a link to TestFlight. Posting to the subreddit Friday at 9 AM Eastern, when most people are on."
             }
           ]
-        },
-        {
-          "match": "publish the draft to the blog",
-          "system_has": "You are Lucien",
-          "steps": [
-            {
-              "content": "Publishing it now. This clears the old preview build first.",
-              "tool_calls": [
-                {
-                  "name": "terminal",
-                  "arguments": {
-                    "command": "rm -rf blog/.preview && mkdir -p blog/posts && echo 'Conduit 2.4' > blog/posts/conduit-2-4.md"
-                  }
-                }
-              ]
-            },
-            {
-              "content": "Published: the post is live at `blog/posts/conduit-2-4.md`. I'll share the link in the subreddit thread on Friday."
-            }
-          ]
         }
       ]
     }

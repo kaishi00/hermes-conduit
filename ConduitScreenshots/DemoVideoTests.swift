@@ -86,17 +86,21 @@ final class DemoVideoTests: XCTestCase {
         scene("chats-strip") {
             openTab("Sessions")
             settle(4)
-            let kael = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'v2.profile.' AND label CONTAINS 'Kael'")).firstMatch
-            if kael.waitForExistence(timeout: 20) {
-                kael.tap()
-                XCTAssertTrue(waitForText("Release checklist for 2.4", timeout: 30), "Studio's chats never showed")
-            } else {
-                XCTFail("No Kael chip in the Chats strip")
+            // The other dashboard's default profile (Conduit-chan on Home,
+            // Kael on Studio): its chip is v2.profile.<dashboard id>.default
+            // and a tap switches straight there. Twice: over and back.
+            for _ in 0..<2 {
+                let other = otherDashboardChip("default")
+                guard other.waitForExistence(timeout: 20) else {
+                    snap("debug-no-other-dashboard-chip")
+                    XCTFail("No chip for the other dashboard's default profile in the Chats strip")
+                    break
+                }
+                other.tap()
+                XCTAssertTrue(waitForAnyText(["Release checklist for 2.4", "Garden watering schedule"], timeout: 30),
+                              "The other dashboard's chats never showed")
+                settle(4)
             }
-            settle(4)
-            let homeChip = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'v2.profile.' AND label CONTAINS 'Conduit-chan'")).firstMatch
-            if homeChip.waitForExistence(timeout: 10) { homeChip.tap() }
-            settle(3)
         }
 
         scene("two-replying") {
@@ -145,12 +149,14 @@ final class DemoVideoTests: XCTestCase {
         }
 
         scene("room-approval") {
-            send("@Lucien publish the draft to the blog")
+            // Mira is the room host's own bot, so her approval is the room's
+            // to answer; a far bot's waits on its own Hermes.
+            send("@Mira publish the draft to the blog")
             let run = app.buttons["Run"].firstMatch
             if run.waitForExistence(timeout: 60) {
                 settle(3)
                 run.tap()
-                XCTAssertTrue(waitForText("Published", timeout: 60), "Lucien never finished after the approval")
+                XCTAssertTrue(waitForText("Published", timeout: 60), "Mira never finished after the approval")
             } else {
                 XCTFail("No approval card in the room")
             }
@@ -282,6 +288,21 @@ final class DemoVideoTests: XCTestCase {
         app.buttons["Send message"].firstMatch.tap()
     }
 
+    private func waitForAnyText(_ texts: [String], timeout: TimeInterval) -> Bool {
+        let format = texts.map { _ in "label CONTAINS %@ OR value CONTAINS %@" }.joined(separator: " OR ")
+        let args = texts.flatMap { [$0, $0] }
+        return app.descendants(matching: .any)
+            .matching(NSPredicate(format: format, argumentArray: args))
+            .firstMatch.waitForExistence(timeout: timeout)
+    }
+
+    /// Another combined dashboard's chip for `profile` in the profile strip
+    /// (V2TopBar.otherChip): v2.profile.<dashboard UUID>.<profile>.
+    private func otherDashboardChip(_ profile: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier MATCHES %@",
+                                         "v2\\.profile\\.[0-9A-Fa-f-]{36}\\.\(profile)")).firstMatch
+    }
+
     private func waitForText(_ text: String, timeout: TimeInterval) -> Bool {
         app.descendants(matching: .any)
             .matching(NSPredicate(format: "label CONTAINS %@ OR value CONTAINS %@", text, text))
@@ -346,12 +367,22 @@ final class DemoVideoTests: XCTestCase {
         password.typeText(demoPassword + "\n")
     }
 
+    /// Settings > Saved Dashboards, from wherever Settings was left: the
+    /// tab keeps its pushed page, so an open one is used as it is, and a
+    /// deeper one is backed out of until the Settings home shows.
     private func openSavedDashboards() {
         openTab("Settings")
+        let onPage = app.buttons["settings.add-dashboard"].firstMatch
+        if onPage.waitForExistence(timeout: 3) { return }
         let row = app.buttons["settings.saved-dashboards"].firstMatch
+        for _ in 0..<3 where !row.waitForExistence(timeout: 3) {
+            goBack()
+            if onPage.exists { return }
+        }
         if row.waitForExistence(timeout: 10) {
             row.tap()
         } else {
+            snap("debug-no-saved-dashboards")
             XCTFail("No Saved Dashboards row in Settings")
         }
     }
