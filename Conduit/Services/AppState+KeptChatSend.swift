@@ -81,7 +81,7 @@ extension AppState {
             id: rowID, role: .user, content: words, timestamp: Self.localTimestamp(), author: nil
         ))
         act(on: chat) { setRunning(true) }
-        besideChatLive.moved()
+        besideChatLive.moved(chat)
         let ids = chat.sessionIDs.union([target])
         let reportedOn = activeDashboardID
         let profileBefore = activeProfile
@@ -103,7 +103,7 @@ extension AppState {
             discardTurnSurface(runtimeSessionID: target, text: words, after: CancellationError(), reportedOn: reportedOn)
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
-            besideChatLive.moved()
+            besideChatLive.moved(chat)
             returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
             return false
         }
@@ -144,7 +144,7 @@ extension AppState {
             discardTurnSurface(runtimeSessionID: target, text: words, after: error, reportedOn: reportedOn)
             chat.state.messages.removeAll { $0.id == rowID }
             act(on: chat) { setRunning(false) }
-            besideChatLive.moved()
+            besideChatLive.moved(chat)
             // The pane may have gone while the send was out, too.
             returnKeptChatWordsIfItsPaneWent(chat, target: target, words: words, back: wordsBack)
             return false

@@ -139,6 +139,20 @@ extension VoiceConversationControllerTests {
         // Classic and the Watch's Local Live say it and ask for a yes or no.
         let approvalCall = HermesCallOpening(kind: .approval, title: nil, result: nil, reason: "Delete the cache")
         XCTAssertTrue(approvalCall.spokenBrief(waiting: approval).hasSuffix("Delete the cache. Say yes to allow it once, or no."))
+        // The bot that called introduces itself by its name (issue 2540).
+        XCTAssertEqual(approvalCall.spokenBrief(waiting: approval, name: "Cortana"),
+                       "Hi, it's Cortana. Cortana needs your OK to go ahead: Delete the cache. Say yes to allow it once, or no.")
+        XCTAssertTrue(approvalCall.spokenBrief(waiting: nil).hasPrefix("Hi, it's Hermes. Hermes needs your OK."))
+        XCTAssertTrue(HermesCallOpening(kind: .question, title: nil, result: nil, reason: "Which tests?")
+            .spokenBrief(waiting: waiting, name: "Cortana").hasPrefix("Hi, it's Cortana. Cortana has a question for you.\nCortana asks: Which tests?"))
+        XCTAssertEqual(LocalLiveTurnRunner.needsInputLine(name: "Cortana"), "Cortana needs your answer in the chat before it can go on.")
+        XCTAssertEqual(LocalLiveTurnRunner.needsInputLine, "Hermes needs your answer in the chat before it can go on.")
+        // Not the job's "… to go on" key, whose translations name a job.
+        UserDefaults.standard.set("it", forKey: AppLanguageStore.defaultsKey)
+        defer { UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey) }
+        XCTAssertTrue(approvalCall.spokenBrief(waiting: approval, name: "Cortana")
+            .hasPrefix("Ciao, sono Cortana. Cortana ha bisogno del tuo OK per continuare: "))
+        UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey)
 
         let opening = HermesCallOpening(kind: .question, title: nil, result: nil, reason: "Which tests?", sessionIDs: ["st-1"])
         let watch = opening.instructionBlock(delegation: false, canAnswer: true, waiting: waiting)

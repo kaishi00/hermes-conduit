@@ -449,8 +449,8 @@ extension AppState {
     }
 
     /// The placeholder without the agent's or profile's name, for a field
-    /// too narrow to hold the whole hint on one line at an accessibility
-    /// Text Size (ComposerPlaceholderText).
+    /// too narrow to hold the whole hint on one line, as on a 375 pt iPhone
+    /// or at an accessibility Text Size (ComposerPlaceholderText).
     var composerShortPlaceholder: String {
         composerPlaceholder(namingAgent: false)
     }

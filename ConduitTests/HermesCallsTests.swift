@@ -314,6 +314,27 @@ extension VoiceConversationControllerTests {
         beginHermesCall(supervisor)
         XCTAssertNil(supervisor.finishCallbacks(callProfile: "furina"))
         XCTAssertEqual(supervisor.settlingCallProfile, "nahida")
+
+        // A pass held open on the wire keeps its own token through such a
+        // hang-up, so it still clears its profile as it ends (#2636's
+        // review, issue 2633).
+        supervisor.settlingCallProfile = nil
+        beginHermesCall(supervisor)
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the logs"))
+        _ = supervisor.requestCallback()
+        await supervisor.callbackPassesSettled()
+        let (stream, release) = AsyncStream<Void>.makeStream()
+        let held = Task { for await _ in stream { break } }
+        supervisor.holdCallbackSyncForTesting(held)
+        let first = supervisor.finishCallbacks(callProfile: "furina")
+        XCTAssertNotNil(first)
+        XCTAssertEqual(supervisor.settlingCallProfile, "furina")
+        beginHermesCall(supervisor)
+        XCTAssertNil(supervisor.finishCallbacks(callProfile: "nahida"))
+        XCTAssertEqual(supervisor.settlingCallProfile, "furina")
+        release.yield()
+        await first?.value
+        XCTAssertNil(supervisor.settlingCallProfile, "the held pass's own token stood: it clears as it ends")
     }
 
     func testReleaseAfterTheHostSawTheEndNotifiesOnce() async {
@@ -1082,7 +1103,11 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(routed.profile, "fam")
         XCTAssertEqual(routed.call?.kind, .question)
         XCTAssertEqual(routed.call?.reason, "Which branch?")
-        XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.title, HermesCallCopy.notificationTitle)
+        XCTAssertEqual(HermesCallNotifications.callRequest(for: target, missed: false)?.content.title, HermesCallCopy.notificationTitle())
+        // The bot that calls is named, as its ring names it (issue 2540).
+        let talk = try XCTUnwrap(HermesCallNotifications.callRequest(for: target, missed: false, callerName: "Fam"))
+        XCTAssertEqual(talk.content.title, "Fam wants to talk")
+        XCTAssertEqual(talk.content.body, "Fam has a question for you. Which branch?")
         XCTAssertNil(HermesCallNotifications.callRequest(for: ConduitNotificationTarget(profile: nil, sessionId: "rt-1", type: nil), missed: true))
 
         // A missed call offers both (Eric 2026-11-15): Call Back, the

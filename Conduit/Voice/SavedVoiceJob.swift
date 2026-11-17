@@ -29,6 +29,9 @@ struct SavedVoiceJob: Codable, Equatable {
     var callsBackWhenDone: Bool
     var callChatIDs: [String]
     var ledgerKey: String?
+    /// Its profile's registry listed it, so its absence there settles it
+    /// after a relaunch too (issue 2639). Nil in a ledger from before.
+    var listed: Bool?
 
     init?(_ job: VoiceBackgroundJob) {
         guard let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return nil }
@@ -51,6 +54,7 @@ struct SavedVoiceJob: Codable, Equatable {
         callsBackWhenDone = job.callsBackWhenDone
         callChatIDs = job.callChatIDs
         ledgerKey = job.ledgerKey
+        listed = job.listedByLivenessPoll ? true : nil
     }
 
     /// The job as the ledger takes it back: running until the poll or an
@@ -82,6 +86,7 @@ struct SavedVoiceJob: Codable, Equatable {
         job.callsBackWhenDone = false
         job.callChatIDs = callChatIDs
         job.ledgerKey = ledgerKey
+        job.listedByLivenessPoll = listed == true
         job.isRestored = true
         return job
     }

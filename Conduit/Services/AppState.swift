@@ -2137,6 +2137,11 @@ final class AppState: ObservableObject {
                 let client = try await self.clientForVoiceRequest()
                 return try await client.activeSessions(inProfile: targetProfile ?? self.callProfileOffScreen)
             },
+            sessionRunning: { [weak self] sessionID, targetProfile in
+                guard let self else { throw HermesError.notConnected }
+                let client = try await self.clientForVoiceRequest()
+                return try await client.sessionRunning(sessionID, profile: targetProfile ?? self.callProfileOffScreen)
+            },
             resolveProfile: { [weak self] spokenName in
                 self?.voiceJobProfileTarget(named: spokenName) ?? .unknown
             },

@@ -145,7 +145,7 @@ extension AppState {
         for chat in backgroundChats where chat.isRunning {
             act(on: chat) { settleKeptChatTurn() }
         }
-        besideChatLive.moved()
+        besideChatLive.moved(keeping: backgroundChats)
     }
 
     /// The chat on screen is being left for `newID` (setActiveSessionState).
@@ -327,7 +327,7 @@ extension AppState {
             state: leftChatState(turnRunning: turnRunning)
         )
         backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats(), keeping: keptChatIDs)
-        if staysBeside { besideChatLive.moved() }
+        if staysBeside { besideChatLive.moved(keeping: backgroundChats) }
         // A reply that finished while its last words drained on screen
         // settles in the left chat's own rows.
         if chat.state.pendingStreamingCompletion != nil {
@@ -448,7 +448,7 @@ extension AppState {
         let wasRunning = chat.isRunning
         act(on: chat) { applyLeftChatEvent(event, sessionID: id) }
         if keptChatIDs.map({ !chat.sessionIDs.isDisjoint(with: $0) }) == true {
-            besideChatLive.moved()
+            besideChatLive.moved(chat)
             // A turn sent from its message box has a Live Activity too.
             LiveTurnActivities.shared?.observe(event, sessionID: id)
             noteKeptChatEvent(chat, sessionID: id)

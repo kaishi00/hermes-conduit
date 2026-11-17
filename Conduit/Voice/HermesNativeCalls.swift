@@ -1213,7 +1213,7 @@ final class HermesNativeCalls: NSObject {
         switch notice {
         case .none: request = nil
         case .missed: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true, callerName: Self.profileName($0)) }
-        case .talk: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: false) }
+        case .talk: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: false, callerName: Self.profileName($0)) }
         case .busy: request = target.flatMap { HermesCallNotifications.callRequest(for: $0, missed: true, callerName: Self.profileName($0)) }
         case .unreadable: request = HermesCallNotifications.unreadableMissedCallRequest()
         }

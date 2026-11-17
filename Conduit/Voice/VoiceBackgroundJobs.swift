@@ -354,6 +354,10 @@ struct VoiceBackgroundJobBackend {
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
     var liveSessions: @MainActor (_ profile: String?) async throws -> [LiveSessionStatus]
+    /// Read-only confirmation for a runtime its profile's registry has never
+    /// listed: true/false when Hermes knows, nil when it cannot say. Throws
+    /// session-not-found when the runtime is gone; other errors prove nothing.
+    var sessionRunning: @MainActor (_ sessionID: String, _ profile: String?) async throws -> Bool? = { _, _ in nil }
     /// Maps a spoken profile or bot name to the profile it names.
     var resolveProfile: @MainActor (_ spokenName: String) -> VoiceJobProfileTarget = { _ in .unknown }
     /// Whether a turn is running in the attached chat right now.
@@ -2682,7 +2686,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// Marks the job cancelled and interrupts its Hermes session. If Hermes
     /// refuses, the job goes back to what it was and stays supervised, so
     /// nobody is told a running job stopped. Returns whether it cancelled.
+    /// A session-not-found answer confirms there is nothing left to stop.
     private func cancelOnHermes(_ job: VoiceBackgroundJob) async -> Bool {
+        let generation = generation
         // Mark first: the interrupt's own terminal event must read as a
         // cancellation, not a failure to announce.
         update(job.id) {
@@ -2696,11 +2702,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         guard let sessionID = job.runtimeSessionID else { return true }
         do {
             try await backend.cancel(sessionID)
+            guard generation == self.generation else { return false }
             // The call's chat is free of its first request: the call's
             // turns waiting on it go in (#1250).
             if job.isCallChat { pumpThreadTurns() }
             return true
         } catch {
+            guard generation == self.generation else { return false }
+            // A reaped runtime cannot be interrupted and has nothing left
+            // to cancel. Keep the user's cancellation instead of reviving it.
+            if HermesClient.isSessionNotFoundError(error) {
+                if job.isCallChat || job.continuesChat { pumpThreadTurns() }
+                return true
+            }
             if self.job(job.id)?.status == .cancelled {
                 update(job.id) {
                     $0.status = job.status
@@ -3479,6 +3493,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         var changed = false
         var settledThreadTurns: [UUID] = []
         var settledJobs: [UUID] = []
+        var unlistedJobs: [UUID] = []
+        var missingJobs: Set<UUID> = []
+        var checkedRuntimes: [UUID: String] = [:]
         var learned: [(String, String)] = []
         var callChatLearned = false
         defer {
@@ -3507,14 +3524,17 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A listed, idle runtime is positive evidence the turn ended.
                 if row.isRunning || row.status == "starting" { continue }
             } else {
+                // Successful registry reads must miss twice before a direct
+                // check, just as absence must repeat before normal settling.
+                jobs[index].consecutiveMissedPolls += 1
+                if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
                 // Another profile's registry is only trusted about absence
                 // once it has listed the job: a gateway that ignored the
                 // profile would otherwise "finish" a job still running there.
-                if job.profile != nil, !job.listedByLivenessPoll { continue }
-                // Absence is only trusted when it repeats: a row missing
-                // from one read must not discard the real completion.
-                jobs[index].consecutiveMissedPolls += 1
-                if jobs[index].consecutiveMissedPolls < Self.missedPollsBeforeSettling { continue }
+                if job.profile != nil, !job.listedByLivenessPoll {
+                    unlistedJobs.append(job.id)
+                    continue
+                }
             }
             // A thread turn's reply is in its chat: read it before settling,
             // so the call hears the reply, not a pointer to the chat.
@@ -3536,6 +3556,40 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].waitingQuestion = nil
             changed = true
         }
+        for id in unlistedJobs {
+            guard let job = self.job(id), job.status.isActive,
+                  let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { continue }
+            let missing: Bool
+            do {
+                let running = try await backend.sessionRunning(runtimeID, job.profile)
+                guard generation == self.generation else { return }
+                if running == true {
+                    // Positive evidence also overtakes an older probe whose
+                    // missing/idle answer has not landed yet.
+                    if self.job(id)?.runtimeSessionID == runtimeID {
+                        update(id) { $0.consecutiveMissedPolls = 0 }
+                    }
+                    continue
+                }
+                // A running session or a title-only answer does not prove an
+                // end. Never turn a timeout or unsupported probe into absence.
+                guard running == false else { continue }
+                missing = false
+            } catch {
+                guard generation == self.generation else { return }
+                guard HermesClient.isSessionNotFoundError(error) else { continue }
+                missing = true
+            }
+            // An event, another poll, a stop, or a reset may have overtaken
+            // the read. Only the same still-unlisted runtime can settle.
+            guard let current = self.job(id), current.status.isActive,
+                  current.runtimeSessionID == runtimeID, !current.listedByLivenessPoll,
+                  current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
+            if missing { missingJobs.insert(id) }
+            checkedRuntimes[id] = runtimeID
+            if current.isThreadTurn { settledThreadTurns.append(id) }
+            else { settledJobs.append(id) }
+        }
         for id in settledJobs {
             guard let job = self.job(id) else { continue }
             // The job's own chat, read as an attached chat's would be.
@@ -3549,9 +3603,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation else { return }
             // Events may have settled it meanwhile; they carry the real reply.
             guard let current = self.job(id), current.status.isActive else { continue }
+            if let checked = checkedRuntimes[id] {
+                guard current.runtimeSessionID == checked, !current.listedByLivenessPoll,
+                      current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
+            }
             let inCallChat = runsInCallChat(current) || current.sharesCallChat
             update(id) {
-                $0.status = .finished
+                $0.status = missingJobs.contains(id) && (reply?.isEmpty ?? true) && $0.result == nil && $0.heldCompletion == nil
+                    ? .failed(AppLocalization.string("That chat is no longer available.")) : .finished
                 if inCallChat { $0.settledByPoll = true }
                 if let reply, !reply.isEmpty { $0.result = reply }
                 // A completion held for a follow-up that never carried on.
@@ -3565,7 +3624,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         }
         for id in settledThreadTurns {
             guard var thread = threadTargets[id] else {
-                update(id) { $0.status = .finished }
+                update(id) {
+                    $0.status = missingJobs.contains(id)
+                        ? .failed(AppLocalization.string("That chat is no longer available.")) : .finished
+                }
                 changed = true
                 continue
             }
@@ -3576,8 +3638,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation else { return }
             // Events may have settled it meanwhile; they carry the real reply.
             guard let current = job(id), current.status.isActive else { continue }
+            if let checked = checkedRuntimes[id] {
+                guard current.runtimeSessionID == checked, !current.listedByLivenessPoll,
+                      current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
+            }
             update(id) {
-                $0.status = .finished
+                $0.status = missingJobs.contains(id) && (reply?.isEmpty ?? true) && $0.result == nil && $0.heldCompletion == nil
+                    ? .failed(AppLocalization.string("That chat is no longer available.")) : .finished
                 $0.settledByPoll = true
                 if let reply, !reply.isEmpty { $0.result = reply }
                 if $0.result == nil { $0.result = $0.heldCompletion }

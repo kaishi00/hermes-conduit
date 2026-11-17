@@ -422,9 +422,10 @@ extension AppState {
         if let hermesCall {
             // Why Hermes called, with the question's choices or the
             // command; one the Watch can't answer is answered on the iPhone.
-            greeting = hermesCall.spokenBrief(waiting: waiting?.waiting)
+            let caller = hermesCallContactName(profile)
+            greeting = hermesCall.spokenBrief(waiting: waiting?.waiting, name: caller)
             if hermesCall.waitsOnUser, waiting == nil {
-                greeting = (greeting ?? "") + " " + LocalLiveTurnRunner.needsInputLine
+                greeting = (greeting ?? "") + " " + LocalLiveTurnRunner.needsInputLine(name: caller)
             }
         }
         return WatchLocalLivePlan(

@@ -89,7 +89,9 @@ struct ComposerFullEditor<Attachments: View, DictateButton: View, ActionButton: 
 
             attachments()
 
-            HStack(spacing: 8) {
+            // Apart as in the composer's controls row, so each 44 pt hit
+            // shape stays its own (issue 2525).
+            HStack(spacing: ComposerBar.controlSpacing) {
                 Spacer()
                 dictateButton()
                 actionButton()

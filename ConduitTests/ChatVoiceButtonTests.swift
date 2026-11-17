@@ -6,6 +6,7 @@
 //  An extension of an existing class, so CI plans no new test class.
 //
 
+import SwiftUI
 import XCTest
 @testable import Conduit
 
@@ -80,8 +81,7 @@ extension ComposerFullEditorTests {
         // Level with a one-line bar, as before.
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 0), 10)
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 56), 10)
-        // A bar 20 pt taller (a wrapped placeholder, a large Text Size)
-        // lifts it by half that.
+        // A bar 20 pt taller (a large Text Size) lifts it by half that.
         XCTAssertEqual(V2ConversationScreen.voiceButtonBottomPadding(restingComposerHeight: 76), 20)
     }
 
@@ -126,6 +126,22 @@ extension ComposerFullEditorTests {
         XCTAssertTrue(ChatVoiceButtonAction.roundButtonBeside(.liveCall, onMac: false))
         XCTAssertFalse(ChatVoiceButtonAction.headerCallButton(.liveCall, onMac: false))
         XCTAssertTrue(ChatVoiceButtonAction.headerCallButton(.voiceMessage, onMac: false))
+    }
+
+    func testRoundComposerControlsTapAt44PointsWithoutOverlapping() {
+        // Issue 2525: a 32 pt face taps at 44 pt both ways, and two round
+        // controls side by side stand far enough apart that neither hit
+        // shape reaches into the other's.
+        let face = CGRect(x: 0, y: 0, width: ComposerBar.controlSize, height: ComposerBar.controlSize)
+        let hit = ComposerBar.controlHitShape.path(in: face).boundingRect
+        XCTAssertGreaterThanOrEqual(hit.width, 44)
+        XCTAssertGreaterThanOrEqual(hit.height, 44)
+        let neighbour = hit.offsetBy(dx: ComposerBar.controlSize + ComposerBar.controlSpacing, dy: 0)
+        XCTAssertLessThanOrEqual(hit.maxX, neighbour.minX)
+        let glyph = CGRect(x: 0, y: 0, width: 28, height: 28)
+        let dismiss = ComposerBar.dismissHitShape.path(in: glyph).boundingRect
+        XCTAssertGreaterThanOrEqual(dismiss.width, 44)
+        XCTAssertGreaterThanOrEqual(dismiss.height, 44)
     }
 
     func testComposerKeepsTheRoundButtonsSpotOnlyWhereItStands() {

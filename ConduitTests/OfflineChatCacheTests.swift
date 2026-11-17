@@ -3560,12 +3560,13 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(beside.newestSettledRows(10).map(\.id), ["u1", "r1"], "A card that waits for an answer isn't drawn where nothing acts")
         XCTAssertEqual(beside.newestSettledRows(1).map(\.id), ["r1"])
 
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: beside)
+        let before = notice.revision
         XCTAssertTrue(state.applyBackgroundChatEvent(.messageStart(sessionId: "a")))
         XCTAssertTrue(state.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: "More")))
         XCTAssertTrue(beside.isRunning)
         XCTAssertEqual(beside.state.streamingBuffer, "More")
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         XCTAssertTrue(state.messages.isEmpty)
 
         // A message another device sends to it shows in the pane once.
@@ -3620,10 +3621,11 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(state.windowChat("b"))
 
         // A message another device sends to it shows in the window.
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: try XCTUnwrap(state.windowChat(key)))
+        let before = notice.revision
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 9, text: "From my Mac", origin: nil))
         XCTAssertEqual(state.windowChat(key)?.state.messages.last?.content, "From my Mac")
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         // Hermes' word of a message whose row is here already adds none;
         // the same words again after a reply are a new message.
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: nil, text: "From my Mac", origin: nil))
@@ -3876,14 +3878,15 @@ final class OfflineChatCacheTests: XCTestCase {
         let kept = try XCTUnwrap(state.besideChat)
         XCTAssertTrue(state.canSendInKeptChat(kept))
 
-        let before = state.besideChatLive.revision
+        let notice = state.besideChatLive.notice(for: kept)
+        let before = notice.revision
         let went = await state.sendInKeptChat(kept, text: "  Quick one  ")
         XCTAssertTrue(went)
         XCTAssertEqual(sent.prompts.map(\.sessionID), ["a"])
         XCTAssertEqual(sent.prompts.map(\.text), ["Quick one"])
         XCTAssertEqual(kept.state.messages.last?.content, "Quick one")
         XCTAssertTrue(kept.isRunning)
-        XCTAssertGreaterThan(state.besideChatLive.revision, before)
+        XCTAssertGreaterThan(notice.revision, before)
         XCTAssertFalse(state.canSendInKeptChat(kept), "Not while its turn runs")
 
         // A send that fails with no word from Hermes comes off.
@@ -4368,6 +4371,40 @@ final class OfflineChatCacheTests: XCTestCase {
         let cards = state.messages.compactMap(\.approval?.description)
         XCTAssertFalse(cards.contains("Chat c's card"), "Chat c's card never lands on chat a")
         XCTAssertTrue(cards.contains("Chat a's card"))
+    }
+
+    /// Issue 2619 (#2618's review leftovers): an alias the identity index
+    /// gave another chat stays off the chat on screen once its open has
+    /// settled, though a stale row still lists it; a rebind recorded during
+    /// the foreground probe is caught before the replay; an open of the
+    /// chat the id moved to takes it again, by its runtime id too.
+    func testAMovedOnIDStaysOffTheChatOnceItsOpenSettles() {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-x"]
+        state.sessions = [a, session("c")]
+        state.setActiveSessionState(id: "a")
+        state.reconciliation = nil
+        XCTAssertTrue(state.eventBelongsToActiveSession("rt-x"))
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-x", durableID: "c", profile: state.activeProfile, source: .resume)
+        XCTAssertFalse(state.eventBelongsToActiveSession("rt-x"), "the index gave it to chat c, though chat a's row lists it")
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-y", durableID: "a", profile: state.activeProfile, source: .resume)
+        state.reconciliation = AppState.Reconciliation(
+            token: UUID(), requestedSessionId: "a", acceptedSessionIDs: ["a", "rt-y"], reboundSessionIDs: ["rt-y": "a"]
+        )
+        state.reconciliation?.bufferedEvents = [.messageDelta(sessionId: "rt-y", text: "Chat c's words")]
+        state.reconciliation?.bufferedGenerations = [nil]
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-y", durableID: "c", profile: state.activeProfile, source: .resume)
+        state.replayForegroundBufferedEntries()
+        XCTAssertEqual(state.reconciliation?.movedOnSessionIDs, ["rt-y"], "asked of the index again before the replay")
+        XCTAssertTrue(state.shownChat.streamingBuffer.isEmpty, "chat c's words never reach chat a")
+
+        let indexed = ["rt-x": "c"]
+        XCTAssertEqual(AppState.Reconciliation.movedOn(["rt-x", "rt-z"], keptFor: ["rt-c"], durableIDs: ["rt-c", "c"]) { indexed[$0] },
+                       ["rt-z"], "an open of chat c by its runtime id takes the id again")
+        XCTAssertEqual(AppState.Reconciliation.movedOn(["rt-x"], keptFor: ["a", "rt-x"], durableIDs: ["a", "rt-x"]) { indexed[$0] },
+                       ["rt-x"], "the index first: a stale row listing it under chat a doesn't take it back")
     }
 
     /// #2612's review: a rebound id is noticed as moved on before a chat
