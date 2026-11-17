@@ -37,34 +37,31 @@ case "${1:-}" in
     HERMES="${DEMO_SRC:?}/.venv/bin/hermes"
     a="${HOME_A:?}"; b="${HOME_B:?}"
     export CONDUIT_ROOMS_MAILBOX_URL="http://127.0.0.1:$MAILBOX_PORT"
-    invite=$(HERMES_HOME="$a" "$HERMES" conduit-push links invite --name "Home" | grep -o 'conduit://link/[^[:space:]]*' | head -1)
-    [ -n "$invite" ] || { echo "::error::the first instance made no Link invite"; exit 1; }
+    made=$(HERMES_HOME="$a" "$HERMES" conduit-push links invite --name "Home")
+    invite=$(grep -o 'conduit://link/[^[:space:]]*' <<< "$made" | sed -n 1p || true)
+    [ -n "$invite" ] || { echo "::error::the first instance made no Link invite"; echo "$made"; exit 1; }
     HERMES_HOME="$b" "$HERMES" conduit-push links accept "$invite" --name "Studio"
-    # The Link settles once both gateways have read their inboxes.
-    link_id() {
-      HERMES_HOME="$1" "$HERMES" conduit-push links list | sed -n 's/.*(Link \([A-Za-z0-9_-]*\)).*/\1/p' | head -1 || true
-    }
+    # The Link settles once both gateways have read their inboxes. Each list
+    # is read whole before it's searched: grep -q or head stopping early
+    # would leave the CLI writing into a closed pipe.
+    list() { HERMES_HOME="$1" "$HERMES" conduit-push links list || true; }
+    both_say() { [[ "$(list "$a")" == *"$1"* && "$(list "$b")" == *"$1"* ]]; }
+    link_id() { list "$1" | sed -n 's/.*(Link \([A-Za-z0-9_-]*\)).*/\1/p' | sed -n 1p; }
     for _ in $(seq 1 60); do
-      if HERMES_HOME="$a" "$HERMES" conduit-push links list | grep -q ': linked' \
-        && HERMES_HOME="$b" "$HERMES" conduit-push links list | grep -q ': linked'; then
-        break
-      fi
+      both_say ': linked' && break
       sleep 2
     done
     id_a=$(link_id "$a"); id_b=$(link_id "$b")
-    [ -n "$id_a" ] && [ -n "$id_b" ] || { echo "::error::the Link never settled"; \
-      HERMES_HOME="$a" "$HERMES" conduit-push links list; HERMES_HOME="$b" "$HERMES" conduit-push links list; exit 1; }
-    HERMES_HOME="$a" "$HERMES" conduit-push links own "$id_a" on
-    HERMES_HOME="$b" "$HERMES" conduit-push links own "$id_b" on
+    [ -n "$id_a" ] && [ -n "$id_b" ] || { echo "::error::the Link never settled"; list "$a"; list "$b"; exit 1; }
+    # A Link id can start with "-", so it goes after "--".
+    HERMES_HOME="$a" "$HERMES" conduit-push links own -- "$id_a" on
+    HERMES_HOME="$b" "$HERMES" conduit-push links own -- "$id_b" on
     for _ in $(seq 1 30); do
-      HERMES_HOME="$a" "$HERMES" conduit-push links list | grep -q 'own Hermes on both sides' \
-        && HERMES_HOME="$b" "$HERMES" conduit-push links list | grep -q 'own Hermes on both sides' && break
+      both_say 'own Hermes on both sides' && break
       sleep 2
     done
-    HERMES_HOME="$a" "$HERMES" conduit-push links list
-    HERMES_HOME="$b" "$HERMES" conduit-push links list
-    HERMES_HOME="$a" "$HERMES" conduit-push links list | grep -q 'own Hermes on both sides' \
-      || { echo "::error::the Link isn't marked own on both sides"; exit 1; }
+    list "$a"; list "$b"
+    both_say 'own Hermes on both sides' || { echo "::error::the Link isn't marked own on both sides"; exit 1; }
     ;;
   *)
     echo "usage: link-demo-hermes.sh mailbox|link" >&2
