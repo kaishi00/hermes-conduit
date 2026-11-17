@@ -275,7 +275,21 @@ struct V2FilterSelection: Equatable {
     }
 }
 
-struct V2ChatsView: View, Equatable {
+/// Mounts the Chats list behind `.equatable()`, equal by AppState
+/// identity: redrawn by its own changes only, while the shell redraws on
+/// every publish. Its own small type with a synthesized `==`, so a new
+/// member of the list doesn't recompile the app
+/// (Conduit/Services/EquatableWrappers.swift).
+struct V2ChatsViewGate: View, Equatable {
+    @IdentityEquatable var appState: AppState
+
+    var body: some View {
+        V2ChatsView(appState: appState)
+    }
+}
+
+/// The Chats list, mounted through V2ChatsViewGate.
+struct V2ChatsView: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Followed through `updates`, which holds AppState's changes back
     /// while a chat or a page covers the list or another tab is up.
@@ -447,11 +461,6 @@ struct V2ChatsView: View, Equatable {
             V2SessionsBarPreferences.Profiles.key, V2SessionsBarPreferences.showsProjectsKey,
             V2SessionsBarPreferences.showsPulseKey, V2SessionsBarPreferences.showsArtifactsKey,
         ]))
-    }
-
-    /// Redrawn by its own changes only; the shell redraws on every publish.
-    nonisolated static func == (lhs: V2ChatsView, rhs: V2ChatsView) -> Bool {
-        lhs.appState === rhs.appState
     }
 
     /// Nothing pushed over the list, on the selected tab.

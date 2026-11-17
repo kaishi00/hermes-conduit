@@ -42,11 +42,30 @@ class HandWrittenEqualityTests(unittest.TestCase):
     def test_a_generic_equality_counts_too(self):
         self.assertEqual(check.count("static func == <Other: Equatable>(lhs: Self, rhs: Other) -> Bool { false }"), 1)
 
+    def test_comments_and_strings_are_not_code(self):
+        self.assertEqual(check.count("/* static func == (lhs: A, rhs: A) -> Bool { true } */"), 0)
+        self.assertEqual(check.count("/* outer /* nested */ static func == (l: A, r: A) -> Bool { true } */"), 0)
+        self.assertEqual(check.count('let doc = "static func == (lhs: A, rhs: A)"'), 0)
+        self.assertEqual(check.count('let doc = """\nstatic func == (lhs: A, rhs: A)\n"""'), 0)
+        self.assertEqual(check.count('let raw = #"a \\" static func == ( "#'), 0)
+        self.assertEqual(check.count('let url = "https://x"; static func == (lhs: A, rhs: A) -> Bool { true }'), 1)
+
+    def test_a_comment_between_the_words_still_counts(self):
+        self.assertEqual(check.count("static /* by identity */ func == (lhs: A, rhs: A) -> Bool { true }"), 1)
+        self.assertEqual(check.count("static func // the operator\n    == (lhs: A, rhs: A) -> Bool { true }"), 1)
+
+    def test_an_interpolation_stays_code_and_its_string_closes(self):
+        text = 'let s = "a \\(f("x")) b"\nstatic func == (lhs: A, rhs: A) -> Bool { true }'
+        self.assertEqual(check.count(text), 1)
+
+    def test_the_wrappers_file_holds_only_the_wrappers(self):
+        three = "static func == (l: A, r: A) -> Bool { true }\n" * 3
+        self.assertEqual(check.find_problems({check.WRAPPERS: three}, allowed={}), [])
+        problems = check.find_problems({check.WRAPPERS: three + NONISOLATED}, allowed={})
+        self.assertIn("expected 3", problems[0])
+
     def test_synthesized_and_commented_pass(self):
         self.assertEqual(check.find_problems({"Conduit/A.swift": SYNTHESIZED}, allowed={}), [])
-
-    def test_the_wrappers_file_is_exempt(self):
-        self.assertEqual(check.find_problems({check.WRAPPERS: HAND + NONISOLATED}, allowed={}), [])
 
     def test_an_allowance_holds_and_only_shrinks(self):
         self.assertEqual(check.find_problems({"Conduit/A.swift": HAND}, allowed={"Conduit/A.swift": 1}), [])
