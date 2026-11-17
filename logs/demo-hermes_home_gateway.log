@@ -1,0 +1,21 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 14:20:42,511 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 14:21:07,111 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no supervisor=none parent_pid=19616 parent_name=? loadavg_1m=6.24
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 14:21:16,287 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 14:21:17,767 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 14:28:48,711 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home/profiles/mira; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home.
+2026-11-17 14:29:08,481 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home/profiles/piko; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home.
+2026-11-17 14:29:53,887 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home/profiles/riri; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/home/home.

@@ -1,0 +1,27 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 14:22:24,860 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 14:22:39,649 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:22:45,688 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:22:50,590 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:23:09,858 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no supervisor=none parent_pid=20361 parent_name=? loadavg_1m=5.60
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 14:23:16,457 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:23:16,926 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 14:23:16,996 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:23:17,456 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 14:23:17,527 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Volumes/XcodeDrive/Xcode/demo-videos/repo/demo-hermes/studio/home.
+2026-11-17 14:23:17,987 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 14:23:18,132 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-17 14:34:34,213 WARNING hermes_state: shared-state.db (hosted_rooms): on-disk journal_mode was delete and has been switched to WAL. This rewrites the database header and persists after this process exits. If delete was a deliberate choice (for example the mitigation for the SQLite WAL-reset bug, or a WAL-unsafe filesystem), setting it with PRAGMA on the file will not survive -- every open re-applies the configured mode. Set `database.journal_mode: delete` in config.yaml to make it stick. This message fires once per process per database.
