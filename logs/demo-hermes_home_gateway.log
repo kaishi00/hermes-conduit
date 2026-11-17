@@ -1,0 +1,11 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-17 07:04:04,357 WARNING gateway.run: No messaging platforms enabled.
+2026-11-17 07:39:22,270 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/mira; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
+2026-11-17 07:40:15,484 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/piko; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
+2026-11-17 07:41:18,129 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home/profiles/riri; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/home/home.
