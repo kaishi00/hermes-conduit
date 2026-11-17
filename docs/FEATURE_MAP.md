@@ -1566,7 +1566,7 @@ for builds from before; GPT-Live's encoder already sorted them)
 - What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState+LocalLive.swift` (localLiveAgentSetup), written by `Shared/GrokLive/GrokLiveProtocol.swift` (encode, sorted keys; `Shared/GeminiLive/GeminiLiveProtocol.swift` encode likewise)
 - The tools' fixed key order on the host: `notifier/dashboard/api/local_live_agent.py` (_local_live_agent_tool, _local_live_sorted_keys)
 - A cancelled turn on the phone: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (cancel(turnID:): it stops following the turn; Hermes' reply goes on in the chat)
-- Tests: `notifier/tests/test_local_live.py` (the agent mode tests, those named on_a_read_back_server, and test_the_fast_model_gets_the_calls_tools_in_one_order_whatever_order_the_phone_sent), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveAgentFramesCarryTheCallsToolsAndAnswers: the setup encodes byte for byte the same each time)
+- Tests: `notifier/tests/test_local_live.py` (the agent mode tests, those named on_a_read_back_server, and test_the_fast_model_gets_the_calls_tools_in_one_order_whatever_order_the_phone_sent), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveAgentFramesCarryTheCallsToolsAndAnswers: the setup and a nested sample encode with sorted keys)
 
 **Rulings**
 - The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.153.0).

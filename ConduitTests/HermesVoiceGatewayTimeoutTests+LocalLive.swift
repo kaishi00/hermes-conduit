@@ -193,11 +193,12 @@ extension HermesVoiceGatewayTimeoutTests {
             parameters: ["type": "OBJECT", "properties": Dictionary(uniqueKeysWithValues: (0..<24).map {
                 ("field\($0)", ["type": "STRING", "description": "Field \($0)."] as [String: Any])
             }), "required": ["field0"]], behavior: .nonBlocking)
-        let encodings = try (0..<6).map { _ in
-            try LocalLiveProtocol.encode(LocalLiveProtocol.agentConfigure(.init(instructions: "Be brief.", functions: [declaration, wide])))
-        }
-        XCTAssertEqual(Set(encodings).count, 1, "one call's tools encode like the last call's")
-        XCTAssertTrue(encodings[0].hasPrefix("{\"instructions\":"), "keys go out sorted")
+        // Sorted keys whatever order Swift iterates in: with 24 properties an
+        // unsorted encoder all but never matches.
+        let wideSetup = LocalLiveProtocol.agentConfigure(.init(instructions: "Be brief.", functions: [declaration, wide]))
+        let sorted = String(decoding: try JSONSerialization.data(withJSONObject: wideSetup, options: [.sortedKeys]), as: UTF8.self)
+        XCTAssertEqual(try LocalLiveProtocol.encode(wideSetup), sorted, "one call's tools encode like the last call's")
+        XCTAssertEqual(try LocalLiveProtocol.encode(["b": 1, "a": ["d": 2, "c": 3]]), "{\"a\":{\"c\":3,\"d\":2},\"b\":1}")
         XCTAssertEqual(try GeminiLiveProtocol.encode(["b": 1, "a": ["d": 2, "c": 3]]), "{\"a\":{\"c\":3,\"d\":2},\"b\":1}")
 
         let call = LocalLiveProtocol.agentFrame(try data(["type": "conduit.tool.call", "call_id": "ll1", "name": "start_job",
