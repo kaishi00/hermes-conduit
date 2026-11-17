@@ -186,7 +186,9 @@ final class DemoVideoTests: XCTestCase {
         // someone else rather than as yours. Made off camera (Home invites,
         // Sam joins with his bot Nori); his lines come from the director, as
         // they would from his Conduit.
-        direct("start-room", ["dashboard": "home", "guest": "sam", "room": "Weekend at Big Sur"])
+        direct("start-room", ["dashboard": "home", "guest": "sam", "room": "Weekend at Big Sur"], timeout: 360)
+        pullToRefresh()
+        settle(3)
         scene("multiplayer") {
             settle(2)
             openRoom("Weekend at Big Sur")
@@ -250,12 +252,12 @@ final class DemoVideoTests: XCTestCase {
     // MARK: - Director
 
     /// Asks demo_director.py to act on a dashboard and waits for it.
-    private func direct(_ action: String, _ body: [String: String]) {
+    private func direct(_ action: String, _ body: [String: String], timeout: TimeInterval = 180) {
         var request = URLRequest(url: director.appendingPathComponent(action))
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-        request.timeoutInterval = 180
+        request.timeoutInterval = timeout
         let done = expectation(description: "director \(action)")
         var failure: String?
         URLSession.shared.dataTask(with: request) { data, response, error in
@@ -266,7 +268,7 @@ final class DemoVideoTests: XCTestCase {
             }
             done.fulfill()
         }.resume()
-        wait(for: [done], timeout: 200)
+        wait(for: [done], timeout: timeout + 20)
         if let failure { XCTFail("director \(action) \(body): \(failure)") }
     }
 
@@ -354,7 +356,14 @@ final class DemoVideoTests: XCTestCase {
         if draft.exists { print("DEMO \(name) is still a draft: \(draft.value ?? "")") }
         let tile = app.buttons.matching(NSPredicate(
             format: "label == %@ AND identifier BEGINSWITH 'bots.room.'", name)).firstMatch
-        guard tile.waitForExistence(timeout: 20) else {
+        // A room made off the app (the director's start-room) shows only
+        // once Group Chats is read again: a pull to refresh, as a person would.
+        var shown = tile.waitForExistence(timeout: 10)
+        for _ in 0..<3 where !shown {
+            pullToRefresh()
+            shown = tile.waitForExistence(timeout: 10)
+        }
+        guard shown else {
             XCTFail("No \(name) in Group Chats")
             return
         }
