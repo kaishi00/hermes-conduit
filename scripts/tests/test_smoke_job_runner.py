@@ -89,6 +89,9 @@ fi
 if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "devices" ]; then
   printf '{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-26-5":[{"name":"%s","udid":"STUB-DEVICE-0000-0000","isAvailable":true}]}}\\n' "${SIMULATOR_NAME:-iPhone 17 Pro}"
 fi
+if [ "${1:-}" = "simctl" ] && [ "${2:-}" = "list" ] && [ "${3:-}" = "runtimes" ]; then
+  printf '{"runtimes":[{"identifier":"com.apple.CoreSimulator.SimRuntime.iOS-27-2","buildversion":"24B8117","bundlePath":"/stub/missing/iOS 27.2.simruntime"}]}\\n'
+fi
 exit 0
 """
 
@@ -135,6 +138,7 @@ class SmokeJobRunnerTests(unittest.TestCase):
         env["RUNNER_TEMP"] = self.tmp
         # The unit smoke step's log (ci-lane/ in the workflow).
         env["UNIT_SMOKE_LOG"] = os.path.join(self.tmp, "lane", "unit-smoke.log")
+        env["GITHUB_STEP_SUMMARY"] = os.path.join(self.tmp, "step-summary.md")
         env["PATH"] = self.bin + os.pathsep + env.get("PATH", "")
         env["STUB_LOG"] = self.log
         env["XCRUN_FILE"] = os.path.join(self.tmp, "fake.xctestrun")
@@ -243,6 +247,13 @@ class SmokeJobRunnerTests(unittest.TestCase):
         # first attempt's lost-runtime lines.
         with open(os.path.join(self.tmp, "unit-batch-1.log"), encoding="utf-8") as fh:
             self.assertIn("runtime path not found", fh.read())
+        # A recovered loss leaves the job green, so the runtime paths also go
+        # to the run page.
+        with open(os.path.join(self.tmp, "step-summary.md"), encoding="utf-8") as fh:
+            summary = fh.read()
+        self.assertIn("Simulator runtime lost before any test ran", summary)
+        self.assertIn("iOS-27-2 (24B8117)", summary)
+        self.assertIn("[MISSING]", summary)
 
     def test_a_runtime_lost_twice_fails_the_step(self):
         for step, extra in ((UNIT_STEP, {"UNIT_CLASSES": self._classes("Unit", 3)}),
