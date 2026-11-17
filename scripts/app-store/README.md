@@ -95,7 +95,9 @@ scenes never shows. What changes on a dashboard mid-scene comes from
 `demo_director.py`, a small server on the runner the test calls: `add-bot`
 creates a bot the script marks `"later"` (Bots Home going from one bot to
 four), and `prompt` sends a line in a bot's chat so it works on its own (a
-second bot replying, an approval that shows up in Needs you).
+second bot replying, an approval that shows up in Needs you). At the end the
+test calls `stop-recording`, so the video ends at its last mark, which is
+what `cut-scenes.sh` dates the recording from.
 
 The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
 `two-replying`, `reorder`, `room-across`, `room-approval`, `needs-you`.

@@ -98,6 +98,7 @@ jobs:
                      "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json")},
                     open(f"{w}/director.json", "w"), indent=1)
           PY
+          DEMO_RECORDER_PID_FILE="$PWD/demo-hermes/recorder.pid" \
           nohup "$DEMO_SRC/.venv/bin/python" -u scripts/app-store/demo_director.py demo-hermes/director.json 8780 \
             > demo-hermes/director.log 2>&1 &
 
@@ -148,6 +149,9 @@ jobs:
             fi
             xcrun simctl io "$udid" recordVideo --codec h264 --force "videos/raw-$slug.mov" > "record-$slug.log" 2>&1 &
             recorder=$!
+            # The test stops it through the director at its last mark, so the
+            # video ends there and the cut can date it from its end.
+            echo "$recorder" > "$PWD/demo-hermes/recorder.pid"
             sleep 2
             TEST_RUNNER_CONDUIT_DEMO_VIDEOS=1 \
             TEST_RUNNER_CONDUIT_DEMO_URL="$HOME_URL" \
@@ -161,7 +165,7 @@ jobs:
               -only-testing:ConduitScreenshots/DemoVideoTests/testRecordDemoScenes \
               -resultBundlePath "results/$slug.xcresult" > "results-$slug.log" 2>&1
             trc=$?
-            kill -INT "$recorder" || true
+            kill -INT "$recorder" 2>/dev/null || true  # already stopped by the test, normally
             for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
             kill -TERM "$recorder" 2>/dev/null || true
             wait "$recorder" || true

@@ -201,8 +201,12 @@ final class DemoVideoTests: XCTestCase {
             }
             settle(5)
         }
-        app.terminate()
+        // The video is dated from its end (cut-scenes.sh): a last change on
+        // screen, the mark, and the recorder stopped right then.
+        openTab("Bots")
         print("SCENE stop all \(Date().timeIntervalSince1970)")
+        direct("stop-recording", [:])
+        app.terminate()
     }
 
     // MARK: - Scenes
@@ -276,7 +280,30 @@ final class DemoVideoTests: XCTestCase {
         let start = from.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.4))
         // The portrait button is the face; its name sits just under it.
         let end = to.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: overFace ? 0.45 : 1.25))
-        start.press(forDuration: 1.2, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: hold)
+        // A press the system takes for the portrait's context menu, rather
+        // than a lift, leaves the menu open and the drop undone (and the
+        // next press could land on one of its items): close it and press
+        // again for a different time.
+        for press in [0.7, 0.5, 1.0] {
+            start.press(forDuration: press, thenDragTo: end, withVelocity: .slow, thenHoldForDuration: hold)
+            settle(1)
+            guard botMenuIsOpen() else { return }
+            print("DEMO drag \(bot) onto \(target): the press \(press)s opened the menu, pressing again")
+            closeBotMenu()
+        }
+        if botMenuIsOpen() { closeBotMenu() }
+        XCTFail("Every press on \(bot) opened its menu instead of lifting it")
+    }
+
+    /// A bot's long-press menu (Edit Bot, Duplicate, Delete Bot, …) is up.
+    private func botMenuIsOpen() -> Bool {
+        app.buttons["Delete Bot"].exists || app.buttons["Duplicate"].exists
+    }
+
+    /// Closes the menu by a tap well clear of it, at the top of the screen.
+    private func closeBotMenu() {
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.03)).tap()
+        settle(1)
     }
 
     /// The first element labelled exactly so: on Bots Home, a bot's portrait.

@@ -13,6 +13,9 @@ JSON to http://127.0.0.1:$DIRECTOR_PORT/<action>:
 - prompt    {"dashboard", "profile", "text"}: sends text in that bot's Bot
   Chat and returns once the turn has started, so it runs on while the video
   goes on (a reply streaming, an approval or a question waiting).
+- stop-recording {}: stops `simctl io recordVideo` (its pid is in the file
+  DEMO_RECORDER_PID_FILE names) and returns once the video is written, so the
+  video ends at the test's last mark and cut-scenes.sh can date it from there.
 
 Answers 200 {"ok": true} once done, 500 with the error otherwise.
 
@@ -25,6 +28,8 @@ Usage: demo_director.py CONFIG.json [PORT]
 
 import asyncio
 import json
+import os
+import signal
 import sys
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -73,7 +78,27 @@ async def prompt(config, body):
         await asyncio.sleep(1)
 
 
-ACTIONS = {"add-bot": add_bot, "prompt": prompt}
+async def stop_recording(config, body):
+    path = os.environ.get("DEMO_RECORDER_PID_FILE")
+    if not path or not Path(path).is_file():
+        raise LookupError("no recorder pid file (DEMO_RECORDER_PID_FILE)")
+    pid = int(Path(path).read_text().strip())
+    try:
+        os.kill(pid, signal.SIGINT)
+    except ProcessLookupError:
+        return
+    # Not our child, so polled rather than waited on: SIGINT makes simctl
+    # finish the file and exit.
+    for _ in range(150):
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        await asyncio.sleep(0.1)
+    raise TimeoutError(f"recorder {pid} still running 15 s after SIGINT")
+
+
+ACTIONS = {"add-bot": add_bot, "prompt": prompt, "stop-recording": stop_recording}
 
 
 class Handler(BaseHTTPRequestHandler):

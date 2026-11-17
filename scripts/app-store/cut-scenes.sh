@@ -6,8 +6,9 @@
 # no audio: ready for a Reddit post, or to trim further.
 #
 # recordVideo writes frames only when the screen changes and its first frame
-# comes late, so the video is dated from its end: the `SCENE stop all` mark,
-# printed as the test quits the app, is the recording's last change.
+# comes late, so the video is dated from its end: the test makes a last change
+# on screen, prints the `SCENE stop all` mark and stops the recorder through
+# demo_director.py's stop-recording, so the video ends at that mark.
 #
 # Usage: cut-scenes.sh RAW.mov MARKS OUT_DIR [LEAD_SECONDS]
 set -euo pipefail
