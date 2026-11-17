@@ -102,7 +102,7 @@ jobs:
             > demo-hermes/director.log 2>&1 &
 
       - name: Record
-        timeout-minutes: 75
+        timeout-minutes: 90
         run: |
           set -euo pipefail
           mkdir -p videos
@@ -132,8 +132,10 @@ jobs:
             xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
               --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
             set +e
-            perl -e 'alarm shift; exec @ARGV' 1500 xcodebuild build-for-testing \
+            # Only the UI test target: the unit tests alone outlast the build's time.
+            perl -e 'alarm shift; exec @ARGV' 2400 xcodebuild build-for-testing \
               -project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd \
+              -only-testing:ConduitScreenshots \
               -enableCodeCoverage NO COMPILER_INDEX_STORE_ENABLE=NO \
               CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
               DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" > "build-$slug.log" 2>&1
