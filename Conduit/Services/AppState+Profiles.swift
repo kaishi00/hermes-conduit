@@ -40,10 +40,16 @@ extension AppState {
     }
 
     func waitOutProfileSwitchSlideIn() async {
-        if isProfileSwitching {
-            await withCheckedContinuation { profileSwitchEndWaiters.append($0) }
+        // Another switch can start and end during the wait: its slide-in
+        // is waited out too.
+        while true {
+            if isProfileSwitching {
+                await withCheckedContinuation { profileSwitchEndWaiters.append($0) }
+            }
+            guard let slideIn = profileSwitchSlideIn else { return }
+            await slideIn.value
+            if !isProfileSwitching, profileSwitchSlideIn == slideIn { return }
         }
-        await profileSwitchSlideIn?.value
     }
 
     func switchProfileForWidget(to profile: String, lease: WidgetLaunchLease) async -> Bool {

@@ -193,6 +193,30 @@ extension AppStateChatResumeTests {
         await fulfillment(of: [refreshed, approvalsRead], timeout: 5)
     }
 
+    func testAWaitOutlastsTheSlideInOfASwitchThatEndsDuringIt() async {
+        let appState = AppState(defaults: makeFollowUpDefaults(), loadSavedConnection: false)
+        appState.profileSwitchFollowUpDelay = .milliseconds(200)
+        appState.endProfileSwitch()
+        var waited = false
+        let waiter = Task { @MainActor in
+            await appState.waitOutProfileSwitchSlideIn()
+            waited = true
+        }
+
+        // A second switch ends inside the first one's slide-in.
+        try? await Task.sleep(for: .milliseconds(50))
+        appState.profileSwitchFollowUpDelay = .seconds(60)
+        appState.isProfileSwitching = true
+        appState.endProfileSwitch()
+
+        try? await Task.sleep(for: .milliseconds(400))
+        XCTAssertFalse(waited, "The first slide-in is over, the second one's isn't")
+
+        appState.profileSwitchSlideIn?.cancel()
+        await waiter.value
+        XCTAssertTrue(waited)
+    }
+
     func testAReadOutsideASwitchStartsAtOnce() async throws {
         let calls = FollowUpCalls()
         let (appState, _) = makeFollowUpSwitchingAppState(calls: calls)
