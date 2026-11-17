@@ -800,7 +800,8 @@ extension AppState {
         guard let botProfile = activeBotChatProfile else {
             return ConversationAgentIdentity.workspace(
                 name: profileDisplayName(activeProfile),
-                photoURL: profileAvatarURL(for: activeProfile)
+                photoURL: profileAvatarURL(for: activeProfile),
+                profile: activeProfile
             )
         }
         // linkedBot, not a bare name match: a bot renamed on the desktop
@@ -816,11 +817,12 @@ extension AppState {
                 // Trimmed and emptied-to-nil so the equality key is
                 // canonical: a gateway flipping between `""`, `" "` and
                 // absence must not re-open settled rows over nothing.
-                let raw = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines)
+                // Its starter face's color when Hermes keeps none.
                 return ConversationAgentIdentity.BotFace(
                     name: bot.name,
-                    colorString: raw?.isEmpty == true ? nil : raw,
-                    image: botAvatarImage(for: bot)
+                    colorString: bot.shownColor,
+                    image: botAvatarImage(for: bot),
+                    starterFace: bot.starterFace
                 )
             }
         )

@@ -591,9 +591,10 @@ struct NewRoomPortrait: View {
                 BotAvatarView(
                     name: bot.name,
                     label: bot.displayLabel,
-                    colorString: bot.appearanceColor,
+                    colorString: bot.shownColor,
                     image: appState.botAvatarImage(for: bot),
-                    size: size * spot.diameter
+                    size: size * spot.diameter,
+                    face: bot.faceLook
                 )
                 .overlay {
                     if shown.count > 1 {

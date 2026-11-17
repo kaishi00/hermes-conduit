@@ -1309,8 +1309,8 @@ extension BotModeTests {
     }
 
     /// A ring takes the bot's glow color (picked or drawn from its photo),
-    /// else its Hermes color, else its name's hue (build 248); a group
-    /// room's name and bubble take the same (build 254).
+    /// else its Hermes color, else its starter face's, else its name's hue
+    /// (build 248); a group room's name and bubble take the same (build 254).
     @MainActor
     func testABotsRingTakesItsGlowColorFirst() {
         func bot(_ color: String?) -> BotProfile {
@@ -1322,6 +1322,10 @@ extension BotModeTests {
         XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: glow), glow.color, "the glow wins")
         XCTAssertEqual(AppState.botColor(bot("#00ff00"), glow: nil), BotAvatarView.color(for: "#00ff00", name: "raiden"))
         XCTAssertEqual(AppState.botColor(bot(nil), glow: nil), BotAvatarView.color(for: nil, name: "raiden"), "the name's hue")
+        var faced = bot(nil)
+        faced.starterFace = 2
+        XCTAssertEqual(AppState.botColor(faced, glow: nil), BotAvatarView.color(for: StarterFaces.set[2].hex, name: "raiden"),
+                       "no Hermes color: its starter face's")
         // A group room names and tints the bot in the same color as its
         // ring, not its Hermes color under a picked or photo glow.
         XCTAssertEqual(

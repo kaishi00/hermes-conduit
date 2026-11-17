@@ -13,7 +13,7 @@ import SwiftUI
 extension AppState {
     /// A bot's own color, as its chat's glow shows it: the color picked
     /// for its profile or drawn from its photo, else its Hermes color, else
-    /// its name's hue. Bots Home's rings and the overview use it, so a
+    /// its starter face's (StarterFaces). Bots Home's rings and the overview use it, so a
     /// ring matches the bot (build 248: the rings took the name's hue
     /// whenever Hermes kept no color).
     func botColor(_ bot: BotProfile) -> Color {
@@ -39,12 +39,13 @@ extension AppState {
     }
 
     static func botColor(_ bot: BotProfile, glow: ProfileGlowRGB?) -> Color {
-        glow?.color ?? BotAvatarView.color(for: bot.appearanceColor, name: bot.name)
+        glow?.color ?? BotAvatarView.color(for: bot.shownColor, name: bot.name)
     }
 
     /// The color the backdrop's warm glow takes for a profile: the one
     /// picked for it or drawn from its photo (`profileGlowColors`), else the
-    /// color its bot was given in Hermes, or nil (the gold accent). The bot
+    /// color its bot was given in Hermes, else its bot's starter face's,
+    /// or nil (the gold accent) for a profile with no bot. The bot
     /// branch resolves the roster row like every other bot lookup
     /// (`linkedBot`), so it also answers a RENAME — an old name surviving
     /// only in previousNames — and it applies to any profile name that
@@ -56,8 +57,7 @@ extension AppState {
         let roster = shownBotRoster
         guard !roster.isEmpty else { return nil }
         guard let bot = Self.linkedBot(named: profile, in: roster),
-              let color = bot.appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !color.isEmpty else { return nil }
+              let color = bot.shownColor else { return nil }
         return BotAvatarView.color(for: color, name: bot.name)
     }
 

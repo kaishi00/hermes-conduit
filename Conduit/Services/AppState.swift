@@ -627,6 +627,8 @@ final class AppState: ObservableObject {
     /// the all-live rework). Its changes publish as AppState's.
     let shownBot = BotState()
     var shownBotChanges: AnyCancellable?
+    /// Keeps BotFaceDirectory in step with the bots shown.
+    var botFaceDirectoryUpdates: AnyCancellable?
     /// The chat on screen's own activity (`ChatState`): its title, plan
     /// card, refresh, branch and rewind, its agents, and replies streaming
     /// to another device.
@@ -2939,6 +2941,11 @@ final class AppState: ObservableObject {
         }
         shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
+        }
+        // The profile pictures' starter faces (ProfileAvatarView).
+        botFaceDirectoryUpdates = shownBotRosterChanged.sink { [weak self] _ in
+            guard let self else { return }
+            BotFaceDirectory.shared.update(self.shownBotRoster)
         }
         // Hydrate the visible profile list from the persisted known-profile
         // cache before any discovery runs. A cold launch must not present an

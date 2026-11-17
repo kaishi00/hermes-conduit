@@ -1629,9 +1629,10 @@ struct TeammateMessageNote: View {
                     BotAvatarView(
                         name: bot?.name ?? inbound.handle,
                         label: name,
-                        colorString: bot?.appearanceColor,
+                        colorString: bot?.shownColor,
                         image: image,
-                        size: faceSize
+                        size: faceSize,
+                        face: bot?.faceLook
                     )
                     Text(AppLocalization.string("Message from \(name)", table: .chat))
                         .scaledFont(.footnote)
@@ -5468,7 +5469,7 @@ struct ConduitAgentMark: View {
     /// one definition of the initial-on-color recipe, so the face's styling
     /// can never drift from the Bots tab (the initial keeps the captured
     /// label by design); ordinary conversations keep ProfileAvatarView's
-    /// photo-or-gold-monogram.
+    /// photo, else their profile's starter face, else the gold monogram.
     @ViewBuilder
     private var face: some View {
         if let botFace = identity.botFace {
@@ -5477,10 +5478,11 @@ struct ConduitAgentMark: View {
                 label: identity.name,
                 colorString: botFace.colorString,
                 image: botFace.image,
-                size: Self.faceSize
+                size: Self.faceSize,
+                face: botFace.starterFace.map(StarterFaces.face)
             )
         } else {
-            ProfileAvatarView(profile: "", displayName: identity.name, url: identity.photoURL)
+            ProfileAvatarView(profile: identity.profile, displayName: identity.name, url: identity.photoURL)
         }
     }
 }

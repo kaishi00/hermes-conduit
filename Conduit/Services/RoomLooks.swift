@@ -294,7 +294,10 @@ extension AppState {
         let glows = profileGlowColors()
         var agents: [String: RoomLook] = [:]
         for bot in bots.prefix(32) {
-            let picture = botAvatarImage(for: bot).flatMap { roomLookPicture(for: bot.name, image: $0) }
+            // A bot with no picture sends its starter face, so the others
+            // see the face it wears here rather than an initial.
+            let image = botAvatarImage(for: bot) ?? bot.faceLook.flatMap { StarterFaces.image($0, color: bot.shownColor) }
+            let picture = image.flatMap { roomLookPicture(for: bot.name, image: $0) }
             let color = ProfileGlowRGB(UIColor(Self.botColor(bot, glow: glows[bot.name])))?.hex.uppercased()
             agents[bot.name] = RoomLook(picture: picture, color: color)
         }

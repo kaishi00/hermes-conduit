@@ -86,13 +86,27 @@ struct BotProfile: Identifiable, Equatable, Codable {
     /// A row of the kept copy, drawn until Hermes answers (#1533): it has no
     /// ui_meta to write back, so nothing writes it.
     var isKeptCopy = false
+    /// The starter face it wears while it has no picture (StarterFaces):
+    /// ui_meta's `face`, else the first free one, set on the whole roster
+    /// as it's read. Kept with the kept copy, which has no ui_meta.
+    var starterFace: Int?
 
     var id: String { name }
+
+    /// Its starter face, if the roster gave it one.
+    var faceLook: StarterFace? { starterFace.map(StarterFaces.face) }
+
+    /// Its color: the one Hermes keeps for it (picked here or on Desktop),
+    /// else its starter face's.
+    var shownColor: String? {
+        let kept = appearanceColor?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return kept.isEmpty ? faceLook?.hex : kept
+    }
 
     private enum CodingKeys: String, CodingKey {
         case name, botTitle, displayName, profileDescription, model, provider, hasAvatar, isPinned
         case isHiddenByMeta, appearanceColor, canonicalSession, lastActive, lastPreview, previousNames
-        case isDefault, conduitName
+        case isDefault, conduitName, starterFace
     }
 
     /// Removable from Conduit: never the gateway's primary profile.
@@ -188,7 +202,7 @@ enum BotRosterDecoder {
             return decodeRow(object)
         }
         return BotRosterSnapshot(
-            bots: bots,
+            bots: StarterFaces.assign(bots),
             supportsBotProtocol: result.objectValue?["bot_mode_protocol"]?.boolValue ?? false,
             desktopGroups: DesktopGroupChatDecoder.decode(profileRows: rows)
         )
