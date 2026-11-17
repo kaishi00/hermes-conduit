@@ -315,7 +315,7 @@ extension AppState {
         let indexed = conversationIdentityIndex.durableID(forRuntime: oldID, profile: activeProfile)
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         // What the caller passed, less any id another listed row owns or
-        // carries too (the pane's known ids), so a borrowed or shared id never reaches this copy.
+        // carries too, so a borrowed or shared id never reaches this copy.
         let others = listed.map { sessionIDsOfOtherRows(than: $0) } ?? []
         let chat = BackgroundChat(
             sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),

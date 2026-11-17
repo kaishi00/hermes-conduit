@@ -3559,7 +3559,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         for id in unlistedJobs {
             guard let job = self.job(id), job.status.isActive,
                   let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { continue }
-            let missing: Bool
+            let goneFromHermes: Bool
             do {
                 let running = try await backend.sessionRunning(runtimeID, job.profile)
                 guard generation == self.generation else { return }
@@ -3574,18 +3574,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A running session or a title-only answer does not prove an
                 // end. Never turn a timeout or unsupported probe into absence.
                 guard running == false else { continue }
-                missing = false
+                goneFromHermes = false
             } catch {
                 guard generation == self.generation else { return }
                 guard HermesClient.isSessionNotFoundError(error) else { continue }
-                missing = true
+                goneFromHermes = true
             }
             // An event, another poll, a stop, or a reset may have overtaken
             // the read. Only the same still-unlisted runtime can settle.
             guard let current = self.job(id), current.status.isActive,
                   current.runtimeSessionID == runtimeID, !current.listedByLivenessPoll,
                   current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
-            if missing { missingJobs.insert(id) }
+            if goneFromHermes { missingJobs.insert(id) }
             checkedRuntimes[id] = runtimeID
             if current.isThreadTurn { settledThreadTurns.append(id) }
             else { settledJobs.append(id) }
