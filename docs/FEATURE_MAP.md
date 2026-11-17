@@ -1551,6 +1551,11 @@ fast model answers on a server that only reads text aloud from plugin
 dashboard, since the plugin runs its turns, step 3 says such a server never
 asks the model address and when its call is ready, and the comparison
 table marks agent mode)
+· The call's tools in one fixed order (#2669; done: the phone's shared live
+encoders write sorted keys, so Grok, Gemini and Qwen Live and the Watch's
+calls send their setup the same way too, and the plugin sorts the keys of
+what it hands the fast model, a server's own model and `/local-live/v1/tools`,
+for builds from before; GPT-Live's encoder already sorted them)
 
 **Code**
 - The fast model and its tools: `notifier/dashboard/api/local_live_agent.py` (_LocalLiveAgent.reply, _local_live_front_target, LOCAL_LIVE_READY_PREFIX, LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
@@ -1558,19 +1563,21 @@ table marks agent mode)
 - The read-back relay: `notifier/dashboard/api/local_live_read_back.py` (_ReadBackFrontTurn, _LocalLiveReadBack._open_turn and _let_go)
 - The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchCall)
 - The Watch's call: `ConduitWatch/WatchDirectCallModel.swift` (begin(_:) for a LocalLiveCall, whose LocalLiveSession has no agentSetup)
-- What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState+LocalLive.swift` (localLiveAgentSetup)
+- What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState+LocalLive.swift` (localLiveAgentSetup), written by `Shared/GrokLive/GrokLiveProtocol.swift` (encode, sorted keys; `Shared/GeminiLive/GeminiLiveProtocol.swift` encode likewise)
+- The tools' fixed key order on the host: `notifier/dashboard/api/local_live_agent.py` (_local_live_agent_tool, _local_live_sorted_keys)
 - A cancelled turn on the phone: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (cancel(turnID:): it stops following the turn; Hermes' reply goes on in the chat)
-- Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
+- Tests: `notifier/tests/test_local_live.py` (the agent mode tests, those named on_a_read_back_server, and test_the_fast_model_gets_the_calls_tools_in_one_order_whatever_order_the_phone_sent), `ConduitTests/HermesVoiceGatewayTimeoutTests+LocalLive.swift` (testLocalLiveAgentFramesCarryTheCallsToolsAndAnswers: the setup encodes byte for byte the same each time)
 
 **Rulings**
 - The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.153.0).
 - With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.153.0).
 - On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.153.0; Eric confirmed 2026-11-09 in #2090, to match talking over any Local Live Hermes turn).
+- A call's tools reach the fast model byte for byte the same on every call, keys sorted and the list in the phone's fixed order, so a local server's prompt cache reuses them instead of reading the whole setup again before the opening (issue 2669, #2679 with notifier 0.177.29).
 
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-14, #2455 (the read-back relay also runs the turns on a server with "Hermes answers" on, where the fast model answers the same way; see that entry); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-17, #2679 (issue 2669: the call's tools go out keys sorted from the phone's shared live encoders and are sorted again on the host, notifier 0.177.29, so a local fast model's prompt cache reuses them; Grok, Gemini and Qwen Live and the Watch's calls share the encoders; the Watch's bridge, CarPlay, calls from Hermes, Settings text and docs needed no change); 2026-11-14, #2455 (the read-back relay also runs the turns on a server with "Hermes answers" on, where the fast model answers the same way; see that entry); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
 
 ## Hermes answers on a speech server with a model of its own
 
