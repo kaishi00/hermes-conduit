@@ -123,6 +123,8 @@ struct CapabilitiesView: View {
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
+                    // Taps fall through to the focus catcher behind the bar.
+                    .allowsHitTesting(false)
                 TextField(searchPrompt, text: $searchText)
                     .textFieldStyle(.plain)
                     .scaledFont(.subheadline)
