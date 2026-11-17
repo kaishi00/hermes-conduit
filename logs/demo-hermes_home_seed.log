@@ -1,0 +1,6 @@
+seeded: Garden watering schedule
+seeded: Reply to the landlord
+  unanswered server request: {"jsonrpc": "2.0", "id": "srq-a616991f363f", "method": "approval", "params": {"session_id": "6b088070", "command": "execute_code <<'PY'\nbudget = {'Groceries': 1800, 'Dining out': 600, 'Transport': 45
+seeded: Q3 spending summary
+seeded: Espresso machine shortlist
+seeded: Weekend trip to Big Sur
