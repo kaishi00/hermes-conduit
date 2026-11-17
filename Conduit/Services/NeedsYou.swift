@@ -46,6 +46,9 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// Another combined dashboard's wait, read through its kept connection
     /// (all-live stage 4a). Nil for the dashboard on screen's.
     var dashboardID: UUID? = nil
+    /// The relay gateway the profile's list said it pairs through (notifier
+    /// 0.177.30+): the card's answer is sealed for it (issue 2683).
+    var relayGatewayID: String? = nil
 
     var id: String {
         dashboardID.map { "\($0.uuidString)\u{1F}\(hostKey)" } ?? hostKey

@@ -689,10 +689,28 @@ final class PushNotificationService: ObservableObject {
         case .clarifyBatch(let id, _): requestID = id
         default: return
         }
-        var pairs = (UserDefaults.standard.array(forKey: Self.encryptedDecisionGatewaysKey) as? [[String]] ?? [])
+        Self.persistEncryptedGatewayID(gatewayID, requestID: requestID)
+    }
+
+    /// A question's card drawn in the chat from its Needs you row (issue
+    /// 2556) came from no push, so nothing retained its gateway, and its
+    /// answer went out unsealed, which an encrypted pairing refuses (issue
+    /// 2683). The chat hands over the gateway its host names for the
+    /// profile; a push's own, when one arrived, stays. Kept across
+    /// relaunches when the pairing is encrypted, as a push's is.
+    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String) {
+        guard relayGatewayID(forRequestID: requestID) == nil else { return }
+        relayGatewayIDsByRequestID[requestID] = gatewayID
+        if NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) != nil {
+            Self.persistEncryptedGatewayID(gatewayID, requestID: requestID)
+        }
+    }
+
+    private static func persistEncryptedGatewayID(_ gatewayID: String, requestID: String) {
+        var pairs = (UserDefaults.standard.array(forKey: encryptedDecisionGatewaysKey) as? [[String]] ?? [])
             .filter { $0.count == 2 && $0[0] != requestID }
         pairs.append([requestID, gatewayID])
-        UserDefaults.standard.set(Array(pairs.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.encryptedDecisionGatewaysKey)
+        UserDefaults.standard.set(Array(pairs.suffix(encryptedDecisionGatewaysLimit)), forKey: encryptedDecisionGatewaysKey)
     }
 
     /// The respond body for a relay decision answer: answer, optional batch
