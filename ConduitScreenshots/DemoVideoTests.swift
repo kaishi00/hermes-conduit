@@ -352,6 +352,11 @@ final class DemoVideoTests: XCTestCase {
         serverField.tap()
         waitForKeyboardFocus(serverField)
         serverField.typeText(url + "\n")
+        enterCredentials(for: url)
+    }
+
+    /// The sign-in step's username and password, typed fresh.
+    private func enterCredentials(for url: String) {
         let username = app.textFields["login.username"]
         guard username.waitForExistence(timeout: 30) else {
             snap("debug-no-sign-in-step")
@@ -433,7 +438,21 @@ final class DemoVideoTests: XCTestCase {
             settle(5)
         } else {
             XCTFail("No saved dashboard with \(text)")
+            return
         }
+        // The simulator build is unsigned, so the Keychain keeps no sign-in
+        // (errSecMissingEntitlement) and going back to a dashboard asks for
+        // one again: Welcome back, its row, then the sign-in step. The one
+        // left stays connected beside it, being combined.
+        let welcome = app.buttons.matching(NSPredicate(
+            format: "identifier == 'login.dashboard.combined' OR identifier == 'login.dashboard.row'")).firstMatch
+        guard welcome.waitForExistence(timeout: 10) else { return }
+        welcome.tap()
+        enterCredentials(for: text)
+        dismissSystemAlerts()
+        _ = app.buttons["Bots"].waitForExistence(timeout: 60)
+        dismissFinishSetupCard()
+        settle(3)
     }
 
     private func dismissFinishSetupCard() {
