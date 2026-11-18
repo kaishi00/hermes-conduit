@@ -1351,6 +1351,13 @@ struct KanbanTaskDetailView: View {
         }
     }
 
+    /// Refuses a step whose board is no longer the one loaded.
+    private func requireBoard(_ startedBoard: KanbanBoardContextStamp?) throws {
+        guard startedBoard != nil, store.loadedContextStamp == startedBoard else {
+            throw KanbanServiceError.boardNavigationInProgress
+        }
+    }
+
     /// Note & requeue: two supported mutations composed exactly like the
     /// desktop drawer (comment first, then reclaim) — but with OBSERVABLE
     /// partial success: the draft is consumed the moment the note reaches the
@@ -1360,6 +1367,10 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
+        // The second step lands only on the board the first one did: a
+        // board change between them leaves the note posted and the step
+        // undone, said as a partial success.
+        let startedBoard = store.loadedContextStamp
         isRequeuing = true
         errorMessage = nil
         defer {
@@ -1370,7 +1381,10 @@ struct KanbanTaskDetailView: View {
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
             postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { try await store.reclaimTask(taskID: expectedID) },
+            reclaim: {
+                try requireBoard(startedBoard)
+                try await store.reclaimTask(taskID: expectedID)
+            },
             onCommentPosted: {
                 // Consume the draft immediately: the note already exists on
                 // the server, so a retry after a reclaim failure must never
@@ -1396,6 +1410,10 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
+        // The second step lands only on the board the first one did: a
+        // board change between them leaves the note posted and the step
+        // undone, said as a partial success.
+        let startedBoard = store.loadedContextStamp
         isUnblocking = true
         errorMessage = nil
         defer {
@@ -1406,7 +1424,10 @@ struct KanbanTaskDetailView: View {
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
             postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready")) },
+            reclaim: {
+                try requireBoard(startedBoard)
+                _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready"))
+            },
             onCommentPosted: {
                 if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
                     comment = ""
