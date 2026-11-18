@@ -149,7 +149,7 @@ extension AppState {
             }
         } catch {
             // A sheet closed mid-read: no failure, the next open reads again.
-            if error is CancellationError || Task.isCancelled { return }
+            if UserFacingError.isCancellation(error) { return }
             guard profile == activeProfile, shownBot.cronRunsLoad == load else { return }
             let message = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
             if cronRunsLoaded {

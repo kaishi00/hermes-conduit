@@ -75,7 +75,7 @@ extension AppState {
                   profile == activeProfile,
                   self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
-            if error is CancellationError || Task.isCancelled { return false }
+            if UserFacingError.isCancellation(error) { return false }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
                 return false
