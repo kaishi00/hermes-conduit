@@ -107,7 +107,9 @@ extension AppState {
             } else {
                 guard isConnected, let owner = currentDashboardRuntimeOwner() else { return nil }
                 switch notifierPlugin.state {
-                case .unknown: return .failed
+                // Not reported yet (just connected): ask anyway, and a bare
+                // 404 below says the route is missing.
+                case .unknown: break
                 case .predatesCapabilities: return .needsPluginUpdate
                 case .reported(_, let capabilities):
                     guard capabilities.contains(SessionUsage.capability) else { return .needsPluginUpdate }
@@ -115,10 +117,18 @@ extension AppState {
                 response = try await owner.bridge.requestJSON(path: path)
                 guard ownsDashboardRuntime(owner) else { return nil }
             }
-        } catch DashboardTicketBridgeError.http(status: 404, detail: _) {
-            // The route is listed, so a 404 is Hermes having no row for the
-            // chat yet: nothing has run in it.
-            return .nothingYet
+        } catch DashboardTicketBridgeError.http(status: 404, detail: let detail) {
+            // Hermes having no row for the chat yet: nothing has run in it.
+            if detail.lowercased().contains("session not found") { return .nothingYet }
+            // The plugin turned off for the profile the read named: its remedy.
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(
+                of: DashboardTicketBridgeError.http(status: 404, detail: detail), path: path
+            ) {
+                return .unavailable(remedy)
+            }
+            // No such route on the host that answered (another profile's
+            // plugin host can be older than the dashboard's report).
+            return .needsPluginUpdate
         } catch is CancellationError {
             return nil
         } catch {

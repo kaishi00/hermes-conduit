@@ -46,6 +46,8 @@ struct SessionUsageSection: View {
                 caption(AppLocalization.string("Nothing has run in this chat yet."))
             case .needsPluginUpdate:
                 caption(AppLocalization.string("Update the Conduit plugin on this host to see this chat's tokens and cost."))
+            case .unavailable(let reason):
+                caption(reason)
             case .failed:
                 caption(AppLocalization.string("Couldn't load this chat's usage."))
             }
@@ -66,7 +68,8 @@ struct SessionUsageSection: View {
         case .included:
             return AppLocalization.string("Included in your plan")
         case .partial:
-            let amount = Self.money(usage.costUSD ?? 0)
+            guard let sum = usage.costUSD else { return AppLocalization.string("Not reported by this host") }
+            let amount = Self.money(sum)
             return AppLocalization.string("At least \(amount)")
         case .actual, .estimated:
             return usage.costUSD.map(Self.money) ?? AppLocalization.string("Not reported by this host")

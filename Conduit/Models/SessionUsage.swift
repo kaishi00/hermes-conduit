@@ -81,5 +81,8 @@ enum SessionUsageReadout: Equatable {
     case nothingYet
     /// The host's plugin predates the route.
     case needsPluginUpdate
+    /// Why it can't be read, in words the user can act on (the plugin
+    /// turned off for the chat's profile).
+    case unavailable(String)
     case failed
 }
