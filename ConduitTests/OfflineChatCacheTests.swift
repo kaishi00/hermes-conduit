@@ -1026,6 +1026,21 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(AppState.launchTranscriptID(in: snapshot, resuming: "stored-b"), "stored-b")
         XCTAssertEqual(AppState.launchTranscriptID(in: snapshot, resuming: "runtime-b"), "stored-b")
         XCTAssertNil(AppState.launchTranscriptID(in: snapshot, resuming: "bot-chat"))
+
+        // A row owning the id with its rows dropped shows none, even when
+        // another row carries the id as an alias; an alias two rows carry
+        // stands in for neither.
+        let ambiguous = OfflineChatSnapshot(
+            lastSessionID: "stored-a",
+            sessions: [
+                OfflineCachedSession(id: "owner", title: "O", updatedLabel: "", lastActivityAt: nil, source: .chat),
+                OfflineCachedSession(id: "stored-a", title: "A", updatedLabel: "", lastActivityAt: nil, source: .chat, aliases: ["owner", "shared"]),
+                OfflineCachedSession(id: "stored-b", title: "B", updatedLabel: "", lastActivityAt: nil, source: .chat, aliases: ["shared"]),
+            ],
+            transcripts: [entry("stored-a"), entry("stored-b")]
+        )
+        XCTAssertNil(AppState.launchTranscriptID(in: ambiguous, resuming: "owner"))
+        XCTAssertNil(AppState.launchTranscriptID(in: ambiguous, resuming: "shared"))
     }
 
     func testPresentingTheCopyNeverFeedsLiveStateOrTheViewport() throws {

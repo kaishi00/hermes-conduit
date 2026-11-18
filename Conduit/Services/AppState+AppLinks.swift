@@ -129,6 +129,9 @@ extension AppState {
             let request = self.botChatOpenRequests
             let dashboardID = self.activeDashboardID
             let epoch = self.botRosterEpoch
+            // A navigation of its own (a chat or notification opened, Back)
+            // begins a viewport transition; the launch's own resume doesn't.
+            let navigation = self.chatViewportTransitionGeneration
             // While Conduit is still connecting (a cold launch from the
             // link, a reconnect) it waits for the connection, as a list's
             // tap does (`openBotChatFromList`).
@@ -136,7 +139,8 @@ extension AppState {
             // A newer link or list tap, another dashboard or a server switch
             // while it waited is the later choice: this one says nothing.
             guard request == self.botChatOpenRequests, dashboardID == self.activeDashboardID,
-                  epoch == self.botRosterEpoch else { return }
+                  epoch == self.botRosterEpoch,
+                  self.chatViewportTransitionIsCurrent(generation: navigation) else { return }
             // Offline, the roster can't say whether the bot is still there.
             guard connected else {
                 self.errorMessage = Self.connectToChatWithBotsMessage
@@ -144,12 +148,13 @@ extension AppState {
             }
             var bot = Self.linkedBot(named: profile, in: self.botRoster)
             if bot == nil {
-                let openBefore = self.activeSessionId
                 await self.refreshBotRoster()
                 // A chat opened meanwhile, a newer link or list tap, another
-                // dashboard or server is the later choice; it stays.
-                guard self.activeSessionId == openBefore, request == self.botChatOpenRequests,
-                      dashboardID == self.activeDashboardID, epoch == self.botRosterEpoch else { return }
+                // dashboard or server is the later choice; it stays. The
+                // launch's own resume landing meanwhile is no such choice.
+                guard request == self.botChatOpenRequests, dashboardID == self.activeDashboardID,
+                      epoch == self.botRosterEpoch,
+                      self.chatViewportTransitionIsCurrent(generation: navigation) else { return }
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {
