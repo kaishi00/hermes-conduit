@@ -3213,6 +3213,9 @@ final class AppState: ObservableObject {
     /// The start that set `liveCallSpeaker`, so an availability check left
     /// over from an earlier call never clears a newer call's bot.
     var liveCallSpeakerStart = UUID()
+    /// The bot the running call started with, so a start that fell back
+    /// to the workspace asks the bot again on Try again.
+    var liveCallBot: String?
     /// A call that ended off its profile hands its jobs back to the profile
     /// on screen once its hang-up has let go of what it asked to be called
     /// about (`callEndedOffItsProfile`); set while that waits.

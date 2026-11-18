@@ -394,6 +394,7 @@ extension AppState {
         liveCallProfile = activeProfile
         // A Bot Chat's call speaks as its bot (issue 2768).
         liveCallSpeaker = callSpeaker(for: voiceBackgroundJobSupervisor.liveThread)
+        liveCallBot = liveCallSpeaker
         liveCallSpeakerStart = UUID()
         // The call screen shows the jobs this call starts, saved or not.
         voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveCallStyle.asksBeforeSending)
@@ -575,6 +576,7 @@ extension AppState {
     /// prepare the summary a resume would need.
     func finishVoiceCallRecording() {
         liveCallSpeaker = nil
+        liveCallBot = nil
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
         voiceCallCheckpointed = nil

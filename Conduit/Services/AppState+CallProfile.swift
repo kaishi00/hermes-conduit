@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let callSpeakerLogger = Logger(subsystem: "com.milim.relay", category: "CallSpeaker")
 
 /// A live call keeps its profile (all-live stage 2, issue 2390). A switch
 /// to another profile on the same dashboard keeps the open socket, and the
@@ -70,24 +73,32 @@ extension AppState {
         _ isAvailable: (Status) -> Bool,
         _ check: @MainActor () async throws -> Status
     ) async throws -> Status {
+        // Each start (Try again too) asks the bot first: a fallback is for
+        // that start only, so a bot back from a brief failure speaks again.
+        if liveCallSpeaker == nil, let bot = liveCallBot { liveCallSpeaker = bot }
         guard liveCallSpeaker != nil else { return try await check() }
         let start = liveCallSpeakerStart
         do {
             let status = try await check()
             if isAvailable(status) { return status }
+            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: the bot can't start this mode")
         } catch is CancellationError {
             throw CancellationError()
-        } catch {}
+        } catch {
+            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: \(LogRedaction.describing(error), privacy: .public)")
+        }
         // A newer call's start or a teardown changed the speaker meanwhile.
         guard liveCallSpeakerStart == start, liveCallSpeaker != nil else { return try await check() }
         liveCallSpeaker = nil
         return try await check()
     }
 
-    /// The bot a call attached to `thread` speaks as: a Bot Chat's own,
-    /// nil for any other chat or none.
+    /// The bot a call attached to `thread` speaks as: a Bot Chat's own, or
+    /// the bot whose workstream's chat is open (its chat runs on the
+    /// workspace, so the thread names no profile), nil for any other chat.
     func callSpeaker(for thread: VoiceThreadTarget?) -> String? {
-        Self.readAloudSpeaker(thread?.profile, activeProfile: voiceCallProfile)
+        let workstreamBot = thread.flatMap { isOpenChat($0) ? activeWorkstream?.profile : nil }
+        return Self.readAloudSpeaker(thread?.profile ?? workstreamBot, activeProfile: voiceCallProfile)
     }
 
     /// Local Live in agent mode on the call's profile (`isLocalLiveAgent`
@@ -224,6 +235,7 @@ extension AppState {
         // Every hang-up passes here, saved or not, so the bot goes with the
         // call even when no recording ran (issue 2768).
         liveCallSpeaker = nil
+        liveCallBot = nil
         guard let ended = liveCallProfile else { return }
         liveCallProfile = nil
         guard !Self.profilesMatch(ended, activeProfile) else { return }

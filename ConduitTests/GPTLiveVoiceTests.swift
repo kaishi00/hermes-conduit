@@ -2650,6 +2650,16 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(appState.liveCallSpeaker)
         XCTAssertEqual(appState.callSpeakerVoicePreferences.gptLiveVoice, "ember")
 
+        // The fallback is for that start only: Try again asks the bot first
+        // (#2776's review).
+        var retried: [String] = []
+        _ = try await appState.availabilityAsCallSpeaker({ $0 }) {
+            retried.append(appState.voiceCallSpeakerProfile)
+            return true
+        }
+        XCTAssertEqual(retried, ["furina"])
+        XCTAssertEqual(appState.liveCallSpeaker, "furina")
+
         // A workspace chat's call speaks as the workspace, and the speaker
         // goes with the call's recording.
         appState.voiceBackgroundJobSupervisor.attachLiveThread(
