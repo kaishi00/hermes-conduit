@@ -15,13 +15,24 @@ import XCTest
 final class PulseFeedTests: XCTestCase {
     /// A visited Pulse tab kept mounted behind another tab isn't on screen
     /// (issue 2515). The polling and card marking that key on this aren't
-    /// tested at the view level.
+    /// tested at the view level; the visit rule they share is, below.
     func testAPulsePageInAHiddenTabIsNotVisible() {
         var shell = V2ShellContext()
         XCTAssertTrue(V2PulsePage.isVisible(shown: true, in: shell))
         XCTAssertFalse(V2PulsePage.isVisible(shown: false, in: shell), "a chat pushed over it")
         shell.isTabActive = false
         XCTAssertFalse(V2PulsePage.isVisible(shown: true, in: shell), "another tab selected over it")
+    }
+
+    /// A card action's reload that starts after the page hid belongs to the
+    /// visit of the tap, so it marks nothing seen (issue 2686).
+    func testAReadMarksSeenOnlyInTheVisitItBelongsTo() {
+        let tapped = UUID()
+        XCTAssertTrue(V2PulsePage.isOnScreen(shown: true, sceneActive: true, visit: tapped, current: tapped))
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: true, sceneActive: true, visit: tapped, current: UUID()),
+                       "another tab selected, or the app backgrounded, before the reload began")
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: true, sceneActive: false, visit: tapped, current: tapped), "off screen")
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: false, sceneActive: true, visit: tapped, current: tapped), "a chat pushed over it")
     }
 
     private func appState() throws -> AppState {

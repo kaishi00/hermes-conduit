@@ -140,6 +140,22 @@ struct V2PulsePage: View {
     static func isVisible(shown: Bool, in shell: V2ShellContext) -> Bool {
         shown && shell.isTabActive
     }
+
+    /// Still on screen in `visit`, the visit a tap or read began in: what a
+    /// read marks seen, highlights or opens, and an action's Undo, wait on
+    /// this (issue 2686). An action's task holds a copy of the view whose
+    /// environment (`scenePhase`, `shell`) froze at the tap, so this reads
+    /// only live sources: `isShown` and `visit` are state, the scene is
+    /// AppState's. Another tab selected or the app backgrounded starts a
+    /// new visit, so a read begun before either marks nothing, even one
+    /// that only starts after it.
+    private func isOnScreen(in visit: UUID) -> Bool {
+        Self.isOnScreen(shown: isShown, sceneActive: appState.isSceneActive, visit: visit, current: self.visit)
+    }
+
+    static func isOnScreen(shown: Bool, sceneActive: Bool, visit: UUID, current: UUID) -> Bool {
+        shown && sceneActive && visit == current
+    }
     @ObservedObject var appLanguage = AppLanguageStore.shared
 
     @State private var page: PulseFeedPage?
@@ -226,6 +242,9 @@ struct V2PulsePage: View {
                                   served: appState.notifierPlugin.reports(PulseClient.feedCapability),
                                   available: appState.showsPulseScreen)) {
             guard isVisible, scenePhase == .active else { return }
+            // This task ends with the visit (its key), so the visit it
+            // starts in is the one each of its reads belongs to.
+            let visit = self.visit
             // A card asked for while the tab was hidden opens on the cards
             // the page already has, without waiting on a read that may fail.
             // One the page doesn't have yet waits for the read that brings it.
@@ -236,7 +255,7 @@ struct V2PulsePage: View {
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
             while !Task.isCancelled {
-                await load()
+                await load(in: visit)
                 // Hidden or replaced meanwhile: the other dashboards' reads
                 // wait for the page to show again.
                 guard !Task.isCancelled else { break }
@@ -354,7 +373,8 @@ struct V2PulsePage: View {
         .sheet(isPresented: $showsLearned) {
             PulseLearnedSheet {
                 learnedNote = nil  // it may name a lesson just undone
-                Task { await load() }
+                let visit = self.visit
+                Task { await load(in: visit) }
             }
             .environmentObject(appState)
         }
@@ -362,8 +382,9 @@ struct V2PulsePage: View {
             PulseLeftOutSheet { card in
                 // It shows as new, at the card, once the sheet is down.
                 newCards?.insert(card)
+                let visit = self.visit
                 Task {
-                    await load()
+                    await load(in: visit)
                     focus(PulseOpenRequest(card: card))
                 }
             }
@@ -429,7 +450,10 @@ struct V2PulsePage: View {
             } description: {
                 Text(verbatim: loadError)
             } actions: {
-                Button(AppLocalization.string("Try again")) { Task { await load() } }
+                Button(AppLocalization.string("Try again")) {
+                    let visit = self.visit
+                    Task { await load(in: visit) }
+                }
             }
         } else {
             ProgressView()
@@ -945,7 +969,7 @@ struct V2PulsePage: View {
     private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil, visit: UUID) {
         // The page was left before the plugin answered: no bar comes back
         // later, in this visit or the next.
-        guard isVisible, visit == self.visit else { return }
+        guard isOnScreen(in: visit) else { return }
         var message = AppLocalization.string("Marked done", table: .pulse)
         if action == .dismissed {
             message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.", table: .pulse)
@@ -1758,28 +1782,28 @@ struct V2PulsePage: View {
 
     // MARK: Actions
 
-    private func load() async {
+    /// `visit` is the one the read belongs to, taken where the tap or the
+    /// page's task began, never here: a card action's reload starts only
+    /// once the plugin answers, perhaps after the page hid, and a visit
+    /// read then would be the new one (issue 2686). A read that lands
+    /// after its visit ended marks nothing seen.
+    private func load(in visit: UUID) async {
         let dashboard = appState.activeDashboardID
-        // The visit the read began in: a retry's read that lands in a later
-        // visit, or after the page hid (which ends the visit), marks nothing
-        // seen. `visit` is state, so it reads the live value even from a
-        // retry's task holding an old copy of the view.
-        let visit = self.visit
         do {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
-            if newCards == nil, isVisible, scenePhase == .active, visit == self.visit {
+            if newCards == nil, isOnScreen(in: visit) {
                 newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
             }
             loadError = nil
             errorMessage = nil
             learnedNote = nil
             appState.applyPulseFeed(loaded)
-            if let request = appState.pulseOpenRequest, isVisible { focus(request) }
-            // Backgrounded meanwhile (a retry or reload outside the page's
-            // task isn't cancelled by that): nothing was seen.
-            if !Task.isCancelled, isVisible, scenePhase == .active, visit == self.visit, loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
+            if let request = appState.pulseOpenRequest, isOnScreen(in: visit) { focus(request) }
+            // Hidden or backgrounded meanwhile (a card action's reload isn't
+            // cancelled by that): nothing was seen.
+            if !Task.isCancelled, isOnScreen(in: visit), loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
                appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
@@ -1841,6 +1865,7 @@ struct V2PulsePage: View {
         quieting = true
         Haptics.light()
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         let client = self.client
         Task {
             defer { quieting = false }
@@ -1849,7 +1874,7 @@ struct V2PulsePage: View {
                 _ = try await client.update(["quiet_until": until])
                 guard appState.activeDashboardID == dashboard else { return }
                 Haptics.success()
-                await load()
+                await load(in: visit)
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
@@ -1870,7 +1895,7 @@ struct V2PulsePage: View {
             do {
                 let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
                 guard appState.activeDashboardID == dashboard else { return }
-                guard answer.changed else { return await load() }
+                guard answer.changed else { return await load(in: visit) }
                 withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = dismissed ? Date() : nil
@@ -1908,7 +1933,7 @@ struct V2PulsePage: View {
                 guard appState.activeDashboardID == dashboard else { return }
                 // The plugin had nothing to change (the card or its item is
                 // gone): show what it has instead.
-                guard changed else { return await load() }
+                guard changed else { return await load(in: visit) }
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].doneAt = done ? Date() : nil
                     page?.cards[index].doneBy = done ? "user" : ""
@@ -1946,6 +1971,7 @@ struct V2PulsePage: View {
         finishingCards.insert(card.id)
         keptCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         // The sharing the tap was made in: turned off before the answer
         // comes, the tap applies nothing here.
         let sharing = appState.phoneSync.sharingSession
@@ -1962,7 +1988,7 @@ struct V2PulsePage: View {
                 }
                 let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing)
                 guard appState.activeDashboardID == dashboard else { return }
-                await load()
+                await load(in: visit)
                 guard appState.activeDashboardID == dashboard,
                       let settled = page?.cards.first(where: { $0.id == card.id })?.proposal else { return }
                 if !settled.isInFlight {
@@ -1981,7 +2007,7 @@ struct V2PulsePage: View {
                 guard appState.activeDashboardID == dashboard else { return }
                 // Where it stands now: added from another device, expired, …
                 // Loaded first: a load clears the page's error.
-                await load()
+                await load(in: visit)
                 guard appState.activeDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
@@ -1994,6 +2020,7 @@ struct V2PulsePage: View {
         guard let proposal = card.proposal else { return }
         finishingCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
             do {
@@ -2011,7 +2038,7 @@ struct V2PulsePage: View {
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 // Loaded first: a load clears the page's error.
-                await load()
+                await load(in: visit)
                 guard appState.activeDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
