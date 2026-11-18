@@ -745,8 +745,9 @@ extension NotificationE2ETests {
         defer { try? FileManager.default.removeItem(at: folder) }
         let engine = LocationSyncEngine(store: LocationSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                         keys: LocationKeyStore.memory())
+        // Not the App Group's queue (#2765's review).
         let controller = LocationSharingController(engine: engine, config: LocationFixtures.config(background: true),
-                                                   unsent: unsent, dropMarker: .memory())
+                                                   unsent: unsent, writeStoredUnsent: { _ in true }, dropMarker: .memory())
         XCTAssertTrue(controller.hasUnsent)
 
         controller.dropUnsent(boundTo: UUID())

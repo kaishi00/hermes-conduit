@@ -433,7 +433,8 @@ extension AppState {
         let listed = rowOfChat(openAs: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
-        let ownIDs = listed.map { row in Set(row.nestingIDs).subtracting(idsOfOtherChats(than: row)) }
+        let others = listed.map { idsOfOtherChats(than: $0) } ?? []
+        let ownIDs = listed.map { Set($0.nestingIDs).subtracting(others) }
         // The chat the screen's id stands for in the identity index is
         // this one: kept, so a later rebind of one of its ids to another
         // chat shows as one (issue 2603). Not when the index has already
@@ -442,7 +443,6 @@ extension AppState {
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         // What the caller passed, less any id another listed row owns or
         // carries too, so a borrowed or shared id never reaches this copy.
-        let others = listed.map { idsOfOtherChats(than: $0) } ?? []
         let chat = BackgroundChat(
             sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
