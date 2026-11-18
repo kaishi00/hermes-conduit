@@ -1542,8 +1542,14 @@ final class PushNotificationService: ObservableObject {
     ) -> Bool {
         guard let context, body["answer"] != nil else { return false }
         guard let records else { return true }
+        let gatewayID = body["gateway_id"] ?? context.gatewayID
+        // An encrypted pairing's answer never goes unsealed: one whose key
+        // came after the card was drawn (no route kept for it) is refused too.
+        if NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) != nil {
+            return true
+        }
         return AppState.needsYouCardMustSeal(
-            gatewayID: body["gateway_id"] ?? context.gatewayID,
+            gatewayID: gatewayID,
             dashboardID: context.dashboardID,
             profile: context.profile,
             installationID: installationID,

@@ -89,6 +89,12 @@ extension ChatOnScreenTests {
         XCTAssertTrue(refused(context, nil), "keys that can't be read refuse")
         XCTAssertFalse(refused(context, []), "a plaintext pairing sends")
         XCTAssertFalse(refused(nil, records), "a card with no context (a push's) sends as before")
+        // A restored card whose pairing got its key after the draw: no
+        // route was kept, so the body names no gateway; still refused.
+        let keyed = PushNotificationService.RowCardSealContext(gatewayID: "gw-atlas", dashboardID: dashboard, profile: "Atlas")
+        XCTAssertTrue(PushNotificationService.rowCardAnswerRefused(context: keyed, body: ["answer": "staging"],
+                                                                   installationID: "inst", records: records),
+                      "an encrypted pairing's answer never goes unsealed")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.

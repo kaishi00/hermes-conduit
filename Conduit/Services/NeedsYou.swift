@@ -251,7 +251,7 @@ final class NeedsYouStore: ObservableObject {
         // Another dashboard's banner for a wait this read lists as open
         // here: one Hermes saved twice, its room already on screen.
         if let banner, banner.dashboardID != nil,
-           read.contains(where: { $0.hostKey == banner.hostKey && isOpenChat($0) }) {
+           read.contains(where: { $0.waitID == banner.waitID && AppState.profilesMatch($0.profile, banner.profile) && isOpenChat($0) }) {
             self.banner = nil
         }
         // A wait another combined dashboard listed first (one Hermes saved
