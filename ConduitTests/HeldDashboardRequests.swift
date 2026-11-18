@@ -98,6 +98,26 @@ final class HeldDashboardRequests {
         try await answer(json, status: status, at: place, file: file, line: line)
     }
 
+    /// Answers the oldest request still waiting whose query holds
+    /// `fragment`, once one is, leaving any other request waiting.
+    func answer(
+        _ json: Any,
+        toQueryContaining fragment: String,
+        status: Int = 200,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        func matches(_ url: URL) -> Bool { url.query?.contains(fragment) ?? false }
+        for _ in 0..<1_000 where !waiting.contains(where: { matches($0.url) }) {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        guard let place = waiting.firstIndex(where: { matches($0.url) }) else {
+            XCTFail("no request with \(fragment) is waiting for an answer", file: file, line: line)
+            return
+        }
+        try await answer(json, status: status, at: place, file: file, line: line)
+    }
+
     /// Fails every request still waiting, so nothing is left suspended.
     func releaseAll() {
         let held = waiting

@@ -515,6 +515,7 @@ extension AppState {
         do {
             let loadedSessions: [SessionSummary]
             var olderPagesDeferred = false
+            var dashboardLoad: ProfileCatalogLoad?
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
@@ -527,6 +528,7 @@ extension AppState {
                 )
                 loadedSessions = catalogLoad.sessions
                 olderPagesDeferred = catalogLoad.olderPagesDeferred
+                dashboardLoad = catalogLoad
             } else {
                 return false
             }
@@ -538,7 +540,10 @@ extension AppState {
             // A read that started later already listed what it saw: this
             // older answer is no news, and the list it would put back is
             // older than the one shown.
-            guard claimSessionListListing(readTicket) else { return true }
+            guard claimSessionListListing(readTicket) else {
+                if let dashboardLoad { relistCachedCron(after: dashboardLoad, profile: profile) }
+                return true
+            }
             let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
             // The newest page alone (a pull to refresh, whose older pages
             // are read right after) keeps the older rows already listed
@@ -549,7 +554,12 @@ extension AppState {
                 [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions + olderListed
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
-            let listedCron = allSessions.filter { $0.source == .cron }
+            let listedCron = cronRowsToList(
+                allSessions.filter { $0.source == .cron },
+                keeping: [retainedActiveTurn, awaitingListing].compactMap { $0 },
+                profile: profile,
+                fromCache: dashboardLoad?.cronFromCache ?? false
+            )
             // A read that changed the list keeps the list's poll quick. One
             // that lists the same rows for the same scope again (a change
             // event's read, every few seconds while another device works)
