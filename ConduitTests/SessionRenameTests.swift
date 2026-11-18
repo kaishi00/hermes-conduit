@@ -922,8 +922,8 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.sessions.map(\.id), ["created-stored-2"], "the lost chat's row goes")
         // A draft typed in the lost chat is the fresh chat's (the composer
         // moves it on the switch, as from New Chat to the chat it made).
-        let lostDraft = ComposerBar.composerDraftKey(for: "created-runtime-1", profile: "default")
-        let freshDraft = ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default")
+        let lostDraft = ComposerBar.composerDraftKey(for: "created-runtime-1", profile: "default", dashboard: appState.activeDashboardID)
+        let freshDraft = ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default", dashboard: appState.activeDashboardID)
         XCTAssertTrue(appState.composerDraftKeysAreSameChat(lostDraft, freshDraft))
         XCTAssertTrue(appState.composerDraftKeysAreSameChat(freshDraft, lostDraft))
     }
@@ -1037,7 +1037,7 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertEqual(appState.activeSessionId, "created-runtime-2")
         XCTAssertEqual(appState.pendingScreenshots.map(\.sessionID), ["created-runtime-2"])
         XCTAssertEqual(appState.pendingScreenshots.map(\.attachment), [shot])
-        XCTAssertEqual(appState.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default"))
+        XCTAssertEqual(appState.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "created-runtime-2", profile: "default", dashboard: appState.activeDashboardID))
         XCTAssertEqual(appState.composerPrefillText, "What is on my screen?")
         XCTAssertEqual(appState.composerFocusRequest?.sessionID, "created-runtime-2")
         // The waiting message is the fresh chat's: still waiting on it, or

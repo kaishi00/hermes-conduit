@@ -161,8 +161,9 @@ struct ComposerBar: View {
         ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: sizeCategory, from: columnText))
     }
 
-    static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
+    static func composerDraftKey(for sessionID: String?, profile: String, dashboard: UUID?) -> ComposerDraftKey {
         ComposerDraftKey(
+            dashboard: dashboard,
             profile: profile,
             sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID
         )
@@ -196,7 +197,7 @@ struct ComposerBar: View {
         _ rhs: ComposerDraftKey,
         identity: ChatScrollSessionIdentity
     ) -> Bool {
-        guard lhs.profile == rhs.profile else { return false }
+        guard lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
         if lhs == rhs { return true }
         guard !lhs.isNewConversation, !rhs.isNewConversation else { return false }
         return identity.areEquivalent(lhs.sessionID, rhs.sessionID)
@@ -1997,7 +1998,7 @@ struct ComposerBar: View {
     }
 
     private func restoreRequest(_ request: ComposerRestoreRequest, belongsTo key: ComposerDraftKey) -> Bool {
-        guard request.key.profile == key.profile else { return false }
+        guard request.key.dashboard == key.dashboard, request.key.profile == key.profile else { return false }
         return appState.composerDraftKeysAreSameChat(request.key, key)
     }
 
@@ -2540,7 +2541,7 @@ struct ComposerBar: View {
     }
 
     private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
-        Self.composerDraftKey(for: sessionID, profile: appState.activeProfile)
+        Self.composerDraftKey(for: sessionID, profile: appState.activeProfile, dashboard: appState.activeDashboardID)
     }
 
     private var asyncAttachmentContext: AsyncAttachmentContext {

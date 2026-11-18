@@ -773,10 +773,13 @@ extension AppState {
         // the in-memory bot-chat profile registry all describe the outgoing
         // gateway. The next connection re-probes them before it decides which
         // conversation this workspace was in.
-        invalidateBotModeState()
-        // Drafts are keyed by (profile, session id) only: they must not
-        // leak into another server whose strings collide.
-        composerDraftStore.removeAll()
+        // Drafts, a room's too, are kept by dashboard, so a dashboard's wait
+        // for its return, as its chat does: opening another combined
+        // dashboard's bot is a switch (issue 2702). A server with no
+        // dashboard has no key of its own, so its strings could collide:
+        // those clear.
+        invalidateBotModeState(keepingRoomDrafts: dashboardID != nil)
+        if dashboardID == nil { composerDraftStore.removeAll() }
         return true
     }
 }

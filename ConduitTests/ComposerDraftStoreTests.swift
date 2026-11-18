@@ -20,8 +20,8 @@ final class ComposerDraftStoreTests: XCTestCase {
     }
 
     func testPrefillForANewChatWaitsForThatChatsDraft() {
-        let leaving = ComposerBar.composerDraftKey(for: "open-chat", profile: "default")
-        let opened = ComposerBar.composerDraftKey(for: "new-chat", profile: "default")
+        let leaving = ComposerBar.composerDraftKey(for: "open-chat", profile: "default", dashboard: nil)
+        let opened = ComposerBar.composerDraftKey(for: "new-chat", profile: "default", dashboard: nil)
         let identity = ChatScrollSessionIdentity(
             profile: "default",
             canonicalSessionID: "new-chat",
@@ -36,7 +36,7 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertTrue(ComposerBar.shouldApplyPrefill(for: opened, loaded: opened, identity: identity))
         XCTAssertTrue(
             ComposerBar.shouldApplyPrefill(
-                for: ComposerBar.composerDraftKey(for: "new-chat-runtime", profile: "default"),
+                for: ComposerBar.composerDraftKey(for: "new-chat-runtime", profile: "default", dashboard: nil),
                 loaded: opened,
                 identity: identity
             ),
@@ -47,7 +47,7 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertFalse(
             ComposerBar.shouldApplyPrefill(
                 for: opened,
-                loaded: ComposerBar.composerDraftKey(for: "new-chat", profile: "work"),
+                loaded: ComposerBar.composerDraftKey(for: "new-chat", profile: "work", dashboard: nil),
                 identity: identity
             ),
             "Another profile's chat with the same id"
@@ -100,7 +100,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
         XCTAssertEqual(
             appState.composerPrefillDraftKey,
-            ComposerBar.composerDraftKey(for: "new-chat", profile: appState.activeProfile)
+            ComposerBar.composerDraftKey(for: "new-chat", profile: appState.activeProfile, dashboard: appState.activeDashboardID)
         )
         appState.consumeComposerPrefill(UUID())
         XCTAssertNotNil(appState.composerPrefillDraftKey, "An older prefill's token doesn't take a newer one")
@@ -111,7 +111,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testAFailedSubmissionJoinsWhatWasTypedSinceInsteadOfBeingLost() {
         let store = ComposerDraftStore(capacity: 12)
-        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
         let reply = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
         let submittedPhoto = Attachment(
             id: "submitted-attachment",
@@ -143,7 +143,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testAFailedSubmissionComesBackWhole() {
         let store = ComposerDraftStore(capacity: 12)
-        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
         let failedSubmission = ComposerDraft(text: "old submitted draft", attachments: [])
 
         store.restoreFailedSubmission(failedSubmission, for: key)
@@ -153,7 +153,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testSuccessfulSubmissionRemovesOnlyUnchangedSubmittedDraft() {
         let store = ComposerDraftStore(capacity: 12)
-        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
         let submittedDraft = ComposerDraft(text: "submitted draft", attachments: [
             Attachment(
                 id: "submitted-attachment",
@@ -174,7 +174,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testSuccessfulSubmissionDoesNotDeleteNewerSavedDraftForOriginalKey() {
         let store = ComposerDraftStore(capacity: 12)
-        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
         let submittedDraft = ComposerDraft(text: "submitted draft", attachments: [
             Attachment(
                 id: "submitted-attachment",
@@ -250,8 +250,8 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testPhotosPickerCompletionRequiresSameEditorAndDraftKey() {
         let editorIdentity = UUID()
-        let originKey = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let destinationKey = ComposerBar.composerDraftKey(for: "session-b", profile: "default")
+        let originKey = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
+        let destinationKey = ComposerBar.composerDraftKey(for: "session-b", profile: "default", dashboard: nil)
         let origin = ComposerBar.AsyncAttachmentContext(
             editorIdentity: editorIdentity,
             draftKey: originKey,
@@ -294,7 +294,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testLateAttachmentCompletionIsRejectedAfterSameSessionSubmission() {
         let editorIdentity = UUID()
-        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
+        let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
         let openedBeforeSubmission = ComposerBar.photoImportContext(
             editorIdentity: editorIdentity,
             draftKey: key,
@@ -314,8 +314,8 @@ final class ComposerDraftStoreTests: XCTestCase {
     func testPhotosPickerCompletionUsesContextCapturedWhenPickerOpened() {
         let editorA = UUID()
         let editorB = UUID()
-        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default")
+        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
+        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default", dashboard: nil)
         let openedInA = ComposerBar.photoImportContext(
             editorIdentity: editorA,
             draftKey: sessionA,
@@ -341,8 +341,8 @@ final class ComposerDraftStoreTests: XCTestCase {
     }
 
     func testStalePhotosPickerCompletionDoesNotClearNewerPickerContext() {
-        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default")
+        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
+        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default", dashboard: nil)
         let openedInA = ComposerBar.photoImportContext(
             editorIdentity: UUID(),
             draftKey: sessionA,
@@ -374,8 +374,8 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testFileImporterCompletionRequiresSameEditorAndDraftKey() {
         let editorIdentity = UUID()
-        let originKey = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let sameSessionOtherProfileKey = ComposerBar.composerDraftKey(for: "session-a", profile: "work")
+        let originKey = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
+        let sameSessionOtherProfileKey = ComposerBar.composerDraftKey(for: "session-a", profile: "work", dashboard: nil)
         let origin = ComposerBar.AsyncAttachmentContext(
             editorIdentity: editorIdentity,
             draftKey: originKey,
@@ -402,8 +402,8 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testSessionHandoffRestoresIndependentDraftTextAndAttachments() {
         let store = ComposerDraftStore(capacity: 12)
-        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default")
-        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default")
+        let sessionA = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)
+        let sessionB = ComposerBar.composerDraftKey(for: "session-b", profile: "default", dashboard: nil)
         let attachmentA = Attachment(
             id: "attachment-a",
             name: "a.png",
@@ -432,19 +432,19 @@ final class ComposerDraftStoreTests: XCTestCase {
     }
 
     func testProfileSwitchUsesSeparateDraftKeyForSameSessionID() {
-        let defaultKey = ComposerBar.composerDraftKey(for: "same-session", profile: "default")
-        let workKey = ComposerBar.composerDraftKey(for: "same-session", profile: "work")
+        let defaultKey = ComposerBar.composerDraftKey(for: "same-session", profile: "default", dashboard: nil)
+        let workKey = ComposerBar.composerDraftKey(for: "same-session", profile: "work", dashboard: nil)
 
-        XCTAssertEqual(defaultKey, ComposerDraftKey(profile: "default", sessionID: "same-session"))
-        XCTAssertEqual(workKey, ComposerDraftKey(profile: "work", sessionID: "same-session"))
+        XCTAssertEqual(defaultKey, ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "same-session"))
+        XCTAssertEqual(workKey, ComposerDraftKey(dashboard: nil, profile: "work", sessionID: "same-session"))
         XCTAssertNotEqual(defaultKey, workKey)
     }
 
     func testDraftsAreIsolatedByProfileAndSession() {
         let store = ComposerDraftStore(capacity: 12)
-        let first = ComposerDraftKey(profile: "default", sessionID: "one")
-        let second = ComposerDraftKey(profile: "default", sessionID: "two")
-        let otherProfile = ComposerDraftKey(profile: "work", sessionID: "one")
+        let first = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")
+        let second = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "two")
+        let otherProfile = ComposerDraftKey(dashboard: nil, profile: "work", sessionID: "one")
         let draft = ComposerDraft(text: "draft one", attachments: [])
 
         store.save(draft, for: first)
@@ -456,7 +456,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testSavingEmptyDraftRemovesTheBucket() {
         let store = ComposerDraftStore()
-        let key = ComposerDraftKey(profile: "default", sessionID: "one")
+        let key = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")
         store.save(ComposerDraft(text: "text", attachments: []), for: key)
         store.save(.empty, for: key)
 
@@ -465,7 +465,7 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testClosingAChatKeepsTheDraftInTheFieldUnlessTheStoreWasCleared() {
         let store = ComposerDraftStore()
-        let key = ComposerDraftKey(profile: "default", sessionID: "one")
+        let key = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")
         let loadedClearCount = store.clearCount
 
         // Back from a chat: what's in the field is kept under its draft.
@@ -501,8 +501,8 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testStoreEvictsTheOldestBucketWhenCapacityIsExceeded() {
         let store = ComposerDraftStore(capacity: 1)
-        let first = ComposerDraftKey(profile: "default", sessionID: "one")
-        let second = ComposerDraftKey(profile: "default", sessionID: "two")
+        let first = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")
+        let second = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "two")
         store.save(ComposerDraft(text: "one", attachments: []), for: first)
         store.save(ComposerDraft(text: "two", attachments: []), for: second)
 
@@ -514,17 +514,17 @@ final class ComposerDraftStoreTests: XCTestCase {
         let store = ComposerDraftStore(capacity: 2)
 
         for index in 0..<5 {
-            let key = ComposerDraftKey(profile: "default", sessionID: "session-\(index)")
+            let key = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "session-\(index)")
             store.save(ComposerDraft(text: "draft \(index)", attachments: []), for: key)
         }
 
         XCTAssertLessThanOrEqual(generationMetadataCount(in: store), 2)
 
-        store.save(.empty, for: ComposerDraftKey(profile: "default", sessionID: "session-4"))
+        store.save(.empty, for: ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "session-4"))
         XCTAssertLessThanOrEqual(generationMetadataCount(in: store), 1)
 
         for index in 0..<5 {
-            let key = ComposerDraftKey(profile: "default", sessionID: "empty-\(index)")
+            let key = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "empty-\(index)")
             store.save(.empty, for: key)
         }
 
@@ -536,8 +536,8 @@ final class ComposerDraftStoreTests: XCTestCase {
 
     func testEvictedGenerationBucketDoesNotDeleteNewerDraft() {
         let store = ComposerDraftStore(capacity: 1)
-        let submittedKey = ComposerDraftKey(profile: "default", sessionID: "submitted")
-        let otherKey = ComposerDraftKey(profile: "default", sessionID: "other")
+        let submittedKey = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "submitted")
+        let otherKey = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "other")
         let submittedDraft = ComposerDraft(text: "submitted", attachments: [])
         let newerDraft = ComposerDraft(text: "newer", attachments: [])
 

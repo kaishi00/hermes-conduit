@@ -426,7 +426,7 @@ final class AppLanguageTests: XCTestCase {
     /// @State that owned the store).
     func testLanguageSwitchSurvivesComposerDraft() {
         let store = ComposerDraftStore()
-        let key = ComposerDraftKey(profile: "default",
+        let key = ComposerDraftKey(dashboard: nil, profile: "default",
                                    sessionID: ComposerDraftKey.newConversationSessionID)
         let draft = ComposerDraft(text: "unsent draft that must survive", attachments: [])
         store.save(draft, for: key)

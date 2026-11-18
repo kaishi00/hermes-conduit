@@ -881,7 +881,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.activeSessionId, "fresh")
         XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testDoItsCallCheckGoesByTheProfilePulseRunsIn() throws {
@@ -1019,7 +1019,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(creates, 0, "an item found in a chat starts no new one")
         XCTAssertEqual(state.pendingArtifactReveal?.messageID, 42)
         XCTAssertEqual(state.composerPrefillText, fact.actionMessage)
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testADueWithNoTimeIsDueByTheEndOfItsDay() throws {
@@ -1057,7 +1057,7 @@ final class PulseFeedTests: XCTestCase {
         let opened = await state.actOnPulseCard(asking, words: "Run the audit again")
         XCTAssertTrue(opened)
         XCTAssertEqual(state.composerPrefillText, "Run the audit again", "the ask's words, not the card's reminder")
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {

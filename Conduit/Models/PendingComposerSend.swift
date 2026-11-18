@@ -40,7 +40,7 @@ struct PendingComposerSend: Codable, Equatable, Identifiable {
     }
 
     var draftKey: ComposerDraftKey {
-        ComposerDraftKey(profile: profile, sessionID: draftSessionID)
+        ComposerDraftKey(dashboard: dashboardID, profile: profile, sessionID: draftSessionID)
     }
 
     var replyReference: ComposerReplyReference? {

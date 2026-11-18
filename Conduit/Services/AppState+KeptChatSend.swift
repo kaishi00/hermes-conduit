@@ -162,12 +162,12 @@ extension AppState {
         let stillKept = activeDashboardID == chat.dashboardID && profilesMatch(activeProfile, chat.profile)
             && keptChat(answering: target) != nil
         guard !stillKept,
-              // Signed out (or the server changed) since: the drafts were
-              // the outgoing account's, and so are these words.
+              // Signed out since: the drafts were the outgoing
+              // account's, and so are these words.
               composerDraftStore.clearCount == back.draftsClearCount else { return }
         returnFailedComposerSubmission(
             ComposerDraft(text: words, attachments: []),
-            key: ComposerBar.composerDraftKey(for: back.draftSessionID, profile: chat.profile),
+            key: ComposerBar.composerDraftKey(for: back.draftSessionID, profile: chat.profile, dashboard: chat.dashboardID),
             dashboardID: chat.dashboardID,
             title: chat.title,
             stoppedQuietly: true

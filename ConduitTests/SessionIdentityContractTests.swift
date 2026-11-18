@@ -484,8 +484,8 @@ final class SessionIdentityContractTests: XCTestCase {
             settledRevision: 1
         )
         XCTAssertTrue(ComposerBar.draftKeysAreEquivalent(
-            ComposerBar.composerDraftKey(for: "runtime-new", profile: profile),
-            ComposerBar.composerDraftKey(for: "stored-a", profile: profile),
+            ComposerBar.composerDraftKey(for: "runtime-new", profile: profile, dashboard: nil),
+            ComposerBar.composerDraftKey(for: "stored-a", profile: profile, dashboard: nil),
             identity: rotationIdentity
         ))
 
@@ -500,8 +500,8 @@ final class SessionIdentityContractTests: XCTestCase {
             settledRevision: 2
         )
         XCTAssertFalse(ComposerBar.draftKeysAreEquivalent(
-            ComposerBar.composerDraftKey(for: "runtime-x", profile: profile),
-            ComposerBar.composerDraftKey(for: "stored-a", profile: profile),
+            ComposerBar.composerDraftKey(for: "runtime-x", profile: profile, dashboard: nil),
+            ComposerBar.composerDraftKey(for: "stored-a", profile: profile, dashboard: nil),
             identity: reattributedIdentity
         ))
     }
@@ -515,8 +515,15 @@ final class SessionIdentityContractTests: XCTestCase {
             settledRevision: 1
         )
         XCTAssertFalse(ComposerBar.draftKeysAreEquivalent(
-            ComposerBar.composerDraftKey(for: "stored-a", profile: "default"),
-            ComposerBar.composerDraftKey(for: "stored-a", profile: "work"),
+            ComposerBar.composerDraftKey(for: "stored-a", profile: "default", dashboard: nil),
+            ComposerBar.composerDraftKey(for: "stored-a", profile: "work", dashboard: nil),
+            identity: identity
+        ))
+        // And dashboard-scoped: two dashboards share profile names and ids
+        // (issue 2702).
+        XCTAssertFalse(ComposerBar.draftKeysAreEquivalent(
+            ComposerBar.composerDraftKey(for: "stored-a", profile: "default", dashboard: UUID()),
+            ComposerBar.composerDraftKey(for: "stored-a", profile: "default", dashboard: UUID()),
             identity: identity
         ))
     }

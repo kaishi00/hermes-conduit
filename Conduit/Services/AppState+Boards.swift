@@ -108,8 +108,8 @@ extension AppState {
         if old == new { return true }
         guard let lhs = RichCardActionContext.parts(old), let rhs = RichCardActionContext.parts(new),
               lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
-        return composerDraftKeysAreSameChat(ComposerDraftKey(profile: lhs.profile, sessionID: lhs.sessionID),
-                                            ComposerDraftKey(profile: rhs.profile, sessionID: rhs.sessionID))
+        return composerDraftKeysAreSameChat(ComposerDraftKey(dashboard: activeDashboardID, profile: lhs.profile, sessionID: lhs.sessionID),
+                                            ComposerDraftKey(dashboard: activeDashboardID, profile: rhs.profile, sessionID: rhs.sessionID))
     }
 
     /// The bridge a chat's checklists go through, taken when each read or

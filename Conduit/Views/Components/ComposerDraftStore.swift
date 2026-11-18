@@ -13,11 +13,22 @@ struct ComposerDraft: Equatable {
     }
 }
 
+/// A draft's chat: its dashboard as well as its profile and id, since two
+/// dashboards can share profile names and ids. Drafts stay across a
+/// dashboard switch (issue 2702: opening another combined dashboard's bot
+/// switches dashboards).
 struct ComposerDraftKey: Hashable {
     static let newConversationSessionID = "new-conversation"
 
+    var dashboard: UUID?
     var profile: String
     var sessionID: String
+
+    init(dashboard: UUID?, profile: String, sessionID: String) {
+        self.dashboard = dashboard
+        self.profile = profile
+        self.sessionID = sessionID
+    }
 
     var isNewConversation: Bool {
         sessionID == Self.newConversationSessionID

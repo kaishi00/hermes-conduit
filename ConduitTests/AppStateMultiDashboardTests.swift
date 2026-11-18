@@ -287,6 +287,33 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
     }
 
+    func testEachDashboardKeepsItsDraftsAcrossASwitch() {
+        // Issue 2702: opening another combined dashboard's bot switches
+        // dashboards, and every unsent draft went with the switch. Drafts
+        // are the dashboard's own now: the same profile and id on the other
+        // dashboard is another draft.
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let onA = ComposerDraftKey(dashboard: a.id, profile: "default", sessionID: "stored-a")
+        let sameIDsOnB = ComposerDraftKey(dashboard: b.id, profile: "default", sessionID: "stored-a")
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        appState.composerDraftStore.save(ComposerDraft(text: "half a thought", attachments: []), for: onA)
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+        XCTAssertTrue(appState.composerDraftStore.draft(for: sameIDsOnB).isEmpty)
+        XCTAssertFalse(appState.composerDraftKeysAreSameChat(onA, sameIDsOnB))
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+
+        // A server with no dashboard has no key of its own: its strings
+        // could collide, so the drafts clear as before.
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://other.example.com", dashboardID: nil))
+        XCTAssertTrue(appState.composerDraftStore.draft(for: onA).isEmpty)
+    }
+
     func testEachDashboardKeepsTheChatYouLeftThereAcrossASwitch() {
         let a = dashboard("Mac", "https://mac.tailnet.ts.net")
         let b = dashboard("VPS", "https://hermes.example.com")

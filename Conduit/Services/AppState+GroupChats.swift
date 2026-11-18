@@ -375,7 +375,10 @@ extension AppState {
         return try await client.groupsDisband(roomID: roomID)
     }
 
-    func invalidateGroupChatState() {
+    /// `keepingDrafts`: a switch to another saved dashboard keeps each
+    /// room's unsent words and files, as chats keep theirs (issue 2702):
+    /// they're kept by dashboard and room, so nothing collides.
+    func invalidateGroupChatState(keepingDrafts: Bool = false) {
         groupChatPhase = .idle
         groupChatProbeRetry.succeeded()
         groupCapabilities = nil
@@ -410,9 +413,11 @@ extension AppState {
         // Parked sends and drafts belong to the outgoing identity.
         closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         parkedRoomOutboxes.removeAll()
-        groupRoomDrafts.removeAll()
         keptRoomReplays.removeAll()
-        dropRoomAttachments { _ in true }
+        if !keepingDrafts {
+            groupRoomDrafts.removeAll()
+            dropRoomAttachments { _ in true }
+        }
         // A send still awaiting its reply belongs to the outgoing identity;
         // its defer's removal is a no-op once the key is gone.
         inFlightRoomSendTokens.removeAll()
