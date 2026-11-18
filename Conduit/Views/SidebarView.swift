@@ -209,6 +209,9 @@ struct SessionList: View {
     @State private var showProjectCreator = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
+    /// Usage Details, presented from this view: the drawer is a sheet, so
+    /// the root view can't present another over it.
+    @State private var sessionPendingUsage: SessionSummary?
     @State private var selectedProject: ProjectSummary?
     @State private var projectPendingRename: ProjectSummary?
     @State private var projectPendingDeletion: ProjectSummary?
@@ -575,6 +578,12 @@ struct SessionList: View {
                 Task { await appState.renameSession(session, to: title) }
             }
         }
+        .sheet(item: $sessionPendingUsage) { session in
+            SessionUsageSheet(session: session)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
 
     }
 
@@ -924,7 +933,8 @@ struct SessionList: View {
                         nest: nest,
                         onRename: { sessionPendingRename = session },
                         onDelete: { sessionPendingDeletion = session },
-                        onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile(session)) }
+                        onReorderPinned: { pinnedOrderTarget = PinnedChatsOrderTarget(profile: appState.rowProfile(session)) },
+                        onUsageDetails: { sessionPendingUsage = session }
                     )
                 }
             }
@@ -1389,6 +1399,10 @@ struct SessionActionMenuItems: View {
     /// Opens Reorder pinned chats for a pinned row (issue 1354); nil where
     /// the row isn't in a Pinned section (a chat's title, a project page).
     var onReorderPinned: (() -> Void)? = nil
+    /// Opens Usage Details; nil opens it from the root view
+    /// (`sessionUsageTarget`). A list inside a sheet (the drawer, a project)
+    /// presents it itself, since the root can't present over that sheet.
+    var onUsageDetails: (() -> Void)? = nil
 
     var body: some View {
         Button {
@@ -1434,7 +1448,9 @@ struct SessionActionMenuItems: View {
         Button {
             Haptics.selection()
             // Next turn, as Rename: the sheet waits for the menu to close.
-            DispatchQueue.main.async { appState.sessionUsageTarget = session }
+            DispatchQueue.main.async {
+                if let onUsageDetails { onUsageDetails() } else { appState.sessionUsageTarget = session }
+            }
         } label: {
             Label(AppLocalization.string("Usage Details"), systemImage: "dollarsign.circle")
         }
@@ -1664,6 +1680,9 @@ private struct ProjectSessionsSheet: View {
     @State private var loadFailed = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
+    /// Usage Details, presented from this view: the drawer is a sheet, so
+    /// the root view can't present another over it.
+    @State private var sessionPendingUsage: SessionSummary?
 
     var body: some View {
         NavigationStack {
@@ -1741,7 +1760,8 @@ private struct ProjectSessionsSheet: View {
                                             excludingProjectID: project.id,
                                             onRename: { sessionPendingRename = session },
                                             onDelete: { sessionPendingDeletion = session },
-                                            onChanged: reloadDetail
+                                            onChanged: reloadDetail,
+                                            onUsageDetails: { sessionPendingUsage = session }
                                         )
                                     }
                                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -1830,6 +1850,12 @@ private struct ProjectSessionsSheet: View {
                     if await appState.renameSession(session, to: title) { reloadDetail() }
                 }
             }
+        }
+        .sheet(item: $sessionPendingUsage) { session in
+            SessionUsageSheet(session: session)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
         }
     }
 
