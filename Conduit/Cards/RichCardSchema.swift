@@ -72,6 +72,22 @@ struct RichCardSchema {
     // MARK: Normalizing
 
     /// The valid cards in `value`, normalized; invalid ones are dropped.
+    /// The cards a model sent, as the flat list the schema asks for: one
+    /// card on its own, `{"cards": [...]}`, or the list inside another list
+    /// (`[[{...}]]`), as the plugin's conduit_show reads them (notifier #876:
+    /// a smaller model retried a board for 35 minutes over its wrapping).
+    static func unwrappedCards(_ value: Any?) -> Any? {
+        if let card = value as? [String: Any] {
+            if card["type"] == nil, let cards = card["cards"] as? [Any] { return unwrappedCards(cards) }
+            return [card]
+        }
+        guard var list = value as? [Any] else { return value }
+        while list.contains(where: { $0 is [Any] }) {
+            list = list.flatMap { ($0 as? [Any]) ?? [$0] }
+        }
+        return list
+    }
+
     func normalizeCards(_ value: Any?) -> [[String: Any]] {
         guard let list = value as? [Any] else { return [] }
         var cards: [[String: Any]] = []
