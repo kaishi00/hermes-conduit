@@ -2690,9 +2690,17 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(stale)
         XCTAssertEqual(appState.liveCallSpeaker, "furina", "The newer call keeps its bot")
 
-        // A hang-up with no recording (saving off) still lets the bot go.
+        // A hang-up with no recording (saving off) still lets the bot go
+        // (#2776's review): through the mode's own close, not the helper.
         appState.callEndedOffItsProfile()
         XCTAssertNil(appState.liveCallSpeaker)
+        appState.setVoiceCallSavingEnabled(false)
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.voiceCallRecorder, "Saving off: no recording")
+        XCTAssertEqual(appState.liveCallSpeaker, "furina")
+        appState.closeGPTLiveConversation()
+        XCTAssertNil(appState.liveCallSpeaker)
+        XCTAssertNil(appState.liveCallBot)
     }
 
     /// A live call keeps its profile once another one is on screen

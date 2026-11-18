@@ -78,17 +78,20 @@ extension AppState {
         if liveCallSpeaker == nil, let bot = liveCallBot { liveCallSpeaker = bot }
         guard liveCallSpeaker != nil else { return try await check() }
         let start = liveCallSpeakerStart
+        let reason: String
         do {
             let status = try await check()
             if isAvailable(status) { return status }
-            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: the bot can't start this mode")
+            reason = "the bot can't start this mode"
         } catch is CancellationError {
             throw CancellationError()
         } catch {
-            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: \(LogRedaction.describing(error), privacy: .public)")
+            reason = LogRedaction.describing(error)
         }
-        // A newer call's start or a teardown changed the speaker meanwhile.
+        // A newer call's start or a teardown changed the speaker meanwhile:
+        // this check's answer isn't that call's, so nothing falls back.
         guard liveCallSpeakerStart == start, liveCallSpeaker != nil else { return try await check() }
+        callSpeakerLogger.notice("A bot's call falls back to the workspace for this start: \(reason, privacy: .public)")
         liveCallSpeaker = nil
         return try await check()
     }
