@@ -1615,6 +1615,72 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
     }
 
+    /// A strip chip whose profile its Hermes deleted since the last read
+    /// switches nothing, leaves the strip and its chats and waits go;
+    /// neither dashboard's All changes (issue 2646).
+    func testAStaleProfileChipOfAKeptDashboardSwitchesNothingAndLeavesTheStrip() async throws {
+        final class Lists { var profiles: [String] = ["default", "atlas"]; var fails = false; var reads = 0 }
+        let lists = Lists()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            if path == "/api/profiles" {
+                lists.reads += 1
+                if lists.fails { throw URLError(.timedOut) }
+                return ["profiles": lists.profiles]
+            }
+            guard path.contains("/api/profiles/sessions") else { return [:] }
+            let profile = path.contains("profile=atlas") ? "atlas" : "default"
+            return ["sessions": [
+                ["id": "\(profile)-1", "title": "T", "message_count": 3, "profile": profile, "last_active": 1_500],
+            ]]
+        }
+        await appState.readOtherCombinedDashboardsChats()
+        appState.combinedBotsHomeOrder = []
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas"),
+            CombinedBotsHomeOrder.key(vps.id, "default"),
+        ])
+        appState.needsYou.applyOther(
+            [NeedsYouItem(waitID: "w-atlas", profile: "atlas", kind: .approval, sessionIDs: ["atlas-1"])],
+            profile: "atlas", dashboardID: mac.id, isOpenChat: { _ in false }
+        )
+        XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.count, 1)
+        appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
+        appState.allProfilesChatsSettings[dashboard: mac.id].isOn = true
+
+        // Still listed, read anew at the tap though the last list is fresh.
+        let readsBefore = lists.reads
+        let listed = await appState.combinedProfileStillListed("Atlas", in: mac.id)
+        XCTAssertTrue(listed)
+        XCTAssertEqual(lists.reads, readsBefore + 1, "asked anew at the tap")
+        // No list to be had says nothing against the chip.
+        lists.fails = true
+        let unread = await appState.combinedProfileStillListed("atlas", in: mac.id)
+        XCTAssertTrue(unread)
+        lists.fails = false
+
+        // Deleted on Mac's Hermes since.
+        lists.profiles = ["default"]
+        let switched = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas")
+        XCTAssertFalse(switched)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "nothing switches")
+        XCTAssertNotEqual(appState.rememberedActiveProfile(for: mac.id), "atlas", "nor resumes there on it later")
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: mac.id].isOn, "its All stays on")
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: vps.id].isOn, "this one's too")
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(vps.id, "default"),
+        ], "the chip leaves the strip")
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["default-1"], "its chats leave All")
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "its waits leave Needs you")
+        appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
+        appState.allProfilesChatsSettings[dashboard: mac.id] = AllProfilesChatsSettings.Dashboard()
+    }
+
     /// Bots Home shows a kept combined dashboard's bots, read through its
     /// kept client, in the same grid as Bots Home's own, mixed in the
     /// group's order; a tap opens through that dashboard (all-live stage 4c).

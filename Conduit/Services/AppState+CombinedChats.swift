@@ -246,14 +246,54 @@ extension AppState {
     /// there through its kept connection, the strip staying as it was (the
     /// group's one order), its list no longer All. True once it's on screen;
     /// the caller then picks the profile as the strip does on one dashboard.
+    ///
+    /// A profile its Hermes no longer has (deleted or renamed there since
+    /// the strip's last read) switches nothing and leaves the strip; one
+    /// the switch's own profile list doesn't name leaves its All as it was
+    /// (issue 2646).
     func switchForCombinedProfile(in dashboardID: UUID, profile: String? = nil) async -> Bool {
         guard !refusesCombinedSwitchDuringCall() else { return false }
-        // The switch resumes on the picked profile, not first on the one
-        // it last used there (Eric, 2026-11-16).
-        if let profile { rememberActiveProfile(profile, for: dashboardID) }
+        if let profile {
+            guard await combinedProfileStillListed(profile, in: dashboardID) else { return false }
+            // The switch resumes on the picked profile, not first on the
+            // one it last used there (Eric, 2026-11-16).
+            rememberActiveProfile(profile, for: dashboardID)
+        }
         await switchDashboard(to: dashboardID)
         guard activeDashboardID == dashboardID else { return false }
+        // Its own list has the last word: the profile list read moves off a
+        // profile it doesn't name, and its All stays as it was.
+        if let profile, !profiles.isEmpty, !profiles.contains(where: { profilesMatch($0, profile) }) { return false }
         setAllProfilesChatsOn(false)
         return true
+    }
+
+    /// Whether another combined dashboard's Hermes still has a profile its
+    /// strip chip shows, asked anew through its kept connection at the tap.
+    /// One it no longer lists leaves the strip, its chats leave All and its
+    /// waits leave Needs you at once (issue 2646). With no kept connection,
+    /// or no list to be had, nothing speaks against the chip.
+    func combinedProfileStillListed(_ profile: String, in dashboardID: UUID) async -> Bool {
+        guard let runtime = keptDashboardRuntimes[dashboardID],
+              let listed = await keptDashboardProfileNames(dashboardID, runtime, fresh: true) else { return true }
+        guard !listed.contains(where: { profilesMatch($0, profile) }) else { return true }
+        // Let go, opened or out of the group while the read was out: the
+        // chip is gone with it.
+        guard keptDashboardRuntimes[dashboardID]?.bridge === runtime.bridge, activeDashboardID != dashboardID else {
+            return false
+        }
+        if let chats = combinedDashboardChats[dashboardID] {
+            // Seeded now, so a pass that read the old list before this
+            // can't bring the chip back.
+            combinedDashboardChats[dashboardID] = CombinedDashboardChats(
+                bridge: chats.bridge,
+                profiles: chats.profiles.filter { !profilesMatch($0, profile) },
+                sessions: chats.sessions.filter { !profilesMatch($0.profile ?? "", profile) },
+                at: chats.at,
+                seededAt: Date()
+            )
+        }
+        needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))
+        return false
     }
 }
