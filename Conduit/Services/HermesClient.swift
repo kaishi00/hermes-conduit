@@ -1675,6 +1675,10 @@ final class HermesClient: ObservableObject {
         pendingDisplaySudo.merge(predecessor.pendingDisplaySudo) { mine, _ in mine }
         approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
         clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
+        // A reply held while it could still be a silence marker goes on
+        // being held here, as its next delta arrives on this client.
+        silenceMarkerFilter = predecessor.silenceMarkerFilter
+        predecessor.silenceMarkerFilter.reset()
         isConnected = true
         hasDropped = false
         startKeepalive(for: socket)
@@ -6495,7 +6499,8 @@ enum MessageNormalizer {
             if rawRole == "assistant", role == .assistant, displayKind == nil,
                let commentary = obj["display_commentary"]?.arrayValue {
                 for (commentaryIndex, value) in commentary.enumerated() {
-                    guard let text = value.stringValue,
+                    // Commentary that is a silence marker leaves no row, as live.
+                    guard let text = value.stringValue.map(SilenceMarkers.shown),
                           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
                     messages.append(ChatMessage(
                         id: "\(id)-commentary-\(commentaryIndex)", role: .assistant,

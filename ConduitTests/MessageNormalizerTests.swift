@@ -3096,6 +3096,13 @@ final class MessageNormalizerTests: XCTestCase {
             .object(["id": .number(54), "role": .string("assistant"), "content": .string("Say [SILENT] when idle.")])
         ])
         XCTAssertEqual(loose.map(\.content), ["W2 is done.", "Say [SILENT] when idle."])
+
+        // Commentary that is a marker leaves no row, as it doesn't live.
+        let commentary = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(61), "role": .string("assistant"), "content": .string("Done."),
+                     "display_commentary": .array([.string("[SILENT]"), .string("Checking W2.")])])
+        ])
+        XCTAssertEqual(commentary.map(\.content), ["Checking W2.", "Done."])
     }
 
     func testHiddenUserRowIsDroppedEntirely() {

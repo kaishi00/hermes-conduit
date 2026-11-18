@@ -78,6 +78,28 @@ final class StreamEventParserTests: XCTestCase {
                        "|interim:Checking W2.")
     }
 
+    func testStrayPunctuationAheadOfAMarkerIsHeldToo() {
+        XCTAssertEqual(shown(deltas("*", "[SILENT]*") + [.messageComplete(sessionId: "s", messageId: nil, content: "", reasoning: nil)]),
+                       "|complete:")
+        XCTAssertEqual(shown(deltas("Done.\n\n*", "[SILENT]*") + [.messageComplete(sessionId: "s", messageId: nil, content: "", reasoning: nil)]),
+                       "Done.|complete:")
+        XCTAssertEqual(shown(deltas("**", "Note**: done.")), "**Note**: done.")
+    }
+
+    func testAHeldTailStreamsBeforeItsInterim() {
+        // Voice speaks an already streamed interim from its deltas.
+        XCTAssertEqual(shown(deltas("Checking W2.\nNO") + [
+            .messageInterim(sessionId: "s", text: "Checking W2.\nNO", alreadyStreamed: true)
+        ]), "Checking W2.\nNO|interim:Checking W2.\nNO")
+    }
+
+    func testALongReplyStillHoldsItsClosingMarker() {
+        let long = String(repeating: "A long line of a long reply. ", count: 40)
+        XCTAssertEqual(shown(deltas(long, "\n", "Second line, also long enough to pass a marker's length.", "\n[SIL", "ENT]")
+                             + [.messageComplete(sessionId: "s", messageId: nil, content: "", reasoning: nil)]),
+                       long + "\nSecond line, also long enough to pass a marker's length.|complete:")
+    }
+
     func testEachChatHoldsItsOwnStream() {
         let events: [StreamEvent] = [
             .messageDelta(sessionId: "a", text: "[SILENT"),

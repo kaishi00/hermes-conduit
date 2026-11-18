@@ -13,7 +13,7 @@ enum SilenceMarkers {
     ]
 
     /// Longer than any marker could be, even with stray punctuation.
-    private static let lengthCap = 64
+    static let lengthCap = 64
 
     /// Whether `text` is exactly a silence marker (`is_intentional_silence_response`).
     static func isMarker(_ text: String) -> Bool {
@@ -35,17 +35,23 @@ enum SilenceMarkers {
     }
 
     /// Whether streamed `text` could still become a marker (`is_partial_silence_marker`).
-    static func couldBecomeMarker(_ text: String) -> Bool {
-        candidates(text).contains { candidate in
+    /// `holdingPunctuation` also holds stray punctuation alone, which a
+    /// marker could still follow (`*`, then `[SILENT]*`): Hermes lets it go.
+    static func couldBecomeMarker(_ text: String, holdingPunctuation: Bool = false) -> Bool {
+        if holdingPunctuation, isPunctuationOnly(text) { return true }
+        return candidates(text).contains { candidate in
             !candidate.isEmpty && markers.contains { $0.hasPrefix(candidate) }
         }
     }
 
-    /// Whether a streamed reply's last line could still become a closing
-    /// marker (`ends_with_partial_silence_marker`).
-    static func endsWithPartialMarker(_ text: String) -> Bool {
-        let (head, tail) = splitTrailingLine(text)
-        return !trimmed(head).isEmpty && couldBecomeMarker(tail)
+    private static func isPunctuationOnly(_ text: String) -> Bool {
+        let stripped = trimmed(text)
+        let length = stripped.unicodeScalars.count
+        return length > 0 && length <= lengthCap && trimmed(strippingEdgePunctuation(stripped)).isEmpty
+    }
+
+    static func isBlank(_ scalar: Unicode.Scalar) -> Bool {
+        CharacterSet.whitespacesAndNewlines.contains(scalar)
     }
 
     // MARK: - Hermes' helpers
@@ -92,7 +98,7 @@ enum SilenceMarkers {
 
     /// `(head, last line)` with trailing blank space ignored; head is "" for
     /// one line. Head is always a prefix of `text`.
-    static func splitTrailingLine(_ text: String) -> (head: String, tail: String) {
+    private static func splitTrailingLine(_ text: String) -> (head: String, tail: String) {
         let scalars = Array(trimmingTrailing(text).unicodeScalars)
         guard let newline = scalars.lastIndex(of: "\n") else {
             return ("", String(String.UnicodeScalarView(scalars)))
@@ -111,32 +117,90 @@ enum SilenceMarkers {
 /// 2700). Held here, a marker is never shown, spoken or counted, on any
 /// surface, and text that turns out not to be one arrives in full.
 struct SilenceMarkerStreamFilter {
+    /// One chat's reply as it streams. Only its end is read on each delta,
+    /// as far back as a marker could reach, so a long reply costs no more
+    /// per delta than a short one.
     private struct Hold {
         var buffer = ""
-        /// Scalars of `buffer` already passed on.
+        /// UTF-8 bytes of `buffer` already passed on.
         var sent = 0
+        /// Non-blank scalars in `buffer`, and where the first one starts.
+        var nonBlank = 0
+        var firstNonBlank: Int?
 
         mutating func feed(_ delta: String) -> String {
-            buffer += delta
-            if SilenceMarkers.couldBecomeMarker(buffer) { return "" }
-            if SilenceMarkers.endsWithPartialMarker(buffer) {
-                return release(upTo: SilenceMarkers.splitTrailingLine(buffer).head.unicodeScalars.count)
+            var offset = buffer.utf8.count
+            for scalar in delta.unicodeScalars {
+                if !SilenceMarkers.isBlank(scalar) {
+                    if firstNonBlank == nil { firstNonBlank = offset }
+                    nonBlank += 1
+                }
+                offset += UTF8.width(scalar)
             }
-            return release(upTo: buffer.unicodeScalars.count)
+            buffer += delta
+            if mayBeOneMarker, SilenceMarkers.couldBecomeMarker(buffer, holdingPunctuation: true) { return "" }
+            if let last = lastLine(), last.headIsText,
+               SilenceMarkers.couldBecomeMarker(last.tail, holdingPunctuation: true) {
+                return release(upTo: last.headEnd)
+            }
+            return release(upTo: buffer.utf8.count)
         }
 
         mutating func finish() -> String {
-            if SilenceMarkers.isMarker(buffer) { return "" }
-            return release(upTo: SilenceMarkers.strippingTrailingMarker(buffer).unicodeScalars.count)
+            if mayBeOneMarker, SilenceMarkers.isMarker(buffer) { return "" }
+            if let last = lastLine(), last.headIsText, SilenceMarkers.isMarker(last.tail) {
+                return release(upTo: last.headEnd)
+            }
+            return release(upTo: buffer.utf8.count)
+        }
+
+        /// Short enough, blank space aside, to be a marker on its own.
+        private var mayBeOneMarker: Bool { nonBlank <= SilenceMarkers.lengthCap }
+
+        /// The reply's last line (trailing blank space ignored), where the
+        /// text before it ends (its own trailing blank space left out), and
+        /// whether that text has words. Read from the end, and given up
+        /// once the line is longer than a marker could be: nil then, or for
+        /// a reply of one line.
+        private func lastLine() -> (tail: String, headEnd: Int, headIsText: Bool)? {
+            let scalars = buffer.unicodeScalars
+            var end = scalars.endIndex
+            while end > scalars.startIndex {
+                let before = scalars.index(before: end)
+                guard SilenceMarkers.isBlank(scalars[before]) else { break }
+                end = before
+            }
+            var cursor = end
+            var lineNonBlank = 0
+            while cursor > scalars.startIndex {
+                let before = scalars.index(before: cursor)
+                let scalar = scalars[before]
+                if scalar == "\n" {
+                    var headEnd = before
+                    while headEnd > scalars.startIndex {
+                        let prior = scalars.index(before: headEnd)
+                        guard SilenceMarkers.isBlank(scalars[prior]) else { break }
+                        headEnd = prior
+                    }
+                    let headEndOffset = buffer.utf8.distance(from: buffer.utf8.startIndex, to: headEnd)
+                    return (String(buffer[cursor..<end]), headEndOffset, (firstNonBlank ?? .max) < headEndOffset)
+                }
+                if !SilenceMarkers.isBlank(scalar) {
+                    lineNonBlank += 1
+                    if lineNonBlank > SilenceMarkers.lengthCap { return nil }
+                }
+                cursor = before
+            }
+            return nil
         }
 
         private mutating func release(upTo end: Int) -> String {
             guard end > sent else { return "" }
-            let scalars = buffer.unicodeScalars
-            let from = scalars.index(scalars.startIndex, offsetBy: sent)
-            let to = scalars.index(scalars.startIndex, offsetBy: end)
+            let utf8 = buffer.utf8
+            let from = utf8.index(utf8.startIndex, offsetBy: sent)
+            let to = utf8.index(utf8.startIndex, offsetBy: end)
             sent = end
-            return String(String.UnicodeScalarView(scalars[from..<to]))
+            return String(buffer[from..<to])
         }
     }
 
@@ -156,12 +220,16 @@ struct SilenceMarkerStreamFilter {
             holds[sessionId] = hold
             return shown.isEmpty ? [] : [.messageDelta(sessionId: sessionId, text: shown)]
         case .messageInterim(let sessionId, let text, let alreadyStreamed):
-            // The interim carries the segment's whole text: what was held
-            // of it isn't needed.
-            holds[sessionId] = nil
             let shown = SilenceMarkers.shown(text)
-            guard !SilenceMarkers.trimmed(shown).isEmpty else { return [] }
-            return [.messageInterim(sessionId: sessionId, text: shown, alreadyStreamed: alreadyStreamed)]
+            guard !SilenceMarkers.trimmed(shown).isEmpty else {
+                holds[sessionId] = nil
+                return []
+            }
+            // What the segment held that never became a marker streams
+            // first: voice and read aloud speak an already streamed
+            // interim from its deltas, not from its text.
+            return endSegment(sessionId)
+                + [.messageInterim(sessionId: sessionId, text: shown, alreadyStreamed: alreadyStreamed)]
         case .messageComplete(let sessionId, let messageId, let content, let reasoning, let alreadyShown):
             let rest = endSegment(sessionId)
             let completed = StreamEvent.messageComplete(
