@@ -6922,7 +6922,7 @@ final class AppStateChatResumeTests: XCTestCase {
             held.sent.filter { sent in
                 let query = sent.query ?? ""
                 switch kind {
-                case "live": return query.contains("exclude_sources=")
+                case "live": return query.contains("exclude_sources=") && query.contains("archived=exclude")
                 case "archived": return query.contains("archived=only")
                 default: return query.contains("source=cron") && !query.contains("exclude_sources=")
                 }

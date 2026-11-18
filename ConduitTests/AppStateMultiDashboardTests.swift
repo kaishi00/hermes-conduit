@@ -2132,8 +2132,9 @@ extension AppStateMultiDashboardTests {
     }
 
     /// An open folder whose listing and recent files were answered, for
-    /// the refresh tests below: every request after it is theirs.
-    private func openedFolder() async throws -> (WorkspaceExplorer, HeldDashboardRequests) {
+    /// the refresh tests below: every request after it is theirs. The app
+    /// state comes back too: the explorer holds it weakly.
+    private func openedFolder() async throws -> (WorkspaceExplorer, HeldDashboardRequests, AppState) {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(version: "0.122.0", capabilities: [WorkspaceFilesClient.capability]))
         let explorer = WorkspaceExplorer()
@@ -2143,7 +2144,7 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
         try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
         await open.value
-        return (explorer, held)
+        return (explorer, held, appState)
     }
 
     /// Hermes' file tools landing back to back read the open folder once,
@@ -2151,7 +2152,8 @@ extension AppStateMultiDashboardTests {
     /// each change cancels the wait before it, as the Folder tab's
     /// `.task(id: changes)` does, and only the last one's refresh goes out.
     func testFileChangesLandingBackToBackRefreshTheFolderOnce() async throws {
-        let (explorer, held) = try await openedFolder()
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
         var waits: [Task<Bool, Never>] = []
         for _ in 0..<3 {
             waits.last?.cancel()
@@ -2179,7 +2181,8 @@ extension AppStateMultiDashboardTests {
     /// tests from issue 2604); a file that can't be opened is skipped and
     /// said, and the others still go.
     func testAnUploadOfSeveralFilesRefreshesTheFolderOnceAfterTheLast() async throws {
-        let (explorer, held) = try await openedFolder()
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
