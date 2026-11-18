@@ -124,6 +124,9 @@ struct ComposerBar: View {
     /// can take focus from the field) doesn't collapse it under the finger.
     @State private var holdsExpanded = false
     @State private var collapseTask: Task<Void, Never>?
+    /// A resync has kept the composer off past `ResyncGrace.duration`:
+    /// dictate and Attach dim.
+    @State private var resyncOutlastedGrace = false
 
     /// AppState lives as long as the app (ConduitApp), so the StateObject
     /// made for the first one is the one every later init names.
@@ -688,6 +691,13 @@ struct ComposerBar: View {
             // Voice took the microphone: dictation steps aside.
             guard inUse else { return }
             dictation.cancel()
+        }
+        .task(id: appState.composerWaitsForResync) {
+            resyncOutlastedGrace = false
+            guard appState.composerWaitsForResync else { return }
+            try? await Task.sleep(for: ResyncGrace.duration)
+            guard !Task.isCancelled else { return }
+            resyncOutlastedGrace = true
         }
         .onDisappear {
             dictation.cancel()
@@ -1562,8 +1572,10 @@ struct ComposerBar: View {
                 .contentShape(Self.controlHitShape)
         }
         .accessibilityLabel(Text("Attach"))
-        // Open while Hermes replies: the files go as Queue (#1146).
-        .disabled(!appState.composerIsEnabled)
+        // Open while Hermes replies: the files go as Queue (#1146). Through
+        // a short resync it keeps its look but takes no tap.
+        .disabled(!attachLooksAvailable)
+        .allowsHitTesting(appState.composerIsEnabled)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")
@@ -2099,6 +2111,7 @@ struct ComposerBar: View {
     /// slot stays the one "go" control.
     private var dictateButton: some View {
         let canDictate = canDictateFromComposer
+        let looksAvailable = dictateLooksAvailable
         let isCapturing = dictation.isCapturing
         // A Hermes dictation still transcribing pulses too, and a tap
         // waits for its words.
@@ -2119,7 +2132,7 @@ struct ComposerBar: View {
         } label: {
             Image(systemName: isCapturing ? "mic.fill" : "mic")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
+                .foregroundStyle(isCapturing ? Color.red : (looksAvailable ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
@@ -2128,11 +2141,12 @@ struct ComposerBar: View {
                 .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
-        .disabled(!canDictate && !isActive)
+        // A tap through a short resync does nothing (`ComposerDictation.tap`).
+        .disabled(!looksAvailable && !isActive)
         .conduitGlassControl(
             cornerRadius: Self.controlSize / 2,
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
-            interactive: canDictate || isActive
+            interactive: looksAvailable || isActive
         )
         .accessibilityShowsLargeContentViewer {
             Label {
@@ -2177,6 +2191,50 @@ struct ComposerBar: View {
 
     private var canDictateFromComposer: Bool {
         appState.composerIsEnabled && !appState.isVoiceInUse
+    }
+
+    private var dictateLooksAvailable: Bool {
+        Self.dictateLooksAvailable(
+            composerIsEnabled: appState.composerIsEnabled,
+            composerWaitsForResync: appState.composerWaitsForResync,
+            isVoiceInUse: appState.isVoiceInUse,
+            resyncOutlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    private var attachLooksAvailable: Bool {
+        Self.attachLooksAvailable(
+            composerIsEnabled: appState.composerIsEnabled,
+            composerWaitsForResync: appState.composerWaitsForResync,
+            resyncOutlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    /// The dictate button keeps its look through a resync shorter than
+    /// `ResyncGrace.duration`, as the round voice button does.
+    static func dictateLooksAvailable(
+        composerIsEnabled: Bool,
+        composerWaitsForResync: Bool,
+        isVoiceInUse: Bool,
+        resyncOutlastedGrace: Bool
+    ) -> Bool {
+        ResyncGrace.looksAvailable(
+            canAct: composerIsEnabled && !isVoiceInUse,
+            canActOnceSynced: (composerIsEnabled || composerWaitsForResync) && !isVoiceInUse,
+            outlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    static func attachLooksAvailable(
+        composerIsEnabled: Bool,
+        composerWaitsForResync: Bool,
+        resyncOutlastedGrace: Bool
+    ) -> Bool {
+        ResyncGrace.looksAvailable(
+            canAct: composerIsEnabled,
+            canActOnceSynced: composerIsEnabled || composerWaitsForResync,
+            outlastedGrace: resyncOutlastedGrace
+        )
     }
 
     private func beginDictation() {

@@ -209,6 +209,25 @@ final class BotModeTests: XCTestCase {
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(unrelated, roster: [bot]))
     }
 
+    /// A return to the app reads the chat back: the composer is off only
+    /// until that's done, so the chat's voice button keeps its look through
+    /// a short one rather than blink.
+    func testTheComposerWaitsForAResyncOnlyWhileTheChatIsReadBack() {
+        let appState = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations()).appState
+        for state in [TurnState.synchronizing, .reconnecting] {
+            appState.turnState = state
+            XCTAssertFalse(appState.composerIsEnabled, "\(state)")
+            XCTAssertTrue(appState.composerWaitsForResync, "\(state)")
+        }
+        for state in [TurnState.idle, .running, .unsupportedGateway] {
+            appState.turnState = state
+            XCTAssertFalse(appState.composerWaitsForResync, "\(state)")
+        }
+        appState.turnState = .synchronizing
+        appState.isRewindingTurns = true
+        XCTAssertFalse(appState.composerWaitsForResync, "A rewind keeps it off past the resync")
+    }
+
     /// A bot renamed in Edit Bot (or the Profiles sheet) goes by that name
     /// everywhere Conduit names the profile, not only in Bots (#1409).
     func testABotTitleNamesItsProfileEverywhere() async {

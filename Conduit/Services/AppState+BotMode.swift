@@ -422,6 +422,12 @@ extension AppState {
         turnState.acceptsComposerActions && offlineChatPresentation == nil && !showsPendingNewChat && !isRewindingTurns
     }
 
+    /// The composer is off only while the chat is read back (a return to
+    /// the app, a reconnect): enabled again once that is done.
+    var composerWaitsForResync: Bool {
+        turnState.isResyncing && offlineChatPresentation == nil && !showsPendingNewChat && !isRewindingTurns
+    }
+
     func composerAction(hasText: Bool, hasAttachments: Bool) -> ComposerAction {
         // A chat on its way takes a message to send once it's ready;
         // attachments wait for the chat itself (AppState+PendingSend.swift).
