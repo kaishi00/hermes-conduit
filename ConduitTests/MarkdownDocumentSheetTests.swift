@@ -103,5 +103,8 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         let gone = directory.appendingPathComponent("report.xlsx")
         XCTAssertFalse(MediaPreviewPresenter.shared.presentSaveToFiles(fileURL: gone, ownedDirectory: directory))
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        // The reader's Save hands over a copy of its file; a file that's
+        // gone has nothing to copy.
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: gone))
     }
 }

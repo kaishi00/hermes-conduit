@@ -3104,7 +3104,7 @@ private struct GatewayMediaFileCard: View {
         }
         guard !Task.isCancelled, let gatewayMediaDataURL,
               let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return .failed }
-        return await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: MarkdownArtifact.handoffName(title: displayName, path: path)) ? .presented : .failed
+        return await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: path) ? .presented : .failed
     }
 
     /// The file itself, downloaded to disk, so a video over the 16 MB data

@@ -350,6 +350,16 @@ final class MediaPreviewPresenter {
         return true
     }
 
+    /// Save to Files for a file someone else owns (the Markdown reader's
+    /// staged copy): the picker gets a copy of its own, so the owner
+    /// removing its file (the reader leaving the screen under a full-screen
+    /// picker) can't take the file away before it is saved.
+    func presentSaveToFiles(copyOf fileURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: fileURL),
+              let staged = Self.stage(data: data, filename: fileURL.lastPathComponent) else { return false }
+        return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
+    }
+
     /// Save to Files for a gateway file already downloaded into its own
     /// directory, which goes when the picker closes.
     @discardableResult

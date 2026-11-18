@@ -178,9 +178,10 @@ struct MarkdownDocumentSheet: View {
                         Label(AppLocalization.string("Share"), systemImage: "square.and.arrow.up")
                     }
                     // A copy saved straight to Files, without the share
-                    // sheet (issue 1809).
+                    // sheet (issue 1809). The picker gets its own copy: this
+                    // sheet removes its staged file when it leaves the screen.
                     Button {
-                        if !MediaPreviewPresenter.shared.presentSaveToFiles(fileURL: shareURL) {
+                        if !MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: shareURL) {
                             saveFailed = true
                         }
                     } label: {
