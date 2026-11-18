@@ -204,7 +204,9 @@ extension AppState {
     var combinedHermesEvidence: [UUID?: Set<String>] {
         guard isInCombinedGroup(activeDashboardID) else { return [:] }
         func ids(_ rows: [SessionSummary]) -> Set<String> {
-            Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
+            // A row with no id of its own goes by its place in the list
+            // (normalizeSessions): a number any Hermes could give.
+            Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } }.filter { !$0.isEmpty && Int($0) == nil })
         }
         // The active lists carry kept dashboards' rows too; only its own
         // count for it, its other profiles' (All's catalog) included. A
