@@ -150,7 +150,7 @@ extension ChatOnScreenTests {
         XCTAssertNil(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-unknown"))
 
         let elsewhere = E2EKeyRecord(kid: "k2", secret: Data(repeating: 4, count: 32), installationID: "inst", gatewayID: "gw-atlas",
-                                     dashboardID: dashboard, profile: "atlas", createdAt: Date())
+                                     dashboardID: dashboard.uuidString, profile: "atlas", createdAt: Date())
         XCTAssertTrue(PushNotificationService.rowCardAnswerRefused(context: restored, body: ["answer": "staging", "gateway_id": "gw-listed"],
                                                                    installationID: "inst", records: [elsewhere]),
                       "restored, it still refuses an unsealed answer")
