@@ -93,12 +93,16 @@ extension AppState {
 
     func endOpeningBotChat(_ name: String) {
         if botChatOpening == name { botChatOpening = nil }
-        if botChatMarkedComing?.bot == name { botChatMarkedComing = nil }
-        guard let mark = botChatMarks[name] else { return }
+        guard let mark = botChatMarks[name] else {
+            if botChatMarkedComing?.bot == name { botChatMarkedComing = nil }
+            return
+        }
+        // A newer tap on the same bot still on its way keeps the cover.
         if mark.taps > 1 {
             botChatMarks[name] = (mark.taps - 1, mark.pushed)
             return
         }
+        if botChatMarkedComing?.bot == name { botChatMarkedComing = nil }
         botChatMarks[name] = nil
         // What the chat shows from now on is seen, once nothing covers it.
         noteActiveChatSeen(respectingMarks: true)

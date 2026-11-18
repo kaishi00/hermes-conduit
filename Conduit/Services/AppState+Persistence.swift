@@ -658,9 +658,13 @@ extension AppState {
                 ?? snapshot.transcripts.first?.sessionID
         }
         if snapshot.transcript(for: sessionID) != nil { return sessionID }
-        return snapshot.sessions
-            .first { $0.matches([sessionID]) && snapshot.transcript(for: $0.id) != nil }?
-            .id
+        // A saved row owning the id without its rows shows none; an alias
+        // stands in only for one row, as a profile switch's restore reads
+        // it (`presentRestoredChatAfterProfileChange`).
+        if snapshot.sessions.contains(where: { $0.id == sessionID }) { return nil }
+        let aliasRows = snapshot.sessions.filter { $0.matches([sessionID]) }
+        guard aliasRows.count == 1, let row = aliasRows.first, snapshot.transcript(for: row.id) != nil else { return nil }
+        return row.id
     }
 
     /// Header title: the saved conversation's title while the offline copy

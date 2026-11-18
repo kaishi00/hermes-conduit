@@ -890,7 +890,13 @@ final class OfflineChatCacheTests: XCTestCase {
             activeDashboardID: dashboard,
             dashboards: [SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")]
         )
-        let (relaunched, _, _) = makeAppState(registry: registry, store: store, configureDefaults: { defaults in
+        // A fresh store over the same folder, as a relaunch has: the copies
+        // come from their files, not the first run's memory.
+        let relaunchedStore = OfflineChatCacheStore(
+            directory: store.botChatCopyFileURL(dashboardID: dashboard, bot: "atlas").deletingLastPathComponent(),
+            writesAsynchronously: false
+        )
+        let (relaunched, _, _) = makeAppState(registry: registry, store: relaunchedStore, configureDefaults: { defaults in
             ChatResumeStore(defaults: defaults).setLastSession(
                 SessionReference(kind: .bot, scopeProfile: "atlas", botName: "atlas", botLabel: "Atlas",
                                  sessionID: "atlas-chat", isUnverified: false),
@@ -4923,6 +4929,46 @@ final class OfflineChatCacheTests: XCTestCase {
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-elsewhere", durableID: "z", profile: state.activeProfile, source: .resume)
         XCTAssertFalse(state.applyBackgroundChatEvent(.messageDelta(sessionId: "rt-elsewhere", text: " Not ours")))
         XCTAssertEqual(state.backgroundChats.first?.rows.last?.content, "Once upon a time, the end")
+    }
+
+    /// A Bot Chat left mid-reply keeps its finished rows as its bot's copy
+    /// (in memory and on the phone, never the profile's saved chats); a
+    /// deleted bot's Bot Chat is no longer followed, so a late reply keeps
+    /// none.
+    func testAFollowedBotChatsFinishedReplyBecomesItsBotsCopy() {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        func leaveRunning(_ id: String, bot: String) {
+            state.botChatSessionProfiles[id] = bot
+            state.isConnected = true
+            state.setActiveSessionState(id: id)
+            state.messages = [ChatMessage(id: "u-\(id)", role: .user, content: "Tell me a story", timestamp: "1")]
+            state.turnState = .running
+            state.handleStreamEvent(.messageDelta(sessionId: id, text: "Once upon"))
+            state.setActiveSessionState(id: "elsewhere")
+            state.messages = []
+            state.clearStreamingText()
+            state.turnState = .idle
+        }
+
+        leaveRunning("atlas-chat", bot: "atlas")
+        XCTAssertEqual(state.backgroundChats.first?.botChatCopyOwner, BackgroundChat.BotChatCopyOwner(bot: "atlas", openAs: "atlas-chat"))
+        state.handleStreamEvent(.messageComplete(sessionId: "atlas-chat", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        store.waitForPendingWrites()
+        let kept = state.keptBotChatCopies["\(dashboard.uuidString)|atlas"]
+        XCTAssertEqual(kept?.transcript.messages.last?.content, "Once upon a time.")
+        XCTAssertEqual(store.loadBotChatCopy(dashboardID: dashboard, bot: "atlas")?.transcript.messages.last?.content, "Once upon a time.")
+        XCTAssertNil(store.loadTranscript("atlas-chat", dashboardID: dashboard, profile: state.activeProfile),
+                     "never the profile's saved chats")
+
+        // The bot is deleted while its reply still runs: no copy comes back.
+        leaveRunning("scout-chat", bot: "scout")
+        state.forgetBotChatCopy(dashboardID: dashboard, bot: "scout")
+        XCTAssertFalse(state.backgroundChats.contains { $0.botChatCopyOwner?.bot == "scout" })
+        state.handleStreamEvent(.messageComplete(sessionId: "scout-chat", messageId: "r2", content: "The end.", reasoning: nil))
+        store.waitForPendingWrites()
+        XCTAssertNil(state.keptBotChatCopies["\(dashboard.uuidString)|scout"])
+        XCTAssertNil(store.loadBotChatCopy(dashboardID: dashboard, bot: "scout"))
     }
 
     /// Issue 2566: a message another device sends to the chat kept beside

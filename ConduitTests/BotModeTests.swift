@@ -2495,20 +2495,28 @@ final class BotModeTests: XCTestCase {
         appState.isConnected = false
         appState.isConnecting = true
 
+        func waitUntil(_ condition: @MainActor () -> Bool) async {
+            let deadline = Date().addingTimeInterval(5)
+            while !condition(), Date() < deadline { try? await Task.sleep(for: .milliseconds(10)) }
+        }
+        let before = appState.botChatOpenRequests
         appState.openLinkedBotChat("nova")
         appState.openLinkedBotChat("atlas")
-        for _ in 0..<20 { await Task.yield() }
+        // Both links are waiting (each counted its request) before the
+        // connection comes up.
+        await waitUntil { appState.botChatOpenRequests == before + 2 }
+        XCTAssertEqual(appState.botChatOpenRequests, before + 2)
         XCTAssertNil(appState.errorMessage, "no notice while it waits")
         appState.isConnected = true
         appState.isConnecting = false
-        for _ in 0..<500 where appState.activeBotChatProfile != "atlas" { await Task.yield() }
+        await waitUntil { appState.activeBotChatProfile == "atlas" }
         XCTAssertEqual(appState.activeBotChatProfile, "atlas", "the newer link opens")
         XCTAssertNil(appState.errorMessage)
 
         // Nothing connecting (offline): it says so at once.
         appState.isConnected = false
         appState.openLinkedBotChat("nova")
-        for _ in 0..<50 where appState.errorMessage == nil { await Task.yield() }
+        await waitUntil { appState.errorMessage != nil }
         XCTAssertEqual(appState.errorMessage, AppState.connectToChatWithBotsMessage)
     }
 

@@ -146,9 +146,10 @@ extension AppState {
             if bot == nil {
                 let openBefore = self.activeSessionId
                 await self.refreshBotRoster()
-                // A chat opened meanwhile is the later choice; it stays.
-                guard self.activeSessionId == openBefore,
-                      expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
+                // A chat opened meanwhile, a newer link or list tap, another
+                // dashboard or server is the later choice; it stays.
+                guard self.activeSessionId == openBefore, request == self.botChatOpenRequests,
+                      dashboardID == self.activeDashboardID, epoch == self.botRosterEpoch else { return }
                 bot = Self.linkedBot(named: profile, in: self.botRoster)
             }
             guard let bot else {
