@@ -340,6 +340,9 @@ extension AppState {
         private var task: Task<Void, Never>?
         private var waiters: [UUID: CheckedContinuation<DashboardSessionCatalog, Error>] = [:]
         private var result: Result<DashboardSessionCatalog, Error>?
+        /// Stopped because nobody waited for it any more: a read asked for
+        /// before it ends sends its own rather than take its cancellation.
+        private var cancelled = false
 
         init(key: Key, fence: StartupReads.Fence, read: UInt64) {
             self.key = key
@@ -352,7 +355,7 @@ extension AppState {
         /// Whether a read asked for now under `fence` may take this one's
         /// answer: one sent while a write was still out may predate it.
         func serves(_ key: Key, fence: StartupReads.Fence) -> Bool {
-            result == nil && self.key == key && self.fence.writesOut == 0 && self.fence == fence
+            result == nil && !cancelled && self.key == key && self.fence.writesOut == 0 && self.fence == fence
         }
 
         /// Sends the read. `ended` runs as it ends, before any waiter
@@ -397,7 +400,10 @@ extension AppState {
         private func leave(_ id: UUID) {
             guard let waiter = waiters.removeValue(forKey: id) else { return }
             waiter.resume(throwing: CancellationError())
-            if waiters.isEmpty { task?.cancel() }
+            if waiters.isEmpty {
+                cancelled = true
+                task?.cancel()
+            }
         }
 
         private func finish(_ result: Result<DashboardSessionCatalog, Error>) {

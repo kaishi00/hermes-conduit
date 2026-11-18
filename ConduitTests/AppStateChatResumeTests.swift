@@ -6991,6 +6991,30 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(appState.sessions.contains { $0.id == "chat-1" })
     }
 
+    /// A newest page nobody waits for any more is stopped, and a read
+    /// asked for before it ends sends its own rather than take its
+    /// cancellation (#2753 review).
+    func testANewestPageNobodyWaitsForIsNotJoined() async throws {
+        let harness = makeHarness(configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") })
+        let appState = harness.appState
+        let client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"), profile: "default")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.client = client
+        appState.dashboardTicketBridge = held.bridge
+
+        let sync = Task { @MainActor in
+            try await appState.profileCatalog(using: client, deferringOlderPages: true, joinsReadInFlight: true)
+        }
+        try await held.waitForRequests(3)
+        let sent = try XCTUnwrap(appState.newestCatalogPageRead)
+        XCTAssertTrue(sent.serves(sent.key, fence: sent.fence), "out, and waited for")
+        sync.cancel()
+        for _ in 0..<200 where sent.waitingReads > 0 { await Task.yield() }
+        XCTAssertEqual(sent.waitingReads, 0)
+        XCTAssertFalse(sent.serves(sent.key, fence: sent.fence), "stopped: a read now sends its own")
+    }
+
     /// A chat already on screen is the list's to keep or replace.
     func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
         let newer = session("newer")
