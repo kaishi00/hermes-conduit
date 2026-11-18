@@ -3641,7 +3641,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             changed = true
         }
         for id in unlistedJobs {
-            guard let job = self.job(id), job.status.isActive,
+            // A sign of life during an earlier job's check counts here too.
+            guard let job = self.job(id), job.status.isActive, !job.listedByLivenessPoll,
+                  job.consecutiveMissedPolls >= Self.missedPollsBeforeSettling,
                   let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { continue }
             // A check that keeps getting no answer waits a few polls between tries.
             if let backoff = unansweredProbes[id], backoff.pollsToSkip > 0 {
@@ -3677,7 +3679,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 }
                 goneFromHermes = true
             }
-            if self.job(id)?.runtimeSessionID == runtimeID { unansweredProbes[id] = nil }
+            // A gone chat keeps its backoff until its history is read.
+            if !goneFromHermes, self.job(id)?.runtimeSessionID == runtimeID { unansweredProbes[id] = nil }
             // An event, another poll, a stop, or a reset may have overtaken
             // the read. Only the same still-unlisted runtime, with no sign of
             // life since the check went out, can settle.
