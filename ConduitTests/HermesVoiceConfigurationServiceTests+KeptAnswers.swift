@@ -126,6 +126,10 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertTrue(reason.contains("Mock GET failure"), reason)
         XCTAssertEqual(unkept.snapshot.capability.unavailableReason, reason)
         XCTAssertEqual(failing.recorded.filter { $0.path == "/api/config" }.count, 2)
+        XCTAssertEqual(
+            unkept.unansweredReason(hermesConnected: false), "Connect to Hermes before starting voice.",
+            "Worded for the connection as it is now: one that dropped since asks to connect"
+        )
 
         // A route Hermes doesn't have is asked for once.
         let missing = MockVoiceConfigurationRequester()
