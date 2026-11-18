@@ -1445,7 +1445,9 @@ extension AppState {
             failure.onFinish = nil
         }
         do {
-            return try await profileCatalog(using: client, deferringOlderPages: true)
+            // The newest page another read sent moments ago serves the
+            // sync's pick as well as its own would (issue 2604).
+            return try await profileCatalog(using: client, deferringOlderPages: true, joinsReadInFlight: true)
         } catch {
             failure.failed = true
             throw error

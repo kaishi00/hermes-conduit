@@ -789,10 +789,13 @@ extension AppState {
         let client = self.client
         let profile = activeProfile
         let dashboardID = activeDashboardID
+        // Its cron rows are read fresh; the newest page may be one another
+        // read (a return's chat sync) sent moments ago (issue 2604).
         await loadSessions(
             forceRefresh: true,
             requiredViewportTransitionGeneration: nil,
-            deferringOlderPages: true
+            deferringOlderPages: true,
+            joinsReadInFlight: true
         )
         guard let client, self.client === client, activeProfile == profile,
               sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }

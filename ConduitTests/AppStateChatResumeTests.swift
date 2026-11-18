@@ -6904,6 +6904,117 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(Set(appState.sessions.map(\.id)), ["a", "b"])
     }
 
+    /// Issue 2604: the chat list's newest page goes out once for every
+    /// read of it asked for while it's out (a return's chat sync, the
+    /// drawer's Cron list, the Tasks tab), live rows and archived calls
+    /// alike; each read still sends the cron read it needs. A pull, which
+    /// wants rows from after it, sends its own, and so does a read asked
+    /// for after the list changed here.
+    func testNewestPageReadsAskedForWhileOneIsOutShareItsRequests() async throws {
+        let harness = makeHarness(configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") })
+        let appState = harness.appState
+        let client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"), profile: "default")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.client = client
+        appState.dashboardTicketBridge = held.bridge
+        func count(_ kind: String) -> Int {
+            held.sent.filter { sent in
+                let query = sent.query ?? ""
+                switch kind {
+                case "live": return query.contains("exclude_sources=") && query.contains("archived=exclude")
+                case "archived": return query.contains("archived=only")
+                default: return query.contains("source=cron") && !query.contains("exclude_sources=")
+                }
+            }.count
+        }
+        let rows: [String: Any] = ["sessions": [
+            ["id": "chat-1", "title": "Release prep", "message_count": 4, "profile": "default", "last_active": 2_000],
+        ], "total": 1]
+
+        // A return's chat sync reads the newest page and the cron rows.
+        let sync = Task { @MainActor in
+            try await appState.profileCatalog(using: client, deferringOlderPages: true, joinsReadInFlight: true)
+        }
+        try await held.waitForRequests(3)
+        XCTAssertNotNil(appState.newestCatalogPageRead)
+        // The drawer's Cron list, shown meanwhile: its own cron read, the
+        // sync's newest page.
+        let cronList = Task { @MainActor in
+            await appState.loadSessions(
+                forceRefresh: true,
+                requiredViewportTransitionGeneration: nil,
+                deferringOlderPages: true,
+                joinsReadInFlight: true
+            )
+        }
+        try await held.waitForRequests(4)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(count("live"), 1, "the newest page went out once")
+        XCTAssertEqual(count("archived"), 1, "and the archived calls beside it")
+        XCTAssertEqual(count("cron"), 2, "each read's cron rows are its own")
+        XCTAssertEqual(appState.newestCatalogPageRead?.waitingReads, 2)
+
+        // A pull to refresh wants rows from after it: its own.
+        let pull = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: true, requiredViewportTransitionGeneration: nil, deferringOlderPages: true)
+        }
+        try await held.waitForRequests(7)
+        XCTAssertEqual(count("live"), 2)
+        XCTAssertEqual(count("archived"), 2)
+        // A write through the dashboard since the newest page went out (a
+        // rename, a delete): the read after it doesn't take an answer from
+        // before it.
+        held.bridge.noteWriteStarted()
+        held.bridge.noteWriteEnded()
+        let afterWrite = Task { @MainActor in
+            await appState.loadSessions(
+                forceRefresh: true,
+                requiredViewportTransitionGeneration: nil,
+                deferringOlderPages: true,
+                joinsReadInFlight: true
+            )
+        }
+        try await held.waitForRequests(10)
+        XCTAssertEqual(count("live"), 3, "a write went out since")
+
+        for _ in 0..<10 { try await held.answer(rows) }
+        let synced = try await sync.value
+        let cronListed = await cronList.value
+        let pulled = await pull.value
+        _ = await afterWrite.value
+        XCTAssertEqual(synced.sessions.map(\.id), ["chat-1"])
+        XCTAssertTrue(cronListed, "the joined read lists")
+        XCTAssertTrue(pulled)
+        XCTAssertEqual(count("live"), 3, "and nothing more after the answers")
+        XCTAssertNil(appState.newestCatalogPageRead, "nothing is left to join once they answered")
+        XCTAssertTrue(appState.sessions.contains { $0.id == "chat-1" })
+    }
+
+    /// A newest page nobody waits for any more is stopped, and a read
+    /// asked for before it ends sends its own rather than take its
+    /// cancellation (#2753 review).
+    func testANewestPageNobodyWaitsForIsNotJoined() async throws {
+        let harness = makeHarness(configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") })
+        let appState = harness.appState
+        let client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"), profile: "default")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.client = client
+        appState.dashboardTicketBridge = held.bridge
+
+        let sync = Task { @MainActor in
+            try await appState.profileCatalog(using: client, deferringOlderPages: true, joinsReadInFlight: true)
+        }
+        try await held.waitForRequests(3)
+        let sent = try XCTUnwrap(appState.newestCatalogPageRead)
+        XCTAssertTrue(sent.serves(sent.key, fence: sent.fence), "out, and waited for")
+        sync.cancel()
+        for _ in 0..<200 where sent.waitingReads > 0 { await Task.yield() }
+        XCTAssertEqual(sent.waitingReads, 0)
+        XCTAssertFalse(sent.serves(sent.key, fence: sent.fence), "stopped: a read now sends its own")
+    }
+
     /// A chat already on screen is the list's to keep or replace.
     func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
         let newer = session("newer")
