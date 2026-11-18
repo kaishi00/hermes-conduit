@@ -43,7 +43,7 @@ struct ComputerPairingChoice: Identifiable, Equatable, CustomStringConvertible {
             }
             // The computer needs the proxy's headers to reach the dashboard at
             // all; like the phone it sends them over https only.
-            let headers = dashboard.normalizedURL.lowercased().hasPrefix("https://") ? proxyHeaders(dashboard) : [:]
+            let headers = CustomHeaderPolicy.origin(forServerURL: dashboard.normalizedURL) != nil ? proxyHeaders(dashboard) : [:]
             if !headers.isEmpty { host?.headers = headers }
             return ComputerPairingChoice(
                 id: dashboard.id,
@@ -65,15 +65,10 @@ extension AppState {
             credentials: { KeychainHelper.loadCredentials(dashboardID: $0) },
             tokens: { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) },
             proxyHeaders: { dashboard in
-                var headers: [String: String] = [:]
-                for header in CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: dashboard.normalizedURL)) {
-                    headers[header.name] = header.value
-                }
-                if let access = KeychainHelper.loadCloudflareAccess(dashboardID: dashboard.id, for: dashboard.normalizedURL), access.isConfigured {
-                    headers["CF-Access-Client-Id"] = access.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
-                    headers["CF-Access-Client-Secret"] = access.clientSecret
-                }
-                return headers
+                ComputerPairing.proxyHeaders(
+                    extra: CustomHeaderStore.shared.headers(forServerURL: dashboard.normalizedURL),
+                    access: KeychainHelper.loadCloudflareAccess(dashboardID: dashboard.id, for: dashboard.normalizedURL)
+                )
             }
         )
     }

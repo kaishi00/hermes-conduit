@@ -17,7 +17,7 @@
 //    envelope = {"v":1,"epk":b64url,"n":b64url,"c":b64url(ciphertext ‖ tag)}
 //  The words: the first 44 bits of SHA-256("conduit-pair-words-v1\n" ‖ computer's key ‖ epk),
 //  11 bits a BIP39 word.
-//  The payload: {"v":1,"hosts":[{"url","method":"password"|"token","username","password","token","name"}]}
+//  The payload: {"v":1,"hosts":[{"url","method":"password"|"token","username","password","token","name","headers":{name: value}}]}
 //
 
 import CryptoKit
@@ -90,6 +90,22 @@ enum ComputerPairing {
         /// A proxy's headers for this dashboard: its Cloudflare Access
         /// service token and its extra headers, for an https address only.
         var headers: [String: String]?
+    }
+
+    /// A dashboard's proxy headers as the phone sends them: its valid extra
+    /// headers, and its Cloudflare Access service token, which wins over an
+    /// extra header of the same name in any case.
+    static func proxyHeaders(extra: [CustomHeader], access: CloudflareAccessCredentials?) -> [String: String] {
+        var headers: [String: String] = [:]
+        for header in CustomHeaderPolicy.sendable(extra) {
+            headers[header.name] = header.value
+        }
+        if let access, access.isConfigured {
+            headers = headers.filter { !["cf-access-client-id", "cf-access-client-secret"].contains($0.key.lowercased()) }
+            headers["CF-Access-Client-Id"] = access.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+            headers["CF-Access-Client-Secret"] = access.clientSecret
+        }
+        return headers
     }
 
     private struct Payload: Encodable {
