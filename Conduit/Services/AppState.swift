@@ -3267,6 +3267,10 @@ final class AppState: ObservableObject {
     /// Bot Screen sheets open now, from any surface: one covers the open
     /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
     var botScreenSheetsOpen = 0
+    /// Usage Details sheets open now, from any list (RootView, the drawer, a
+    /// project sheet, the persistent sidebar column): one covers the open
+    /// chat like a Bot Screen does (issue 2699). Nothing redraws on it.
+    var sessionUsageSheetsOpen = 0
 
     @Published var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.

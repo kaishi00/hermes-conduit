@@ -86,3 +86,25 @@ enum SessionUsageReadout: Equatable {
     case unavailable(String)
     case failed
 }
+
+extension SessionUsageReadout {
+    /// The notifier's answer for a chat with no row (session_usage.py).
+    static let missingSessionDetail = "Session not found"
+
+    /// What a 404 from the usage route means, by its detail.
+    static func notFound(detail: String, path: String) -> SessionUsageReadout {
+        // Hermes has no row for the chat yet: nothing has run in it.
+        if detail.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(missingSessionDetail) == .orderedSame {
+            return .nothingYet
+        }
+        // The plugin turned off for the profile the read named: its remedy.
+        if let remedy = DashboardTicketBridgeError.pluginOffDetail(
+            of: DashboardTicketBridgeError.http(status: 404, detail: detail), path: path
+        ) {
+            return .unavailable(remedy)
+        }
+        // No such route on the host that answered (another profile's plugin
+        // host can be older than the dashboard's report).
+        return .needsPluginUpdate
+    }
+}

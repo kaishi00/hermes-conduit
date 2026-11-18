@@ -118,17 +118,7 @@ extension AppState {
                 guard ownsDashboardRuntime(owner) else { return nil }
             }
         } catch DashboardTicketBridgeError.http(status: 404, detail: let detail) {
-            // Hermes having no row for the chat yet: nothing has run in it.
-            if detail.lowercased().contains("session not found") { return .nothingYet }
-            // The plugin turned off for the profile the read named: its remedy.
-            if let remedy = DashboardTicketBridgeError.pluginOffDetail(
-                of: DashboardTicketBridgeError.http(status: 404, detail: detail), path: path
-            ) {
-                return .unavailable(remedy)
-            }
-            // No such route on the host that answered (another profile's
-            // plugin host can be older than the dashboard's report).
-            return .needsPluginUpdate
+            return SessionUsageReadout.notFound(detail: detail, path: path)
         } catch is CancellationError {
             return nil
         } catch {

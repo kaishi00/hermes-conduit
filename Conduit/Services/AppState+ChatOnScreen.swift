@@ -46,17 +46,24 @@ extension AppState {
         return roomID
     }
 
+    /// Whether a sheet covers the chat or room on screen, so what it shows
+    /// hasn't been read yet.
+    var shownChatIsCovered: Bool {
+        isModalSheetPresented || chatCoveredBySheet || botScreenSheetsOpen > 0 || sessionUsageSheetsOpen > 0
+    }
+
     /// A chat or a group room on screen has been read: its notifications
     /// leave this device's Notification Center, and the Watch's with the
     /// iPhone's (#1579; a room's, issue 2064). Other devices keep theirs.
     func clearShownChatNotifications() {
         // A sheet over the chat (Settings, a voice sheet, the chat's own
-        // Artifacts or Rename, the bot's screen) hides it: what arrives meanwhile hasn't been
-        // read. Closing it clears (V2Shell, V2ConversationScreen, RootView).
+        // Artifacts or Rename, the bot's screen, Usage Details) hides it:
+        // what arrives meanwhile hasn't been read. Closing it clears
+        // (V2Shell, V2ConversationScreen, RootView, and the bot's screen and
+        // Usage Details themselves).
         let sessionID = chatShownOnScreen
         let roomID = roomShownOnScreen
-        guard !isModalSheetPresented, !chatCoveredBySheet, botScreenSheetsOpen == 0,
-              sessionID != nil || roomID != nil else { return }
+        guard !shownChatIsCovered, sessionID != nil || roomID != nil else { return }
         // A launch in the background counts the scene active until its
         // first phase change: nobody has read anything then.
         #if canImport(UIKit) && !os(watchOS)
@@ -86,7 +93,9 @@ extension AppState {
         let center = UNUserNotificationCenter.current()
         Task { @MainActor in
             let delivered = await center.deliveredNotifications()
-            guard !delivered.isEmpty else { return }
+            // A sheet that opened while the list was read covers the chat
+            // now: its closing clears instead.
+            guard !delivered.isEmpty, !self.shownChatIsCovered else { return }
             // The keys are read once for every notification on the list.
             let records = PushNotificationService.e2eKeyStore.records()
             let read = ReadChatNotifications.identifiers(

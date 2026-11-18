@@ -276,4 +276,17 @@ extension HermesClientTests {
             "/api/plugins/conduit_push/sessions/usage?session_id=s1&profile=work"
         )
     }
+
+    func testAUsage404SaysWhichOfItsThreeThingsItIs() {
+        let path = DashboardPath.withProfile(SessionUsage.route(sessionID: "s1") ?? "", profile: "work")
+        // The notifier's words for a chat with no row.
+        XCTAssertEqual(SessionUsageReadout.notFound(detail: "Session not found", path: path), .nothingYet)
+        // Hermes' bare refusal for a profile with the plugin off: the remedy names the profile.
+        guard case .unavailable(let remedy) = SessionUsageReadout.notFound(
+            detail: DashboardTicketBridgeError.pluginRefusedDetail, path: path
+        ) else { return XCTFail("a plugin turned off should give its remedy") }
+        XCTAssertTrue(remedy.contains("work"))
+        // The framework's bare Not Found: no such route on that host.
+        XCTAssertEqual(SessionUsageReadout.notFound(detail: "Not Found", path: path), .needsPluginUpdate)
+    }
 }
