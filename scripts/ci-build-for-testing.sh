@@ -254,8 +254,10 @@ echo "build-for-testing ok in ${duration}s ($build_kind)"
 du -sh "$DERIVED_DATA_PATH"/* "$DERIVED_DATA_PATH"/Build/* 2>/dev/null || true
 # How many Swift files each target compiled, so a slow incremental build
 # shows what it rebuilt (ci-build-compiled-counts.py).
-compiled=$(python3 "$SCRIPT_DIR/ci-build-compiled-counts.py" "$LOG_DIR/build.log") \
-  || echo "::warning::could not count the Swift files this build compiled"
+if ! compiled=$(python3 "$SCRIPT_DIR/ci-build-compiled-counts.py" "$LOG_DIR/build.log"); then
+  compiled="not counted"
+  echo "::warning::could not count the Swift files this build compiled"
+fi
 echo "build-for-testing: Swift files compiled: ${compiled:-none}"
 # The notice is readable from the job's annotations, where a long test log
 # would bury the build step's output.
