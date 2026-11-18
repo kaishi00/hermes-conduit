@@ -101,7 +101,7 @@ struct PairedDevicesList: View {
                     .frame(minWidth: 44, minHeight: 44)
                     .contentShape(Rectangle())
             }
-            .accessibilityLabel(AppLocalization.string("Device options", table: .settings))
+            .accessibilityLabel(AppLocalization.string("Options for \(device.name ?? fallback)", table: .settings))
             .disabled(working)
         }
     }
