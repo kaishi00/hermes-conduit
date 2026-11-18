@@ -4,7 +4,8 @@
 //
 //  The decisions a Markdown artifact makes before its sheet is drawn: which
 //  names are Markdown, how the host's text is decoded, and the file name the
-//  Open/Share handoff uses on a Windows or a Mac host.
+//  Open/Share handoff uses on a Windows or a Mac host, and the presenter
+//  refusing to share a staged copy that's gone (issue 2701).
 //
 
 import XCTest

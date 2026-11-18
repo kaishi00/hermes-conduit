@@ -130,7 +130,7 @@ final class MediaPreviewPresenter {
     func present(fileURL: URL, title: String? = nil) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
         guard Self.isPreviewable(filename: fileURL.lastPathComponent, mimeType: nil) else {
-            return share(item: fileURL, ownedDirectory: nil)
+            return shareOpened(item: fileURL, ownedDirectory: nil)
         }
         return show(Session(url: fileURL, title: title ?? fileURL.lastPathComponent, ownedDirectory: nil))
     }
@@ -181,7 +181,7 @@ final class MediaPreviewPresenter {
             Self.removeDirectory(staged.directory)
             return false
         }
-        guard previewable else { return share(item: staged.file, ownedDirectory: staged.directory) }
+        guard previewable else { return shareOpened(item: staged.file, ownedDirectory: staged.directory) }
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
@@ -258,14 +258,14 @@ final class MediaPreviewPresenter {
     /// The system share sheet for a file Quick Look must not render (HTML,
     /// SVG, XML), so it can still be saved to Files or sent to another app
     /// without Conduit displaying it, or for a menu's Share item. A staged
-    /// copy is removed once the sheet closes. False when there is no screen
-    /// to present from or UIKit turned the sheet down (it refuses at once,
-    /// leaving it unpresented, while another presentation is in flight), so
-    /// the caller can say so rather than leave a tap doing nothing.
-    private func share(item: URL, ownedDirectory: URL?) -> Bool {
+    /// copy is removed once the sheet closes. `.refused` when UIKit turned
+    /// the sheet down (it refuses at once, leaving it unpresented, while
+    /// another presentation is in flight), so a Share button can say so
+    /// rather than leave a tap doing nothing.
+    private func share(item: URL, ownedDirectory: URL?) -> ShareOutcome {
         guard let presenter = Self.topViewController() else {
             Self.removeDirectory(ownedDirectory)
-            return false
+            return .noScreen
         }
         let controller = UIActivityViewController(activityItems: [item], applicationActivities: nil)
         controller.completionWithItemsHandler = { _, _, _, _ in
@@ -281,9 +281,18 @@ final class MediaPreviewPresenter {
         // never does, and never calls the completion handler either.
         guard controller.presentingViewController != nil else {
             Self.removeDirectory(ownedDirectory)
-            return false
+            return .refused
         }
-        return true
+        return .presented
+    }
+
+    private enum ShareOutcome { case presented, refused, noScreen }
+
+    /// A file opened from a card or list that Quick Look must not render:
+    /// a refusal counts as opened, as a refused Quick Look does (`show`),
+    /// so it isn't mistaken for a file the host no longer has.
+    private func shareOpened(item: URL, ownedDirectory: URL?) -> Bool {
+        share(item: item, ownedDirectory: ownedDirectory) != .noScreen
     }
 
     /// The system share sheet for a staged file that has no Open In app,
@@ -296,14 +305,14 @@ final class MediaPreviewPresenter {
     @discardableResult
     func presentShare(fileURL: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        return share(item: fileURL, ownedDirectory: nil)
+        return share(item: fileURL, ownedDirectory: nil) == .presented
     }
 
     /// The system share sheet for a link (an artifact that is a web page or
     /// a hosted picture), for a menu's Share item as `presentShare(fileURL:)`.
     @discardableResult
     func presentShare(link: URL) -> Bool {
-        share(item: link, ownedDirectory: nil)
+        share(item: link, ownedDirectory: nil) == .presented
     }
 
     /// The system's Open In menu for a file another app can read (MDReader,
