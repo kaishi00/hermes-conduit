@@ -424,9 +424,12 @@ extension AppState {
         if overProjects {
             // The Projects page lists pinned chats over its projects
             // (Pulse's own chat stays behind the Pulse screen).
-            guard !projectsLoading, !projects.isEmpty || rows.contains(where: { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }) else { return false }
+            let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }
+            guard !projectsLoading, !projects.isEmpty || pinned else { return false }
         } else {
-            guard !rows.isEmpty || !chatListCronSessions.isEmpty else { return false }
+            // All draws the other combined dashboards' chats too.
+            guard !rows.isEmpty || !chatListCronSessions.isEmpty
+                || (isAllProfilesChatsOn && !chatListCombinedChats(excluding: []).isEmpty) else { return false }
         }
         return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
     }

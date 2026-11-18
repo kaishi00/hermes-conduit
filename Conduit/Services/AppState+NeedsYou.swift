@@ -201,29 +201,25 @@ extension AppState {
                   let key = Self.pendingDecisionEvictionKey(for: card),
                   let pushed = Self.notificationClarifyActivity(for: card),
                   !needsYou.cardsHermesDrew.contains(pushed.requestId),
-                  isOpenChat(item),
-                  !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
+                  isOpenChat(item) else { continue }
+            // Its answer goes through the relay, sealed for the profile's
+            // pairing like a notification's: the card came from no push
+            // that named its gateway (issue 2683). Kept for a card already
+            // drawn too, one restored at relaunch included: whether its
+            // answer may go unsealed is worked out at the send, and one
+            // with no key here while the profile has one under another
+            // gateway is refused (Eric, 2026-11-18, issue 2692).
+            if let gatewayID = needsYouCardGatewayID(item) {
+                PushNotificationService.shared.retainRelayGatewayID(
+                    gatewayID, forRequestID: pushed.requestId,
+                    sealContext: .init(gatewayID: gatewayID, dashboardID: activeDashboardID, profile: item.profile)
+                )
+            }
+            guard !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
             if Self.hermesCardHoldsQuestion(pushed, in: messages) {
                 // Its answer leaves the wait listed until the next read.
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
-            }
-            // Its answer goes through the relay, sealed for the profile's
-            // pairing like a notification's: the card came from no push
-            // that named its gateway (issue 2683).
-            if let gatewayID = needsYouCardGatewayID(item) {
-                // One with no key here while the profile has one under
-                // another gateway is refused rather than sent unsealed
-                // (Eric, 2026-11-18, issue 2692).
-                let notifications = PushNotificationService.shared
-                let mustSeal = Self.needsYouCardMustSeal(
-                    gatewayID: gatewayID,
-                    dashboardID: activeDashboardID,
-                    profile: item.profile,
-                    installationID: notifications.installationID,
-                    records: PushNotificationService.e2eKeyStore.records()
-                )
-                notifications.retainRelayGatewayID(gatewayID, forRequestID: pushed.requestId, mustSeal: mustSeal)
             }
             let openIDs = presentationCacheSessionIDs(for: openID)
             let profile = presentationProfile(for: openID)

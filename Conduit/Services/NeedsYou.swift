@@ -325,9 +325,11 @@ final class NeedsYouStore: ObservableObject {
     /// Another combined dashboard's profiles no longer listed there.
     func forgetOther(_ dashboardID: UUID, profilesOtherThan profiles: Set<String>) {
         guard let listed = otherDashboards[dashboardID] else { return }
-        let kept = listed.filter { profiles.contains($0.profile) }
+        // A profile matches its own spelling in any case (issue 2726).
+        func listedStill(_ profile: String) -> Bool { profiles.contains { AppState.profilesMatch($0, profile) } }
+        let kept = listed.filter { listedStill($0.profile) }
         if kept != listed { otherDashboards[dashboardID] = kept.isEmpty ? nil : kept }
-        otherReadProfiles[dashboardID] = otherReadProfiles[dashboardID]?.intersection(profiles)
+        otherReadProfiles[dashboardID] = otherReadProfiles[dashboardID]?.filter(listedStill)
         dropBannerNoLongerListed()
     }
 

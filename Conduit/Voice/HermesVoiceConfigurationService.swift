@@ -275,6 +275,12 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// connection to Hermes is up, so a read that fails says what failed
     /// rather than asking to connect (issue 2711); nil keeps the last told.
     func reload(hermesConnected connected: Bool? = nil) async {
+        await reload(hermesConnected: connected, followingReconnect: false)
+    }
+
+    /// `followingReconnect`: this is the one read again after a reconnect
+    /// landed while the first was out; it says what it got either way.
+    private func reload(hermesConnected connected: Bool?, followingReconnect: Bool) async {
         if let connected { hermesConnected = connected }
         reconnectedDuringRead = false
         isLoading = true
@@ -298,8 +304,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
         if case .success(let answer) = environment { lastEnvironment = answer }
 
         guard case .success(let configObject) = config else {
-            if reconnectedDuringRead {
-                await reload()
+            if reconnectedDuringRead, !followingReconnect, !Task.isCancelled {
+                await reload(hermesConnected: nil, followingReconnect: true)
                 return
             }
             // The Hermes step says what failed; the line under the steps

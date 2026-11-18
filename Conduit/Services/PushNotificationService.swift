@@ -700,13 +700,19 @@ final class PushNotificationService: ObservableObject {
     /// 2683). The chat hands over the gateway its host names for the
     /// profile; a push's own, when one arrived, stays. Kept across
     /// relaunches when the pairing is encrypted, as a push's is.
-    /// Row-drawn cards whose answer must not go unsealed: their pairing
-    /// has no key on this iPhone, which holds one for the profile under
-    /// another gateway (issue 2692). Sealed or refused, never plaintext.
-    private(set) var sealRequiredRequestIDs: Set<String> = []
+    /// Where each row-drawn card's question was listed: its answer is
+    /// refused rather than sent unsealed when, at the send, its pairing
+    /// has no key on this iPhone while the profile has one under another
+    /// gateway, or the keys can't be read (issue 2692).
+    struct RowCardSealContext: Equatable, Sendable {
+        let gatewayID: String
+        let dashboardID: UUID?
+        let profile: String
+    }
+    private(set) var rowCardSealContexts: [String: RowCardSealContext] = [:]
 
-    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, mustSeal: Bool = false) {
-        if mustSeal { sealRequiredRequestIDs.insert(requestID) }
+    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, sealContext: RowCardSealContext? = nil) {
+        if let sealContext { rowCardSealContexts[requestID] = sealContext }
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
         if Self.keepsGatewayAcrossRelaunch(gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) {
@@ -1495,6 +1501,27 @@ final class PushNotificationService: ObservableObject {
 
     /// A clarify answer for a gateway with an encryption key is sealed for
     /// it; the plugin rejects plaintext from an encrypted pairing.
+    /// Whether a row-drawn card's unsealed answer is refused, worked out
+    /// at the send from the keys as they are then: a key gone since the
+    /// card was drawn counts, and keys that can't be read refuse too.
+    /// A card with no context (a push's, or a plaintext pairing's) sends.
+    nonisolated static func rowCardAnswerRefused(
+        context: RowCardSealContext?,
+        body: [String: String],
+        installationID: String?,
+        records: [E2EKeyRecord]?
+    ) -> Bool {
+        guard let context, body["answer"] != nil else { return false }
+        guard let records else { return true }
+        return AppState.needsYouCardMustSeal(
+            gatewayID: body["gateway_id"] ?? context.gatewayID,
+            dashboardID: context.dashboardID,
+            profile: context.profile,
+            installationID: installationID,
+            records: records
+        )
+    }
+
     nonisolated static func sealedRespondBody(
         _ body: [String: String],
         requestID: String,
@@ -1838,13 +1865,16 @@ final class PushNotificationService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        let records = Self.e2eKeyStore.readRecords()
         let sealed = try Self.sealedRespondBody(
             body,
             requestID: requestId,
             installationID: registration.installationID,
-            records: Self.e2eKeyStore.records()
+            records: records ?? []
         )
-        if sealed["answer"] != nil, sealed == body, sealRequiredRequestIDs.contains(requestId) {
+        if sealed["answer"] != nil, sealed == body,
+           Self.rowCardAnswerRefused(context: rowCardSealContexts[requestId], body: body,
+                                     installationID: registration.installationID, records: records) {
             throw RelayDecisionError.needsReconnect
         }
         request.httpBody = try JSONSerialization.data(withJSONObject: sealed)

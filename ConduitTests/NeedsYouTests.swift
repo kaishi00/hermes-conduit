@@ -78,6 +78,17 @@ extension ChatOnScreenTests {
         XCTAssertFalse(mustSeal("gw-listed", [key("gw-default", profile: "default")]), "another profile's key says nothing")
         XCTAssertFalse(mustSeal("gw-listed", [key("gw-atlas", profile: "atlas", retired: true)]), "nor a retired one")
         XCTAssertFalse(mustSeal("gw-listed", []), "a plaintext pairing answers as before")
+
+        // Worked out at the send, from the keys as they are then.
+        let context = PushNotificationService.RowCardSealContext(gatewayID: "gw-listed", dashboardID: dashboard, profile: "Atlas")
+        let plain = ["answer": "staging", "gateway_id": "gw-listed"]
+        func refused(_ context: PushNotificationService.RowCardSealContext?, _ records: [E2EKeyRecord]?) -> Bool {
+            PushNotificationService.rowCardAnswerRefused(context: context, body: plain, installationID: "inst", records: records)
+        }
+        XCTAssertTrue(refused(context, records), "no key for the listed gateway, one for the profile elsewhere")
+        XCTAssertTrue(refused(context, nil), "keys that can't be read refuse")
+        XCTAssertFalse(refused(context, []), "a plaintext pairing sends")
+        XCTAssertFalse(refused(nil, records), "a card with no context (a push's) sends as before")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.
