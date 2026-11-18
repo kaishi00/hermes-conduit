@@ -248,6 +248,12 @@ final class NeedsYouStore: ObservableObject {
         // A wait that left the list needs no remembering.
         cardsHermesDrew.formIntersection(merged.compactMap { $0.card?.requestID })
         dropBannerNoLongerListed()
+        // Another dashboard's banner for a wait this read lists as open
+        // here: one Hermes saved twice, its room already on screen.
+        if let banner, banner.dashboardID != nil,
+           read.contains(where: { $0.hostKey == banner.hostKey && isOpenChat($0) }) {
+            self.banner = nil
+        }
         // A wait another combined dashboard listed first (one Hermes saved
         // at two addresses) had its banner there already (issue 2631).
         let listedElsewhere = Set(otherDashboards.values.joined().map(\.hostKey))
@@ -319,9 +325,11 @@ final class NeedsYouStore: ObservableObject {
     /// Another combined dashboard's profiles no longer listed there.
     func forgetOther(_ dashboardID: UUID, profilesOtherThan profiles: Set<String>) {
         guard let listed = otherDashboards[dashboardID] else { return }
-        let kept = listed.filter { profiles.contains($0.profile) }
+        // A profile matches its own spelling in any case (issue 2726).
+        func listedStill(_ profile: String) -> Bool { profiles.contains { AppState.profilesMatch($0, profile) } }
+        let kept = listed.filter { listedStill($0.profile) }
         if kept != listed { otherDashboards[dashboardID] = kept.isEmpty ? nil : kept }
-        otherReadProfiles[dashboardID] = otherReadProfiles[dashboardID]?.intersection(profiles)
+        otherReadProfiles[dashboardID] = otherReadProfiles[dashboardID]?.filter(listedStill)
         dropBannerNoLongerListed()
     }
 

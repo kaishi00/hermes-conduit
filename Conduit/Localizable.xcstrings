@@ -12799,6 +12799,88 @@
         }
       }
     },
+    "Another chat here goes by this chat's id, so its usage can't be told apart." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Chat hier trägt die ID dieses Chats, daher lässt sich seine Nutzung nicht zuordnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otro chat de aquí usa el mismo id que este, así que no se puede distinguir su uso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une autre discussion ici porte l’identifiant de celle-ci, son utilisation ne peut donc pas être distinguée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan lain di sini memakai id obrolan ini, jadi penggunaannya tidak bisa dibedakan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un'altra chat qui usa l'id di questa chat, quindi il suo utilizzo non si può distinguere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここにある別のチャットがこのチャットと同じIDを使っているため、使用量を区別できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기 있는 다른 채팅이 이 채팅의 ID를 쓰고 있어서 사용량을 구분할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inny czat tutaj używa identyfikatora tego czatu, więc nie da się rozróżnić jego użycia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outro chat aqui usa o id deste chat, então não dá para distinguir o uso dele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другой чат здесь использует идентификатор этого чата, поэтому его использование нельзя отличить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki başka bir sohbet bu sohbetin kimliğini kullanıyor, bu yüzden kullanımı ayırt edilemiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里的另一个聊天使用了此聊天的 ID，因此无法区分其用量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的另一個聊天使用了此聊天的 ID，因此無法區分其用量。"
+          }
+        }
+      }
+    },
     "Answer in your own words." : {
       "localizations" : {
         "de" : {

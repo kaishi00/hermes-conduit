@@ -1428,6 +1428,17 @@ extension CrossProfilePresentationCacheTests {
         // New Bot on that dashboard checks the name against its profiles.
         XCTAssertTrue(appState.newBotSlug(for: "Atlas", on: mac.id).isTaken)
         XCTAssertFalse(appState.newBotSlug(for: "Zephyr", on: mac.id).isTaken)
+        // One Hermes saved twice (a chat both list): the copy keeps only
+        // the profile this dashboard doesn't read (#2754 review).
+        appState.sessions = [session("shared-1")]
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [session("shared-1")], at: Date()
+        )
+        XCTAssertEqual(appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas"])
+        appState.sessions = []
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
+        )
 
         final class Paths { var read: [String] = [] }
         let paths = Paths()

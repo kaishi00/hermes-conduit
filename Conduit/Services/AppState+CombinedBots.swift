@@ -235,8 +235,9 @@ extension AppState {
         while merged {
             merged = false
             for a in known.keys {
-                for b in known.keys where hermes[a] != hermes[b] && !(known[a] ?? []).isDisjoint(with: known[b] ?? []) {
-                    let from = max(hermes[a]!, hermes[b]!), to = min(hermes[a]!, hermes[b]!)
+                for b in known.keys where !(known[a] ?? []).isDisjoint(with: known[b] ?? []) {
+                    guard let ha = hermes[a], let hb = hermes[b], ha != hb else { continue }
+                    let from = max(ha, hb), to = min(ha, hb)
                     for (d, h) in hermes where h == from { hermes[d] = to }
                     merged = true
                 }

@@ -419,10 +419,17 @@ extension AppState {
     /// has no rows: "Loading chats…", or a list with none, says so itself.
     func showsChatListUpdating(overProjects: Bool = false) -> Bool {
         guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
+        // The rows the page draws: in All, every profile's (issue 2736).
+        let rows = chatListSessions
         if overProjects {
-            guard !projectsLoading, !projects.isEmpty else { return false }
+            // The Projects page lists pinned chats over its projects
+            // (Pulse's own chat stays behind the Pulse screen).
+            let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }
+            guard !projectsLoading, !projects.isEmpty || pinned else { return false }
         } else {
-            guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
+            // All draws the other combined dashboards' chats too.
+            guard !rows.isEmpty || !chatListCronSessions.isEmpty
+                || (isAllProfilesChatsOn && !chatListCombinedChats(excluding: []).isEmpty) else { return false }
         }
         return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
     }

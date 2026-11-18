@@ -83,12 +83,12 @@ extension AppState {
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, or opened, while the read was out: not this pass's.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
-                guard let listed = response?["waiting"] as? [[String: Any]] else { continue }
+                guard let listed = response.flatMap({ NeedsYouItem.items(listed: $0, profile: profile) }) else { continue }
                 // A profile a strip tap found deleted while the read was
                 // out stays gone (issue 2646).
-                guard currentKeptProfiles(id, else: profiles).contains(profile) else { continue }
+                guard currentKeptProfiles(id, else: profiles).contains(where: { profilesMatch($0, profile) }) else { continue }
                 needsYou.applyOther(
-                    listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
+                    listed,
                     profile: profile,
                     dashboardID: id,
                     isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
@@ -213,18 +213,25 @@ extension AppState {
                   let key = Self.pendingDecisionEvictionKey(for: card),
                   let pushed = Self.notificationClarifyActivity(for: card),
                   !needsYou.cardsHermesDrew.contains(pushed.requestId),
-                  isOpenChat(item),
-                  !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
+                  isOpenChat(item) else { continue }
+            // Its answer goes through the relay, sealed for the profile's
+            // pairing like a notification's: the card came from no push
+            // that named its gateway (issue 2683). Kept for a card already
+            // drawn too, one restored at relaunch included: whether its
+            // answer may go unsealed is worked out at the send, and one
+            // with no key here while the profile has one under another
+            // gateway is refused (Eric, 2026-11-18, issue 2692).
+            if let gatewayID = needsYouCardGatewayID(item) {
+                PushNotificationService.shared.retainRelayGatewayID(
+                    gatewayID, forRequestID: pushed.requestId,
+                    sealContext: .init(gatewayID: gatewayID, dashboardID: activeDashboardID, profile: item.profile)
+                )
+            }
+            guard !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
             if Self.hermesCardHoldsQuestion(pushed, in: messages) {
                 // Its answer leaves the wait listed until the next read.
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
-            }
-            // Its answer goes through the relay, sealed for the profile's
-            // pairing like a notification's: the card came from no push
-            // that named its gateway (issue 2683).
-            if let gatewayID = needsYouCardGatewayID(item) {
-                PushNotificationService.shared.retainRelayGatewayID(gatewayID, forRequestID: pushed.requestId)
             }
             let openIDs = presentationCacheSessionIDs(for: openID)
             let profile = presentationProfile(for: openID)
@@ -278,6 +285,29 @@ extension AppState {
             }
             .max { $0.createdAt < $1.createdAt }
         return keyed?.gatewayID ?? reported
+    }
+
+    /// Whether a row-drawn card's answer must be sealed though this iPhone
+    /// holds no key for `gatewayID`: it holds a current one for the profile
+    /// on this dashboard under another gateway, so the pairing changed since
+    /// (re-paired elsewhere, or a key not handed over yet), and plaintext
+    /// would reach the relay only for the plugin to refuse it (issue 2692).
+    nonisolated static func needsYouCardMustSeal(
+        gatewayID: String,
+        dashboardID: UUID?,
+        profile: String,
+        installationID: String?,
+        records: [E2EKeyRecord]
+    ) -> Bool {
+        guard NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) == nil else {
+            return false
+        }
+        return records.contains { record in
+            record.installationID == installationID && record.retiredAt == nil
+                && record.gatewayID != gatewayID
+                && record.dashboardID == dashboardID?.uuidString
+                && record.profile.map { profilesMatch($0, profile) } == true
+        }
     }
 
     /// Reads while Conduit is on screen, every `pollInterval` seconds. The

@@ -77,7 +77,11 @@ extension AppState {
     /// id, in the profile it runs under (a Bot Chat's is its bot's). Nil
     /// when the open chat can't be told apart from another (issue 2739).
     func loadOpenChatUsage() async -> SessionUsageReadout? {
-        guard let sessionID = openChatUsageSessionID() else { return nil }
+        guard activeSessionId != nil else { return nil }
+        guard let sessionID = openChatUsageSessionID() else {
+            // Not asked, not failed: say why (#2751 review).
+            return .unavailable(AppLocalization.string("Another chat here goes by this chat's id, so its usage can't be told apart."))
+        }
         return await loadSessionUsage(sessionID: sessionID, profile: conversationIdentityProfile, dashboardID: nil)
     }
 
@@ -92,8 +96,8 @@ extension AppState {
         let profile = conversationIdentityProfile
         if let durable = conversationIdentityIndex.durableID(forRuntime: runtimeID, profile: profile) { return durable }
         if let bot = activeBotChatProfile,
-           let chat = shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(bot) == .orderedSame })?.canonicalSession {
-            return chat.id
+           let chat = shownBotRoster.first(where: { $0.name.caseInsensitiveCompare(bot) == .orderedSame })?.canonicalSessionID {
+            return chat
         }
         let rows = Array([sessions, cronSessions].joined()).filter { sessionBelongsToProfile($0, profile: profile) }
         if let own = rows.first(where: { $0.id == runtimeID || $0.storedSessionId == runtimeID }) {

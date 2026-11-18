@@ -1243,9 +1243,12 @@ final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     /// Paths Hermes answers 404 for, as a Hermes without those routes does.
     var missingRoutes: Set<String> = []
     private(set) var recorded: [(path: String, method: String, body: [String: Any]?)] = []
+    /// Runs as each GET goes out, before it answers.
+    var onGET: ((String) async -> Void)?
 
     func requestJSON(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
         recorded.append((path: path, method: method, body: body))
+        if method == "GET", let onGET { await onGET(path) }
         if method == "PUT", failingPUTPaths.contains(path) {
             throw DashboardTicketBridgeError.requestFailed("Mock PUT failure for \(path)")
         }

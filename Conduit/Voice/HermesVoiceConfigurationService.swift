@@ -261,11 +261,28 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// told, so the reloads after a save word a failure the same way.
     private var hermesConnected = false
 
+    /// Conduit came back while a read was out: that read asks once more if
+    /// Hermes didn't answer it, whichever path started it (issue 2729).
+    private var reconnectedDuringRead = false
+
+    /// Conduit's connection to Hermes as it changes.
+    func noteHermesConnected(_ connected: Bool) {
+        hermesConnected = connected
+        if connected, isLoading { reconnectedDuringRead = true }
+    }
+
     /// Reads the page from Hermes. `hermesConnected` is whether Conduit's
     /// connection to Hermes is up, so a read that fails says what failed
     /// rather than asking to connect (issue 2711); nil keeps the last told.
     func reload(hermesConnected connected: Bool? = nil) async {
+        await reload(hermesConnected: connected, followingReconnect: false)
+    }
+
+    /// `followingReconnect`: this is the one read again after a reconnect
+    /// landed while the first was out; it says what it got either way.
+    private func reload(hermesConnected connected: Bool?, followingReconnect: Bool) async {
         if let connected { hermesConnected = connected }
+        reconnectedDuringRead = false
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
@@ -287,6 +304,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
         if case .success(let answer) = environment { lastEnvironment = answer }
 
         guard case .success(let configObject) = config else {
+            if reconnectedDuringRead, !followingReconnect, !Task.isCancelled {
+                await reload(hermesConnected: nil, followingReconnect: true)
+                return
+            }
             // The Hermes step says what failed; the line under the steps
             // would only say it again.
             answered = false

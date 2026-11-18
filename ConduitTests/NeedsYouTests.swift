@@ -66,6 +66,29 @@ extension ChatOnScreenTests {
                                                                    installationID: "inst", records: records)
         XCTAssertNotEqual(sealed["answer"], "staging", "an encrypted pairing never gets the answer in plaintext")
         XCTAssertEqual(sealed["gateway_id"], "gw-atlas")
+
+        // Issue 2692: a listed gateway with no key here, while the profile
+        // has one under another, must be sealed or refused (Eric).
+        func mustSeal(_ gateway: String, _ records: [E2EKeyRecord]) -> Bool {
+            AppState.needsYouCardMustSeal(gatewayID: gateway, dashboardID: dashboard, profile: "Atlas",
+                                          installationID: "inst", records: records)
+        }
+        XCTAssertTrue(mustSeal("gw-listed", records), "re-paired: a key for the profile under another gateway")
+        XCTAssertFalse(mustSeal("gw-atlas", records), "its own key seals it")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-default", profile: "default")]), "another profile's key says nothing")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-atlas", profile: "atlas", retired: true)]), "nor a retired one")
+        XCTAssertFalse(mustSeal("gw-listed", []), "a plaintext pairing answers as before")
+
+        // Worked out at the send, from the keys as they are then.
+        let context = PushNotificationService.RowCardSealContext(gatewayID: "gw-listed", dashboardID: dashboard, profile: "Atlas")
+        let plain = ["answer": "staging", "gateway_id": "gw-listed"]
+        func refused(_ context: PushNotificationService.RowCardSealContext?, _ records: [E2EKeyRecord]?) -> Bool {
+            PushNotificationService.rowCardAnswerRefused(context: context, body: plain, installationID: "inst", records: records)
+        }
+        XCTAssertTrue(refused(context, records), "no key for the listed gateway, one for the profile elsewhere")
+        XCTAssertTrue(refused(context, nil), "keys that can't be read refuse")
+        XCTAssertFalse(refused(context, []), "a plaintext pairing sends")
+        XCTAssertFalse(refused(nil, records), "a card with no context (a push's) sends as before")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.
@@ -289,6 +312,15 @@ extension ChatOnScreenTests {
         store.dismissBanner(try XCTUnwrap(twinBanner))
         store.apply([wait("w1", 10), wait("w2", 20), wait("w3", 30), wait("w4", 40)], profile: "default", dashboardID: here) { _ in false }
         XCTAssertNil(store.banner, "its banner showed once, from the twin")
+
+        // The twin banners a wait first that this dashboard's read then
+        // lists as open here: the banner goes (#2754 review).
+        let all = (1...5).map { wait("w\($0)", Double($0) * 10) }
+        store.applyOther(all, profile: "default", dashboardID: twin)
+        XCTAssertEqual(store.banner?.waitID, "w5")
+        XCTAssertEqual(store.banner?.dashboardID, twin)
+        store.apply(all, profile: "default", dashboardID: here) { $0.waitID == "w5" }
+        XCTAssertNil(store.banner, "open here, no banner from the twin")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {

@@ -1882,6 +1882,16 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.showsChatListUpdating())
         // Projects with none listed say nothing over the empty page.
         XCTAssertFalse(appState.showsChatListUpdating(overProjects: true))
+        // Its pinned chats are rows it shows, projects or none (issue 2736).
+        appState.pinnedSessionIDs = ["stored-a"]
+        XCTAssertTrue(appState.showsChatListUpdating(overProjects: true), "pinned chats over no projects")
+        appState.pinnedSessionIDs = []
+        appState.projects = [ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: [])]
+        XCTAssertTrue(appState.showsChatListUpdating(overProjects: true), "projects listed")
+        appState.projectsLoading = true
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true), "a projects read says its own")
+        appState.projectsLoading = false
+        appState.projects = []
         appState.noteStaleChatListRead(started: false, owner: appState.sessionCatalogOwner)
         appState.noteStaleChatListRead(started: false, owner: other)
         XCTAssertTrue(appState.staleChatListReads.isEmpty)
