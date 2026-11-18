@@ -3657,14 +3657,14 @@ README's "context meter" (done)
 - Hermes' numbers only, never Conduit's own: no pricing tables on the phone and no count from the live `session.usage` tick, whose counters start again whenever Hermes reloads the chat's agent.
 - Cost follows each row's `cost_status`: billed, estimated (labelled Estimated cost), included in a plan, or not reported. A chat with no priced call says "Not reported by this host", never $0.00 (Hermes stores an unknown price as 0); one with some calls unpriced says "At least" its priced sum.
 - A branch is a chat of its own and isn't counted; a compression's continuation and a subagent run are.
-- Both faces ask for the id Hermes stores the chat under, which the plugin reads by: a listed row's `storedSessionId ?? id`; the open chat's runtime-to-durable binding, then a Bot Chat's registry row, then the row that owns the id. An id two rows carry is neither's and isn't asked about; a chat not listed yet is asked by its open id (issue 2739, #PRNUM).
-- A read's answer and its failure share one fence, the connection it went out on (the dashboard on screen's owner, or a kept connection's bridge and keptAt): what a dashboard left says, good or bad, isn't shown. Usage Details goes down with the Model and Context sheets when another chat takes the screen, on a dashboard switch and on a widget launch (issue 2740, #PRNUM).
+- Both faces ask for the id Hermes stores the chat under, which the plugin reads by: a listed row's `storedSessionId ?? id`; the open chat's runtime-to-durable binding, then a Bot Chat's registry row, then the row that owns the id. An id two rows carry is neither's and isn't asked about; a chat not listed yet is asked by its open id (issue 2739, #2751).
+- A read's answer and its failure share one fence, the connection it went out on (the dashboard on screen's owner, or a kept connection's bridge and keptAt): what a dashboard left says, good or bad, isn't shown. Usage Details goes down with the Model and Context sheets when another chat takes the screen, on a dashboard switch and on a widget launch (issue 2740, #2751).
 - Compress Now is the typed `/compress` exactly, closing the sheet so the chat's progress shows; it's off while the chat compresses, while a reply runs (Hermes refuses one mid-turn) and while the composer can't act.
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #PRNUM (issues 2739 and 2740: the open chat's card asks for its stored id, a read's failure fenced like its answer, Usage Details taken down with the chat it covered; the notifier route needed no change, it reads by the stored id); 2026-11-18, #2704 (added in #2703: issue 2699).
+**Checked:** 2026-11-18, #2751 (issues 2739 and 2740: the open chat's card asks for its stored id, a read's failure fenced like its answer, Usage Details taken down with the chat it covered; the notifier route needed no change, it reads by the stored id); 2026-11-18, #2704 (added in #2703: issue 2699).
 
 ## /new in a Bot Chat
 
