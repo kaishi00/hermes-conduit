@@ -6026,7 +6026,7 @@ captions (unchanged); README and docs don't describe them
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-18, #2779 (Context engine offers the compressor, not "default", and shows a saved "default" as the compressor it runs)
+**Checked:** 2026-11-18, #2784 (a saved "custom" tested as the compressor too; the desktop sibling's wording)
 
 ## Profile config saves
 
