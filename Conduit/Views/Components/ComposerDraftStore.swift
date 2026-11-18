@@ -49,6 +49,9 @@ final class ComposerDraftStore {
     /// How many times `removeAll` ran: a composer loaded before a clear
     /// doesn't put its draft back after it.
     private(set) var clearCount: UInt64 = 0
+    /// How many times each dashboard's drafts went on their own (a sign-out
+    /// of a dashboard not on screen).
+    private var dashboardClearCounts: [UUID: UInt64] = [:]
 
     init(capacity: Int = 12) {
         self.capacity = max(0, capacity)
@@ -115,12 +118,21 @@ final class ComposerDraftStore {
     }
 
     /// A sign-out of a dashboard that isn't on screen: its drafts go, the
-    /// other dashboards' stay. No composer of it is on screen to put one
-    /// back, so the clear count stays.
+    /// other dashboards' stay. Only that dashboard's clear count moves, so
+    /// the composer on screen still keeps its own.
     func removeDrafts(forDashboard dashboard: UUID) {
+        dashboardClearCounts[dashboard, default: 0] &+= 1
         for key in drafts.keys where key.dashboard == dashboard {
             removeDraft(for: key)
         }
+    }
+
+    /// The clears a draft of `dashboard` has to outlast: every store-wide
+    /// one, and its own dashboard's. A send from a dashboard signed out
+    /// meanwhile doesn't put its words back, and the dashboard on screen's
+    /// composer still keeps its draft (#2708).
+    func clearCount(for dashboard: UUID?) -> UInt64 {
+        clearCount &+ (dashboard.flatMap { dashboardClearCounts[$0] } ?? 0)
     }
 
     func removeAll() {

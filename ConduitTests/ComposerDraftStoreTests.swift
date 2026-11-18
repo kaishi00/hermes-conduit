@@ -504,6 +504,34 @@ final class ComposerDraftStoreTests: XCTestCase {
         )
     }
 
+    func testSigningOutOfADashboardNotOnScreenStopsOnlyItsWordsComingBack() {
+        // #2708's review: a send from dashboard A still out when A is signed
+        // out from B fails afterwards. Its words don't come back, and B's
+        // composer still keeps its draft.
+        let store = ComposerDraftStore()
+        let a = UUID()
+        let b = UUID()
+        let onA = ComposerDraftKey(dashboard: a, profile: "default", sessionID: "one")
+        let onB = ComposerDraftKey(dashboard: b, profile: "default", sessionID: "one")
+        store.save(ComposerDraft(text: "A's words", attachments: []), for: onA)
+        store.save(ComposerDraft(text: "B's words", attachments: []), for: onB)
+        let sentFromA = store.clearCount(for: a)
+        let loadedOnB = store.clearCount(for: b)
+
+        store.removeDrafts(forDashboard: a)
+
+        XCTAssertTrue(store.draft(for: onA).isEmpty)
+        XCTAssertEqual(store.draft(for: onB).text, "B's words")
+        XCTAssertNil(ComposerBar.draftKeyToKeep(loaded: onA, loadedClearCount: sentFromA,
+                                                storeClearCount: store.clearCount(for: a)))
+        XCTAssertEqual(ComposerBar.draftKeyToKeep(loaded: onB, loadedClearCount: loadedOnB,
+                                                  storeClearCount: store.clearCount(for: b)), onB)
+        // A store-wide clear still counts for every dashboard.
+        store.removeAll()
+        XCTAssertNil(ComposerBar.draftKeyToKeep(loaded: onB, loadedClearCount: loadedOnB,
+                                                storeClearCount: store.clearCount(for: b)))
+    }
+
     func testStoreEvictsTheOldestBucketWhenCapacityIsExceeded() {
         let store = ComposerDraftStore(capacity: 1)
         let first = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")

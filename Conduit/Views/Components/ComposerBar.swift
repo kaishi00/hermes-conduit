@@ -665,7 +665,7 @@ struct ComposerBar: View {
             if roomActive, let key = Self.draftKeyToKeep(
                 loaded: loadedDraftKey,
                 loadedClearCount: loadedDraftClearCount,
-                storeClearCount: draftStore.clearCount
+                storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
             ) {
                 saveDraft(for: key)
             }
@@ -701,7 +701,7 @@ struct ComposerBar: View {
             if let key = Self.draftKeyToKeep(
                 loaded: loadedDraftKey,
                 loadedClearCount: loadedDraftClearCount,
-                storeClearCount: draftStore.clearCount
+                storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
             ) {
                 saveDraft(for: key)
             }
@@ -1884,7 +1884,7 @@ struct ComposerBar: View {
         let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
-        let submittedClearCount = draftStore.clearCount
+        let submittedClearCount = draftStore.clearCount(for: submittedDraftKey.dashboard)
         let submittedDashboardID = appState.activeDashboardID
         let submittedChatTitle = appState.displayedChatTitle
         // The words may come back after the chat's runtime id has moved on:
@@ -2291,7 +2291,7 @@ struct ComposerBar: View {
     ) {
         // A sign-out or server switch cleared the drafts while it was on
         // its way: the outgoing account's words don't come back.
-        guard Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount, storeClearCount: draftStore.clearCount) != nil else {
+        guard Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount, storeClearCount: draftStore.clearCount(for: key.dashboard)) != nil else {
             return
         }
         let failed = ComposerDraft(
@@ -2634,7 +2634,7 @@ struct ComposerBar: View {
         attachments = draft.attachments
         replyReference = draft.replyReference
         loadedDraftKey = key
-        loadedDraftClearCount = draftStore.clearCount
+        loadedDraftClearCount = draftStore.clearCount(for: key.dashboard)
         composerTextHeight = restingTextHeight
         isFocused = false
         isShowingSlashSuggestions = false
@@ -2647,7 +2647,7 @@ struct ComposerBar: View {
         let keptKey = Self.draftKeyToKeep(
             loaded: loadedDraftKey,
             loadedClearCount: loadedDraftClearCount,
-            storeClearCount: draftStore.clearCount
+            storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
         )
         // The same chat under another id (a saved copy's chat opening, the
         // chat a New Chat created): the field stays as it is, focus and

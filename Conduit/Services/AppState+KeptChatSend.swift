@@ -91,7 +91,7 @@ extension AppState {
             draftSessionID: chat.durableSessionID
                 ?? conversationIdentityIndex.durableID(forRuntime: target, profile: chat.profile)
                 ?? target,
-            draftsClearCount: composerDraftStore.clearCount
+            draftsClearCount: composerDraftStore.clearCount(for: chat.dashboardID)
         )
         await reportTurnSurface(messageTurnSurface(spoken: false), runtimeSessionID: target, text: words)?.value
         // A switch to another dashboard or profile during the report closed
@@ -164,7 +164,7 @@ extension AppState {
         guard !stillKept,
               // Signed out since: the drafts were the outgoing
               // account's, and so are these words.
-              composerDraftStore.clearCount == back.draftsClearCount else { return }
+              composerDraftStore.clearCount(for: chat.dashboardID) == back.draftsClearCount else { return }
         returnFailedComposerSubmission(
             ComposerDraft(text: words, attachments: []),
             key: ComposerBar.composerDraftKey(for: back.draftSessionID, profile: chat.profile, dashboard: chat.dashboardID),
