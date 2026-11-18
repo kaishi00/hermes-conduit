@@ -6013,17 +6013,17 @@ captions (unchanged); README and docs don't describe them
 
 **Code**
 - Rows: `Conduit/Views/AuxiliaryViews.swift` (memorySections, MemorySettingsDetail's optionOverrides)
-- Choices: `Conduit/Services/AppState+ProfileConfig.swift` (profileConfigOptions), `Conduit/Models/Models.swift` (ProfileConfigOptions)
+- Choices: `Conduit/Services/AppState+ProfileConfig.swift` (profileConfigOptions), `Conduit/Models/Models.swift` (ProfileConfigOptions), `Conduit/Views/AuxiliaryViews.swift` (ContextEngineChoice)
 - Saves: `Conduit/Services/AppState+ProfileConfig.swift` (setProfileSetting)
-- Tests: `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift`
+- Tests: `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift`, `ConduitTests/ConfigFieldLocalizationTests.swift`
 
 **Rulings**
-- Memory provider lists the providers the hub calls ready. Context engine lists Hermes' built-in `compressor` first, then the installed plugin engines; it shows `compressor` while the config has none. "default" is no engine: Hermes logs it as not found and falls back to the compressor (#2779).
+- Memory provider lists the providers the hub calls ready. Context engine lists Hermes' built-in `compressor` first, then the installed plugin engines; it shows `compressor` while the config has none, or holds "default" or "custom" from an older Conduit. "default" is no engine: Hermes logs it as not found and falls back to the compressor (#2779).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-18, #2779 (Context engine offers the compressor, not "default")
+**Checked:** 2026-11-18, #2779 (Context engine offers the compressor, not "default", and shows a saved "default" as the compressor it runs)
 
 ## Profile config saves
 

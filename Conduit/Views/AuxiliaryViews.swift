@@ -3459,6 +3459,15 @@ private struct MemorySettingsDetail: View {
 
 /// 服务器配置值 → 英文显示名（走 String Catalog 翻译）；未收录的动态值原样显示。
 /// 值本身绝不能翻译：它们会原样写回 Hermes 配置。
+/// Context engine as Hermes runs it: a profile an older Conduit saved as
+/// "default" (or "custom") has no such engine, so Hermes runs its built-in
+/// compressor, and the row says so.
+enum ContextEngineChoice {
+    static func shown(_ key: String, _ value: String) -> String {
+        key == "context.engine" && (value == "default" || value == "custom") ? "compressor" : value
+    }
+}
+
 enum ProfileConfigValueDisplay {
     static let optionValueDisplay: [String: [String: String]] = [
         "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
@@ -3623,7 +3632,7 @@ struct ProfileConfigSettingsPage: View {
                 // A runtime list that came back empty falls back to the schema's.
                 let baseChoices = optionOverrides[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? options
                 let choices = baseChoices + (extraOptions[field.key] ?? []).filter { !baseChoices.contains($0) }
-                let selectedValue = textValue(field.key, defaultValue: defaultValue)
+                let selectedValue = ContextEngineChoice.shown(field.key, textValue(field.key, defaultValue: defaultValue))
                 let displayedValue = selectedValue
                 Menu {
                     ForEach(choices, id: \.self) { option in

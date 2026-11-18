@@ -19,6 +19,10 @@ extension ProfileModelDefaultsTests {
         XCTAssertEqual(options.contextEngines, ["compressor", "lcm"])
         XCTAssertEqual(options.memoryProviders, ["honcho"])
         XCTAssertEqual(AppState.profileConfigOptions(config: [:], plugins: [:]).contextEngines, ["compressor"])
+        // A profile saved as "default" or "custom" runs the compressor, and shows it.
+        XCTAssertEqual(ContextEngineChoice.shown("context.engine", "default"), "compressor")
+        XCTAssertEqual(ContextEngineChoice.shown("context.engine", "lcm"), "lcm")
+        XCTAssertEqual(ContextEngineChoice.shown("display.memory_notifications", "default"), "default")
     }
 
     func testSchemaDecodesTypesAndStringChoices() {
