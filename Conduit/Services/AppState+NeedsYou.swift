@@ -69,11 +69,13 @@ extension AppState {
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
-            // dashboard of this one's Hermes (issue 2631).
-            let mine = CombinedBotsHomeOrder.key(activeDashboardID, "")
-            let theirs = CombinedBotsHomeOrder.key(id, "")
-            let sameHermes = combinedBotsHomeTwins.contains { key, copies in
-                key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
+            // dashboard of this one's Hermes (issue 2631), bots or none
+            // (issue 2741).
+            // Asked per item, after the read: the read itself can bring
+            // the shared wait that makes the two one Hermes.
+            func sameHermes() -> Bool {
+                let hermes = combinedHermesGroups
+                return hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
             }
             for profile in profiles {
                 guard isSceneActive else { return }
@@ -89,7 +91,7 @@ extension AppState {
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { ($0.roomID == nil || sameHermes) && self.isOpenChat($0) }
+                    isOpenChat: { ($0.roomID == nil || sameHermes()) && self.isOpenChat($0) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
