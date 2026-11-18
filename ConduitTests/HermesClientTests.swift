@@ -5584,6 +5584,43 @@ extension HermesClientTests {
         )
     }
 
+    func testAHeldSilenceMarkerStaysHeldAcrossASocketHandOff() async throws {
+        // Issue 2700: a reply held while it could still be [SILENT] goes on
+        // being held on the client the socket goes to.
+        let (outgoing, socket, transport) = try await connectedForHandOff()
+        var outgoingTexts: [String] = []
+        outgoing.onEvent = { event in
+            if case .messageDelta(_, let text) = event { outgoingTexts.append(text) }
+        }
+        try deliverReply(["jsonrpc": "2.0", "method": "event",
+                          "params": ["type": "message.delta", "session_id": "s1", "payload": ["text": "[SIL"]]], on: socket)
+        await flushMainActor()
+        XCTAssertEqual(outgoingTexts, [], "Held: it could still be a marker")
+
+        let incoming = makeClient(transport: transport, profile: "work")
+        var incomingTexts: [String] = []
+        var completed: [String?] = []
+        incoming.onEvent = { event in
+            switch event {
+            case .messageDelta(_, let text): incomingTexts.append(text)
+            case .messageComplete(_, _, let content, _, _): completed.append(content)
+            default: break
+            }
+        }
+        XCTAssertTrue(outgoing.handOffSocket(to: incoming))
+        try deliverReply(["jsonrpc": "2.0", "method": "event",
+                          "params": ["type": "message.delta", "session_id": "s1", "payload": ["text": "ENT]"]]], on: socket)
+        await flushMainActor()
+        try deliverReply(["jsonrpc": "2.0", "method": "event",
+                          "params": ["type": "message.complete", "session_id": "s1", "payload": ["text": ""]]], on: socket)
+        await flushMainActor()
+        XCTAssertEqual(incomingTexts, [], "No fragment of the marker reaches the next client")
+        XCTAssertEqual(completed, [""])
+        XCTAssertEqual(outgoingTexts, [])
+        outgoing.disconnect()
+        incoming.disconnect()
+    }
+
     func testAHandedOnSocketCarriesTheNextProfilesRequestsAndEvents() async throws {
         let (outgoing, socket, transport) = try await connectedForHandOff()
         var outgoingEvents = 0
