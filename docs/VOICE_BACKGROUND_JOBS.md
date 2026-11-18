@@ -117,7 +117,12 @@ a job. At most three jobs run at once.
   sign of life (an event, a listing, a running answer) starts it over and
   overrides a check already on its way. A reply read from a chat other
   turns share (a call's chat turn, a continued chat) is the job's only when
-  it answers a message the job sent there.
+  it answers a message the job sent there. A read that doesn't reach the
+  reply's message (a page with the reply but not what it answers) is still
+  taken, unchecked, as before; and one answering another message after a
+  read of the chat's other id failed counts as a failed read. Matching is
+  by the message's words, so a request said twice in the same chat can't
+  be told from its earlier copy.
   Cancelling a session Hermes no longer knows removes the stale job too.
 - Approvals and clarifications stay where they are today: the job's chat and
   the push notification. Voice only says that the job is waiting. Voice

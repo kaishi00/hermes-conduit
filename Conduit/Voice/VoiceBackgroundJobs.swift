@@ -226,15 +226,17 @@ enum VoiceFollowUpState: Equatable {
 /// What Hermes did with a follow-up (`VoiceBackgroundJobBackend.redirect`).
 /// A read of a chat's latest reply (issue 2655): a reply, with the user's
 /// message it answers when the read reached it; a read that found no reply;
-/// or a read that failed, which says nothing about the chat.
+/// or a read that failed, which says nothing about the chat. `partial`: a
+/// read of one of the chat's ids failed before the reply came from another,
+/// so a reply that turns out not to be the job's proves nothing either.
 enum VoiceThreadReplyRead: Equatable {
-    case reply(String, prompt: String?)
+    case reply(String, prompt: String?, partial: Bool = false)
     case noReply
     case failed
 
     /// The reply's text, trimmed; nil for no reply or a failed read.
     var text: String? {
-        guard case .reply(let text, _) = self else { return nil }
+        guard case .reply(let text, _, _) = self else { return nil }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? nil : trimmed
     }
@@ -2437,6 +2439,15 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func notePromptSent(_ text: String, for jobID: UUID) {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+        // Jobs gone from the ledger keep nothing (polling may have stopped
+        // before they settled); a cancel that may still roll back keeps its
+        // job, so its prompts stay.
+        let listed = Set(jobs.map(\.id))
+        if sentPrompts.keys.contains(where: { !listed.contains($0) }) {
+            sentPrompts = sentPrompts.filter { listed.contains($0.key) }
+            livenessEpochs = livenessEpochs.filter { listed.contains($0.key) }
+            unansweredProbes = unansweredProbes.filter { listed.contains($0.key) }
+        }
         sentPrompts[jobID, default: []].insert(trimmed)
     }
 
@@ -2445,10 +2456,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// earlier turn's, so the job's own reply isn't there (issue 2655). A
     /// read that didn't reach the reply's message is taken as it is.
     private func ownReply(_ read: VoiceThreadReplyRead, for job: VoiceBackgroundJob) -> VoiceThreadReplyRead {
-        guard job.isThreadTurn || job.continuesChat, case .reply(_, let prompt?) = read else { return read }
+        guard job.isThreadTurn || job.continuesChat, case .reply(_, let prompt?, let partial) = read else { return read }
         let asked = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !asked.isEmpty, let sent = sentPrompts[job.id], !sent.isEmpty else { return read }
-        return sent.contains(asked) ? read : .noReply
+        if sent.contains(asked) { return read }
+        // An earlier turn's reply, after a read of another id failed: the
+        // job's own may be in the history that couldn't be read.
+        return partial ? .failed : .noReply
     }
 
     private func noteLivenessActivity(_ jobID: UUID) {
@@ -3646,14 +3660,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 // A running session or a title-only answer does not prove an
                 // end. Never turn a timeout or unsupported probe into absence.
                 guard running == false else {
-                    noteUnansweredProbe(id, runtimeID: runtimeID)
+                    noteUnansweredProbe(id, runtimeID: runtimeID, epoch: epoch)
                     continue
                 }
                 goneFromHermes = false
             } catch {
                 guard generation == self.generation else { return }
                 guard HermesClient.isSessionNotFoundError(error) else {
-                    noteUnansweredProbe(id, runtimeID: runtimeID)
+                    noteUnansweredProbe(id, runtimeID: runtimeID, epoch: epoch)
                     continue
                 }
                 goneFromHermes = true
@@ -3747,11 +3761,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             changed = true
         }
-        // Only active jobs keep their liveness bookkeeping.
+        // Only active jobs keep their liveness bookkeeping. Prompts stay
+        // while the job is in the ledger: a cancel still waiting on Hermes
+        // can roll back to running (#2752's review).
         let active = Set(jobs.filter { $0.status.isActive }.map(\.id))
+        let listed = Set(jobs.map(\.id))
         livenessEpochs = livenessEpochs.filter { active.contains($0.key) }
         unansweredProbes = unansweredProbes.filter { active.contains($0.key) }
-        sentPrompts = sentPrompts.filter { active.contains($0.key) }
+        sentPrompts = sentPrompts.filter { listed.contains($0.key) }
         if changed {
             noticeMayBePending()
             pumpThreadTurns()
@@ -3760,8 +3777,9 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// A direct check got no answer (a timeout, an unsupported read, a
     /// title-only answer): the next waits 1, 3, 7, then 8 polls.
-    private func noteUnansweredProbe(_ id: UUID, runtimeID: String) {
-        guard job(id)?.runtimeSessionID == runtimeID else { return }
+    private func noteUnansweredProbe(_ id: UUID, runtimeID: String, epoch: Int) {
+        // A sign of life since the check went out started the checks over.
+        guard job(id)?.runtimeSessionID == runtimeID, livenessEpochs[id, default: 0] == epoch else { return }
         let misses = (unansweredProbes[id]?.misses ?? 0) + 1
         let skip = min((1 << min(misses, 4)) - 1, Self.maximumProbePollsSkipped)
         unansweredProbes[id] = (misses, skip)

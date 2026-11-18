@@ -124,6 +124,8 @@ final class FakeVoiceJobBackend {
     var threadReplyPrompt: String?
     /// Reads of the chat's history fail.
     var threadReplyFails = false
+    /// A read of another of the chat's ids failed before the reply came.
+    var threadReplyPartial = false
     /// The runtime the chat resumes onto; nil keeps the target's own.
     var threadRuntime: String?
     /// Thrown when the chat's runtime is resolved (a deleted chat's resume).
@@ -269,7 +271,7 @@ final class FakeVoiceJobBackend {
                 self.replyReads.append(chat)
                 self.onLatestReply?()
                 if self.threadReplyFails { return .failed }
-                return self.threadReply.map { .reply($0, prompt: self.threadReplyPrompt) } ?? .noReply
+                return self.threadReply.map { .reply($0, prompt: self.threadReplyPrompt, partial: self.threadReplyPartial) } ?? .noReply
             },
             latestThreadPrompt: { [self] _ in self.threadPrompt },
             isBotChat: { [self] _ in self.botChat },

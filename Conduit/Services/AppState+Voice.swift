@@ -1659,7 +1659,7 @@ extension AppState {
     /// (issue 2655).
     func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> VoiceThreadReplyRead {
         switch await latestLiveVoiceThreadReplyRead(thread) {
-        case .found(let turn): return .reply(turn.message.content, prompt: turn.prompt)
+        case .found(let turn, let partial): return .reply(turn.message.content, prompt: turn.prompt, partial: partial)
         case .noReply: return .noReply
         case .failed: return .failed
         }
@@ -1669,12 +1669,13 @@ extension AppState {
     /// chat, and the user's message it answers when the read reached it,
     /// so a caller can tell two replies worded alike apart.
     func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool, prompt: String?)? {
-        guard case .found(let turn) = await latestLiveVoiceThreadReplyRead(thread) else { return nil }
+        guard case .found(let turn, _) = await latestLiveVoiceThreadReplyRead(thread) else { return nil }
         return turn
     }
 
     enum LiveVoiceThreadReplyRead {
-        case found((message: ChatMessage, inOpenChat: Bool, prompt: String?))
+        /// `partial`: a read of another of the chat's ids failed first.
+        case found((message: ChatMessage, inOpenChat: Bool, prompt: String?), partial: Bool)
         /// The chat was read and holds no reply.
         case noReply
         /// The read failed, or the call moved on to another profile meanwhile.
@@ -1685,8 +1686,10 @@ extension AppState {
         // Read once, without suspending: the chat on screen can change at
         // any await.
         if isOpenChat(thread) {
-            guard let turn = Self.latestReplyTurn(in: messages) else { return .noReply }
-            return .found((turn.reply, true, turn.prompt))
+            if let turn = Self.latestReplyTurn(in: messages) { return .found((turn.reply, true, turn.prompt), partial: false) }
+            // Rows still on their way (an open that hasn't landed, a saved
+            // copy standing in): the saved history decides.
+            if !messages.isEmpty { return .noReply }
         }
         guard let bridge = dashboardTicketBridge else { return .failed }
         // One profile for every read: a reply from another profile's history
@@ -1696,14 +1699,14 @@ extension AppState {
         let read = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace)
         guard workspace == voiceCallProfile else { return .failed }
         switch read {
-        case .found(let turn): return .found((turn.reply, false, turn.prompt))
+        case .found(let turn, let partial): return .found((turn.reply, false, turn.prompt), partial: partial)
         case .noReply: return .noReply
         case .failed: return .failed
         }
     }
 
     private enum SavedThreadReplyRead {
-        case found((reply: ChatMessage, prompt: String?))
+        case found((reply: ChatMessage, prompt: String?), partial: Bool)
         case noReply
         case failed
     }
@@ -1722,7 +1725,13 @@ extension AppState {
         for sessionID in ids {
             func read(_ query: String) async -> [String: Any]? {
                 switch await voiceHistoryRead(sessionId: sessionID, profile: profile, query: query, using: bridge) {
-                case .page(let page): return page
+                case .page(let page):
+                    // A body with no rows list isn't an empty chat.
+                    guard Self.persistedMessageRows(in: page) != nil else {
+                        readFailed = true
+                        return nil
+                    }
+                    return page
                 case .notFound: return nil
                 case .failed:
                     readFailed = true
@@ -1742,11 +1751,11 @@ extension AppState {
                     if let full = await read(PersistedTranscriptPagination.legacyQuery),
                        let fullRows = Self.persistedMessageRows(in: full),
                        let turn = Self.latestAssistantTurn(inMessageRows: fullRows) {
-                        return .found(turn)
+                        return .found(turn, partial: readFailed)
                     }
                     break
                 }
-                if let turn = Self.latestAssistantTurn(inMessageRows: rows) { return .found(turn) }
+                if let turn = Self.latestAssistantTurn(inMessageRows: rows) { return .found(turn, partial: readFailed) }
                 if rows.isEmpty { break }
                 offset += rows.count
             }
