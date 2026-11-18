@@ -97,6 +97,7 @@ struct MarkdownDocumentSheet: View {
     @State private var shareURL: URL?
     @State private var shareDirectory: URL?
     @State private var shareFailed = false
+    @State private var saveFailed = false
 
     var body: some View {
         NavigationStack {
@@ -115,6 +116,9 @@ struct MarkdownDocumentSheet: View {
         .task { await stageForSharing() }
         .onDisappear { removeShareDirectory() }
         .alert(AppLocalization.string("Couldn't open the share sheet. Try again."), isPresented: $shareFailed) {
+            Button(AppLocalization.string("OK"), role: .cancel) {}
+        }
+        .alert(AppLocalization.string("Couldn't save the file. Try again."), isPresented: $saveFailed) {
             Button(AppLocalization.string("OK"), role: .cancel) {}
         }
     }
@@ -173,6 +177,16 @@ struct MarkdownDocumentSheet: View {
                     } label: {
                         Label(AppLocalization.string("Share"), systemImage: "square.and.arrow.up")
                     }
+                    // A copy saved straight to Files, without the share
+                    // sheet (issue 1809). The picker gets its own copy: this
+                    // sheet removes its staged file when it leaves the screen.
+                    Button {
+                        if !MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: shareURL) {
+                            saveFailed = true
+                        }
+                    } label: {
+                        Label(AppLocalization.string("Save to Files"), systemImage: "folder")
+                    }
                 } label: {
                     Image(systemName: "square.and.arrow.up")
                 }
@@ -181,8 +195,8 @@ struct MarkdownDocumentSheet: View {
         }
     }
 
-    /// The system share sheet for the staged copy, or an alert saying it
-    /// couldn't open, never a tap that does nothing.
+    /// The system share sheet for the staged copy, or an alert when it
+    /// can't open (the copy is gone, or there's no screen to present from).
     private func share(_ url: URL) {
         if !MediaPreviewPresenter.shared.presentShare(fileURL: url) {
             shareFailed = true

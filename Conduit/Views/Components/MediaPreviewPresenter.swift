@@ -122,6 +122,7 @@ final class MediaPreviewPresenter {
     /// closes. The menu is the app handoff for a file another reader can
     /// take (MDReader, a Markdown editor) without Conduit displaying it.
     private let openInDelegate = OpenInDelegate()
+    private var savePickers: [ObjectIdentifier: SaveToFilesDelegate] = [:]
 
     /// Previews a file already on disk (a local attachment). The file is
     /// left in place afterwards. A type Quick Look must not render opens the
@@ -315,6 +316,78 @@ final class MediaPreviewPresenter {
         share(item: link, ownedDirectory: nil)
     }
 
+    // MARK: - Save to Files
+
+    /// The system Files picker, saving a copy of the file where the user
+    /// picks (issue 1809): a direct Save to Files beside Open and Share.
+    /// `ownedDirectory`, a copy staged for it, is removed once the picker
+    /// closes, saved or cancelled; nil leaves the file to its caller. False
+    /// when the file is gone or there is no screen to present from.
+    @discardableResult
+    func presentSaveToFiles(fileURL: URL, ownedDirectory: URL? = nil) -> Bool {
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let presenter = Self.topViewController() else {
+            Self.removeDirectory(ownedDirectory)
+            return false
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+        let key = ObjectIdentifier(picker)
+        // UIKit holds the delegate weakly: keep it until the picker closes.
+        let delegate = SaveToFilesDelegate { [weak self] in
+            Self.removeDirectory(ownedDirectory)
+            self?.savePickers[key] = nil
+        }
+        savePickers[key] = delegate
+        picker.delegate = delegate
+        presenter.present(picker, animated: true)
+        // As in `share`: a refused picker never calls its delegate, so its
+        // copy is reclaimed once it never presented.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard picker.presentingViewController == nil, self?.savePickers[key] != nil else { return }
+            delegate.finish()
+        }
+        return true
+    }
+
+    /// Save to Files for a file someone else owns (the Markdown reader's
+    /// staged copy): the picker gets a copy of its own, so the owner
+    /// removing its file (the reader leaving the screen under a full-screen
+    /// picker) can't take the file away before it is saved.
+    func presentSaveToFiles(copyOf fileURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: fileURL),
+              let staged = Self.stage(data: data, filename: fileURL.lastPathComponent) else { return false }
+        return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
+    }
+
+    /// Save to Files for a gateway file already downloaded into its own
+    /// directory, which goes when the picker closes.
+    @discardableResult
+    func presentSaveToFiles(downloaded download: DashboardDownloadedFile) -> Bool {
+        guard !Task.isCancelled else {
+            Self.removeDirectory(download.directory)
+            return false
+        }
+        return presentSaveToFiles(fileURL: download.file, ownedDirectory: download.directory)
+    }
+
+    /// Save to Files for a gateway `data:` URL, decoded and staged off the
+    /// main actor under `filename`. Active web content is only saved, never
+    /// rendered, so it needs no policy here.
+    @discardableResult
+    func presentSaveToFiles(dataURL: String, filename: String) async -> Bool {
+        let staged = await Task.detached(priority: .userInitiated) { () -> (directory: URL, file: URL)? in
+            guard let data = DataURLLimits.decodeBase64DataURL(dataURL) else { return nil }
+            return Self.stage(data: data, filename: filename)
+        }.value
+        guard let staged else { return false }
+        guard !Task.isCancelled else {
+            Self.removeDirectory(staged.directory)
+            return false
+        }
+        return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
+    }
+
     /// The system's Open In menu for a file another app can read (MDReader,
     /// a Markdown editor), so the reader the user already trusts opens it
     /// without a Files-app detour. The staged file belongs to the caller.
@@ -486,6 +559,29 @@ final class MediaPreviewPresenter {
 @MainActor
 private final class SharePresentation {
     var didPresent = false
+}
+
+/// Hears a Save to Files picker close, saved or cancelled, once.
+@MainActor
+private final class SaveToFilesDelegate: NSObject, UIDocumentPickerDelegate {
+    private var onFinish: (() -> Void)?
+
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func finish() {
+        onFinish?()
+        onFinish = nil
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        finish()
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finish()
+    }
 }
 
 /// Retains the Open In controller until the system menu closes: UIKit
