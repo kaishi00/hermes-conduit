@@ -100,12 +100,14 @@ extension AppState {
     static let keptDashboardProfilesMaxAge: TimeInterval = 300
 
     /// A kept dashboard's profiles, read through its bridge once per kept
-    /// connection and again every few minutes. The last list when a read
-    /// again fails; nil when none could be read.
-    func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
+    /// connection and again every few minutes, or at once when `fresh`.
+    /// The last list when a read again fails; nil when none could be read.
+    func keptDashboardProfileNames(
+        _ id: UUID, _ runtime: KeptDashboardRuntime, fresh: Bool = false, now: Date = Date()
+    ) async -> [String]? {
         let bridge = ObjectIdentifier(runtime.bridge)
         let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
-        if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
+        if !fresh, let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
         // Kept anew (opened and left again) while the read was out: the
         // list that switch seeded is newer than this read.
         let keptAt = runtime.keptAt
