@@ -115,6 +115,11 @@ final class KanbanStore {
         loadedBoardSlug ?? resolvedSelectedBoardSlug
     }
 
+    /// The task whose sheet the board shows now, or nil once it closed (a
+    /// board change, or the person swiped it away). KanbanViews keeps it; a
+    /// two-step action that outlives its sheet reads it to report on the board.
+    var presentedTaskSheetID: String?
+
     /// Stamp of the board/server context that currently owns mutations, or
     /// nil while no snapshot is loaded. Staged destructive confirmations
     /// capture this at STAGE time and must match it again at CONFIRM time;

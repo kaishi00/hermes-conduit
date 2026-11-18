@@ -955,6 +955,7 @@ struct KanbanView: View {
         // A task to show (a Pulse card's), once the board is up and showing.
         .onChange(of: appState.kanbanTaskOpenRequest, initial: true) { _, _ in openRequestedTask() }
         .onChange(of: store.loadedBoardSlug) { _, _ in openRequestedTask() }
+        .onChange(of: selectedTask?.id, initial: true) { _, id in store.presentedTaskSheetID = id }
         .onChange(of: shell.isTabActive) { _, isActive in
             // Leaving Tasks before the task could open drops the request, so it never opens unasked later.
             if !isActive, let request = appState.kanbanTaskOpenRequest, openingRequest != request.id {
