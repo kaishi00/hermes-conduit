@@ -1012,6 +1012,10 @@ final class AppState: ObservableObject {
             if oldValue != nil, botChatOnItsWay == nil { noteActiveChatSeen(respectingMarks: true) }
         }
     }
+    /// The bot a list of bots just marked as coming, from the tap until its
+    /// open begins its navigation (`botChatOnItsWay` takes over there): the
+    /// screen pushed as the list closes is covered from its first frame.
+    @Published var botChatMarkedComing: BotChatMarkedComing?
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?
