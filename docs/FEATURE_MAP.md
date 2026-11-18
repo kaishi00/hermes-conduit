@@ -7271,7 +7271,7 @@ nothing there signs a computer in)
 **Open gaps**
 - Cloudflare Access service tokens and extra headers don't go: the desktop app doesn't send them yet, so a dashboard behind them needs signing in on the computer.
 
-**Checked:** 2026-11-18, #PRNUM (added, with hermes-conduit-desktop #8)
+**Checked:** 2026-11-18, #2716 (added, with hermes-conduit-desktop #8)
 
 ## Another saved dashboard's address
 
