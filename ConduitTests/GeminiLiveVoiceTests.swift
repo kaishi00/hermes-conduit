@@ -3661,6 +3661,15 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse(_, _, let refused, _)? = invalid.first else { return XCTFail("\(invalid)") }
         XCTAssertEqual(refused["error"], GeminiLiveToolBridge.invalidCardsNote)
         XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 1)
+
+        // A board in an extra list, or one card on its own, is still drawn (notifier #876).
+        let place = #"{"type": "place", "places": [{"name": "Tartine"}]}"#
+        for (index, wrapped) in ["[[\(place)]]", place, #"{"cards": [\#(place)]}"#].enumerated() {
+            let answer = await bridge.handle(.init(id: "w\(index)", name: "show_on_screen", arguments: ["title": "Breakfast", "cards": wrapped]))
+            guard case .toolResponse(_, _, let result, _)? = answer.first else { return XCTFail("\(answer)") }
+            XCTAssertEqual(result["status"], "shown", wrapped)
+        }
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 4)
     }
 }
 
