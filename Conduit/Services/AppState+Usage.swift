@@ -69,3 +69,71 @@ extension AppState {
         keptAnswer(KeptRoute.providerQuotas).map(ProviderQuota.list(from:))
     }
 }
+
+// MARK: - One chat's usage (issue 2699)
+
+extension AppState {
+    /// The open chat's tokens and cost, for the Context sheet: its durable
+    /// id, in the profile it runs under (a Bot Chat's is its bot's).
+    func loadOpenChatUsage() async -> SessionUsageReadout? {
+        guard let runtimeID = activeSessionId else { return nil }
+        let sessionID = canonicalSessionID(for: runtimeID) ?? runtimeID
+        return await loadSessionUsage(sessionID: sessionID, profile: conversationIdentityProfile, dashboardID: nil)
+    }
+
+    /// A listed chat's tokens and cost, for Usage Details: another combined
+    /// dashboard's row is read through its kept connection.
+    func loadSessionUsage(for session: SessionSummary) async -> SessionUsageReadout? {
+        let sessionID = session.storedSessionId ?? session.id
+        if let dashboardID = combinedChatDashboard(session) {
+            return await loadSessionUsage(sessionID: sessionID, profile: session.profile ?? "default", dashboardID: dashboardID)
+        }
+        return await loadSessionUsage(sessionID: sessionID, profile: rowProfile(session), dashboardID: nil)
+    }
+
+    /// Nil when it can't be asked now (no connection, or the dashboard
+    /// changed while the read was out): the sheet then shows nothing rather
+    /// than another dashboard's numbers.
+    private func loadSessionUsage(sessionID: String, profile: String, dashboardID: UUID?) async -> SessionUsageReadout? {
+        guard let route = SessionUsage.route(sessionID: sessionID) else { return .failed }
+        let path = DashboardPath.withProfile(route, profile: profile)
+        let response: [String: Any]
+        do {
+            if let dashboardID {
+                guard let runtime = keptDashboardRuntimes[dashboardID] else { return nil }
+                guard let capabilities = await combinedDashboardCapabilities(dashboardID, runtime) else { return .failed }
+                guard capabilities.contains(SessionUsage.capability) else { return .needsPluginUpdate }
+                response = try await readKeptDashboardJSON(runtime.bridge, path: path)
+            } else {
+                guard isConnected, let owner = currentDashboardRuntimeOwner() else { return nil }
+                switch notifierPlugin.state {
+                // Not reported yet (just connected): ask anyway, and a bare
+                // 404 below says the route is missing.
+                case .unknown: break
+                case .predatesCapabilities: return .needsPluginUpdate
+                case .reported(_, let capabilities):
+                    guard capabilities.contains(SessionUsage.capability) else { return .needsPluginUpdate }
+                }
+                response = try await owner.bridge.requestJSON(path: path)
+                guard ownsDashboardRuntime(owner) else { return nil }
+            }
+        } catch DashboardTicketBridgeError.http(status: 404, detail: let detail) {
+            // Hermes having no row for the chat yet: nothing has run in it.
+            if detail.lowercased().contains("session not found") { return .nothingYet }
+            // The plugin turned off for the profile the read named: its remedy.
+            if let remedy = DashboardTicketBridgeError.pluginOffDetail(
+                of: DashboardTicketBridgeError.http(status: 404, detail: detail), path: path
+            ) {
+                return .unavailable(remedy)
+            }
+            // No such route on the host that answered (another profile's
+            // plugin host can be older than the dashboard's report).
+            return .needsPluginUpdate
+        } catch is CancellationError {
+            return nil
+        } catch {
+            return .failed
+        }
+        return .loaded(SessionUsage(response: response))
+    }
+}

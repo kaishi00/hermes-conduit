@@ -3617,6 +3617,47 @@ what waited (An empty new chat Hermes lost)
 
 **Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2270 (on a Mac every chat that opens focuses its composer, so New Chat's is one case of it); 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
+## Chat usage and Compress Now
+
+The sheet the composer's context ring opens shows the open chat's tokens and
+cost under its window, with Compress Now, the chat's `/compress`, above the
+breakdown. Usage Details in every chat list's long-press menu shows the same
+card for any listed chat (issue 2699). The notifier reads the numbers from
+Hermes' sessions table: the chat's row, the rows its compressions continued
+it into, and the subagent runs it started.
+
+**Siblings:** the Context sheet (done) · Usage Details in the long-press
+menu every chat list shares: Chats, the sidebar, project pages and a chat's
+title (done, one menu) · another profile's row in All (done: read in its
+profile) · another combined dashboard's row (done: read through its kept
+connection) · a Bot Chat (done: read in the bot's profile) · the typed
+`/compress` and `/compact` and a Bot Chat's `/new` compaction (done: Compress
+Now runs the same command, see Slash commands) · Two Hermes servers (done:
+the compaction is the same call, and the listener serves the plugin route) ·
+the notifier's route, capability, CHANGELOG and contract notes (done,
+notifier #868) · Settings > Usage (not needed: the profile over a period,
+unchanged; its estimates caption still holds) · group rooms, voice modes,
+the Watch and CarPlay (not needed: no context ring or chat list menu) ·
+README's "context meter" (done)
+
+**Code**
+- Reads: `Conduit/Models/SessionUsage.swift` (route, CostStatus, SessionUsageReadout), `Conduit/Services/AppState+Usage.swift` (loadOpenChatUsage, loadSessionUsage)
+- Views: `Conduit/Views/SessionUsageViews.swift` (SessionUsageSection, SessionUsageSheet), `Conduit/Views/AuxiliaryViews.swift` (ContextSheet's compressCard, canCompress), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' Usage Details and onUsageDetails; the drawer's and ProjectSessionsSheet's sessionPendingUsage, since the root can't present over a sheet), `Conduit/Views/RootView.swift` (the sessionUsageTarget sheet)
+- Route: `notifier/dashboard/api/session_usage.py` (chat_usage), `notifier/tests/test_session_usage.py`
+- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testOneChatsUsageReadsThePluginsAnswer, testAnUnpricedChatHasNoCostRatherThanZero, testOneChatsUsageRouteNamesTheChat)
+
+**Rulings**
+- In the Context sheet and the long-press menu, not a new icon in the composer or the reply row (Eric, 2026-11-18: "why not put it in the context ring on the composer?", then the long-press item too, and Compress Now "since we're messing with the context ring menu already").
+- Hermes' numbers only, never Conduit's own: no pricing tables on the phone and no count from the live `session.usage` tick, whose counters start again whenever Hermes reloads the chat's agent.
+- Cost follows each row's `cost_status`: billed, estimated (labelled Estimated cost), included in a plan, or not reported. A chat with no priced call says "Not reported by this host", never $0.00 (Hermes stores an unknown price as 0); one with some calls unpriced says "At least" its priced sum.
+- A branch is a chat of its own and isn't counted; a compression's continuation and a subagent run are.
+- Compress Now is the typed `/compress` exactly, closing the sheet so the chat's progress shows; it's off while the chat compresses, while a reply runs (Hermes refuses one mid-turn) and while the composer can't act.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-18, #2703 (added: issue 2699).
+
 ## /new in a Bot Chat
 
 `/new` (and `/reset`, `/clear`) starts a new chat, except in a bot's one
@@ -4067,7 +4108,7 @@ Conduit runs them itself; picking a row only inserts it.
 **Siblings:** commands Hermes runs (`slash.exec`) · skill, plugin and quick
 commands (`command.dispatch` when `slash.exec` turns one down) · commands
 Conduit runs itself (new, branch, model, yolo, help, background, btw, steer,
-queue, stop, undo, retry, compress, reload-mcp and reload-skills, done,
+queue, stop, undo, retry, compress (also the Context sheet's Compress Now, done, #2703, see Chat usage and Compress Now), reload-mcp and reload-skills, done,
 #1938; rollback, done, #2353; agents and its alias tasks, done, #2364: they open the chat's Agents sheet) · Hermes' two servers, `hermes dashboard` and the gateway's listener
 (see Two Hermes servers; the reload verbs probed on both, notifier #598) ·
 /goal, /subgoal, /loop, /heartbeat and their aliases (Hermes runs them; the dock reads the chat's controls after each, done, #2364, see Goal, loop and heartbeat) · the suggestions after `/reload-skills` (done, #1938: the catalog is read
@@ -4097,7 +4138,7 @@ commands" (not needed, still true)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
+**Checked:** 2026-11-18, #2703 (Compress Now in the Context sheet runs `/compress`); 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
 
 ## Goal, loop and heartbeat
 

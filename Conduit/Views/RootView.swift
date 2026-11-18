@@ -250,6 +250,12 @@ struct MainView: View {
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)
         }
+        .sheet(item: $appState.sessionUsageTarget) { session in
+            SessionUsageSheet(session: session)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $appState.showWorkspaceSheet) {
             WorkspaceSheet()
                 .presentationDetents([.medium, .large])
