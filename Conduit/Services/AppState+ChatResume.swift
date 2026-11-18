@@ -41,6 +41,7 @@ extension AppState {
     var isModalSheetPresented: Bool {
         showModelPicker || showContextSheet || showWorkspaceSheet || showGatewaySheet
             || showAgentsSheet || showVoiceSheet || showQwenLiveSheet || showGeminiLiveSheet || showGPTLiveSheet || showGrokLiveSheet || showLocalLiveSheet || isSettingsSheetPresented
+            || sessionUsageTarget != nil
     }
 
     /// True when an explicit destination exists but has not been routed yet
