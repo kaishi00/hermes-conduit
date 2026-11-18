@@ -1661,7 +1661,7 @@ notifier's README and docs/OWN_VOICE_SERVER.md's When it doesn't work say so)
 - The known servers' model and voice names were taken from the services' documentation on 2026-11-14 and not tried against them, for want of keys.
 - Voice is a text field: Settings doesn't list a known server's voices or models to pick from, though the presets file carries them.
 
-**Checked:** 2026-11-18, #PRNUM (issue 2783: a server sending each reply frame under both names was said and captioned twice; the relay keeps the first name, on every socket, notifier 0.178.1; no app change); 2026-11-14, #2474 (stage 3: the speech server's own model answers Live > Local with the call's instructions and tools, notifier 0.175.0); 2026-11-14, #2464 (stage 2: known servers, the model, voice and transcription model fields, the voice on every session and what Test connection says, notifier 0.174.0; the Assistant voice step names the switch after a call the server answered by itself); 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
+**Checked:** 2026-11-18, #2786 (issue 2783: a server sending each reply frame under both names was said and captioned twice; the relay keeps the first name, on every socket, notifier 0.178.1; no app change); 2026-11-14, #2474 (stage 3: the speech server's own model answers Live > Local with the call's instructions and tools, notifier 0.175.0); 2026-11-14, #2464 (stage 2: known servers, the model, voice and transcription model fields, the voice on every session and what Test connection says, notifier 0.174.0; the Assistant voice step names the switch after a call the server answered by itself); 2026-11-14, #2455 (new entry: the Hermes answers switch, notifier 0.173.0).
 
 ## Talking over Hermes
 
