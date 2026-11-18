@@ -716,19 +716,27 @@ final class PushNotificationService: ObservableObject {
     static let rowCardSealContextsKey = "conduit.e2e.rowCardSealContexts"
 
     func rowCardSealContext(forRequestID requestID: String) -> RowCardSealContext? {
-        if let context = rowCardSealContexts[requestID] { return context }
-        let rows = UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? []
+        rowCardSealContexts[requestID] ?? Self.savedRowCardSealContext(forRequestID: requestID)
+    }
+
+    /// The kept copy, which a card restored at relaunch is refused by.
+    static func savedRowCardSealContext(forRequestID requestID: String) -> RowCardSealContext? {
+        let rows = UserDefaults.standard.array(forKey: rowCardSealContextsKey) as? [[String]] ?? []
         guard let row = rows.last(where: { $0.count == 4 && $0[0] == requestID }) else { return nil }
         return RowCardSealContext(gatewayID: row[1], dashboardID: UUID(uuidString: row[2]), profile: row[3])
+    }
+
+    static func persistRowCardSealContext(_ context: RowCardSealContext, requestID: String) {
+        var rows = (UserDefaults.standard.array(forKey: rowCardSealContextsKey) as? [[String]] ?? [])
+            .filter { $0.count == 4 && $0[0] != requestID }
+        rows.append([requestID, context.gatewayID, context.dashboardID?.uuidString ?? "", context.profile])
+        UserDefaults.standard.set(Array(rows.suffix(encryptedDecisionGatewaysLimit)), forKey: rowCardSealContextsKey)
     }
 
     func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, sealContext: RowCardSealContext? = nil) {
         if let sealContext, rowCardSealContexts[requestID] != sealContext {
             rowCardSealContexts[requestID] = sealContext
-            var rows = (UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? [])
-                .filter { $0.count == 4 && $0[0] != requestID }
-            rows.append([requestID, sealContext.gatewayID, sealContext.dashboardID?.uuidString ?? "", sealContext.profile])
-            UserDefaults.standard.set(Array(rows.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.rowCardSealContextsKey)
+            Self.persistRowCardSealContext(sealContext, requestID: requestID)
         }
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
@@ -1513,6 +1521,8 @@ final class PushNotificationService: ObservableObject {
             UserDefaults.standard.removeObject(forKey: Self.encryptionConfirmationsKey)
         }
         UserDefaults.standard.removeObject(forKey: Self.encryptedDecisionGatewaysKey)
+        // The row cards' seal contexts stay: a refusal is worked out from
+        // the keys left at the send, so a context only ever refuses.
         refreshEncryptionState()
     }
 
@@ -1530,8 +1540,14 @@ final class PushNotificationService: ObservableObject {
     ) -> Bool {
         guard let context, body["answer"] != nil else { return false }
         guard let records else { return true }
+        let gatewayID = body["gateway_id"] ?? context.gatewayID
+        // An encrypted pairing's answer never goes unsealed: one whose key
+        // came after the card was drawn (no route kept for it) is refused too.
+        if NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) != nil {
+            return true
+        }
         return AppState.needsYouCardMustSeal(
-            gatewayID: body["gateway_id"] ?? context.gatewayID,
+            gatewayID: gatewayID,
             dashboardID: context.dashboardID,
             profile: context.profile,
             installationID: installationID,
