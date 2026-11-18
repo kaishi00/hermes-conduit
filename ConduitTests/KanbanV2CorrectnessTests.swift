@@ -60,14 +60,16 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(message.contains(KanbanServiceError.boardNavigationInProgress.localizedDescription))
     }
 
-    func testAPartialSuccessShowsOnTheBoardOnlyOnceTheSheetHasClosed() {
+    func testAPartialSuccessShowsOnTheBoardOnlyOnceTheSheetNoLongerShowsTheTask() {
         let partial = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: "x")
-        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "beta"))
-        // The sheet is still open on its board: the sheet alone says it.
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha"))
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: true))
+        // The sheet moved on to another task (a dependency) on the same board.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha", sheetShowsStartedTask: false))
+        // The sheet still shows the task on its board: the sheet alone says it.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha", sheetShowsStartedTask: true))
         // Refused before the note, or full success: nothing to report on the board.
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), openedOnBoard: "alpha", nowOnBoard: "beta"))
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), openedOnBoard: "alpha", nowOnBoard: "beta"))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: false))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: false))
     }
 
     // MARK: - Helpers

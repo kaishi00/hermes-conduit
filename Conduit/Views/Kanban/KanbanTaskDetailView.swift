@@ -1362,11 +1362,16 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    /// A note posted whose second step a board change refused, after the
-    /// change closed the sheet: the partial success shows on the board.
-    private func reportOnBoardIfClosed(_ outcome: KanbanNoteAndRequeueFlow.Outcome, _ message: String?, startedBoard: KanbanBoardContextStamp?) {
+    /// A note posted whose second step a board change refused, once the
+    /// sheet no longer shows the task: the partial success shows on the board.
+    private func reportOnBoardIfClosed(_ outcome: KanbanNoteAndRequeueFlow.Outcome, _ message: String?, startedBoard: KanbanBoardContextStamp?, startedTaskID: String) {
         guard let message,
-              KanbanDetailMutationPolicy.reportsOnBoard(outcome: outcome, openedOnBoard: startedBoard?.boardSlug, nowOnBoard: store.openTaskBoardSlug) else { return }
+              KanbanDetailMutationPolicy.reportsOnBoard(
+                outcome: outcome,
+                openedOnBoard: startedBoard?.boardSlug,
+                nowOnBoard: store.openTaskBoardSlug,
+                sheetShowsStartedTask: KanbanDetailMutationPolicy.completionIsActive(startedTaskID: startedTaskID, displayedTaskID: displayedTaskID)
+              ) else { return }
         store.showMutationError(KanbanServiceError.invalidResponse(message))
     }
 
@@ -1409,7 +1414,7 @@ struct KanbanTaskDetailView: View {
             }
         )
         let message = KanbanNoteAndRequeueFlow.message(for: outcome)
-        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard)
+        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard, startedTaskID: expectedID)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
         if let message {
             errorMessage = message
@@ -1453,7 +1458,7 @@ struct KanbanTaskDetailView: View {
             }
         )
         let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
-        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard)
+        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard, startedTaskID: expectedID)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
         errorMessage = message
         // Refresh even on partial success so the posted reply shows up.
@@ -1689,12 +1694,13 @@ enum KanbanDetailMutationPolicy {
     }
 
     /// A two-step action's partial success (the note posted, the second
-    /// step undone) also shows on the board when the sheet closed meanwhile
-    /// (`KanbanDetailLoadPolicy.sheetStaysOpen`); while the sheet stays
-    /// open, the sheet alone says it.
-    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, openedOnBoard: String?, nowOnBoard: String) -> Bool {
-        outcome.commentPosted && !outcome.requeued
-            && !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: openedOnBoard, nowOnBoard: nowOnBoard)
+    /// step undone) shows on the board when the sheet closed meanwhile
+    /// (`KanbanDetailLoadPolicy.sheetStaysOpen`) or moved on to another task;
+    /// while the sheet still shows the task, the sheet alone says it.
+    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, openedOnBoard: String?, nowOnBoard: String, sheetShowsStartedTask: Bool) -> Bool {
+        guard outcome.commentPosted, !outcome.requeued else { return false }
+        return !sheetShowsStartedTask
+            || !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: openedOnBoard, nowOnBoard: nowOnBoard)
     }
 
     static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {
