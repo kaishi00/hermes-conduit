@@ -765,6 +765,16 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn('wait "$prepare_pid"', build)
         self.assertIn("XCRUN_FILE=", build)
 
+    def test_the_build_resolves_its_own_packages_after_the_boot(self):
+        """No separate package resolution before the build: it took 105-312 s
+        for the one cached package while the build's own took under 3 s
+        (2026-11-18, #2747). The build still starts after the boot (#629)."""
+        build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
+        self.assertNotIn("\n  -resolvePackageDependencies", build)
+        self.assertNotIn("    -resolvePackageDependencies", build)
+        self.assertLess(build.index('while [ ! -e "$BUILD_AFTER" ]'),
+                        build.index("XCODEBUILD_POLL_INTERVAL_S=2 run_build"))
+
     def test_smoke_job_runs_unit_then_ui_on_the_same_build(self):
         text = self._job_text("smoke")
         build = text.index("- name: Build and boot the simulator in parallel")
