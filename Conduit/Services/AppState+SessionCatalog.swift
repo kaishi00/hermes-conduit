@@ -140,9 +140,9 @@ extension AppState {
                         : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
                     let liveStartedAt = Date()
                     let scopedResult: DashboardSessionCatalog
-                    // The number this read commits under: an earlier one's
-                    // when it took that read's newest page.
-                    let commitRead: UInt64
+                    // Where this read's rows stand among the others': after
+                    // an earlier read's when it took that read's newest page.
+                    let commitOrder: SessionCatalogCache.ReadOrder
                     do {
                         let listed = try await dashboardSessionPages(
                             profile: profile,
@@ -155,7 +155,7 @@ extension AppState {
                             sharesNewestPage: sharesNewestPage
                         )
                         scopedResult = listed.catalog
-                        commitRead = listed.read
+                        commitOrder = SessionCatalogCache.ReadOrder(rowsFrom: listed.read, read: readSequence)
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
                         throw error
@@ -220,7 +220,7 @@ extension AppState {
                     // delete or rename that one saw would come back (issue
                     // 2293). It answers with those newer rows instead (a
                     // chat sync still picks its chat from them).
-                    if sessionCatalogCache.hasNewerCommit(than: commitRead, forKey: cacheKey) {
+                    if sessionCatalogCache.hasNewerCommit(than: commitOrder, forKey: cacheKey) {
                         return ProfileCatalogLoad(
                             sessions: sessionCatalogCache.sessions(forKey: cacheKey).filter {
                                 sessionBelongsToProfile($0, profile: profile)
@@ -247,7 +247,7 @@ extension AppState {
                             cronKey: cronKey,
                             historyMarkers: historyMarkers,
                             at: generation,
-                            read: commitRead
+                            order: commitOrder
                         ) else {
                             catalogRetryCount += 1
                             guard catalogRetryCount < maximumCatalogRetries else {

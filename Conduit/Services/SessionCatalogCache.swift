@@ -31,7 +31,31 @@ struct SessionCatalogCache {
     /// The newest read (in the order reads started) whose listing each
     /// key holds, so an older read that ends later never writes over it
     /// (issue 2293).
-    private(set) var committedReads: [String: UInt64] = [:]
+    private(set) var committedReads: [String: ReadOrder] = [:]
+
+    /// Where a read's listing stands among the others: by the read whose
+    /// newest page it holds (`rowsFrom`), then by the read itself. Reads
+    /// that took one newest page (NewestCatalogPageRead, issue 2604) hold
+    /// rows of the same age, and the one that started later still has the
+    /// newer cron rows, so it keeps its commit (#2753 review).
+    struct ReadOrder: Comparable {
+        let rowsFrom: UInt64
+        let read: UInt64
+
+        init(rowsFrom: UInt64, read: UInt64) {
+            self.rowsFrom = rowsFrom
+            self.read = read
+        }
+
+        /// A read that sent its own requests.
+        init(_ read: UInt64) {
+            self.init(rowsFrom: read, read: read)
+        }
+
+        static func < (lhs: ReadOrder, rhs: ReadOrder) -> Bool {
+            (lhs.rowsFrom, lhs.read) < (rhs.rowsFrom, rhs.read)
+        }
+    }
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -82,7 +106,11 @@ struct SessionCatalogCache {
     /// Whether a read that started after `read` already committed `key`'s
     /// listing: its rows are newer than any this read could write.
     func hasNewerCommit(than read: UInt64, forKey key: String) -> Bool {
-        (committedReads[key] ?? 0) > read
+        hasNewerCommit(than: ReadOrder(read), forKey: key)
+    }
+
+    func hasNewerCommit(than order: ReadOrder, forKey key: String) -> Bool {
+        committedReads[key].map { $0 > order } ?? false
     }
 
     /// Commits a live and cron snapshot only when no cache mutation occurred
@@ -96,11 +124,14 @@ struct SessionCatalogCache {
         cronKey: String,
         historyMarkers: [String: Date],
         at generation: UInt64,
-        read: UInt64? = nil
+        read: UInt64? = nil,
+        order: ReadOrder? = nil
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
         commits &+= 1
-        if let read { committedReads[liveKey] = max(committedReads[liveKey] ?? 0, read) }
+        if let order = order ?? read.map({ ReadOrder($0) }) {
+            committedReads[liveKey] = committedReads[liveKey].map { max($0, order) } ?? order
+        }
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
