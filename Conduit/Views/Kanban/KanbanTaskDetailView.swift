@@ -428,10 +428,8 @@ struct KanbanTaskDetailView: View {
             }
             // This sheet is the one on screen until it goes; a two-step action
             // that outlives it reports on the board instead (see reportsOnBoard).
-            .onAppear { store.presentedTaskSheet = sheetPresentation }
-            .onDisappear {
-                if store.presentedTaskSheet == sheetPresentation { store.presentedTaskSheet = nil }
-            }
+            .onAppear { store.taskSheetAppeared(sheetPresentation) }
+            .onDisappear { store.taskSheetDisappeared(sheetPresentation) }
         }
     }
 
@@ -1708,7 +1706,10 @@ enum KanbanDetailMutationPolicy {
     /// task (it closed, or moved on to another task), or the board or server
     /// changed since the tap. A board change may not have closed the sheet
     /// yet, so a sheet still open says it as well; a rare duplicate beats a
-    /// lost notice. Otherwise the sheet alone says it.
+    /// lost notice. Otherwise the sheet alone says it. A sheet mid-swipe
+    /// still counts as on screen until it's gone, so a step failing in that
+    /// moment is said only on the leaving sheet (issue 2746, left as is: a
+    /// fraction of a second, on an unchanged board).
     static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?, sheetShowsStartedTask: Bool) -> Bool {
         guard outcome.commentPosted, !outcome.requeued else { return false }
         return !sheetShowsStartedTask || !stepTargetsStartedBoard(started: started, current: current)

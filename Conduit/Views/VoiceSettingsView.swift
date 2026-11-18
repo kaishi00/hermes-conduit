@@ -227,9 +227,6 @@ struct VoiceSettingsView: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var voiceMode: VoiceMode
     @State private var isApplyingDefaults = false
-    /// Conduit reconnected while the page's read was out: ask again if
-    /// that read fails (#2717's review).
-    @State private var recheckWhenRead = false
     @State private var microphonePermission: AVAudioApplication.recordPermission
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
@@ -425,11 +422,11 @@ struct VoiceSettingsView: View {
         .task { await load() }
         // Back from a drop with a read Hermes didn't answer: ask again, so
         // the step doesn't keep saying to connect while connected.
-        // One that comes back while a read is out asks once that read ends.
+        // One that comes back while a read is out has the service ask
+        // again if that read fails, whichever read it is (issue 2729).
         .onChange(of: hermesConnected) { _, connected in
-            guard connected, service.answered != true else { return }
-            if service.isLoading { recheckWhenRead = true; return }
-            guard service.answered == false else { return }
+            service.noteHermesConnected(connected)
+            guard connected, service.answered == false, !service.isLoading else { return }
             Task { await load() }
         }
         .onChange(of: service.snapshot.values) { _, newValues in
@@ -1858,13 +1855,7 @@ struct VoiceSettingsView: View {
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         microphonePermission = AVAudioApplication.shared.recordPermission
         let shown = service.snapshot.values
-        recheckWhenRead = false
         await service.reload(hermesConnected: hermesConnected)
-        // Conduit reconnected while that read was out, and it failed.
-        if recheckWhenRead, service.answered == false {
-            await service.reload(hermesConnected: true)
-        }
-        recheckWhenRead = false
         values = Self.answeredValues(service.snapshot.values, shown: shown, fields: values)
         if resolvedSpeechOutput == .speechServer, service.speechServerVoice == nil {
             _ = await service.speechServerVoiceStatus()

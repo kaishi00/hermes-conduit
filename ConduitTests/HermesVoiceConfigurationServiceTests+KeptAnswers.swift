@@ -95,6 +95,38 @@ extension HermesVoiceConfigurationServiceTests {
         )
     }
 
+    /// Conduit back while a read is out, whichever path started it, and
+    /// that read failing: the service asks once more (issue 2729).
+    func testAReconnectDuringAReadThatFailsAsksAgain() async {
+        let retryDelay = HermesVoiceConfigurationService.configRetryDelay
+        HermesVoiceConfigurationService.configRetryDelay = .zero
+        defer { HermesVoiceConfigurationService.configRetryDelay = retryDelay }
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = Self.keptVoiceAnswers
+        requester.failingGETPaths = ["/api/config"]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+        // The first read's config asks (twice) both fail, with Conduit back
+        // during them; the read asked again after them answers.
+        var configAsks = 0
+        requester.onGET = { [weak requester] path in
+            guard path == "/api/config" else { return }
+            configAsks += 1
+            await MainActor.run {
+                if configAsks == 1 { service.noteHermesConnected(true) }
+                if configAsks == 3 { requester?.failingGETPaths = [] }
+            }
+        }
+
+        await service.reload()
+
+        XCTAssertEqual(service.answered, true, "asked again once Conduit was back")
+        // Without a reconnect, a failed read stands.
+        requester.onGET = nil
+        requester.failingGETPaths = ["/api/config"]
+        await service.reload()
+        XCTAssertEqual(service.answered, false)
+    }
+
     /// Connected to Hermes, a config read that fails asks once more, and
     /// one that fails again says what failed rather than asking to
     /// connect, kept settings shown or not (issues 2711, 2712).

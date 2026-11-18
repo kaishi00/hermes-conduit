@@ -66,6 +66,18 @@ extension ChatOnScreenTests {
                                                                    installationID: "inst", records: records)
         XCTAssertNotEqual(sealed["answer"], "staging", "an encrypted pairing never gets the answer in plaintext")
         XCTAssertEqual(sealed["gateway_id"], "gw-atlas")
+
+        // Issue 2692: a listed gateway with no key here, while the profile
+        // has one under another, must be sealed or refused (Eric).
+        func mustSeal(_ gateway: String, _ records: [E2EKeyRecord]) -> Bool {
+            AppState.needsYouCardMustSeal(gatewayID: gateway, dashboardID: dashboard, profile: "Atlas",
+                                          installationID: "inst", records: records)
+        }
+        XCTAssertTrue(mustSeal("gw-listed", records), "re-paired: a key for the profile under another gateway")
+        XCTAssertFalse(mustSeal("gw-atlas", records), "its own key seals it")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-default", profile: "default")]), "another profile's key says nothing")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-atlas", profile: "atlas", retired: true)]), "nor a retired one")
+        XCTAssertFalse(mustSeal("gw-listed", []), "a plaintext pairing answers as before")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.

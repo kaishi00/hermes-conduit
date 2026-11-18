@@ -2240,10 +2240,14 @@ struct ComposerBar: View {
             return
         }
         let key = appState.durableComposerDraftKeyOnScreen
+        // A sign-out of that dashboard while Hermes transcribes clears its
+        // drafts: the words don't come back into it (issue 2744).
+        let clearCount = draftStore.clearCount(for: key.dashboard)
         composerErrorMessage = nil
         Task {
             do {
                 let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard draftStore.clearCount(for: key.dashboard) == clearCount else { return }
                 guard !words.isEmpty else {
                     composerErrorMessage = AppLocalization.string("No speech was captured.")
                     return

@@ -700,7 +700,13 @@ final class PushNotificationService: ObservableObject {
     /// 2683). The chat hands over the gateway its host names for the
     /// profile; a push's own, when one arrived, stays. Kept across
     /// relaunches when the pairing is encrypted, as a push's is.
-    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String) {
+    /// Row-drawn cards whose answer must not go unsealed: their pairing
+    /// has no key on this iPhone, which holds one for the profile under
+    /// another gateway (issue 2692). Sealed or refused, never plaintext.
+    private(set) var sealRequiredRequestIDs: Set<String> = []
+
+    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, mustSeal: Bool = false) {
+        if mustSeal { sealRequiredRequestIDs.insert(requestID) }
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
         if Self.keepsGatewayAcrossRelaunch(gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) {
@@ -1600,6 +1606,10 @@ final class PushNotificationService: ObservableObject {
         case insecureTransport
         /// Longer than the relay takes (413 `answer_too_large`).
         case answerTooLarge
+        /// The profile's list names a pairing this iPhone holds no key for,
+        /// while it holds one for the profile under another: the answer
+        /// would go unsealed, and the plugin refuses that (issue 2692).
+        case needsReconnect
 
         var errorDescription: String? {
             switch self {
@@ -1613,6 +1623,8 @@ final class PushNotificationService: ObservableObject {
                 return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.", table: .notifications)
             case .answerTooLarge:
                 return AppLocalization.string("That answer is too long to send from a notification card. Open the chat in Conduit and answer there.", table: .notifications)
+            case .needsReconnect:
+                return AppLocalization.string("This answer can't be sent privately yet. Reconnect to this Hermes in Conduit, then answer again.", table: .notifications)
             }
         }
     }
@@ -1832,6 +1844,9 @@ final class PushNotificationService: ObservableObject {
             installationID: registration.installationID,
             records: Self.e2eKeyStore.records()
         )
+        if sealed["answer"] != nil, sealed == body, sealRequiredRequestIDs.contains(requestId) {
+            throw RelayDecisionError.needsReconnect
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: sealed)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
