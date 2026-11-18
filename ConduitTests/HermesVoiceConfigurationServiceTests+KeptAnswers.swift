@@ -139,6 +139,14 @@ extension HermesVoiceConfigurationServiceTests {
         await unkept.reload(hermesConnected: true)
         XCTAssertEqual(unkept.answered, true)
         XCTAssertNil(unkept.unansweredReason)
+
+        // A save's own reload, whose read fails, words it as connected too.
+        failing.routes["/api/env"] = [:]
+        failing.failingGETPaths = ["/api/config"]
+        _ = await unkept.saveCredential("gm-key", key: "GEMINI_API_KEY")
+        XCTAssertEqual(unkept.answered, false)
+        XCTAssertTrue(unkept.unansweredReason?.hasPrefix("Connected, but Hermes didn't send its voice settings: ") == true,
+                      unkept.unansweredReason ?? "")
     }
 
     /// Which keys are set is never kept on the phone, but a read of it

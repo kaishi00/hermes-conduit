@@ -420,6 +420,12 @@ struct VoiceSettingsView: View {
         .navigationTitle("Voice")
         .navigationBarTitleDisplayMode(.inline)
         .task { await load() }
+        // Back from a drop with a read Hermes didn't answer: ask again, so
+        // the step doesn't keep saying to connect while connected.
+        .onChange(of: hermesConnected) { _, connected in
+            guard connected, service.answered == false, !service.isLoading else { return }
+            Task { await load() }
+        }
         .onChange(of: service.snapshot.values) { _, newValues in
             // Preserve unsaved text while a provider field is being edited.
             for (key, value) in newValues where values[key] == nil { values[key] = value }

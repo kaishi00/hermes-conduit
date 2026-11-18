@@ -247,10 +247,15 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// enough for a dashboard bridge that's still starting to be ready.
     static var configRetryDelay: Duration = .seconds(1)
 
+    /// Whether Conduit's connection to Hermes was up at the last reload
+    /// told, so the reloads after a save word a failure the same way.
+    private var hermesConnected = false
+
     /// Reads the page from Hermes. `hermesConnected` is whether Conduit's
-    /// connection to Hermes is up, so a read that fails with nothing shown
-    /// says what failed rather than asking to connect (issue 2711).
-    func reload(hermesConnected: Bool = false) async {
+    /// connection to Hermes is up, so a read that fails says what failed
+    /// rather than asking to connect (issue 2711); nil keeps the last told.
+    func reload(hermesConnected connected: Bool? = nil) async {
+        if let connected { hermesConnected = connected }
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
