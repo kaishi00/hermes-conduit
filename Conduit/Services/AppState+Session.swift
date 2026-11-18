@@ -969,8 +969,8 @@ extension AppState {
             }
         }
         if let key = composerPrefillDraftKey,
-           lost.contains(where: { ComposerBar.composerDraftKey(for: $0, profile: activeProfile) == key }) {
-            composerPrefillDraftKey = ComposerBar.composerDraftKey(for: fresh, profile: activeProfile)
+           lost.contains(where: { ComposerBar.composerDraftKey(for: $0, profile: activeProfile, dashboard: activeDashboardID) == key }) {
+            composerPrefillDraftKey = ComposerBar.composerDraftKey(for: fresh, profile: activeProfile, dashboard: activeDashboardID)
         }
         if let request = composerFocusRequest, lost.contains(request.sessionID) {
             composerFocusRequest = ComposerFocusRequest(sessionID: fresh)

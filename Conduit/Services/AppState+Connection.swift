@@ -1031,7 +1031,7 @@ extension AppState {
         // pending outbox belong to the outgoing session. A same-dashboard
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
-        invalidateGroupChatState()
+        invalidateGroupChatState(keepingDrafts: activeDashboardID != nil)
         // And the boards its replies named, with any read still out.
         resetLineBoards()
         botRosterRetry.succeeded()
@@ -1039,10 +1039,16 @@ extension AppState {
         // signed-out ledger just stops following them.
         retireVoiceBackgroundJobs()
         // Unsent drafts belong to the signed-out user; AppState owns the
-        // store (it outlives the composer view), so sign-out must clear it.
-        composerDraftStore.removeAll()
-        // So do words on their way back to a draft.
-        composerRestoreRequests = []
+        // store (it outlives the composer view), so sign-out must clear it:
+        // this dashboard's, a room's words and files and words on their way
+        // back too. The other saved dashboards' wait for them (issue 2702).
+        if let activeDashboardID {
+            forgetDrafts(ofDashboard: activeDashboardID)
+            composerDraftStore.removeUnsavedServerDrafts()
+        } else {
+            composerDraftStore.removeAll()
+            composerRestoreRequests = []
+        }
         composerNotice = nil
         // So do screenshots waiting for a question.
         discardScreenQuestions()

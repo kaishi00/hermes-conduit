@@ -260,7 +260,7 @@ extension ChatTextSelectionTests {
 extension ComposerDraftStoreTests {
     func testDraftHoldingOnlyAQuotedReplyIsKept() {
         let store = ComposerDraftStore(capacity: 12)
-        let key = ComposerDraftKey(profile: "default", sessionID: "session-a")
+        let key = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "session-a")
         let reference = ComposerReplyReference(authorName: "Hermes", text: "Earlier answer")
         let draft = ComposerDraft(text: "", attachments: [], replyReference: reference)
 

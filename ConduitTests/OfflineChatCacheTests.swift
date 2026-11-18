@@ -2736,7 +2736,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         XCTAssertNil(appState.pendingComposerSend)
         let request = try XCTUnwrap(appState.composerRestoreRequests.first)
-        XCTAssertEqual(request.key, ComposerDraftKey(profile: "default", sessionID: "stored-a"))
+        XCTAssertEqual(request.key, ComposerDraftKey(dashboard: appState.activeDashboardID, profile: "default", sessionID: "stored-a"))
         XCTAssertEqual(request.draft.text, "Hello")
         XCTAssertFalse(request.focuses)
         XCTAssertEqual(
@@ -3130,7 +3130,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         XCTAssertFalse(appState.isOnScreen(pending), "The old alias now belongs to B")
         XCTAssertFalse(appState.composerDraftKeysAreSameChat(
-            pending.draftKey, ComposerDraftKey(profile: "default", sessionID: "runtime-x")
+            pending.draftKey, ComposerDraftKey(dashboard: appState.activeDashboardID, profile: "default", sessionID: "runtime-x")
         ), "Restoration must not follow the stale scroll alias either")
         appState.settlePendingComposerSend()
         XCTAssertNil(appState.pendingComposerSend)
@@ -3180,7 +3180,7 @@ final class OfflineChatCacheTests: XCTestCase {
 
         XCTAssertFalse(appState.isOnScreen(pending))
         appState.restoreFailedPendingComposerSend(
-            pending, submittedDraftKey: ComposerDraftKey(profile: "default", sessionID: "stored-a")
+            pending, submittedDraftKey: ComposerDraftKey(dashboard: appState.activeDashboardID, profile: "default", sessionID: "stored-a")
         )
         XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
     }
@@ -3200,7 +3200,7 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.activeSessionId = "runtime-x"
 
         appState.restoreFailedPendingComposerSend(
-            pending, submittedDraftKey: ComposerDraftKey(profile: "default", sessionID: "runtime-x")
+            pending, submittedDraftKey: ComposerDraftKey(dashboard: appState.activeDashboardID, profile: "default", sessionID: "runtime-x")
         )
 
         XCTAssertEqual(appState.composerRestoreRequests.first?.key, pending.draftKey)

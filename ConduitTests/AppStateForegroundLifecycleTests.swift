@@ -4286,7 +4286,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertFalse(submitted)
         XCTAssertEqual(submitCount, 0)
 
-        let key = ComposerDraftKey(profile: harness.appState.activeProfile, sessionID: "stored-a")
+        let key = ComposerDraftKey(dashboard: harness.appState.activeDashboardID, profile: harness.appState.activeProfile, sessionID: "stored-a")
         let words = ComposerDraft(text: "Still there?", attachments: [])
         // From another dashboard: the words go back, and this one's
         // composer says nothing about them.
