@@ -1,4 +1,7 @@
 import Foundation
+import os
+
+private let callSpeakerLogger = Logger(subsystem: "com.milim.relay", category: "CallSpeaker")
 
 /// A live call keeps its profile (all-live stage 2, issue 2390). A switch
 /// to another profile on the same dashboard keeps the open socket, and the
@@ -36,6 +39,66 @@ extension AppState {
     /// the profile on screen, which Settings edits.
     var callVoicePreferences: VoiceProfilePreferences {
         loadVoiceProfilePreferences(profile: voiceCallProfile)
+    }
+
+    /// The profile a live call speaks as: the bot of the Bot Chat it started
+    /// in (issue 2768), else `voiceCallProfile`. Its keys mint the call's
+    /// tokens, and its host voice, SOUL.md persona and memory are the
+    /// call's; the call's chat, jobs and settings stay `voiceCallProfile`'s.
+    var voiceCallSpeakerProfile: String {
+        liveCallSpeaker ?? voiceCallProfile
+    }
+
+    /// The call's settings, with the voice the bot it speaks as picked for
+    /// itself where it has one (its own Voice settings), else the call
+    /// profile's pick: the user's switches (memory, persona, look-ups,
+    /// billing) stay the call profile's.
+    var callSpeakerVoicePreferences: VoiceProfilePreferences {
+        var call = callVoicePreferences
+        guard let bot = liveCallSpeaker else { return call }
+        let own = loadVoiceProfilePreferences(profile: bot)
+        call.geminiLiveVoice = own.geminiLiveVoice ?? call.geminiLiveVoice
+        call.qwenLiveVoice = own.qwenLiveVoice ?? call.qwenLiveVoice
+        call.gptLiveVoice = own.gptLiveVoice ?? call.gptLiveVoice
+        call.gptLiveAPIVoice = own.gptLiveAPIVoice ?? call.gptLiveAPIVoice
+        return call
+    }
+
+    /// A live mode's availability check, run as the profile the call speaks
+    /// as. A bot that can't start the mode (no key on its profile, a host
+    /// route refused there) leaves the call to its own profile, which is
+    /// checked instead, so a Bot Chat's call never fails where the
+    /// workspace's would start (issue 2768).
+    func availabilityAsCallSpeaker<Status>(
+        _ isAvailable: (Status) -> Bool,
+        _ check: @MainActor () async throws -> Status
+    ) async throws -> Status {
+        // Each start (Try again too) asks the bot first: a fallback is for
+        // that start only, so a bot back from a brief failure speaks again.
+        if liveCallSpeaker == nil, let bot = liveCallBot { liveCallSpeaker = bot }
+        guard liveCallSpeaker != nil else { return try await check() }
+        let start = liveCallSpeakerStart
+        do {
+            let status = try await check()
+            if isAvailable(status) { return status }
+            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: the bot can't start this mode")
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {
+            callSpeakerLogger.notice("Bot Chat call falls back to the workspace: \(LogRedaction.describing(error), privacy: .public)")
+        }
+        // A newer call's start or a teardown changed the speaker meanwhile.
+        guard liveCallSpeakerStart == start, liveCallSpeaker != nil else { return try await check() }
+        liveCallSpeaker = nil
+        return try await check()
+    }
+
+    /// The bot a call attached to `thread` speaks as: a Bot Chat's own, or
+    /// the bot whose workstream's chat is open (its chat runs on the
+    /// workspace, so the thread names no profile), nil for any other chat.
+    func callSpeaker(for thread: VoiceThreadTarget?) -> String? {
+        let workstreamBot = thread.flatMap { isOpenChat($0) ? activeWorkstream?.profile : nil }
+        return Self.readAloudSpeaker(thread?.profile ?? workstreamBot, activeProfile: voiceCallProfile)
     }
 
     /// Local Live in agent mode on the call's profile (`isLocalLiveAgent`
@@ -168,7 +231,12 @@ extension AppState {
     /// the ones still to tell, and the reset would cancel it. Its ledger
     /// isn't saved meanwhile, as the restored key is still the call's.
     func callEndedOffItsProfile() {
-        guard !isLiveCallUp, let ended = liveCallProfile else { return }
+        guard !isLiveCallUp else { return }
+        // Every hang-up passes here, saved or not, so the bot goes with the
+        // call even when no recording ran (issue 2768).
+        liveCallSpeaker = nil
+        liveCallBot = nil
+        guard let ended = liveCallProfile else { return }
         liveCallProfile = nil
         guard !Self.profilesMatch(ended, activeProfile) else { return }
         // Until the hand-back the jobs, their ledger and their requests stay

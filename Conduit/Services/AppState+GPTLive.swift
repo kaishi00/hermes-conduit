@@ -91,7 +91,8 @@ extension AppState {
 
     /// The voice for the next call, from the list of the path it's billed on.
     var gptLiveCallVoice: String? {
-        let preferences = loadVoiceProfilePreferences(profile: voiceCallProfile)
+        // A Bot Chat's call: the bot's own pick where it has one.
+        let preferences = callSpeakerVoicePreferences
         return gptLiveCallBilling == .api ? preferences.gptLiveAPIVoice : preferences.gptLiveVoice
     }
 

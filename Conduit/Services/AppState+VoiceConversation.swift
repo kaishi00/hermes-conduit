@@ -190,12 +190,16 @@ extension AppState {
     /// bot); nil is the active one. Whether read aloud is offered, and
     /// whether Hermes or this iPhone speaks, still follow the active
     /// profile's Voice settings.
-    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil) -> HermesVoiceGateway? {
+    /// `speakingAs`: the profile whose Hermes voice speaks replies when it
+    /// isn't `profile` (a Classic call in a Bot Chat speaks as its bot,
+    /// issue 2768); transcription stays on `profile`.
+    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil, speakingAs: String? = nil) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
             bridge: dashboardTicketBridge,
             baseURL: connection.baseUrl,
             profile: profile ?? activeProfile,
+            speechProfile: speakingAs,
             profileParameter: notifierPlugin.dashboardProfileParameter,
             speechOutput: { [weak self] in self?.voiceSpeechOutput ?? .onDevice },
             makeOnDeviceSpeech: { onStart, onPCM16 in OnDeviceSpeechStream(onStart: onStart, onPCM16: onPCM16) },
@@ -1101,7 +1105,7 @@ extension AppState {
                 classicVoiceChatToArchive = (created, activeProfile, activeDashboardID)
             }
         }
-        guard let sessionID = activeSessionId, let gateway = makeVoiceGateway() else {
+        guard let sessionID = activeSessionId, let gateway = makeClassicVoiceGateway() else {
             errorMessage = AppLocalization.string("Hermes could not prepare a voice conversation.")
             return .failed(AppLocalization.string("Hermes could not prepare a voice conversation."))
         }
@@ -1490,8 +1494,16 @@ extension AppState {
 
     func refreshVoiceControllerGateway() {
         voiceConversationController.setGateway(
-            isVoiceEnabled && selectedTranscriptionIsAvailable ? makeVoiceGateway() : nil
+            isVoiceEnabled && selectedTranscriptionIsAvailable ? makeClassicVoiceGateway() : nil
         )
+    }
+
+    /// Classic voice's gateway. Classic talks in the open chat, so in a Bot
+    /// Chat its replies are spoken in the bot's Hermes voice, as Read Aloud
+    /// reads them there; it listens through the active profile, whose
+    /// speech-to-text the capability checks read (issue 2768).
+    func makeClassicVoiceGateway() -> HermesVoiceGateway? {
+        makeVoiceGateway(speakingAs: Self.readAloudSpeaker(openChatReadAloudSpeaker, activeProfile: activeProfile))
     }
 
     /// Keeps the read aloud gateway in step with capability refreshes without

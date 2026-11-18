@@ -2618,6 +2618,83 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(later.sessionProfile(for: "st-bot"), "furina")
     }
 
+    /// Issue 2768: a call started in a Bot Chat speaks as its bot (its keys,
+    /// host voice, persona and memory) while its chat, jobs and switches stay
+    /// the workspace's; the bot's own voice pick wins over the workspace's;
+    /// a bot that can't start the mode leaves the call to the workspace.
+    func testABotChatsCallSpeaksAsItsBotAndFallsBackToTheWorkspace() async throws {
+        let appState = makeGPTLiveAppState()
+        appState.setGPTLiveVoice("ember")
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "bot-chat", storedSessionID: "bot-stored", title: "Bot Chat", profile: "furina")
+        )
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertEqual(appState.liveCallSpeaker, "furina")
+        XCTAssertEqual(appState.voiceCallSpeakerProfile, "furina")
+        XCTAssertEqual(appState.callSpeakerVoicePreferences.gptLiveVoice, "ember", "No pick of its own: the workspace's")
+
+        var own = appState.loadVoiceProfilePreferences(profile: "furina")
+        own.gptLiveVoice = "sol"
+        appState.saveVoiceProfilePreferences(own, profile: "furina")
+        XCTAssertEqual(appState.callSpeakerVoicePreferences.gptLiveVoice, "sol", "The bot's own pick")
+        XCTAssertEqual(appState.gptLiveCallVoice, "sol")
+
+        // The bot has no key for this mode: the call runs as the workspace.
+        var checked: [String] = []
+        let available = try await appState.availabilityAsCallSpeaker({ $0 }) {
+            checked.append(appState.voiceCallSpeakerProfile)
+            return appState.voiceCallSpeakerProfile != "furina"
+        }
+        XCTAssertTrue(available)
+        XCTAssertEqual(checked, ["furina", "default"])
+        XCTAssertNil(appState.liveCallSpeaker)
+        XCTAssertEqual(appState.callSpeakerVoicePreferences.gptLiveVoice, "ember")
+
+        // The fallback is for that start only: Try again asks the bot first
+        // (#2776's review).
+        var retried: [String] = []
+        _ = try await appState.availabilityAsCallSpeaker({ $0 }) {
+            retried.append(appState.voiceCallSpeakerProfile)
+            return true
+        }
+        XCTAssertEqual(retried, ["furina"])
+        XCTAssertEqual(appState.liveCallSpeaker, "furina")
+
+        // A workspace chat's call speaks as the workspace, and the speaker
+        // goes with the call's recording.
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "chat-1", storedSessionID: "stored-1", title: "Trip")
+        )
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.liveCallSpeaker)
+        XCTAssertEqual(appState.voiceCallSpeakerProfile, appState.voiceCallProfile)
+        appState.voiceBackgroundJobSupervisor.attachLiveThread(
+            VoiceThreadTarget(runtimeSessionID: "bot-chat", storedSessionID: "bot-stored", title: "Bot Chat", profile: "furina")
+        )
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertEqual(appState.liveCallSpeaker, "furina")
+        appState.finishVoiceCallRecording()
+        XCTAssertNil(appState.liveCallSpeaker)
+
+        // A check left over from an earlier call never clears a newer
+        // call's bot, even the same bot (#2776's review).
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        let stale = try await appState.availabilityAsCallSpeaker({ $0 }) {
+            if appState.voiceCallSpeakerProfile == "furina", checked.count == 2 {
+                checked.append("restart")
+                appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+                return false
+            }
+            return true
+        }
+        XCTAssertTrue(stale)
+        XCTAssertEqual(appState.liveCallSpeaker, "furina", "The newer call keeps its bot")
+
+        // A hang-up with no recording (saving off) still lets the bot go.
+        appState.callEndedOffItsProfile()
+        XCTAssertNil(appState.liveCallSpeaker)
+    }
+
     /// A live call keeps its profile once another one is on screen
     /// (all-live stage 2): its chat, its jobs' ledger, its style and the
     /// link to its chat stay the call's, and the bar names it. Ending it
