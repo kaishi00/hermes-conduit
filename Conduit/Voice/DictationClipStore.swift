@@ -162,25 +162,8 @@ enum DictationUploadRetry {
     /// overloaded or restarting. Not a sign-in, a 4xx or Hermes' own
     /// transcription error: the same recording would fail the same way.
     static func isTransient(_ error: Error) -> Bool {
-        switch error {
-        case DashboardTicketBridgeError.notReady, DashboardTicketBridgeError.answeredAfterSwitch:
-            return true
-        case DashboardTicketBridgeError.http(let status, _):
-            return status == 0 || status == 408 || status == 429 || (status >= 500 && status != 501)
-        case let error as URLError:
-            return transientNetworkErrors.contains(error.code)
-        default:
-            return false
-        }
+        DashboardTicketBridgeError.isTransient(error)
     }
-
-    /// The connection dropped or never came up; not a bad address, a
-    /// certificate or a cancel.
-    private static let transientNetworkErrors: Set<URLError.Code> = [
-        .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed,
-        .notConnectedToInternet, .internationalRoamingOff, .callIsActive, .dataNotAllowed,
-        .secureConnectionFailed, .cannotLoadFromNetwork, .backgroundSessionWasDisconnected,
-    ]
 
     /// Runs `attempt` until it succeeds or `delay` says stop, then throws
     /// the last failure. Each failure goes to `onFailedAttempt` first.

@@ -1142,7 +1142,16 @@ struct KanbanTaskDetailView: View {
             if displayedTaskID == expectedID { isLoadingDetail = false }
         }
         do {
-            let loaded = try await store.fetchTaskDetail(id: expectedID)
+            let loaded: KanbanTaskDetail
+            do {
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            } catch let error where detail == nil && DashboardTicketBridgeError.isTransient(error) {
+                // Not read yet: a read lost in transit asks once more before
+                // it fails, as the board's first load does (issue 2719).
+                try await Task.sleep(for: KanbanStore.firstLoadRetryDelay)
+                guard displayedTaskID == expectedID else { return }
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            }
             guard displayedTaskID == expectedID else { return }
             guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
@@ -1528,6 +1537,13 @@ struct KanbanTaskDetailView: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            // The poll reads again on its own; this doesn't wait for it
+            // (issue 2719).
+            Button("Try Again") {
+                Task { await loadDetail(force: true) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isLoadingDetail)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)

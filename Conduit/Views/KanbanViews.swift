@@ -681,11 +681,19 @@ struct KanbanView: View {
                     .tint(.conduitAccent)
                 Spacer()
             } else if let errorMessage = store.errorMessage, store.board == nil {
-                ContentUnavailableView(
-                    "Kanban Unavailable",
-                    systemImage: "rectangle.3.group",
-                    description: Text(errorMessage)
-                )
+                // The poll reads again on its own; Try Again doesn't wait
+                // for it (issue 2719).
+                ContentUnavailableView {
+                    Label("Kanban Unavailable", systemImage: "rectangle.3.group")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await store.refresh(includeArchived: includeArchived) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(store.isLoading)
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if store.board != nil {
                 if visibleColumns.isEmpty {
