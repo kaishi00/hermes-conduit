@@ -810,6 +810,76 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - Presentation
 
+    /// A launch resuming a Bot Chat, which keeps no copy on the phone, shows
+    /// no copy at all, never the workspace's last chat under the bot's title
+    /// until the bot's chat lands.
+    func testLaunchResumingABotChatShowsNoOtherChatsCopy() throws {
+        let (appState, store, dashboard) = makeAppState(configureDefaults: { defaults in
+            ChatResumeStore(defaults: defaults).setLastSession(
+                SessionReference(
+                    kind: .bot,
+                    scopeProfile: "bee",
+                    botName: "bee",
+                    botLabel: "Bee",
+                    sessionID: "bot-bee-chat",
+                    isUnverified: false
+                ),
+                for: "default"
+            )
+        })
+        seedCopy(store, dashboard: dashboard)
+        XCTAssertEqual(appState.activeSessionId, "bot-bee-chat")
+
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        let presentation = try XCTUnwrap(appState.offlineChatPresentation, "the saved list still stands in")
+        XCTAssertNil(presentation.displayedTranscript)
+        XCTAssertTrue(presentation.displayedMessages.isEmpty)
+        XCTAssertNil(presentation.composerSessionID, "nothing typed meanwhile goes to the other chat")
+        XCTAssertEqual(appState.displayedChatTitle, "Bee")
+    }
+
+    /// A launch shows the copy of the chat it resumes, not the one saved last.
+    func testLaunchShowsTheCopyOfTheChatItResumes() throws {
+        let (appState, store, dashboard) = makeAppState(configureDefaults: { defaults in
+            ChatResumeStore(defaults: defaults).setLastSessionID("stored-b", for: "default")
+        })
+        store.record(
+            dashboardID: dashboard,
+            profile: "default",
+            sessionID: "stored-b",
+            title: "B",
+            messages: [ChatMessage(id: "b1", role: .user, content: "B", timestamp: "1")],
+            sessions: [session("stored-a"), session("stored-b")]
+        )
+        seedCopy(store, dashboard: dashboard)
+
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+
+        let presentation = try XCTUnwrap(appState.offlineChatPresentation)
+        XCTAssertEqual(presentation.displayedSessionID, "stored-b")
+        XCTAssertEqual(presentation.displayedMessages.map(\.id), ["b1"])
+    }
+
+    func testLaunchTranscriptFollowsTheResumedChatByIdOrAlias() {
+        func entry(_ id: String) -> OfflineCachedTranscriptEntry {
+            OfflineCachedTranscriptEntry(OfflineCachedTranscript(sessionID: id, title: id, savedAt: Date(), messages: []))
+        }
+        let snapshot = OfflineChatSnapshot(
+            lastSessionID: "stored-a",
+            sessions: [
+                OfflineCachedSession(id: "stored-a", title: "A", updatedLabel: "", lastActivityAt: nil, source: .chat),
+                OfflineCachedSession(id: "stored-b", title: "B", updatedLabel: "", lastActivityAt: nil, source: .chat, aliases: ["runtime-b"]),
+            ],
+            transcripts: [entry("stored-a"), entry("stored-b")]
+        )
+
+        XCTAssertEqual(AppState.launchTranscriptID(in: snapshot, resuming: nil), "stored-a", "nothing to resume: the chat saved last")
+        XCTAssertEqual(AppState.launchTranscriptID(in: snapshot, resuming: "stored-b"), "stored-b")
+        XCTAssertEqual(AppState.launchTranscriptID(in: snapshot, resuming: "runtime-b"), "stored-b")
+        XCTAssertNil(AppState.launchTranscriptID(in: snapshot, resuming: "bot-chat"))
+    }
+
     func testPresentingTheCopyNeverFeedsLiveStateOrTheViewport() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)

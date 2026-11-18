@@ -618,8 +618,7 @@ extension AppState {
               messages.isEmpty,
               let snapshot = offlineChatCache.load(dashboardID: dashboardID, profile: activeProfile),
               !snapshot.transcripts.isEmpty || !snapshot.sessions.isEmpty else { return }
-        let displayed = snapshot.lastSessionID.flatMap { snapshot.transcript(for: $0) != nil ? $0 : nil }
-            ?? snapshot.transcripts.first?.sessionID
+        let displayed = Self.launchTranscriptID(in: snapshot, resuming: activeSessionId)
         offlineChatPresentation = OfflineChatPresentation(
             dashboardID: dashboardID,
             profile: activeProfile,
@@ -628,6 +627,21 @@ extension AppState {
                 offlineChatCache.loadTranscript($0, dashboardID: dashboardID, profile: activeProfile)
             }
         )
+    }
+
+    /// The saved copy a launch shows: the conversation it resumes, by its id
+    /// or a saved row's alias, never another one. A Bot Chat keeps no copy
+    /// here, so resuming one shows none, not the workspace's last chat until
+    /// the bot's lands. With nothing to resume, the chat saved last.
+    static func launchTranscriptID(in snapshot: OfflineChatSnapshot, resuming sessionID: String?) -> String? {
+        guard let sessionID = ChatScrollIdentityNormalization.sessionID(sessionID) else {
+            return snapshot.lastSessionID.flatMap { snapshot.transcript(for: $0) != nil ? $0 : nil }
+                ?? snapshot.transcripts.first?.sessionID
+        }
+        if snapshot.transcript(for: sessionID) != nil { return sessionID }
+        return snapshot.sessions
+            .first { $0.matches([sessionID]) && snapshot.transcript(for: $0.id) != nil }?
+            .id
     }
 
     /// Header title: the saved conversation's title while the offline copy
