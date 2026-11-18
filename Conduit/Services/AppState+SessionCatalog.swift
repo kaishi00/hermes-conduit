@@ -140,9 +140,9 @@ extension AppState {
                         : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
                     let liveStartedAt = Date()
                     let scopedResult: DashboardSessionCatalog
-                    // Where this read's rows stand among the others': after
-                    // an earlier read's when it took that read's newest page.
-                    let commitOrder: SessionCatalogCache.ReadOrder
+                    // The read whose newest page this one holds: an earlier
+                    // one when it took that read's page.
+                    let rowsFrom: UInt64
                     do {
                         let listed = try await dashboardSessionPages(
                             profile: profile,
@@ -155,7 +155,7 @@ extension AppState {
                             sharesNewestPage: sharesNewestPage
                         )
                         scopedResult = listed.catalog
-                        commitOrder = SessionCatalogCache.ReadOrder(rowsFrom: listed.read, read: readSequence)
+                        rowsFrom = listed.read
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
                         throw error
@@ -201,6 +201,15 @@ extension AppState {
                         // do not cache an empty result for a failed request.
                         cronSessions = nil
                     }
+                    // Where this read's rows stand among the others': after
+                    // the read whose newest page it holds, and among reads
+                    // holding the same page, one that fetched cron goes after
+                    // one that reused cached cron or got none (#2753 review).
+                    let commitOrder = SessionCatalogCache.ReadOrder(
+                        rowsFrom: rowsFrom,
+                        freshCron: didFetchCronSessions,
+                        read: readSequence
+                    )
 
                     // A delete/archive/disconnect can run while either request
                     // is suspended. Never let this attempt overwrite the

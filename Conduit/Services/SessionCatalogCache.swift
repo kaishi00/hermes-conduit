@@ -34,16 +34,20 @@ struct SessionCatalogCache {
     private(set) var committedReads: [String: ReadOrder] = [:]
 
     /// Where a read's listing stands among the others: by the read whose
-    /// newest page it holds (`rowsFrom`), then by the read itself. Reads
-    /// that took one newest page (NewestCatalogPageRead, issue 2604) hold
-    /// rows of the same age, and the one that started later still has the
-    /// newer cron rows, so it keeps its commit (#2753 review).
+    /// newest page it holds (`rowsFrom`), then by whether it fetched cron
+    /// itself, then by the read. Reads that took one newest page
+    /// (NewestCatalogPageRead, issue 2604) hold rows of the same age; of
+    /// those, one that fetched cron keeps its commit over one that reused
+    /// cached cron or whose cron request failed, and of two that fetched,
+    /// the one that started later does (#2753 review).
     struct ReadOrder: Comparable {
         let rowsFrom: UInt64
+        let freshCron: Bool
         let read: UInt64
 
-        init(rowsFrom: UInt64, read: UInt64) {
+        init(rowsFrom: UInt64, freshCron: Bool = true, read: UInt64) {
             self.rowsFrom = rowsFrom
+            self.freshCron = freshCron
             self.read = read
         }
 
@@ -53,7 +57,9 @@ struct SessionCatalogCache {
         }
 
         static func < (lhs: ReadOrder, rhs: ReadOrder) -> Bool {
-            (lhs.rowsFrom, lhs.read) < (rhs.rowsFrom, rhs.read)
+            if lhs.rowsFrom != rhs.rowsFrom { return lhs.rowsFrom < rhs.rowsFrom }
+            if lhs.freshCron != rhs.freshCron { return !lhs.freshCron }
+            return lhs.read < rhs.read
         }
     }
 
