@@ -674,8 +674,16 @@ final class AppStateMultiDashboardTests: XCTestCase {
             to: appState,
             currentURL: home.normalizedURL
         )
+        // Drafts kept through the switches: the old address's go with the
+        // move, since the new host's ids may match them.
+        let homeDraft = ComposerDraftKey(dashboard: home.id, profile: "default", sessionID: "s1")
+        let workDraft = ComposerDraftKey(dashboard: work.id, profile: "default", sessionID: "s1")
+        appState.composerDraftStore.save(ComposerDraft(text: "old host's words", attachments: []), for: homeDraft)
+        appState.composerDraftStore.save(ComposerDraft(text: "work's words", attachments: []), for: workDraft)
         appState.selectDashboardTarget(work.id)
         await appState.switchDashboard(to: home.id)
+        XCTAssertTrue(appState.composerDraftStore.draft(for: homeDraft).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: workDraft).text, "work's words")
 
         XCTAssertEqual(appState.activeDashboardID, home.id)
         XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id, work.id])

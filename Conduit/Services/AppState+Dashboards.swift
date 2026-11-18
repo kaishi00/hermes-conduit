@@ -476,6 +476,9 @@ extension AppState {
         if defaults.string(forKey: Self.chatResumeServerIdentityKey) == id.uuidString {
             chatResumeCoordinator.clearResumeState()
         }
+        // And its drafts, kept through switches by dashboard: the new host's
+        // profile and chat ids may match the old one's.
+        forgetDrafts(ofDashboard: id)
         return registry.dashboards[index]
     }
 

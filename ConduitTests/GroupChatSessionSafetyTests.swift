@@ -737,6 +737,24 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(appState.pendingRoomMessage, pending)
         appState.closeGroupRoom()
 
+        // Signing out of one dashboard drops only its rooms' sends, events,
+        // in-flight entries and words.
+        let other = UUID()
+        let gone = try XCTUnwrap(appState.parkedRoomOutboxes.keys.first)
+        let goneDashboard = try XCTUnwrap(UUID(uuidString: String(gone.prefix(36))))
+        let kept = "\(other.uuidString)|\(room.roomID)"
+        appState.parkedRoomOutboxes[kept] = appState.parkedRoomOutboxes[gone]
+        appState.keptRoomReplays[gone] = GroupRoomReplay(roomID: room.roomID)
+        appState.keptRoomReplays[kept] = GroupRoomReplay(roomID: room.roomID)
+        appState.inFlightRoomSendTokens[gone] = UUID()
+        appState.inFlightRoomSendTokens[kept] = UUID()
+        appState.groupRoomDrafts[kept] = "other words"
+        appState.forgetRoomDrafts(dashboardID: goneDashboard)
+        XCTAssertEqual(Array(appState.parkedRoomOutboxes.keys), [kept])
+        XCTAssertEqual(Array(appState.keptRoomReplays.keys), [kept])
+        XCTAssertEqual(Array(appState.inFlightRoomSendTokens.keys), [kept])
+        XCTAssertEqual(appState.groupRoomDrafts, [kept: "other words"])
+
         appState.invalidateGroupChatState()
         XCTAssertTrue(appState.parkedRoomOutboxes.isEmpty)
         XCTAssertTrue(appState.groupRoomDrafts.isEmpty)
