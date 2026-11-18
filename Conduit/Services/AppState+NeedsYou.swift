@@ -67,10 +67,6 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
-            // A room's id is its host's own: another Hermes' room can share
-            // the open room's id, so a room wait counts as open only from a
-            // dashboard of this one's Hermes (issue 2631).
-            let sameHermes = Self.isSameHermes(id, as: activeDashboardID, twins: combinedBotsHomeTwins)
             for profile in profiles {
                 guard isSceneActive else { return }
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
@@ -81,6 +77,11 @@ extension AppState {
                 // A profile a strip tap found deleted while the read was
                 // out stays gone (issue 2646).
                 guard currentKeptProfiles(id, else: profiles).contains(profile) else { continue }
+                // A room's id is its host's own: another Hermes' room can
+                // share the open room's id, so a room wait counts as open
+                // only from a dashboard of this one's Hermes (issue 2631),
+                // told after the read, as the roster stands now.
+                let sameHermes = Self.isSameHermes(id, as: activeDashboardID, twins: combinedBotsHomeTwins)
                 needsYou.applyOther(
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,

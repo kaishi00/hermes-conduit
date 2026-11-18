@@ -272,7 +272,10 @@ extension AppState {
         if row.id == id || row.storedSessionId == id { return !followedChat(chat, isConversation: id) }
         // An alias only another listed chat's row carries now (Hermes moved
         // it there) is that chat's (issue 2655).
-        guard own != id, let ownRow = owningSessionRow(for: own) else { return false }
+        // Its own row unlisted (a page the catalog hasn't read) doesn't make
+        // the alias its own either.
+        guard own != id else { return false }
+        guard let ownRow = owningSessionRow(for: own) else { return true }
         return ownRow.id != row.id
     }
 

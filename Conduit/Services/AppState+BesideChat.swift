@@ -210,8 +210,10 @@ extension AppState {
     /// The open beside a kept chat failed and left that chat on screen:
     /// it isn't also beside itself.
     private func besideChatOpenFailed(kept: Set<String>?) {
-        guard let kept, besideChatIDs == kept,
-              let active = activeSessionId, kept.contains(active) else { return }
+        // Still the kept chat on screen: by its id, or by its row when
+        // another row owns the id it opened as (issue 2655).
+        guard let kept, besideChatIDs == kept, let active = activeSessionId,
+              kept.contains(active) || followedSessionIDs(forChatOpenAs: active) == kept else { return }
         besideChatIDs = nil
         backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: kept) }
     }

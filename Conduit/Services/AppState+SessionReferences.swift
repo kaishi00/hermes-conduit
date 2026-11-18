@@ -138,6 +138,8 @@ extension AppState {
             activeSessionId = reference.sessionID
             activeSessionTitle = Self.botConversationTitle(for: reference, mainName: profileDisplayName("default"))
         }
+        // The row it opens as, as setActiveSessionState records (issue 2655).
+        noteRowOfChatOnScreen(leaving: nil, for: reference.sessionID)
         publishWidgetSnapshot()
     }
 

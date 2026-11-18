@@ -1184,6 +1184,7 @@ extension CrossProfilePresentationCacheTests {
         mints.holds = true
         appState.connectOtherCombinedDashboards(only: vps.id)
         await waitUntil { mints.hold != nil }
+        _ = try XCTUnwrap(mints.hold, "the sign-in reached its mint")
         XCTAssertTrue(appState.combinedSignInsUnderWay.contains(vps.id))
         appState.combinedDashboardTrouble[vps.id] = .down
         appState.dropAllKeptDashboardRuntimes()

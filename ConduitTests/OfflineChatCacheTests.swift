@@ -3796,7 +3796,8 @@ final class OfflineChatCacheTests: XCTestCase {
                                         profile: beside.profile, isBotChat: false, rows: [], streamingText: "")
         _ = state.besideChatLive.notice(for: unfollowed)
         let withUnfollowed = state.besideChatLive.noticeCount
-        state.backgroundChats = state.backgroundChats
+        let followed = state.backgroundChats
+        state.backgroundChats = followed
         XCTAssertEqual(state.besideChatLive.noticeCount, withUnfollowed - 1, "a chat not followed has no notice kept")
         XCTAssertTrue(state.besideChatLive.notice(for: beside) === notice, "a followed chat keeps its notice")
 
