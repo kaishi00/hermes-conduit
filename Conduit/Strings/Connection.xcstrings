@@ -19440,7 +19440,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Melde dich bei Conduit auf deinem Windows-PC oder Mac an, ohne etwas einzutippen. Öffne dort Conduit, wähle „Pair with your iPhone“ und scanne den angezeigten Code."
+            "value" : "Melde dich bei Conduit auf deinem Windows-PC oder Mac an, ohne etwas einzutippen. Öffne dort Conduit, wähle „Mit deinem iPhone koppeln“ und scanne den angezeigten Code."
           }
         },
         "en" : {
@@ -19452,73 +19452,73 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Inicia sesión en Conduit en tu PC con Windows o Mac sin escribir nada. Abre Conduit allí, elige «Pair with your iPhone» y escanea el código que muestra."
+            "value" : "Inicia sesión en Conduit en tu PC con Windows o Mac sin escribir nada. Abre Conduit allí, elige «Vincular con tu iPhone» y escanea el código que muestra."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Connectez-vous à Conduit sur votre PC Windows ou Mac sans rien saisir. Ouvrez Conduit sur l’ordinateur, choisissez « Pair with your iPhone » et scannez le code affiché."
+            "value" : "Connectez-vous à Conduit sur votre PC Windows ou Mac sans rien saisir. Ouvrez Conduit sur l’ordinateur, choisissez « Associer avec votre iPhone » et scannez le code affiché."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Masuk ke Conduit di PC Windows atau Mac tanpa mengetik apa pun. Buka Conduit di sana, pilih “Pair with your iPhone”, lalu pindai kode yang ditampilkan."
+            "value" : "Masuk ke Conduit di PC Windows atau Mac tanpa mengetik apa pun. Buka Conduit di sana, pilih “Pasangkan dengan iPhone Anda”, lalu pindai kode yang ditampilkan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Accedi a Conduit sul tuo PC Windows o Mac senza digitare nulla. Apri Conduit sul computer, scegli “Pair with your iPhone” e scansiona il codice mostrato."
+            "value" : "Accedi a Conduit sul tuo PC Windows o Mac senza digitare nulla. Apri Conduit sul computer, scegli “Abbina con il tuo iPhone” e scansiona il codice mostrato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows PC や Mac の Conduit に、何も入力せずにサインインできます。そちらで Conduit を開き、「Pair with your iPhone」を選んで、表示されたコードをスキャンしてください。"
+            "value" : "Windows PC や Mac の Conduit に、何も入力せずにサインインできます。そちらで Conduit を開き、「iPhone とペアリング」を選んで、表示されたコードをスキャンしてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows PC나 Mac의 Conduit에 아무것도 입력하지 않고 로그인하세요. 그쪽에서 Conduit을 열고 “Pair with your iPhone”을 선택한 뒤 표시되는 코드를 스캔하세요."
+            "value" : "Windows PC나 Mac의 Conduit에 아무것도 입력하지 않고 로그인하세요. 그쪽에서 Conduit을 열고 “iPhone과 페어링”을 선택한 뒤 표시되는 코드를 스캔하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zaloguj się do Conduit na komputerze z Windows lub Macu bez wpisywania czegokolwiek. Otwórz tam Conduit, wybierz „Pair with your iPhone” i zeskanuj wyświetlony kod."
+            "value" : "Zaloguj się do Conduit na komputerze z Windows lub Macu bez wpisywania czegokolwiek. Otwórz tam Conduit, wybierz „Sparuj z iPhone’em” i zeskanuj wyświetlony kod."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Entre no Conduit no seu PC com Windows ou Mac sem digitar nada. Abra o Conduit lá, escolha “Pair with your iPhone” e escaneie o código exibido."
+            "value" : "Entre no Conduit no seu PC com Windows ou Mac sem digitar nada. Abra o Conduit lá, escolha “Parear com seu iPhone” e escaneie o código exibido."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Войдите в Conduit на компьютере с Windows или на Mac, ничего не вводя. Откройте там Conduit, выберите «Pair with your iPhone» и отсканируйте показанный код."
+            "value" : "Войдите в Conduit на компьютере с Windows или на Mac, ничего не вводя. Откройте там Conduit, выберите «Подключить через iPhone» и отсканируйте показанный код."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Windows PC’nizde veya Mac’inizde hiçbir şey yazmadan Conduit’e giriş yapın. Orada Conduit’i açın, “Pair with your iPhone” seçeneğini seçin ve gösterilen kodu tarayın."
+            "value" : "Windows PC’nizde veya Mac’inizde hiçbir şey yazmadan Conduit’e giriş yapın. Orada Conduit’i açın, “iPhone’unuzla eşleyin” seçeneğini seçin ve gösterilen kodu tarayın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无需输入任何内容即可在 Windows 电脑或 Mac 上登录 Conduit。在电脑上打开 Conduit，选择“Pair with your iPhone”，然后扫描显示的二维码。"
+            "value" : "无需输入任何内容即可在 Windows 电脑或 Mac 上登录 Conduit。在电脑上打开 Conduit，选择“与 iPhone 配对”，然后扫描显示的二维码。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無需輸入任何內容即可在 Windows 電腦或 Mac 上登入 Conduit。在電腦上打開 Conduit，選擇「Pair with your iPhone」，然後掃描顯示的條碼。"
+            "value" : "無需輸入任何內容即可在 Windows 電腦或 Mac 上登入 Conduit。在電腦上打開 Conduit，選擇「與 iPhone 配對」，然後掃描顯示的條碼。"
           }
         }
       }
@@ -28584,7 +28584,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dein Computer sollte dieselben vier Wörter zeigen. Wenn ja, klicke dort auf „They match“. Wenn nicht, klicke auf „They don’t match“."
+            "value" : "Dein Computer sollte dieselben vier Wörter zeigen. Wenn ja, klicke dort auf „Sie stimmen überein, anmelden“. Wenn nicht, klicke auf „Sie stimmen nicht überein“."
           }
         },
         "en" : {
@@ -28596,73 +28596,73 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tu ordenador debería mostrar estas mismas cuatro palabras. Si es así, haz clic allí en «They match». Si no, haz clic en «They don’t match»."
+            "value" : "Tu ordenador debería mostrar estas mismas cuatro palabras. Si es así, haz clic allí en «Coinciden, iniciar sesión». Si no, haz clic en «No coinciden»."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Votre ordinateur doit afficher ces quatre mêmes mots. Si c’est le cas, cliquez sur « They match ». Sinon, cliquez sur « They don’t match »."
+            "value" : "Votre ordinateur doit afficher ces quatre mêmes mots. Si c’est le cas, cliquez sur « Ils correspondent, se connecter ». Sinon, cliquez sur « Ils ne correspondent pas »."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Komputer Anda seharusnya menampilkan empat kata yang sama. Jika ya, klik “They match” di sana. Jika tidak, klik “They don’t match”."
+            "value" : "Komputer Anda seharusnya menampilkan empat kata yang sama. Jika ya, klik “Cocok, masuk” di sana. Jika tidak, klik “Tidak cocok”."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il computer dovrebbe mostrare queste stesse quattro parole. Se è così, fai clic su “They match”. Altrimenti, fai clic su “They don’t match”."
+            "value" : "Il computer dovrebbe mostrare queste stesse quattro parole. Se è così, fai clic su “Corrispondono, accedi”. Altrimenti, fai clic su “Non corrispondono”."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "コンピュータにも同じ 4 つの単語が表示されているはずです。一致していれば、そちらで「They match」をクリックしてください。一致しなければ「They don’t match」をクリックしてください。"
+            "value" : "コンピュータにも同じ 4 つの単語が表示されているはずです。一致していれば、そちらで「一致、サインイン」をクリックしてください。一致しなければ「一致しない」をクリックしてください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "컴퓨터에도 같은 네 단어가 표시되어야 합니다. 같다면 그쪽에서 “They match”를 클릭하세요. 다르다면 “They don’t match”를 클릭하세요."
+            "value" : "컴퓨터에도 같은 네 단어가 표시되어야 합니다. 같다면 그쪽에서 “일치함, 로그인”을 클릭하세요. 다르다면 “일치하지 않음”을 클릭하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Komputer powinien pokazywać te same cztery słowa. Jeśli tak, kliknij tam „They match”. Jeśli nie, kliknij „They don’t match”."
+            "value" : "Komputer powinien pokazywać te same cztery słowa. Jeśli tak, kliknij tam „Pasują, zaloguj”. Jeśli nie, kliknij „Nie pasują”."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seu computador deve mostrar as mesmas quatro palavras. Se mostrar, clique em “They match” lá. Se não, clique em “They don’t match”."
+            "value" : "Seu computador deve mostrar as mesmas quatro palavras. Se mostrar, clique em “Correspondem, entrar” lá. Se não, clique em “Não correspondem”."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "На компьютере должны быть те же четыре слова. Если совпадают, нажмите там «They match». Если нет — «They don’t match»."
+            "value" : "На компьютере должны быть те же четыре слова. Если совпадают, нажмите там «Совпадают, войти». Если нет — «Не совпадают»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bilgisayarınız aynı dört kelimeyi göstermeli. Gösteriyorsa orada “They match”e tıklayın. Göstermiyorsa “They don’t match”e tıklayın."
+            "value" : "Bilgisayarınız aynı dört kelimeyi göstermeli. Gösteriyorsa orada “Eşleşiyor, giriş yap” düğmesine tıklayın. Göstermiyorsa “Eşleşmiyor” düğmesine tıklayın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的电脑应显示同样的四个单词。如果一致，请在电脑上点按“They match”；如果不一致，请点按“They don’t match”。"
+            "value" : "你的电脑应显示同样的四个单词。如果一致，请在电脑上点按“一致，登录”；如果不一致，请点按“不一致”。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "你的電腦應顯示同樣的四個單字。如果一致，請在電腦上按一下「They match」；如果不一致，請按一下「They don’t match」。"
+            "value" : "你的電腦應顯示同樣的四個單字。如果一致，請在電腦上按一下「一致，登入」；如果不一致，請按一下「不一致」。"
           }
         }
       }
