@@ -1216,7 +1216,7 @@ struct SettingsView: View {
             .init(key: "memory.user_char_limit", label: AppLocalization.string("Profile budget", table: .settings), help: AppLocalization.string("Most characters of user profile Hermes keeps.", table: .settings), control: .number(defaultValue: 1375), requiresSchema: true),
         ]),
         ProfileSettingSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", fields: [
-            .init(key: "context.engine", label: AppLocalization.string("Context engine", table: .settings), help: AppLocalization.string("Installed context-management engine.", table: .settings), control: .options([], defaultValue: "default")),
+            .init(key: "context.engine", label: AppLocalization.string("Context engine", table: .settings), help: AppLocalization.string("Installed context-management engine.", table: .settings), control: .options([], defaultValue: "compressor")),
             .init(key: "compression.enabled", label: AppLocalization.string("Context compression", table: .settings), help: AppLocalization.string("Compress older context when the window becomes crowded.", table: .settings), control: .toggle(defaultValue: true)),
             .init(key: "compression.threshold", label: AppLocalization.string("Compression threshold", table: .settings), help: AppLocalization.string("Fraction of the context window that starts compression.", table: .settings), control: .number(defaultValue: 0.8)),
             .init(key: "compression.target_ratio", label: AppLocalization.string("Compression target", table: .settings), help: AppLocalization.string("Fraction retained after compression.", table: .settings), control: .number(defaultValue: 0.5)),
@@ -3459,6 +3459,15 @@ private struct MemorySettingsDetail: View {
 
 /// 服务器配置值 → 英文显示名（走 String Catalog 翻译）；未收录的动态值原样显示。
 /// 值本身绝不能翻译：它们会原样写回 Hermes 配置。
+/// Context engine as Hermes runs it: a profile an older Conduit saved as
+/// "default" (or "custom") has no such engine, so Hermes runs its built-in
+/// compressor, and the row says so.
+enum ContextEngineChoice {
+    static func shown(_ key: String, _ value: String) -> String {
+        key == "context.engine" && (value == "default" || value == "custom") ? "compressor" : value
+    }
+}
+
 enum ProfileConfigValueDisplay {
     static let optionValueDisplay: [String: [String: String]] = [
         "approvals.mode": ["manual": "Manual", "smart": "Smart", "off": "YOLO mode"],
@@ -3623,7 +3632,7 @@ struct ProfileConfigSettingsPage: View {
                 // A runtime list that came back empty falls back to the schema's.
                 let baseChoices = optionOverrides[field.key].flatMap { $0.isEmpty ? nil : $0 } ?? options
                 let choices = baseChoices + (extraOptions[field.key] ?? []).filter { !baseChoices.contains($0) }
-                let selectedValue = textValue(field.key, defaultValue: defaultValue)
+                let selectedValue = ContextEngineChoice.shown(field.key, textValue(field.key, defaultValue: defaultValue))
                 let displayedValue = selectedValue
                 Menu {
                     ForEach(choices, id: \.self) { option in
@@ -4450,6 +4459,8 @@ private struct NotificationsSettingsDetail: View {
     /// (a haptic alone left people unsure anything happened), for that
     /// profile only.
     @State private var pairTapProfile: String?
+    /// Bumped by a pairing, so the list of paired devices reads again.
+    @State private var pairedDevicesRefresh = 0
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
@@ -4870,9 +4881,17 @@ private struct NotificationsSettingsDetail: View {
     @ViewBuilder
     private var oneTapPairing: some View {
         let profile = appState.activeProfile
-        Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
-            .scaledFont(.footnote)
-            .foregroundStyle(.secondary)
+        // A plugin that keeps a pairing per device notifies them all (issue 2758).
+        let everyDevice = appState.notifierPlugin.reports("pairing-devices")
+        if everyDevice {
+            Text(AppLocalization.string("Conduit pairs every profile on this dashboard with this device by itself, besides your other devices. Each one gets the notifications, and calls ring the one marked below.", table: .settings))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
         Button {
             Task {
                 pairing = true
@@ -4880,6 +4899,7 @@ private struct NotificationsSettingsDetail: View {
                 pairTapProfile = profile
                 do {
                     try await appState.pairProfileWithThisDevice(profile)
+                    pairedDevicesRefresh += 1
                     Haptics.success()
                 } catch {
                     pairingError = UserFacingError.message(for: error)
@@ -4913,10 +4933,18 @@ private struct NotificationsSettingsDetail: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.red)
         } else {
-            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings), systemImage: "checkmark.circle.fill")
+            Label(everyDevice
+                  ? AppLocalization.string("Paired. Notifications from \(appState.profileDisplayName(profile)) now come to this device too.", table: .settings)
+                  : AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings),
+                  systemImage: "checkmark.circle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("notifications.paired")
+        }
+        if everyDevice {
+            PairedDevicesList(profile: profile, refreshToken: pairedDevicesRefresh)
+                // Another dashboard's or profile's list starts empty, not with this one's rows.
+                .id("\(appState.activeDashboardID?.uuidString ?? "")|\(profile)")
         }
     }
 

@@ -264,42 +264,47 @@ extension AppState {
                         jobApprovals: true
                     ) + VoiceHostTool.declarations(self?.voiceBackgroundJobSupervisor.hostTools ?? []),
                     googleSearch: search == .google,
-                    voice: qwen ? self?.callVoicePreferences.qwenLiveVoice : self?.callVoicePreferences.geminiLiveVoice
+                    voice: qwen ? self?.callSpeakerVoicePreferences.qwenLiveVoice : self?.callSpeakerVoicePreferences.geminiLiveVoice
                 )
                 if qwen { session.onTrace = { LiveCallTrace.shared.note($0) } }
                 return session
             },
             availability: { [weak self] in
+                // A Bot Chat's call speaks as its bot; one the bot can't start
+                // (no key for this mode on its profile) runs as the workspace.
                 guard let self else { return try await tokens.availability() }
-                // Resolved before each conversation, so a changed setting or
-                // a newly configured host backend applies on the next one.
-                // The host calls run together: one after another they
-                // stacked four round trips in front of every connection.
-                let call = self.callVoicePreferences
-                let wantsMemory = (qwen ? call.qwenLiveMemory : call.geminiLiveMemory) ?? false
-                let wantsPersonality = (qwen ? call.qwenLivePersonality : call.geminiLivePersonality) ?? false
-                async let search = qwen ? self.resolveQwenLiveSearchSource() : self.resolveGeminiLiveSearchSource()
-                async let memory = wantsMemory ? tokens.memoryContext() : nil
-                async let loadedPersonality = wantsPersonality ? tokens.personality() : nil
-                async let hostTools: Void = self.prepareVoiceHostTools(for: mode)
-                let status = try await tokens.availability()
-                // Unavailable: return now; leaving scope cancels the other
-                // calls instead of waiting on them.
-                guard status.isAvailable else { return status }
-                let resolvedSearch = await search
-                let resolvedMemory = await memory
-                let resolvedPersonality = await loadedPersonality
-                if qwen {
-                    self.qwenLiveSearchSource = resolvedSearch
-                    self.qwenLiveMemoryContext = resolvedMemory
-                    self.qwenLivePersonality = resolvedPersonality
-                } else {
-                    self.geminiLiveSearchSource = resolvedSearch
-                    self.geminiLiveMemoryContext = resolvedMemory
-                    self.geminiLivePersonality = resolvedPersonality
+                return try await self.availabilityAsCallSpeaker({ $0.isAvailable }) { [weak self] in
+                    guard let self else { return try await tokens.availability() }
+                    // Resolved before each conversation, so a changed setting or
+                    // a newly configured host backend applies on the next one.
+                    // The host calls run together: one after another they
+                    // stacked four round trips in front of every connection.
+                    let call = self.callVoicePreferences
+                    let wantsMemory = (qwen ? call.qwenLiveMemory : call.geminiLiveMemory) ?? false
+                    let wantsPersonality = (qwen ? call.qwenLivePersonality : call.geminiLivePersonality) ?? false
+                    async let search = qwen ? self.resolveQwenLiveSearchSource() : self.resolveGeminiLiveSearchSource()
+                    async let memory = wantsMemory ? tokens.memoryContext() : nil
+                    async let loadedPersonality = wantsPersonality ? tokens.personality() : nil
+                    async let hostTools: Void = self.prepareVoiceHostTools(for: mode)
+                    let status = try await tokens.availability()
+                    // Unavailable: return now; leaving scope cancels the other
+                    // calls instead of waiting on them.
+                    guard status.isAvailable else { return status }
+                    let resolvedSearch = await search
+                    let resolvedMemory = await memory
+                    let resolvedPersonality = await loadedPersonality
+                    if qwen {
+                        self.qwenLiveSearchSource = resolvedSearch
+                        self.qwenLiveMemoryContext = resolvedMemory
+                        self.qwenLivePersonality = resolvedPersonality
+                    } else {
+                        self.geminiLiveSearchSource = resolvedSearch
+                        self.geminiLiveMemoryContext = resolvedMemory
+                        self.geminiLivePersonality = resolvedPersonality
+                    }
+                    await hostTools
+                    return status
                 }
-                await hostTools
-                return status
             },
             // Fails closed: without the app state, the stored answer decides.
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(mode) ?? LiveVoiceProviderConsent.missing(mode) },

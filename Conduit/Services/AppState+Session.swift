@@ -417,18 +417,20 @@ extension AppState {
     /// its way. Not during a pull to refresh, which has its own spinner (a
     /// Projects pull's is its projects read), nor while the list on screen
     /// has no rows: "Loading chats…", or a list with none, says so itself.
-    func showsChatListUpdating(overProjects: Bool = false) -> Bool {
+    /// `hidesPulseHomeChat`: the list leaves Pulse's own chat out (V2's,
+    /// where it stays behind the Pulse screen); V1's sidebar draws it.
+    func showsChatListUpdating(overProjects: Bool = false, hidesPulseHomeChat: Bool = false) -> Bool {
         guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
         // The rows the page draws: in All, every profile's (issue 2736).
         let rows = chatListSessions
+        let drawn: (SessionSummary) -> Bool = { !hidesPulseHomeChat || !self.isPulseHomeChat($0) }
         if overProjects {
-            // The Projects page lists pinned chats over its projects
-            // (Pulse's own chat stays behind the Pulse screen).
-            let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }
+            // The Projects page lists pinned chats over its projects.
+            let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && drawn($0) }
             guard !projectsLoading, !projects.isEmpty || pinned else { return false }
         } else {
             // All draws the other combined dashboards' chats too.
-            guard !rows.isEmpty || !chatListCronSessions.isEmpty
+            guard rows.contains(where: drawn) || !chatListCronSessions.isEmpty
                 || (isAllProfilesChatsOn && !chatListCombinedChats(excluding: []).isEmpty) else { return false }
         }
         return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing

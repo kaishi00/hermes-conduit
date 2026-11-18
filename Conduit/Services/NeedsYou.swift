@@ -111,13 +111,17 @@ struct NeedsYouItem: Identifiable, Equatable {
     }
 
     /// A profile's `/waiting` answer as its rows, each carrying the relay
-    /// gateway the list names (issue 2683); nil when it holds no list (an
-    /// error body).
-    static func items(listed response: [String: Any], profile: String) -> [NeedsYouItem]? {
+    /// gateway the list names (issue 2683): this device's own, among the
+    /// `gateways` of a profile that notifies several (issue 2758), else the
+    /// main pairing's; nil when it holds no list (an error body).
+    static func items(listed response: [String: Any], profile: String,
+                      installationID: String? = nil) -> [NeedsYouItem]? {
         guard let listed = response["waiting"] as? [[String: Any]] else { return nil }
-        let gatewayID = (response["gateway_id"] as? String)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .flatMap { $0.isEmpty ? nil : $0 }
+        func trimmed(_ value: String?) -> String? {
+            value.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let own = trimmed(installationID.flatMap { (response["gateways"] as? [String: Any])?[$0.lowercased()] as? String })
+        let gatewayID = own ?? trimmed(response["gateway_id"] as? String)
         return listed.compactMap { row in
             var item = NeedsYouItem(host: row, profile: profile)
             item?.relayGatewayID = gatewayID
@@ -251,7 +255,7 @@ final class NeedsYouStore: ObservableObject {
         // Another dashboard's banner for a wait this read lists as open
         // here: one Hermes saved twice, its room already on screen.
         if let banner, banner.dashboardID != nil,
-           read.contains(where: { $0.hostKey == banner.hostKey && isOpenChat($0) }) {
+           read.contains(where: { Self.sameWait($0, banner) && isOpenChat($0) }) {
             self.banner = nil
         }
         // A wait another combined dashboard listed first (one Hermes saved
@@ -284,8 +288,8 @@ final class NeedsYouStore: ObservableObject {
     /// Whether a wait is listed already by this dashboard or by another
     /// combined one than `dashboardID`.
     private func heldElsewhere(_ item: NeedsYouItem, than dashboardID: UUID) -> Bool {
-        items.contains { $0.hostKey == item.hostKey }
-            || otherDashboards.contains { $0.key != dashboardID && $0.value.contains { $0.hostKey == item.hostKey } }
+        items.contains { Self.sameWait($0, item) }
+            || otherDashboards.contains { $0.key != dashboardID && $0.value.contains { Self.sameWait($0, item) } }
     }
 
     /// One profile's list on another combined dashboard, as just read
@@ -305,11 +309,16 @@ final class NeedsYouStore: ObservableObject {
             item.dashboardID = dashboardID
             return item
         }
-        let firstRead = otherReadProfiles[dashboardID]?.contains(profile) != true
-        otherReadProfiles[dashboardID, default: []].insert(profile)
-        let fresh = tagged.filter { !otherSeen.contains($0.id) }
+        // A profile matches its own spelling in any case, as forgetOther
+        // does: a re-cased name replaces its rows rather than doubling them.
+        let sameProfile: (String) -> Bool = { AppState.profilesMatch($0, profile) }
+        let firstRead = otherReadProfiles[dashboardID]?.contains(where: sameProfile) != true
+        otherReadProfiles[dashboardID] = (otherReadProfiles[dashboardID] ?? []).filter { !sameProfile($0) }.union([profile])
+        // A wait already listed under another spelling isn't new.
+        let listedBefore = Set((otherDashboards[dashboardID] ?? []).filter { sameProfile($0.profile) }.map(\.waitID))
+        let fresh = tagged.filter { !otherSeen.contains($0.id) && !listedBefore.contains($0.waitID) }
         otherSeen.formUnion(tagged.map(\.id))
-        let merged = ((otherDashboards[dashboardID] ?? []).filter { $0.profile != profile } + tagged)
+        let merged = ((otherDashboards[dashboardID] ?? []).filter { !sameProfile($0.profile) } + tagged)
             .sorted { $0.since > $1.since }
         if merged != otherDashboards[dashboardID] ?? [] {
             otherDashboards[dashboardID] = merged.isEmpty ? nil : merged
@@ -351,7 +360,13 @@ final class NeedsYouStore: ObservableObject {
     private func dropBannerNoLongerListed() {
         guard let banner else { return }
         let listed = banner.dashboardID.map { otherDashboards[$0] ?? [] } ?? items
-        if !listed.contains(where: { $0.id == banner.id }) { self.banner = nil }
+        // The same wait under another spelling of its profile still counts.
+        if !listed.contains(where: { Self.sameWait($0, banner) }) { self.banner = nil }
+    }
+
+    /// One wait whatever the case of its profile's name (issue 2726).
+    static func sameWait(_ a: NeedsYouItem, _ b: NeedsYouItem) -> Bool {
+        a.waitID == b.waitID && AppState.profilesMatch(a.profile, b.profile)
     }
 
     /// A profile no longer listed (removed, or its plugin can't be read).

@@ -31,6 +31,13 @@ final class HermesVoiceGateway: VoiceGatewayService {
     }
 
     let profile: String
+    /// The profile whose Hermes voice speaks replies: a Bot Chat's bot in a
+    /// Classic call there (issue 2768), else `profile`. Transcription stays
+    /// on `profile`, whose speech-to-text the capability checks read, and so
+    /// does a speech server's speak socket: speech output is the profile in
+    /// use's choice, and its server is the one set up there, as Local Live
+    /// keeps the profile in use's server.
+    let speechProfile: String
     /// The query parameter naming `profile` on the speech server's sockets
     /// (DashboardPath.conduitProfileParameter).
     let profileParameter: String
@@ -52,6 +59,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         bridge: DashboardTicketBridge,
         baseURL: String,
         profile: String,
+        speechProfile: String? = nil,
         profileParameter: String = "profile",
         speechOutput: @escaping @MainActor () -> VoiceSpeechOutput = { .hermes },
         makeOnDeviceSpeech: FallbackSpeechStream.OpenOnDevice? = nil,
@@ -61,6 +69,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         self.baseURL = (try? ConnectionURLPolicy.normalizedBaseURL(baseURL))
             ?? baseURL.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         self.profile = profile
+        self.speechProfile = speechProfile ?? profile
         self.profileParameter = profileParameter
         self.speechOutput = speechOutput
         self.makeOnDeviceSpeech = makeOnDeviceSpeech
@@ -162,7 +171,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
             unauthorized = try Self.speechStreamRequest(
                 baseURL: baseURL,
                 ticket: ticket,
-                profile: profile,
+                profile: speechProfile,
                 cloudflareAccess: bridge.cloudflareAccess
             )
         } catch {
@@ -176,8 +185,8 @@ final class HermesVoiceGateway: VoiceGatewayService {
         return HermesSpeechStream(
             task: task,
             traceRun: traceRun,
-            fallback: { [bridge, profile] text in
-                try await Self.loadFallbackAudio(bridge: bridge, profile: profile, text: text)
+            fallback: { [bridge, speechProfile] text in
+                try await Self.loadFallbackAudio(bridge: bridge, profile: speechProfile, text: text)
             },
             onStart: onStart,
             onPCM16: onPCM16,

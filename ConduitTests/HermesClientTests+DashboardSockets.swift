@@ -134,6 +134,22 @@ extension HermesClientTests {
         XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["profile"], "work")
     }
 
+    /// A Classic call in a Bot Chat speaks as its bot (issue 2768): the
+    /// speak-stream names the speech profile, not the listening one.
+    func testDashboardSpeakStreamNamesTheSpeechProfile() async throws {
+        let fixture = try DashboardSocketFixture()
+        defer { fixture.stop() }
+        let dashboard = nativeDashboard(at: fixture.baseURL, access: "access-speak-bot")
+
+        let gateway = HermesVoiceGateway(bridge: dashboard.bridge, baseURL: fixture.baseURL, profile: "default", speechProfile: "atlas")
+        XCTAssertEqual(gateway.profile, "default")
+        let stream = try await gateway.openSpeechStream(onStart: { _ in }, onPCM16: { _, _ in }, onEncodedAudio: { _ in })
+        defer { stream.cancel() }
+
+        let upgrade = try await fixture.waitForUpgrades(1).first
+        XCTAssertEqual(upgrade.map(DashboardSocketFixture.query(of:))?["profile"], "atlas")
+    }
+
     func testDashboardTranscribeStreamUpgradeCarriesItsTicketAndBearerAndNoCookie() async throws {
         let fixture = try DashboardSocketFixture()
         defer { fixture.stop() }

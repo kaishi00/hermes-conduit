@@ -194,7 +194,7 @@ hermes plugins install kaishi00/hermes-conduit-notifier --enable
 hermes gateway restart
 ```
 
-Then turn on notifications under Settings > Notifications; Conduit pairs the signed-in profile by itself when no other iPhone receives its notifications; if one does, Settings > Notifications offers to move them to this one. Settings > Conduit plugin shows the installed version and can update it.
+Then turn on notifications under Settings > Notifications; Conduit pairs the signed-in profile by itself when no other iPhone receives its notifications; if one does, Settings > Notifications offers to move them to this one. With notifier 0.178 or later Conduit pairs every profile on the dashboard with each device you use it on, so your iPhone, iPad and Mac all get the notifications; calls ring one of them, and Settings > Notifications lists the devices, removes one, or picks the one calls ring. Settings > Conduit plugin shows the installed version and can update it.
 
 The app uses a shared relay by default (`push.milim.dev`) so notifications work out of the box with no extra setup.
 

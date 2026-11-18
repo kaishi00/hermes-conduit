@@ -190,12 +190,16 @@ extension AppState {
     /// bot); nil is the active one. Whether read aloud is offered, and
     /// whether Hermes or this iPhone speaks, still follow the active
     /// profile's Voice settings.
-    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil) -> HermesVoiceGateway? {
+    /// `speakingAs`: the profile whose Hermes voice speaks replies when it
+    /// isn't `profile` (a Classic call in a Bot Chat speaks as its bot,
+    /// issue 2768); transcription stays on `profile`.
+    func makeVoiceGateway(fallsBackToOnDeviceSpeech: Bool = true, profile: String? = nil, speakingAs: String? = nil) -> HermesVoiceGateway? {
         guard let dashboardTicketBridge, let connection else { return nil }
         return HermesVoiceGateway(
             bridge: dashboardTicketBridge,
             baseURL: connection.baseUrl,
             profile: profile ?? activeProfile,
+            speechProfile: speakingAs,
             profileParameter: notifierPlugin.dashboardProfileParameter,
             speechOutput: { [weak self] in self?.voiceSpeechOutput ?? .onDevice },
             makeOnDeviceSpeech: { onStart, onPCM16 in OnDeviceSpeechStream(onStart: onStart, onPCM16: onPCM16) },
@@ -332,11 +336,19 @@ extension AppState {
 
     /// Chat bubble entry point for manual read aloud. Toggling the active
     /// message stops it without touching the gateway; starting a different
-    /// message takes over from whatever is playing.
+    /// message takes over from whatever is playing. A Bot Chat's message is
+    /// read in its bot's voice, whichever profile is active (issue 2768).
     func toggleReadAloud(message: ChatMessage) {
         // The saved copy is read-only and has no gateway to speak through.
         guard offlineChatPresentation == nil else { return }
-        toggleReadAloud(messageID: message.id, content: message.content)
+        toggleReadAloud(messageID: message.id, content: message.content, speakingAs: openChatReadAloudSpeaker)
+    }
+
+    /// The profile whose voice reads the open chat: the bot that owns a Bot
+    /// Chat or a workstream, as its title and composer name it, else nil
+    /// for the active profile's own chats (issue 2768).
+    var openChatReadAloudSpeaker: String? {
+        activeBotChatProfile ?? activeWorkstream?.profile
     }
 
     /// A group room message read aloud. Its id is the room's and the
@@ -358,7 +370,8 @@ extension AppState {
     }
 
     /// The profile a read aloud speaks as besides the active one: a room
-    /// bot's own, or nil when none was given or it is the active profile.
+    /// bot's or a Bot Chat's own, or nil when none was given or it is the
+    /// active profile.
     static func readAloudSpeaker(_ requested: String?, activeProfile: String) -> String? {
         guard let profile = requested?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
               profile.caseInsensitiveCompare(activeProfile) != .orderedSame else { return nil }
@@ -376,10 +389,12 @@ extension AppState {
     }
 
     /// Read replies aloud (notifier issue 674): the open chat's turn is
-    /// read as it streams, as a voice turn's is spoken.
+    /// read as it streams, as a voice turn's is spoken, in a Bot Chat's
+    /// bot's voice (issue 2768).
     private func followReplyAloud(_ event: VoiceAssistantEvent) {
         messageReadAloudController.followReply(event) { [weak self] in
-            self?.readyAutomaticReadAloud(roomID: nil, speakingAs: nil) ?? false
+            guard let self else { return false }
+            return self.readyAutomaticReadAloud(roomID: nil, speakingAs: self.openChatReadAloudSpeaker)
         }
     }
 
@@ -1090,7 +1105,7 @@ extension AppState {
                 classicVoiceChatToArchive = (created, activeProfile, activeDashboardID)
             }
         }
-        guard let sessionID = activeSessionId, let gateway = makeVoiceGateway() else {
+        guard let sessionID = activeSessionId, let gateway = makeClassicVoiceGateway() else {
             errorMessage = AppLocalization.string("Hermes could not prepare a voice conversation.")
             return .failed(AppLocalization.string("Hermes could not prepare a voice conversation."))
         }
@@ -1479,8 +1494,16 @@ extension AppState {
 
     func refreshVoiceControllerGateway() {
         voiceConversationController.setGateway(
-            isVoiceEnabled && selectedTranscriptionIsAvailable ? makeVoiceGateway() : nil
+            isVoiceEnabled && selectedTranscriptionIsAvailable ? makeClassicVoiceGateway() : nil
         )
+    }
+
+    /// Classic voice's gateway. Classic talks in the open chat, so in a Bot
+    /// Chat its replies are spoken in the bot's Hermes voice, as Read Aloud
+    /// reads them there; it listens through the active profile, whose
+    /// speech-to-text the capability checks read (issue 2768).
+    func makeClassicVoiceGateway() -> HermesVoiceGateway? {
+        makeVoiceGateway(speakingAs: Self.readAloudSpeaker(openChatReadAloudSpeaker, activeProfile: activeProfile))
     }
 
     /// Keeps the read aloud gateway in step with capability refreshes without
@@ -1501,8 +1524,8 @@ extension AppState {
             && parameter == notifierPlugin.dashboardProfileParameter
     }
 
-    /// `speakingAs`: a room bot's profile, so Hermes reads its message with
-    /// that profile's own voice. Nil is the active profile.
+    /// `speakingAs`: a room bot's or a Bot Chat's profile, so Hermes reads
+    /// its message with that profile's own voice. Nil is the active profile.
     private func assignReadAloudGateway(speakingAs profile: String? = nil) {
         readAloudSpeaker = profile.map { ($0, activeProfile) }
         if let factory = readAloudGatewayFactoryForTesting {

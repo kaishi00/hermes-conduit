@@ -774,6 +774,40 @@ extension GatewayRestartTests {
         XCTAssertEqual(PushNotificationService.profilePairing(status: ["paired": true, "installation_id": "i2"], installationID: "i1"), .otherDevice)
     }
 
+    /// Issue 2758: the status names this device's own pairing, and lists
+    /// every device the profile notifies, the main one first.
+    func testProfileStatusAsksForThisDevicesPairing() {
+        let id = "11111111-1111-4111-8111-111111111111"
+        XCTAssertEqual(PushNotificationService.e2eStatusPath(profile: "default", installationID: id),
+                       "/api/plugins/conduit_push/e2e?installation_id=\(id)")
+        XCTAssertEqual(PushNotificationService.e2eStatusPath(profile: "atlas", installationID: id),
+                       "/api/plugins/conduit_push/e2e?profile=atlas&installation_id=\(id)")
+        XCTAssertEqual(PushNotificationService.e2eStatusPath(profile: "atlas", installationID: nil),
+                       "/api/plugins/conduit_push/e2e?profile=atlas")
+        let status: [String: Any] = ["paired": true, "installation_id": id, "devices": [
+            ["installation_id": "22222222-2222-4222-8222-222222222222", "device_name": "iPhone", "main": true],
+            ["installation_id": id, "device_name": "  ", "main": false, "relay_rejected": true],
+            ["device_name": "no id"],
+        ]]
+        XCTAssertEqual(PushNotificationService.pairedDevices(status: status), [
+            .init(installationID: "22222222-2222-4222-8222-222222222222", name: "iPhone", isMain: true, relayRejected: false),
+            .init(installationID: id, name: nil, isMain: false, relayRejected: true),
+        ])
+        XCTAssertEqual(PushNotificationService.profilePairing(status: status, installationID: id), .thisDevice)
+        XCTAssertEqual(PushNotificationService.pairedDevices(status: ["paired": false, "devices": status["devices"]!]), [],
+                       "an unpaired profile notifies nothing")
+        XCTAssertEqual(PushNotificationService.pairedDevices(status: ["paired": true, "installation_id": id]), [],
+                       "an older plugin lists none")
+        let left = [["installation_id": id, "device_name": "iPad", "main": true]]
+        XCTAssertEqual(PushNotificationService.changedDevices(response: ["ok": true, "devices": left]),
+                       [.init(installationID: id, name: "iPad", isMain: true, relayRejected: false)])
+        XCTAssertEqual(PushNotificationService.changedDevices(response: ["ok": true, "devices": [[String: Any]]()]), [],
+                       "removing the last device leaves none")
+        XCTAssertNil(PushNotificationService.changedDevices(response: ["ok": false, "error": "not paired"]),
+                     "a refusal is never an empty list")
+        XCTAssertNil(PushNotificationService.changedDevices(response: ["ok": true]), "a success names what's left")
+    }
+
     // MARK: - Updater
 
     func testUpdateRestartsTheGatewayThenTheDashboard() async {

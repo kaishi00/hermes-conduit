@@ -526,6 +526,9 @@ final class ComposerDraftStoreTests: XCTestCase {
                                                 storeClearCount: store.clearCount(for: a)))
         XCTAssertEqual(ComposerBar.draftKeyToKeep(loaded: onB, loadedClearCount: loadedOnB,
                                                   storeClearCount: store.clearCount(for: b)), onB)
+        // Dictation's Retry finishing after that sign-out asks this same
+        // rule (ComposerBar.retryDictationClip), so A's words don't come back
+        // from it either (issue 2744).
         // A store-wide clear still counts for every dashboard.
         store.removeAll()
         XCTAssertNil(ComposerBar.draftKeyToKeep(loaded: onB, loadedClearCount: loadedOnB,

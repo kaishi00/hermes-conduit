@@ -89,6 +89,12 @@ extension ChatOnScreenTests {
         XCTAssertTrue(refused(context, nil), "keys that can't be read refuse")
         XCTAssertFalse(refused(context, []), "a plaintext pairing sends")
         XCTAssertFalse(refused(nil, records), "a card with no context (a push's) sends as before")
+        // A restored card whose pairing got its key after the draw: no
+        // route was kept, so the body names no gateway; still refused.
+        let keyed = PushNotificationService.RowCardSealContext(gatewayID: "gw-atlas", dashboardID: dashboard, profile: "Atlas")
+        XCTAssertTrue(PushNotificationService.rowCardAnswerRefused(context: keyed, body: ["answer": "staging"],
+                                                                   installationID: "inst", records: records),
+                      "an encrypted pairing's answer never goes unsealed")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.
@@ -100,6 +106,14 @@ extension ChatOnScreenTests {
         XCTAssertEqual(older.map(\.relayGatewayID), [nil, nil], "an older plugin names none")
         XCTAssertEqual(NeedsYouItem.items(listed: ["waiting": rows, "gateway_id": "  "], profile: "atlas")?.map(\.relayGatewayID), [nil, nil])
         XCTAssertNil(NeedsYouItem.items(listed: ["error": "boom"], profile: "atlas"), "an error body is a failed read")
+        // Issue 2758: a profile that notifies several devices names each one's gateway.
+        let several: [String: Any] = ["waiting": rows, "gateway_id": "gw-1",
+                                      "gateways": ["11111111-1111-4111-8111-111111111111": "gw-1", "22222222-2222-4222-8222-222222222222": "gw-2"]]
+        XCTAssertEqual(NeedsYouItem.items(listed: several, profile: "atlas",
+                                          installationID: "22222222-2222-4222-8222-222222222222")?.map(\.relayGatewayID), ["gw-2", "gw-2"])
+        XCTAssertEqual(NeedsYouItem.items(listed: several, profile: "atlas",
+                                          installationID: "33333333-3333-4333-8333-333333333333")?.map(\.relayGatewayID), ["gw-1", "gw-1"],
+                       "a device the profile doesn't list falls back to the main pairing's")
     }
 
     /// Issue 2683: a row-drawn card's gateway outlives a relaunch only for
@@ -120,6 +134,34 @@ extension ChatOnScreenTests {
         PushNotificationService.persistEncryptedGatewayID("gw-e2e", requestID: "conduit-push-2683aaaaaaaa")
         // The session map is empty for it after a relaunch; the kept copy answers.
         XCTAssertEqual(PushNotificationService.shared.relayGatewayID(forRequestID: "conduit-push-2683aaaaaaaa"), "gw-e2e")
+    }
+
+    /// Issue 2692: a row card's seal context outlives a relaunch, so a card
+    /// restored with its chat is refused the same before its wait is read.
+    func testARowCardsSealContextIsKeptAcrossRelaunchAndStillRefuses() throws {
+        let key = PushNotificationService.rowCardSealContextsKey
+        let saved = UserDefaults.standard.array(forKey: key)
+        defer { UserDefaults.standard.set(saved, forKey: key) }
+        UserDefaults.standard.removeObject(forKey: key)
+        let dashboard = UUID()
+        let context = PushNotificationService.RowCardSealContext(gatewayID: "gw-listed", dashboardID: dashboard, profile: "Atlas")
+        PushNotificationService.persistRowCardSealContext(context, requestID: "conduit-row-2692a")
+        PushNotificationService.persistRowCardSealContext(
+            .init(gatewayID: "gw-other", dashboardID: nil, profile: "default"), requestID: "conduit-row-2692b")
+        // The session map is empty after a relaunch; the kept copy answers.
+        let restored = try XCTUnwrap(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-2692a"))
+        XCTAssertEqual(restored, context)
+        XCTAssertEqual(try XCTUnwrap(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-2692b")),
+                       .init(gatewayID: "gw-other", dashboardID: nil, profile: "default"), "no dashboard is kept as none")
+        // The send's own lookup falls back to the kept copy.
+        XCTAssertEqual(PushNotificationService.shared.rowCardSealContext(forRequestID: "conduit-row-2692a"), context)
+        XCTAssertNil(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-unknown"))
+
+        let elsewhere = E2EKeyRecord(kid: "k2", secret: Data(repeating: 4, count: 32), installationID: "inst", gatewayID: "gw-atlas",
+                                     dashboardID: dashboard.uuidString, profile: "atlas", createdAt: Date())
+        XCTAssertTrue(PushNotificationService.rowCardAnswerRefused(context: restored, body: ["answer": "staging", "gateway_id": "gw-listed"],
+                                                                   installationID: "inst", records: [elsewhere]),
+                      "restored, it still refuses an unsealed answer")
     }
 
     /// Issue 2556: a question's row carries its card as the push did, for
@@ -275,6 +317,38 @@ extension ChatOnScreenTests {
         store.applyOther([theirs], profile: "default", dashboardID: elsewhere,
                          isOpenChat: { AppState.otherDashboardWaitIsOpen($0, sameHermes: { false }, isOpenChat: open) })
         XCTAssertEqual(store.banner?.waitID, "w9")
+    }
+
+    /// Issue 2726: another combined dashboard's profile read under a new
+    /// spelling replaces its rows rather than doubling them, and one that
+    /// is really gone still goes.
+    func testAnotherDashboardsReCasedProfileReplacesItsRows() {
+        let store = NeedsYouStore()
+        let here = UUID(), there = UUID()
+        store.apply([], profile: "default", dashboardID: here) { _ in false }
+        store.applyOther([NeedsYouItem(waitID: "w1", profile: "Atlas", kind: .approval, sessionIDs: ["a"], since: Date(timeIntervalSince1970: 10))],
+                         profile: "Atlas", dashboardID: there)
+        store.applyOther([NeedsYouItem(waitID: "w1", profile: "atlas", kind: .approval, sessionIDs: ["a"], since: Date(timeIntervalSince1970: 10))],
+                         profile: "atlas", dashboardID: there)
+        XCTAssertEqual(store.everyItem.map(\.profile), ["atlas"], "re-cased: replaced, not doubled")
+        XCTAssertNil(store.banner, "and not new")
+        store.forgetOther(there, profilesOtherThan: ["ATLAS"])
+        XCTAssertEqual(store.everyItem.map(\.waitID), ["w1"], "a spelling change keeps it")
+        store.forgetOther(there, profilesOtherThan: ["default"])
+        XCTAssertTrue(store.everyItem.isEmpty, "a profile really gone goes")
+
+        // A twin's banner survives its wait re-listed under another spelling,
+        // and clears once this dashboard lists that wait open, in any case.
+        store.applyOther([], profile: "Atlas", dashboardID: there)
+        store.applyOther([NeedsYouItem(waitID: "w2", profile: "Atlas", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                         profile: "Atlas", dashboardID: there)
+        XCTAssertEqual(store.banner?.waitID, "w2")
+        store.applyOther([NeedsYouItem(waitID: "w2", profile: "atlas", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                         profile: "atlas", dashboardID: there)
+        XCTAssertEqual(store.banner?.waitID, "w2", "re-cased, still listed: the banner stays")
+        store.apply([NeedsYouItem(waitID: "w2", profile: "ATLAS", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                    profile: "ATLAS", dashboardID: here) { _ in true }
+        XCTAssertNil(store.banner, "listed open here under another spelling: the twin's banner goes")
     }
 
     /// One Hermes saved at two addresses, both in the group: a wait both

@@ -1568,11 +1568,11 @@ final class AppState: ObservableObject {
     /// Hermes-hosted Gemini Live credentials (the conduit_push plugin), read
     /// through whichever dashboard bridge is current at call time.
     lazy var geminiLiveTokenClient = makeLiveTokenClient(provider: .gemini) { [weak self] in
-        self?.voiceCallProfile ?? "default"
+        self?.voiceCallSpeakerProfile ?? "default"
     }
 
     lazy var qwenLiveTokenClient = makeLiveTokenClient(provider: .qwen) { [weak self] in
-        self?.voiceCallProfile ?? "default"
+        self?.voiceCallSpeakerProfile ?? "default"
     }
 
     /// Built on first use only: boundaries that merely check whether Gemini
@@ -1600,7 +1600,7 @@ final class AppState: ObservableObject {
     /// GPT-Live calls start on the Hermes host (the conduit_push plugin),
     /// through whichever dashboard bridge is current at call time.
     lazy var gptLiveClient = makeGPTLiveClient { [weak self] in
-        self?.voiceCallProfile ?? "default"
+        self?.voiceCallSpeakerProfile ?? "default"
     }
 
     /// Built on first use only, like Gemini Live's.
@@ -1628,17 +1628,22 @@ final class AppState: ObservableObject {
                 return session
             },
             availability: { [weak self] in
-                let status = try await client.availability()
-                if status.isAvailable, let self {
-                    // Off only when the user turned web lookups off.
-                    let wantsLookUps = (self.callVoicePreferences.geminiLiveSearch ?? .automatic) != .off
-                    async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
-                    self.gptLiveMemoryContext = self.callVoicePreferences.gptLiveMemory == true ? await hostContext.memoryContext() : nil
-                    self.gptLivePersonality = self.callVoicePreferences.gptLivePersonality == true ? await hostContext.personality() : nil
-                    await self.prepareVoiceHostTools(for: .gptLive)
-                    self.gptLiveWebLookUps = await lookUps
+                // A Bot Chat's call speaks as its bot; one the bot can't start
+                // (no key for this mode on its profile) runs as the workspace.
+                guard let self else { return try await client.availability() }
+                return try await self.availabilityAsCallSpeaker({ $0.isAvailable }) { [weak self] in
+                    let status = try await client.availability()
+                    if status.isAvailable, let self {
+                        // Off only when the user turned web lookups off.
+                        let wantsLookUps = (self.callVoicePreferences.geminiLiveSearch ?? .automatic) != .off
+                        async let lookUps = wantsLookUps ? hostContext.webSearchAvailable() : false
+                        self.gptLiveMemoryContext = self.callVoicePreferences.gptLiveMemory == true ? await hostContext.memoryContext() : nil
+                        self.gptLivePersonality = self.callVoicePreferences.gptLivePersonality == true ? await hostContext.personality() : nil
+                        await self.prepareVoiceHostTools(for: .gptLive)
+                        self.gptLiveWebLookUps = await lookUps
+                    }
+                    return status
                 }
-                return status
             },
             // Fails closed: without the app state, the stored answer decides.
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.gptLive) ?? LiveVoiceProviderConsent.missing(.gptLive) },
@@ -1682,7 +1687,7 @@ final class AppState: ObservableObject {
     /// conduit_push plugin), through whichever dashboard bridge is current
     /// at call time.
     lazy var grokLiveClient = makeGrokLiveClient { [weak self] in
-        self?.voiceCallProfile ?? "default"
+        self?.voiceCallSpeakerProfile ?? "default"
     }
 
     /// Built on first use only, like Gemini Live's.
@@ -1737,25 +1742,30 @@ final class AppState: ObservableObject {
                 return session
             },
             availability: { [weak self] in
+                // A Bot Chat's call speaks as its bot; one the bot can't start
+                // (no key for this mode on its profile) runs as the workspace.
                 guard let self else { throw GrokLiveClientError.socketUnavailable }
-                let call = self.callVoicePreferences
-                let wantsMemory = call.grokLiveMemory ?? false
-                let wantsPersonality = call.grokLivePersonality ?? false
-                // The host calls run together, as Gemini Live's do.
-                async let memory = wantsMemory ? hostContext.memoryContext() : nil
-                async let personality = wantsPersonality ? hostContext.personality() : nil
-                async let hostTools: Void = self.prepareVoiceHostTools(for: .grokLive)
-                let status = try await client.availability()
-                // The controller shows a thrown reason as it is; Grok Live's
-                // names Grok Live.
-                guard case .available(let model, let voice, _) = status else {
-                    throw GrokLiveClientError.unavailable(status)
+                return try await self.availabilityAsCallSpeaker({ _ in true }) { [weak self] in
+                    guard let self else { throw GrokLiveClientError.socketUnavailable }
+                    let call = self.callVoicePreferences
+                    let wantsMemory = call.grokLiveMemory ?? false
+                    let wantsPersonality = call.grokLivePersonality ?? false
+                    // The host calls run together, as Gemini Live's do.
+                    async let memory = wantsMemory ? hostContext.memoryContext() : nil
+                    async let personality = wantsPersonality ? hostContext.personality() : nil
+                    async let hostTools: Void = self.prepareVoiceHostTools(for: .grokLive)
+                    let status = try await client.availability()
+                    // The controller shows a thrown reason as it is; Grok Live's
+                    // names Grok Live.
+                    guard case .available(let model, let voice, _) = status else {
+                        throw GrokLiveClientError.unavailable(status)
+                    }
+                    self.grokLiveMemoryContext = await memory
+                    self.grokLivePersonality = await personality
+                    await hostTools
+                    self.grokLiveVoice = voice
+                    return .available(model: model)
                 }
-                self.grokLiveMemoryContext = await memory
-                self.grokLivePersonality = await personality
-                await hostTools
-                self.grokLiveVoice = voice
-                return .available(model: model)
             },
             // Fails closed: without the app state, the stored answer decides.
             missingConsent: { [weak self] in self?.requestLiveVoiceConsentIfMissing(.grokLive) ?? LiveVoiceProviderConsent.missing(.grokLive) },
@@ -3197,6 +3207,18 @@ final class AppState: ObservableObject {
     /// stage 2). It stays the call's when another profile on the same
     /// dashboard opens, so the call goes on there: see `voiceCallProfile`.
     var liveCallProfile: String?
+    /// The bot a call started in its Bot Chat speaks as (issue 2768): its
+    /// keys, voice, persona and memory, while the call's chat, jobs and
+    /// settings stay on `liveCallProfile`. Nil for any other call, and once
+    /// the bot couldn't start the call's mode (`availabilityAsCallSpeaker`).
+    /// Set as the call starts, cleared as it ends.
+    var liveCallSpeaker: String?
+    /// The start that set `liveCallSpeaker`, so an availability check left
+    /// over from an earlier call never clears a newer call's bot.
+    var liveCallSpeakerStart = UUID()
+    /// The bot the running call started with, so a start that fell back
+    /// to the workspace asks the bot again on Try again.
+    var liveCallBot: String?
     /// A call that ended off its profile hands its jobs back to the profile
     /// on screen once its hang-up has let go of what it asked to be called
     /// about (`callEndedOffItsProfile`); set while that waits.
