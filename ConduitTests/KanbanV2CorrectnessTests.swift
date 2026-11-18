@@ -46,6 +46,37 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: nil, current: nil))
     }
 
+    func testARefusedStepSaysWhetherTheBoardChangedOrIsStillLoading() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        XCTAssertNil(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: alpha))
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: nil), .boardNavigationInProgress)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: nil, current: alpha), .boardNavigationInProgress)
+        // The partial-success notice carries the board-changed reason, never "still switching".
+        let outcome = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: UserFacingError.message(for: KanbanServiceError.boardChanged))
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock) ?? ""
+        XCTAssertTrue(message.contains(KanbanServiceError.boardChanged.localizedDescription))
+        XCTAssertFalse(message.contains(KanbanServiceError.boardNavigationInProgress.localizedDescription))
+    }
+
+    func testAPartialSuccessShowsOnTheBoardOnceTheBoardChangedOrTheSheetMovedOn() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        let beta = KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)
+        let alphaReloaded = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)
+        let partial = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: "x")
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: beta, sheetShowsStartedTask: true))
+        // A reconnect that reloads the same board: the sheet may have been swiped away.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alphaReloaded, sheetShowsStartedTask: true))
+        // The sheet moved on to another task (a dependency) on the same board.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: false))
+        // The same board, the sheet still on the task (a network failure): the sheet alone says it.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: true))
+        // Refused before the note, or full success: nothing to report on the board.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), started: alpha, current: beta, sheetShowsStartedTask: false))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), started: alpha, current: beta, sheetShowsStartedTask: false))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {
