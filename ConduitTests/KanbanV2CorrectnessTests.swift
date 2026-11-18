@@ -60,16 +60,21 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(message.contains(KanbanServiceError.boardNavigationInProgress.localizedDescription))
     }
 
-    func testAPartialSuccessShowsOnTheBoardOnlyOnceTheSheetNoLongerShowsTheTask() {
+    func testAPartialSuccessShowsOnTheBoardOnceTheBoardChangedOrTheSheetMovedOn() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        let beta = KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)
+        let alphaReloaded = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)
         let partial = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: "x")
-        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: true))
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: beta, sheetShowsStartedTask: true))
+        // A reconnect that reloads the same board: the sheet may have been swiped away.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alphaReloaded, sheetShowsStartedTask: true))
         // The sheet moved on to another task (a dependency) on the same board.
-        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha", sheetShowsStartedTask: false))
-        // The sheet still shows the task on its board: the sheet alone says it.
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha", sheetShowsStartedTask: true))
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: false))
+        // The same board, the sheet still on the task (a network failure): the sheet alone says it.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: true))
         // Refused before the note, or full success: nothing to report on the board.
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: false))
-        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), openedOnBoard: "alpha", nowOnBoard: "beta", sheetShowsStartedTask: false))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), started: alpha, current: beta, sheetShowsStartedTask: false))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), started: alpha, current: beta, sheetShowsStartedTask: false))
     }
 
     // MARK: - Helpers

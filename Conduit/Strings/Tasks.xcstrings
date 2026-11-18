@@ -19265,84 +19265,84 @@
         }
       }
     },
-    "The board changed before this step ran. Switch back to that board to try again." : {
+    "The board changed or reloaded before this step ran. Open the task on its board and try again." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Board hat sich geändert, bevor dieser Schritt lief. Wechsle zurück zu diesem Board, um es erneut zu versuchen."
+            "value" : "Das Board hat sich geändert oder wurde neu geladen, bevor dieser Schritt lief. Öffne die Aufgabe auf ihrem Board und versuche es erneut."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El tablero cambió antes de que se ejecutara este paso. Vuelve a ese tablero para intentarlo de nuevo."
+            "value" : "El tablero cambió o se recargó antes de que se ejecutara este paso. Abre la tarea en su tablero y vuelve a intentarlo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le tableau a changé avant cette étape. Revenez à ce tableau pour réessayer."
+            "value" : "Le tableau a changé ou a été rechargé avant cette étape. Ouvrez la tâche sur son tableau et réessayez."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Papan berubah sebelum langkah ini berjalan. Kembali ke papan itu untuk mencoba lagi."
+            "value" : "Papan berubah atau dimuat ulang sebelum langkah ini berjalan. Buka tugas di papannya dan coba lagi."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La bacheca è cambiata prima di questo passaggio. Torna a quella bacheca per riprovare."
+            "value" : "La bacheca è cambiata o è stata ricaricata prima di questo passaggio. Apri l'attività nella sua bacheca e riprova."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "この手順の実行前にボードが切り替わりました。元のボードに戻ってから、もう一度お試しください。"
+            "value" : "この手順の実行前にボードが切り替わったか、再読み込みされました。タスクを元のボードで開いて、もう一度お試しください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 단계가 실행되기 전에 보드가 바뀌었어요. 그 보드로 돌아가서 다시 시도하세요."
+            "value" : "이 단계가 실행되기 전에 보드가 바뀌었거나 다시 로드됐어요. 해당 보드에서 작업을 열고 다시 시도하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tablica zmieniła się, zanim ten krok został wykonany. Wróć do tamtej tablicy, aby spróbować ponownie."
+            "value" : "Tablica zmieniła się lub została ponownie wczytana, zanim ten krok został wykonany. Otwórz zadanie na jego tablicy i spróbuj ponownie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O quadro mudou antes de esta etapa ser executada. Volte para aquele quadro para tentar novamente."
+            "value" : "O quadro mudou ou foi recarregado antes de esta etapa ser executada. Abra a tarefa no quadro dela e tente novamente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Доска сменилась до выполнения этого шага. Вернитесь на ту доску, чтобы повторить попытку."
+            "value" : "Доска сменилась или перезагрузилась до выполнения этого шага. Откройте задачу на её доске и повторите попытку."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu adım çalışmadan önce pano değişti. Yeniden denemek için o panoya geri dönün."
+            "value" : "Bu adım çalışmadan önce pano değişti veya yeniden yüklendi. Görevi kendi panosunda açıp yeniden deneyin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此步骤执行前看板已切换。请切回原看板后重试。"
+            "value" : "此步骤执行前看板已切换或重新加载。请在任务所在的看板上打开它后重试。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此步驟執行前看板已切換。請切回原看板後再試一次。"
+            "value" : "此步驟執行前看板已切換或重新載入。請在任務所在的看板上開啟它後再試一次。"
           }
         }
       }

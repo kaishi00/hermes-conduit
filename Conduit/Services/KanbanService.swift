@@ -46,7 +46,7 @@ enum KanbanServiceError: LocalizedError, Equatable {
         case .boardNavigationInProgress:
             return AppLocalization.string("Still switching boards. Try again once the new board finishes loading.", table: .tasks)
         case .boardChanged:
-            return AppLocalization.string("The board changed before this step ran. Switch back to that board to try again.", table: .tasks)
+            return AppLocalization.string("The board changed or reloaded before this step ran. Open the task on its board and try again.", table: .tasks)
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.

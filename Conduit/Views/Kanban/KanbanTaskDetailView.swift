@@ -1362,14 +1362,14 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    /// A note posted whose second step a board change refused, once the
-    /// sheet no longer shows the task: the partial success shows on the board.
+    /// A note posted whose second step a board change refused: the partial
+    /// success shows on the board too, since the sheet may be gone.
     private func reportOnBoardIfClosed(_ outcome: KanbanNoteAndRequeueFlow.Outcome, _ message: String?, startedBoard: KanbanBoardContextStamp?, startedTaskID: String) {
         guard let message,
               KanbanDetailMutationPolicy.reportsOnBoard(
                 outcome: outcome,
-                openedOnBoard: startedBoard?.boardSlug,
-                nowOnBoard: store.openTaskBoardSlug,
+                started: startedBoard,
+                current: store.loadedContextStamp,
                 sheetShowsStartedTask: KanbanDetailMutationPolicy.completionIsActive(startedTaskID: startedTaskID, displayedTaskID: displayedTaskID)
               ) else { return }
         store.showMutationError(KanbanServiceError.invalidResponse(message))
@@ -1685,7 +1685,7 @@ enum KanbanDetailMutationPolicy {
     }
 
     /// Why a step of a two-step action may not run, or nil when it may: the
-    /// board it started on was replaced by another one (`boardChanged`), or
+    /// board it started on was replaced or reloaded (`boardChanged`), or
     /// no board was loaded at the tap or is loaded now
     /// (`boardNavigationInProgress`).
     static func stepRefusal(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> KanbanServiceError? {
@@ -1694,13 +1694,14 @@ enum KanbanDetailMutationPolicy {
     }
 
     /// A two-step action's partial success (the note posted, the second
-    /// step undone) shows on the board when the sheet closed meanwhile
-    /// (`KanbanDetailLoadPolicy.sheetStaysOpen`) or moved on to another task;
-    /// while the sheet still shows the task, the sheet alone says it.
-    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, openedOnBoard: String?, nowOnBoard: String, sheetShowsStartedTask: Bool) -> Bool {
+    /// step undone) shows on the board whenever the board or server changed
+    /// since the tap, or the sheet moved on to another task. The sheet may
+    /// have closed meanwhile (a board change, or the person swiped it away)
+    /// and can't tell, so a sheet still open says it as well; a rare
+    /// duplicate beats a lost notice. With neither, the sheet alone says it.
+    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?, sheetShowsStartedTask: Bool) -> Bool {
         guard outcome.commentPosted, !outcome.requeued else { return false }
-        return !sheetShowsStartedTask
-            || !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: openedOnBoard, nowOnBoard: nowOnBoard)
+        return !sheetShowsStartedTask || !stepTargetsStartedBoard(started: started, current: current)
     }
 
     static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {
