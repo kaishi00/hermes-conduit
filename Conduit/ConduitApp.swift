@@ -481,6 +481,8 @@ struct ConduitApp: App {
                 // A Link invite someone sent, or its QR code read by the
                 // Camera: Conduit asks before linking.
                 if appState.routeRoomLink(url) { return }
+                // A computer's pairing code read by the Camera.
+                if appState.routeComputerPairingLink(url) { return }
                 guard let link = ConduitAppLink(externalURL: url) else { return }
                 pendingExternalLink = link
             }

@@ -53,4 +53,11 @@ enum BiometricAuth {
             }
         }
     }
+
+    /// As `authenticate`, but a phone with no passcode, Face ID or Touch ID
+    /// set up has nothing to ask, so it goes ahead (Pair a Computer).
+    static func authenticateIfAvailable(reason: String) async -> Bool {
+        guard LAContext().canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else { return true }
+        return await authenticate(reason: reason)
+    }
 }

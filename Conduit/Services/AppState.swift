@@ -1196,6 +1196,9 @@ final class AppState: ObservableObject {
     /// (RoomLinks.swift). RootView shows who it's from in a sheet, which
     /// asks before linking.
     @Published var pendingRoomLink: RoomLinkURL?
+    /// A computer's pairing code that opened Conduit (ComputerPairing.swift):
+    /// RootView shows Pair a Computer for it, which asks before sending.
+    @Published var pendingComputerPairing: ComputerPairingLink?
     /// An invite to a room whose notification was tapped (RoomInvites.swift):
     /// RootView shows its join card.
     @Published var presentedRoomInvite: RoomInvite?
