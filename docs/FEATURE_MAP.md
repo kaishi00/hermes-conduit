@@ -3656,7 +3656,7 @@ README's "context meter" (done)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2703 (added: issue 2699).
+**Checked:** 2026-11-18, #2704 (added in #2703: issue 2699).
 
 ## /new in a Bot Chat
 
