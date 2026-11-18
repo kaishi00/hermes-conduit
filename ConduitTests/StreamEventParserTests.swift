@@ -21,6 +21,73 @@ final class StreamEventParserTests: XCTestCase {
         return StreamEventParser.parse(params: AnyCodable.from(obj))
     }
 
+    // MARK: - Silence markers (issue 2700)
+
+    /// What the filter passes on, flattened to text: deltas joined, then
+    /// "|interim:<text>" and "|complete:<text>" as they come.
+    private func shown(_ events: [StreamEvent]) -> String {
+        var filter = SilenceMarkerStreamFilter()
+        return events.flatMap { filter.filter($0) }.map { event -> String in
+            switch event {
+            case .messageDelta(_, let text): return text
+            case .messageInterim(_, let text, _): return "|interim:\(text)"
+            case .messageComplete(_, _, let content, _, _): return "|complete:\(content ?? "nil")"
+            case .toolStart(_, let name, _, _): return "|tool:\(name)"
+            default: return "|other"
+            }
+        }.joined()
+    }
+
+    private func deltas(_ pieces: String...) -> [StreamEvent] {
+        pieces.map { .messageDelta(sessionId: "s", text: $0) }
+    }
+
+    func testAStreamedSilenceMarkerNeverReachesTheChat() {
+        // The session authority streams the marker and ends the turn with "":
+        // the chat kept the streamed "[SILENT]" as the reply.
+        XCTAssertEqual(shown(deltas("[SIL", "ENT]") + [.messageComplete(sessionId: "s", messageId: nil, content: "", reasoning: nil)]),
+                       "|complete:")
+        XCTAssertEqual(shown(deltas("NO_", "REPLY") + [.messageComplete(sessionId: "s", messageId: nil, content: nil, reasoning: nil)]),
+                       "|complete:nil")
+        // A final text that is a marker, however written, shows nothing.
+        XCTAssertEqual(shown([.messageComplete(sessionId: "s", messageId: nil, content: "*[silent]*", reasoning: nil)]),
+                       "|complete:")
+        // A closing marker on its own line is held, then dropped.
+        XCTAssertEqual(shown(deltas("Done.\n\n[SIL", "ENT]") + [.messageComplete(sessionId: "s", messageId: nil, content: "Done.\n\n[SILENT]", reasoning: nil)]),
+                       "Done.|complete:Done.")
+    }
+
+    func testTextThatOnlyStartsLikeAMarkerArrivesInFull() {
+        XCTAssertEqual(shown(deltas("S", "ure, done.")), "Sure, done.")
+        // Held to the end of the turn, then released before it ends.
+        XCTAssertEqual(shown(deltas("NO") + [.messageComplete(sessionId: "s", messageId: nil, content: "", reasoning: nil)]),
+                       "NO|complete:")
+        XCTAssertEqual(shown(deltas("[SILENT] is what I answer when nothing changed.")),
+                       "[SILENT] is what I answer when nothing changed.")
+        // A tool call ends the segment: held text that isn't a marker goes first.
+        XCTAssertEqual(shown(deltas("Let me check.\nNO") + [.toolStart(sessionId: "s", toolName: "web", toolInput: nil)]),
+                       "Let me check.\nNO|tool:web")
+    }
+
+    func testCommentaryThatIsAMarkerLeavesNoRow() {
+        XCTAssertEqual(shown(deltas("[SILENT]") + [
+            .messageInterim(sessionId: "s", text: "[SILENT]", alreadyStreamed: true),
+            .toolStart(sessionId: "s", toolName: "work_status", toolInput: nil)
+        ]), "|tool:work_status")
+        XCTAssertEqual(shown([.messageInterim(sessionId: "s", text: "Checking W2.\n[SILENT]", alreadyStreamed: false)]),
+                       "|interim:Checking W2.")
+    }
+
+    func testEachChatHoldsItsOwnStream() {
+        let events: [StreamEvent] = [
+            .messageDelta(sessionId: "a", text: "[SILENT"),
+            .messageDelta(sessionId: "b", text: "Hello"),
+            .messageDelta(sessionId: "a", text: "]"),
+            .messageComplete(sessionId: "a", messageId: nil, content: "", reasoning: nil)
+        ]
+        XCTAssertEqual(shown(events), "Hello|complete:")
+    }
+
     // MARK: - message.start
 
     func testMessageStart() {
