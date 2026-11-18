@@ -17,10 +17,14 @@ struct PairedDevicesList: View {
     /// Bumped by each change, so a read that started before it can't put
     /// back the list the change replaced.
     @State private var generation = 0
+    /// Bumped by each read, so only the newest one lands: a Try Again and
+    /// the read after a pairing can overlap.
+    @State private var readToken = 0
 
     var body: some View {
         Group {
-            if devices.isEmpty, let loadError {
+            // A failed read shows above the rows it couldn't refresh, too.
+            if let loadError {
                 HStack(spacing: 8) {
                     Label(loadError, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
@@ -29,7 +33,8 @@ struct PairedDevicesList: View {
                     Button(AppLocalization.string("Try Again")) { Task { await load() } }
                         .scaledFont(.footnote)
                 }
-            } else if !devices.isEmpty {
+            }
+            if !devices.isEmpty {
                 Text(AppLocalization.string("Devices notified", table: .settings))
                     .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -108,13 +113,15 @@ struct PairedDevicesList: View {
 
     private func load() async {
         let started = generation
+        readToken += 1
+        let token = readToken
         do {
             let read = try await appState.pairedDevices(profile)
-            guard started == generation, !Task.isCancelled else { return }
+            guard started == generation, token == readToken, !Task.isCancelled else { return }
             devices = read
             loadError = nil
         } catch {
-            guard started == generation, !Task.isCancelled else { return }
+            guard started == generation, token == readToken, !Task.isCancelled else { return }
             loadError = UserFacingError.message(for: error)
         }
     }
