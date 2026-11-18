@@ -832,8 +832,8 @@ final class GeminiLiveToolBridge {
             // Cards arrive as their JSON text (FunctionCall keeps strings).
             let givenCards = call.arguments["cards"].flatMap { $0.data(using: .utf8) }
                 .flatMap { try? JSONSerialization.jsonObject(with: $0) }
-                .flatMap { RichCardSchema.unwrappedCards($0) }
-            let cards = RichCardSchema.bundled?.normalizeCards(givenCards) ?? []
+            // Read however the model wrapped them; what it sent decides the refusal below.
+            let cards = RichCardSchema.bundled?.normalizeCards(RichCardSchema.unwrappedCards(givenCards)) ?? []
             let noMarkdown = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             if noMarkdown, cards.isEmpty, let givenCards, !((givenCards as? [Any])?.isEmpty ?? false) {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": Self.invalidCardsNote], scheduling: nil)]

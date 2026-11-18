@@ -3664,12 +3664,20 @@ extension VoiceConversationControllerTests {
 
         // A board in an extra list, or one card on its own, is still drawn (notifier #876).
         let place = #"{"type": "place", "places": [{"name": "Tartine"}]}"#
-        for (index, wrapped) in ["[[\(place)]]", place, #"{"cards": [\#(place)]}"#].enumerated() {
+        let wrappings = ["[[\(place)]]", place, #"{"cards": [\#(place)]}"#, #"[{"cards": [\#(place)]}]"#,
+                         #"{"cards": {"cards": [\#(place)]}}"#]
+        for (index, wrapped) in wrappings.enumerated() {
+            let before = shownCards.count
             let answer = await bridge.handle(.init(id: "w\(index)", name: "show_on_screen", arguments: ["title": "Breakfast", "cards": wrapped]))
             guard case .toolResponse(_, _, let result, _)? = answer.first else { return XCTFail("\(answer)") }
             XCTAssertEqual(result["status"], "shown", wrapped)
+            XCTAssertEqual(shownCards.count, before + 1, wrapped)
+            XCTAssertEqual(shownCards.last?.cards.map(\.kind), [.place], wrapped)
+            XCTAssertEqual(shownCards.last?.cards.first?.places.first?.name, "Tartine", wrapped)
         }
-        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 4)
+        let emptyInside = await bridge.handle(.init(id: "w-empty", name: "show_on_screen", arguments: ["title": "Weather", "cards": "[[]]"]))
+        guard case .toolResponse(_, _, let emptyResult, _)? = emptyInside.first else { return XCTFail("\(emptyInside)") }
+        XCTAssertEqual(emptyResult["error"], GeminiLiveToolBridge.invalidCardsNote, "cards that wrap nothing still get the cards note")
     }
 }
 

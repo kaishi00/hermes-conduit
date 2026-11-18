@@ -73,19 +73,30 @@ struct RichCardSchema {
 
     /// The valid cards in `value`, normalized; invalid ones are dropped.
     /// The cards a model sent, as the flat list the schema asks for: one
-    /// card on its own, `{"cards": [...]}`, or the list inside another list
-    /// (`[[{...}]]`), as the plugin's conduit_show reads them (notifier #876:
-    /// a smaller model retried a board for 35 minutes over its wrapping).
-    static func unwrappedCards(_ value: Any?) -> Any? {
+    /// card on its own, a `{"cards": ...}` wrapper, or the list inside
+    /// another list (`[[{...}]]`), each of these inside the others too, as
+    /// the plugin's conduit_show reads them (notifier #876, #878: a smaller
+    /// model retried a board for 35 minutes over its wrapping). Past eight
+    /// levels the cards are left as they are, and refused.
+    static func unwrappedCards(_ value: Any?, depth: Int = 0) -> Any? {
+        guard depth <= 8 else { return value }
         if let card = value as? [String: Any] {
-            if card["type"] == nil, let cards = card["cards"] as? [Any] { return unwrappedCards(cards) }
+            if let inner = cardsInWrapper(card) { return unwrappedCards(inner, depth: depth + 1) }
             return [card]
         }
-        guard var list = value as? [Any] else { return value }
-        while list.contains(where: { $0 is [Any] }) {
-            list = list.flatMap { ($0 as? [Any]) ?? [$0] }
+        guard let list = value as? [Any] else { return value }
+        return list.flatMap { item -> [Any] in
+            let opens = item is [Any] || (item as? [String: Any]).flatMap(cardsInWrapper) != nil
+            guard opens else { return [item] }
+            let opened = unwrappedCards(item, depth: depth + 1)
+            return (opened as? [Any]) ?? [opened as Any]
         }
-        return list
+    }
+
+    /// What a `{"cards": ...}` around cards holds; nil for a card of its own.
+    private static func cardsInWrapper(_ value: [String: Any]) -> Any? {
+        guard value["type"] == nil, let inner = value["cards"], inner is [Any] || inner is [String: Any] else { return nil }
+        return inner
     }
 
     func normalizeCards(_ value: Any?) -> [[String: Any]] {
