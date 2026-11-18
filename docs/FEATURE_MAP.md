@@ -7027,7 +7027,7 @@ and Share or Save · the Markdown reader's Open In and Share copy
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
 - The Markdown reader's handoff copy: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (stageForSharing, removeShareDirectory), `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage(text:filename:), presentOpenIn and its OpenInDelegate, presentShare, presentSaveToFiles with its SaveToFilesDelegate and savePickers)
 - Picture viewer: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryFile, ImageGalleryViewController.finish)
-- Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
+- Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`, `ConduitTests/MarkdownDocumentSheetTests.swift`
 
 **Rulings**
 - Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002). A share sheet UIKit refuses (another presentation in flight) is reclaimed 15 seconds on if it never presented, as a refused Quick Look is: on iOS 27 a share sheet presents late, so a refusal can't be told at once (2026-11-18, #2705, issue 2701). Save to Files stages its download in a folder of its own the same way, removed when the Files picker closes, saved or cancelled, or 15 seconds on if it never presented (2026-11-18, #2730, issue 1809).
