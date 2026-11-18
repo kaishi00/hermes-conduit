@@ -31,7 +31,8 @@ struct PairedDevicesList: View {
                 }
             }
         }
-        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(profile)|\(refreshToken)") {
+        // Read again when a pairing ends, the one Conduit makes on connect too.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(profile)|\(refreshToken)|\(notifications.isPairing)") {
             await load()
         }
     }
@@ -59,6 +60,12 @@ struct PairedDevicesList: View {
                     Text(AppLocalization.string("Calls ring here", table: .settings))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                }
+                if device.relayRejected {
+                    // The relay refused its last push: it gets nothing until paired again.
+                    Text(AppLocalization.string("The relay no longer knows this device. Pair it again.", table: .settings))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.orange)
                 }
             }
             Spacer(minLength: 8)

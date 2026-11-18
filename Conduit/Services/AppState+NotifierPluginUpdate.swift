@@ -395,7 +395,12 @@ extension AppState {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         let response = try await bridge.requestJSON(path: DashboardPath.withProfile(path, profile: profile), method: "POST",
                                                     body: ["installation_id": installationID])
-        return PushNotificationService.pairedDevices(status: ["paired": true, "devices": response["devices"] ?? []])
+        // Only a success body says what's left: anything else is a refusal,
+        // never an empty list.
+        guard response["ok"] as? Bool == true, let devices = response["devices"] as? [[String: Any]] else {
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the change.", table: .settings))
+        }
+        return PushNotificationService.pairedDevices(status: ["paired": true, "devices": devices])
     }
 
     private func pairProfile(_ profile: String, bridge: DashboardTicketBridge, dashboardID: UUID,
