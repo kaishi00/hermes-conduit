@@ -1486,6 +1486,12 @@ enum TurnState: Equatable {
         self == .running
     }
 
+    /// Being read back after a foreground or a reconnect: it settles on
+    /// idle or running on its own.
+    var isResyncing: Bool {
+        self == .synchronizing || self == .reconnecting
+    }
+
     /// Running, or still being read back (a sync, a reconnect), so a reply
     /// may be running: a chat call's seed leaves the running turn off.
     var mayBeRunning: Bool {
@@ -1511,6 +1517,23 @@ enum TurnState: Equatable {
             guard hasText else { return .stop }
             return busyInputMode.composerAction
         }
+    }
+}
+
+/// A control that only a resync turns off (every return to the app has
+/// one) keeps its look through a resync shorter than `duration`, then
+/// dims; a tap meanwhile does nothing. Without it the composer's controls
+/// blinked on each return.
+enum ResyncGrace {
+    static let duration: Duration = .milliseconds(500)
+
+    /// Off only until the chat has been read back.
+    static func waits(canAct: Bool, canActOnceSynced: Bool) -> Bool {
+        !canAct && canActOnceSynced
+    }
+
+    static func looksAvailable(canAct: Bool, canActOnceSynced: Bool, outlastedGrace: Bool) -> Bool {
+        canAct || (waits(canAct: canAct, canActOnceSynced: canActOnceSynced) && !outlastedGrace)
     }
 }
 

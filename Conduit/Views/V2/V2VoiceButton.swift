@@ -150,6 +150,10 @@ struct V2VoiceButtonInputs: Equatable {
     /// A call can start here now, but for a start of this button's own
     /// still in flight.
     let canStartCall: Bool
+    /// `composerTakesVoice` and `canStartCall` once a resync the composer
+    /// waits on is done: the button keeps its look through a short one.
+    let composerTakesVoiceOnceSynced: Bool
+    let canStartCallOnceSynced: Bool
     /// Why a call can't start, for VoiceOver.
     let unavailableReason: String?
     /// Home's menu: the three most recently active conversations of this
@@ -173,16 +177,22 @@ struct V2VoiceButtonInputs: Equatable {
             : .liveCall
         let voiceInUse = appState.isVoiceInUse
         let composerIsEnabled = appState.composerIsEnabled
+        let composerEnabledOnceSynced = composerIsEnabled || appState.composerWaitsForResync
         composerTakesVoice = composerIsEnabled && !voiceInUse
+        composerTakesVoiceOnceSynced = composerEnabledOnceSynced && !voiceInUse
         unavailableReason = appState.phoneVoiceUnavailableReason
         if appState.isPreparingVoiceResume || unavailableReason != nil || voiceInUse {
             canStartCall = false
+            canStartCallOnceSynced = false
         } else if context == .conversation {
             // In a chat, like the composer's voice button: not mid-sync, and a
             // running reply only holds back classic voice.
-            canStartCall = composerIsEnabled && !appState.voiceWaitsForRunningTurn
+            let waitsForTurn = appState.voiceWaitsForRunningTurn
+            canStartCall = composerIsEnabled && !waitsForTurn
+            canStartCallOnceSynced = composerEnabledOnceSynced && !waitsForTurn
         } else {
             canStartCall = true
+            canStartCallOnceSynced = true
         }
         if context == .home {
             let sessions = appState.activeProfileSessions
@@ -228,6 +238,8 @@ struct V2VoiceButtonContent: View, Equatable {
     @State private var holdStarted = false
     /// Down on the button; resets on release and on a cancelled press.
     @GestureState private var isPressing = false
+    /// A resync has kept the button off past `ResyncGrace.duration`: it dims.
+    @State private var resyncOutlastedGrace = false
 
     nonisolated static func == (lhs: V2VoiceButtonContent, rhs: V2VoiceButtonContent) -> Bool {
         lhs.context.isSameVoiceButton(as: rhs.context) && lhs.style == rhs.style && lhs.isHidden == rhs.isHidden
@@ -251,13 +263,30 @@ struct V2VoiceButtonContent: View, Equatable {
     private var recordsMessage: Bool { chatAction == .voiceMessage && !returnsToCall }
 
     private var canAct: Bool {
-        if dictates { return inputs.composerTakesVoice }
+        canAct(composerTakesVoice: inputs.composerTakesVoice, canStartCall: inputs.canStartCall)
+    }
+
+    private func canAct(composerTakesVoice: Bool, canStartCall: Bool) -> Bool {
+        if dictates { return composerTakesVoice }
         if recordsMessage {
-            return inputs.composerTakesVoice && (!voiceMessages.isActive || voiceMessages.isHeld)
+            return composerTakesVoice && (!voiceMessages.isActive || voiceMessages.isHeld)
         }
         if returnsToCall || needsSetup { return true }
-        return !isStarting && inputs.canStartCall
+        return !isStarting && canStartCall
     }
+
+    /// Off only until the chat has been read back.
+    private var waitsForResync: Bool {
+        ResyncGrace.waits(
+            canAct: canAct,
+            canActOnceSynced: canAct(composerTakesVoice: inputs.composerTakesVoiceOnceSynced, canStartCall: inputs.canStartCallOnceSynced)
+        )
+    }
+
+    /// Looks ready, and takes the press: a resync shorter than the grace
+    /// (every return to the app has one) would make it blink. Its taps
+    /// check `canAct` and do nothing until the resync is done.
+    private var looksAvailable: Bool { canAct || (waitsForResync && !resyncOutlastedGrace) }
 
     private var recentChats: [V2VoiceRecentChat] { inputs.recentChats }
 
@@ -395,7 +424,14 @@ struct V2VoiceButtonContent: View, Equatable {
                     .buttonStyle(PressableButtonStyle())
             }
         }
-        .disabled(!canAct)
+        .disabled(!looksAvailable)
+        .task(id: waitsForResync) {
+            resyncOutlastedGrace = false
+            guard waitsForResync else { return }
+            try? await Task.sleep(for: ResyncGrace.duration)
+            guard !Task.isCancelled else { return }
+            resyncOutlastedGrace = true
+        }
         .accessibilityLabel(label)
         .accessibilityHint(hint ?? "")
         .macTooltip(label)
@@ -409,11 +445,11 @@ struct V2VoiceButtonContent: View, Equatable {
         case .circle: circleFace
         case .capsule:
             V2CapsuleIcon(systemImage: "waveform", tint: returnsToCall ? Color.conduitAccent : nil)
-                .opacity(canAct ? 1 : 0.55)
+                .opacity(looksAvailable ? 1 : 0.55)
         case .toolbar:
             Image(systemName: "waveform")
                 .foregroundStyle(returnsToCall ? Color.conduitAccent : Color.primary)
-                .opacity(canAct ? 1 : 0.55)
+                .opacity(looksAvailable ? 1 : 0.55)
         }
     }
 
@@ -432,13 +468,14 @@ struct V2VoiceButtonContent: View, Equatable {
         }
         .frame(width: mainButtonDiameter, height: mainButtonDiameter)
         .background(Color.conduitAccent, in: Circle())
-        .opacity(canAct ? 1 : 0.55)
+        .opacity(looksAvailable ? 1 : 0.55)
         .contentShape(Circle())
     }
 
     // MARK: - Actions
 
     private func tap() {
+        guard canAct else { return }
         if dictates {
             dictate()
             return
@@ -537,6 +574,7 @@ struct V2VoiceButtonContent: View, Equatable {
     /// Voice where the button is: back to a minimised call, voice setup,
     /// or a new call.
     private func callTap() {
+        guard canAct else { return }
         if returnsToCall {
             Haptics.medium()
             appState.restoreMinimisedLiveVoice()
