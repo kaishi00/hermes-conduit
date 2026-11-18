@@ -427,8 +427,9 @@ extension AppState {
             let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }
             guard !projectsLoading, !projects.isEmpty || pinned else { return false }
         } else {
-            // All draws the other combined dashboards' chats too.
-            guard !rows.isEmpty || !chatListCronSessions.isEmpty
+            // All draws the other combined dashboards' chats too; Pulse's
+            // own chat is left out of the list, as above.
+            guard rows.contains(where: { !isPulseHomeChat($0) }) || !chatListCronSessions.isEmpty
                 || (isAllProfilesChatsOn && !chatListCombinedChats(excluding: []).isEmpty) else { return false }
         }
         return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing

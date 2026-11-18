@@ -305,11 +305,16 @@ final class NeedsYouStore: ObservableObject {
             item.dashboardID = dashboardID
             return item
         }
-        let firstRead = otherReadProfiles[dashboardID]?.contains(profile) != true
-        otherReadProfiles[dashboardID, default: []].insert(profile)
-        let fresh = tagged.filter { !otherSeen.contains($0.id) }
+        // A profile matches its own spelling in any case, as forgetOther
+        // does: a re-cased name replaces its rows rather than doubling them.
+        let sameProfile: (String) -> Bool = { AppState.profilesMatch($0, profile) }
+        let firstRead = otherReadProfiles[dashboardID]?.contains(where: sameProfile) != true
+        otherReadProfiles[dashboardID] = (otherReadProfiles[dashboardID] ?? []).filter { !sameProfile($0) }.union([profile])
+        // A wait already listed under another spelling isn't new.
+        let listedBefore = Set((otherDashboards[dashboardID] ?? []).filter { sameProfile($0.profile) }.map(\.waitID))
+        let fresh = tagged.filter { !otherSeen.contains($0.id) && !listedBefore.contains($0.waitID) }
         otherSeen.formUnion(tagged.map(\.id))
-        let merged = ((otherDashboards[dashboardID] ?? []).filter { $0.profile != profile } + tagged)
+        let merged = ((otherDashboards[dashboardID] ?? []).filter { !sameProfile($0.profile) } + tagged)
             .sorted { $0.since > $1.since }
         if merged != otherDashboards[dashboardID] ?? [] {
             otherDashboards[dashboardID] = merged.isEmpty ? nil : merged
