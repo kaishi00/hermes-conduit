@@ -8821,20 +8821,21 @@ catalog) · text: the shared "Updating…" key, already in every shipped
 language; no Settings caption or doc describes it
 
 **Code**
-- When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, showsChatListUpdating, noteStaleChatListRead; loadSessions counts a read over a stale list in and out), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (isReadingStaleChatList, staleChatListReads, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
+- When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, isReadingStaleChatList, showsChatListUpdating(overProjects:), noteStaleChatListRead; loadSessions counts a read over a stale list in and out, by the scope it reads), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (staleChatListReads by SessionCatalogOwner, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
 - The capsule: `Conduit/Views/Components/ChatListUpdatingPill.swift` (shows after 0.4 s, leaves 0.3 s after, takes no taps); placed in `Conduit/Views/V2/V2ChatsView.swift` (over both presentations, inside v2ProfileSwitchContent's fade) and `Conduit/Views/SidebarView.swift` (over the list)
-- Tests: `ConduitTests/OfflineChatCacheTests.swift` (testTheSavedListSaysUpdatingWhileTheLiveReadRuns, testUpdatingStaysOutOfAPullAndAnyLiveCommitClearsTheBackgroundMark, testOnlyAListFromBeforeTheBackgroundSaysUpdatingWhileRead)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (testTheSavedListSaysUpdatingWhileTheLiveReadRuns, testUpdatingStaysOutOfAPullAndAnyLiveCommitClearsTheBackgroundMark, testUpdatingCountsOnlyThisScopesReadAndNeedsRows, testOnlyAListFromBeforeTheBackgroundSaysUpdatingWhileRead)
 
 **Rulings**
 - The capsule floats over the rows at the bottom instead of a row above them, so a row never moves under a finger while the read lands, and it takes no taps (2026-11-18, #2718).
 - Only rows that may be out of date say it: the list's own polls and change reads over a list read since the app came back say nothing, so a list left on screen never blinks it. A connection, profile switch or chat sync still on its way to the read counts as updating too (2026-11-18, #2718).
 - A failed read stops saying it; the list stays marked stale, so the next read says it again (2026-11-18, #2718).
 - Any commit of the live list marks it current, a chat sync's on return included, so the polls after it say nothing. The read count is the app's, so it says "Updating…" only while the scope on screen is stale: another profile's read left running after a switch doesn't say it over a list that landed. A list with no rows doesn't say it (its placeholder speaks), and the capsule fades and hides with the rows during a profile switch (2026-11-18, #2718, review).
+- Reads are counted by the scope they read, so another profile's read left running after a switch, failed or not, never says it over this scope. Over Projects the capsule needs project rows and stays out of a Projects pull (its projects read is that pull's spinner); over Sessions it needs chat rows (2026-11-18, #2732).
 
 **Open gaps**
 - The look and placement aren't checked on a device yet (2026-11-18, #2718).
 
-**Checked:** 2026-11-18, #2718 (issue 2706; review: a chat sync's commit clears the background mark, the count only over a stale scope, no capsule over an empty list or outside the switch's fade).
+**Checked:** 2026-11-18, #2732 (#2718's review leftovers: reads counted by scope, Projects' own rows and pull, tests for the loading and rows guards); 2026-11-18, #2718 (issue 2706; review: a chat sync's commit clears the background mark, the count only over a stale scope, no capsule over an empty list or outside the switch's fade).
 
 ## Chats list changes made elsewhere
 
