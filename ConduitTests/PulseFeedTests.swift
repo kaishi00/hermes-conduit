@@ -25,7 +25,9 @@ final class PulseFeedTests: XCTestCase {
     }
 
     /// A card action's reload that starts after the page hid belongs to the
-    /// visit of the tap, so it marks nothing seen (issue 2686).
+    /// visit of the tap, so it marks nothing seen (issue 2686). The reloads
+    /// and Undo that key on this aren't tested at the view level; the visit
+    /// rule they share is, here.
     func testAReadMarksSeenOnlyInTheVisitItBelongsTo() {
         let tapped = UUID()
         XCTAssertTrue(V2PulsePage.isOnScreen(shown: true, sceneActive: true, visit: tapped, current: tapped))

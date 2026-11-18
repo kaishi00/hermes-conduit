@@ -371,18 +371,18 @@ struct V2PulsePage: View {
     private var pageSheets: some View {
         pageScaffold
         .sheet(isPresented: $showsLearned) {
-            PulseLearnedSheet {
+            // The visit is read at the sheet's tap, not when the plugin
+            // answers, which may be after the page hid (issue 2686).
+            PulseLearnedSheet(currentVisit: { visit }) { visit in
                 learnedNote = nil  // it may name a lesson just undone
-                let visit = self.visit
                 Task { await load(in: visit) }
             }
             .environmentObject(appState)
         }
         .sheet(isPresented: $showsLeftOut) {
-            PulseLeftOutSheet { card in
+            PulseLeftOutSheet(currentVisit: { visit }) { card, visit in
                 // It shows as new, at the card, once the sheet is down.
                 newCards?.insert(card)
-                let visit = self.visit
                 Task {
                     await load(in: visit)
                     focus(PulseOpenRequest(card: card))
@@ -1803,8 +1803,10 @@ struct V2PulsePage: View {
             if let request = appState.pulseOpenRequest, isOnScreen(in: visit) { focus(request) }
             // Hidden or backgrounded meanwhile (a card action's reload isn't
             // cancelled by that): nothing was seen.
+            // Checked again once the plugin answers: left meanwhile, the dot
+            // keeps its count until the next visit's read settles it.
             if !Task.isCancelled, isOnScreen(in: visit), loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
-               appState.activeDashboardID == dashboard {
+               !Task.isCancelled, isOnScreen(in: visit), appState.activeDashboardID == dashboard {
                 appState.pulseUnseen = 0
             }
         } catch {
@@ -2133,7 +2135,10 @@ struct PulseLearnedLine: View {
 struct PulseLearnedSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    let onChange: () -> Void
+    /// The Pulse page's visit, read at a tap and handed back with
+    /// `onChange`, so the page's reload belongs to the visit of the tap.
+    let currentVisit: () -> UUID
+    let onChange: (UUID) -> Void
 
     @State private var learned: PulseLearned?
     @State private var errorMessage: String?
@@ -2293,6 +2298,7 @@ struct PulseLearnedSheet: View {
     private func run(_ step: @escaping @MainActor (PulseClient) async throws -> PulseLearned) {
         working = true
         let dashboard = appState.activeDashboardID
+        let visit = currentVisit()
         let client = self.client
         Task {
             defer { working = false }
@@ -2301,7 +2307,7 @@ struct PulseLearnedSheet: View {
                 guard appState.activeDashboardID == dashboard else { return }
                 learned = result
                 errorMessage = nil
-                onChange()
+                onChange(visit)
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
@@ -2317,8 +2323,11 @@ struct PulseLearnedSheet: View {
 struct PulseLeftOutSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// The Pulse page's visit, read at Bring it up and handed back with
+    /// the card, so the page's reload belongs to the visit of the tap.
+    let currentVisit: () -> UUID
     /// A card was made of one: the Pulse screen shows it.
-    let onBroughtUp: (Int) -> Void
+    let onBroughtUp: (Int, UUID) -> Void
 
     @State private var entries: [PulseLeftOut]?
     @State private var errorMessage: String?
@@ -2477,6 +2486,7 @@ struct PulseLeftOutSheet: View {
     private func bringUp(_ entry: PulseLeftOut) {
         bringing = entry.id
         let dashboard = appState.activeDashboardID
+        let visit = currentVisit()
         let client = self.client
         Task {
             defer { bringing = nil }
@@ -2488,7 +2498,7 @@ struct PulseLeftOutSheet: View {
                 }
                 errorMessage = nil
                 Haptics.success()
-                onBroughtUp(card.id)
+                onBroughtUp(card.id, visit)
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 if PulseRefusal(error: error)?.code == "invalid" {
