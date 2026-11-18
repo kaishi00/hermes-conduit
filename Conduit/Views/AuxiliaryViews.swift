@@ -821,6 +821,7 @@ struct SettingsView: View {
                     // Opens on what it showed last time while Hermes is asked.
                     answers: appState.voiceSettingsAnswers(profile: snapshot.profile),
                     profileName: appState.profileDisplayName(snapshot.profile),
+                    hermesConnected: appState.isConnected,
                     conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
                         runASRTest: { await appState.runVoiceASRTest() },

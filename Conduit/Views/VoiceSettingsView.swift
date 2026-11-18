@@ -48,6 +48,8 @@ struct VoiceSettingsRoute: View {
     /// The profile's name as the rest of the app shows it. This sheet has
     /// no AppState, so the host resolves it.
     let profileName: String?
+    /// Whether Conduit's connection to Hermes is up, from the host.
+    let hermesConnected: Bool
 
     init(
         bridge: DashboardTicketBridge,
@@ -55,6 +57,7 @@ struct VoiceSettingsRoute: View {
         profileParameter: @escaping @MainActor () -> String = { "profile" },
         answers: KeptAnswers? = nil,
         profileName: String? = nil,
+        hermesConnected: Bool = false,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions,
         voiceEnabled: Bool,
@@ -88,6 +91,7 @@ struct VoiceSettingsRoute: View {
         agentSettingsChanged: (() -> Void)? = nil
     ) {
         self.profileName = profileName
+        self.hermesConnected = hermesConnected
         self.agentSettingsChanged = agentSettingsChanged
         self.geminiLive = geminiLive
         self.qwenLive = qwenLive
@@ -128,6 +132,7 @@ struct VoiceSettingsRoute: View {
         VoiceSettingsView(
             service: service,
             profileName: profileName,
+            hermesConnected: hermesConnected,
             conversationController: conversationController,
             actions: actions,
             voiceEnabled: voiceEnabled,
@@ -250,6 +255,9 @@ struct VoiceSettingsView: View {
     var agentSettingsChanged: (() -> Void)?
     /// The host's resolved profile name; nil falls back to the id.
     var profileName: String?
+    /// Whether Conduit's connection to Hermes is up: the Hermes step reads
+    /// Connected while the page asks Hermes again (issue 2712).
+    var hermesConnected = false
     @State private var keepListeningWhenLocked: Bool
     @State private var pushToTalkEnabled: Bool
     /// The profile's own choice for the chat's big button; nil follows
@@ -271,6 +279,7 @@ struct VoiceSettingsView: View {
     init(
         service: HermesVoiceConfigurationService,
         profileName: String? = nil,
+        hermesConnected: Bool = false,
         conversationController: VoiceConversationController,
         actions: VoiceSettingsActions = VoiceSettingsActions(),
         voiceEnabled: Bool = false,
@@ -319,6 +328,7 @@ struct VoiceSettingsView: View {
         self.speakerTalkOver = speakerTalkOver
         self.callSaves = callSaves
         self.profileName = profileName
+        self.hermesConnected = hermesConnected
         _keepListeningWhenLocked = State(initialValue: lockedListening?.enabled ?? false)
         _pushToTalkEnabled = State(initialValue: pushToTalk?.enabled ?? false)
         _chatVoiceButtonOverride = State(initialValue: chatVoiceButton?.choice)
@@ -507,19 +517,20 @@ struct VoiceSettingsView: View {
         }
     }
 
+    /// Connected once Hermes answered, and while the page asks again over
+    /// a connection that's up, so opening the page or Check again never
+    /// reads as reconnecting (issue 2712). A read Hermes didn't answer
+    /// says what failed (issue 2711).
     private var hermesStep: some View {
-        let capability = service.snapshot.capability
+        if service.answered == true || (service.answered == nil && hermesConnected) {
+            return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Connected to \(profileDisplayName)", table: .voice), state: .done)
+        }
         if service.isChecking {
             return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Checking…"), state: .pending)
         }
-        if service.answered == true {
-            return setupStep(AppLocalization.string("Hermes"), detail: AppLocalization.string("Connected to \(profileDisplayName)", table: .voice), state: .done)
-        }
-        // Settings shown from before carry their voices' reason, not why
-        // Hermes didn't answer.
         return setupStep(
             AppLocalization.string("Hermes"),
-            detail: (capability.isGatewayConnected ? nil : capability.unavailableReason) ?? AppLocalization.string("Connect to Hermes before starting voice.", table: .voice),
+            detail: service.unansweredReason ?? AppLocalization.string("Connect to Hermes before starting voice.", table: .voice),
             state: .attention
         )
     }
@@ -1835,7 +1846,7 @@ struct VoiceSettingsView: View {
         appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
         microphonePermission = AVAudioApplication.shared.recordPermission
         let shown = service.snapshot.values
-        await service.reload()
+        await service.reload(hermesConnected: hermesConnected)
         values = Self.answeredValues(service.snapshot.values, shown: shown, fields: values)
         if resolvedSpeechOutput == .speechServer, service.speechServerVoice == nil {
             _ = await service.speechServerVoiceStatus()

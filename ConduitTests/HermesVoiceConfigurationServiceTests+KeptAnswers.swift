@@ -55,6 +55,9 @@ extension HermesVoiceConfigurationServiceTests {
     /// A read that fails keeps the settings shown, kept or answered before,
     /// and says so; with nothing shown it still says why voice can't work.
     func testAReadThatFailsKeepsWhatsShown() async {
+        let retryDelay = HermesVoiceConfigurationService.configRetryDelay
+        HermesVoiceConfigurationService.configRetryDelay = .zero
+        defer { HermesVoiceConfigurationService.configRetryDelay = retryDelay }
         let requester = MockVoiceConfigurationRequester()
         let service = HermesVoiceConfigurationService(
             requester: requester, profile: "default", answers: KeptVoiceAnswers(Self.keptVoiceAnswers).answers
@@ -63,7 +66,8 @@ extension HermesVoiceConfigurationServiceTests {
         await service.reload()
 
         XCTAssertEqual(service.answered, false)
-        XCTAssertNotNil(service.errorMessage)
+        XCTAssertEqual(service.unansweredReason, "Connect to Hermes before starting voice.", "The Hermes step says why")
+        XCTAssertNil(service.errorMessage, "and the line under the steps doesn't say it again")
         XCTAssertTrue(service.snapshot.capability.isGatewayConnected, "The kept settings stay")
         XCTAssertEqual(service.snapshot.selectedTTSProvider, "edge")
 
@@ -89,6 +93,52 @@ extension HermesVoiceConfigurationServiceTests {
             unkept.snapshot.capability.unavailableReason,
             "This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works."
         )
+    }
+
+    /// Connected to Hermes, a config read that fails asks once more, and
+    /// one that fails again says what failed rather than asking to
+    /// connect, kept settings shown or not (issues 2711, 2712).
+    func testAConfigReadThatFailsWhileConnectedAsksAgainAndSaysWhatFailed() async {
+        let retryDelay = HermesVoiceConfigurationService.configRetryDelay
+        HermesVoiceConfigurationService.configRetryDelay = .zero
+        defer { HermesVoiceConfigurationService.configRetryDelay = retryDelay }
+        let requester = MockVoiceConfigurationRequester()
+        requester.routes = Self.keptVoiceAnswers
+        requester.failingGETPathsOnce = ["/api/config"]
+        let service = HermesVoiceConfigurationService(requester: requester, profile: "default")
+
+        await service.reload(hermesConnected: true)
+
+        XCTAssertEqual(service.answered, true, "The second ask answered")
+        XCTAssertNil(service.unansweredReason)
+        XCTAssertEqual(requester.recorded.filter { $0.path == "/api/config" }.count, 2)
+
+        // Both asks fail: the step says what failed, and so does the
+        // reason voice gives with nothing shown.
+        let failing = MockVoiceConfigurationRequester()
+        failing.routes = Self.keptVoiceAnswers
+        failing.failingGETPaths = ["/api/config"]
+        let unkept = HermesVoiceConfigurationService(requester: failing, profile: "default")
+        await unkept.reload(hermesConnected: true)
+        XCTAssertEqual(unkept.answered, false)
+        let reason = unkept.unansweredReason ?? ""
+        XCTAssertTrue(reason.hasPrefix("Connected, but Hermes didn't send its voice settings: "), reason)
+        XCTAssertTrue(reason.contains("Mock GET failure"), reason)
+        XCTAssertEqual(unkept.snapshot.capability.unavailableReason, reason)
+        XCTAssertEqual(failing.recorded.filter { $0.path == "/api/config" }.count, 2)
+
+        // A route Hermes doesn't have is asked for once.
+        let missing = MockVoiceConfigurationRequester()
+        missing.missingRoutes = ["/api/config"]
+        let old = HermesVoiceConfigurationService(requester: missing, profile: "default")
+        await old.reload(hermesConnected: true)
+        XCTAssertEqual(missing.recorded.filter { $0.path == "/api/config" }.count, 1)
+
+        // An answer clears the reason.
+        failing.failingGETPaths = []
+        await unkept.reload(hermesConnected: true)
+        XCTAssertEqual(unkept.answered, true)
+        XCTAssertNil(unkept.unansweredReason)
     }
 
     /// Which keys are set is never kept on the phone, but a read of it

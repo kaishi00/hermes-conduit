@@ -11463,6 +11463,88 @@
         }
       }
     },
+    "Connected, but Hermes didn't send its voice settings: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbunden, aber Hermes hat seine Spracheinstellungen nicht gesendet: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectado, pero Hermes no envió sus ajustes de voz: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecté, mais Hermes n'a pas envoyé ses réglages vocaux : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terhubung, tetapi Hermes tidak mengirim pengaturan suaranya: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connesso, ma Hermes non ha inviato le sue impostazioni vocali: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続済みですが、Hermes が音声設定を送信しませんでした: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결되었지만 Hermes가 음성 설정을 보내지 않았습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączono, ale Hermes nie wysłał ustawień głosu: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conectado, mas o Hermes não enviou as configurações de voz: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключено, но Hermes не прислал настройки голоса: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlı, ancak Hermes ses ayarlarını göndermedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已连接，但 Hermes 没有发送语音设置：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已連線，但 Hermes 沒有傳送語音設定：%@"
+          }
+        }
+      }
+    },
     "Connected to %@" : {
       "localizations" : {
         "de" : {
