@@ -5547,17 +5547,18 @@ the chat's composer (issue 2713).
 
 **Siblings:** the Model page's catalog and defaults (done) · profile
 settings, Fallback models and Delegate fallback models (done) · archived
-chats (done) · scheduled jobs (done) · Capabilities (done: dropped as
+chats (done) · scheduled jobs and a job's run history (done) · Capabilities (done: dropped as
 superseded) · a project's chats (done) · the chats list and a chat's resume
 catalog read (done, already silent; now share the check) · the connector
 test (done earlier, #1574: it runs in its own task) · opening a group chat
 (not needed: a room the user opened that fails to load still says so) ·
 Watch, CarPlay and voice modes (not needed: their own cancel paths, see
-Classic's turn stops)
+Classic's turn stops) · Text (not needed: no caption or briefing describes
+it)
 
 **Code**
 - The check: `Conduit/Services/UserFacingError.swift` (isCancellation)
-- Page reads: `Conduit/Services/AppState+ProfileConfig.swift` (loadProfileSettings, loadProfileModelDefaults, loadProfileFallbackModels, loadDelegateFallbackModels), `Conduit/Services/AppState+OneChatTwoDevices.swift` (loadArchivedSessions), `Conduit/Services/AppState+ScheduledJobs.swift`, `Conduit/Services/AppState+Capabilities.swift` (loadCapabilities), `Conduit/Services/AppState+Projects.swift` (loadProjectSessions)
+- Page reads: `Conduit/Services/AppState+ProfileConfig.swift` (loadProfileSettings, loadProfileModelDefaults, loadProfileFallbackModels, loadDelegateFallbackModels), `Conduit/Services/AppState+OneChatTwoDevices.swift` (loadArchivedSessions), `Conduit/Services/AppState+ScheduledJobs.swift` (the jobs and loadCronRuns), `Conduit/Services/AppState+Capabilities.swift` (loadCapabilities), `Conduit/Services/AppState+Projects.swift` (loadProjects, loadProjectSessions)
 - Chats list: `Conduit/Services/AppState+Session.swift`, `Conduit/Services/AppState+Reconciliation.swift`
 - Tests: `ConduitTests/UserFacingErrorTests.swift` (testCancellationIsToldApartFromFailure), `ConduitTests/AppStateMultiDashboardTests.swift` (testModelDefaultsReadCancelledByLeavingThePageSaysNothing)
 
@@ -5568,7 +5569,7 @@ Classic's turn stops)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2720.
+**Checked:** 2026-11-18, #2727 (a job's run history and the projects list share the check; Text listed); 2026-11-18, #2720.
 
 ## Phone change errors
 
