@@ -398,7 +398,7 @@ extension AppState {
         // Only a success body says what's left: anything else is a refusal,
         // never an empty list.
         guard response["ok"] as? Bool == true, let devices = response["devices"] as? [[String: Any]] else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the change.", table: .settings))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the change.", table: .notifications))
         }
         return PushNotificationService.pairedDevices(status: ["paired": true, "devices": devices])
     }
