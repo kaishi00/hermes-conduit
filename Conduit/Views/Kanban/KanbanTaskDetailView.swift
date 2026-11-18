@@ -1135,6 +1135,11 @@ struct KanbanTaskDetailView: View {
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
         let expectedID = displayedTaskID
+        // The board it's read from too: a task id can name another task on
+        // another board, so an answer from a board no longer loaded is
+        // dropped like a stale identity's.
+        let expectedBoard = store.loadedBoardSlug ?? store.effectiveBoardSlug
+        let isCurrent = { displayedTaskID == expectedID && (store.loadedBoardSlug ?? store.effectiveBoardSlug) == expectedBoard }
         isLoadingDetail = true
         // A STALE completion must not clear the replacement load's spinner:
         // only the current identity may release the flag.
@@ -1149,10 +1154,10 @@ struct KanbanTaskDetailView: View {
                 // Not read yet: a read lost in transit asks once more before
                 // it fails, as the board's first load does (issue 2719).
                 try await Task.sleep(for: KanbanStore.firstLoadRetryDelay)
-                guard displayedTaskID == expectedID else { return }
+                guard isCurrent() else { return }
                 loaded = try await store.fetchTaskDetail(id: expectedID)
             }
-            guard displayedTaskID == expectedID else { return }
+            guard isCurrent() else { return }
             guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
                 // An EMPTY-id payload under a NON-empty displayed identity is
@@ -1210,7 +1215,7 @@ struct KanbanTaskDetailView: View {
             // cancellation must never render as a user-facing failure.
             return
         } catch {
-            guard displayedTaskID == expectedID else { return }
+            guard isCurrent() else { return }
             if detail == nil {
                 errorMessage = UserFacingError.message(for: error)
             } else {
