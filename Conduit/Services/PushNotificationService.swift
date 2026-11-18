@@ -1177,7 +1177,9 @@ final class PushNotificationService: ObservableObject {
         }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
-            guard let status = try? await request(path, "GET", nil) else { continue }
+            // This device's own pairing, among the profile's devices (issue 2758).
+            guard let status = try? await request(Self.e2eStatusPath(profile: profile, installationID: installationID), "GET", nil)
+            else { continue }
             // Unregistered or moved relays while the request was out: what
             // the host says is about a pairing this iPhone no longer has, so
             // no key is adopted, retired or rotated for it.
@@ -2134,6 +2136,43 @@ final class PushNotificationService: ObservableObject {
     var installationID: String? { registration?.installationID }
 
     static let pairPath = "/api/plugins/conduit_push/pair"
+    static let pairRemovePath = "/api/plugins/conduit_push/pair/remove"
+    static let pairMainPath = "/api/plugins/conduit_push/pair/main"
+
+    /// The plugin's `GET /e2e` for `profile`, answering for this device's own
+    /// pairing when the profile notifies several devices (issue 2758). An
+    /// older plugin ignores the query and answers for its one pairing.
+    static func e2eStatusPath(profile: String, installationID: String?) -> String {
+        let path = DashboardPath.withProfile(e2ePath, profile: profile)
+        guard let installationID, !installationID.isEmpty,
+              let encoded = installationID.addingPercentEncoding(withAllowedCharacters: .alphanumerics.union(CharacterSet(charactersIn: "-")))
+        else { return path }
+        return path + (path.contains("?") ? "&" : "?") + "installation_id=\(encoded)"
+    }
+
+    /// One device a profile's notifications go to, from `GET /e2e`'s
+    /// `devices` (plugin 0.178+, issue 2758). The main one rings for calls
+    /// and is the one the phone's tools reach.
+    struct PairedDevice: Equatable, Identifiable {
+        let installationID: String
+        let name: String?
+        let isMain: Bool
+        let relayRejected: Bool
+        var id: String { installationID }
+    }
+
+    static func pairedDevices(status: [String: Any]) -> [PairedDevice] {
+        guard status["paired"] as? Bool == true, let listed = status["devices"] as? [[String: Any]] else { return [] }
+        return listed.compactMap { entry in
+            guard let installationID = entry["installation_id"] as? String, !installationID.isEmpty else { return nil }
+            let name = (entry["device_name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            return PairedDevice(installationID: installationID, name: name?.isEmpty == false ? name : nil,
+                                isMain: entry["main"] as? Bool == true, relayRejected: entry["relay_rejected"] as? Bool == true)
+        }
+    }
+
+    /// What this device is called in a profile's list of paired devices.
+    static var pairingDeviceName: String { UIDevice.current.name }
     /// Past the host's own wait: it claims the code at the relay with a
     /// 15 s timeout (dashboard/api/pairing.py PAIR_TIMEOUT_S), then writes the pairing.
     /// Giving up first would leave the host paired with no key handed over.
@@ -2150,6 +2189,8 @@ final class PushNotificationService: ObservableObject {
 
     static func profilePairing(status: [String: Any], installationID: String) -> ProfilePairing {
         guard status["paired"] as? Bool == true else { return .unpaired }
+        // Asked with e2eStatusPath, a profile that notifies this device among
+        // others answers for this device's own pairing (issue 2758).
         return status["installation_id"] as? String == installationID ? .thisDevice : .otherDevice
     }
 
@@ -2159,10 +2200,16 @@ final class PushNotificationService: ObservableObject {
     /// same claim `hermes conduit-push pair` makes. `request` reaches that
     /// dashboard. Returns the relay gateway id the plugin claimed, when it
     /// says.
+    ///
+    /// The device pairs besides the ones the profile notifies already
+    /// (`also`, plugin 0.178+, issue 2758); an older plugin moves the
+    /// profile's pairing here instead. `automatically`: Conduit pairing on
+    /// connect, which the plugin refuses for a device someone removed.
     @discardableResult
     func pairProfile(
         _ profile: String,
         dashboardID: UUID,
+        automatically: Bool = false,
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
     ) async throws -> String? {
         // Not mid-move: a code from the old relay is useless once the move lands.
@@ -2179,7 +2226,11 @@ final class PushNotificationService: ObservableObject {
         guard self.registration?.installationID == registration.installationID else {
             throw DashboardTicketBridgeError.notReady
         }
-        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
+        let body: [String: Any] = [
+            "pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString,
+            "also": true, "auto": automatically, "installation_id": registration.installationID,
+            "device_name": Self.pairingDeviceName,
+        ]
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
         // Notifications turned off or moved meanwhile: that installation is
         // gone, so its pairing is nothing to confirm or refresh.

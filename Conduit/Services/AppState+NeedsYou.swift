@@ -83,7 +83,7 @@ extension AppState {
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, or opened, while the read was out: not this pass's.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
-                guard let listed = response.flatMap({ NeedsYouItem.items(listed: $0, profile: profile) }) else { continue }
+                guard let listed = response.flatMap({ NeedsYouItem.items(listed: $0, profile: profile, installationID: PushNotificationService.shared.installationID) }) else { continue }
                 // A profile a strip tap found deleted while the read was
                 // out stays gone (issue 2646).
                 guard currentKeptProfiles(id, else: profiles).contains(where: { profilesMatch($0, profile) }) else { continue }
@@ -184,7 +184,7 @@ extension AppState {
             // A dashboard switch while the read was out: not this one's.
             guard dashboard == activeDashboardID else { return }
             // An answer with no list (an error body) is a failed read.
-            guard let read = NeedsYouItem.items(listed: response, profile: profile) else { continue }
+            guard let read = NeedsYouItem.items(listed: response, profile: profile, installationID: PushNotificationService.shared.installationID) else { continue }
             needsYou.apply(read, profile: profile, dashboardID: dashboard) { [weak self] item in
                 self?.isOpenChat(item) ?? false
             }
