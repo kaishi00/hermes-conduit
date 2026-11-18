@@ -3796,6 +3796,7 @@ final class OfflineChatCacheTests: XCTestCase {
                                         profile: beside.profile, isBotChat: false, rows: [], streamingText: "")
         _ = state.besideChatLive.notice(for: unfollowed)
         let withUnfollowed = state.besideChatLive.noticeCount
+        // Assigning the list again runs its didSet, which prunes notices.
         let followed = state.backgroundChats
         state.backgroundChats = followed
         XCTAssertEqual(state.besideChatLive.noticeCount, withUnfollowed - 1, "a chat not followed has no notice kept")
@@ -4513,6 +4514,18 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(moved.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
                        "chat b's row carries it now")
         XCTAssertTrue(moved.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+
+        // The same, with the chat's own row no longer listed: the alias
+        // another row carries still leaves it, its own id doesn't.
+        let (unlisted, _, _) = makeAppState()
+        var gone = session("a")
+        gone.alternateIds = ["x"]
+        unlisted.sessions = [gone, session("b"), session("c")]
+        leave(unlisted, openAs: "a")
+        unlisted.sessions = [b, session("c")]
+        XCTAssertFalse(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
+                       "chat b's row carries it and the chat's own row isn't listed")
+        XCTAssertTrue(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
 
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
