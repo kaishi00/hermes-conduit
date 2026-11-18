@@ -254,6 +254,13 @@ extension AppState {
         let sessions: [SessionSummary]
         /// A full read was due but only the newest page was read.
         let olderPagesDeferred: Bool
+        /// The rows came through the catalog cache (the dashboard's list),
+        /// so the list may show the cache's cron rows, which hold the
+        /// best-ranked read's (#2759). The gateway's list doesn't fill the
+        /// cache: its rows are listed as they are.
+        var cronFromCache = false
+        /// This read fetched the cron rows itself and committed them.
+        var fetchedCron = false
     }
 
     /// Which catalog a full read reads: the same profile, dashboard and

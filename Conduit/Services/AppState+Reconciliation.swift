@@ -306,7 +306,12 @@ extension AppState {
             // listed newer rows; the sync still resumes its chat.
             if claimSessionListListing(readTicket) {
                 let listedSessions = allSessions.filter { $0.source != .cron }
-                let listedCron = cronRowsToList(allSessions.filter { $0.source == .cron }, profile: profile)
+                let listedCron = cronRowsToList(
+                    allSessions.filter { $0.source == .cron },
+                    keeping: [retainedActiveTurn, awaitingListing].compactMap { $0 },
+                    profile: profile,
+                    fromCache: catalogLoad.cronFromCache
+                )
                 // A project's page beside the chat follows this list too.
                 if listedSessions != sessions || listedCron != cronSessions {
                     chatListCatalogGeneration &+= 1
@@ -321,7 +326,7 @@ extension AppState {
                     dashboardID: dashboardID
                 )
             } else {
-                relistCachedCron(profile: profile)
+                relistCachedCron(after: catalogLoad, profile: profile)
             }
             sessionCatalogLoadState.markLoaded(SessionCatalogOwner(dashboardID: dashboardID, profile: profile))
             if let dashboardID {

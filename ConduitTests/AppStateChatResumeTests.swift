@@ -7076,6 +7076,13 @@ final class AppStateChatResumeTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(appState.newestCatalogPageRead?.waitingReads, 2)
+        // Not joined: release what's held so the test fails rather than hangs.
+        guard appState.newestCatalogPageRead?.waitingReads == 2 else {
+            held.releaseAll()
+            _ = await joiner.value
+            _ = await cronList.value
+            return
+        }
         XCTAssertEqual(held.sent.count, 6, "the later read sent nothing of its own")
 
         // The page lands: the later read commits and lists first.
