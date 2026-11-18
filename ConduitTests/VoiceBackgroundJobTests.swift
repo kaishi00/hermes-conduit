@@ -2578,11 +2578,18 @@ extension VoiceConversationControllerTests {
     }
 
     func testAHistoryReadTellsAGoneChatFromAFailedRead() {
-        XCTAssertEqual(AppState.voiceHistoryRead(failingWith: DashboardTicketBridgeError.http(status: 404, detail: "")), .notFound)
-        XCTAssertEqual(AppState.voiceHistoryRead(failingWith: DashboardTicketBridgeError.http(status: 410, detail: "")), .notFound)
-        XCTAssertEqual(AppState.voiceHistoryRead(failingWith: DashboardTicketBridgeError.http(status: 500, detail: "")), .failed)
-        XCTAssertEqual(AppState.voiceHistoryRead(failingWith: DashboardTicketBridgeError.signInRequired), .failed)
-        XCTAssertEqual(AppState.voiceHistoryRead(failingWith: URLError(.timedOut)), .failed)
+        func kind(_ error: Error) -> String {
+            switch AppState.voiceHistoryRead(failingWith: error) {
+            case .page: return "page"
+            case .notFound: return "notFound"
+            case .failed: return "failed"
+            }
+        }
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 404, detail: "")), "notFound")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 410, detail: "")), "notFound")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 500, detail: "")), "failed")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.signInRequired), "failed")
+        XCTAssertEqual(kind(URLError(.timedOut)), "failed")
     }
 
     func testAGoneJobWhoseHistoryReadFailsStaysSupervised() async throws {

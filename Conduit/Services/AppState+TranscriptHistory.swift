@@ -249,15 +249,7 @@ extension AppState {
 
     /// A voice read of a history page, told apart from a chat Hermes has no
     /// history for (404 or 410) and a read that failed (issue 2655).
-    enum VoiceHistoryRead: Equatable {
-        static func == (lhs: Self, rhs: Self) -> Bool {
-            switch (lhs, rhs) {
-            case (.notFound, .notFound), (.failed, .failed): return true
-            case (.page(let a), .page(let b)): return NSDictionary(dictionary: a).isEqual(to: b)
-            default: return false
-            }
-        }
-
+    enum VoiceHistoryRead {
         case page([String: Any])
         case notFound
         case failed
