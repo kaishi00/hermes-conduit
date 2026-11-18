@@ -292,31 +292,46 @@ extension AppState {
 
     // MARK: - Pairing
 
-    /// Pairs the active profile with this iPhone when notifications are on
-    /// and nothing receives them yet. It never replaces another iPhone's
-    /// pairing (Settings > Notifications offers that), and tries once per
-    /// dashboard and profile each launch.
-    func pairActiveProfileAutomatically(bridge: DashboardTicketBridge) async {
+    /// Pairs this dashboard's profiles with this device when notifications
+    /// are on, and tries once per dashboard, profile and installation each
+    /// launch. With a plugin that keeps a pairing per device (0.178+, issue
+    /// 2758) that's every profile on the dashboard, newly added ones too,
+    /// besides the devices each notifies already; the plugin leaves out a
+    /// device someone removed from a profile until it's paired by hand. With
+    /// an older one, only the active profile, and only when nothing receives
+    /// its notifications yet: pairing there would move them off another
+    /// iPhone (Settings > Notifications offers that).
+    func pairProfilesAutomatically(bridge: DashboardTicketBridge) async {
         let notifications = PushNotificationService.shared
         guard notifierPlugin.reports("pairing"),
               notifications.isEnabled,
-              let installationID = notifications.installationID,
+              notifications.installationID != nil,
               let dashboardID = activeDashboardID else { return }
-        let profile = activeProfile
+        let everyDevice = notifierPlugin.reports("pairing-devices")
+        let names = everyDevice ? Array(Set(profiles + [activeProfile])).sorted() : [activeProfile]
+        for profile in names {
+            guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID else { return }
+            await pairAutomatically(profile, besideOthers: everyDevice, bridge: bridge, dashboardID: dashboardID)
+        }
+    }
+
+    private func pairAutomatically(_ profile: String, besideOthers: Bool, bridge: DashboardTicketBridge, dashboardID: UUID) async {
+        guard let installationID = PushNotificationService.shared.installationID else { return }
         // Per installation too: notifications turned off and on again are a
         // new installation that hasn't paired.
         let attempt = "\(dashboardID.uuidString)|\(profile)|\(installationID)"
         // Taken before the first await, so refreshes running side by side
         // check (and pair) once.
         guard automaticPairingAttempts.insert(attempt).inserted else { return }
-        let statusPath = DashboardPath.withProfile(PushNotificationService.e2ePath, profile: profile)
+        let statusPath = PushNotificationService.e2eStatusPath(profile: profile, installationID: installationID)
         guard let status = try? await bridge.requestJSON(path: statusPath) else {
             // Nothing learned: the next refresh asks again.
             automaticPairingAttempts.remove(attempt)
             return
         }
         // Reconnected or switched meanwhile: the next refresh checks again.
-        guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID, activeProfile == profile else {
+        // Only the active profile's switch matters with an older plugin.
+        guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID, besideOthers || activeProfile == profile else {
             automaticPairingAttempts.remove(attempt)
             return
         }
@@ -331,12 +346,13 @@ extension AppState {
             // nothing either way.
             forgetRelayGatewayID(for: dashboardID, profile: profile)
         }
-        guard pairing == .unpaired else { return }
+        guard pairing == .unpaired || (besideOthers && pairing == .otherDevice) else { return }
         do {
-            try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
+            try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID, automatically: true)
         } catch DashboardTicketBridgeError.notReady {
             // Another notification change was running: a later refresh tries
-            // again. Other failures wait for the next launch (or the button).
+            // again. Other failures (a removed device's refusal among them)
+            // wait for the next launch (or the button).
             automaticPairingAttempts.remove(attempt)
         } catch {}
     }
@@ -351,8 +367,47 @@ extension AppState {
         try await pairProfile(profile, bridge: bridge, dashboardID: dashboardID)
     }
 
-    private func pairProfile(_ profile: String, bridge: DashboardTicketBridge, dashboardID: UUID) async throws {
-        let gatewayID = try await PushNotificationService.shared.pairProfile(profile, dashboardID: dashboardID) { [weak self] path, method, body in
+    /// The devices `profile` on the active dashboard notifies, the main one
+    /// (calls ring it) first; empty with an older plugin or no pairing.
+    func pairedDevices(_ profile: String) async throws -> [PushNotificationService.PairedDevice] {
+        guard let bridge = dashboardTicketBridge, notifierPlugin.reports("pairing-devices") else { return [] }
+        let installationID = PushNotificationService.shared.installationID
+        let status = try await bridge.requestJSON(
+            path: PushNotificationService.e2eStatusPath(profile: profile, installationID: installationID)
+        )
+        return PushNotificationService.pairedDevices(status: status)
+    }
+
+    /// Settings > Notifications: unpairs one device from `profile`; the
+    /// others keep theirs (issue 2758). Returns the devices left.
+    func removePairedDevice(_ installationID: String, profile: String) async throws -> [PushNotificationService.PairedDevice] {
+        try await pairedDeviceChange(PushNotificationService.pairRemovePath, installationID: installationID, profile: profile)
+    }
+
+    /// Settings > Notifications: calls from `profile` ring this device (and
+    /// the phone's tools reach it) instead of the main one.
+    func makeMainDevice(_ installationID: String, profile: String) async throws -> [PushNotificationService.PairedDevice] {
+        try await pairedDeviceChange(PushNotificationService.pairMainPath, installationID: installationID, profile: profile)
+    }
+
+    private func pairedDeviceChange(_ path: String, installationID: String, profile: String) async throws
+        -> [PushNotificationService.PairedDevice] {
+        guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+        let response = try await bridge.requestJSON(path: DashboardPath.withProfile(path, profile: profile), method: "POST",
+                                                    body: ["installation_id": installationID])
+        // Only a success body says what's left: anything else is a refusal,
+        // never an empty list.
+        guard response["ok"] as? Bool == true, let devices = response["devices"] as? [[String: Any]] else {
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the change.", table: .notifications))
+        }
+        return PushNotificationService.pairedDevices(status: ["paired": true, "devices": devices])
+    }
+
+    private func pairProfile(_ profile: String, bridge: DashboardTicketBridge, dashboardID: UUID,
+                             automatically: Bool = false) async throws {
+        let gatewayID = try await PushNotificationService.shared.pairProfile(
+            profile, dashboardID: dashboardID, automatically: automatically
+        ) { [weak self] path, method, body in
             // A dashboard switch mid-run stops it: the pairing would belong
             // to the old dashboard's host.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {

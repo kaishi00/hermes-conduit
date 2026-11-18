@@ -106,6 +106,14 @@ extension ChatOnScreenTests {
         XCTAssertEqual(older.map(\.relayGatewayID), [nil, nil], "an older plugin names none")
         XCTAssertEqual(NeedsYouItem.items(listed: ["waiting": rows, "gateway_id": "  "], profile: "atlas")?.map(\.relayGatewayID), [nil, nil])
         XCTAssertNil(NeedsYouItem.items(listed: ["error": "boom"], profile: "atlas"), "an error body is a failed read")
+        // Issue 2758: a profile that notifies several devices names each one's gateway.
+        let several: [String: Any] = ["waiting": rows, "gateway_id": "gw-1",
+                                      "gateways": ["11111111-1111-4111-8111-111111111111": "gw-1", "22222222-2222-4222-8222-222222222222": "gw-2"]]
+        XCTAssertEqual(NeedsYouItem.items(listed: several, profile: "atlas",
+                                          installationID: "22222222-2222-4222-8222-222222222222")?.map(\.relayGatewayID), ["gw-2", "gw-2"])
+        XCTAssertEqual(NeedsYouItem.items(listed: several, profile: "atlas",
+                                          installationID: "33333333-3333-4333-8333-333333333333")?.map(\.relayGatewayID), ["gw-1", "gw-1"],
+                       "a device the profile doesn't list falls back to the main pairing's")
     }
 
     /// Issue 2683: a row-drawn card's gateway outlives a relaunch only for

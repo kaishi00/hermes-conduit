@@ -111,13 +111,17 @@ struct NeedsYouItem: Identifiable, Equatable {
     }
 
     /// A profile's `/waiting` answer as its rows, each carrying the relay
-    /// gateway the list names (issue 2683); nil when it holds no list (an
-    /// error body).
-    static func items(listed response: [String: Any], profile: String) -> [NeedsYouItem]? {
+    /// gateway the list names (issue 2683): this device's own, among the
+    /// `gateways` of a profile that notifies several (issue 2758), else the
+    /// main pairing's; nil when it holds no list (an error body).
+    static func items(listed response: [String: Any], profile: String,
+                      installationID: String? = nil) -> [NeedsYouItem]? {
         guard let listed = response["waiting"] as? [[String: Any]] else { return nil }
-        let gatewayID = (response["gateway_id"] as? String)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .flatMap { $0.isEmpty ? nil : $0 }
+        func trimmed(_ value: String?) -> String? {
+            value.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        let own = trimmed(installationID.flatMap { (response["gateways"] as? [String: Any])?[$0.lowercased()] as? String })
+        let gatewayID = own ?? trimmed(response["gateway_id"] as? String)
         return listed.compactMap { row in
             var item = NeedsYouItem(host: row, profile: profile)
             item?.relayGatewayID = gatewayID

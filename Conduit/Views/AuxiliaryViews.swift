@@ -4450,6 +4450,8 @@ private struct NotificationsSettingsDetail: View {
     /// (a haptic alone left people unsure anything happened), for that
     /// profile only.
     @State private var pairTapProfile: String?
+    /// Bumped by a pairing, so the list of paired devices reads again.
+    @State private var pairedDevicesRefresh = 0
     @AppStorage(LiveTurnActivities.enabledDefaultsKey) private var liveActivitiesEnabled = true
 
     private func trimmed(_ value: String) -> String {
@@ -4870,9 +4872,17 @@ private struct NotificationsSettingsDetail: View {
     @ViewBuilder
     private var oneTapPairing: some View {
         let profile = appState.activeProfile
-        Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
-            .scaledFont(.footnote)
-            .foregroundStyle(.secondary)
+        // A plugin that keeps a pairing per device notifies them all (issue 2758).
+        let everyDevice = appState.notifierPlugin.reports("pairing-devices")
+        if everyDevice {
+            Text(AppLocalization.string("Conduit pairs every profile on this dashboard with this device by itself, besides your other devices. Each one gets the notifications, and calls ring the one marked below.", table: .settings))
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        } else {
+            Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
         Button {
             Task {
                 pairing = true
@@ -4880,6 +4890,7 @@ private struct NotificationsSettingsDetail: View {
                 pairTapProfile = profile
                 do {
                     try await appState.pairProfileWithThisDevice(profile)
+                    pairedDevicesRefresh += 1
                     Haptics.success()
                 } catch {
                     pairingError = UserFacingError.message(for: error)
@@ -4913,10 +4924,18 @@ private struct NotificationsSettingsDetail: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.red)
         } else {
-            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings), systemImage: "checkmark.circle.fill")
+            Label(everyDevice
+                  ? AppLocalization.string("Paired. Notifications from \(appState.profileDisplayName(profile)) now come to this device too.", table: .settings)
+                  : AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings),
+                  systemImage: "checkmark.circle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("notifications.paired")
+        }
+        if everyDevice {
+            PairedDevicesList(profile: profile, refreshToken: pairedDevicesRefresh)
+                // Another dashboard's or profile's list starts empty, not with this one's rows.
+                .id("\(appState.activeDashboardID?.uuidString ?? "")|\(profile)")
         }
     }
 
