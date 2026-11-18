@@ -593,4 +593,21 @@ extension AppStateReadAloudTests {
         XCTAssertEqual(built, ["atlas", "default", "atlas"])
         harness.readAloudController.stop()
     }
+
+    /// Issue 2768: Classic talks in the open chat, so in a Bot Chat it speaks
+    /// in the bot's Hermes voice and still listens through the active profile.
+    func testClassicInABotChatSpeaksAsItsBot() {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        let app = harness.appState
+        app.botChatSessionProfiles["bot-chat"] = "atlas"
+        app.activeSessionId = "bot-chat"
+        let botGateway = app.makeClassicVoiceGateway()
+        XCTAssertEqual(botGateway?.speechProfile, "atlas")
+        XCTAssertEqual(botGateway?.profile, "default")
+
+        app.activeSessionId = "workspace-chat"
+        let ownGateway = app.makeClassicVoiceGateway()
+        XCTAssertEqual(ownGateway?.speechProfile, "default")
+        XCTAssertEqual(ownGateway?.profile, "default")
+    }
 }

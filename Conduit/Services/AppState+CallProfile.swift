@@ -38,6 +38,57 @@ extension AppState {
         loadVoiceProfilePreferences(profile: voiceCallProfile)
     }
 
+    /// The profile a live call speaks as: the bot of the Bot Chat it started
+    /// in (issue 2768), else `voiceCallProfile`. Its keys mint the call's
+    /// tokens, and its host voice, SOUL.md persona and memory are the
+    /// call's; the call's chat, jobs and settings stay `voiceCallProfile`'s.
+    var voiceCallSpeakerProfile: String {
+        liveCallSpeaker ?? voiceCallProfile
+    }
+
+    /// The call's settings, with the voice the bot it speaks as picked for
+    /// itself where it has one (its own Voice settings), else the call
+    /// profile's pick: the user's switches (memory, persona, look-ups,
+    /// billing) stay the call profile's.
+    var callSpeakerVoicePreferences: VoiceProfilePreferences {
+        var call = callVoicePreferences
+        guard let bot = liveCallSpeaker else { return call }
+        let own = loadVoiceProfilePreferences(profile: bot)
+        call.geminiLiveVoice = own.geminiLiveVoice ?? call.geminiLiveVoice
+        call.qwenLiveVoice = own.qwenLiveVoice ?? call.qwenLiveVoice
+        call.gptLiveVoice = own.gptLiveVoice ?? call.gptLiveVoice
+        call.gptLiveAPIVoice = own.gptLiveAPIVoice ?? call.gptLiveAPIVoice
+        return call
+    }
+
+    /// A live mode's availability check, run as the profile the call speaks
+    /// as. A bot that can't start the mode (no key on its profile, a host
+    /// route refused there) leaves the call to its own profile, which is
+    /// checked instead, so a Bot Chat's call never fails where the
+    /// workspace's would start (issue 2768).
+    func availabilityAsCallSpeaker<Status>(
+        _ isAvailable: (Status) -> Bool,
+        _ check: @MainActor () async throws -> Status
+    ) async throws -> Status {
+        guard let bot = liveCallSpeaker else { return try await check() }
+        do {
+            let status = try await check()
+            if isAvailable(status) { return status }
+        } catch is CancellationError {
+            throw CancellationError()
+        } catch {}
+        // A newer call's start or a teardown changed the speaker meanwhile.
+        guard liveCallSpeaker == bot else { return try await check() }
+        liveCallSpeaker = nil
+        return try await check()
+    }
+
+    /// The bot a call attached to `thread` speaks as: a Bot Chat's own,
+    /// nil for any other chat or none.
+    func callSpeaker(for thread: VoiceThreadTarget?) -> String? {
+        Self.readAloudSpeaker(thread?.profile, activeProfile: voiceCallProfile)
+    }
+
     /// Local Live in agent mode on the call's profile (`isLocalLiveAgent`
     /// for the call, the same outside one).
     var callRunsLocalLiveAgent: Bool {
