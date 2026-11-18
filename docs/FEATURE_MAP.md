@@ -5569,7 +5569,7 @@ it)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2720.
+**Checked:** 2026-11-18, #2727 (a job's run history and the projects list share the check; Text listed); 2026-11-18, #2720.
 
 ## Phone change errors
 
