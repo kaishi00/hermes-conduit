@@ -426,7 +426,8 @@ extension AppState {
     /// own: its id or its stored id, not an alias it lists. A second row of
     /// the same chat (its runtime listed apart) doesn't count.
     static func anotherRow(than row: SessionSummary, owns sessionId: String, in rows: [SessionSummary]) -> Bool {
-        let chatIDs = Set([row.id] + row.alternateIds + [row.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty })
+        // Not its aliases: the stale row lists the other chat's ids there.
+        let chatIDs = Set([row.id] + [row.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty })
         return rows.contains { other in
             guard other.id != row.id, other.id == sessionId || other.storedSessionId == sessionId else { return false }
             let otherIDs = [other.id, other.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }
