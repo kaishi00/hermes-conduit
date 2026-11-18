@@ -413,6 +413,29 @@ enum DashboardTicketBridgeError: LocalizedError {
     /// Only what the phone keeps for the old dashboard may follow it.
     case answeredAfterSwitch
 
+    /// No connection, a timeout, the dashboard still connecting, or the host
+    /// overloaded or restarting: the same request may well work a moment
+    /// later. Not a sign-in, a 4xx, a bad address, a certificate or a cancel.
+    static func isTransient(_ error: Error) -> Bool {
+        switch error {
+        case DashboardTicketBridgeError.notReady, DashboardTicketBridgeError.answeredAfterSwitch:
+            return true
+        case DashboardTicketBridgeError.http(let status, _):
+            return status == 0 || status == 408 || status == 429 || (status >= 500 && status != 501)
+        case let error as URLError:
+            return transientNetworkErrors.contains(error.code)
+        default:
+            return false
+        }
+    }
+
+    /// The connection dropped or never came up.
+    private static let transientNetworkErrors: Set<URLError.Code> = [
+        .timedOut, .cannotFindHost, .cannotConnectToHost, .networkConnectionLost, .dnsLookupFailed,
+        .notConnectedToInternet, .internationalRoamingOff, .callIsActive, .dataNotAllowed,
+        .secureConnectionFailed, .cannotLoadFromNetwork, .backgroundSessionWasDisconnected,
+    ]
+
     var errorDescription: String? {
         switch self {
         case .notReady, .answeredAfterSwitch:

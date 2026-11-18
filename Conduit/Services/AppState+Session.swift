@@ -395,6 +395,45 @@ extension AppState {
         return isConnecting || isProfileSwitching || turnState == .synchronizing
     }
 
+    /// The rows on screen may be out of date: the saved copy, a list from
+    /// before this scope's first live read (a launch, a profile or
+    /// dashboard switch), or one read before the app last went to the
+    /// background.
+    var chatListShownIsStale: Bool {
+        if isShowingSavedChatList || chatListPredatesBackground { return true }
+        guard let dashboardID = activeDashboardID else { return false }
+        return !liveChatListLanded(dashboardID: dashboardID, profile: activeProfile)
+    }
+
+    /// A read over a stale list is on its way for the scope on screen.
+    /// Another profile's read left running after a switch doesn't count,
+    /// failed or not.
+    var isReadingStaleChatList: Bool {
+        (staleChatListReads[sessionCatalogOwner] ?? 0) > 0
+    }
+
+    /// The Chats list says "Updating…" over its rows (issue 2706): they may
+    /// be out of date and a read, or the connection that brings one, is on
+    /// its way. Not during a pull to refresh, which has its own spinner (a
+    /// Projects pull's is its projects read), nor while the list on screen
+    /// has no rows: "Loading chats…", or a list with none, says so itself.
+    func showsChatListUpdating(overProjects: Bool = false) -> Bool {
+        guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
+        if overProjects {
+            guard !projectsLoading, !projects.isEmpty else { return false }
+        } else {
+            guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
+        }
+        return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
+    }
+
+    /// Counts a catalog read over a stale list in and out, by the scope it
+    /// reads.
+    func noteStaleChatListRead(started: Bool, owner: SessionCatalogOwner) {
+        let count = (staleChatListReads[owner] ?? 0) + (started ? 1 : -1)
+        staleChatListReads[owner] = count > 0 ? count : nil
+    }
+
     var savedChatListForActiveScope: SavedChatListPresentation? {
         guard let saved = savedChatList,
               saved.dashboardID == activeDashboardID,
@@ -467,6 +506,12 @@ extension AppState {
         let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
         let readTicket = takeSessionListReadTicket()
+        // A read over rows that may be out of date shows "Updating…" while
+        // it runs, whatever its outcome (issue 2706).
+        let readsStaleList = chatListShownIsStale
+        let readOwner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+        if readsStaleList { noteStaleChatListRead(started: true, owner: readOwner) }
+        defer { if readsStaleList { noteStaleChatListRead(started: false, owner: readOwner) } }
         do {
             let loadedSessions: [SessionSummary]
             var olderPagesDeferred = false
@@ -573,7 +618,7 @@ extension AppState {
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
             // A read cancelled under it (a pull to refresh the list left)
             // says nothing about the catalog: the next showing reads again.
-            if error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled { return false }
+            if UserFacingError.isCancellation(error) { return false }
             // A read that started later already listed: the list is current,
             // and this older failure is no news.
             guard readTicket > sessionListListedTicket else { return true }

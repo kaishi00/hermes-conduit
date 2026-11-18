@@ -859,8 +859,7 @@ extension AppState {
                 // The chat is live: only the list failed. It says so, as a
                 // pull to refresh's failure does, and the next showing or
                 // pull reads it again; the connection is fine.
-                let wasCancelled = error is CancellationError
-                    || (error as? URLError)?.code == .cancelled || Task.isCancelled
+                let wasCancelled = UserFacingError.isCancellation(error)
                 let superseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
                 if !superseded, !wasCancelled {
                     sessionCatalogLoadState.markFailed(
@@ -878,8 +877,7 @@ extension AppState {
             let catalogFailureIsSuperseded = pendingCatalogReadTicket.map { $0 <= sessionListListedTicket } ?? false
             // A read cancelled under it says nothing about the catalog
             // either (as for loadSessions): the next showing reads again.
-            let wasCancelled = error is CancellationError
-                || (error as? URLError)?.code == .cancelled || Task.isCancelled
+            let wasCancelled = UserFacingError.isCancellation(error)
             if !catalogFailureIsSuperseded, !wasCancelled {
                 chatSyncErrorMessage = AppLocalization.string("Failed to load gateway sessions: \(UserFacingError.message(for: error))")
                 sessionCatalogLoadState.markFailed(

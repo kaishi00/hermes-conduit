@@ -2098,6 +2098,22 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
     }
 
+    /// Issue 2713: leaving the Model page cancels its read, and the
+    /// cancelled read put "Could not load model defaults: That was
+    /// interrupted" on the chat's composer.
+    func testModelDefaultsReadCancelledByLeavingThePageSaysNothing() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { await appState.loadProfileModelDefaults() }
+        try await held.waitForRequests(3)   // options, info and config, read together
+
+        load.cancel()
+        held.releaseAll()   // each request ends as URLSession's cancelled
+        let modelDefaults = await load.value
+
+        XCTAssertNil(modelDefaults)
+        XCTAssertNil(appState.errorMessage, "a read nobody waits for any more didn't fail")
+    }
+
     /// A switch invalidates the Mac's bridge, so its listing in flight
     /// fails; that failure isn't reported over the VPS's folder.
     func testAWorkspaceListingFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {

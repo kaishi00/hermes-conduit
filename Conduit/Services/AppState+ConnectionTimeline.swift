@@ -433,6 +433,9 @@ extension AppState {
             disarmWakeListeningForBackground()
             hasEnteredBackgroundScenePhase = true
             sceneHidesLiveRows = true
+            // Chats may change elsewhere meanwhile: the list says it's
+            // updating while the return's read runs (issue 2706).
+            chatListPredatesBackground = true
             pauseLivePublishes()
             // Audio may keep the socket open off screen; it pings less.
             client?.setKeepaliveBackgrounded(true)

@@ -23,8 +23,9 @@ extension AppState {
         case success(profile: String)
         case failed(profile: String, message: String)
         case unavailable(profile: String)
-        /// The active dashboard or profile changed mid-request; the result
-        /// belongs to an abandoned one and callers should discard it.
+        /// The active dashboard or profile changed mid-request, or the
+        /// request was cancelled; the result belongs to an abandoned one and
+        /// callers should discard it.
         case superseded(requested: CapabilitySnapshotOwner, active: CapabilitySnapshotOwner)
 
         var isSuperseded: Bool {
@@ -64,7 +65,11 @@ extension AppState {
             capabilitiesAreKept = false
             return .success(profile: profile)
         } catch {
-            guard ownsRequest() else { return .superseded(requested: owner, active: currentCapabilitiesOwner) }
+            // A read cancelled under it (the page left) didn't fail either:
+            // nobody is waiting for it, so it's dropped like a stale one.
+            guard ownsRequest(), !UserFacingError.isCancellation(error) else {
+                return .superseded(requested: owner, active: currentCapabilitiesOwner)
+            }
             errorMessage = AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))")
             return .failed(profile: profile, message: AppLocalization.string("Could not load capabilities: \(UserFacingError.message(for: error))"))
         }

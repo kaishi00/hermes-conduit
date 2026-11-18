@@ -68,9 +68,9 @@ extension AppState {
                       shownBot.cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
-        } catch is CancellationError {
-            return
         } catch {
+            // A read cancelled under it (the list left, a newer read) didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return }
             // A read the outgoing connection failed isn't the next one's to report.
             guard profile == activeProfile, generation == shownBot.cronJobsGeneration,
                   dashboardTicketBridge === startedBridge, client === startedClient,
@@ -149,7 +149,7 @@ extension AppState {
             }
         } catch {
             // A sheet closed mid-read: no failure, the next open reads again.
-            if error is CancellationError || Task.isCancelled { return }
+            if UserFacingError.isCancellation(error) { return }
             guard profile == activeProfile, shownBot.cronRunsLoad == load else { return }
             let message = AppLocalization.string("Could not load scheduled-job runs: \(UserFacingError.message(for: error))")
             if cronRunsLoaded {

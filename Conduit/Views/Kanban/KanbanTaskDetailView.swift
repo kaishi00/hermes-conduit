@@ -1135,6 +1135,18 @@ struct KanbanTaskDetailView: View {
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
         let expectedID = displayedTaskID
+        // The board it's read from too: a task id can name another task on
+        // another board, so an answer from a board no longer loaded is
+        // dropped like a stale identity's.
+        let expectedBoard = store.openTaskBoardSlug
+        let isCurrent = {
+            KanbanDetailLoadPolicy.answerApplies(
+                startedTaskID: expectedID,
+                startedBoard: expectedBoard,
+                displayedTaskID: displayedTaskID,
+                loadedBoard: store.openTaskBoardSlug
+            )
+        }
         isLoadingDetail = true
         // A STALE completion must not clear the replacement load's spinner:
         // only the current identity may release the flag.
@@ -1142,8 +1154,17 @@ struct KanbanTaskDetailView: View {
             if displayedTaskID == expectedID { isLoadingDetail = false }
         }
         do {
-            let loaded = try await store.fetchTaskDetail(id: expectedID)
-            guard displayedTaskID == expectedID else { return }
+            let loaded: KanbanTaskDetail
+            do {
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            } catch let error where KanbanDetailLoadPolicy.retriesFirstRead(after: error, hasDetail: detail != nil) {
+                // Not read yet: a read lost in transit asks once more before
+                // it fails, as the board's first load does (issue 2719).
+                try await Task.sleep(for: KanbanStore.firstLoadRetryDelay)
+                guard isCurrent() else { return }
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            }
+            guard isCurrent() else { return }
             guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
                 // An EMPTY-id payload under a NON-empty displayed identity is
@@ -1201,7 +1222,7 @@ struct KanbanTaskDetailView: View {
             // cancellation must never render as a user-facing failure.
             return
         } catch {
-            guard displayedTaskID == expectedID else { return }
+            guard isCurrent() else { return }
             if detail == nil {
                 errorMessage = UserFacingError.message(for: error)
             } else {
@@ -1330,6 +1351,13 @@ struct KanbanTaskDetailView: View {
         }
     }
 
+    /// Refuses a step whose board is no longer the one loaded.
+    private func requireBoard(_ startedBoard: KanbanBoardContextStamp?) throws {
+        guard startedBoard != nil, store.loadedContextStamp == startedBoard else {
+            throw KanbanServiceError.boardNavigationInProgress
+        }
+    }
+
     /// Note & requeue: two supported mutations composed exactly like the
     /// desktop drawer (comment first, then reclaim) — but with OBSERVABLE
     /// partial success: the draft is consumed the moment the note reaches the
@@ -1339,6 +1367,10 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
+        // Both steps land only on the board the sheet showed when tapped: a
+        // change before the note posts nothing, and one between the steps
+        // leaves the note posted and the step undone (partial success).
+        let startedBoard = store.loadedContextStamp
         isRequeuing = true
         errorMessage = nil
         defer {
@@ -1348,8 +1380,14 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { try await store.reclaimTask(taskID: expectedID) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
+            reclaim: {
+                try requireBoard(startedBoard)
+                try await store.reclaimTask(taskID: expectedID)
+            },
             onCommentPosted: {
                 // Consume the draft immediately: the note already exists on
                 // the server, so a retry after a reclaim failure must never
@@ -1375,6 +1413,10 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
+        // Both steps land only on the board the sheet showed when tapped: a
+        // change before the note posts nothing, and one between the steps
+        // leaves the note posted and the step undone (partial success).
+        let startedBoard = store.loadedContextStamp
         isUnblocking = true
         errorMessage = nil
         defer {
@@ -1384,8 +1426,14 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready")) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
+            reclaim: {
+                try requireBoard(startedBoard)
+                _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready"))
+            },
             onCommentPosted: {
                 if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
                     comment = ""
@@ -1528,6 +1576,14 @@ struct KanbanTaskDetailView: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            // The poll reads again on its own; this doesn't wait for it
+            // (issue 2719).
+            Button("Try Again") {
+                Task { await loadDetail(force: true) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isLoadingDetail)
+            .accessibilityIdentifier("kanban.detail.retry")
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
@@ -1567,6 +1623,28 @@ enum KanbanDetailIdentityPolicy {
         // The opening task may act ONLY for its own identity: after a
         // dependency tap to another id there is deliberately NO fallback.
         return displayedID == initialTask.id ? initialTask : nil
+    }
+}
+
+/// What the detail's reads do with an answer or a failure (issue 2719).
+enum KanbanDetailLoadPolicy {
+    /// A first read lost in transit asks once more before the failure
+    /// shows; a task already shown rides the poll's own pace, and Hermes'
+    /// own refusals aren't asked again.
+    static func retriesFirstRead(after error: Error, hasDetail: Bool) -> Bool {
+        !hasDetail && DashboardTicketBridgeError.isTransient(error)
+    }
+
+    /// An answer applies only to the task and the board it was read for: a
+    /// task id can name another task on another board.
+    static func answerApplies(startedTaskID: String, startedBoard: String?, displayedTaskID: String, loadedBoard: String?) -> Bool {
+        startedTaskID == displayedTaskID && startedBoard == loadedBoard
+    }
+
+    /// An open task's sheet stays only while its board is the one loaded
+    /// (`KanbanStore.openTaskBoardSlug`): its edits carry no board.
+    static func sheetStaysOpen(openedOnBoard: String?, nowOnBoard: String) -> Bool {
+        openedOnBoard == nowOnBoard
     }
 }
 

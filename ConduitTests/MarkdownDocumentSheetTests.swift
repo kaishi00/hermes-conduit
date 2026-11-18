@@ -5,7 +5,7 @@
 //  The decisions a Markdown artifact makes before its sheet is drawn: which
 //  names are Markdown, how the host's text is decoded, and the file name the
 //  Open/Share handoff uses on a Windows or a Mac host, and the presenter
-//  refusing to share a staged copy that's gone (issue 2701).
+//  refusing to share or save a staged copy that's gone (issues 2701, 1809).
 //
 
 import XCTest
@@ -91,5 +91,20 @@ final class MarkdownDocumentSheetTests: XCTestCase {
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent("notes.md")
         XCTAssertFalse(MediaPreviewPresenter.shared.presentShare(fileURL: gone))
+    }
+
+    /// Save to Files (issue 1809) refuses a file that's gone and still
+    /// removes the copy staged for it, so a failed save leaves nothing.
+    @MainActor
+    func testSaveToFilesOfAFileThatIsGoneIsRefusedAndItsFolderRemoved() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let gone = directory.appendingPathComponent("report.xlsx")
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentSaveToFiles(fileURL: gone, ownedDirectory: directory))
+        XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
+        // The reader's Save hands over a copy of its file; a file that's
+        // gone has nothing to copy.
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: gone))
     }
 }

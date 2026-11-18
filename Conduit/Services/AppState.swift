@@ -537,6 +537,15 @@ final class AppState: ObservableObject {
     var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published var sessionMutationID: String?
     @Published var isRefreshingSessionCatalog = false
+    /// Catalog reads on their way over a list Hermes may have changed since
+    /// (`chatListShownIsStale`), by the scope each reads: the Chats list
+    /// says "Updating…" while its own scope has one (issue 2706). Changed
+    /// only by reads over a stale list, so the list's routine reads over a
+    /// fresh one publish nothing.
+    @Published var staleChatListReads: [SessionCatalogOwner: Int] = [:]
+    /// The list on screen was read before the app last went to the
+    /// background: it may be out of date until the next read lands.
+    var chatListPredatesBackground = false
     /// Whether `sessions` is the catalog Hermes answered for the dashboard
     /// profile on screen (see SessionCatalogLoad.swift).
     @Published var sessionCatalogLoadState = SessionCatalogLoadState()
@@ -1196,6 +1205,9 @@ final class AppState: ObservableObject {
     /// (RoomLinks.swift). RootView shows who it's from in a sheet, which
     /// asks before linking.
     @Published var pendingRoomLink: RoomLinkURL?
+    /// A computer's pairing code that opened Conduit (ComputerPairing.swift):
+    /// RootView shows Pair a Computer for it, which asks before sending.
+    @Published var pendingComputerPairing: ComputerPairingLink?
     /// An invite to a room whose notification was tapped (RoomInvites.swift):
     /// RootView shows its join card.
     @Published var presentedRoomInvite: RoomInvite?

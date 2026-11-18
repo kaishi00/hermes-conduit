@@ -28,7 +28,7 @@ struct WatchSettingsSection: View {
             }
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
-            Text("Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
+            Text("Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Pick the voice on the Watch's home screen: Gemini Live and Qwen Live run on the Watch; GPT-Live, Grok and Local Live, your own speech server, run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
