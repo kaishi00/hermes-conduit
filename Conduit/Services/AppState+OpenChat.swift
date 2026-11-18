@@ -142,6 +142,31 @@ extension AppState {
         case opened, superseded, failed
     }
 
+    /// How long a list's tap waits for a connection being made.
+    static let listOpenConnectionWait: Duration = .seconds(15)
+
+    /// Waits, up to `limit`, for a connection being made (a cold launch, a
+    /// reconnect) to come up. True once connected; false at once when none
+    /// is being made.
+    func connectionComesUp(within limit: Duration) async -> Bool {
+        if client != nil, isConnected { return true }
+        guard isRecoveringConnection else { return false }
+        return await withTaskGroup(of: Bool.self) { group in
+            group.addTask { @MainActor [weak self] in
+                guard let self else { return false }
+                for await connected in self.$isConnected.values where connected { return true }
+                return false
+            }
+            group.addTask {
+                try? await Task.sleep(for: limit)
+                return false
+            }
+            let first = await group.next() ?? false
+            group.cancelAll()
+            return first
+        }
+    }
+
     /// A Bot Chat that can't open while Hermes isn't connected says this;
     /// Bots Home takes it down once the connection is back.
     static var connectToChatWithBotsMessage: String {
@@ -241,11 +266,26 @@ extension AppState {
     /// chat open before: an open that fails, while still the latest
     /// navigation, goes back to the list rather than leave another chat
     /// under this bot's tap. True when it opened.
+    /// A tap made while Conduit is still connecting (a cold launch, a
+    /// reconnect) waits for the connection, up to `connectionWait`, under
+    /// the chat's cover, and then opens; it fails, with its notice, only
+    /// once that wait is out. Failing at once popped the pushed screen back
+    /// to the list on a cold launch's first tap (2026-11-18).
     @discardableResult
-    func openBotChatFromList(_ bot: BotProfile) async -> Bool {
+    func openBotChatFromList(_ bot: BotProfile, connectionWait: Duration = AppState.listOpenConnectionWait) async -> Bool {
         let writes = errorMessageWrites
         let epoch = botRosterEpoch
-        let outcome = await openBotChatOutcome(for: bot)
+        let waited = !(client != nil && isConnected) && isRecoveringConnection
+        _ = await connectionComesUp(within: connectionWait)
+        // While it waited, a newer tap or navigation took over, or the
+        // list came back (Back): this tap stands down, saying nothing.
+        let outcome: BotChatOpenOutcome
+        if waited, epoch != botRosterEpoch || botChatLatestMark != bot.name
+            || (showSidebar && botChatMarks[bot.name]?.pushed == true) {
+            outcome = .superseded
+        } else {
+            outcome = await openBotChatOutcome(for: bot)
+        }
         // A server switch retired the list's marks with the rest of Bot
         // Mode's state: this open has no mark left to end, and a tap on the
         // next server's list may have made one under the same name.
@@ -278,7 +318,7 @@ extension AppState {
         zooms: Bool,
         then opened: @escaping @MainActor (Bool) -> Void = { _ in }
     ) {
-        beginOpeningBotChat(bot.name)
+        beginOpeningBotChat(bot.name, label: bot.displayLabel)
         if zooms { botZoom.tap(bot.name) }
         Task { @MainActor in
             let didOpen = await openBotChatFromList(bot)

@@ -202,7 +202,7 @@ struct BotRosterView: View {
                 } : nil,
                 onChat: {
                     overviewBot = nil
-                    appState.beginOpeningBotChat(bot.name)
+                    appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
                     // Grows out of its portrait, as from a tap on it
                     // (Eric 2026-11-04), unless it opens beside the list.
                     if openBeside == nil { appState.botZoom.tap(bot.name) }
@@ -226,7 +226,7 @@ struct BotRosterView: View {
                       let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
                 // Desktop opens a new bot's forever chat straight away, and
                 // the bot introduces itself when it can reach a model.
-                appState.beginOpeningBotChat(bot.name)
+                appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
                 Task {
                     await appState.openNewBotChat(for: bot, introduces: introduces)
                 }
@@ -1762,7 +1762,7 @@ private struct BotRosterRow: View {
     var body: some View {
         Button {
             Haptics.light()
-            appState.beginOpeningBotChat(bot.name)
+            appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
             Task {
                 await appState.openBotChatFromList(bot)
             }
