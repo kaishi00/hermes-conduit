@@ -12,6 +12,19 @@
 import Foundation
 
 enum UserFacingError {
+    /// A request cancelled under it, not one that failed: the task that
+    /// asked was cancelled (a page left, a newer read), Swift's or
+    /// URLSession's way. A read that ends this way says nothing on screen,
+    /// since nobody is waiting for it and the next showing reads again
+    /// (issue 2713: a Model page's read cancelled by leaving it put
+    /// "interrupted" on the chat's composer).
+    static func isCancellation(_ error: Error) -> Bool {
+        if Task.isCancelled || error is CancellationError { return true }
+        if (error as? URLError)?.code == .cancelled { return true }
+        let nsError = error as NSError
+        return nsError.domain == NSURLErrorDomain && nsError.code == URLError.cancelled.rawValue
+    }
+
     static func message(for error: Error) -> String {
         if error is CancellationError {
             return AppLocalization.string("That was interrupted before it finished. Try again.")

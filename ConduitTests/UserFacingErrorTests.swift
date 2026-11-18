@@ -36,6 +36,15 @@ extension ConnectionFailureTests {
         )
     }
 
+    // Issue 2713: a read cancelled under it says nothing on screen.
+    func testCancellationIsToldApartFromFailure() {
+        XCTAssertTrue(UserFacingError.isCancellation(CancellationError()))
+        XCTAssertTrue(UserFacingError.isCancellation(URLError(.cancelled)))
+        XCTAssertTrue(UserFacingError.isCancellation(NSError(domain: NSURLErrorDomain, code: URLError.cancelled.rawValue)))
+        XCTAssertFalse(UserFacingError.isCancellation(URLError(.timedOut)))
+        XCTAssertFalse(UserFacingError.isCancellation(DashboardTicketBridgeError.http(status: 500, detail: "boom")))
+    }
+
     func testConduitsOwnErrorsKeepTheirText() {
         XCTAssertEqual(UserFacingError.message(for: RpcError(code: 4002, message: "denied by policy")), "denied by policy")
     }

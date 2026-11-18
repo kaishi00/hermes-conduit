@@ -573,7 +573,7 @@ extension AppState {
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
             // A read cancelled under it (a pull to refresh the list left)
             // says nothing about the catalog: the next showing reads again.
-            if error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled { return false }
+            if UserFacingError.isCancellation(error) { return false }
             // A read that started later already listed: the list is current,
             // and this older failure is no news.
             guard readTicket > sessionListListedTicket else { return true }

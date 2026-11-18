@@ -68,9 +68,9 @@ extension AppState {
                       shownBot.cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
-        } catch is CancellationError {
-            return
         } catch {
+            // A read cancelled under it (the list left, a newer read) didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return }
             // A read the outgoing connection failed isn't the next one's to report.
             guard profile == activeProfile, generation == shownBot.cronJobsGeneration,
                   dashboardTicketBridge === startedBridge, client === startedClient,
