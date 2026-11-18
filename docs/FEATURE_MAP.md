@@ -9137,7 +9137,7 @@ worker's task (see Pulse; it opens this screen) · Hermes' own board drawer
 **Open gaps**
 - Conduit sends no push when a task goes Blocked; the board's Blocked column is where the operator finds one.
 
-**Checked:** 2026-11-18, #2745 (a swiped-away sheet's refused unblock shows on the board); 2026-11-18, #2742 (a refused unblock says the board changed or reloaded, and shows on the board too); 2026-11-18, #2737 (Reply & unblock keeps to the board it started on, from #2733's reviews); 2026-11-05, #1793 (Kanban's task sheets built from Settings' pieces, see Sheets in Settings' look); 2026-11-01, #1603 (seeded; issue #1601; review: only `initial_status` is read as a code).
+**Checked:** 2026-11-18, #2757 (issue 2746: a step failing outright mid-swipe is said on the leaving sheet only); 2026-11-18, #2745 (a swiped-away sheet's refused unblock shows on the board); 2026-11-18, #2742 (a refused unblock says the board changed or reloaded, and shows on the board too); 2026-11-18, #2737 (Reply & unblock keeps to the board it started on, from #2733's reviews); 2026-11-05, #1793 (Kanban's task sheets built from Settings' pieces, see Sheets in Settings' look); 2026-11-01, #1603 (seeded; issue #1601; review: only `initial_status` is read as a code).
 
 ## How often Tasks reads Hermes
 
