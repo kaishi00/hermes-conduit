@@ -122,6 +122,7 @@ final class MediaPreviewPresenter {
     /// closes. The menu is the app handoff for a file another reader can
     /// take (MDReader, a Markdown editor) without Conduit displaying it.
     private let openInDelegate = OpenInDelegate()
+    private var savePickers: [ObjectIdentifier: SaveToFilesDelegate] = [:]
 
     /// Previews a file already on disk (a local attachment). The file is
     /// left in place afterwards. A type Quick Look must not render opens the
@@ -130,7 +131,7 @@ final class MediaPreviewPresenter {
     func present(fileURL: URL, title: String? = nil) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
         guard Self.isPreviewable(filename: fileURL.lastPathComponent, mimeType: nil) else {
-            return share(fileURL: fileURL, ownedDirectory: nil)
+            return share(item: fileURL, ownedDirectory: nil)
         }
         return show(Session(url: fileURL, title: title ?? fileURL.lastPathComponent, ownedDirectory: nil))
     }
@@ -181,7 +182,7 @@ final class MediaPreviewPresenter {
             Self.removeDirectory(staged.directory)
             return false
         }
-        guard previewable else { return share(fileURL: staged.file, ownedDirectory: staged.directory) }
+        guard previewable else { return share(item: staged.file, ownedDirectory: staged.directory) }
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
@@ -257,14 +258,21 @@ final class MediaPreviewPresenter {
 
     /// The system share sheet for a file Quick Look must not render (HTML,
     /// SVG, XML), so it can still be saved to Files or sent to another app
-    /// without Conduit displaying it. A staged copy is removed once the
-    /// sheet closes.
-    private func share(fileURL: URL, ownedDirectory: URL?) -> Bool {
+    /// without Conduit displaying it, or for a menu's Share item. A staged
+    /// copy is removed once the sheet closes. False only when there is no
+    /// screen to present from.
+    ///
+    /// A refusal can't be told apart at once: UIActivityViewController
+    /// presents late on iOS 27 (UIKit holds it until its service is up), so
+    /// it isn't linked to its presenter yet when `present` returns, and a
+    /// refused one never calls its completion either. So a refused sheet is
+    /// only reclaimed, later, like a refused Quick Look (`show`).
+    private func share(item: URL, ownedDirectory: URL?) -> Bool {
         guard let presenter = Self.topViewController() else {
             Self.removeDirectory(ownedDirectory)
             return false
         }
-        let controller = UIActivityViewController(activityItems: [fileURL], applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: [item], applicationActivities: nil)
         controller.completionWithItemsHandler = { _, _, _, _ in
             Self.removeDirectory(ownedDirectory)
         }
@@ -273,14 +281,16 @@ final class MediaPreviewPresenter {
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-        presenter.present(controller, animated: true)
-        // As in `show`: a presentation refused while another is in flight
-        // never calls the completion handler, so reclaim the staged copy.
-        // A sheet already closed by then has removed it itself; removing
-        // again is a no-op.
+        let presentation = SharePresentation()
+        presenter.present(controller, animated: true) { presentation.didPresent = true }
+        // A presentation refused while another is in flight never calls
+        // either completion, so reclaim the staged copy. A cold share sheet
+        // took about 4 s to come up on the iOS 27 simulator, hence the wait
+        // and the check that it never presented; one already closed by then
+        // has removed the copy itself, and removing again is a no-op.
         Task { @MainActor in
-            try? await Task.sleep(for: .seconds(5))
-            guard controller.presentingViewController == nil else { return }
+            try? await Task.sleep(for: .seconds(15))
+            guard !presentation.didPresent, controller.presentingViewController == nil else { return }
             Self.removeDirectory(ownedDirectory)
         }
         return true
@@ -288,10 +298,103 @@ final class MediaPreviewPresenter {
 
     /// The system share sheet for a staged file that has no Open In app,
     /// or when the Open In menu can't present. The caller keeps the file.
+    ///
+    /// A Share item in a SwiftUI `Menu` or context menu comes here rather
+    /// than being a `ShareLink`: on iPad a `ShareLink` anchors its popover
+    /// to the menu item, which is gone once the menu closes, so no sheet
+    /// shows (issue 2701). This one anchors to the screen under the menu.
     @discardableResult
     func presentShare(fileURL: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        return share(fileURL: fileURL, ownedDirectory: nil)
+        return share(item: fileURL, ownedDirectory: nil)
+    }
+
+    /// The system share sheet for a link (an artifact that is a web page or
+    /// a hosted picture), for a menu's Share item as `presentShare(fileURL:)`.
+    @discardableResult
+    func presentShare(link: URL) -> Bool {
+        share(item: link, ownedDirectory: nil)
+    }
+
+    // MARK: - Save to Files
+
+    /// The system Files picker, saving a copy of the file where the user
+    /// picks (issue 1809): a direct Save to Files beside Open and Share.
+    /// `ownedDirectory`, a copy staged for it, is removed once the picker
+    /// closes, saved or cancelled; nil leaves the file to its caller. False
+    /// when the file is gone or there is no screen to present from.
+    @discardableResult
+    func presentSaveToFiles(fileURL: URL, ownedDirectory: URL? = nil) -> Bool {
+        guard FileManager.default.fileExists(atPath: fileURL.path),
+              let presenter = Self.topViewController() else {
+            Self.removeDirectory(ownedDirectory)
+            return false
+        }
+        let picker = UIDocumentPickerViewController(forExporting: [fileURL], asCopy: true)
+        let key = ObjectIdentifier(picker)
+        // UIKit holds the delegate weakly: keep it until the picker closes.
+        let delegate = SaveToFilesDelegate { [weak self] in
+            Self.removeDirectory(ownedDirectory)
+            self?.savePickers[key] = nil
+        }
+        savePickers[key] = delegate
+        picker.delegate = delegate
+        presenter.present(picker, animated: true)
+        // As in `share`: a refused picker never calls its delegate, so its
+        // copy is reclaimed once it never presented.
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard picker.presentingViewController == nil, self?.savePickers[key] != nil else { return }
+            delegate.finish()
+        }
+        return true
+    }
+
+    /// Save to Files for a file someone else owns (the Markdown reader's
+    /// staged copy): the picker gets a copy of its own, so the owner
+    /// removing its file (the reader leaving the screen under a full-screen
+    /// picker) can't take the file away before it is saved.
+    /// The copy is made off the main actor, as the other staging is: the
+    /// reader's file can be up to 16 MB.
+    func presentSaveToFiles(copyOf fileURL: URL) async -> Bool {
+        let staged = await Task.detached(priority: .userInitiated) { () -> (directory: URL, file: URL)? in
+            guard let data = try? Data(contentsOf: fileURL) else { return nil }
+            return Self.stage(data: data, filename: fileURL.lastPathComponent)
+        }.value
+        guard let staged else { return false }
+        guard !Task.isCancelled else {
+            Self.removeDirectory(staged.directory)
+            return false
+        }
+        return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
+    }
+
+    /// Save to Files for a gateway file already downloaded into its own
+    /// directory, which goes when the picker closes.
+    @discardableResult
+    func presentSaveToFiles(downloaded download: DashboardDownloadedFile) -> Bool {
+        guard !Task.isCancelled else {
+            Self.removeDirectory(download.directory)
+            return false
+        }
+        return presentSaveToFiles(fileURL: download.file, ownedDirectory: download.directory)
+    }
+
+    /// Save to Files for a gateway `data:` URL, decoded and staged off the
+    /// main actor under `filename`. Active web content is only saved, never
+    /// rendered, so it needs no policy here.
+    @discardableResult
+    func presentSaveToFiles(dataURL: String, filename: String) async -> Bool {
+        let staged = await Task.detached(priority: .userInitiated) { () -> (directory: URL, file: URL)? in
+            guard let data = DataURLLimits.decodeBase64DataURL(dataURL) else { return nil }
+            return Self.stage(data: data, filename: filename)
+        }.value
+        guard let staged else { return false }
+        guard !Task.isCancelled else {
+            Self.removeDirectory(staged.directory)
+            return false
+        }
+        return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
     }
 
     /// The system's Open In menu for a file another app can read (MDReader,
@@ -457,6 +560,36 @@ final class MediaPreviewPresenter {
     nonisolated static func removeDirectory(_ directory: URL?) {
         guard let directory else { return }
         try? FileManager.default.removeItem(at: directory)
+    }
+}
+
+/// Whether a share sheet's presentation finished, read when deciding
+/// whether UIKit refused it.
+@MainActor
+private final class SharePresentation {
+    var didPresent = false
+}
+
+/// Hears a Save to Files picker close, saved or cancelled, once.
+@MainActor
+private final class SaveToFilesDelegate: NSObject, UIDocumentPickerDelegate {
+    private var onFinish: (() -> Void)?
+
+    init(onFinish: @escaping () -> Void) {
+        self.onFinish = onFinish
+    }
+
+    func finish() {
+        onFinish?()
+        onFinish = nil
+    }
+
+    func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) {
+        finish()
+    }
+
+    func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) {
+        finish()
     }
 }
 

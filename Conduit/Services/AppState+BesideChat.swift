@@ -44,10 +44,22 @@ final class BesideChatLive {
     /// Every kept chat may have moved (the socket closed, a pane opened).
     /// Notices of chats no longer followed go.
     func moved(keeping chats: [BackgroundChat]) {
-        let kept = Set(chats.map { ObjectIdentifier($0.state) })
-        self.chats = self.chats.filter { kept.contains($0.key) }
+        forget(keeping: chats)
         self.chats.values.forEach { $0.moved() }
     }
+
+    /// Notices of chats no longer followed go, the rest untouched: called
+    /// whenever the followed chats change (issue 2655).
+    func forget(keeping chats: [BackgroundChat]) {
+        guard !self.chats.isEmpty else { return }
+        let kept = Set(chats.map { ObjectIdentifier($0.state) })
+        if self.chats.keys.contains(where: { !kept.contains($0) }) {
+            self.chats = self.chats.filter { kept.contains($0.key) }
+        }
+    }
+
+    /// How many kept chats have a notice, for tests.
+    var noticeCount: Int { chats.count }
 }
 
 extension AppState {
@@ -180,11 +192,11 @@ extension AppState {
     /// Follows the chat on screen as the one kept beside, from now: what
     /// comes for it reaches the copy too, and leaving it takes a fresh one.
     /// False when it can't be followed, with the pane as it was.
-    private func keepChatOnScreenBeside() -> Bool {
+    func keepChatOnScreenBeside() -> Bool {
         guard canKeepChatOnScreenBeside, let id = activeSessionId else { return false }
         // Its own row's ids, never an alias another row owns or carries
         // too (issue 2602).
-        let ids = followedSessionIDs(for: id)
+        let ids = followedSessionIDs(forChatOpenAs: id)
         let previous = besideChatIDs
         besideChatIDs = ids
         followChatOnScreen(answering: ids, openAs: id, turnRunning: turnState == .running, staysBeside: true)
@@ -198,8 +210,10 @@ extension AppState {
     /// The open beside a kept chat failed and left that chat on screen:
     /// it isn't also beside itself.
     private func besideChatOpenFailed(kept: Set<String>?) {
-        guard let kept, besideChatIDs == kept,
-              let active = activeSessionId, kept.contains(active) else { return }
+        // Still the kept chat on screen: by its id, or by its row when
+        // another row owns the id it opened as (issue 2655).
+        guard let kept, besideChatIDs == kept, let active = activeSessionId,
+              kept.contains(active) || followedSessionIDs(forChatOpenAs: active) == kept else { return }
         besideChatIDs = nil
         backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: kept) }
     }

@@ -15,13 +15,26 @@ import XCTest
 final class PulseFeedTests: XCTestCase {
     /// A visited Pulse tab kept mounted behind another tab isn't on screen
     /// (issue 2515). The polling and card marking that key on this aren't
-    /// tested at the view level.
+    /// tested at the view level; the visit rule they share is, below.
     func testAPulsePageInAHiddenTabIsNotVisible() {
         var shell = V2ShellContext()
         XCTAssertTrue(V2PulsePage.isVisible(shown: true, in: shell))
         XCTAssertFalse(V2PulsePage.isVisible(shown: false, in: shell), "a chat pushed over it")
         shell.isTabActive = false
         XCTAssertFalse(V2PulsePage.isVisible(shown: true, in: shell), "another tab selected over it")
+    }
+
+    /// A card action's reload that starts after the page hid belongs to the
+    /// visit of the tap, so it marks nothing seen (issue 2686). The reloads
+    /// and Undo that key on this aren't tested at the view level; the visit
+    /// rule they share is, here.
+    func testAReadMarksSeenOnlyInTheVisitItBelongsTo() {
+        let tapped = UUID()
+        XCTAssertTrue(V2PulsePage.isOnScreen(shown: true, sceneActive: true, visit: tapped, current: tapped))
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: true, sceneActive: true, visit: tapped, current: UUID()),
+                       "another tab selected, or the app backgrounded, before the reload began")
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: true, sceneActive: false, visit: tapped, current: tapped), "off screen")
+        XCTAssertFalse(V2PulsePage.isOnScreen(shown: false, sceneActive: true, visit: tapped, current: tapped), "a chat pushed over it")
     }
 
     private func appState() throws -> AppState {
@@ -881,7 +894,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.activeSessionId, "fresh")
         XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "fresh", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testDoItsCallCheckGoesByTheProfilePulseRunsIn() throws {
@@ -1019,7 +1032,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(creates, 0, "an item found in a chat starts no new one")
         XCTAssertEqual(state.pendingArtifactReveal?.messageID, 42)
         XCTAssertEqual(state.composerPrefillText, fact.actionMessage)
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testADueWithNoTimeIsDueByTheEndOfItsDay() throws {
@@ -1057,7 +1070,7 @@ final class PulseFeedTests: XCTestCase {
         let opened = await state.actOnPulseCard(asking, words: "Run the audit again")
         XCTAssertTrue(opened)
         XCTAssertEqual(state.composerPrefillText, "Run the audit again", "the ask's words, not the card's reminder")
-        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default", dashboard: state.activeDashboardID))
     }
 
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {

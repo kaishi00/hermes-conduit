@@ -13,7 +13,7 @@
 import Foundation
 
 /// The dashboard profile a catalog belongs to.
-struct SessionCatalogOwner: Equatable {
+struct SessionCatalogOwner: Hashable {
     let dashboardID: UUID?
     let profile: String
 }

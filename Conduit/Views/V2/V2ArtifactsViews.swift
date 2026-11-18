@@ -214,6 +214,8 @@ private struct ArtifactsList: View {
     @State private var saveFailure: String?
     /// Whether `saveFailure` is from Remove from Saved.
     @State private var removeFailed = false
+    @State private var shareFailed = false
+    @State private var saveFileFailed = false
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -342,6 +344,12 @@ private struct ArtifactsList: View {
             Button("OK", role: .cancel) { saveFailure = nil }
         } message: {
             Text(verbatim: saveFailure ?? "")
+        }
+        .alert(Text("Couldn't open the share sheet. Try again."), isPresented: $shareFailed) {
+            Button("OK", role: .cancel) {}
+        }
+        .alert(Text("Couldn't save the file. Try again."), isPresented: $saveFileFailed) {
+            Button("OK", role: .cancel) {}
         }
     }
 
@@ -786,6 +794,14 @@ private struct ArtifactsList: View {
         } label: {
             Label("Open", systemImage: "arrow.up.left.and.arrow.down.right")
         }
+        // A copy saved straight to Files, without the share sheet (1809).
+        if item.path != nil {
+            Button {
+                saveToFiles(item)
+            } label: {
+                Label("Save to Files", systemImage: "folder")
+            }
+        }
         // Another dashboard's chat and pins are on that dashboard.
         if item.dashboardID == nil {
             Button {
@@ -821,7 +837,13 @@ private struct ArtifactsList: View {
             }
         }
         if let url = item.url {
-            ShareLink(item: url) {
+            // Not a ShareLink: inside a context menu on iPad its popover
+            // has nothing left to anchor to and never shows (issue 2701).
+            Button {
+                if !MediaPreviewPresenter.shared.presentShare(link: url) {
+                    shareFailed = true
+                }
+            } label: {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             Button {
@@ -976,6 +998,48 @@ private struct ArtifactsList: View {
             markdown = MarkdownDocument(name: item.name, path: path, text: text,
                                         gatewayMediaDataURL: dataURL,
                                         gatewayMediaFiles: trusted ? resolver : nil)
+        }
+    }
+
+    /// Fetches the file as Open does (its kept copy when the original is
+    /// gone) and hands it to the Files picker, which removes the fetched
+    /// copy when it closes.
+    private func saveToFiles(_ item: ArtifactItem) {
+        guard openingID == nil else { return }
+        guard let path = item.openPath else {
+            missingIsTooLarge = false
+            missing = item
+            return
+        }
+        openingID = item.id
+        let token = UUID()
+        openToken = token
+        let resolver = resolver(for: item)
+        openTask = Task { @MainActor in
+            defer {
+                if openToken == token {
+                    openingID = nil
+                    openToken = nil
+                }
+            }
+            switch await resolver.file(for: path) {
+            case .downloaded(let download):
+                if MediaPreviewPresenter.shared.presentSaveToFiles(downloaded: download) { return }
+            case .tooLarge:
+                openFailed(item, tooLarge: true)
+                return
+            case .unavailable:
+                break
+            }
+            guard !Task.isCancelled else { return }
+            let dataURL = await resolver.dataURL(for: path)
+            guard !Task.isCancelled else { return }
+            if let dataURL, await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: item.name) {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            Haptics.error()
+            saveFileFailed = true
         }
     }
 

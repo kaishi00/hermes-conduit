@@ -161,8 +161,9 @@ struct ComposerBar: View {
         ComposerPasteTextView.minimumHeight(for: ComposerPasteTextView.bodyFont(in: sizeCategory, from: columnText))
     }
 
-    static func composerDraftKey(for sessionID: String?, profile: String) -> ComposerDraftKey {
+    static func composerDraftKey(for sessionID: String?, profile: String, dashboard: UUID?) -> ComposerDraftKey {
         ComposerDraftKey(
+            dashboard: dashboard,
             profile: profile,
             sessionID: sessionID ?? ComposerDraftKey.newConversationSessionID
         )
@@ -196,7 +197,7 @@ struct ComposerBar: View {
         _ rhs: ComposerDraftKey,
         identity: ChatScrollSessionIdentity
     ) -> Bool {
-        guard lhs.profile == rhs.profile else { return false }
+        guard lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
         if lhs == rhs { return true }
         guard !lhs.isNewConversation, !rhs.isNewConversation else { return false }
         return identity.areEquivalent(lhs.sessionID, rhs.sessionID)
@@ -654,8 +655,11 @@ struct ComposerBar: View {
         .onReceive(ComposerPaste.requests) { target in
             pasteFromTranscript(target)
         }
-        .onChange(of: updates.inputs.draftKeyOnScreen) { _, newKey in
+        .onChange(of: updates.inputs.draftKeyOnScreen) { oldKey, newKey in
             handoffComposer(to: newKey)
+            // Words kept on their way back while another dashboard was on
+            // screen land once theirs is back (issue 2702).
+            if oldKey.dashboard != newKey.dashboard { applyComposerRestoreRequests() }
         }
         .onChange(of: updates.inputs.hasRoomSurface) { _, roomActive in
             // The room surface unmounts this composer's subtree. Persist the
@@ -664,7 +668,7 @@ struct ComposerBar: View {
             if roomActive, let key = Self.draftKeyToKeep(
                 loaded: loadedDraftKey,
                 loadedClearCount: loadedDraftClearCount,
-                storeClearCount: draftStore.clearCount
+                storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
             ) {
                 saveDraft(for: key)
             }
@@ -700,7 +704,7 @@ struct ComposerBar: View {
             if let key = Self.draftKeyToKeep(
                 loaded: loadedDraftKey,
                 loadedClearCount: loadedDraftClearCount,
-                storeClearCount: draftStore.clearCount
+                storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
             ) {
                 saveDraft(for: key)
             }
@@ -1883,7 +1887,7 @@ struct ComposerBar: View {
         let submittedAction = choice.map { $0.busyInputMode?.composerAction ?? .send } ?? action
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
-        let submittedClearCount = draftStore.clearCount
+        let submittedClearCount = draftStore.clearCount(for: submittedDraftKey.dashboard)
         let submittedDashboardID = appState.activeDashboardID
         let submittedChatTitle = appState.displayedChatTitle
         // The words may come back after the chat's runtime id has moved on:
@@ -1997,7 +2001,7 @@ struct ComposerBar: View {
     }
 
     private func restoreRequest(_ request: ComposerRestoreRequest, belongsTo key: ComposerDraftKey) -> Bool {
-        guard request.key.profile == key.profile else { return false }
+        guard request.key.dashboard == key.dashboard, request.key.profile == key.profile else { return false }
         return appState.composerDraftKeysAreSameChat(request.key, key)
     }
 
@@ -2236,10 +2240,14 @@ struct ComposerBar: View {
             return
         }
         let key = appState.durableComposerDraftKeyOnScreen
+        // A sign-out of that dashboard while Hermes transcribes clears its
+        // drafts: the words don't come back into it (issue 2744).
+        let clearCount = draftStore.clearCount(for: key.dashboard)
         composerErrorMessage = nil
         Task {
             do {
                 let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
+                guard draftStore.clearCount(for: key.dashboard) == clearCount else { return }
                 guard !words.isEmpty else {
                     composerErrorMessage = AppLocalization.string("No speech was captured.")
                     return
@@ -2290,7 +2298,7 @@ struct ComposerBar: View {
     ) {
         // A sign-out or server switch cleared the drafts while it was on
         // its way: the outgoing account's words don't come back.
-        guard Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount, storeClearCount: draftStore.clearCount) != nil else {
+        guard Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount, storeClearCount: draftStore.clearCount(for: key.dashboard)) != nil else {
             return
         }
         let failed = ComposerDraft(
@@ -2540,7 +2548,7 @@ struct ComposerBar: View {
     }
 
     private func composerDraftKey(for sessionID: String?) -> ComposerDraftKey {
-        Self.composerDraftKey(for: sessionID, profile: appState.activeProfile)
+        Self.composerDraftKey(for: sessionID, profile: appState.activeProfile, dashboard: appState.activeDashboardID)
     }
 
     private var asyncAttachmentContext: AsyncAttachmentContext {
@@ -2633,7 +2641,7 @@ struct ComposerBar: View {
         attachments = draft.attachments
         replyReference = draft.replyReference
         loadedDraftKey = key
-        loadedDraftClearCount = draftStore.clearCount
+        loadedDraftClearCount = draftStore.clearCount(for: key.dashboard)
         composerTextHeight = restingTextHeight
         isFocused = false
         isShowingSlashSuggestions = false
@@ -2646,7 +2654,7 @@ struct ComposerBar: View {
         let keptKey = Self.draftKeyToKeep(
             loaded: loadedDraftKey,
             loadedClearCount: loadedDraftClearCount,
-            storeClearCount: draftStore.clearCount
+            storeClearCount: draftStore.clearCount(for: loadedDraftKey?.dashboard)
         )
         // The same chat under another id (a saved copy's chat opening, the
         // chat a New Chat created): the field stays as it is, focus and

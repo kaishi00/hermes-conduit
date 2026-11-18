@@ -108,6 +108,30 @@ final class KanbanStore {
         loadedBoardSlug == resolvedSelectedBoardSlug
     }
 
+    /// The board an open task belongs to: the loaded one, or the one picked
+    /// while no snapshot is loaded (a kept board showing as a switch loads,
+    /// or a configure reset). The sheet and its reads compare it.
+    var openTaskBoardSlug: String {
+        loadedBoardSlug ?? resolvedSelectedBoardSlug
+    }
+
+    /// The task sheet on screen now (its own presentation id, so a reopened
+    /// task or another task's sheet differs), or nil once it closed (a board
+    /// change, or the person swiped it away). The sheet keeps it; a two-step
+    /// action that outlives its sheet reads it to report on the board.
+    private(set) var presentedTaskSheet: UUID?
+
+    /// The task sheet `presentation` is on screen.
+    func taskSheetAppeared(_ presentation: UUID) {
+        presentedTaskSheet = presentation
+    }
+
+    /// The task sheet `presentation` went: forgotten only if no other
+    /// sheet took its place meanwhile.
+    func taskSheetDisappeared(_ presentation: UUID) {
+        if presentedTaskSheet == presentation { presentedTaskSheet = nil }
+    }
+
     /// Stamp of the board/server context that currently owns mutations, or
     /// nil while no snapshot is loaded. Staged destructive confirmations
     /// capture this at STAGE time and must match it again at CONFIRM time;
@@ -237,47 +261,17 @@ final class KanbanStore {
         }
 
         do {
-            let boardResponse = try await service.fetchBoards()
-            guard generation == loadGeneration else { return }
-
-            setIfChanged(\.boards, boardResponse.boards)
-            setIfChanged(\.currentServerBoardSlug, boardResponse.current)
-            boardsAnswered = true
-
-            if !selectedBoardSlug.isEmpty && !boards.contains(where: { $0.slug == selectedBoardSlug }) {
-                selectedBoardSlug = ""
-                if let persistenceKey { defaults.removeObject(forKey: persistenceKey) }
+            do {
+                try await loadOnce(service: service, generation: generation, includeArchived: includeArchived)
+            } catch let error where board == nil && generation == loadGeneration && DashboardTicketBridgeError.isTransient(error) {
+                // Nothing to show yet: one read Hermes dropped or answered
+                // late asks once more before the board says it failed, as
+                // Voice settings' config read does (issue 2719). Loading
+                // stays on meanwhile, so the poll doesn't read too.
+                try await Task.sleep(for: Self.firstLoadRetryDelay)
+                guard generation == loadGeneration else { return }
+                try await loadOnce(service: service, generation: generation, includeArchived: includeArchived)
             }
-
-            // Pin ONE concrete identity for this load. An omitted board=
-            // would let the backend resolve "current" independently at GET
-            // /board time, so loadedBoardSlug could drift from what was truly
-            // fetched if another client moved the pointer in between.
-            let resolvedSlug = selectedBoardSlug.isEmpty ? boardResponse.current : selectedBoardSlug
-
-            async let loadedBoard = service.fetchBoard(slug: resolvedSlug, includeArchived: includeArchived)
-            async let loadedProfiles = try? service.fetchProfiles()
-            async let loadedProjects = try? service.fetchProjects()
-            async let loadedOrchestration = try? service.fetchOrchestration()
-
-            let resolvedBoard = try await loadedBoard
-            let resolvedProfiles = await loadedProfiles
-            let resolvedProjects = await loadedProjects
-            let resolvedOrchestration = await loadedOrchestration
-            guard generation == loadGeneration else { return }
-
-            // A poll usually brings back the same snapshot; only what changed
-            // is written, since every write redraws the board.
-            setIfChanged(\.board, resolvedBoard)
-            // Exactly the slug used in GET /board?board=... above.
-            setIfChanged(\.loadedBoardSlug, resolvedSlug)
-            if let resolvedProfiles { setIfChanged(\.profiles, resolvedProfiles) }
-            if let resolvedProjects { setIfChanged(\.projects, resolvedProjects) }
-            if let resolvedOrchestration { setIfChanged(\.orchestration, resolvedOrchestration) }
-            // Cleared on success rather than as the load starts: a failure
-            // that persists keeps its banner steady between polls instead of
-            // blinking off and on.
-            setIfChanged(\.errorMessage, nil)
         } catch is CancellationError {
             return
         } catch {
@@ -286,6 +280,57 @@ final class KanbanStore {
             // A failure that persists reads the same each poll.
             setIfChanged(\.errorMessage, UserFacingError.message(for: error))
         }
+    }
+
+    /// How long a first load that failed in transit waits before asking
+    /// again (issue 2719); the open task's first read waits as long. Only
+    /// tests change it.
+    static var firstLoadRetryDelay: Duration = .seconds(1)
+
+    /// One read of the boards, then the board picked with its profiles,
+    /// projects and orchestration. A stale generation commits nothing.
+    private func loadOnce(service: KanbanService, generation: Int, includeArchived: Bool) async throws {
+        let boardResponse = try await service.fetchBoards()
+        guard generation == loadGeneration else { return }
+
+        setIfChanged(\.boards, boardResponse.boards)
+        setIfChanged(\.currentServerBoardSlug, boardResponse.current)
+        boardsAnswered = true
+
+        if !selectedBoardSlug.isEmpty && !boards.contains(where: { $0.slug == selectedBoardSlug }) {
+            selectedBoardSlug = ""
+            if let persistenceKey { defaults.removeObject(forKey: persistenceKey) }
+        }
+
+        // Pin ONE concrete identity for this load. An omitted board=
+        // would let the backend resolve "current" independently at GET
+        // /board time, so loadedBoardSlug could drift from what was truly
+        // fetched if another client moved the pointer in between.
+        let resolvedSlug = selectedBoardSlug.isEmpty ? boardResponse.current : selectedBoardSlug
+
+        async let loadedBoard = service.fetchBoard(slug: resolvedSlug, includeArchived: includeArchived)
+        async let loadedProfiles = try? service.fetchProfiles()
+        async let loadedProjects = try? service.fetchProjects()
+        async let loadedOrchestration = try? service.fetchOrchestration()
+
+        let resolvedBoard = try await loadedBoard
+        let resolvedProfiles = await loadedProfiles
+        let resolvedProjects = await loadedProjects
+        let resolvedOrchestration = await loadedOrchestration
+        guard generation == loadGeneration else { return }
+
+        // A poll usually brings back the same snapshot; only what changed
+        // is written, since every write redraws the board.
+        setIfChanged(\.board, resolvedBoard)
+        // Exactly the slug used in GET /board?board=... above.
+        setIfChanged(\.loadedBoardSlug, resolvedSlug)
+        if let resolvedProfiles { setIfChanged(\.profiles, resolvedProfiles) }
+        if let resolvedProjects { setIfChanged(\.projects, resolvedProjects) }
+        if let resolvedOrchestration { setIfChanged(\.orchestration, resolvedOrchestration) }
+        // Cleared on success rather than as the load starts: a failure
+        // that persists keeps its banner steady between polls instead of
+        // blinking off and on.
+        setIfChanged(\.errorMessage, nil)
     }
 
     /// A write notifies observers even when the value is equal, so a

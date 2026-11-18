@@ -700,7 +700,36 @@ final class PushNotificationService: ObservableObject {
     /// 2683). The chat hands over the gateway its host names for the
     /// profile; a push's own, when one arrived, stays. Kept across
     /// relaunches when the pairing is encrypted, as a push's is.
-    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String) {
+    /// Where each row-drawn card's question was listed: its answer is
+    /// refused rather than sent unsealed when, at the send, its pairing
+    /// has no key on this iPhone while the profile has one under another
+    /// gateway, or the keys can't be read (issue 2692).
+    struct RowCardSealContext: Equatable, Sendable {
+        let gatewayID: String
+        let dashboardID: UUID?
+        let profile: String
+    }
+    private var rowCardSealContexts: [String: RowCardSealContext] = [:]
+
+    /// Kept across relaunches, so a card restored with its chat is
+    /// refused the same before its wait is read again; newest last, capped.
+    static let rowCardSealContextsKey = "conduit.e2e.rowCardSealContexts"
+
+    func rowCardSealContext(forRequestID requestID: String) -> RowCardSealContext? {
+        if let context = rowCardSealContexts[requestID] { return context }
+        let rows = UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? []
+        guard let row = rows.last(where: { $0.count == 4 && $0[0] == requestID }) else { return nil }
+        return RowCardSealContext(gatewayID: row[1], dashboardID: UUID(uuidString: row[2]), profile: row[3])
+    }
+
+    func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, sealContext: RowCardSealContext? = nil) {
+        if let sealContext, rowCardSealContexts[requestID] != sealContext {
+            rowCardSealContexts[requestID] = sealContext
+            var rows = (UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? [])
+                .filter { $0.count == 4 && $0[0] != requestID }
+            rows.append([requestID, sealContext.gatewayID, sealContext.dashboardID?.uuidString ?? "", sealContext.profile])
+            UserDefaults.standard.set(Array(rows.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.rowCardSealContextsKey)
+        }
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
         if Self.keepsGatewayAcrossRelaunch(gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) {
@@ -1489,6 +1518,27 @@ final class PushNotificationService: ObservableObject {
 
     /// A clarify answer for a gateway with an encryption key is sealed for
     /// it; the plugin rejects plaintext from an encrypted pairing.
+    /// Whether a row-drawn card's unsealed answer is refused, worked out
+    /// at the send from the keys as they are then: a key gone since the
+    /// card was drawn counts, and keys that can't be read refuse too.
+    /// A card with no context (a push's, or a plaintext pairing's) sends.
+    nonisolated static func rowCardAnswerRefused(
+        context: RowCardSealContext?,
+        body: [String: String],
+        installationID: String?,
+        records: [E2EKeyRecord]?
+    ) -> Bool {
+        guard let context, body["answer"] != nil else { return false }
+        guard let records else { return true }
+        return AppState.needsYouCardMustSeal(
+            gatewayID: body["gateway_id"] ?? context.gatewayID,
+            dashboardID: context.dashboardID,
+            profile: context.profile,
+            installationID: installationID,
+            records: records
+        )
+    }
+
     nonisolated static func sealedRespondBody(
         _ body: [String: String],
         requestID: String,
@@ -1600,6 +1650,10 @@ final class PushNotificationService: ObservableObject {
         case insecureTransport
         /// Longer than the relay takes (413 `answer_too_large`).
         case answerTooLarge
+        /// The profile's list names a pairing this iPhone holds no key for,
+        /// while it holds one for the profile under another: the answer
+        /// would go unsealed, and the plugin refuses that (issue 2692).
+        case needsReconnect
 
         var errorDescription: String? {
             switch self {
@@ -1613,6 +1667,8 @@ final class PushNotificationService: ObservableObject {
                 return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.", table: .notifications)
             case .answerTooLarge:
                 return AppLocalization.string("That answer is too long to send from a notification card. Open the chat in Conduit and answer there.", table: .notifications)
+            case .needsReconnect:
+                return AppLocalization.string("This answer can't be sent privately yet. Reconnect to this Hermes in Conduit, then answer again.", table: .notifications)
             }
         }
     }
@@ -1826,12 +1882,18 @@ final class PushNotificationService: ObservableObject {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue("Bearer \(registration.credential)", forHTTPHeaderField: "Authorization")
+        let records = Self.e2eKeyStore.readRecords()
         let sealed = try Self.sealedRespondBody(
             body,
             requestID: requestId,
             installationID: registration.installationID,
-            records: Self.e2eKeyStore.records()
+            records: records ?? []
         )
+        if sealed["answer"] != nil, sealed == body,
+           Self.rowCardAnswerRefused(context: rowCardSealContext(forRequestID: requestId), body: body,
+                                     installationID: registration.installationID, records: records) {
+            throw RelayDecisionError.needsReconnect
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: sealed)
         do {
             let (data, response) = try await URLSession.shared.data(for: request)

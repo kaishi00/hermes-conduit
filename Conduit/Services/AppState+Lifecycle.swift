@@ -254,6 +254,13 @@ extension AppState {
         let sessions: [SessionSummary]
         /// A full read was due but only the newest page was read.
         let olderPagesDeferred: Bool
+        /// The rows came through the catalog cache (the dashboard's list),
+        /// so the list may show the cache's cron rows, which hold the
+        /// best-ranked read's (#2759). The gateway's list doesn't fill the
+        /// cache: its rows are listed as they are.
+        var cronFromCache = false
+        /// This read fetched the cron rows itself and committed them.
+        var fetchedCron = false
     }
 
     /// Which catalog a full read reads: the same profile, dashboard and
@@ -308,6 +315,108 @@ extension AppState {
             // stored property: a Release build (Swift 6.4.2, whole-module)
             // fails SIL verification on `waiters.values` followed by a write,
             // even through `Array(waiters.values)`.
+            let waiting = waiters
+            waiters = [:]
+            for (_, waiter) in waiting { waiter.resume(with: result) }
+        }
+    }
+
+    /// The chat list's newest page going out (issue 2604): the live list's
+    /// first page and the archived calls beside it. A newest-page read
+    /// asked for meanwhile by a caller that may take a read already going
+    /// out (`joinsReadInFlight`), for the same profile, dashboard and
+    /// bridge, with nothing written, removed or committed since it went
+    /// out (StartupReads.Fence), waits for its answer instead of sending
+    /// the same requests: on a return the chat sync, the drawer's Cron
+    /// list and the Tasks tab each read it. Each read still sends its own
+    /// cron read when it needs one and commits on its own.
+    @MainActor
+    final class NewestCatalogPageRead {
+        struct Key: Equatable {
+            let profile: String
+            let dashboardID: UUID?
+            let bridge: ObjectIdentifier
+        }
+
+        let key: Key
+        let fence: StartupReads.Fence
+        /// The catalog read that sent it. A read that takes its answer
+        /// commits under this number, so rows from when it went out never
+        /// land over those of a read that started after it and committed.
+        let read: UInt64
+        private var task: Task<Void, Never>?
+        private var waiters: [UUID: CheckedContinuation<DashboardSessionCatalog, Error>] = [:]
+        private var result: Result<DashboardSessionCatalog, Error>?
+        /// Stopped because nobody waited for it any more: a read asked for
+        /// before it ends sends its own rather than take its cancellation.
+        private var cancelled = false
+
+        init(key: Key, fence: StartupReads.Fence, read: UInt64) {
+            self.key = key
+            self.fence = fence
+            self.read = read
+        }
+
+        var waitingReads: Int { waiters.count }
+
+        /// Whether a read asked for now under `fence` may take this one's
+        /// answer: one sent while a write was still out may predate it.
+        func serves(_ key: Key, fence: StartupReads.Fence) -> Bool {
+            result == nil && !cancelled && self.key == key && self.fence.writesOut == 0 && self.fence == fence
+        }
+
+        /// Sends the read. `ended` runs as it ends, before any waiter
+        /// hears, so nothing joins a read that has already answered.
+        func start(
+            _ fetch: @escaping @MainActor () async throws -> DashboardSessionCatalog,
+            ended: @escaping @MainActor () -> Void
+        ) {
+            task = Task { @MainActor [weak self] in
+                let result: Result<DashboardSessionCatalog, Error>
+                do {
+                    result = .success(try await fetch())
+                } catch {
+                    result = .failure(error)
+                }
+                ended()
+                self?.finish(result)
+            }
+        }
+
+        /// Waits for the answer. A cancelled waiter stops waiting with
+        /// CancellationError; the read goes on for the others, and stops
+        /// once nobody waits for it.
+        func answer() async throws -> DashboardSessionCatalog {
+            if let result { return try result.get() }
+            let id = UUID()
+            return try await withTaskCancellationHandler {
+                try await withCheckedThrowingContinuation { continuation in
+                    if let result {
+                        continuation.resume(with: result)
+                    } else if Task.isCancelled {
+                        continuation.resume(throwing: CancellationError())
+                    } else {
+                        waiters[id] = continuation
+                    }
+                }
+            } onCancel: {
+                Task { @MainActor [weak self] in self?.leave(id) }
+            }
+        }
+
+        private func leave(_ id: UUID) {
+            guard let waiter = waiters.removeValue(forKey: id) else { return }
+            waiter.resume(throwing: CancellationError())
+            if waiters.isEmpty {
+                cancelled = true
+                task?.cancel()
+            }
+        }
+
+        private func finish(_ result: Result<DashboardSessionCatalog, Error>) {
+            self.result = result
+            // The whole dictionary, never `.values` off the stored property
+            // (see CatalogReadInFlight.finish).
             let waiting = waiters
             waiters = [:]
             for (_, waiter) in waiting { waiter.resume(with: result) }

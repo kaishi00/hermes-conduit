@@ -9506,6 +9506,88 @@
           }
         }
       }
+    },
+    "This answer can't be sent privately yet. Reconnect to this Hermes in Conduit, then answer again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Antwort kann noch nicht privat gesendet werden. Verbinde dich in Conduit erneut mit diesem Hermes und antworte dann noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta respuesta aún no se puede enviar de forma privada. Vuelve a conectarte a este Hermes en Conduit y responde de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette réponse ne peut pas encore être envoyée de façon privée. Reconnectez-vous à ce Hermes dans Conduit, puis répondez à nouveau."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jawaban ini belum bisa dikirim secara privat. Hubungkan ulang ke Hermes ini di Conduit, lalu jawab lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa risposta non può ancora essere inviata in modo privato. Riconnettiti a questo Hermes in Conduit, poi rispondi di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この回答はまだ非公開で送信できません。ConduitでこのHermesに再接続してから、もう一度回答してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 답변은 아직 비공개로 보낼 수 없어요. Conduit에서 이 Hermes에 다시 연결한 다음 다시 답하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tej odpowiedzi nie można jeszcze wysłać prywatnie. Połącz się ponownie z tym Hermesem w Conduit, a potem odpowiedz jeszcze raz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta resposta ainda não pode ser enviada de forma privada. Reconecte-se a este Hermes no Conduit e responda de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот ответ пока нельзя отправить приватно. Переподключитесь к этому Hermes в Conduit и ответьте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu yanıt henüz gizli olarak gönderilemiyor. Conduit'te bu Hermes'e yeniden bağlanın, ardından tekrar yanıtlayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此回答暂时无法私密发送。请在 Conduit 中重新连接此 Hermes，然后再回答一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此回答暫時無法私密傳送。請在 Conduit 中重新連線此 Hermes，然後再回答一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -309,6 +309,7 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
             updateSessionReferenceTitles()
+            noteRowOfChatOnScreenOnceListed()
         }
     }
     /// Catalog owner captured only after its asynchronous load is admitted.
@@ -414,6 +415,7 @@ final class AppState: ObservableObject {
             // Pinned runs carry read state too (#485).
             observeChatReadState()
             updateSessionReferenceTitles()
+            noteRowOfChatOnScreenOnceListed()
         }
     }
     /// The catalog's rows under every id they answer to, built once per
@@ -537,6 +539,15 @@ final class AppState: ObservableObject {
     var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published var sessionMutationID: String?
     @Published var isRefreshingSessionCatalog = false
+    /// Catalog reads on their way over a list Hermes may have changed since
+    /// (`chatListShownIsStale`), by the scope each reads: the Chats list
+    /// says "Updating…" while its own scope has one (issue 2706). Changed
+    /// only by reads over a stale list, so the list's routine reads over a
+    /// fresh one publish nothing.
+    @Published var staleChatListReads: [SessionCatalogOwner: Int] = [:]
+    /// The list on screen was read before the app last went to the
+    /// background: it may be out of date until the next read lands.
+    var chatListPredatesBackground = false
     /// Whether `sessions` is the catalog Hermes answered for the dashboard
     /// profile on screen (see SessionCatalogLoad.swift).
     @Published var sessionCatalogLoadState = SessionCatalogLoadState()
@@ -580,6 +591,9 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // Usage Details too: it counts as covering the chat, so
+                    // the new one's notifications would stay (issue 2740).
+                    if sessionUsageTarget != nil { sessionUsageTarget = nil }
                     // A failed send's line under the composer was the chat
                     // left's; a reconnect's new id for the same one keeps it.
                     if let failure = sendFailureShown {
@@ -604,8 +618,12 @@ final class AppState: ObservableObject {
     /// while the app acts on the chat on screen.
     var liveChatScope: LiveChatScope?
     /// Chats left while their reply was still coming, following the rest
-    /// of it (all-live stage 2, AppState+BackgroundChats.swift).
-    var backgroundChats: [BackgroundChat] = []
+    /// of it (all-live stage 2, AppState+BackgroundChats.swift). A chat no
+    /// longer followed (closed, released, opened) drops its notice at once
+    /// (issue 2655).
+    var backgroundChats: [BackgroundChat] = [] {
+        didSet { besideChatLive.forget(keeping: backgroundChats) }
+    }
     /// The chat kept beside the one on screen in a wide window (all-live
     /// stage 2, AppState+BesideChat.swift), by the ids it answers to. Set
     /// as Open Beside is picked; the chat is followed from the moment it
@@ -631,6 +649,14 @@ final class AppState: ObservableObject {
     /// The followed chat a profile switch shows while it lands, by the ids
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?
+    /// The catalog row of the chat on screen, taken when it opened: leaving
+    /// it later follows that row's chat, though Hermes may since have made
+    /// the id it's open under another listed chat's own (issue 2655).
+    /// Kept with the ids the chat was open under, so a path that sets the
+    /// chat on screen another way never reads another chat's row, and as
+    /// the row read then, so the chat stays itself once its row leaves the
+    /// catalog (issue 2764).
+    var rowOfChatOnScreen: (row: SessionSummary, openIDs: Set<String>, dashboardID: UUID?, profile: String)?
     var shownChatChanges: AnyCancellable?
     /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
     /// the all-live rework). Its changes publish as AppState's.
@@ -1199,6 +1225,9 @@ final class AppState: ObservableObject {
     /// (RoomLinks.swift). RootView shows who it's from in a sheet, which
     /// asks before linking.
     @Published var pendingRoomLink: RoomLinkURL?
+    /// A computer's pairing code that opened Conduit (ComputerPairing.swift):
+    /// RootView shows Pair a Computer for it, which asks before sending.
+    @Published var pendingComputerPairing: ComputerPairingLink?
     /// An invite to a room whose notification was tapped (RoomInvites.swift):
     /// RootView shows its join card.
     @Published var presentedRoomInvite: RoomInvite?
@@ -2184,7 +2213,7 @@ final class AppState: ObservableObject {
                 return try await self.steerLiveVoiceFollowUp(sessionID: sessionID, text: text)
             },
             latestThreadReply: { [weak self] thread in
-                await self?.latestLiveVoiceThreadReply(thread)
+                await self?.latestLiveVoiceThreadReply(thread) ?? .failed
             },
             threadOwnsSession: { [weak self] thread, sessionID in
                 guard let self else { return thread.owns(sessionID: sessionID) }
@@ -2656,6 +2685,10 @@ final class AppState: ObservableObject {
     /// The full catalog read under way, for a read asked for meanwhile to
     /// join rather than send its own (CatalogReadInFlight).
     var catalogReadInFlight: CatalogReadInFlight?
+    /// The chat list's newest page going out, for a newest-page read asked
+    /// for meanwhile to take its answer rather than send the same requests
+    /// (NewestCatalogPageRead, issue 2604).
+    var newestCatalogPageRead: NewestCatalogPageRead?
     /// Ticket for each read that replaces the published list wholesale
     /// (`loadSessions` and a chat sync), taken when the read starts, and
     /// the newest ticket whose answer is listed. Reads overlap (a reconnect,

@@ -12799,6 +12799,88 @@
         }
       }
     },
+    "Another chat here goes by this chat's id, so its usage can't be told apart." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein anderer Chat hier trägt die ID dieses Chats, daher lässt sich seine Nutzung nicht zuordnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otro chat de aquí usa el mismo id que este, así que no se puede distinguir su uso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Une autre discussion ici porte l’identifiant de celle-ci, son utilisation ne peut donc pas être distinguée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan lain di sini memakai id obrolan ini, jadi penggunaannya tidak bisa dibedakan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un'altra chat qui usa l'id di questa chat, quindi il suo utilizzo non si può distinguere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここにある別のチャットがこのチャットと同じIDを使っているため、使用量を区別できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기 있는 다른 채팅이 이 채팅의 ID를 쓰고 있어서 사용량을 구분할 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inny czat tutaj używa identyfikatora tego czatu, więc nie da się rozróżnić jego użycia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Outro chat aqui usa o id deste chat, então não dá para distinguir o uso dele."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Другой чат здесь использует идентификатор этого чата, поэтому его использование нельзя отличить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki başka bir sohbet bu sohbetin kimliğini kullanıyor, bu yüzden kullanımı ayırt edilemiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这里的另一个聊天使用了此聊天的 ID，因此无法区分其用量。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這裡的另一個聊天使用了此聊天的 ID，因此無法區分其用量。"
+          }
+        }
+      }
+    },
     "Answer in your own words." : {
       "localizations" : {
         "de" : {
@@ -43174,6 +43256,88 @@
         }
       }
     },
+    "Couldn't open the share sheet. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Teilen-Menü ließ sich nicht öffnen. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo abrir el menú para compartir. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’ouvrir la feuille de partage. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat membuka lembar bagikan. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile aprire il foglio di condivisione. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有シートを開けませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유 시트를 열 수 없습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się otworzyć arkusza udostępniania. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível abrir o menu de compartilhamento. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось открыть меню «Поделиться». Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paylaşım sayfası açılamadı. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法打开共享表单。请再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法打開分享表單。請再試一次。"
+          }
+        }
+      }
+    },
     "Couldn't open this file" : {
       "localizations" : {
         "de" : {
@@ -43668,6 +43832,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法儲存"
+          }
+        }
+      }
+    },
+    "Couldn't save the file. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Datei ließ sich nicht sichern. Versuch es noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se pudo guardar el archivo. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossible d’enregistrer le fichier. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak dapat menyimpan file. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Impossibile salvare il file. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ファイルを保存できませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "파일을 저장할 수 없습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie udało się zapisać pliku. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não foi possível salvar o arquivo. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не удалось сохранить файл. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dosya kaydedilemedi. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无法存储文件。请再试一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無法儲存檔案。請再試一次。"
           }
         }
       }
@@ -103491,84 +103737,84 @@
         }
       }
     },
-    "Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Gemini Live runs on the Watch; GPT-Live and Grok run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
+    "Open Conduit on your Watch to talk to Hermes: the call starts right away, or with a tap if you turn off Call on open in the Watch's settings. Pick the voice on the Watch's home screen: Gemini Live and Qwen Live run on the Watch; GPT-Live, Grok and Local Live, your own speech server, run on your Hermes host. Calls keep going with your wrist down and your iPhone locked, and are saved to voice history." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Öffne Conduit auf deiner Watch, um mit Hermes zu sprechen: Der Anruf startet sofort oder per Tippen, wenn du „Beim Öffnen anrufen“ in den Einstellungen der Watch ausschaltest. Gemini Live läuft auf der Watch, GPT-Live und Grok laufen auf deinem Hermes-Host. Anrufe laufen bei gesenktem Handgelenk und gesperrtem iPhone weiter und werden im Sprachverlauf gespeichert."
+            "value" : "Öffne Conduit auf deiner Watch, um mit Hermes zu sprechen: Der Anruf startet sofort oder per Tippen, wenn du „Beim Öffnen anrufen“ in den Einstellungen der Watch ausschaltest. Die Stimme wählst du auf dem Startbildschirm der Watch: Gemini Live und Qwen Live laufen auf der Watch, GPT-Live, Grok und Local Live, dein eigener Sprachserver, laufen auf deinem Hermes-Host. Anrufe laufen bei gesenktem Handgelenk und gesperrtem iPhone weiter und werden im Sprachverlauf gespeichert."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abre Conduit en tu Apple Watch para hablar con Hermes: la llamada empieza al instante, o con un toque si desactivas Llamar al abrir en los ajustes de Conduit en el Apple Watch. Gemini Live se ejecuta en el Apple Watch; GPT-Live y Grok se ejecutan en tu host de Hermes. Las llamadas continúan con la muñeca bajada y el iPhone bloqueado, y se guardan en el historial de voz."
+            "value" : "Abre Conduit en tu Apple Watch para hablar con Hermes: la llamada empieza al instante, o con un toque si desactivas Llamar al abrir en los ajustes de Conduit en el Apple Watch. Elige la voz en la pantalla de inicio del Apple Watch: Gemini Live y Qwen Live se ejecutan en el Apple Watch; GPT-Live, Grok y Local Live, tu propio servidor de voz, se ejecutan en tu host de Hermes. Las llamadas continúan con la muñeca bajada y el iPhone bloqueado, y se guardan en el historial de voz."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ouvrez Conduit sur votre Apple Watch pour parler à Hermes : l'appel démarre immédiatement, ou d'un toucher si vous désactivez Appel à l'ouverture dans les réglages de l'Apple Watch. Gemini Live s'exécute sur l'Apple Watch ; GPT-Live et Grok s'exécutent sur votre hôte Hermes. Les appels se poursuivent poignet baissé et iPhone verrouillé, et sont enregistrés dans l'historique vocal."
+            "value" : "Ouvrez Conduit sur votre Apple Watch pour parler à Hermes : l'appel démarre immédiatement, ou d'un toucher si vous désactivez Appel à l'ouverture dans les réglages de l'Apple Watch. Choisissez la voix sur l'écran d'accueil de l'Apple Watch : Gemini Live et Qwen Live s'exécutent sur l'Apple Watch ; GPT-Live, Grok et Local Live, votre propre serveur vocal, s'exécutent sur votre hôte Hermes. Les appels se poursuivent poignet baissé et iPhone verrouillé, et sont enregistrés dans l'historique vocal."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Buka Conduit di Watch Anda untuk berbicara dengan Hermes: panggilan langsung dimulai, atau dengan ketukan jika Anda mematikan “Panggil saat dibuka” di pengaturan Watch. Gemini Live berjalan di Watch; GPT-Live dan Grok berjalan di host Hermes Anda. Panggilan tetap berjalan meskipun pergelangan tangan diturunkan dan iPhone terkunci, dan disimpan ke riwayat suara."
+            "value" : "Buka Conduit di Watch Anda untuk berbicara dengan Hermes: panggilan langsung dimulai, atau dengan ketukan jika Anda mematikan “Panggil saat dibuka” di pengaturan Watch. Pilih suaranya di layar utama Watch: Gemini Live dan Qwen Live berjalan di Watch; GPT-Live, Grok, dan Local Live, server suara Anda sendiri, berjalan di host Hermes Anda. Panggilan tetap berjalan meskipun pergelangan tangan diturunkan dan iPhone terkunci, dan disimpan ke riwayat suara."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apri Conduit su Apple Watch per parlare con Hermes: la chiamata inizia subito, oppure con un tocco se disattivi Chiama all'apertura nelle impostazioni dell'app su Apple Watch. Gemini Live funziona su Apple Watch; GPT-Live e Grok funzionano sul tuo host Hermes. Le chiamate continuano con il polso abbassato e iPhone bloccato e vengono salvate nella cronologia vocale."
+            "value" : "Apri Conduit su Apple Watch per parlare con Hermes: la chiamata inizia subito, oppure con un tocco se disattivi Chiama all'apertura nelle impostazioni dell'app su Apple Watch. Scegli la voce nella schermata principale di Apple Watch: Gemini Live e Qwen Live funzionano su Apple Watch; GPT-Live, Grok e Local Live, il tuo server vocale, funzionano sul tuo host Hermes. Le chiamate continuano con il polso abbassato e iPhone bloccato e vengono salvate nella cronologia vocale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Watch で Conduit を開くと Hermes と話せます。通話はすぐに始まります。Watch の設定で「開いたら通話」をオフにすると、タップで始めます。Gemini Live は Watch 上で、GPT-Live と Grok は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
+            "value" : "Watch で Conduit を開くと Hermes と話せます。通話はすぐに始まります。Watch の設定で「開いたら通話」をオフにすると、タップで始めます。音声は Watch のホーム画面で選べます。Gemini Live と Qwen Live は Watch 上で、GPT-Live、Grok、自分の音声サーバーを使う Local Live は Hermes ホスト上で動作します。通話は手首を下ろしても iPhone がロックされても続き、音声履歴に保存されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Watch에서 Conduit을 열어 Hermes와 대화하세요. 통화는 바로 시작되며, Watch 설정에서 ‘열면 통화 시작’을 끄면 탭해서 시작해요. Gemini Live는 Watch에서, GPT-Live와 Grok은 Hermes 호스트에서 실행돼요. 통화는 손목을 내리거나 iPhone이 잠겨 있어도 계속되며, 음성 기록에 저장돼요."
+            "value" : "Watch에서 Conduit을 열어 Hermes와 대화하세요. 통화는 바로 시작되며, Watch 설정에서 ‘열면 통화 시작’을 끄면 탭해서 시작해요. 음성은 Watch 홈 화면에서 고를 수 있어요. Gemini Live와 Qwen Live는 Watch에서, GPT-Live, Grok, 그리고 내 음성 서버를 쓰는 Local Live는 Hermes 호스트에서 실행돼요. 통화는 손목을 내리거나 iPhone이 잠겨 있어도 계속되며, 음성 기록에 저장돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Otwórz Conduit na zegarku, aby porozmawiać z Hermesem: połączenie rozpocznie się od razu albo po stuknięciu, jeśli wyłączysz opcję „Dzwoń po otwarciu” w ustawieniach zegarka. Gemini Live działa na zegarku; GPT-Live i Grok działają na Twoim hoście Hermes. Połączenia trwają dalej po opuszczeniu nadgarstka i zablokowaniu iPhone’a i są zapisywane w historii głosowej."
+            "value" : "Otwórz Conduit na zegarku, aby porozmawiać z Hermesem: połączenie rozpocznie się od razu albo po stuknięciu, jeśli wyłączysz opcję „Dzwoń po otwarciu” w ustawieniach zegarka. Głos wybierzesz na ekranie głównym zegarka: Gemini Live i Qwen Live działają na zegarku; GPT-Live, Grok i Local Live, Twój własny serwer mowy, działają na Twoim hoście Hermes. Połączenia trwają dalej po opuszczeniu nadgarstka i zablokowaniu iPhone’a i są zapisywane w historii głosowej."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Abra o Conduit no Watch para falar com o Hermes: a chamada começa na hora, ou com um toque se você desativar Chamada ao abrir nos ajustes do Watch. O Gemini Live roda no Watch; o GPT-Live e o Grok rodam no seu host Hermes. As chamadas continuam com o pulso abaixado e o iPhone bloqueado, e são salvas no histórico de voz."
+            "value" : "Abra o Conduit no Watch para falar com o Hermes: a chamada começa na hora, ou com um toque se você desativar Chamada ao abrir nos ajustes do Watch. Escolha a voz na tela inicial do Watch: o Gemini Live e o Qwen Live rodam no Watch; o GPT-Live, o Grok e o Local Live, seu próprio servidor de voz, rodam no seu host Hermes. As chamadas continuam com o pulso abaixado e o iPhone bloqueado, e são salvas no histórico de voz."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Откройте Conduit на часах, чтобы поговорить с Hermes: звонок начнётся сразу или по касанию, если выключить «Звонок при открытии» в настройках часов. Gemini Live работает на часах, а GPT-Live и Grok — на вашем хосте Hermes. Звонки продолжаются, даже когда рука опущена, а iPhone заблокирован, и сохраняются в истории голосовых разговоров."
+            "value" : "Откройте Conduit на часах, чтобы поговорить с Hermes: звонок начнётся сразу или по касанию, если выключить «Звонок при открытии» в настройках часов. Голос выбирается на главном экране часов: Gemini Live и Qwen Live работают на часах, а GPT-Live, Grok и Local Live (ваш собственный речевой сервер) — на вашем хосте Hermes. Звонки продолжаются, даже когда рука опущена, а iPhone заблокирован, и сохраняются в истории голосовых разговоров."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Hermes ile konuşmak için Watch'unuzda Conduit'i açın: Arama hemen başlar ya da Watch'un ayarlarında Açılışta ara seçeneğini kapatırsanız bir dokunuşla başlar. Gemini Live Watch'ta çalışır; GPT-Live ve Grok, Hermes ana makinenizde çalışır. Aramalar bileğiniz aşağıdayken ve iPhone'unuz kilitliyken de devam eder ve ses geçmişine kaydedilir."
+            "value" : "Hermes ile konuşmak için Watch'unuzda Conduit'i açın: Arama hemen başlar ya da Watch'un ayarlarında Açılışta ara seçeneğini kapatırsanız bir dokunuşla başlar. Sesi Watch'un ana ekranında seçin: Gemini Live ve Qwen Live Watch'ta çalışır; GPT-Live, Grok ve kendi konuşma sunucunuzu kullanan Local Live, Hermes ana makinenizde çalışır. Aramalar bileğiniz aşağıdayken ve iPhone'unuz kilitliyken de devam eder ve ses geçmişine kaydedilir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Watch 上打开 Conduit 即可与 Hermes 交谈：通话会立刻开始；若在 Watch 的设置中关闭“打开即通话”，则需轻点开始。Gemini Live 在 Watch 上运行；GPT-Live 和 Grok 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
+            "value" : "在 Watch 上打开 Conduit 即可与 Hermes 交谈：通话会立刻开始；若在 Watch 的设置中关闭“打开即通话”，则需轻点开始。可在 Watch 的主屏幕上选择语音：Gemini Live 和 Qwen Live 在 Watch 上运行；GPT-Live、Grok 以及使用你自己语音服务器的 Local Live 在你的 Hermes 主机上运行。即使放下手腕、iPhone 锁定，通话也会继续，并会保存到语音记录中。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "在 Apple Watch 上打開 Conduit 即可與 Hermes 交談：通話會立即開始；若你在 Apple Watch 的設定中關閉「打開即通話」，則點一下即可開始。Gemini Live 在 Apple Watch 上執行；GPT-Live 和 Grok 在你的 Hermes 主機上執行。即使放下手腕、iPhone 已鎖定，通話仍會繼續，並會儲存到語音記錄中。"
+            "value" : "在 Apple Watch 上打開 Conduit 即可與 Hermes 交談：通話會立即開始；若你在 Apple Watch 的設定中關閉「打開即通話」，則點一下即可開始。可在 Apple Watch 的主畫面上選擇語音：Gemini Live 和 Qwen Live 在 Apple Watch 上執行；GPT-Live、Grok 以及使用你自己語音伺服器的 Local Live 在你的 Hermes 主機上執行。即使放下手腕、iPhone 已鎖定，通話仍會繼續，並會儲存到語音記錄中。"
           }
         }
       }

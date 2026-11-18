@@ -476,6 +476,13 @@ extension AppState {
         if defaults.string(forKey: Self.chatResumeServerIdentityKey) == id.uuidString {
             chatResumeCoordinator.clearResumeState()
         }
+        // And its drafts, kept through switches by dashboard: the new host's
+        // profile and chat ids may match the old one's. A room of the old
+        // host still open closes, its send on its way with it.
+        if activeRoomSurface?.dashboardID == id {
+            closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
+        }
+        forgetDrafts(ofDashboard: id)
         return registry.dashboards[index]
     }
 
@@ -590,6 +597,8 @@ extension AppState {
         // this open fail, later passes may try it again.
         combinedSignInsRefused.remove(id)
         dashboardSwitchGeneration &+= 1
+        // Usage Details is about a row of the dashboard left (issue 2740).
+        if sessionUsageTarget != nil { sessionUsageTarget = nil }
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
         chatSyncSettledDashboardID = nil
@@ -821,6 +830,15 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
     }
 
+    /// A dashboard's unsent drafts, its rooms' words, files and sends on
+    /// their way, and words on their way back to them, at its sign-out or
+    /// move to another server. The other dashboards' stay.
+    func forgetDrafts(ofDashboard id: UUID) {
+        composerDraftStore.removeDrafts(forDashboard: id)
+        composerRestoreRequests.removeAll { $0.dashboardID == id }
+        forgetRoomDrafts(dashboardID: id)
+    }
+
     /// Sign Out of This Dashboard: clears the dashboard's reusable
     /// auth/session/cookie material — and nothing else. SavedDashboard
     /// metadata and every other dashboard's state are untouched. For the
@@ -840,6 +858,9 @@ extension AppState {
             disconnect()
             return
         }
+        // Its unsent drafts, a room's too, outlived the switch away from it
+        // (issue 2702): they belong to the signed-out user.
+        forgetDrafts(ofDashboard: id)
         removeWidgetSnapshot(dashboardID: id)
         liveTurnActivitiesEndDashboard(id.uuidString, false)
         endServerSignIn(dashboardID: id, baseURL: dashboard.normalizedURL)

@@ -20,6 +20,8 @@ enum KanbanServiceError: LocalizedError, Equatable {
     case taskCreatedButMoveFailed(taskID: String?, targetStatus: String, reason: String)
     case mutationInProgress
     case boardNavigationInProgress
+    /// A two-step action's board was replaced by another before its step ran.
+    case boardChanged
     case invalidQueryParameter(String)
     /// The backend answered HTTP 200 with {ok: false, reason: ...}. The server
     /// write did NOT happen (or was refused); the reason is stable product
@@ -43,6 +45,8 @@ enum KanbanServiceError: LocalizedError, Equatable {
             return AppLocalization.string("Another Kanban change is still being saved.", table: .tasks)
         case .boardNavigationInProgress:
             return AppLocalization.string("Still switching boards. Try again once the new board finishes loading.", table: .tasks)
+        case .boardChanged:
+            return AppLocalization.string("The board changed or reloaded before this step ran. Open the task on its board and try again.", table: .tasks)
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.

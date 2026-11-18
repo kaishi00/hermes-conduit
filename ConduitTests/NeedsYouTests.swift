@@ -66,6 +66,29 @@ extension ChatOnScreenTests {
                                                                    installationID: "inst", records: records)
         XCTAssertNotEqual(sealed["answer"], "staging", "an encrypted pairing never gets the answer in plaintext")
         XCTAssertEqual(sealed["gateway_id"], "gw-atlas")
+
+        // Issue 2692: a listed gateway with no key here, while the profile
+        // has one under another, must be sealed or refused (Eric).
+        func mustSeal(_ gateway: String, _ records: [E2EKeyRecord]) -> Bool {
+            AppState.needsYouCardMustSeal(gatewayID: gateway, dashboardID: dashboard, profile: "Atlas",
+                                          installationID: "inst", records: records)
+        }
+        XCTAssertTrue(mustSeal("gw-listed", records), "re-paired: a key for the profile under another gateway")
+        XCTAssertFalse(mustSeal("gw-atlas", records), "its own key seals it")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-default", profile: "default")]), "another profile's key says nothing")
+        XCTAssertFalse(mustSeal("gw-listed", [key("gw-atlas", profile: "atlas", retired: true)]), "nor a retired one")
+        XCTAssertFalse(mustSeal("gw-listed", []), "a plaintext pairing answers as before")
+
+        // Worked out at the send, from the keys as they are then.
+        let context = PushNotificationService.RowCardSealContext(gatewayID: "gw-listed", dashboardID: dashboard, profile: "Atlas")
+        let plain = ["answer": "staging", "gateway_id": "gw-listed"]
+        func refused(_ context: PushNotificationService.RowCardSealContext?, _ records: [E2EKeyRecord]?) -> Bool {
+            PushNotificationService.rowCardAnswerRefused(context: context, body: plain, installationID: "inst", records: records)
+        }
+        XCTAssertTrue(refused(context, records), "no key for the listed gateway, one for the profile elsewhere")
+        XCTAssertTrue(refused(context, nil), "keys that can't be read refuse")
+        XCTAssertFalse(refused(context, []), "a plaintext pairing sends")
+        XCTAssertFalse(refused(nil, records), "a card with no context (a push's) sends as before")
     }
 
     /// Issue 2683: the list's gateway reaches every row, an empty one none.
@@ -221,6 +244,39 @@ extension ChatOnScreenTests {
         XCTAssertTrue(store.otherDashboards.isEmpty)
     }
 
+    /// #2641's review (issue 2655): another combined dashboard's room wait
+    /// counts as the open room's only from the same Hermes; another Hermes'
+    /// room with the same id still banners. A chat wait goes by the open
+    /// chat alone.
+    func testATwinDashboardsRoomWaitIsOpenOnlyFromTheSameHermes() {
+        let twin = UUID(), elsewhere = UUID()
+
+        let room = NeedsYouItem(waitID: "w1", profile: "default", kind: .approval, sessionIDs: ["s-room"],
+                                since: Date(timeIntervalSince1970: 10), roomID: "room-1")
+        let chat = NeedsYouItem(waitID: "w2", profile: "default", kind: .approval, sessionIDs: ["s-chat"],
+                                since: Date(timeIntervalSince1970: 20))
+        let open: (NeedsYouItem) -> Bool = { _ in true }
+        XCTAssertTrue(AppState.otherDashboardWaitIsOpen(room, sameHermes: { true }, isOpenChat: open))
+        XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: { false }, isOpenChat: open), "another Hermes' room")
+        XCTAssertTrue(AppState.otherDashboardWaitIsOpen(chat, sameHermes: { false }, isOpenChat: open))
+        XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: { true }, isOpenChat: { _ in false }))
+
+        // Through the store: the twin's room wait for the room on screen
+        // doesn't banner; another Hermes' wait under the same room id does.
+        let store = NeedsYouStore()
+        // A first read of each banners nothing.
+        store.applyOther([], profile: "default", dashboardID: twin)
+        store.applyOther([], profile: "default", dashboardID: elsewhere)
+        store.applyOther([room], profile: "default", dashboardID: twin,
+                         isOpenChat: { AppState.otherDashboardWaitIsOpen($0, sameHermes: { true }, isOpenChat: open) })
+        XCTAssertNil(store.banner)
+        let theirs = NeedsYouItem(waitID: "w9", profile: "default", kind: .approval, sessionIDs: ["s-other"],
+                                  since: Date(timeIntervalSince1970: 30), roomID: "room-1")
+        store.applyOther([theirs], profile: "default", dashboardID: elsewhere,
+                         isOpenChat: { AppState.otherDashboardWaitIsOpen($0, sameHermes: { false }, isOpenChat: open) })
+        XCTAssertEqual(store.banner?.waitID, "w9")
+    }
+
     /// One Hermes saved at two addresses, both in the group: a wait both
     /// list shows once, as this dashboard's, and banners once, from this
     /// dashboard; one in the chat on screen banners from neither (issue 2631).
@@ -256,6 +312,15 @@ extension ChatOnScreenTests {
         store.dismissBanner(try XCTUnwrap(twinBanner))
         store.apply([wait("w1", 10), wait("w2", 20), wait("w3", 30), wait("w4", 40)], profile: "default", dashboardID: here) { _ in false }
         XCTAssertNil(store.banner, "its banner showed once, from the twin")
+
+        // The twin banners a wait first that this dashboard's read then
+        // lists as open here: the banner goes (#2754 review).
+        let all = (1...5).map { wait("w\($0)", Double($0) * 10) }
+        store.applyOther(all, profile: "default", dashboardID: twin)
+        XCTAssertEqual(store.banner?.waitID, "w5")
+        XCTAssertEqual(store.banner?.dashboardID, twin)
+        store.apply(all, profile: "default", dashboardID: here) { $0.waitID == "w5" }
+        XCTAssertNil(store.banner, "open here, no banner from the twin")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {

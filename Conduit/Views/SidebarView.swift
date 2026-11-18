@@ -465,6 +465,9 @@ struct SessionList: View {
             .refreshable {
                 await appState.refreshSessionCatalog()
             }
+            // Rows that may be out of date say they're being read again
+            // (issue 2706), as V2's Chats list does.
+            .overlay { ChatListUpdatingPill(isUpdating: appState.showsChatListUpdating(overProjects: showingProjects)) }
             .onAppear { revealActiveNestAncestors() }
             .onChange(of: appState.activeSessionId) { _, _ in revealActiveNestAncestors() }
             // The row list covers a parent arriving, leaving, or changing

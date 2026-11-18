@@ -109,25 +109,6 @@ skip_package_updates() {
   if [ "$skip_flag_supported" = "yes" ]; then echo "-skipPackageUpdates"; fi
 }
 
-# Resolve packages on their own first, timed, so a stall there shows apart
-# from the build. The build's own resolution then finds everything in place.
-resolve_packages() {
-  local package_flag started
-  package_flag=$(skip_package_updates)
-  started=$(date +%s)
-  echo "::group::resolve packages${package_flag:+ ($package_flag)}"
-  run_with_deadline 600 "$LOG_DIR/resolve.log" \
-    -resolvePackageDependencies \
-    -project "$PROJECT" \
-    -scheme "$SCHEME" \
-    -derivedDataPath "$DERIVED_DATA_PATH" \
-    ${package_flag:+"$package_flag"} \
-    || echo "::warning::resolving packages on their own failed; the build resolves them itself"
-  echo "::endgroup::"
-  resolve_s=$(( $(date +%s) - started ))
-  echo "build-for-testing: packages resolved in ${resolve_s}s"
-}
-
 run_build() {
   local package_flag
   package_flag=$(skip_package_updates)
@@ -151,13 +132,18 @@ run_build() {
 }
 
 # ci-hosted-build.sh boots the job's simulator alongside this script and names
-# the file its preparation writes when it ends (BUILD_AFTER). Package
-# resolution and the build wait for it (2026-10-15, #629, 3-core 7 GB hosted
-# runners): a build beside the first boot slowed the boot badly (2 of 3 missed
-# their 200 s readiness budget, and the tests then waited 4-7 minutes for the
-# device), and even a package resolution with no device involved sat at
-# "Resolve Package Graph" until 43-73 s after the boot ended (2 of 3 jobs; 21 s
-# in the third). No build started after the preparation had ended was held up.
+# the file its preparation writes when it ends (BUILD_AFTER). The build waits
+# for it (2026-10-15, #629, 3-core 7 GB hosted runners): a build beside the
+# first boot slowed the boot badly (2 of 3 missed their 200 s readiness
+# budget, and the tests then waited 4-7 minutes for the device). No build
+# started after the preparation had ended was held up.
+#
+# No separate package resolution: the timed `-resolvePackageDependencies`
+# call that ran first took 105-219 s after the boot and 312 s beside it, for
+# the one package the restored checkout already held, while the build's own
+# resolution right after took 3 s and then 0.05 s (2026-11-18, #2747, runs
+# 44250218036, 44254955888 and 44273352801). A stall in the build's own
+# resolution shows in the quiet-stretches notice.
 boot_wait_s=""
 if [ -n "${BUILD_AFTER:-}" ]; then
   boot_wait_budget="${BUILD_AFTER_TIMEOUT_S:-600}"
@@ -172,12 +158,6 @@ if [ -n "${BUILD_AFTER:-}" ]; then
   else
     echo "::warning::the simulator was still being prepared after ${boot_wait_s}s; building alongside it"
   fi
-fi
-
-# Hosted jobs only: one xcodebuild call more on a developer Mac buys nothing.
-resolve_s=""
-if [ "${GITHUB_ACTIONS:-}" = "true" ]; then
-  XCODEBUILD_POLL_INTERVAL_S=2 resolve_packages
 fi
 
 # Where xcodebuild sits quietly (package resolution, build graph, waiting on
@@ -274,7 +254,10 @@ echo "build-for-testing ok in ${duration}s ($build_kind)"
 du -sh "$DERIVED_DATA_PATH"/* "$DERIVED_DATA_PATH"/Build/* 2>/dev/null || true
 # How many Swift files each target compiled, so a slow incremental build
 # shows what it rebuilt (ci-build-compiled-counts.py).
-compiled=$(python3 "$SCRIPT_DIR/ci-build-compiled-counts.py" "$LOG_DIR/build.log" 2>/dev/null || true)
+if ! compiled=$(python3 "$SCRIPT_DIR/ci-build-compiled-counts.py" "$LOG_DIR/build.log"); then
+  compiled="not counted"
+  echo "::warning::could not count the Swift files this build compiled"
+fi
 echo "build-for-testing: Swift files compiled: ${compiled:-none}"
 # The notice is readable from the job's annotations, where a long test log
 # would bury the build step's output.
@@ -287,7 +270,6 @@ if [ -n "$timing" ]; then
   dd_size=$(du -sh "$DERIVED_DATA_PATH" 2>/dev/null | cut -f1 || true)
   prep_note="before the build: destination ${destination_s}s"
   if [ -n "$boot_wait_s" ]; then prep_note="$prep_note, ${boot_wait_s}s waiting for the simulator"; fi
-  if [ -n "$resolve_s" ]; then prep_note="$prep_note, then packages ${resolve_s}s"; fi
   echo "::notice title=Build ${duration}s ($build_kind build; DerivedData ${dd_size:-?}) - slowest phases::$(printf 'cache: %s\ncompiled: %s\n%s\n%s\n' "${BUILD_CACHE:-not used}" "${compiled:-none}" "$prep_note" "$timing" | sed 's/%/%25/g' | awk '{printf "%s%s", (NR > 1 ? "%0A" : ""), $0}')"
 else
   echo "::warning::no Build Timing Summary in $LOG_DIR/build.log"

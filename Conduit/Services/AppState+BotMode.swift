@@ -1928,7 +1928,7 @@ extension AppState {
     /// epoch bump fences every in-flight roster response; in-flight bot
     /// opens are cancelled so a stale flight can never navigate the UI or
     /// mutate state against the outgoing server.
-    func invalidateBotModeState() {
+    func invalidateBotModeState(keepingRoomDrafts: Bool = false) {
         botRosterEpoch += 1
         botRosterRetry.succeeded()
         botWork.clear()
@@ -1959,6 +1959,6 @@ extension AppState {
         botRosterRefreshFlight = nil
         isRefreshingBotRoster = false
         botModePhase = .idle
-        invalidateGroupChatState()
+        invalidateGroupChatState(keepingDrafts: keepingRoomDrafts)
     }
 }

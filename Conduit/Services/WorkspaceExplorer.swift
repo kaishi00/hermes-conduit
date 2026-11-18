@@ -209,6 +209,60 @@ final class WorkspaceExplorer: ObservableObject {
         }
     }
 
+    /// How long Hermes' file changes settle before the open folders are
+    /// read again: the agent's file tools often land back to back, and
+    /// they're read once they settle, not once each (issue 2355).
+    static let changesSettle: Duration = .milliseconds(500)
+
+    /// The open folders again once Hermes' file changes settle. The next
+    /// change cancels the task waiting here, and its own waits again.
+    /// Returns whether the refresh ran to its end, uncancelled.
+    func refreshOnceChangesSettle() async -> Bool {
+        try? await Task.sleep(for: Self.changesSettle)
+        guard !Task.isCancelled else { return false }
+        await refresh()
+        return !Task.isCancelled
+    }
+
+    /// The plugin takes up to 25 MB a file.
+    static let maxUploadBytes = 25 * 1024 * 1024
+
+    /// Uploads `urls` into `folder`, each in turn, and reads the folders
+    /// once after the last (issue 2355), whatever came back: a file the
+    /// host stopped waiting on (504) may still have landed (notifier issue
+    /// 834). Returns the last failure to show: a file too large, one that
+    /// couldn't be opened, or a refusal.
+    func upload(_ urls: [URL], into folder: String) async -> String? {
+        var failure: String?
+        var sent = false
+        for url in urls {
+            let accessing = url.startAccessingSecurityScopedResource()
+            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+            let tooLarge = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.", table: .chat)
+            guard size <= Self.maxUploadBytes else {
+                failure = tooLarge
+                continue
+            }
+            guard let data = try? await Task.detached(priority: .userInitiated, operation: { try Data(contentsOf: url) }).value else {
+                failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
+                continue
+            }
+            guard data.count <= Self.maxUploadBytes else {
+                failure = tooLarge
+                continue
+            }
+            sent = true
+            if let error = await change(refreshing: false, { client, root in
+                try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
+            }) {
+                failure = UserFacingError.message(for: error)
+            }
+        }
+        if sent { await refresh() }
+        return failure
+    }
+
     /// Connected, and the plugin never said what it serves (its read failed
     /// as Conduit connected): asked again, as the Artifacts list asks, so a
     /// kept listing, which waits for its word, isn't left up until the next

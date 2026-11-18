@@ -409,6 +409,57 @@ final class KanbanTests: XCTestCase {
         XCTAssertEqual(store.loadedBoardSlug, "alpha")
     }
 
+    func testAFirstLoadThatFailsInTransitAsksOnceMoreBeforeShowingTheFailure() async {
+        // Issue 2719: one read Hermes answered late turned the empty board
+        // into "Kanban Unavailable" until the next poll.
+        let delay = KanbanStore.firstLoadRetryDelay
+        KanbanStore.firstLoadRetryDelay = .zero
+        defer { KanbanStore.firstLoadRetryDelay = delay }
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        requester.onceErrorsByPath["/api/plugins/kanban/boards"] = DashboardTicketBridgeError.http(status: 0, detail: "The request timed out.")
+        let store = makeStore(requester: requester)
+
+        await store.reload()
+
+        XCTAssertEqual(requester.calls.filter { $0.path == "/api/plugins/kanban/boards" }.count, 2)
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        XCTAssertNil(store.errorMessage)
+        XCTAssertFalse(store.isLoading)
+
+        // Still failing after the second ask: the failure shows, and the
+        // board asks no third time.
+        let failing = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        failing.errorsByPath["/api/plugins/kanban/boards"] = DashboardTicketBridgeError.http(status: 0, detail: "The request timed out.")
+        let failingStore = makeStore(requester: failing)
+        await failingStore.reload()
+        XCTAssertEqual(failing.calls.filter { $0.path == "/api/plugins/kanban/boards" }.count, 2)
+        XCTAssertEqual(failingStore.errorMessage, HermesError.timeoutMessage)
+        XCTAssertNil(failingStore.board)
+    }
+
+    func testOnlyAnEmptyBoardsFailureInTransitIsAskedAgain() async {
+        let delay = KanbanStore.firstLoadRetryDelay
+        KanbanStore.firstLoadRetryDelay = .zero
+        defer { KanbanStore.firstLoadRetryDelay = delay }
+        // Hermes' own refusal would only be refused again.
+        let refused = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        refused.errorsByPath["/api/plugins/kanban/boards"] = DashboardTicketBridgeError.http(status: 404, detail: "Not Found")
+        let refusedStore = makeStore(requester: refused)
+        await refusedStore.reload()
+        XCTAssertEqual(refused.calls.filter { $0.path == "/api/plugins/kanban/boards" }.count, 1)
+        XCTAssertNotNil(refusedStore.errorMessage)
+
+        // A board on screen keeps showing; the poll's own pace reads again.
+        let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
+        let store = makeStore(requester: requester)
+        await store.reload()
+        requester.errorsByPath["/api/plugins/kanban/boards"] = DashboardTicketBridgeError.http(status: 0, detail: "The request timed out.")
+        await store.poll()
+        XCTAssertEqual(requester.calls.filter { $0.path == "/api/plugins/kanban/boards" }.count, 2)
+        XCTAssertEqual(store.loadedBoardSlug, "alpha")
+        XCTAssertEqual(store.errorMessage, HermesError.timeoutMessage)
+    }
+
     func testSwitchingBoardsDropsTheLastBoardsErrorAtOnce() async {
         let requester = MockKanbanRequester(responsesByPath: standardKanbanResponses(boardSlug: "alpha"))
         let store = makeStore(requester: requester)
@@ -1125,6 +1176,8 @@ private final class MockKanbanRequester: DashboardJSONRequester {
 
     var responsesByPath: [String: [String: Any]]
     var errorsByPath: [String: Error]
+    /// Thrown once, by the next request to the path.
+    var onceErrorsByPath: [String: Error] = [:]
     private var holdsActive: Set<String> = []
     private struct HeldRequest {
         let prefix: String
@@ -1174,6 +1227,7 @@ private final class MockKanbanRequester: DashboardJSONRequester {
                 heldRequests.append(HeldRequest(prefix: Self.matchingHoldPrefix(path: path, basePath: basePath, prefixes: holdsActive), continuation: continuation))
             }
         }
+        if let error = onceErrorsByPath.removeValue(forKey: path) ?? onceErrorsByPath.removeValue(forKey: basePath) { throw error }
         if let error = errorsByPath[path] ?? errorsByPath[basePath] { throw error }
         if let response = responsesByPath[path] ?? responsesByPath[basePath] { return response }
         return [:]

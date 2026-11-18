@@ -155,7 +155,7 @@ extension AppState {
     /// fails or is overtaken leaves it followed.
     func followLeftChatIfItsReplyRuns(leaving oldID: String?, for newID: String?) {
         guard let oldID, let newID, oldID != newID else { return }
-        let ids = followedSessionIDs(for: oldID)
+        let ids = followedSessionIDs(forChatOpenAs: oldID)
         // The same conversation under a new runtime id (a resume or a
         // voice thread's rebind) isn't a chat being left.
         guard !isSameConversation(ids, as: newID) else { return }
@@ -196,7 +196,7 @@ extension AppState {
     @discardableResult
     func followChatBeingLeft(turnWasRunning: Bool, joiningCreation: Bool = false) -> Set<String>? {
         guard let oldID = activeSessionId else { return nil }
-        let ids = followedSessionIDs(for: oldID)
+        let ids = followedSessionIDs(forChatOpenAs: oldID)
         if joiningCreation, followedChat(answering: ids) != nil { return nil }
         let before = backgroundChats
         followChatOnScreen(answering: ids, openAs: oldID, turnRunning: turnWasRunning)
@@ -268,8 +268,16 @@ extension AppState {
         // ids alone, as followedChat(_:isConversation:) does.
         guard let own = chat.durableSessionID, chat.profile == activeProfile else { return false }
         if isSharedAlias(id), own != id { return true }
-        guard let row = owningSessionRow(for: id), row.id == id || row.storedSessionId == id else { return false }
-        return !followedChat(chat, isConversation: id)
+        guard let row = owningSessionRow(for: id) else { return false }
+        if row.id == id || row.storedSessionId == id { return !followedChat(chat, isConversation: id) }
+        // An alias only another listed chat's row carries now (Hermes moved
+        // it there) is that chat's (issue 2655).
+        // Its own row unlisted (a page the catalog hasn't read) doesn't make
+        // the alias its own either, nor does a row that lists its durable id
+        // only as an alias, as this one does (issue 2764).
+        guard own != id else { return false }
+        guard let ownRow = owningSessionRow(for: own), ownRow.id == own || ownRow.storedSessionId == own else { return true }
+        return ownRow.id != row.id
     }
 
     /// `durable` is `chat`'s own conversation. A listed chat's is its
@@ -279,9 +287,126 @@ extension AppState {
     func followedChat(_ chat: BackgroundChat, isConversation durable: String) -> Bool {
         guard let own = chat.durableSessionID else { return chat.sessionIDs.contains(durable) }
         if own == durable { return true }
+        // Its own row: one whose id or stored id its durable id is, never
+        // one that only lists it among its aliases (issue 2764).
         guard chat.profile == activeProfile,
-              let row = owningSessionRow(for: durable)?.id else { return false }
-        return owningSessionRow(for: own)?.id == row
+              let durableRow = owningSessionRow(for: durable),
+              durableRow.id == durable || durableRow.storedSessionId == durable,
+              let ownRow = owningSessionRow(for: own), ownRow.id == own || ownRow.storedSessionId == own else { return false }
+        return ownRow.id == durableRow.id
+    }
+
+    /// Records the chat on screen's row as it opens (setActiveSessionState).
+    /// The same conversation under a new runtime id that no row lists yet
+    /// keeps the row it had, judged only by the ids still the chat's: one
+    /// Hermes has since handed to another chat doesn't carry the old row
+    /// over to it (issue 2764).
+    func noteRowOfChatOnScreen(leaving oldID: String?, for newID: String?) {
+        guard let newID, !newID.isEmpty else {
+            rowOfChatOnScreen = nil
+            return
+        }
+        if let row = owningSessionRow(for: newID) {
+            rowOfChatOnScreen = (row, [newID], activeDashboardID, activeProfile)
+            return
+        }
+        if let kept = rowOfChatOnScreen, kept.dashboardID == activeDashboardID, kept.profile == activeProfile,
+           let oldID, kept.openIDs.contains(oldID) {
+            let row = listedRow(kept.row)
+            // Its own and stored ids and the ids it was open under, still
+            // its: never an alias, which may be a chat of its own (issue 2764).
+            let ownIDs = Set([row.id, row.storedSessionId].compactMap { $0 }).union(kept.openIDs)
+            let chatIDs = idsStillTheChat(ofRow: row, openIDs: kept.openIDs).intersection(ownIDs)
+            // The id it was left under is still its, or Hermes bound the new
+            // one to its own or stored id.
+            let newDurable = conversationIdentityIndex.durableID(forRuntime: newID, profile: activeProfile)
+            let boundToRow = newDurable.map { $0 == row.id || $0 == row.storedSessionId } == true
+            // The same id again (a resume onto it) stays the chat's while it's still its.
+            let same = oldID == newID && chatIDs.contains(newID)
+            if same || ((chatIDs.contains(oldID) || boundToRow) && isSameConversation(chatIDs, as: newID)) {
+                rowOfChatOnScreen = (row, kept.openIDs.union([newID]), kept.dashboardID, kept.profile)
+                return
+            }
+        }
+        rowOfChatOnScreen = nil
+    }
+
+    /// A chat restored or opened before the catalog listed its row (a
+    /// restore with an empty catalog) records the row once a catalog
+    /// commit lists it (issue 2764).
+    /// A recorded row the catalog lists again is kept as it's listed now.
+    func noteRowOfChatOnScreenOnceListed() {
+        if let recorded = rowOfChatOnScreen {
+            guard recorded.dashboardID == activeDashboardID, recorded.profile == activeProfile else { return }
+            let listed = listedRow(recorded.row)
+            if listed != recorded.row { rowOfChatOnScreen?.row = listed }
+            return
+        }
+        guard let id = activeSessionId, !id.isEmpty, let row = owningSessionRow(for: id) else { return }
+        rowOfChatOnScreen = (row, [id], activeDashboardID, activeProfile)
+    }
+
+    /// `row` as the catalog lists it now, else as it was read. A row under
+    /// the same id with another stored id is another chat's, which Hermes
+    /// gave the runtime id to (issue 2764).
+    /// A listing with no stored id keeps the one it was read with.
+    private func listedRow(_ row: SessionSummary) -> SessionSummary {
+        guard var listed = [sessions, cronSessions].joined().first(where: { listed in
+            listed.id == row.id
+                && (listed.storedSessionId == nil || row.storedSessionId == nil || listed.storedSessionId == row.storedSessionId)
+        }) else { return row }
+        if listed.storedSessionId == nil { listed.storedSessionId = row.storedSessionId }
+        return listed
+    }
+
+    /// The ids other chats than `row`'s answer to: the other listed rows'
+    /// (sessionIDsOfOtherRows), and a listed row's under `row`'s own id
+    /// with another stored id, the chat Hermes gave that runtime id to
+    /// (issue 2764).
+    private func idsOfOtherChats(than row: SessionSummary) -> Set<String> {
+        let reused = [sessions, cronSessions].joined().filter { listed in
+            listed.id == row.id && listed.storedSessionId != nil && row.storedSessionId != nil
+                && listed.storedSessionId != row.storedSessionId
+        }
+        return sessionIDsOfOtherRows(than: row).union(reused.flatMap(\.nestingIDs))
+            .subtracting([row.storedSessionId].compactMap { $0 })
+    }
+
+    /// The ids of `row`'s chat, with the ids it was open under, that are
+    /// still its: none another listed row answers to, nor one the identity
+    /// index has bound to a conversation outside them.
+    private func idsStillTheChat(ofRow row: SessionSummary, openIDs: Set<String>) -> Set<String> {
+        let others = idsOfOtherChats(than: row)
+        let ids = Set(row.nestingIDs).union(openIDs).subtracting(others)
+        let index = conversationIdentityIndex
+        let profile = activeProfile
+        return ids.filter { id in
+            guard let durable = index.durableID(forRuntime: id, profile: profile) else { return true }
+            return ids.contains(durable)
+        }
+    }
+
+    /// The row of the chat open as `id`: the one recorded when the chat on
+    /// screen opened, as listed now or else as it was read (a row that
+    /// left the catalog stays the chat's, never the row of a chat Hermes
+    /// later gave its id to), else the row that owns the id now (issues
+    /// 2655 and 2764).
+    func rowOfChat(openAs id: String) -> SessionSummary? {
+        if id == activeSessionId, let recorded = rowOfChatOnScreen, recorded.openIDs.contains(id),
+           recorded.dashboardID == activeDashboardID, recorded.profile == activeProfile {
+            return listedRow(recorded.row)
+        }
+        return owningSessionRow(for: id)
+    }
+
+    /// The ids a followed copy of the chat open as `id` answers to, from
+    /// the row it opened as: `id` itself is left out once another listed
+    /// chat owns it or carries it too (issue 2655).
+    func followedSessionIDs(forChatOpenAs id: String) -> Set<String> {
+        guard let row = rowOfChat(openAs: id) else { return [id] }
+        let others = idsOfOtherChats(than: row)
+        let own = Set(row.nestingIDs.filter { !others.contains($0) })
+        return others.contains(id) ? own : own.union([id])
     }
 
     private func isSameConversation(_ ids: Set<String>, as newID: String) -> Bool {
@@ -303,11 +428,13 @@ extension AppState {
               activeRoomSurface == nil,
               !messages.isEmpty || !shownChat.streamingBuffer.isEmpty,
               let dashboardID = activeDashboardID else { return }
-        // Its own row, never one that only borrows its id (issue 2602).
-        let listed = owningSessionRow(for: oldID)
+        // Its own row, never one that only borrows its id (issue 2602), and
+        // the one it opened as, never a chat Hermes since handed its id to.
+        let listed = rowOfChat(openAs: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
-        let ownIDs = listed.map { followedSessionIDs(for: $0.id) }
+        let others = listed.map { idsOfOtherChats(than: $0) } ?? []
+        let ownIDs = listed.map { Set($0.nestingIDs).subtracting(others) }
         // The chat the screen's id stands for in the identity index is
         // this one: kept, so a later rebind of one of its ids to another
         // chat shows as one (issue 2603). Not when the index has already
@@ -316,7 +443,6 @@ extension AppState {
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         // What the caller passed, less any id another listed row owns or
         // carries too, so a borrowed or shared id never reaches this copy.
-        let others = listed.map { sessionIDsOfOtherRows(than: $0) } ?? []
         let chat = BackgroundChat(
             sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
@@ -440,7 +566,7 @@ extension AppState {
             // finished reply is saved now (issue 2577).
             var isCompletion = false
             if case .messageComplete = event { isCompletion = true }
-            if offlineChatPresentation != nil, !chat.isRunning, wasRunning || isCompletion {
+            if offlineChatPresentation != nil, !chat.isRunning, wasRunning || isCompletion, !predatesNewChatRun(chat) {
                 saveBackgroundChatCopy(chat)
             }
             return false
@@ -458,10 +584,20 @@ extension AppState {
         // takes the cut-off words' place.
         var isCompletion = false
         if case .messageComplete = event { isCompletion = true }
-        if !chat.isRunning, wasRunning || isCompletion {
+        if !chat.isRunning, wasRunning || isCompletion, !predatesNewChatRun(chat) {
             saveBackgroundChatCopy(chat)
         }
         return true
+    }
+
+    /// A copy followed before the New Chat run under way, which never took
+    /// the rows a later open brought to the screen: its save would replace
+    /// the fuller saved copy, so it isn't saved while the run's create is
+    /// under way (issue 2617, from #2645's review; issue 2655).
+    func predatesNewChatRun(_ chat: BackgroundChat) -> Bool {
+        guard newSessionCreationsInFlight > 0 else { return false }
+        guard let run = newChatRunFollowedIDs else { return true }
+        return chat.sessionIDs.isDisjoint(with: run)
     }
 
     /// The followed chat a runtime id Hermes bound while it was away

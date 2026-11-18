@@ -821,6 +821,7 @@ struct SettingsView: View {
                     // Opens on what it showed last time while Hermes is asked.
                     answers: appState.voiceSettingsAnswers(profile: snapshot.profile),
                     profileName: appState.profileDisplayName(snapshot.profile),
+                    hermesConnected: appState.isConnected,
                     conversationController: appState.voiceConversationController,
                     actions: VoiceSettingsActions(
                         runASRTest: { await appState.runVoiceASRTest() },
@@ -3920,6 +3921,7 @@ private struct GatewaySettingsDetail: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var clientSecret = ""
     @State private var confirmingRestart = false
+    @State private var pairingComputer = false
 
     init(title: String, snapshot: SettingsSnapshot, reconnect: @escaping () async -> Bool, disconnect: @escaping () -> Void, close: @escaping () -> Void, saveCloudflareAccess: @escaping (String, String) -> Void, removeCloudflareAccess: @escaping () -> Void, customHeaders: [CustomHeader], saveCustomHeaders: @escaping ([CustomHeader]) -> Void) {
         self.title = title; self.snapshot = snapshot; self.reconnect = reconnect; self.disconnect = disconnect; self.close = close
@@ -3962,6 +3964,15 @@ private struct GatewaySettingsDetail: View {
             if snapshot.server != nil {
                 HermesUpdateSection()
             }
+            // Conduit on a Windows PC or Mac signs in with this phone's
+            // sign-ins, sealed to it (ComputerPairing.swift).
+            ConduitSettingsSection(title: PairComputerText.title, symbol: "desktopcomputer", tint: .conduitAura) {
+                Text(verbatim: PairComputerText.intro)
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                Button(PairComputerText.title) { pairingComputer = true }
+                    .buttonStyle(.settings)
+                    .accessibilityIdentifier("settings.gateway.pairComputer")
+            }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { cloudflareEnabled = enabled }
@@ -3995,6 +4006,10 @@ private struct GatewaySettingsDetail: View {
         }
         .navigationTitle(title)
         .gatewayRestartConfirmation(isPresented: $confirmingRestart)
+        .sheet(isPresented: $pairingComputer) {
+            PairComputerSheet()
+                .environmentObject(appState)
+        }
         .sheet(isPresented: $showCustomHeaders) {
             CustomHeadersEditorSheet(serverURL: snapshot.server ?? "", headers: customHeaders) { headers in
                 saveCustomHeaders(headers)

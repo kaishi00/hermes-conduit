@@ -10,6 +10,73 @@ import XCTest
 @MainActor
 final class KanbanV2CorrectnessTests: XCTestCase {
 
+    // MARK: - Detail reads (issue 2719)
+
+    func testTheDetailAsksOnceMoreOnlyForAFirstReadLostInTransit() {
+        let timeout = DashboardTicketBridgeError.http(status: 0, detail: "The request timed out.")
+        XCTAssertTrue(KanbanDetailLoadPolicy.retriesFirstRead(after: timeout, hasDetail: false))
+        XCTAssertTrue(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.http(status: 503, detail: ""), hasDetail: false))
+        // A task already shown rides the poll; Hermes' own refusal stays refused.
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: timeout, hasDetail: true))
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.http(status: 404, detail: "Not Found"), hasDetail: false))
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.signInRequired, hasDetail: false))
+    }
+
+    func testADetailAnswerAppliesOnlyToTheTaskAndBoardItWasReadFor() {
+        XCTAssertTrue(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t1", loadedBoard: "alpha"))
+        // Another task on screen, or another board loaded: the answer is dropped.
+        XCTAssertFalse(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t2", loadedBoard: "alpha"))
+        XCTAssertFalse(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t1", loadedBoard: "beta"))
+    }
+
+    func testAnOpenTasksSheetStaysOnlyOnTheBoardItOpenedOn() {
+        XCTAssertTrue(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "alpha"))
+        // Another board picked, or Server current moved by another client.
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "beta"))
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: nil, nowOnBoard: "alpha"))
+    }
+
+    func testATwoStepActionsStepRunsOnlyOnTheBoardItStartedOn() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        XCTAssertTrue(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: alpha))
+        // Another board, the same board on another server, or nothing loaded.
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: nil))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: nil, current: nil))
+    }
+
+    func testARefusedStepSaysWhetherTheBoardChangedOrIsStillLoading() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        XCTAssertNil(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: alpha))
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: nil), .boardNavigationInProgress)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: nil, current: alpha), .boardNavigationInProgress)
+        // The partial-success notice carries the board-changed reason, never "still switching".
+        let outcome = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: UserFacingError.message(for: KanbanServiceError.boardChanged))
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock) ?? ""
+        XCTAssertTrue(message.contains(KanbanServiceError.boardChanged.localizedDescription))
+        XCTAssertFalse(message.contains(KanbanServiceError.boardNavigationInProgress.localizedDescription))
+    }
+
+    func testAPartialSuccessShowsOnTheBoardOnceTheBoardChangedOrTheSheetMovedOn() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        let beta = KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)
+        let alphaReloaded = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)
+        let partial = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: "x")
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: beta, sheetShowsStartedTask: true))
+        // A reconnect that reloads the same board: the sheet may have been swiped away.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alphaReloaded, sheetShowsStartedTask: true))
+        // The sheet moved on to another task (a dependency) on the same board.
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: false))
+        // The same board, the sheet still on the task (a network failure): the sheet alone says it.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, started: alpha, current: alpha, sheetShowsStartedTask: true))
+        // Refused before the note, or full success: nothing to report on the board.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), started: alpha, current: beta, sheetShowsStartedTask: false))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), started: alpha, current: beta, sheetShowsStartedTask: false))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {

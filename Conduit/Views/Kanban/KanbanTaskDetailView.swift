@@ -35,6 +35,9 @@ struct KanbanTaskDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private let initialTask: KanbanTask
+    /// This sheet's own presentation: a reopened task, or another task's
+    /// sheet, is a different one (KanbanStore.presentedTaskSheet).
+    @State private var sheetPresentation = UUID()
     /// Replace-current-detail navigation target for dependency taps. The
     /// sheet never stacks another sheet; it swaps the displayed identity.
     @State private var displayedTaskID: String
@@ -423,6 +426,10 @@ struct KanbanTaskDetailView: View {
                 pendingDecompose = nil
                 completedTriageMutation = nil
             }
+            // This sheet is the one on screen until it goes; a two-step action
+            // that outlives it reports on the board instead (see reportsOnBoard).
+            .onAppear { store.taskSheetAppeared(sheetPresentation) }
+            .onDisappear { store.taskSheetDisappeared(sheetPresentation) }
         }
     }
 
@@ -972,7 +979,9 @@ struct KanbanTaskDetailView: View {
             // Upstream "Note & requeue": post the note, then reclaim so
             // the dispatcher re-runs the task with the note in context.
             Button {
-                Task { await noteAndRequeue() }
+                // The board is taken at the tap, before the task can start.
+                let board = store.loadedContextStamp
+                Task { await noteAndRequeue(startedBoard: board) }
             } label: {
                 HStack {
                     Spacer(minLength: 0)
@@ -989,7 +998,8 @@ struct KanbanTaskDetailView: View {
             // A comment alone leaves the task parked in Blocked; the
             // worker only reads the answer once the task runs again.
             Button {
-                Task { await replyAndUnblock() }
+                let board = store.loadedContextStamp
+                Task { await replyAndUnblock(startedBoard: board) }
             } label: {
                 HStack {
                     Spacer(minLength: 0)
@@ -1135,6 +1145,18 @@ struct KanbanTaskDetailView: View {
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
         let expectedID = displayedTaskID
+        // The board it's read from too: a task id can name another task on
+        // another board, so an answer from a board no longer loaded is
+        // dropped like a stale identity's.
+        let expectedBoard = store.openTaskBoardSlug
+        let isCurrent = {
+            KanbanDetailLoadPolicy.answerApplies(
+                startedTaskID: expectedID,
+                startedBoard: expectedBoard,
+                displayedTaskID: displayedTaskID,
+                loadedBoard: store.openTaskBoardSlug
+            )
+        }
         isLoadingDetail = true
         // A STALE completion must not clear the replacement load's spinner:
         // only the current identity may release the flag.
@@ -1142,8 +1164,17 @@ struct KanbanTaskDetailView: View {
             if displayedTaskID == expectedID { isLoadingDetail = false }
         }
         do {
-            let loaded = try await store.fetchTaskDetail(id: expectedID)
-            guard displayedTaskID == expectedID else { return }
+            let loaded: KanbanTaskDetail
+            do {
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            } catch let error where KanbanDetailLoadPolicy.retriesFirstRead(after: error, hasDetail: detail != nil) {
+                // Not read yet: a read lost in transit asks once more before
+                // it fails, as the board's first load does (issue 2719).
+                try await Task.sleep(for: KanbanStore.firstLoadRetryDelay)
+                guard isCurrent() else { return }
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            }
+            guard isCurrent() else { return }
             guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
                 // An EMPTY-id payload under a NON-empty displayed identity is
@@ -1201,7 +1232,7 @@ struct KanbanTaskDetailView: View {
             // cancellation must never render as a user-facing failure.
             return
         } catch {
-            guard displayedTaskID == expectedID else { return }
+            guard isCurrent() else { return }
             if detail == nil {
                 errorMessage = UserFacingError.message(for: error)
             } else {
@@ -1330,15 +1361,40 @@ struct KanbanTaskDetailView: View {
         }
     }
 
+    /// Refuses a step whose board is no longer the one loaded, saying
+    /// whether the board changed or is still loading.
+    private func requireBoard(_ startedBoard: KanbanBoardContextStamp?) throws {
+        if let refusal = KanbanDetailMutationPolicy.stepRefusal(started: startedBoard, current: store.loadedContextStamp) {
+            throw refusal
+        }
+    }
+
+    /// A note posted whose second step was refused: the partial success shows
+    /// on the board too when the sheet may no longer say it.
+    private func reportPartialSuccessOnBoardIfNeeded(_ outcome: KanbanNoteAndRequeueFlow.Outcome, _ message: String?, startedBoard: KanbanBoardContextStamp?, startedTaskID: String) {
+        guard let message,
+              KanbanDetailMutationPolicy.reportsOnBoard(
+                outcome: outcome,
+                started: startedBoard,
+                current: store.loadedContextStamp,
+                sheetShowsStartedTask: store.presentedTaskSheet == sheetPresentation
+                    && KanbanDetailMutationPolicy.completionIsActive(startedTaskID: startedTaskID, displayedTaskID: displayedTaskID)
+              ) else { return }
+        store.showMutationError(KanbanServiceError.invalidResponse(message))
+    }
+
     /// Note & requeue: two supported mutations composed exactly like the
     /// desktop drawer (comment first, then reclaim) — but with OBSERVABLE
     /// partial success: the draft is consumed the moment the note reaches the
     /// server, and a reclaim failure afterwards is reported as partial
     /// success without ever reposting the note.
-    private func noteAndRequeue() async {
+    private func noteAndRequeue(startedBoard: KanbanBoardContextStamp?) async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
+        // Both steps land only on `startedBoard`, the board shown at the
+        // tap: a change before the note posts nothing, and one between the
+        // steps leaves the note posted and the step undone (partial success).
         isRequeuing = true
         errorMessage = nil
         defer {
@@ -1348,8 +1404,14 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { try await store.reclaimTask(taskID: expectedID) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
+            reclaim: {
+                try requireBoard(startedBoard)
+                try await store.reclaimTask(taskID: expectedID)
+            },
             onCommentPosted: {
                 // Consume the draft immediately: the note already exists on
                 // the server, so a retry after a reclaim failure must never
@@ -1359,8 +1421,10 @@ struct KanbanTaskDetailView: View {
                 }
             }
         )
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome)
+        reportPartialSuccessOnBoardIfNeeded(outcome, message, startedBoard: startedBoard, startedTaskID: expectedID)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-        if let message = KanbanNoteAndRequeueFlow.message(for: outcome) {
+        if let message {
             errorMessage = message
             return
         }
@@ -1371,10 +1435,13 @@ struct KanbanTaskDetailView: View {
     /// & requeue, with the transition being a PATCH to Ready (upstream
     /// `unblock_task`). The draft is consumed once the reply posts, so a
     /// failed unblock never reposts it.
-    private func replyAndUnblock() async {
+    private func replyAndUnblock(startedBoard: KanbanBoardContextStamp?) async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
+        // Both steps land only on `startedBoard`, the board shown at the
+        // tap: a change before the note posts nothing, and one between the
+        // steps leaves the note posted and the step undone (partial success).
         isUnblocking = true
         errorMessage = nil
         defer {
@@ -1384,16 +1451,24 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
-            reclaim: { _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready")) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
+            reclaim: {
+                try requireBoard(startedBoard)
+                _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready"))
+            },
             onCommentPosted: {
                 if KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) {
                     comment = ""
                 }
             }
         )
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        reportPartialSuccessOnBoardIfNeeded(outcome, message, startedBoard: startedBoard, startedTaskID: expectedID)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-        errorMessage = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        errorMessage = message
         // Refresh even on partial success so the posted reply shows up.
         await loadDetail(force: true)
     }
@@ -1528,6 +1603,14 @@ struct KanbanTaskDetailView: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            // The poll reads again on its own; this doesn't wait for it
+            // (issue 2719).
+            Button("Try Again") {
+                Task { await loadDetail(force: true) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isLoadingDetail)
+            .accessibilityIdentifier("kanban.detail.retry")
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
@@ -1570,6 +1653,28 @@ enum KanbanDetailIdentityPolicy {
     }
 }
 
+/// What the detail's reads do with an answer or a failure (issue 2719).
+enum KanbanDetailLoadPolicy {
+    /// A first read lost in transit asks once more before the failure
+    /// shows; a task already shown rides the poll's own pace, and Hermes'
+    /// own refusals aren't asked again.
+    static func retriesFirstRead(after error: Error, hasDetail: Bool) -> Bool {
+        !hasDetail && DashboardTicketBridgeError.isTransient(error)
+    }
+
+    /// An answer applies only to the task and the board it was read for: a
+    /// task id can name another task on another board.
+    static func answerApplies(startedTaskID: String, startedBoard: String?, displayedTaskID: String, loadedBoard: String?) -> Bool {
+        startedTaskID == displayedTaskID && startedBoard == loadedBoard
+    }
+
+    /// An open task's sheet stays only while its board is the one loaded
+    /// (`KanbanStore.openTaskBoardSlug`): its edits carry no board.
+    static func sheetStaysOpen(openedOnBoard: String?, nowOnBoard: String) -> Bool {
+        openedOnBoard == nowOnBoard
+    }
+}
+
 /// Async-ownership rules for task-detail mutations (Kanban V2 correctness).
 ///
 /// Every task-specific async operation captures its identity before its
@@ -1580,6 +1685,36 @@ enum KanbanDetailIdentityPolicy {
 /// surface the old task's error, dismiss the screen, or trigger a refresh
 /// for the displayed task.
 enum KanbanDetailMutationPolicy {
+    /// A step of a two-step action (Note & requeue, Reply & unblock) runs
+    /// only on the board and server it started on; with none loaded when it
+    /// started, it never runs.
+    static func stepTargetsStartedBoard(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> Bool {
+        started != nil && started == current
+    }
+
+    /// Why a step of a two-step action may not run, or nil when it may: the
+    /// board it started on was replaced or reloaded (`boardChanged`), or
+    /// no board was loaded at the tap or is loaded now
+    /// (`boardNavigationInProgress`).
+    static func stepRefusal(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> KanbanServiceError? {
+        if stepTargetsStartedBoard(started: started, current: current) { return nil }
+        return started != nil && current != nil ? .boardChanged : .boardNavigationInProgress
+    }
+
+    /// A two-step action's partial success (the note posted, the second
+    /// step undone) shows on the board once the sheet no longer shows the
+    /// task (it closed, or moved on to another task), or the board or server
+    /// changed since the tap. A board change may not have closed the sheet
+    /// yet, so a sheet still open says it as well; a rare duplicate beats a
+    /// lost notice. Otherwise the sheet alone says it. A sheet mid-swipe
+    /// still counts as on screen until it's gone, so a step failing in that
+    /// moment is said only on the leaving sheet (issue 2746, left as is: a
+    /// fraction of a second, on an unchanged board).
+    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?, sheetShowsStartedTask: Bool) -> Bool {
+        guard outcome.commentPosted, !outcome.requeued else { return false }
+        return !sheetShowsStartedTask || !stepTargetsStartedBoard(started: started, current: current)
+    }
+
     static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {
         startedTaskID == displayedTaskID
     }

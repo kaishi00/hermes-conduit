@@ -287,6 +287,64 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
     }
 
+    func testEachDashboardKeepsItsDraftsAcrossASwitch() {
+        // Issue 2702: opening another combined dashboard's bot switches
+        // dashboards, and every unsent draft went with the switch. Drafts
+        // are the dashboard's own now: the same profile and id on the other
+        // dashboard is another draft.
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let onA = ComposerDraftKey(dashboard: a.id, profile: "default", sessionID: "stored-a")
+        let sameIDsOnB = ComposerDraftKey(dashboard: b.id, profile: "default", sessionID: "stored-a")
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        appState.composerDraftStore.save(ComposerDraft(text: "half a thought", attachments: []), for: onA)
+
+        // A failed send's words on their way back to A's draft wait for A
+        // too; a waiting message's go, since its file brings it back.
+        let wordsBack = ComposerRestoreRequest(dashboardID: a.id, key: onA,
+                                               draft: ComposerDraft(text: "sent from A", attachments: []),
+                                               focuses: false, pending: nil)
+        appState.composerRestoreRequests.append(wordsBack)
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+        XCTAssertTrue(appState.composerDraftStore.draft(for: sameIDsOnB).isEmpty)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.id), [wordsBack.id])
+        XCTAssertFalse(appState.composerDraftKeysAreSameChat(onA, sameIDsOnB))
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+
+        // Signing out of the dashboard not on screen takes its drafts with
+        // it, and leaves the one on screen's.
+        appState.composerDraftStore.save(ComposerDraft(text: "B's words", attachments: []), for: sameIDsOnB)
+        appState.signOutDashboard(b.id)
+        XCTAssertTrue(appState.composerDraftStore.draft(for: sameIDsOnB).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+
+        // A server with no dashboard has no key of its own: its strings
+        // could collide, so the drafts clear as before.
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://other.example.com", dashboardID: nil))
+        XCTAssertTrue(appState.composerDraftStore.draft(for: onA).isEmpty)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+    }
+
+    func testSigningOutOfTheDashboardOnScreenKeepsTheOthersDrafts() {
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let onA = ComposerDraftKey(dashboard: a.id, profile: "default", sessionID: "stored-a")
+        let onB = ComposerDraftKey(dashboard: b.id, profile: "default", sessionID: "stored-a")
+        appState.composerDraftStore.save(ComposerDraft(text: "A's words", attachments: []), for: onA)
+        appState.composerDraftStore.save(ComposerDraft(text: "B's words", attachments: []), for: onB)
+
+        appState.signOutDashboard(a.id)
+
+        XCTAssertTrue(appState.composerDraftStore.draft(for: onA).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onB).text, "B's words")
+    }
+
     func testEachDashboardKeepsTheChatYouLeftThereAcrossASwitch() {
         let a = dashboard("Mac", "https://mac.tailnet.ts.net")
         let b = dashboard("VPS", "https://hermes.example.com")
@@ -616,8 +674,16 @@ final class AppStateMultiDashboardTests: XCTestCase {
             to: appState,
             currentURL: home.normalizedURL
         )
+        // Drafts kept through the switches: the old address's go with the
+        // move, since the new host's ids may match them.
+        let homeDraft = ComposerDraftKey(dashboard: home.id, profile: "default", sessionID: "s1")
+        let workDraft = ComposerDraftKey(dashboard: work.id, profile: "default", sessionID: "s1")
+        appState.composerDraftStore.save(ComposerDraft(text: "old host's words", attachments: []), for: homeDraft)
+        appState.composerDraftStore.save(ComposerDraft(text: "work's words", attachments: []), for: workDraft)
         appState.selectDashboardTarget(work.id)
         await appState.switchDashboard(to: home.id)
+        XCTAssertTrue(appState.composerDraftStore.draft(for: homeDraft).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: workDraft).text, "work's words")
 
         XCTAssertEqual(appState.activeDashboardID, home.id)
         XCTAssertEqual(appState.savedDashboardRegistry.dashboards.map(\.id), [home.id, work.id])
@@ -2032,6 +2098,22 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(appState.errorMessage, "the Mac's failed read isn't reported over the VPS")
     }
 
+    /// Issue 2713: leaving the Model page cancels its read, and the
+    /// cancelled read put "Could not load model defaults: That was
+    /// interrupted" on the chat's composer.
+    func testModelDefaultsReadCancelledByLeavingThePageSaysNothing() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { await appState.loadProfileModelDefaults() }
+        try await held.waitForRequests(3)   // options, info and config, read together
+
+        load.cancel()
+        held.releaseAll()   // each request ends as URLSession's cancelled
+        let modelDefaults = await load.value
+
+        XCTAssertNil(modelDefaults)
+        XCTAssertNil(appState.errorMessage, "a read nobody waits for any more didn't fail")
+    }
+
     /// A switch invalidates the Mac's bridge, so its listing in flight
     /// fails; that failure isn't reported over the VPS's folder.
     func testAWorkspaceListingFailingAfterASwitchSaysNothingOnTheNewDashboard() async throws {
@@ -2047,6 +2129,89 @@ extension AppStateMultiDashboardTests {
 
         XCTAssertNil(explorer.error, "the Mac's failed listing isn't reported over the VPS")
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
+    }
+
+    /// An open folder whose listing and recent files were answered, for
+    /// the refresh tests below: every request after it is theirs. The app
+    /// state comes back too: the explorer holds it weakly.
+    private func openedFolder() async throws -> (WorkspaceExplorer, HeldDashboardRequests, AppState) {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.122.0", capabilities: [WorkspaceFilesClient.capability]))
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        await open.value
+        return (explorer, held, appState)
+    }
+
+    /// Hermes' file tools landing back to back read the open folder once,
+    /// half a second after the last (issue 2355, tests from issue 2604):
+    /// each change cancels the wait before it, as the Folder tab's
+    /// `.task(id: changes)` does, and only the last one's refresh goes out.
+    func testFileChangesLandingBackToBackRefreshTheFolderOnce() async throws {
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
+        var waits: [Task<Bool, Never>] = []
+        for _ in 0..<3 {
+            waits.last?.cancel()
+            waits.append(Task { await explorer.refreshOnceChangesSettle() })
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(held.sent.count, 2, "nothing is read while the changes are still landing")
+
+        try await held.waitForRequests(3)
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        var ran: [Bool] = []
+        for wait in waits { ran.append(await wait.value) }
+
+        XCTAssertEqual(ran, [false, false, true], "only the last change's refresh ran")
+        XCTAssertEqual(held.sent.map(\.path).suffix(2), [
+            "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
+        ])
+        XCTAssertEqual(held.sent.count, 4, "one refresh: the folder and its recent files, once")
+        XCTAssertTrue(explorer.rows().isEmpty, "the refresh's listing shows")
+    }
+
+    /// Several files picked at once go up one after another, and the
+    /// folder is read once after the last, not once each (issue 2355,
+    /// tests from issue 2604); a file that can't be opened is skipped and
+    /// said, and the others still go.
+    func testAnUploadOfSeveralFilesRefreshesTheFolderOnceAfterTheLast() async throws {
+        let (explorer, held, appState) = try await openedFolder()
+        defer { withExtendedLifetime(appState) {} }
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("one.txt")
+        let second = folder.appendingPathComponent("two.txt")
+        try Data("one".utf8).write(to: first)
+        try Data("two".utf8).write(to: second)
+        let missing = folder.appendingPathComponent("gone.txt")
+
+        let upload = Task { await explorer.upload([first, missing, second], into: "/w/app") }
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.count, 3, "one file at a time")
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        try await held.waitForRequests(4)
+        XCTAssertEqual(held.sent.last?.path, "/api/plugins/conduit_push/workspace/upload", "the next file, not a refresh")
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        try await held.waitForRequests(5)
+        try await held.answer(["ok": true, "entries": [["name": "one.txt", "path": "/w/app/one.txt"]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        let failure = await upload.value
+
+        XCTAssertEqual(held.sent.dropFirst(2).map(\.path), [
+            "/api/plugins/conduit_push/workspace/upload",
+            "/api/plugins/conduit_push/workspace/upload",
+            "/api/plugins/conduit_push/workspace/list",
+            "/api/plugins/conduit_push/workspace/recent",
+        ], "two uploads, then one refresh")
+        XCTAssertEqual(failure, AppLocalization.string("This file couldn't be opened.", table: .chat))
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["one.txt"])
     }
 
     /// A picture sent into a room is read back through the plugin's room

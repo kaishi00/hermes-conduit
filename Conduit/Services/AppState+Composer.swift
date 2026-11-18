@@ -116,7 +116,7 @@ extension AppState {
         guard let shown = predictive.screen, shown.sessionID == activeSessionId else { return }
         predictiveComposerRequest = PredictiveComposerRequest(
             action: action, text: text, draft: predictive.draft, sessionID: shown.sessionID,
-            draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile)
+            draftKey: ComposerBar.composerDraftKey(for: shown.sessionID, profile: activeProfile, dashboard: activeDashboardID)
         )
     }
 
@@ -127,7 +127,7 @@ extension AppState {
         guard let session = activeSessionId, !session.isEmpty else { return }
         predictiveComposerRequest = PredictiveComposerRequest(
             action: action, text: text, draft: "", sessionID: session,
-            draftKey: ComposerBar.composerDraftKey(for: session, profile: activeProfile)
+            draftKey: ComposerBar.composerDraftKey(for: session, profile: activeProfile, dashboard: activeDashboardID)
         )
     }
 
@@ -157,7 +157,7 @@ extension AppState {
     /// Puts `text` in the open chat's composer, replacing the draft, and
     /// focuses it.
     func prefillComposer(_ text: String) {
-        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile)
+        composerPrefillDraftKey = ComposerBar.composerDraftKey(for: activeSessionId, profile: activeProfile, dashboard: activeDashboardID)
         composerPrefillText = text
         composerPrefillToken = UUID()
     }

@@ -395,6 +395,52 @@ extension AppState {
         return isConnecting || isProfileSwitching || turnState == .synchronizing
     }
 
+    /// The rows on screen may be out of date: the saved copy, a list from
+    /// before this scope's first live read (a launch, a profile or
+    /// dashboard switch), or one read before the app last went to the
+    /// background.
+    var chatListShownIsStale: Bool {
+        if isShowingSavedChatList || chatListPredatesBackground { return true }
+        guard let dashboardID = activeDashboardID else { return false }
+        return !liveChatListLanded(dashboardID: dashboardID, profile: activeProfile)
+    }
+
+    /// A read over a stale list is on its way for the scope on screen.
+    /// Another profile's read left running after a switch doesn't count,
+    /// failed or not.
+    var isReadingStaleChatList: Bool {
+        (staleChatListReads[sessionCatalogOwner] ?? 0) > 0
+    }
+
+    /// The Chats list says "Updating…" over its rows (issue 2706): they may
+    /// be out of date and a read, or the connection that brings one, is on
+    /// its way. Not during a pull to refresh, which has its own spinner (a
+    /// Projects pull's is its projects read), nor while the list on screen
+    /// has no rows: "Loading chats…", or a list with none, says so itself.
+    func showsChatListUpdating(overProjects: Bool = false) -> Bool {
+        guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
+        // The rows the page draws: in All, every profile's (issue 2736).
+        let rows = chatListSessions
+        if overProjects {
+            // The Projects page lists pinned chats over its projects
+            // (Pulse's own chat stays behind the Pulse screen).
+            let pinned = (rows + chatListCronSessions).contains { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }
+            guard !projectsLoading, !projects.isEmpty || pinned else { return false }
+        } else {
+            // All draws the other combined dashboards' chats too.
+            guard !rows.isEmpty || !chatListCronSessions.isEmpty
+                || (isAllProfilesChatsOn && !chatListCombinedChats(excluding: []).isEmpty) else { return false }
+        }
+        return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
+    }
+
+    /// Counts a catalog read over a stale list in and out, by the scope it
+    /// reads.
+    func noteStaleChatListRead(started: Bool, owner: SessionCatalogOwner) {
+        let count = (staleChatListReads[owner] ?? 0) + (started ? 1 : -1)
+        staleChatListReads[owner] = count > 0 ? count : nil
+    }
+
     var savedChatListForActiveScope: SavedChatListPresentation? {
         guard let saved = savedChatList,
               saved.dashboardID == activeDashboardID,
@@ -467,9 +513,16 @@ extension AppState {
         let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
         let readTicket = takeSessionListReadTicket()
+        // A read over rows that may be out of date shows "Updating…" while
+        // it runs, whatever its outcome (issue 2706).
+        let readsStaleList = chatListShownIsStale
+        let readOwner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+        if readsStaleList { noteStaleChatListRead(started: true, owner: readOwner) }
+        defer { if readsStaleList { noteStaleChatListRead(started: false, owner: readOwner) } }
         do {
             let loadedSessions: [SessionSummary]
             var olderPagesDeferred = false
+            var dashboardLoad: ProfileCatalogLoad?
             if let sessionCatalogLoaderOverride {
                 loadedSessions = try await sessionCatalogLoaderOverride(forceRefresh)
             } else if let activeClient {
@@ -482,6 +535,7 @@ extension AppState {
                 )
                 loadedSessions = catalogLoad.sessions
                 olderPagesDeferred = catalogLoad.olderPagesDeferred
+                dashboardLoad = catalogLoad
             } else {
                 return false
             }
@@ -493,7 +547,10 @@ extension AppState {
             // A read that started later already listed what it saw: this
             // older answer is no news, and the list it would put back is
             // older than the one shown.
-            guard claimSessionListListing(readTicket) else { return true }
+            guard claimSessionListListing(readTicket) else {
+                if let dashboardLoad { relistCachedCron(after: dashboardLoad, profile: profile) }
+                return true
+            }
             let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
             // The newest page alone (a pull to refresh, whose older pages
             // are read right after) keeps the older rows already listed
@@ -504,7 +561,12 @@ extension AppState {
                 [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions + olderListed
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
-            let listedCron = allSessions.filter { $0.source == .cron }
+            let listedCron = cronRowsToList(
+                allSessions.filter { $0.source == .cron },
+                keeping: [retainedActiveTurn, awaitingListing].compactMap { $0 },
+                profile: profile,
+                fromCache: dashboardLoad?.cronFromCache ?? false
+            )
             // A read that changed the list keeps the list's poll quick. One
             // that lists the same rows for the same scope again (a change
             // event's read, every few seconds while another device works)
@@ -573,7 +635,7 @@ extension AppState {
             guard requiredViewportTransitionGeneration.map({ chatViewportTransitionIsCurrent(generation: $0) }) ?? true else { return false }
             // A read cancelled under it (a pull to refresh the list left)
             // says nothing about the catalog: the next showing reads again.
-            if error is CancellationError || (error as? URLError)?.code == .cancelled || Task.isCancelled { return false }
+            if UserFacingError.isCancellation(error) { return false }
             // A read that started later already listed: the list is current,
             // and this older failure is no news.
             guard readTicket > sessionListListedTicket else { return true }
@@ -737,10 +799,13 @@ extension AppState {
         let client = self.client
         let profile = activeProfile
         let dashboardID = activeDashboardID
+        // Its cron rows are read fresh; the newest page may be one another
+        // read (a return's chat sync) sent moments ago (issue 2604).
         await loadSessions(
             forceRefresh: true,
             requiredViewportTransitionGeneration: nil,
-            deferringOlderPages: true
+            deferringOlderPages: true,
+            joinsReadInFlight: true
         )
         guard let client, self.client === client, activeProfile == profile,
               sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
@@ -924,8 +989,8 @@ extension AppState {
             }
         }
         if let key = composerPrefillDraftKey,
-           lost.contains(where: { ComposerBar.composerDraftKey(for: $0, profile: activeProfile) == key }) {
-            composerPrefillDraftKey = ComposerBar.composerDraftKey(for: fresh, profile: activeProfile)
+           lost.contains(where: { ComposerBar.composerDraftKey(for: $0, profile: activeProfile, dashboard: activeDashboardID) == key }) {
+            composerPrefillDraftKey = ComposerBar.composerDraftKey(for: fresh, profile: activeProfile, dashboard: activeDashboardID)
         }
         if let request = composerFocusRequest, lost.contains(request.sessionID) {
             composerFocusRequest = ComposerFocusRequest(sessionID: fresh)
@@ -1090,12 +1155,14 @@ extension AppState {
         id: String?,
         title: String? = nil
     ) {
+        let leaving = activeSessionId
         if activeSessionId != id {
             followLeftChatIfItsReplyRuns(leaving: activeSessionId, for: id)
             clearPendingDecisionRestorationGuard()
             resetResponseHapticTurn()
         }
         activeSessionId = id
+        noteRowOfChatOnScreen(leaving: leaving, for: id)
         if let persistedID = ChatSessionPersistenceIdentity.canonicalID(
             for: id,
             identity: activeChatScrollSessionIdentity,

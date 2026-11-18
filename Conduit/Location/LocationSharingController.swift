@@ -197,12 +197,25 @@ final class LocationSharingController: ObservableObject {
             self.unsent = stored
         }
         self.engine.spotsReplied = { [weak self] watches in
-            // A reply to a batch sent before Walking past went off lists
-            // watches the host no longer keeps.
-            guard let self, self.spotRepliesLand else { return }
-            self.spots.replied(watches, near: self.fixes.lastKnownFix)
+            self?.takeSpotsReply(watches)
         }
     }
+
+    /// The host's spots reply to a batch: taken unless what it answers was
+    /// forgotten since the batch went (Walking past off, a Sign Out, the
+    /// host removed), when it lists watches the host no longer keeps.
+    /// Returns whether it was taken.
+    @discardableResult
+    func takeSpotsReply(_ watches: [LocationSpotWatch]) -> Bool {
+        guard spotRepliesLand else { return false }
+        spotsRepliesTaken += 1
+        spots.replied(watches, near: fixes.lastKnownFix)
+        return true
+    }
+
+    /// How many spots replies were taken, for tests driving the engine's
+    /// callback.
+    private(set) var spotsRepliesTaken = 0
 
     // MARK: State
 

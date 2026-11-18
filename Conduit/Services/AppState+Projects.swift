@@ -75,7 +75,7 @@ extension AppState {
                   profile == activeProfile,
                   self.client === client else { return false }
             // A view's load cancelled by leaving it didn't fail.
-            if error is CancellationError || Task.isCancelled { return false }
+            if UserFacingError.isCancellation(error) { return false }
             guard isProjectsUnavailable(error) else {
                 projectsLoadFailed = projects.isEmpty
                 return false
@@ -113,7 +113,7 @@ extension AppState {
             guard profile == activeProfile, self.client === client else { return nil }
             // A page's read cancelled by a newer one (the list changed) or
             // by leaving the page didn't fail.
-            if error is CancellationError || Task.isCancelled { return nil }
+            if UserFacingError.isCancellation(error) { return nil }
             if isProjectsUnavailable(error) {
                 projects = []
                 supportsProjects = false

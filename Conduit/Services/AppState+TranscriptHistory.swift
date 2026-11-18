@@ -241,17 +241,49 @@ extension AppState {
         query: String,
         using bridge: DashboardTicketBridge
     ) async -> [String: Any]? {
+        guard case .page(let page) = await voiceHistoryRead(sessionId: sessionId, profile: profile, query: query, using: bridge) else {
+            return nil
+        }
+        return page
+    }
+
+    /// A voice read of a history page, told apart from a chat Hermes has no
+    /// history for (404 or 410) and a read that failed (issue 2655).
+    enum VoiceHistoryRead {
+        case page([String: Any])
+        case notFound
+        case failed
+    }
+
+    /// The same read as `voiceHistoryPage`, saying why there's no page.
+    func voiceHistoryRead(
+        sessionId: String,
+        profile: String,
+        query: String,
+        using bridge: DashboardTicketBridge
+    ) async -> VoiceHistoryRead {
         if query == PersistedTranscriptPagination.tailQuery(offset: 0) {
             switch await historyPagePayload(sessionId: sessionId, profile: profile, query: query, using: bridge) {
-            case .payload(let page)?: return page
+            case .payload(let page)?: return .page(page)
             // The link's own trouble: no second wait on Hermes' route.
-            case .failed?: return nil
+            case .failed?: return .failed
             case .unavailable?, nil: break
             }
         }
-        return try? await bridge.requestJSON(
-            path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
-        )
+        do {
+            return .page(try await bridge.requestJSON(
+                path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
+            ))
+        } catch {
+            return Self.voiceHistoryRead(failingWith: error)
+        }
+    }
+
+    /// A history read's error: Hermes has no history for the chat (404 or
+    /// 410), or the read failed, which says nothing about the chat.
+    nonisolated static func voiceHistoryRead(failingWith error: Error) -> VoiceHistoryRead {
+        if case DashboardTicketBridgeError.http(let status, _) = error, status == 404 || status == 410 { return .notFound }
+        return .failed
     }
 
     /// The page through the plugin's history page route (#1525), with the

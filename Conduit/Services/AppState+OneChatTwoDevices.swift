@@ -517,6 +517,8 @@ extension AppState {
             archivedSessions = uniqueSessions(loaded.filter { sessionBelongsToProfile($0, profile: profile) })
         } catch {
             guard profile == activeProfile, ownsDashboardRuntime(owner) else { return }
+            // A read cancelled by leaving the list didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return }
             errorMessage = AppLocalization.string("Could not load archived conversations: \(UserFacingError.message(for: error))")
         }
     }

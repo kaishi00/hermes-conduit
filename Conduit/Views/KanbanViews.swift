@@ -405,6 +405,9 @@ struct KanbanView: View {
     /// frame, and on a switch before the next one (#1533).
     @State private var configuredServerKey: String?
     @State private var selectedTask: KanbanTask?
+    /// The board the open task was opened on: a change of loaded board
+    /// closes it, since its id may name another task on the new board.
+    @State private var selectedTaskBoard: String?
     /// The task request being opened (AppState.kanbanTaskOpenRequest).
     @State private var openingRequest: UUID?
     @State private var showNewTask = false
@@ -544,13 +547,19 @@ struct KanbanView: View {
                     // The switch failed: its own error shows, and the old board's sheet would read the wrong board.
                     guard current(), store.loadedBoardSlug == found.board else { return }
                 }
-                selectedTask = found.task
+                openTask(found.task)
             } catch is CancellationError {
                 return
             } catch {
                 if current() { store.showMutationError(error) }
             }
         }
+    }
+
+    /// Opens a task's sheet, noting the board it belongs to.
+    private func openTask(_ task: KanbanTask) {
+        selectedTaskBoard = store.openTaskBoardSlug
+        selectedTask = task
     }
 
     /// Prune selected IDs against the authoritative loaded board (polling
@@ -681,11 +690,20 @@ struct KanbanView: View {
                     .tint(.conduitAccent)
                 Spacer()
             } else if let errorMessage = store.errorMessage, store.board == nil {
-                ContentUnavailableView(
-                    "Kanban Unavailable",
-                    systemImage: "rectangle.3.group",
-                    description: Text(errorMessage)
-                )
+                // The poll reads again on its own; Try Again doesn't wait
+                // for it (issue 2719).
+                ContentUnavailableView {
+                    Label("Kanban Unavailable", systemImage: "rectangle.3.group")
+                } description: {
+                    Text(errorMessage)
+                } actions: {
+                    Button("Try Again") {
+                        Task { await store.refresh(includeArchived: includeArchived) }
+                    }
+                    .buttonStyle(.bordered)
+                    .disabled(store.isLoading)
+                    .accessibilityIdentifier("kanban.unavailable.retry")
+                }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if store.board != nil {
                 if visibleColumns.isEmpty {
@@ -887,6 +905,12 @@ struct KanbanView: View {
         // staged destructive confirmation is now foreign. (The confirm-time
         // ownership check below remains the hard boundary.)
         .onChange(of: store.loadedBoardSlug) { _, _ in
+            // The open task belongs to the board it was opened on: its edits
+            // would land on a same-id task of the new board.
+            if selectedTask != nil,
+               !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: selectedTaskBoard, nowOnBoard: store.openTaskBoardSlug) {
+                selectedTask = nil
+            }
             pendingDelete = nil
             // V3A merge pass: a board switch drops any visible nudge feedback
             // IMMEDIATELY (the alpha success capsule must never linger on
@@ -1365,7 +1389,7 @@ struct KanbanView: View {
                 if isSelectionActive {
                     toggleSelection(task.id)
                 } else {
-                    selectedTask = task
+                    openTask(task)
                 }
             },
             onMove: actionsInert ? inertMove : { status in Task { await move(task, to: status) } },

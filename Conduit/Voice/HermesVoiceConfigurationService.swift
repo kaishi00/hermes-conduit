@@ -144,6 +144,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// that fails keeps what's shown (#1533).
     @Published private(set) var answered: Bool?
     @Published private(set) var errorMessage: String?
+    /// The config read Hermes didn't answer last: nil until one fails and
+    /// once one answers (issues 2711, 2712). The Hermes step words it
+    /// with the connection as it is now (unansweredReason(hermesConnected:)).
+    @Published private(set) var unansweredRead: Result<[String: Any], Error>?
+    /// Why Hermes didn't answer the last read, worded for the connection
+    /// as the last reload was told it.
+    var unansweredReason: String? { unansweredReason(hermesConnected: hermesConnected) }
+    /// Why Hermes didn't answer the last read, worded for `hermesConnected`,
+    /// so a connection that drops or comes back after it failed changes
+    /// what the step says.
+    func unansweredReason(hermesConnected: Bool) -> String? {
+        unansweredRead.map { Self.unansweredReason($0, hermesConnected: hermesConnected) }
+    }
     /// The last speech server status read for this profile, for the setup step.
     @Published private(set) var speechServer: SpeechServerStatus?
     /// The last read of what the speech server needs to speak the replies,
@@ -240,13 +253,44 @@ final class HermesVoiceConfigurationService: ObservableObject {
         )
     }
 
-    func reload() async {
+    /// How long the config read waits before asking a second time: long
+    /// enough for a dashboard bridge that's still starting to be ready.
+    static var configRetryDelay: Duration = .seconds(1)
+
+    /// Whether Conduit's connection to Hermes was up at the last reload
+    /// told, so the reloads after a save word a failure the same way.
+    private var hermesConnected = false
+
+    /// Conduit came back while a read was out: that read asks once more if
+    /// Hermes didn't answer it, whichever path started it (issue 2729).
+    private var reconnectedDuringRead = false
+
+    /// Conduit's connection to Hermes as it changes.
+    func noteHermesConnected(_ connected: Bool) {
+        hermesConnected = connected
+        if connected, isLoading { reconnectedDuringRead = true }
+    }
+
+    /// Reads the page from Hermes. `hermesConnected` is whether Conduit's
+    /// connection to Hermes is up, so a read that fails says what failed
+    /// rather than asking to connect (issue 2711); nil keeps the last told.
+    func reload(hermesConnected connected: Bool? = nil) async {
+        await reload(hermesConnected: connected, followingReconnect: false)
+    }
+
+    /// `followingReconnect`: this is the one read again after a reconnect
+    /// landed while the first was out; it says what it got either way.
+    private func reload(hermesConnected connected: Bool?, followingReconnect: Bool) async {
+        if let connected { hermesConnected = connected }
+        reconnectedDuringRead = false
         isLoading = true
         defer { isLoading = false }
         errorMessage = nil
 
         async let schemaResult = result(for: KeptRead.schema, keeping: true)
-        async let configResult = result(for: KeptRead.config, keeping: true)
+        // The read the page hangs on asks twice before it says Hermes
+        // didn't answer: one dropped request isn't a lost connection.
+        async let configResult = result(for: KeptRead.config, keeping: true, retrying: true)
         async let sttResult = result(for: KeptRead.sttToolset, keeping: true)
         async let ttsResult = result(for: KeptRead.ttsToolset, keeping: true)
         async let environmentResult = result(for: "/api/env")
@@ -260,8 +304,15 @@ final class HermesVoiceConfigurationService: ObservableObject {
         if case .success(let answer) = environment { lastEnvironment = answer }
 
         guard case .success(let configObject) = config else {
-            errorMessage = Self.message(from: config)
+            if reconnectedDuringRead, !followingReconnect, !Task.isCancelled {
+                await reload(hermesConnected: nil, followingReconnect: true)
+                return
+            }
+            // The Hermes step says what failed; the line under the steps
+            // would only say it again.
             answered = false
+            unansweredRead = config
+            let reason = Self.unansweredReason(config, hermesConnected: hermesConnected)
             // A read that fails keeps the settings shown, Hermes' answer
             // from before or the one kept on the phone (#1533), with which
             // keys are set if Hermes said this time.
@@ -272,14 +323,10 @@ final class HermesVoiceConfigurationService: ObservableObject {
                 }
                 return
             }
-            // With nothing shown: a Hermes that answers without the voice
-            // routes needs updating; one that doesn't answer, connecting.
-            let reason = Self.isRouteMissing(config)
-                ? AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.", table: .voice)
-                : AppLocalization.string("Connect to Hermes before starting voice.", table: .voice)
             snapshot = .unavailable(profile: profile, reason: reason)
             return
         }
+        unansweredRead = nil
 
         // A read that fails among the others keeps what it showed, Hermes'
         // answer from before, kept on the phone (#1533).
@@ -665,12 +712,20 @@ final class HermesVoiceConfigurationService: ObservableObject {
     }
 
     /// A read, its answer kept for the page when `keeps`.
-    private func result(for path: String, keeping keeps: Bool = false) async -> Result<[String: Any], Error> {
+    private func result(for path: String, keeping keeps: Bool = false, retrying: Bool = false) async -> Result<[String: Any], Error> {
         let read = { [self] () async throws -> [String: Any] in
             try await requester.requestJSON(path: profilePath(path), method: "GET", body: nil)
         }
-        do { return .success(keeps ? try await keeping(path, read) : try await read()) }
-        catch { return .failure(error) }
+        let first: Result<[String: Any], Error>
+        do { first = .success(keeps ? try await keeping(path, read) : try await read()) }
+        catch { first = .failure(error) }
+        // A route Hermes doesn't have stays missing, and a page closed
+        // mid-read asks nothing more.
+        guard retrying, case .failure(let error) = first, !Self.isRouteMissing(first),
+              !(error is CancellationError), !Task.isCancelled else { return first }
+        try? await Task.sleep(for: Self.configRetryDelay)
+        guard !Task.isCancelled else { return first }
+        return await result(for: path, keeping: keeps)
     }
 
     /// Saves the whole config. What it wrote is what the page opens on
@@ -719,9 +774,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
         credential(key)?.description ?? key
     }
 
-    private static func message(from result: Result<[String: Any], Error>) -> String? {
-        if case .failure(let error) = result { return UserFacingError.message(for: error) }
-        return nil
+    /// Why a config read Hermes didn't answer left voice unusable: a
+    /// Hermes that answers without the voice routes needs updating; with
+    /// Conduit's connection down, connecting; with it up, what failed
+    /// (issue 2711).
+    static func unansweredReason(_ result: Result<[String: Any], Error>, hermesConnected: Bool) -> String {
+        if isRouteMissing(result) {
+            return AppLocalization.string("This Hermes server doesn't offer voice settings. Update Hermes to use Voice. Text chat still works.", table: .voice)
+        }
+        guard hermesConnected, case .failure(let error) = result else {
+            return AppLocalization.string("Connect to Hermes before starting voice.", table: .voice)
+        }
+        let failure = UserFacingError.message(for: error)
+        return AppLocalization.string("Connected, but Hermes didn't send its voice settings: \(failure)", table: .voice)
     }
 
     /// Hermes answered that it has no such route: an older Hermes.

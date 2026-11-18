@@ -1100,7 +1100,12 @@ extension CrossProfilePresentationCacheTests {
     /// tap; one whose server didn't answer is down and tried again until
     /// it connects; a kept one whose socket drops is down again.
     func testACombinedDashboardSaysWhyItIsntConnectedAndOneDownIsTriedAgain() async throws {
-        final class Mints { var failures = 1; var count = 0; var status = 503 }
+        final class Mints {
+            var failures = 1; var count = 0; var status = 503
+            /// The next mint waits for `hold` to be resumed.
+            var holds = false
+            var hold: CheckedContinuation<Void, Never>?
+        }
         let mints = Mints()
         let socket = ClarifyFakeSocket()
         let transport = ClarifyFakeTransport()
@@ -1108,6 +1113,10 @@ extension CrossProfilePresentationCacheTests {
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.mintTicket = { _ in
             mints.count += 1
+            if mints.holds {
+                mints.holds = false
+                await withCheckedContinuation { mints.hold = $0 }
+            }
             if mints.failures > 0 {
                 mints.failures -= 1
                 throw DashboardTicketBridgeError.http(status: mints.status, detail: "")
@@ -1168,6 +1177,26 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
         appState.isConnected = true
         appState.combinedDashboardRetryBaseDelay = 60
+
+        // A quiet sign-in dropped while it runs (past the cap meanwhile, or
+        // no longer wanted) with no retry waiting stops saying "trying
+        // again", its backoff kept (#2641's review, issue 2655).
+        mints.holds = true
+        appState.connectOtherCombinedDashboards(only: vps.id)
+        await waitUntil { mints.hold != nil }
+        _ = try XCTUnwrap(mints.hold, "the sign-in reached its mint")
+        XCTAssertTrue(appState.combinedSignInsUnderWay.contains(vps.id))
+        appState.combinedDashboardTrouble[vps.id] = .down
+        // Called off (as Sign Out does), not a new generation: that one
+        // passes again once the sign-in ends.
+        appState.combinedSignInsCalledOff.insert(vps.id)
+        mints.hold?.resume()
+        mints.hold = nil
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
+        XCTAssertNil(appState.keptDashboardRuntimes[vps.id], "what it finished isn't kept")
 
         // A refused sign-in waits for a tap: no pass, retry or return asks again.
         mints.failures = 1
@@ -1317,6 +1346,71 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id, "its row stays")
         appState.keptDashboardJSONReader = reader
 
+        // A room wait whose read was out while the two dashboards turned
+        // out one Hermes, or two: whether it's the open room's is asked once
+        // the read is back (issue 2764, DeepSeek on #2756).
+        final class Paused {
+            var holds = false
+            var waiting: CheckedContinuation<Void, Never>?
+            var roomWaits: [[String: Any]] = []
+        }
+        let paused = Paused()
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard path.contains(NeedsYouStore.path), path.contains("profile=atlas") else { return try await reader(bridge, path) }
+            if paused.holds {
+                paused.holds = false
+                await withCheckedContinuation { paused.waiting = $0 }
+            }
+            let listed = try await reader(bridge, path)["waiting"] as? [[String: Any]] ?? []
+            return ["waiting": listed + paused.roomWaits]
+        }
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0
+        )
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: vps.id, room: room))
+        let ownSessions = appState.sessions
+        let shared = session("shared-1")
+        func readPaused(_ waitID: String, meanwhile: @escaping @MainActor () -> Void) async {
+            paused.roomWaits = [["id": waitID, "kind": "approval", "session_ids": ["room-s"], "room": "room-1", "at": 2_000]]
+            paused.holds = true
+            let pass = Task { @MainActor in await appState.readOtherCombinedDashboardsNeedsYou() }
+            await waitUntil { paused.waiting != nil }
+            guard let waiting = paused.waiting else {
+                // Never reached the pause: nothing would resume it.
+                paused.holds = false
+                XCTFail("atlas's read never reached the pause")
+                await pass.value
+                return
+            }
+            meanwhile()
+            waiting.resume()
+            paused.waiting = nil
+            await pass.value
+        }
+        // One Hermes by the time it's back: the open room's, no banner.
+        await readPaused("wr1") {
+            appState.sessions = ownSessions + [shared]
+            appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+                bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [shared], at: Date()
+            )
+        }
+        XCTAssertNotNil(appState.combinedHermesGroups[vps.id])
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        XCTAssertTrue(appState.needsYou.otherDashboards[mac.id]?.contains { $0.waitID == "wr1" } == true)
+        XCTAssertNil(appState.needsYou.banner, "the same Hermes' room on screen")
+        // Two by the time it's back: another Hermes' room with the same id
+        // banners.
+        await readPaused("wr2") {
+            appState.sessions = ownSessions
+            appState.combinedDashboardChats[mac.id] = nil
+        }
+        XCTAssertEqual(appState.needsYou.banner?.waitID, "wr2", "another Hermes' room under the same id")
+        if let banner = appState.needsYou.banner { appState.needsYou.dismissBanner(banner) }
+        appState.setActiveRoomSurfaceForTesting(nil)
+        appState.keptDashboardJSONReader = reader
+
         appState.openNeedsYou(item)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertEqual(appState.activeDashboardID, mac.id)
@@ -1399,6 +1493,17 @@ extension CrossProfilePresentationCacheTests {
         // New Bot on that dashboard checks the name against its profiles.
         XCTAssertTrue(appState.newBotSlug(for: "Atlas", on: mac.id).isTaken)
         XCTAssertFalse(appState.newBotSlug(for: "Zephyr", on: mac.id).isTaken)
+        // One Hermes saved twice (a chat both list): the copy keeps only
+        // the profile this dashboard doesn't read (#2754 review).
+        appState.sessions = [session("shared-1")]
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [session("shared-1")], at: Date()
+        )
+        XCTAssertEqual(appState.artifactSources(for: .profile).filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas"])
+        appState.sessions = []
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [], at: Date()
+        )
 
         final class Paths { var read: [String] = [] }
         let paths = Paths()
@@ -1508,6 +1613,16 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardBots[mac.id] = nil
         appState.botRoster = roster
         appState.combinedBotsHomeOrder = []
+        // No bots anywhere: a chat both lists give is the same evidence,
+        // so the profile still shows once (issue 2741).
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 3, "two Hermes until something says otherwise")
+        let ownSessions = appState.sessions
+        appState.sessions = [SessionSummary(id: "mac-2", alternateIds: [], title: "Old", model: "Hermes", updatedLabel: "now",
+                                            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
+                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        appState.sessions = ownSessions
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
         // The Chats list shows them only in All: one profile's list is that
@@ -1615,6 +1730,110 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty)
     }
 
+    /// A strip chip whose profile its Hermes deleted since the last read
+    /// switches nothing, leaves the strip and its chats and waits go;
+    /// neither dashboard's All changes, and a switch whose own list
+    /// doesn't name the profile leaves its All as it was (issue 2646).
+    func testAStaleProfileChipOfAKeptDashboardSwitchesNothingAndLeavesTheStrip() async throws {
+        final class Lists {
+            var profiles: [String] = ["default", "atlas"]
+            var fails = false
+            var reads = 0
+            var duringAtlasWaits: (@MainActor () -> Void)?
+        }
+        final class Loaded { weak var app: AppState?; var profiles: [String]? }
+        let lists = Lists()
+        let loaded = Loaded()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        // The switch's own profile list, as its Hermes gives it.
+        operations.loadProfiles = { if let profiles = loaded.profiles { loaded.app?.profiles = profiles } }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        loaded.app = appState
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            if path.contains(NeedsYouStore.path) {
+                guard path.contains("profile=atlas") else { return ["waiting": []] }
+                if let during = lists.duringAtlasWaits { await MainActor.run { during() } }
+                return ["waiting": [[
+                    "id": "w2", "kind": "approval", "session_ids": ["atlas-1"],
+                    "title": "Garden", "summary": "water", "at": 1_000,
+                ]]]
+            }
+            if path == "/api/profiles" {
+                lists.reads += 1
+                if lists.fails { throw URLError(.timedOut) }
+                return ["profiles": lists.profiles]
+            }
+            guard path.contains("/api/profiles/sessions") else { return [:] }
+            let profile = path.contains("profile=atlas") ? "atlas" : "default"
+            return ["sessions": [
+                ["id": "\(profile)-1", "title": "T", "message_count": 3, "profile": profile, "last_active": 1_500],
+            ]]
+        }
+        await appState.readOtherCombinedDashboardsChats()
+        appState.combinedBotsHomeOrder = []
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas"),
+            CombinedBotsHomeOrder.key(vps.id, "default"),
+        ])
+        appState.needsYou.applyOther(
+            [NeedsYouItem(waitID: "w-atlas", profile: "atlas", kind: .approval, sessionIDs: ["atlas-1"])],
+            profile: "atlas", dashboardID: mac.id, isOpenChat: { _ in false }
+        )
+        XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.count, 1)
+        appState.allProfilesChatsSettings[dashboard: vps.id].isOn = true
+        appState.allProfilesChatsSettings[dashboard: mac.id].isOn = true
+
+        // Still listed, read anew at the tap though the last list is fresh.
+        let readsBefore = lists.reads
+        let listed = await appState.combinedProfileStillListed("Atlas", in: mac.id)
+        XCTAssertTrue(listed)
+        XCTAssertEqual(lists.reads, readsBefore + 1, "asked anew at the tap")
+        // No list to be had says nothing against the chip.
+        lists.fails = true
+        let unread = await appState.combinedProfileStillListed("atlas", in: mac.id)
+        XCTAssertTrue(unread)
+        lists.fails = false
+
+        // Deleted on Mac's Hermes since, after a visit there left it
+        // remembered.
+        appState.rememberActiveProfile("atlas", for: mac.id)
+        lists.profiles = ["default"]
+        let switched = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas")
+        XCTAssertFalse(switched)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "nothing switches")
+        XCTAssertNil(appState.rememberedActiveProfile(for: mac.id), "nor resumes there on it later")
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: mac.id].isOn, "its All stays on")
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: vps.id].isOn, "this one's too")
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id), [
+            CombinedBotsHomeOrder.key(mac.id, "default"), CombinedBotsHomeOrder.key(vps.id, "default"),
+        ], "the chip leaves the strip")
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["default-1"], "its chats leave All")
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "its waits leave Needs you")
+
+        // A waits pass that read the old list before the tap brings none
+        // of its waits back.
+        lists.profiles = ["default", "atlas"]
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        lists.duringAtlasWaits = { appState.keptDashboardProfiles[mac.id]?.profiles = ["default"] }
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "the deleted profile's wait stays out")
+        lists.duringAtlasWaits = nil
+
+        // Listed when tapped, but not by the switch's own list: its All
+        // stays as it was and nothing is picked.
+        loaded.profiles = ["default"]
+        let landed = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas")
+        XCTAssertFalse(landed)
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: mac.id].isOn, "its All stays on")
+        appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
+        appState.allProfilesChatsSettings[dashboard: mac.id] = AllProfilesChatsSettings.Dashboard()
+    }
+
     /// Bots Home shows a kept combined dashboard's bots, read through its
     /// kept client, in the same grid as Bots Home's own, mixed in the
     /// group's order; a tap opens through that dashboard (all-live stage 4c).
@@ -1708,6 +1927,9 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
         )
+        // The switch kept Mac's chats; this harness's two dashboards share
+        // one fake host, so its list would make them one Hermes (issue 2741).
+        appState.combinedDashboardChats[mac.id] = nil
         XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
         // Rosters cached at different times overlap only through a third
         // dashboard: still one Hermes, its bot shown once.

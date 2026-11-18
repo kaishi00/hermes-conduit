@@ -69,11 +69,13 @@ extension AppState {
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
-            // dashboard of this one's Hermes (issue 2631).
-            let mine = CombinedBotsHomeOrder.key(activeDashboardID, "")
-            let theirs = CombinedBotsHomeOrder.key(id, "")
-            let sameHermes = combinedBotsHomeTwins.contains { key, copies in
-                key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
+            // dashboard of this one's Hermes (issue 2631), bots or none
+            // (issue 2741).
+            // Asked per item, after the read: the read itself can bring
+            // the shared wait that makes the two one Hermes.
+            func sameHermes() -> Bool {
+                let hermes = combinedHermesGroups
+                return hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
             }
             for profile in profiles {
                 guard isSceneActive else { return }
@@ -81,18 +83,39 @@ extension AppState {
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, or opened, while the read was out: not this pass's.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
-                guard let listed = response?["waiting"] as? [[String: Any]] else { continue }
+                guard let listed = response.flatMap({ NeedsYouItem.items(listed: $0, profile: profile) }) else { continue }
+                // A profile a strip tap found deleted while the read was
+                // out stays gone (issue 2646).
+                guard currentKeptProfiles(id, else: profiles).contains(where: { profilesMatch($0, profile) }) else { continue }
                 needsYou.applyOther(
-                    listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
+                    listed,
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { ($0.roomID == nil || sameHermes) && self.isOpenChat($0) }
+                    isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
-                needsYou.forgetOther(id, profilesOtherThan: Set(profiles))
+                needsYou.forgetOther(id, profilesOtherThan: Set(currentKeptProfiles(id, else: profiles)))
             }
         }
+    }
+
+    /// Whether another combined dashboard's wait is the chat on screen's, so
+    /// it doesn't banner: a room wait only from a dashboard of this one's
+    /// Hermes, since another Hermes' room can share the open room's id
+    /// (issue 2631, tested in issue 2655).
+    static func otherDashboardWaitIsOpen(
+        _ item: NeedsYouItem,
+        sameHermes: () -> Bool,
+        isOpenChat: (NeedsYouItem) -> Bool
+    ) -> Bool {
+        (item.roomID == nil || sameHermes()) && isOpenChat(item)
+    }
+
+    /// A kept dashboard's profiles as last read, a read since the pass
+    /// began included; the pass's own list when none is kept.
+    private func currentKeptProfiles(_ id: UUID, else profiles: [String]) -> [String] {
+        keptDashboardProfiles[id]?.profiles ?? profiles
     }
 
     /// How long a kept dashboard's profile list stands before a pass reads
@@ -100,12 +123,14 @@ extension AppState {
     static let keptDashboardProfilesMaxAge: TimeInterval = 300
 
     /// A kept dashboard's profiles, read through its bridge once per kept
-    /// connection and again every few minutes. The last list when a read
-    /// again fails; nil when none could be read.
-    func keptDashboardProfileNames(_ id: UUID, _ runtime: KeptDashboardRuntime, now: Date = Date()) async -> [String]? {
+    /// connection and again every few minutes, or at once when `fresh`.
+    /// The last list when a read again fails; nil when none could be read.
+    func keptDashboardProfileNames(
+        _ id: UUID, _ runtime: KeptDashboardRuntime, fresh: Bool = false, now: Date = Date()
+    ) async -> [String]? {
         let bridge = ObjectIdentifier(runtime.bridge)
         let last = keptDashboardProfiles[id].flatMap { $0.bridge == bridge ? $0 : nil }
-        if let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
+        if !fresh, let last, now.timeIntervalSince(last.at) < Self.keptDashboardProfilesMaxAge { return last.profiles }
         // Kept anew (opened and left again) while the read was out: the
         // list that switch seeded is newer than this read.
         let keptAt = runtime.keptAt
@@ -188,18 +213,25 @@ extension AppState {
                   let key = Self.pendingDecisionEvictionKey(for: card),
                   let pushed = Self.notificationClarifyActivity(for: card),
                   !needsYou.cardsHermesDrew.contains(pushed.requestId),
-                  isOpenChat(item),
-                  !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
+                  isOpenChat(item) else { continue }
+            // Its answer goes through the relay, sealed for the profile's
+            // pairing like a notification's: the card came from no push
+            // that named its gateway (issue 2683). Kept for a card already
+            // drawn too, one restored at relaunch included: whether its
+            // answer may go unsealed is worked out at the send, and one
+            // with no key here while the profile has one under another
+            // gateway is refused (Eric, 2026-11-18, issue 2692).
+            if let gatewayID = needsYouCardGatewayID(item) {
+                PushNotificationService.shared.retainRelayGatewayID(
+                    gatewayID, forRequestID: pushed.requestId,
+                    sealContext: .init(gatewayID: gatewayID, dashboardID: activeDashboardID, profile: item.profile)
+                )
+            }
+            guard !messages.contains(where: { SessionPresentationCache.decisionKey(for: $0) == key }) else { continue }
             if Self.hermesCardHoldsQuestion(pushed, in: messages) {
                 // Its answer leaves the wait listed until the next read.
                 needsYou.noteHermesDrewCard(for: pushed.requestId)
                 continue
-            }
-            // Its answer goes through the relay, sealed for the profile's
-            // pairing like a notification's: the card came from no push
-            // that named its gateway (issue 2683).
-            if let gatewayID = needsYouCardGatewayID(item) {
-                PushNotificationService.shared.retainRelayGatewayID(gatewayID, forRequestID: pushed.requestId)
             }
             let openIDs = presentationCacheSessionIDs(for: openID)
             let profile = presentationProfile(for: openID)
@@ -253,6 +285,29 @@ extension AppState {
             }
             .max { $0.createdAt < $1.createdAt }
         return keyed?.gatewayID ?? reported
+    }
+
+    /// Whether a row-drawn card's answer must be sealed though this iPhone
+    /// holds no key for `gatewayID`: it holds a current one for the profile
+    /// on this dashboard under another gateway, so the pairing changed since
+    /// (re-paired elsewhere, or a key not handed over yet), and plaintext
+    /// would reach the relay only for the plugin to refuse it (issue 2692).
+    nonisolated static func needsYouCardMustSeal(
+        gatewayID: String,
+        dashboardID: UUID?,
+        profile: String,
+        installationID: String?,
+        records: [E2EKeyRecord]
+    ) -> Bool {
+        guard NotificationE2E.currentRecord(gatewayID: gatewayID, installationID: installationID, records: records) == nil else {
+            return false
+        }
+        return records.contains { record in
+            record.installationID == installationID && record.retiredAt == nil
+                && record.gatewayID != gatewayID
+                && record.dashboardID == dashboardID?.uuidString
+                && record.profile.map { profilesMatch($0, profile) } == true
+        }
     }
 
     /// Reads while Conduit is on screen, every `pollInterval` seconds. The

@@ -375,7 +375,10 @@ extension AppState {
         return try await client.groupsDisband(roomID: roomID)
     }
 
-    func invalidateGroupChatState() {
+    /// `keepingDrafts`: a switch to another saved dashboard keeps each
+    /// room's unsent words and files, as chats keep theirs (issue 2702):
+    /// they're kept by dashboard and room, so nothing collides.
+    func invalidateGroupChatState(keepingDrafts: Bool = false) {
         groupChatPhase = .idle
         groupChatProbeRetry.succeeded()
         groupCapabilities = nil
@@ -407,11 +410,14 @@ extension AppState {
         groupRoomPictureRevisions = [:]
         // Identity/sign-out teardown: the caller owns `errorMessage` (it may
         // have just set a connection error), so the room must not wipe it.
-        // Parked sends and drafts belong to the outgoing identity.
-        closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
+        // A switch to another saved dashboard keeps every room's sends on
+        // their way, drafts and events (keyed by dashboard), so the room's
+        // send comes back with its retry key; a sign-out drops them.
+        closeRoomSurface(clearingRoomError: false, parkingPendingSend: keepingDrafts)
+        guard !keepingDrafts else { return }
         parkedRoomOutboxes.removeAll()
-        groupRoomDrafts.removeAll()
         keptRoomReplays.removeAll()
+        groupRoomDrafts.removeAll()
         dropRoomAttachments { _ in true }
         // A send still awaiting its reply belongs to the outgoing identity;
         // its defer's removal is a no-op once the key is gone.
@@ -494,6 +500,17 @@ extension AppState {
         groupRoomDrafts = groupRoomDrafts.filter { !isGone($0.key) }
         keptRoomReplays = keptRoomReplays.filter { !isGone($0.key) }
         dropRoomAttachments(where: isGone)
+    }
+
+    /// A sign-out of one dashboard: its rooms' sends on their way, unsent
+    /// words, staged files and kept events go, the other dashboards' stay.
+    func forgetRoomDrafts(dashboardID: UUID) {
+        let prefix = "\(dashboardID.uuidString)|"
+        parkedRoomOutboxes = parkedRoomOutboxes.filter { !$0.key.hasPrefix(prefix) }
+        keptRoomReplays = keptRoomReplays.filter { !$0.key.hasPrefix(prefix) }
+        inFlightRoomSendTokens = inFlightRoomSendTokens.filter { !$0.key.hasPrefix(prefix) }
+        groupRoomDrafts = groupRoomDrafts.filter { !$0.key.hasPrefix(prefix) }
+        dropRoomAttachments { $0.hasPrefix(prefix) }
     }
 
     /// Drops the staged files of the rooms `isDropped` names, and their

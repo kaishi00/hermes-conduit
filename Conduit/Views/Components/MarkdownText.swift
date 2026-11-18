@@ -2935,6 +2935,8 @@ private struct GatewayMediaFileCard: View {
     @State private var openTask: Task<Void, Never>?
     /// A Markdown file opens in the Markdown reader, as from Artifacts.
     @State private var markdown: MarkdownDocument?
+    /// Save to Files couldn't fetch the file or show the picker.
+    @State private var saveFailed = false
 
     var body: some View {
         Group {
@@ -2959,8 +2961,22 @@ private struct GatewayMediaFileCard: View {
             openTask = nil
             loading = false
         }
+        // Long-press: Open, and a copy saved straight to Files (issue 1809).
+        .contextMenu {
+            Button(action: open) {
+                Label(AppLocalization.string("Open"), systemImage: "arrow.up.left.and.arrow.down.right")
+            }
+            Button(action: saveToFiles) {
+                Label(AppLocalization.string("Save to Files"), systemImage: "folder")
+            }
+        }
         .sheet(item: $markdown) { document in
             MarkdownDocumentSheet(document: document)
+        }
+        .alert(tooLarge ? AppLocalization.string("Too large to open on this phone")
+                        : AppLocalization.string("Couldn't save the file. Try again."),
+               isPresented: $saveFailed) {
+            Button(AppLocalization.string("OK"), role: .cancel) {}
         }
     }
 
@@ -3056,6 +3072,39 @@ private struct GatewayMediaFileCard: View {
             tooLarge = outcome == .tooLarge
             openTask = nil
         }
+    }
+
+    /// Fetches the file as Open does and hands it to the Files picker; the
+    /// fetched copy goes when the picker closes.
+    private func saveToFiles() {
+        guard !loading, gatewayMediaFiles != nil || gatewayMediaDataURL != nil else { return }
+        loading = true
+        failed = false
+        tooLarge = false
+        openTask = Task {
+            let outcome = await fetchAndSave()
+            guard !Task.isCancelled else { return }
+            loading = false
+            tooLarge = outcome == .tooLarge
+            saveFailed = outcome != .presented
+            openTask = nil
+        }
+    }
+
+    private func fetchAndSave() async -> OpenOutcome {
+        if let gatewayMediaFiles {
+            switch await gatewayMediaFiles.file(for: path) {
+            case .downloaded(let download):
+                return MediaPreviewPresenter.shared.presentSaveToFiles(downloaded: download) ? .presented : .failed
+            case .tooLarge:
+                return .tooLarge
+            case .unavailable:
+                break
+            }
+        }
+        guard !Task.isCancelled, let gatewayMediaDataURL,
+              let dataURL = await gatewayMediaDataURL(path), !Task.isCancelled else { return .failed }
+        return await MediaPreviewPresenter.shared.presentSaveToFiles(dataURL: dataURL, filename: path) ? .presented : .failed
     }
 
     /// The file itself, downloaded to disk, so a video over the 16 MB data

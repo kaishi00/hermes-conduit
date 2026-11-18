@@ -13,11 +13,22 @@ struct ComposerDraft: Equatable {
     }
 }
 
+/// A draft's chat: its dashboard as well as its profile and id, since two
+/// dashboards can share profile names and ids. Drafts stay across a
+/// dashboard switch (issue 2702: opening another combined dashboard's bot
+/// switches dashboards).
 struct ComposerDraftKey: Hashable {
     static let newConversationSessionID = "new-conversation"
 
+    var dashboard: UUID?
     var profile: String
     var sessionID: String
+
+    init(dashboard: UUID?, profile: String, sessionID: String) {
+        self.dashboard = dashboard
+        self.profile = profile
+        self.sessionID = sessionID
+    }
 
     var isNewConversation: Bool {
         sessionID == Self.newConversationSessionID
@@ -38,6 +49,12 @@ final class ComposerDraftStore {
     /// How many times `removeAll` ran: a composer loaded before a clear
     /// doesn't put its draft back after it.
     private(set) var clearCount: UInt64 = 0
+    /// How many times each dashboard's drafts went on their own (a sign-out
+    /// of a dashboard not on screen).
+    private var dashboardClearCounts: [UUID: UInt64] = [:]
+    /// How many times a server with no saved dashboard had its drafts go
+    /// on their own (a switch to a saved dashboard).
+    private var unsavedServerClearCount: UInt64 = 0
 
     init(capacity: Int = 12) {
         self.capacity = max(0, capacity)
@@ -63,7 +80,7 @@ final class ComposerDraftStore {
         drafts[key] = draft
         refreshGeneration(for: key)
         touch(key)
-        evictIfNeeded()
+        evictIfNeeded(in: key.dashboard)
     }
 
     func hasDraft(for key: ComposerDraftKey) -> Bool {
@@ -103,6 +120,36 @@ final class ComposerDraftStore {
         removeDraft(for: bucket.key)
     }
 
+    /// A sign-out of a dashboard that isn't on screen: its drafts go, the
+    /// other dashboards' stay. Only that dashboard's clear count moves, so
+    /// the composer on screen still keeps its own.
+    func removeDrafts(forDashboard dashboard: UUID) {
+        dashboardClearCounts[dashboard, default: 0] &+= 1
+        removeDraftsKept(under: dashboard)
+    }
+
+    /// The drafts a server with no saved dashboard left go: nothing can
+    /// load them once a saved dashboard is in use. Their clear count moves,
+    /// so a composer leaving that server doesn't save its draft back.
+    func removeUnsavedServerDrafts() {
+        unsavedServerClearCount &+= 1
+        removeDraftsKept(under: nil)
+    }
+
+    private func removeDraftsKept(under dashboard: UUID?) {
+        for key in drafts.keys.filter({ $0.dashboard == dashboard }) {
+            removeDraft(for: key)
+        }
+    }
+
+    /// The clears a draft of `dashboard` has to outlast: every store-wide
+    /// one, and its own dashboard's. A send from a dashboard signed out
+    /// meanwhile doesn't put its words back, and the dashboard on screen's
+    /// composer still keeps its draft (#2708).
+    func clearCount(for dashboard: UUID?) -> UInt64 {
+        clearCount &+ (dashboard.map { dashboardClearCounts[$0] ?? 0 } ?? unsavedServerClearCount)
+    }
+
     func removeAll() {
         clearCount &+= 1
         drafts.removeAll()
@@ -115,11 +162,12 @@ final class ComposerDraftStore {
         order.append(key)
     }
 
-    private func evictIfNeeded() {
-        while order.count > capacity {
-            let oldest = order.removeFirst()
-            drafts.removeValue(forKey: oldest)
-            generations.removeValue(forKey: oldest)
+    /// The cap is each dashboard's: drafts outlive a switch, so one
+    /// dashboard's never push out another's (#2708).
+    private func evictIfNeeded(in dashboard: UUID?) {
+        var held = order.filter { $0.dashboard == dashboard }
+        while held.count > capacity {
+            removeDraft(for: held.removeFirst())
         }
     }
 

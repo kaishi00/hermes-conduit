@@ -125,7 +125,7 @@ extension AppState {
                     // Bound to the chat that refused it: one opened before
                     // the send starts gets nothing, and the words go back.
                     let context = self.composerSubmissionContext()
-                    let clearCount = self.composerDraftStore.clearCount
+                    let clearCount = self.composerDraftStore.clearCount(for: held.restore.dashboardID)
                     self.dismissChatTakeover()
                     Task { @MainActor [weak self] in
                         await self?.sendHeldTakeoverMessage(held, context: context, clearCount: clearCount)
@@ -209,13 +209,13 @@ extension AppState {
         context: ComposerSubmissionContext,
         clearCount: UInt64
     ) async {
-        guard composerDraftStore.clearCount == clearCount else { return }
+        guard composerDraftStore.clearCount(for: held.restore.dashboardID) == clearCount else { return }
         lifecycleLog.notice("took the chat over; sending the refused message again")
         if await submitComposer(text: held.text, attachments: held.restore.draft.attachments, context: context) {
             if let pending = held.restore.pending { removePendingComposerSendFile(pending) }
             return
         }
-        guard composerDraftStore.clearCount == clearCount else { return }
+        guard composerDraftStore.clearCount(for: held.restore.dashboardID) == clearCount else { return }
         if let pending = held.restore.pending,
            !pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id })
             || composerRestoreRequests.contains(where: { $0.pending?.id == pending.id }) {

@@ -31,7 +31,38 @@ struct SessionCatalogCache {
     /// The newest read (in the order reads started) whose listing each
     /// key holds, so an older read that ends later never writes over it
     /// (issue 2293).
-    private(set) var committedReads: [String: UInt64] = [:]
+    private(set) var committedReads: [String: ReadOrder] = [:]
+
+    /// Where a read's listing stands among the others: by the read whose
+    /// newest page it holds (`rowsFrom`), then by whether it fetched cron
+    /// itself, then by the read. Reads that took one newest page
+    /// (NewestCatalogPageRead, issue 2604) hold rows of the same age; of
+    /// those, one that fetched cron keeps its commit over one that reused
+    /// cached cron or whose cron request failed, and of two that fetched,
+    /// the one that started later does (#2753 review).
+    struct ReadOrder: Comparable {
+        let rowsFrom: UInt64
+        let freshCron: Bool
+        let read: UInt64
+
+        init(rowsFrom: UInt64, freshCron: Bool = true, read: UInt64) {
+            self.rowsFrom = rowsFrom
+            self.freshCron = freshCron
+            self.read = read
+        }
+
+        /// A read that sent its own requests, its cron read included. A
+        /// read that reused cached cron or got none passes `freshCron: false`.
+        init(_ read: UInt64) {
+            self.init(rowsFrom: read, read: read)
+        }
+
+        static func < (lhs: ReadOrder, rhs: ReadOrder) -> Bool {
+            if lhs.rowsFrom != rhs.rowsFrom { return lhs.rowsFrom < rhs.rowsFrom }
+            if lhs.freshCron != rhs.freshCron { return !lhs.freshCron }
+            return lhs.read < rhs.read
+        }
+    }
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -80,14 +111,21 @@ struct SessionCatalogCache {
     }
 
     /// Whether a read that started after `read` already committed `key`'s
-    /// listing: its rows are newer than any this read could write.
+    /// listing: its rows are newer than any this read could write. `read`
+    /// counts as one that sent its own page and fetched cron (ReadOrder(_:)).
     func hasNewerCommit(than read: UInt64, forKey key: String) -> Bool {
-        (committedReads[key] ?? 0) > read
+        hasNewerCommit(than: ReadOrder(read), forKey: key)
+    }
+
+    func hasNewerCommit(than order: ReadOrder, forKey key: String) -> Bool {
+        committedReads[key].map { $0 > order } ?? false
     }
 
     /// Commits a live and cron snapshot only when no cache mutation occurred
     /// during the load that produced it. `read` numbers the load in the
-    /// order loads started; check `hasNewerCommit(than:forKey:)` first.
+    /// order loads started, as one that sent its own page and fetched cron;
+    /// any other passes `order:` (ReadOrder). Check
+    /// `hasNewerCommit(than:forKey:)` first.
     @discardableResult
     mutating func commit(
         liveSessions: [SessionSummary],
@@ -96,11 +134,14 @@ struct SessionCatalogCache {
         cronKey: String,
         historyMarkers: [String: Date],
         at generation: UInt64,
-        read: UInt64? = nil
+        read: UInt64? = nil,
+        order: ReadOrder? = nil
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
         commits &+= 1
-        if let read { committedReads[liveKey] = max(committedReads[liveKey] ?? 0, read) }
+        if let order = order ?? read.map({ ReadOrder($0) }) {
+            committedReads[liveKey] = committedReads[liveKey].map { max($0, order) } ?? order
+        }
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
