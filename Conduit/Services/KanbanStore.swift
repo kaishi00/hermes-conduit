@@ -115,10 +115,11 @@ final class KanbanStore {
         loadedBoardSlug ?? resolvedSelectedBoardSlug
     }
 
-    /// The task whose sheet the board shows now, or nil once it closed (a
-    /// board change, or the person swiped it away). KanbanViews keeps it; a
-    /// two-step action that outlives its sheet reads it to report on the board.
-    var presentedTaskSheetID: String?
+    /// The task sheet on screen now (its own presentation id, so a reopened
+    /// task or another task's sheet differs), or nil once it closed (a board
+    /// change, or the person swiped it away). The sheet keeps it; a two-step
+    /// action that outlives its sheet reads it to report on the board.
+    var presentedTaskSheet: UUID?
 
     /// Stamp of the board/server context that currently owns mutations, or
     /// nil while no snapshot is loaded. Staged destructive confirmations

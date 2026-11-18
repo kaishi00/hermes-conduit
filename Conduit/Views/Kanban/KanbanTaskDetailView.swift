@@ -35,6 +35,9 @@ struct KanbanTaskDetailView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     private let initialTask: KanbanTask
+    /// This sheet's own presentation: a reopened task, or another task's
+    /// sheet, is a different one (KanbanStore.presentedTaskSheet).
+    @State private var sheetPresentation = UUID()
     /// Replace-current-detail navigation target for dependency taps. The
     /// sheet never stacks another sheet; it swaps the displayed identity.
     @State private var displayedTaskID: String
@@ -422,6 +425,12 @@ struct KanbanTaskDetailView: View {
             .onChange(of: store.loadedBoardSlug) { _, _ in
                 pendingDecompose = nil
                 completedTriageMutation = nil
+            }
+            // This sheet is the one on screen until it goes; a two-step action
+            // that outlives it reports on the board instead (see reportsOnBoard).
+            .onAppear { store.presentedTaskSheet = sheetPresentation }
+            .onDisappear {
+                if store.presentedTaskSheet == sheetPresentation { store.presentedTaskSheet = nil }
             }
         }
     }
@@ -1370,7 +1379,7 @@ struct KanbanTaskDetailView: View {
                 outcome: outcome,
                 started: startedBoard,
                 current: store.loadedContextStamp,
-                sheetShowsStartedTask: store.presentedTaskSheetID != nil
+                sheetShowsStartedTask: store.presentedTaskSheet == sheetPresentation
                     && KanbanDetailMutationPolicy.completionIsActive(startedTaskID: startedTaskID, displayedTaskID: displayedTaskID)
               ) else { return }
         store.showMutationError(KanbanServiceError.invalidResponse(message))
