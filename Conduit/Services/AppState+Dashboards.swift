@@ -477,7 +477,11 @@ extension AppState {
             chatResumeCoordinator.clearResumeState()
         }
         // And its drafts, kept through switches by dashboard: the new host's
-        // profile and chat ids may match the old one's.
+        // profile and chat ids may match the old one's. A room of the old
+        // host still open closes, its send on its way with it.
+        if activeRoomSurface?.dashboardID == id {
+            closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
+        }
         forgetDrafts(ofDashboard: id)
         return registry.dashboards[index]
     }

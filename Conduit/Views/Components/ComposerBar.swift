@@ -655,8 +655,11 @@ struct ComposerBar: View {
         .onReceive(ComposerPaste.requests) { target in
             pasteFromTranscript(target)
         }
-        .onChange(of: updates.inputs.draftKeyOnScreen) { _, newKey in
+        .onChange(of: updates.inputs.draftKeyOnScreen) { oldKey, newKey in
             handoffComposer(to: newKey)
+            // Words kept on their way back while another dashboard was on
+            // screen land once theirs is back (issue 2702).
+            if oldKey.dashboard != newKey.dashboard { applyComposerRestoreRequests() }
         }
         .onChange(of: updates.inputs.hasRoomSurface) { _, roomActive in
             // The room surface unmounts this composer's subtree. Persist the
