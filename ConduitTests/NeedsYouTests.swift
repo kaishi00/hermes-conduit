@@ -221,6 +221,45 @@ extension ChatOnScreenTests {
         XCTAssertTrue(store.otherDashboards.isEmpty)
     }
 
+    /// #2641's review (issue 2655): another combined dashboard's room wait
+    /// counts as the open room's only when Bots Home finds that dashboard the
+    /// same Hermes; another Hermes' room with the same id still banners. A
+    /// chat wait goes by the open chat alone.
+    func testATwinDashboardsRoomWaitIsOpenOnlyFromTheSameHermes() {
+        let here = UUID(), twin = UUID(), elsewhere = UUID()
+        let twins = [
+            CombinedBotsHomeOrder.key(here, "default"): [CombinedBotsHomeOrder.key(twin, "default")],
+        ]
+        XCTAssertTrue(AppState.isSameHermes(twin, as: here, twins: twins))
+        XCTAssertFalse(AppState.isSameHermes(elsewhere, as: here, twins: twins))
+        XCTAssertFalse(AppState.isSameHermes(here, as: twin, twins: twins), "keyed by the dashboard on screen")
+
+        let room = NeedsYouItem(waitID: "w1", profile: "default", kind: .approval, sessionIDs: ["s-room"],
+                                since: Date(timeIntervalSince1970: 10), roomID: "room-1")
+        let chat = NeedsYouItem(waitID: "w2", profile: "default", kind: .approval, sessionIDs: ["s-chat"],
+                                since: Date(timeIntervalSince1970: 20))
+        let open: (NeedsYouItem) -> Bool = { _ in true }
+        XCTAssertTrue(AppState.otherDashboardWaitIsOpen(room, sameHermes: true, isOpenChat: open))
+        XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: false, isOpenChat: open), "another Hermes' room")
+        XCTAssertTrue(AppState.otherDashboardWaitIsOpen(chat, sameHermes: false, isOpenChat: open))
+        XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: true, isOpenChat: { _ in false }))
+
+        // Through the store: the twin's room wait for the room on screen
+        // doesn't banner; another Hermes' wait under the same room id does.
+        let store = NeedsYouStore()
+        // A first read of each banners nothing.
+        store.applyOther([], profile: "default", dashboardID: twin)
+        store.applyOther([], profile: "default", dashboardID: elsewhere)
+        store.applyOther([room], profile: "default", dashboardID: twin,
+                         isOpenChat: { AppState.otherDashboardWaitIsOpen($0, sameHermes: true, isOpenChat: open) })
+        XCTAssertNil(store.banner)
+        let theirs = NeedsYouItem(waitID: "w9", profile: "default", kind: .approval, sessionIDs: ["s-other"],
+                                  since: Date(timeIntervalSince1970: 30), roomID: "room-1")
+        store.applyOther([theirs], profile: "default", dashboardID: elsewhere,
+                         isOpenChat: { AppState.otherDashboardWaitIsOpen($0, sameHermes: false, isOpenChat: open) })
+        XCTAssertEqual(store.banner?.waitID, "w9")
+    }
+
     /// One Hermes saved at two addresses, both in the group: a wait both
     /// list shows once, as this dashboard's, and banners once, from this
     /// dashboard; one in the chat on screen banners from neither (issue 2631).

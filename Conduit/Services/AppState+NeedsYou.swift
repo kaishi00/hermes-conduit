@@ -70,11 +70,7 @@ extension AppState {
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
             // dashboard of this one's Hermes (issue 2631).
-            let mine = CombinedBotsHomeOrder.key(activeDashboardID, "")
-            let theirs = CombinedBotsHomeOrder.key(id, "")
-            let sameHermes = combinedBotsHomeTwins.contains { key, copies in
-                key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
-            }
+            let sameHermes = Self.isSameHermes(id, as: activeDashboardID, twins: combinedBotsHomeTwins)
             for profile in profiles {
                 guard isSceneActive else { return }
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
@@ -89,13 +85,35 @@ extension AppState {
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { ($0.roomID == nil || sameHermes) && self.isOpenChat($0) }
+                    isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
                 needsYou.forgetOther(id, profilesOtherThan: Set(currentKeptProfiles(id, else: profiles)))
             }
         }
+    }
+
+    /// Whether `dashboard` is the same Hermes as the one on screen: Bots
+    /// Home lists one of its bots as a twin of one of the screen's.
+    static func isSameHermes(_ dashboard: UUID, as onScreen: UUID?, twins: [String: [String]]) -> Bool {
+        let mine = CombinedBotsHomeOrder.key(onScreen, "")
+        let theirs = CombinedBotsHomeOrder.key(dashboard, "")
+        return twins.contains { key, copies in
+            key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
+        }
+    }
+
+    /// Whether another combined dashboard's wait is the chat on screen's, so
+    /// it doesn't banner: a room wait only from a dashboard of this one's
+    /// Hermes, since another Hermes' room can share the open room's id
+    /// (issue 2631, tested in issue 2655).
+    static func otherDashboardWaitIsOpen(
+        _ item: NeedsYouItem,
+        sameHermes: Bool,
+        isOpenChat: (NeedsYouItem) -> Bool
+    ) -> Bool {
+        (item.roomID == nil || sameHermes) && isOpenChat(item)
     }
 
     /// A kept dashboard's profiles as last read, a read since the pass

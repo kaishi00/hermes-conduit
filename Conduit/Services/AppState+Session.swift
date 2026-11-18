@@ -1135,12 +1135,14 @@ extension AppState {
         id: String?,
         title: String? = nil
     ) {
+        let leaving = activeSessionId
         if activeSessionId != id {
             followLeftChatIfItsReplyRuns(leaving: activeSessionId, for: id)
             clearPendingDecisionRestorationGuard()
             resetResponseHapticTurn()
         }
         activeSessionId = id
+        noteRowOfChatOnScreen(leaving: leaving, for: id)
         if let persistedID = ChatSessionPersistenceIdentity.canonicalID(
             for: id,
             identity: activeChatScrollSessionIdentity,

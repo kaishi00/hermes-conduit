@@ -757,6 +757,10 @@ extension NotificationE2ETests {
         XCTAssertFalse(controller.hasUnsent)
         XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
         XCTAssertFalse(controller.spotRepliesLand, "a reply to a batch sent before it lists no shops (issue 2616)")
+        // The engine's reply callback goes through the same fence (#2645's
+        // review, issue 2655).
+        XCTAssertNotNil(engine.spotsReplied)
+        XCTAssertFalse(controller.takeSpotsReply([]), "the reply to a batch sent before the Sign Out isn't taken")
     }
 
     /// Sign Out while the config can't be read still drops what wasn't
