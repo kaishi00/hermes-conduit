@@ -593,6 +593,9 @@ struct V2ChatsView: View {
             }
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
             .v2ProfileSwitchContent()
+            // Rows that may be out of date say they're being read again
+            // (issue 2706), over Sessions and Projects alike.
+            .overlay { ChatListUpdatingPill(isUpdating: appState.showsChatListUpdating) }
         }
         .v2EdgeBar(.top) {
             V2TopBar(lowerLeading: { stackedLeading(waitingApprovalCount: waitingApprovalCount) }) { stacked in
