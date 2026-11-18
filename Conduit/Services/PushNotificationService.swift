@@ -709,10 +709,27 @@ final class PushNotificationService: ObservableObject {
         let dashboardID: UUID?
         let profile: String
     }
-    private(set) var rowCardSealContexts: [String: RowCardSealContext] = [:]
+    private var rowCardSealContexts: [String: RowCardSealContext] = [:]
+
+    /// Kept across relaunches, so a card restored with its chat is
+    /// refused the same before its wait is read again; newest last, capped.
+    static let rowCardSealContextsKey = "conduit.e2e.rowCardSealContexts"
+
+    func rowCardSealContext(forRequestID requestID: String) -> RowCardSealContext? {
+        if let context = rowCardSealContexts[requestID] { return context }
+        let rows = UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? []
+        guard let row = rows.last(where: { $0.count == 4 && $0[0] == requestID }) else { return nil }
+        return RowCardSealContext(gatewayID: row[1], dashboardID: UUID(uuidString: row[2]), profile: row[3])
+    }
 
     func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, sealContext: RowCardSealContext? = nil) {
-        if let sealContext { rowCardSealContexts[requestID] = sealContext }
+        if let sealContext, rowCardSealContexts[requestID] != sealContext {
+            rowCardSealContexts[requestID] = sealContext
+            var rows = (UserDefaults.standard.array(forKey: Self.rowCardSealContextsKey) as? [[String]] ?? [])
+                .filter { $0.count == 4 && $0[0] != requestID }
+            rows.append([requestID, sealContext.gatewayID, sealContext.dashboardID?.uuidString ?? "", sealContext.profile])
+            UserDefaults.standard.set(Array(rows.suffix(Self.encryptedDecisionGatewaysLimit)), forKey: Self.rowCardSealContextsKey)
+        }
         guard relayGatewayID(forRequestID: requestID) == nil else { return }
         relayGatewayIDsByRequestID[requestID] = gatewayID
         if Self.keepsGatewayAcrossRelaunch(gatewayID, installationID: installationID, records: Self.e2eKeyStore.records()) {
@@ -1873,7 +1890,7 @@ final class PushNotificationService: ObservableObject {
             records: records ?? []
         )
         if sealed["answer"] != nil, sealed == body,
-           Self.rowCardAnswerRefused(context: rowCardSealContexts[requestId], body: body,
+           Self.rowCardAnswerRefused(context: rowCardSealContext(forRequestID: requestId), body: body,
                                      installationID: registration.installationID, records: records) {
             throw RelayDecisionError.needsReconnect
         }
