@@ -7015,6 +7015,98 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertFalse(sent.serves(sent.key, fence: sent.fence), "stopped: a read now sends its own")
     }
 
+    /// #2753's review: the drawer's Cron list sends the newest page and
+    /// fetches cron; a list read on the same page that reused cached cron
+    /// commits and lists first, with the newer ticket. The Cron list's
+    /// fresh run still reaches the cache and the list it shows.
+    func testFreshCronRowsReachTheListAfterAReadOnTheSamePageReusedCachedOnes() async throws {
+        let harness = makeHarness(configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") })
+        let appState = harness.appState
+        let client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"), profile: "default")
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { held.releaseAll() }
+        appState.client = client
+        appState.dashboardTicketBridge = held.bridge
+        func cronRow(_ id: String, active: Int) -> [String: Any] {
+            ["id": id, "title": id, "source": "cron", "message_count": 2, "profile": "default", "last_active": active]
+        }
+        let live: [String: Any] = ["sessions": [
+            ["id": "chat-1", "title": "Release prep", "message_count": 4, "profile": "default", "last_active": 2_000],
+        ], "total": 1]
+        let none: [String: Any] = ["sessions": [], "total": 0]
+        let oldRun: [String: Any] = ["sessions": [cronRow("cron_old", active: 1_000)], "total": 1]
+        let newRun: [String: Any] = ["sessions": [cronRow("cron_new", active: 3_000), cronRow("cron_old", active: 1_000)], "total": 2]
+
+        // A first read lists the old run and caches it.
+        let seed = Task { @MainActor in
+            await appState.loadSessions(forceRefresh: true, requiredViewportTransitionGeneration: nil, deferringOlderPages: true)
+        }
+        try await held.waitForRequests(3)
+        // The archived calls' query carries exclude_sources= too: answered
+        // first, the live page is the only other one that does.
+        try await held.answer(none, toQueryContaining: "archived=only")
+        try await held.answer(live, toQueryContaining: "exclude_sources=")
+        try await held.answer(oldRun, toQueryContaining: "source=cron")
+        _ = await seed.value
+        XCTAssertEqual(appState.cronSessions.map(\.id), ["cron_old"])
+        // The archived calls just read would serve again; read them anew so
+        // the requests below are the same three.
+        appState.archivedCallsReads.removeAll()
+
+        // The Cron list: the newest page and its own cron read.
+        let cronList = Task { @MainActor in
+            await appState.loadSessions(
+                forceRefresh: true,
+                requiredViewportTransitionGeneration: nil,
+                deferringOlderPages: true,
+                joinsReadInFlight: true
+            )
+        }
+        try await held.waitForRequests(6)
+        // A list read meanwhile takes that page and reuses cached cron.
+        let joiner = Task { @MainActor in
+            await appState.loadSessions(
+                forceRefresh: false,
+                requiredViewportTransitionGeneration: nil,
+                deferringOlderPages: true,
+                joinsReadInFlight: true
+            )
+        }
+        for _ in 0..<500 where appState.newestCatalogPageRead?.waitingReads != 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(appState.newestCatalogPageRead?.waitingReads, 2)
+        // Not joined: release what's held so the test fails rather than hangs.
+        guard appState.newestCatalogPageRead?.waitingReads == 2 else {
+            held.releaseAll()
+            _ = await joiner.value
+            _ = await cronList.value
+            return
+        }
+        func sentCount(_ fragment: String) -> Int {
+            held.sent.filter { ($0.query ?? "").contains(fragment) }.count
+        }
+        XCTAssertEqual(sentCount("archived=only"), 2, "the later read sent no page of its own")
+        XCTAssertEqual(sentCount("source=cron"), 2, "nor a cron read: it reused the cached one")
+
+        // The page lands: the later read commits and lists first.
+        try await held.answer(none, toQueryContaining: "archived=only")
+        try await held.answer(live, toQueryContaining: "exclude_sources=")
+        let joinedListed = await joiner.value
+        XCTAssertTrue(joinedListed)
+        XCTAssertEqual(appState.cronSessions.map(\.id), ["cron_old"])
+
+        // Then the Cron list's cron rows: they win in the cache and in the
+        // list, though a newer read already listed.
+        try await held.answer(newRun, toQueryContaining: "source=cron")
+        _ = await cronList.value
+        XCTAssertEqual(
+            appState.sessionCatalogCache.cachedSessions(forKey: "default:cron")?.map(\.id),
+            ["cron_new", "cron_old"]
+        )
+        XCTAssertEqual(Set(appState.cronSessions.map(\.id)), ["cron_new", "cron_old"], "the fresh run is listed")
+    }
+
     /// A chat already on screen is the list's to keep or replace.
     func testLatestActivityWaitsForTheListWithAnotherChatOnScreen() async {
         let newer = session("newer")

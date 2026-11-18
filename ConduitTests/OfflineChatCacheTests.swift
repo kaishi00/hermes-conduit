@@ -3705,6 +3705,41 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - A chat kept beside the one on screen (all-live stage 2, slice 3)
 
+    /// #2645's review (issue 2655): Open Beside keeps the chat on screen
+    /// under its own row's ids, never an alias another listed chat owns,
+    /// and not the id it's open under once Hermes made that another chat's.
+    func testTheChatKeptBesideTakesOnlyItsOwnRowsIDs() throws {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-a", "c"]
+        state.sessions = [a, session("b"), session("c")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1"),
+            ChatMessage(id: "r1", role: .assistant, content: "Hello", timestamp: "2"),
+        ]
+        state.turnState = .idle
+        XCTAssertTrue(state.keepChatOnScreenBeside())
+        XCTAssertEqual(state.besideChatIDs, ["a", "rt-a"], "not chat c's id, which its row carries")
+        XCTAssertEqual(state.besideChat?.sessionIDs, ["a", "rt-a"])
+
+        // Open under a runtime id Hermes has since made another chat's own.
+        let (handed, _, _) = makeAppState()
+        var own = session("a")
+        own.alternateIds = ["rt-a"]
+        handed.sessions = [own, session("b")]
+        handed.isConnected = true
+        handed.setActiveSessionState(id: "rt-a")
+        handed.messages = state.messages
+        handed.turnState = .idle
+        own.alternateIds = []
+        handed.sessions = [own, session("rt-a"), session("b")]
+        XCTAssertTrue(handed.keepChatOnScreenBeside())
+        XCTAssertEqual(handed.besideChatIDs, ["a"])
+        XCTAssertEqual(handed.besideChat?.durableSessionID, "a")
+    }
+
     /// The chat picked to stay beside the next one is followed from the
     /// moment it's left, with no reply running in it; a reply that starts
     /// there later reaches it and tells the pane; and its pane closes once
@@ -3758,6 +3793,24 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(otherNotice.revision, 1)
         live.moved(keeping: [beside])
         XCTAssertFalse(live.notice(for: other) === otherNotice, "a chat no longer kept loses its notice")
+        // A chat no longer followed drops its notice at once, without the
+        // others redrawing (issue 2655).
+        let quiet = live.notice(for: beside)
+        let quietRevision = quiet.revision
+        _ = live.notice(for: other)
+        live.forget(keeping: [beside])
+        XCTAssertEqual(live.noticeCount, 1)
+        XCTAssertEqual(quiet.revision, quietRevision)
+        XCTAssertTrue(live.notice(for: beside) === quiet)
+        let unfollowed = BackgroundChat(sessionIDs: ["z"], durableSessionID: nil, title: "", dashboardID: beside.dashboardID,
+                                        profile: beside.profile, isBotChat: false, rows: [], streamingText: "")
+        _ = state.besideChatLive.notice(for: unfollowed)
+        let withUnfollowed = state.besideChatLive.noticeCount
+        // Assigning the list again runs its didSet, which prunes notices.
+        let followed = state.backgroundChats
+        state.backgroundChats = followed
+        XCTAssertEqual(state.besideChatLive.noticeCount, withUnfollowed - 1, "a chat not followed has no notice kept")
+        XCTAssertTrue(state.besideChatLive.notice(for: beside) === notice, "a followed chat keeps its notice")
 
         // A message another device sends to it shows in the pane once.
         state.handleStreamEvent(.userMessage(sessionId: "a", rowId: 7, text: "From my Mac", origin: nil))
@@ -4286,6 +4339,41 @@ final class OfflineChatCacheTests: XCTestCase {
                        "Once upon a time.")
     }
 
+    /// Issue 2617 (#2645's review, issue 2655): a copy followed before the
+    /// New Chat run under way whose reply ends during its create isn't
+    /// saved, so it never replaces the fuller saved copy; once no create is
+    /// under way, its reply's end saves it as before.
+    func testACopyFollowedBeforeANewChatRunIsNotSavedDuringItsCreate() throws {
+        let store = makeStore()
+        let (state, _, dashboard) = makeAppState(store: store)
+        state.sessions = [session("a"), session("b"), session("k")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "a", text: "Once upon"))
+        state.setActiveSessionState(id: "b")
+        state.messages = []
+        state.clearStreamingText()
+        state.turnState = .idle
+
+        state.newSessionCreationsInFlight += 1
+        state.newChatRunFollowedIDs = ["k"]
+        XCTAssertTrue(state.predatesNewChatRun(try XCTUnwrap(state.followedChat(answering: ["a"]))))
+        state.handleStreamEvent(.messageComplete(sessionId: "a", messageId: "r1", content: "Once upon a time.", reasoning: nil))
+        store.waitForPendingWrites()
+        XCTAssertNotEqual(store.loadTranscript("a", dashboardID: dashboard, profile: state.activeProfile)?.messages.last?.content,
+                          "Once upon a time.", "the pre-run copy isn't saved during the create")
+        XCTAssertEqual(state.followedChat(answering: ["a"])?.rows.last?.content, "Once upon a time.", "…though it takes the reply")
+
+        // The run's own copy is saved as before.
+        state.newChatRunFollowedIDs = ["a"]
+        XCTAssertFalse(state.predatesNewChatRun(try XCTUnwrap(state.followedChat(answering: ["a"]))))
+        state.newSessionCreationsInFlight -= 1
+        state.newChatRunFollowedIDs = nil
+        XCTAssertFalse(state.predatesNewChatRun(try XCTUnwrap(state.followedChat(answering: ["a"]))))
+    }
+
     /// Issue 2617: a chat left during another chat's New Chat, whose copy
     /// was followed before that run, takes a fresh copy of the screen: the
     /// old one never took the rows its later open showed.
@@ -4358,6 +4446,32 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(store.loadTranscript("b", dashboardID: dashboard, profile: state.activeProfile))
     }
 
+    /// Issue 2655 (#2645's reviews): a chat left while open under a runtime
+    /// id Hermes has since made another listed chat's own id is copied as the
+    /// chat it opened as, from the row recorded at the open, never as that
+    /// other chat; leaving it for that chat is a leave, not the same chat.
+    func testAChatLeftUnderAHandedOnIDIsCopiedAsTheChatItOpenedAs() throws {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-a"]
+        state.sessions = [a, session("c")]
+        state.isConnected = true
+        state.setActiveSessionState(id: "rt-a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: "Once upon"))
+
+        a.alternateIds = []
+        state.sessions = [a, session("rt-a"), session("c")]
+        XCTAssertEqual(state.rowOfChat(openAs: "rt-a")?.id, "a", "the row recorded at the open")
+        state.setActiveSessionState(id: "c")
+
+        let left = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertEqual(left.durableSessionID, "a", "not the chat that owns its id now")
+        XCTAssertEqual(left.sessionIDs, ["a"])
+        XCTAssertNil(state.followedChat(answering: ["rt-a"]))
+    }
+
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
     /// alias the chat was left with that Hermes later makes a chat of its
     /// own isn't its, and an id the index has already bound to another
@@ -4397,6 +4511,31 @@ final class OfflineChatCacheTests: XCTestCase {
         sharedLater.sessions = [alone, b, session("c")]
         XCTAssertFalse(sharedLater.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")))
         XCTAssertTrue(sharedLater.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+
+        // An alias moved to another row, which carries it as an alias only
+        // (issue 2655).
+        let (moved, _, _) = makeAppState()
+        var movedFrom = session("a")
+        movedFrom.alternateIds = ["x"]
+        moved.sessions = [movedFrom, session("b"), session("c")]
+        leave(moved, openAs: "a")
+        movedFrom.alternateIds = []
+        moved.sessions = [movedFrom, b, session("c")]
+        XCTAssertFalse(moved.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
+                       "chat b's row carries it now")
+        XCTAssertTrue(moved.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+
+        // The same, with the chat's own row no longer listed: the alias
+        // another row carries still leaves it, its own id doesn't.
+        let (unlisted, _, _) = makeAppState()
+        var gone = session("a")
+        gone.alternateIds = ["x"]
+        unlisted.sessions = [gone, session("b"), session("c")]
+        leave(unlisted, openAs: "a")
+        unlisted.sessions = [b, session("c")]
+        XCTAssertFalse(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
+                       "chat b's row carries it and the chat's own row isn't listed")
+        XCTAssertTrue(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
 
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
@@ -4563,6 +4702,32 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(cards.contains("Chat a's card"))
     }
 
+    /// Issue 2655 (#2647's review): with no binding in the identity index,
+    /// an alias the chat's row lists that is another row's own or stored id
+    /// is that chat's once the open has settled; a second row of the same
+    /// chat doesn't count, and a binding in the index decides.
+    func testAnAliasThatIsAnotherRowsStoredIDStaysOffTheChat() {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-a", "st-c", "c"]
+        var c = session("c")
+        c.storedSessionId = "st-c"
+        state.sessions = [a, c]
+        state.setActiveSessionState(id: "a")
+        state.reconciliation = nil
+        XCTAssertTrue(state.eventBelongsToActiveSession("rt-a"))
+        XCTAssertFalse(state.eventBelongsToActiveSession("st-c"), "chat c's stored id")
+        XCTAssertFalse(state.eventBelongsToActiveSession("c"), "chat c's own id")
+
+        var runtimeRow = session("rt-a")
+        runtimeRow.storedSessionId = "a"
+        state.sessions = [a, c, runtimeRow]
+        XCTAssertTrue(state.eventBelongsToActiveSession("rt-a"), "a row of the same chat")
+
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "st-c", durableID: "a", profile: state.activeProfile, source: .resume)
+        XCTAssertTrue(state.eventBelongsToActiveSession("st-c"), "the index bound it to this chat")
+    }
+
     /// Issue 2619 (#2618's review leftovers): an alias the identity index
     /// gave another chat stays off the chat on screen once its open has
     /// settled, though a stale row still lists it; a rebind recorded during
@@ -4595,6 +4760,25 @@ final class OfflineChatCacheTests: XCTestCase {
                        ["rt-z"], "an open of chat c by its runtime id takes the id again")
         XCTAssertEqual(AppState.Reconciliation.movedOn(["rt-x"], keptFor: ["a", "rt-x"], durableIDs: ["a", "rt-x"]) { indexed[$0] },
                        ["rt-x"], "the index first: a stale row listing it under chat a doesn't take it back")
+    }
+
+    /// #2656's review (issue 2655): a resume's moved-on ids, as reconcile
+    /// works them out: one the index binds to an alias of the resumed chat's
+    /// row stays turned away, one it binds to the row's stored id is taken
+    /// back.
+    func testAResumeKeepsAMovedOnIDBoundToAnAliasAndTakesBackOneBoundToItsStoredID() {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-a", "shared"]
+        a.storedSessionId = "st-a"
+        state.sessions = [a, session("c")]
+        let profile = state.activeProfile
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-1", durableID: "shared", profile: profile, source: .resume)
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-2", durableID: "st-a", profile: profile, source: .resume)
+        let addressed = state.knownSessionIDs(for: "a").union(["a"])
+        XCTAssertEqual(state.movedOnSessionIDs(["rt-1", "rt-2"], resuming: "a", addressedIDs: addressed, profile: profile), ["rt-1"])
+        // Resumed by its runtime id, the chat's row still decides.
+        XCTAssertEqual(state.movedOnSessionIDs(["rt-1", "rt-2"], resuming: "rt-a", addressedIDs: addressed, profile: profile), ["rt-1"])
     }
 
     /// #2612's review: a rebound id is noticed as moved on before a chat

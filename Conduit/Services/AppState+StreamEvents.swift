@@ -397,6 +397,15 @@ extension AppState {
                    index.durableID(forRuntime: activeSessionId, profile: activeProfile) != durable {
                     return false
                 }
+                // With no binding in the index, the catalog decides: an alias
+                // that is another row's own or stored id is that chat's
+                // (issue 2655).
+                if sessionId != activeSession.id, sessionId != activeSession.storedSessionId,
+                   index.durableID(forRuntime: sessionId, profile: activeProfile) == nil,
+                   Self.anotherRow(than: activeSession, owns: sessionId, in: sessions)
+                    || Self.anotherRow(than: activeSession, owns: sessionId, in: cronSessions) {
+                    return false
+                }
                 return true
             }
         }
@@ -411,6 +420,20 @@ extension AppState {
             return false
         }
         return reconciliation.acceptedSessionIDs.contains(sessionId)
+    }
+
+    /// Whether a catalog row of another chat than `row`'s is `sessionId`'s
+    /// own: its id or its stored id, not an alias it lists. A second row of
+    /// the same chat (its runtime listed apart) doesn't count.
+    static func anotherRow(than row: SessionSummary, owns sessionId: String, in rows: [SessionSummary]) -> Bool {
+        // Not its aliases: the stale row lists the other chat's ids there.
+        let chatIDs = Set([row.id] + [row.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty })
+        return rows.contains { other in
+            guard other.id != row.id, other.id == sessionId || other.storedSessionId == sessionId else { return false }
+            let otherIDs = [other.id, other.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }
+            // The same chat: its row names this chat's own or stored id.
+            return !otherIDs.contains { $0 != sessionId && chatIDs.contains($0) } && !other.alternateIds.contains(row.id)
+        }
     }
 
     /// A tool's start: its running card, after the reasoning and words

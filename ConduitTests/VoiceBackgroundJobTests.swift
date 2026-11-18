@@ -2861,6 +2861,26 @@ extension VoiceConversationControllerTests {
         ]
         XCTAssertEqual(AppState.latestAssistantReply(inMessageRows: rows), "Build is green.")
         XCTAssertNil(AppState.latestAssistantReply(inMessageRows: [["role": "user", "content": "hi"]]))
+        XCTAssertEqual(AppState.latestAssistantTurn(inMessageRows: rows)?.prompt, "and now?")
+    }
+
+    /// The message a reply answers is the one just before it: a send queued
+    /// behind a running turn waits in the dock, out of the rows, and an
+    /// earlier turn that got no reply is older (issue 2655).
+    func testAReplyNamesTheMessageJustBeforeIt() {
+        let unanswered: [Any] = [
+            ["role": "user", "content": "check the build"],
+            ["role": "assistant", "content": "Earlier answer."],
+            ["role": "user", "content": "hello?"],
+            ["role": "user", "content": "(voice) check the logs"],
+            ["role": "assistant", "content": "Logs are clean."],
+        ]
+        let turn = AppState.latestAssistantTurn(inMessageRows: unanswered)
+        XCTAssertEqual(turn?.reply.content, "Logs are clean.")
+        XCTAssertEqual(turn?.prompt, "(voice) check the logs")
+        let reachesNoMessage: [Any] = [["role": "assistant", "content": "Logs are clean."]]
+        XCTAssertEqual(AppState.latestAssistantTurn(inMessageRows: reachesNoMessage)?.reply.content, "Logs are clean.")
+        XCTAssertNil(AppState.latestAssistantTurn(inMessageRows: reachesNoMessage)?.prompt)
     }
 }
 

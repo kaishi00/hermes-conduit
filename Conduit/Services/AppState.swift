@@ -616,8 +616,12 @@ final class AppState: ObservableObject {
     /// while the app acts on the chat on screen.
     var liveChatScope: LiveChatScope?
     /// Chats left while their reply was still coming, following the rest
-    /// of it (all-live stage 2, AppState+BackgroundChats.swift).
-    var backgroundChats: [BackgroundChat] = []
+    /// of it (all-live stage 2, AppState+BackgroundChats.swift). A chat no
+    /// longer followed (closed, released, opened) drops its notice at once
+    /// (issue 2655).
+    var backgroundChats: [BackgroundChat] = [] {
+        didSet { besideChatLive.forget(keeping: backgroundChats) }
+    }
     /// The chat kept beside the one on screen in a wide window (all-live
     /// stage 2, AppState+BesideChat.swift), by the ids it answers to. Set
     /// as Open Beside is picked; the chat is followed from the moment it
@@ -643,6 +647,12 @@ final class AppState: ObservableObject {
     /// The followed chat a profile switch shows while it lands, by the ids
     /// it's followed under (releaseFollowedChatOnScreen).
     var followedChatShownBySwitch: Set<String>?
+    /// The catalog row of the chat on screen, taken when it opened: leaving
+    /// it later follows that row's chat, though Hermes may since have made
+    /// the id it's open under another listed chat's own (issue 2655).
+    /// Kept with the ids the chat was open under, so a path that sets the
+    /// chat on screen another way never reads another chat's row.
+    var rowOfChatOnScreen: (rowID: String, openIDs: Set<String>, dashboardID: UUID?, profile: String)?
     var shownChatChanges: AnyCancellable?
     /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
     /// the all-live rework). Its changes publish as AppState's.

@@ -140,9 +140,9 @@ extension AppState {
                         : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
                     let liveStartedAt = Date()
                     let scopedResult: DashboardSessionCatalog
-                    // Where this read's rows stand among the others': after
-                    // an earlier read's when it took that read's newest page.
-                    let commitOrder: SessionCatalogCache.ReadOrder
+                    // The read whose newest page this one holds: an earlier
+                    // one when it took that read's page.
+                    let rowsFrom: UInt64
                     do {
                         let listed = try await dashboardSessionPages(
                             profile: profile,
@@ -155,7 +155,7 @@ extension AppState {
                             sharesNewestPage: sharesNewestPage
                         )
                         scopedResult = listed.catalog
-                        commitOrder = SessionCatalogCache.ReadOrder(rowsFrom: listed.read, read: readSequence)
+                        rowsFrom = listed.read
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
                         throw error
@@ -173,6 +173,10 @@ extension AppState {
                         since: liveStartedAt
                     )
 
+                    let fetchedCronSessions = await cronFetch
+                    // Merged with the cached rows as they stand after the
+                    // cron wait, so rows another read committed meanwhile
+                    // (a full read's older pages) aren't written back out.
                     let cached = sessionCatalogCache.cachedSessionsToMerge(
                         remoteSessions: scoped,
                         isAuthoritative: scopedResult.isAuthoritative,
@@ -181,8 +185,6 @@ extension AppState {
                         sessionBelongsToProfile($0, profile: profile)
                     }
                     let merged = uniqueSessions(scoped + cached)
-
-                    let fetchedCronSessions = await cronFetch
                     let cachedCronSessions = sessionCatalogCache.cachedSessions(forKey: cronKey)?.filter {
                         sessionBelongsToProfile($0, profile: profile)
                     }
@@ -201,6 +203,15 @@ extension AppState {
                         // do not cache an empty result for a failed request.
                         cronSessions = nil
                     }
+                    // Where this read's rows stand among the others': after
+                    // the read whose newest page it holds, and among reads
+                    // holding the same page, one that fetched cron goes after
+                    // one that reused cached cron or got none (#2753 review).
+                    let commitOrder = SessionCatalogCache.ReadOrder(
+                        rowsFrom: rowsFrom,
+                        freshCron: didFetchCronSessions,
+                        read: readSequence
+                    )
 
                     // A delete/archive/disconnect can run while either request
                     // is suspended. Never let this attempt overwrite the
@@ -225,7 +236,8 @@ extension AppState {
                             sessions: sessionCatalogCache.sessions(forKey: cacheKey).filter {
                                 sessionBelongsToProfile($0, profile: profile)
                             },
-                            olderPagesDeferred: false
+                            olderPagesDeferred: false,
+                            cronFromCache: true
                         )
                     }
 
@@ -266,7 +278,9 @@ extension AppState {
                             sessions: combined,
                             // A newest page that turned out to be the whole
                             // list is authoritative and already marked loaded.
-                            olderPagesDeferred: olderPagesDeferred
+                            olderPagesDeferred: olderPagesDeferred,
+                            cronFromCache: true,
+                            fetchedCron: didFetchCronSessions
                         )
                     }
                     break
@@ -671,6 +685,41 @@ extension AppState {
             sessionBelongsToProfile(session, profile: activeProfile)
                 && (session.id == activeSessionId || session.alternateIds.contains(activeSessionId))
         }
+    }
+
+    /// The cron rows a list read shows for `profile`. A read through the
+    /// catalog cache shows the cache's, which hold the best-ranked read's (a
+    /// read that fetched cron outranks one on the same newest page that
+    /// reused cached cron, #2759), plus the rows the list keeps whatever the
+    /// host says (`kept`: the running chat, a new chat awaiting its row).
+    /// Any other read (the gateway's list) shows its own.
+    func cronRowsToList(
+        _ loaded: [SessionSummary],
+        keeping kept: [SessionSummary],
+        profile: String,
+        fromCache: Bool
+    ) -> [SessionSummary] {
+        guard fromCache, sessionCatalogLoaderOverride == nil,
+              let cached = sessionCatalogCache.cachedSessions(forKey: "\(profile):cron") else { return loaded }
+        return uniqueSessions(
+            kept.filter { $0.source == .cron }
+                + cached.filter { sessionBelongsToProfile($0, profile: profile) }
+        )
+    }
+
+    /// A list read that lost its listing to a newer one may still have
+    /// fetched the newer cron rows: a later chat sync that took its newest
+    /// page reused cached cron, or got none. Its rows reach the cache
+    /// (ReadOrder), and from there the list (#2759 review). Only a read
+    /// that fetched cron relists: the newer listing may be the gateway's.
+    func relistCachedCron(after load: ProfileCatalogLoad, profile: String) {
+        guard load.fetchedCron else { return }
+        let kept = activeTurnCatalogSession().map { [$0] } ?? []
+        let listed = cronRowsToList(cronSessions, keeping: kept, profile: profile, fromCache: true)
+        guard listed != cronSessions else { return }
+        chatListCatalogGeneration &+= 1
+        catalogChangeSignal.noteListChanged(at: chatSyncNow())
+        cronSessions = listed
     }
 
     func uniqueSessions(_ values: [SessionSummary]) -> [SessionSummary] {
