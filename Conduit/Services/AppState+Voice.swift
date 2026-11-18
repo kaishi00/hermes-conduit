@@ -392,6 +392,10 @@ extension AppState {
         finishVoiceCallRecording()
         // The call's profile, which a switch to another profile leaves it on.
         liveCallProfile = activeProfile
+        // A Bot Chat's call speaks as its bot (issue 2768).
+        liveCallSpeaker = callSpeaker(for: voiceBackgroundJobSupervisor.liveThread)
+        liveCallBot = liveCallSpeaker
+        liveCallSpeakerStart = UUID()
         // The call screen shows the jobs this call starts, saved or not.
         voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveCallStyle.asksBeforeSending)
         let resume = pendingVoiceResume
@@ -571,6 +575,8 @@ extension AppState {
     /// settled): save the rest, keep what can't be saved for later, and
     /// prepare the summary a resume would need.
     func finishVoiceCallRecording() {
+        liveCallSpeaker = nil
+        liveCallBot = nil
         voiceCallCheckpointTask?.cancel()
         voiceCallCheckpointTask = nil
         voiceCallCheckpointed = nil

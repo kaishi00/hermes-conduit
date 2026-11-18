@@ -2305,7 +2305,9 @@ struct ComposerBar: View {
         Task {
             do {
                 let words = try await dictationClips.retry(clip, transcribe: gateway.transcribe)
-                guard draftStore.clearCount(for: key.dashboard) == clearCount else { return }
+                // The same rule as the send path's, tested there.
+                guard let key = Self.draftKeyToKeep(loaded: key, loadedClearCount: clearCount,
+                                                    storeClearCount: draftStore.clearCount(for: key.dashboard)) else { return }
                 guard !words.isEmpty else {
                     composerErrorMessage = AppLocalization.string("No speech was captured.")
                     return
