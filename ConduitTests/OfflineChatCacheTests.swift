@@ -4619,6 +4619,18 @@ final class OfflineChatCacheTests: XCTestCase {
         borrowed.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-d", durableID: "d", profile: borrowed.activeProfile, source: .resume)
         XCTAssertNil(borrowed.followedChatIndex(reboundTo: "rt-d"), "chat d's, not the chat whose id it lists")
 
+        // An id the index binds to a conversation the chat's row lists only
+        // as an alias, that conversation's row not listed yet (#2765's review).
+        let (aliased, _, _) = makeAppState()
+        var withAlias = session("a")
+        withAlias.alternateIds = ["x"]
+        aliased.sessions = [withAlias, session("c")]
+        leave(aliased, openAs: "a")
+        aliased.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-x", durableID: "x", profile: aliased.activeProfile, source: .resume)
+        XCTAssertNil(aliased.followedChatIndex(reboundTo: "rt-x"), "chat x's, though chat a's row lists its id")
+        aliased.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a2", durableID: "a", profile: aliased.activeProfile, source: .resume)
+        XCTAssertNotNil(aliased.followedChatIndex(reboundTo: "rt-a2"), "a binding to the chat's own id still reaches it")
+
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
         var own = session("a")
