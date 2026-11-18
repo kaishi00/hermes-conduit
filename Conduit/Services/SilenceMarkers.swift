@@ -50,7 +50,7 @@ enum SilenceMarkers {
         return length > 0 && length <= lengthCap && trimmed(strippingEdgePunctuation(stripped)).isEmpty
     }
 
-    static func isBlank(_ scalar: Unicode.Scalar) -> Bool {
+    fileprivate static func isBlank(_ scalar: Unicode.Scalar) -> Bool {
         CharacterSet.whitespacesAndNewlines.contains(scalar)
     }
 
@@ -84,7 +84,7 @@ enum SilenceMarkers {
         return String(String.UnicodeScalarView(scalars))
     }
 
-    static func trimmed(_ text: String) -> String {
+    fileprivate static func trimmed(_ text: String) -> String {
         text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
