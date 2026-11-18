@@ -4,7 +4,8 @@
 //
 //  The decisions a Markdown artifact makes before its sheet is drawn: which
 //  names are Markdown, how the host's text is decoded, and the file name the
-//  Open/Share handoff uses on a Windows or a Mac host.
+//  Open/Share handoff uses on a Windows or a Mac host, and the presenter
+//  refusing to share a staged copy that's gone (issue 2701).
 //
 
 import XCTest
@@ -78,5 +79,17 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         XCTAssertEqual(loaded, source)
         let missing = await MarkdownArtifact.load(path: "/Users/x/gone.md", dataURL: { _ in nil })
         XCTAssertNil(missing)
+    }
+
+    /// The reader's Share and Open fall back to the presenter's share sheet
+    /// (not a ShareLink, which shows nothing from a menu on iPad, issue
+    /// 2701). A staged copy that's gone is a refusal the sheet turns into
+    /// an alert, never a quiet no-op.
+    @MainActor
+    func testShareOfAStagedCopyThatIsGoneIsRefused() {
+        let gone = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("notes.md")
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentShare(fileURL: gone))
     }
 }
