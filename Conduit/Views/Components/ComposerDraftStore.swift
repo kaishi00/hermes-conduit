@@ -114,6 +114,15 @@ final class ComposerDraftStore {
         removeDraft(for: bucket.key)
     }
 
+    /// A sign-out of a dashboard that isn't on screen: its drafts go, the
+    /// other dashboards' stay. No composer of it is on screen to put one
+    /// back, so the clear count stays.
+    func removeDrafts(forDashboard dashboard: UUID) {
+        for key in drafts.keys where key.dashboard == dashboard {
+            removeDraft(for: key)
+        }
+    }
+
     func removeAll() {
         clearCount &+= 1
         drafts.removeAll()

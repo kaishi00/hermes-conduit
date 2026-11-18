@@ -308,6 +308,13 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
         XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
 
+        // Signing out of the dashboard not on screen takes its drafts with
+        // it, and leaves the one on screen's.
+        appState.composerDraftStore.save(ComposerDraft(text: "B's words", attachments: []), for: sameIDsOnB)
+        appState.signOutDashboard(b.id)
+        XCTAssertTrue(appState.composerDraftStore.draft(for: sameIDsOnB).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
+
         // A server with no dashboard has no key of its own: its strings
         // could collide, so the drafts clear as before.
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://other.example.com", dashboardID: nil))

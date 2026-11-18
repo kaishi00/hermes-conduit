@@ -501,6 +501,14 @@ extension AppState {
         dropRoomAttachments(where: isGone)
     }
 
+    /// A sign-out of a dashboard that isn't on screen: its rooms' unsent
+    /// words and staged files go, the other dashboards' stay.
+    func forgetRoomDrafts(dashboardID: UUID) {
+        let prefix = "\(dashboardID.uuidString)|"
+        groupRoomDrafts = groupRoomDrafts.filter { !$0.key.hasPrefix(prefix) }
+        dropRoomAttachments { $0.hasPrefix(prefix) }
+    }
+
     /// Drops the staged files of the rooms `isDropped` names, and their
     /// local copies.
     private func dropRoomAttachments(where isDropped: (String) -> Bool) {

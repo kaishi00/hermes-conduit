@@ -840,6 +840,11 @@ extension AppState {
             disconnect()
             return
         }
+        // Its unsent drafts, a room's too, outlived the switch away from it
+        // (issue 2702): they belong to the signed-out user.
+        composerDraftStore.removeDrafts(forDashboard: id)
+        composerRestoreRequests.removeAll { $0.dashboardID == id }
+        forgetRoomDrafts(dashboardID: id)
         removeWidgetSnapshot(dashboardID: id)
         liveTurnActivitiesEndDashboard(id.uuidString, false)
         endServerSignIn(dashboardID: id, baseURL: dashboard.normalizedURL)

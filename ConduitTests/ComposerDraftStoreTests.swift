@@ -205,15 +205,18 @@ final class ComposerDraftStoreTests: XCTestCase {
         )
         let storedKey = ComposerBar.composerDraftKey(
             for: "stored-session",
-            profile: "default"
+            profile: "default",
+            dashboard: nil
         )
         let runtimeKey = ComposerBar.composerDraftKey(
             for: "runtime-session",
-            profile: "default"
+            profile: "default",
+            dashboard: nil
         )
         let unrelatedKey = ComposerBar.composerDraftKey(
             for: "other-session",
-            profile: "default"
+            profile: "default",
+            dashboard: nil
         )
 
         XCTAssertTrue(ComposerBar.draftKeysAreEquivalent(storedKey, runtimeKey, identity: identity))
@@ -224,11 +227,13 @@ final class ComposerDraftStoreTests: XCTestCase {
         let store = ComposerDraftStore(capacity: 12)
         let runtimeKey = ComposerBar.composerDraftKey(
             for: "runtime-session",
-            profile: "default"
+            profile: "default",
+            dashboard: nil
         )
         let storedKey = ComposerBar.composerDraftKey(
             for: "stored-session",
-            profile: "default"
+            profile: "default",
+            dashboard: nil
         )
         let draft = ComposerDraft(
             text: "keep this while Hermes rotates IDs",
