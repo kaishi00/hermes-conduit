@@ -1933,7 +1933,10 @@ struct ModelVisibility: Codable, Equatable {
 struct ProfileConfigOptions: Equatable {
     var personalities: [String] = []
     var memoryProviders: [String] = []
-    var contextEngines: [String] = ["default", "custom"]
+    /// Hermes' built-in engine is "compressor" (its config default); a
+    /// plugin engine goes by its own name. "default" isn't an engine: Hermes
+    /// logs it as not found and falls back to the compressor.
+    var contextEngines: [String] = ["compressor"]
 }
 
 // MARK: - Theme

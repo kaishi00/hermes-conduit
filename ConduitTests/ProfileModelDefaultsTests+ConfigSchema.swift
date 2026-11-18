@@ -6,6 +6,21 @@ import XCTest
 /// fallback list, and the reasoning-effort key Hermes actually reads.
 extension ProfileModelDefaultsTests {
 
+    /// Context engine lists Hermes' built-in "compressor" first, then the
+    /// installed plugin engines; "default" is no engine Hermes knows.
+    @MainActor
+    func testContextEngineChoicesStartWithTheCompressor() {
+        let options = AppState.profileConfigOptions(config: [:], plugins: [
+            "providers": [
+                "context_options": [["name": "lcm"], ["name": "compressor"]],
+                "memory_options": [["name": "honcho", "status": "ready"], ["name": "retaindb", "status": "needs_config"]],
+            ],
+        ])
+        XCTAssertEqual(options.contextEngines, ["compressor", "lcm"])
+        XCTAssertEqual(options.memoryProviders, ["honcho"])
+        XCTAssertEqual(AppState.profileConfigOptions(config: [:], plugins: [:]).contextEngines, ["compressor"])
+    }
+
     func testSchemaDecodesTypesAndStringChoices() {
         let schema = ProfileConfigSchema(json: [
             "fields": [

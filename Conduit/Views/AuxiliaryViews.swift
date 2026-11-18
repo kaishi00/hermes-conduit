@@ -1216,7 +1216,7 @@ struct SettingsView: View {
             .init(key: "memory.user_char_limit", label: AppLocalization.string("Profile budget", table: .settings), help: AppLocalization.string("Most characters of user profile Hermes keeps.", table: .settings), control: .number(defaultValue: 1375), requiresSchema: true),
         ]),
         ProfileSettingSection(title: AppLocalization.string("Context"), symbol: "circle.dotted.circle", fields: [
-            .init(key: "context.engine", label: AppLocalization.string("Context engine", table: .settings), help: AppLocalization.string("Installed context-management engine.", table: .settings), control: .options([], defaultValue: "default")),
+            .init(key: "context.engine", label: AppLocalization.string("Context engine", table: .settings), help: AppLocalization.string("Installed context-management engine.", table: .settings), control: .options([], defaultValue: "compressor")),
             .init(key: "compression.enabled", label: AppLocalization.string("Context compression", table: .settings), help: AppLocalization.string("Compress older context when the window becomes crowded.", table: .settings), control: .toggle(defaultValue: true)),
             .init(key: "compression.threshold", label: AppLocalization.string("Compression threshold", table: .settings), help: AppLocalization.string("Fraction of the context window that starts compression.", table: .settings), control: .number(defaultValue: 0.8)),
             .init(key: "compression.target_ratio", label: AppLocalization.string("Compression target", table: .settings), help: AppLocalization.string("Fraction retained after compression.", table: .settings), control: .number(defaultValue: 0.5)),
