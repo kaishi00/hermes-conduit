@@ -7083,7 +7083,11 @@ final class AppStateChatResumeTests: XCTestCase {
             _ = await cronList.value
             return
         }
-        XCTAssertEqual(held.sent.count, 6, "the later read sent nothing of its own")
+        func sentCount(_ fragment: String) -> Int {
+            held.sent.filter { ($0.query ?? "").contains(fragment) }.count
+        }
+        XCTAssertEqual(sentCount("archived=only"), 2, "the later read sent no page of its own")
+        XCTAssertEqual(sentCount("source=cron"), 2, "nor a cron read: it reused the cached one")
 
         // The page lands: the later read commits and lists first.
         try await held.answer(none, toQueryContaining: "archived=only")
