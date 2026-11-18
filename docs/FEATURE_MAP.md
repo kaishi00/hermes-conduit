@@ -3641,10 +3641,10 @@ the Watch and CarPlay (not needed: no context ring or chat list menu) ·
 README's "context meter" (done)
 
 **Code**
-- Reads: `Conduit/Models/SessionUsage.swift` (route, CostStatus, SessionUsageReadout), `Conduit/Services/AppState+Usage.swift` (loadOpenChatUsage, loadSessionUsage)
+- Reads: `Conduit/Models/SessionUsage.swift` (route, CostStatus, SessionUsageReadout and its notFound), `Conduit/Services/AppState+Usage.swift` (loadOpenChatUsage, loadSessionUsage)
 - Views: `Conduit/Views/SessionUsageViews.swift` (SessionUsageSection, SessionUsageSheet), `Conduit/Views/AuxiliaryViews.swift` (ContextSheet's compressCard, canCompress), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' Usage Details and onUsageDetails; the drawer's and ProjectSessionsSheet's sessionPendingUsage, since the root can't present over a sheet), `Conduit/Views/RootView.swift` (the sessionUsageTarget sheet)
 - Route: `notifier/dashboard/api/session_usage.py` (chat_usage), `notifier/tests/test_session_usage.py`
-- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testOneChatsUsageReadsThePluginsAnswer, testAnUnpricedChatHasNoCostRatherThanZero, testOneChatsUsageRouteNamesTheChat)
+- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testOneChatsUsageReadsThePluginsAnswer, testAnUnpricedChatHasNoCostRatherThanZero, testOneChatsUsageRouteNamesTheChat, testAUsage404SaysWhichOfItsThreeThingsItIs)
 
 **Rulings**
 - In the Context sheet and the long-press menu, not a new icon in the composer or the reply row (Eric, 2026-11-18: "why not put it in the context ring on the composer?", then the long-press item too, and Compress Now "since we're messing with the context ring menu already").
