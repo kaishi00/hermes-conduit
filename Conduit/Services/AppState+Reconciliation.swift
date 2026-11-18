@@ -1674,6 +1674,27 @@ extension AppState {
     }
 
     @discardableResult
+    /// The moved-on ids a resume of `sessionId` keeps turning away: see
+    /// reconcile. Its own function so a test can run a resume's ids through
+    /// it (issue 2655).
+    func movedOnSessionIDs(
+        _ prior: Set<String>,
+        resuming sessionId: String,
+        addressedIDs: Set<String>,
+        profile: String
+    ) -> Set<String> {
+        let identityIndex = conversationIdentityIndex
+        let addressedRow = owningSessionRow(for: sessionId)
+        let addressedDurableIDs = Set([sessionId, addressedRow?.id, addressedRow?.storedSessionId,
+                                       identityIndex.durableID(forRuntime: sessionId, profile: profile)]
+            .compactMap { $0 }.filter { !$0.isEmpty })
+        return Reconciliation.movedOn(
+            prior,
+            keptFor: addressedIDs,
+            durableIDs: addressedDurableIDs
+        ) { identityIndex.durableID(forRuntime: $0, profile: profile) }
+    }
+
     func reconcile(
         sessionId: String,
         using client: HermesClient,
@@ -1737,16 +1758,12 @@ extension AppState {
         // Its durable ids are its own row's id and stored id and what the
         // index binds the addressed id to, never the row's aliases: an alias
         // another chat shares isn't this chat's durable id (#2647's review).
-        let identityIndex = conversationIdentityIndex
-        let addressedRow = owningSessionRow(for: sessionId)
-        let addressedDurableIDs = Set([sessionId, addressedRow?.id, addressedRow?.storedSessionId,
-                                       identityIndex.durableID(forRuntime: sessionId, profile: profile)]
-            .compactMap { $0 }.filter { !$0.isEmpty })
-        let movedOnSessionIDs = Reconciliation.movedOn(
+        let stillMovedOn = movedOnSessionIDs(
             priorReconciliation?.movedOnSessionIDs ?? [],
-            keptFor: addressedIDs,
-            durableIDs: addressedDurableIDs
-        ) { identityIndex.durableID(forRuntime: $0, profile: profile) }
+            resuming: sessionId,
+            addressedIDs: addressedIDs,
+            profile: profile
+        )
         reconciliation = Reconciliation(
             token: token,
             requestedSessionId: sessionId,
@@ -1757,7 +1774,7 @@ extension AppState {
             bufferedEvents: bufferedEvents,
             bufferedGenerations: bufferedGenerations,
             reboundSessionIDs: reboundSessionIDs,
-            movedOnSessionIDs: movedOnSessionIDs
+            movedOnSessionIDs: stillMovedOn
         )
         // Any previously held durable anchors belong to a different reconcile
         // transaction; they are re-adopted below only from a transcript this

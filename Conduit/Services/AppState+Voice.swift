@@ -1802,19 +1802,17 @@ extension AppState {
     }
 
     private static func latestReplyTurn(in messages: [ChatMessage]) -> (reply: ChatMessage, prompt: String?)? {
-        let isReply: (ChatMessage) -> Bool = { message in
+        guard let index = messages.lastIndex(where: { message in
             message.role == .assistant && message.tool == nil
                 && !message.content.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        }
-        guard let index = messages.lastIndex(where: isReply) else { return nil }
+        }) else { return nil }
         var reply = messages[index]
         reply.content = reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        // The turn's first message since the reply before it started it: a
-        // later one is queued behind it. A steer is part of the turn, not
-        // what started it.
-        let isPrompt: (ChatMessage) -> Bool = { $0.role == .user && !$0.isSteer }
-        let turnStart = messages[..<index].lastIndex(where: isReply).map { $0 + 1 } ?? messages.startIndex
-        let prompt = (messages[turnStart..<index].first(where: isPrompt) ?? messages[..<index].last(where: isPrompt))?
+        // The message just before it started its turn: a send queued behind
+        // a running turn waits in the dock, out of the transcript, until its
+        // own turn starts, and an earlier turn that got no reply is older.
+        // A steer is part of the turn, not what started it.
+        let prompt = messages[..<index].last(where: { $0.role == .user && !$0.isSteer })?
             .content.trimmingCharacters(in: .whitespacesAndNewlines)
         return (reply, prompt)
     }

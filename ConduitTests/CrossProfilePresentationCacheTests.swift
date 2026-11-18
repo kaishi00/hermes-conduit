@@ -1100,7 +1100,12 @@ extension CrossProfilePresentationCacheTests {
     /// tap; one whose server didn't answer is down and tried again until
     /// it connects; a kept one whose socket drops is down again.
     func testACombinedDashboardSaysWhyItIsntConnectedAndOneDownIsTriedAgain() async throws {
-        final class Mints { var failures = 1; var count = 0; var status = 503 }
+        final class Mints {
+            var failures = 1; var count = 0; var status = 503
+            /// The next mint waits for `hold` to be resumed.
+            var holds = false
+            var hold: CheckedContinuation<Void, Never>?
+        }
         let mints = Mints()
         let socket = ClarifyFakeSocket()
         let transport = ClarifyFakeTransport()
@@ -1108,6 +1113,10 @@ extension CrossProfilePresentationCacheTests {
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.mintTicket = { _ in
             mints.count += 1
+            if mints.holds {
+                mints.holds = false
+                await withCheckedContinuation { mints.hold = $0 }
+            }
             if mints.failures > 0 {
                 mints.failures -= 1
                 throw DashboardTicketBridgeError.http(status: mints.status, detail: "")
@@ -1168,6 +1177,26 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
         appState.isConnected = true
         appState.combinedDashboardRetryBaseDelay = 60
+
+        // A quiet sign-in dropped while it runs (past the cap meanwhile, or
+        // no longer wanted) with no retry waiting stops saying "trying
+        // again", its backoff kept (#2641's review, issue 2655).
+        mints.holds = true
+        appState.connectOtherCombinedDashboards(only: vps.id)
+        await waitUntil { mints.hold != nil }
+        _ = try XCTUnwrap(mints.hold, "the sign-in reached its mint")
+        XCTAssertTrue(appState.combinedSignInsUnderWay.contains(vps.id))
+        appState.combinedDashboardTrouble[vps.id] = .down
+        // Called off (as Sign Out does), not a new generation: that one
+        // passes again once the sign-in ends.
+        appState.combinedSignInsCalledOff.insert(vps.id)
+        mints.hold?.resume()
+        mints.hold = nil
+        await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
+        XCTAssertNil(appState.combinedDashboardTrouble[vps.id], "no \"trying again\" with no retry waiting")
+        XCTAssertNil(appState.combinedDashboardRetries[vps.id]?.task)
+        XCTAssertEqual(appState.combinedDashboardRetries[vps.id]?.attempt, 2, "its backoff stands")
+        XCTAssertNil(appState.keptDashboardRuntimes[vps.id], "what it finished isn't kept")
 
         // A refused sign-in waits for a tap: no pass, retry or return asks again.
         mints.failures = 1

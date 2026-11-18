@@ -91,13 +91,25 @@ extension AppState {
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { ($0.roomID == nil || sameHermes()) && self.isOpenChat($0) }
+                    isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
                 needsYou.forgetOther(id, profilesOtherThan: Set(currentKeptProfiles(id, else: profiles)))
             }
         }
+    }
+
+    /// Whether another combined dashboard's wait is the chat on screen's, so
+    /// it doesn't banner: a room wait only from a dashboard of this one's
+    /// Hermes, since another Hermes' room can share the open room's id
+    /// (issue 2631, tested in issue 2655).
+    static func otherDashboardWaitIsOpen(
+        _ item: NeedsYouItem,
+        sameHermes: () -> Bool,
+        isOpenChat: (NeedsYouItem) -> Bool
+    ) -> Bool {
+        (item.roomID == nil || sameHermes()) && isOpenChat(item)
     }
 
     /// A kept dashboard's profiles as last read, a read since the pass
