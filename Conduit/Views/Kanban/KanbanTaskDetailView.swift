@@ -1135,6 +1135,11 @@ struct KanbanTaskDetailView: View {
         // dependency mid-flight, every completion below is discarded: no
         // data, no error text, no baseline churn may cross identities.
         let expectedID = displayedTaskID
+        // The board it's read from too: a task id can name another task on
+        // another board, so an answer from a board no longer loaded is
+        // dropped like a stale identity's.
+        let expectedBoard = store.loadedBoardSlug ?? store.effectiveBoardSlug
+        let isCurrent = { displayedTaskID == expectedID && (store.loadedBoardSlug ?? store.effectiveBoardSlug) == expectedBoard }
         isLoadingDetail = true
         // A STALE completion must not clear the replacement load's spinner:
         // only the current identity may release the flag.
@@ -1142,8 +1147,17 @@ struct KanbanTaskDetailView: View {
             if displayedTaskID == expectedID { isLoadingDetail = false }
         }
         do {
-            let loaded = try await store.fetchTaskDetail(id: expectedID)
-            guard displayedTaskID == expectedID else { return }
+            let loaded: KanbanTaskDetail
+            do {
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            } catch let error where detail == nil && DashboardTicketBridgeError.isTransient(error) {
+                // Not read yet: a read lost in transit asks once more before
+                // it fails, as the board's first load does (issue 2719).
+                try await Task.sleep(for: KanbanStore.firstLoadRetryDelay)
+                guard isCurrent() else { return }
+                loaded = try await store.fetchTaskDetail(id: expectedID)
+            }
+            guard isCurrent() else { return }
             guard loaded.task.id == expectedID else {
                 // Defensive double-check against a server-side id mismatch.
                 // An EMPTY-id payload under a NON-empty displayed identity is
@@ -1201,7 +1215,7 @@ struct KanbanTaskDetailView: View {
             // cancellation must never render as a user-facing failure.
             return
         } catch {
-            guard displayedTaskID == expectedID else { return }
+            guard isCurrent() else { return }
             if detail == nil {
                 errorMessage = UserFacingError.message(for: error)
             } else {
@@ -1528,6 +1542,13 @@ struct KanbanTaskDetailView: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
+            // The poll reads again on its own; this doesn't wait for it
+            // (issue 2719).
+            Button("Try Again") {
+                Task { await loadDetail(force: true) }
+            }
+            .buttonStyle(.bordered)
+            .disabled(isLoadingDetail)
         }
         .frame(maxWidth: .infinity)
         .padding(.top, 60)
