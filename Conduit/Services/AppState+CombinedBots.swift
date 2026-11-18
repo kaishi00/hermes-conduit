@@ -204,10 +204,14 @@ extension AppState {
     var combinedHermesEvidence: [UUID?: Set<String>] {
         guard isInCombinedGroup(activeDashboardID) else { return [:] }
         func ids(_ rows: [SessionSummary]) -> Set<String> {
-            Set(rows.filter { $0.combinedDashboardID == nil }.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
+            Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
         }
+        // The active lists carry kept dashboards' rows too; only its own
+        // count for it. A kept dashboard's cache is all its own, each row
+        // marked with its id.
+        let own = (sessions + cronSessions).filter { $0.combinedDashboardID == nil }
         var evidence: [UUID?: Set<String>] = [
-            activeDashboardID: ids(sessions + cronSessions).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
+            activeDashboardID: ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
         ]
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID && isInCombinedGroup(dashboard.id) {
             let chats = combinedDashboardChats[dashboard.id].map { ids($0.sessions) } ?? []
