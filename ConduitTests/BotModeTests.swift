@@ -209,6 +209,25 @@ final class BotModeTests: XCTestCase {
         XCTAssertFalse(BotChatHygiene.isCanonicalBotChatRow(unrelated, roster: [bot]))
     }
 
+    /// A return to the app reads the chat back: the composer is off only
+    /// until that's done, so the chat's voice button keeps its look through
+    /// a short one rather than blink.
+    func testTheComposerWaitsForAResyncOnlyWhileTheChatIsReadBack() {
+        let appState = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations()).appState
+        for state in [TurnState.synchronizing, .reconnecting] {
+            appState.turnState = state
+            XCTAssertFalse(appState.composerIsEnabled, "\(state)")
+            XCTAssertTrue(appState.composerWaitsForResync, "\(state)")
+        }
+        for state in [TurnState.idle, .running, .unsupportedGateway] {
+            appState.turnState = state
+            XCTAssertFalse(appState.composerWaitsForResync, "\(state)")
+        }
+        appState.turnState = .synchronizing
+        appState.isRewindingTurns = true
+        XCTAssertFalse(appState.composerWaitsForResync, "A rewind keeps it off past the resync")
+    }
+
     /// A bot renamed in Edit Bot (or the Profiles sheet) goes by that name
     /// everywhere Conduit names the profile, not only in Bots (#1409).
     func testABotTitleNamesItsProfileEverywhere() async {
@@ -2040,6 +2059,36 @@ final class BotModeTests: XCTestCase {
         XCTAssertNil(harness.appState.errorMessage, "a superseded open is no failure")
     }
 
+    /// A list's tap covers the chat open before from the tap itself: the
+    /// shell pushes the screen before the open's task begins its
+    /// navigation, and the pushed screen showed the chat open before for its
+    /// first frames (cold start: the default Bot Chat flashed before the
+    /// cover). The open's end, a newer navigation and a room's mark take it.
+    /// The mark puts up the cover alone: the rest of the screen (title,
+    /// composer, toolbar, panels) waits for the open's own navigation, so
+    /// the screen pushed with the tap is built as before (a first tap after
+    /// a cold launch popped back; Debug overflowed the stack in the push).
+    func testAListsTapCoversTheChatOpenBeforeFromTheTap() {
+        let appState = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations()).appState
+
+        appState.beginOpeningBotChat("atlas", label: "Atlas")
+        XCTAssertEqual(appState.botChatCoverBot, "atlas", "covered before the open's task runs")
+        XCTAssertEqual(appState.botChatComing?.bot, "atlas")
+        XCTAssertNil(appState.botChatComingOverAnother, "the mark leaves the pushed screen's controls as they were")
+        XCTAssertTrue(appState.botChatCoversOpenChat)
+        appState.endOpeningBotChat("atlas")
+        XCTAssertNil(appState.botChatCoverBot, "the open's end takes the cover")
+
+        appState.beginOpeningBotChat("atlas", label: "Atlas")
+        appState.beginExplicitChatViewportTransition()
+        XCTAssertNil(appState.botChatCoverBot, "a newer navigation takes the cover")
+        appState.endOpeningBotChat("atlas")
+
+        appState.beginOpeningBotChat("atlas", label: "Atlas")
+        appState.beginOpeningBotChat(BotZoomArm.roomKey("lobby"))
+        XCTAssertNil(appState.botChatCoverBot, "a room tapped after it covers nothing")
+    }
+
     /// An earlier tap whose lookup fails after a newer tap took over says
     /// nothing and doesn't go back to the list: the newer chat stays.
     func testASupersededTapsFailedLookupStaysSilent() async {
@@ -2355,6 +2404,112 @@ final class BotModeTests: XCTestCase {
         XCTAssertTrue(harness.appState.showSidebar)
         XCTAssertNil(harness.appState.botsListNotice, "standing down is no failure")
         XCTAssertNil(harness.appState.errorMessage)
+    }
+
+    /// A tap made while Conduit is still connecting (a cold launch's first
+    /// seconds) waits for the connection under the chat's cover and then
+    /// opens, rather than fail at once and pop the pushed screen back to
+    /// the list (2026-11-18, device log: the first tap's open failed 1.8 s
+    /// after launch). Once the wait is out it fails as before, with its
+    /// notice; with no connection being made it fails at once.
+    func testAListTapWhileConnectingWaitsForTheConnectionAndOpens() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")] }
+        ))
+        let appState = harness.appState
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+        appState.isConnected = false
+        appState.isConnecting = true
+
+        appState.showSidebar = true
+        appState.beginOpeningBotChat(atlas.name, label: atlas.displayLabel)
+        let open = Task { @MainActor in await appState.openBotChatFromList(atlas) }
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertFalse(appState.showSidebar, "still pushed while it waits")
+        XCTAssertEqual(appState.botChatCoverBot, "atlas", "covered while it waits")
+        XCTAssertNil(appState.botsListNotice)
+        appState.isConnected = true
+        appState.isConnecting = false
+        let opened = await open.value
+        XCTAssertTrue(opened)
+        XCTAssertFalse(appState.showSidebar)
+        XCTAssertEqual(appState.activeBotChatProfile, "atlas")
+        XCTAssertNil(appState.botsListNotice)
+
+        // The wait runs out: the tap fails as before, back to the list.
+        appState.isConnected = false
+        appState.isConnecting = true
+        appState.showSidebar = true
+        appState.beginOpeningBotChat(atlas.name, label: atlas.displayLabel)
+        let timedOut = await appState.openBotChatFromList(atlas, connectionWait: .milliseconds(50))
+        XCTAssertFalse(timedOut)
+        XCTAssertTrue(appState.showSidebar)
+        XCTAssertEqual(appState.botsListNotice, AppState.connectToChatWithBotsMessage)
+
+        // Nothing connecting (offline): it fails at once.
+        appState.botsListNotice = nil
+        appState.isConnecting = false
+        appState.showSidebar = true
+        appState.beginOpeningBotChat(atlas.name, label: atlas.displayLabel)
+        let offline = await appState.openBotChatFromList(atlas, connectionWait: .seconds(30))
+        XCTAssertFalse(offline)
+        XCTAssertEqual(appState.botsListNotice, AppState.connectToChatWithBotsMessage)
+    }
+
+    /// A link's or card's Bot Chat open made while Conduit connects waits
+    /// for the connection, as a list's tap does, and a newer link takes over.
+    func testALinkedBotChatWhileConnectingWaitsForTheConnection() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")] }
+        ))
+        let appState = harness.appState
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        appState.botRoster = [makeBot(name: "atlas"), makeBot(name: "nova")]
+        appState.isConnected = false
+        appState.isConnecting = true
+
+        appState.openLinkedBotChat("nova")
+        appState.openLinkedBotChat("atlas")
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(appState.errorMessage, "no notice while it waits")
+        appState.isConnected = true
+        appState.isConnecting = false
+        for _ in 0..<500 where appState.activeBotChatProfile != "atlas" { await Task.yield() }
+        XCTAssertEqual(appState.activeBotChatProfile, "atlas", "the newer link opens")
+        XCTAssertNil(appState.errorMessage)
+
+        // Nothing connecting (offline): it says so at once.
+        appState.isConnected = false
+        appState.openLinkedBotChat("nova")
+        for _ in 0..<50 where appState.errorMessage == nil { await Task.yield() }
+        XCTAssertEqual(appState.errorMessage, AppState.connectToChatWithBotsMessage)
     }
 
     /// A failed open whose list still shows (it never closed over a chat)

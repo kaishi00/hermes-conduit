@@ -124,6 +124,13 @@ struct ComposerBar: View {
     /// can take focus from the field) doesn't collapse it under the finger.
     @State private var holdsExpanded = false
     @State private var collapseTask: Task<Void, Never>?
+    /// A resync has kept the composer off past `ResyncGrace.duration`:
+    /// dictate and Attach dim.
+    @State private var resyncOutlastedGrace = false
+    /// The action, placeholder and chat as last shown outside a resync:
+    /// through a short one (`resyncHoldsLook`) Send and the placeholder keep
+    /// them rather than blink.
+    @State private var settledLook: ComposerSettledLook?
 
     /// AppState lives as long as the app (ConduitApp), so the StateObject
     /// made for the first one is the one every later init names.
@@ -450,6 +457,10 @@ struct ComposerBar: View {
         action == .stop
     }
 
+    private var looksStopOnly: Bool {
+        lookAction == .stop
+    }
+
     /// Return and ⌘Return send only from the chat on screen: not a hidden
     /// tab's, one split Settings covers, or one a Bot Chat on its way covers.
     private var returnKeysReachChat: Bool {
@@ -457,7 +468,7 @@ struct ComposerBar: View {
     }
 
     private var actionSymbol: String {
-        switch action {
+        switch lookAction {
         case .stop: return "stop.fill"
         case .steer: return BusyInputMode.steer.symbol
         case .interrupt: return BusyInputMode.interrupt.symbol
@@ -472,9 +483,9 @@ struct ComposerBar: View {
     /// send at all.
     private var showsEmptyDraftSend: Bool {
         Self.showsEmptyDraftSend(
-            action: action,
+            action: lookAction,
             voiceButtonBeside: keepsVoiceButtonBeside,
-            composerIsEnabled: appState.composerIsEnabled
+            composerIsEnabled: appState.composerIsEnabled || heldLook != nil
         )
     }
 
@@ -487,7 +498,7 @@ struct ComposerBar: View {
     }
 
     private var actionTint: Color {
-        switch action {
+        switch lookAction {
         case .stop: return .red
         case .steer, .queue: return .conduitAura
         case .interrupt: return .orange
@@ -497,7 +508,7 @@ struct ComposerBar: View {
     }
 
     private var actionSurfaceTint: Color {
-        action == .unavailable ? Color.primary.opacity(0.025) : actionTint
+        lookAction == .unavailable ? Color.primary.opacity(0.025) : actionTint
     }
 
     /// Solid, so the chat scrolling under the composer never shows
@@ -689,6 +700,15 @@ struct ComposerBar: View {
             guard inUse else { return }
             dictation.cancel()
         }
+        .task(id: appState.composerWaitsForResync) {
+            resyncOutlastedGrace = false
+            guard appState.composerWaitsForResync else { return }
+            try? await Task.sleep(for: ResyncGrace.duration)
+            guard !Task.isCancelled else { return }
+            resyncOutlastedGrace = true
+        }
+        .onAppear { keepSettledLook(currentLook) }
+        .onChange(of: currentLook) { _, look in keepSettledLook(look) }
         .onDisappear {
             dictation.cancel()
             // A transcript paste still waiting for focus belongs to this chat.
@@ -832,10 +852,12 @@ struct ComposerBar: View {
                         dictateButton
                             .conduitFixedGlyph()
                             .padding(.leading, 6)
-                            .padding(.trailing, stopOnly ? Self.controlSpacing - Self.restingRowSpacing : 4)
+                            .padding(.trailing, looksStopOnly ? Self.controlSpacing - Self.restingRowSpacing : 4)
                             .transition(.opacity)
                     }
-                    if rests && stopOnly {
+                    // Its look held through a short resync (`lookAction`);
+                    // its tap acts on the live action only.
+                    if rests && looksStopOnly {
                         // Without the mic beside it, clear of the field by
                         // half a gap, so its 44 pt hit shape never reaches
                         // over the field (a tap there would stop the turn).
@@ -877,8 +899,8 @@ struct ComposerBar: View {
             let currentEditorIdentity = editorIdentity
             if text.isEmpty {
                 ComposerPlaceholderText(
-                    text: appState.composerPlaceholder,
-                    short: appState.composerShortPlaceholder
+                    text: heldLook?.placeholder ?? appState.composerPlaceholder,
+                    short: heldLook?.shortPlaceholder ?? appState.composerShortPlaceholder
                 )
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 14)
@@ -976,7 +998,7 @@ struct ComposerBar: View {
         }) {
             ComposerFullEditor(
                 text: $text,
-                placeholder: appState.composerPlaceholder,
+                placeholder: heldLook?.placeholder ?? appState.composerPlaceholder,
                 enabled: appState.composerTakesText,
                 onUserEdit: { edited in
                     // Dictation writing the draft is not typing.
@@ -1246,14 +1268,16 @@ struct ComposerBar: View {
     /// words coming back with nothing said (issue 2095).
     private var showsStateNotice: Bool {
         let hasError = !(appState.errorMessage ?? "").isEmpty
-        guard !appState.composerIsEnabled else { return hasError }
+        guard !appState.composerIsEnabled, heldLook == nil else { return hasError }
         guard appState.composerWaitsForChat else { return true }
         return hasError || showsRepairConnection
     }
 
     /// The syncing line, only while the composer is locked for it.
+    /// Not through a resync shorter than `ResyncGrace.duration` (every
+    /// return to the app has one): the line came and went on each return.
     private var showsSyncingLine: Bool {
-        !appState.composerIsEnabled && !appState.composerWaitsForChat
+        !appState.composerIsEnabled && !appState.composerWaitsForChat && heldLook == nil
     }
 
     private var showsRepairConnection: Bool {
@@ -1562,8 +1586,10 @@ struct ComposerBar: View {
                 .contentShape(Self.controlHitShape)
         }
         .accessibilityLabel(Text("Attach"))
-        // Open while Hermes replies: the files go as Queue (#1146).
-        .disabled(!appState.composerIsEnabled)
+        // Open while Hermes replies: the files go as Queue (#1146). Through
+        // a short resync it keeps its look but takes no tap.
+        .disabled(!attachLooksAvailable)
+        .allowsHitTesting(appState.composerIsEnabled)
         .conduitGlassControl(cornerRadius: Self.controlSize / 2, tint: .conduitAccent.opacity(0.08))
         .accessibilityShowsLargeContentViewer {
             Label("Attach", systemImage: "plus")
@@ -1597,7 +1623,7 @@ struct ComposerBar: View {
     @ViewBuilder
     private var trailingSlot: some View {
         let control = Self.trailingControl(
-            action: action,
+            action: lookAction,
             showsVoiceButton: appState.showsComposerVoiceButton && !keepsVoiceButtonBeside,
             holdsDictation: dictationHoldsSendSlot
         )
@@ -1635,7 +1661,9 @@ struct ComposerBar: View {
             Button(action: performComposerAction) {
                 composerActionFace
             }
-            .disabled(action == .unavailable)
+            // Through a short resync it keeps its look but takes no tap.
+            .disabled(lookAction == .unavailable)
+            .allowsHitTesting(action != .unavailable)
             .modifier(composerActionChrome)
             .accessibilityShowsLargeContentViewer {
                 Label {
@@ -1677,6 +1705,9 @@ struct ComposerBar: View {
     }
 
     private func performComposerAction() {
+        // Only Send's look is held through a short resync (VoiceOver can
+        // still reach it): it does nothing until the chat has been read back.
+        guard action != .unavailable else { return }
         if stopOnly {
             endInput(keepingFocus: isFocused || isShowingFullEditor, fromFullEditor: isShowingFullEditor)
             isShowingFullEditor = false
@@ -1690,7 +1721,7 @@ struct ComposerBar: View {
     private var composerActionFace: some View {
         HStack(spacing: 6) {
             Image(systemName: actionSymbol)
-                .font(.system(size: stopOnly ? 12 : 14, weight: .semibold))
+                .font(.system(size: looksStopOnly ? 12 : 14, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
@@ -1698,15 +1729,15 @@ struct ComposerBar: View {
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             }
         }
-        .foregroundStyle(action == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
+        .foregroundStyle(lookAction == .unavailable ? Color.secondary.opacity(0.48) : Color.white)
         .frame(minWidth: actionTitle == nil ? Self.controlSize : 86, minHeight: Self.controlSize)
         .padding(.horizontal, actionTitle == nil ? 0 : 4)
         .contentShape(Self.controlHitShape)
-        .animation(ConduitMotion.transition, value: action)
+        .animation(ConduitMotion.transition, value: lookAction)
     }
 
     private var composerActionChrome: ComposerActionChrome {
-        ComposerActionChrome(tint: actionSurfaceTint, action: action)
+        ComposerActionChrome(tint: actionSurfaceTint, action: lookAction)
     }
 
     /// What touch and hold on the action button offers: the busy modes the
@@ -2099,6 +2130,7 @@ struct ComposerBar: View {
     /// slot stays the one "go" control.
     private var dictateButton: some View {
         let canDictate = canDictateFromComposer
+        let looksAvailable = dictateLooksAvailable
         let isCapturing = dictation.isCapturing
         // A Hermes dictation still transcribing pulses too, and a tap
         // waits for its words.
@@ -2119,7 +2151,7 @@ struct ComposerBar: View {
         } label: {
             Image(systemName: isCapturing ? "mic.fill" : "mic")
                 .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(isCapturing ? Color.red : (canDictate ? Color.primary : Color.secondary))
+                .foregroundStyle(isCapturing ? Color.red : (looksAvailable ? Color.primary : Color.secondary))
                 // Pulses from the tap, so a start still waiting on
                 // permission or the microphone shows it's in flight.
                 .symbolEffect(.pulse, isActive: isActive && !reduceMotion)
@@ -2128,11 +2160,12 @@ struct ComposerBar: View {
                 .contentShape(Self.controlHitShape)
         }
         .buttonStyle(.plain)
-        .disabled(!canDictate && !isActive)
+        // A tap through a short resync does nothing (`ComposerDictation.tap`).
+        .disabled(!looksAvailable && !isActive)
         .conduitGlassControl(
             cornerRadius: Self.controlSize / 2,
             tint: isCapturing ? .red.opacity(0.16) : .primary.opacity(0.025),
-            interactive: canDictate || isActive
+            interactive: looksAvailable || isActive
         )
         .accessibilityShowsLargeContentViewer {
             Label {
@@ -2177,6 +2210,88 @@ struct ComposerBar: View {
 
     private var canDictateFromComposer: Bool {
         appState.composerIsEnabled && !appState.isVoiceInUse
+    }
+
+    private var dictateLooksAvailable: Bool {
+        Self.dictateLooksAvailable(
+            composerIsEnabled: appState.composerIsEnabled,
+            composerWaitsForResync: appState.composerWaitsForResync,
+            isVoiceInUse: appState.isVoiceInUse,
+            resyncOutlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    private var attachLooksAvailable: Bool {
+        Self.attachLooksAvailable(
+            composerIsEnabled: appState.composerIsEnabled,
+            composerWaitsForResync: appState.composerWaitsForResync,
+            resyncOutlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    /// The dictate button keeps its look through a resync shorter than
+    /// `ResyncGrace.duration`, as the round voice button does.
+    static func dictateLooksAvailable(
+        composerIsEnabled: Bool,
+        composerWaitsForResync: Bool,
+        isVoiceInUse: Bool,
+        resyncOutlastedGrace: Bool
+    ) -> Bool {
+        ResyncGrace.looksAvailable(
+            canAct: composerIsEnabled && !isVoiceInUse,
+            canActOnceSynced: (composerIsEnabled || composerWaitsForResync) && !isVoiceInUse,
+            outlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    static func attachLooksAvailable(
+        composerIsEnabled: Bool,
+        composerWaitsForResync: Bool,
+        resyncOutlastedGrace: Bool
+    ) -> Bool {
+        ResyncGrace.looksAvailable(
+            canAct: composerIsEnabled,
+            canActOnceSynced: composerIsEnabled || composerWaitsForResync,
+            outlastedGrace: resyncOutlastedGrace
+        )
+    }
+
+    /// A resync shorter than `ResyncGrace.duration` in the chat the look
+    /// was settled in: Send, the placeholder and the syncing line stay as
+    /// they were. A resync as another chat opens shows that chat's own.
+    private var resyncHoldsLook: Bool {
+        appState.composerWaitsForResync && !resyncOutlastedGrace
+    }
+
+    private var heldLook: ComposerSettledLook? {
+        guard resyncHoldsLook else { return nil }
+        return Self.heldLook(settledLook, draftKey: appState.durableComposerDraftKeyOnScreen, holds: true)
+    }
+
+    /// The action as it looks: the held one through a short resync.
+    private var lookAction: ComposerAction {
+        heldLook?.action ?? action
+    }
+
+    private var currentLook: ComposerSettledLook {
+        // By the chat's durable id: a reconnect can bind it a new runtime id.
+        ComposerSettledLook(
+            draftKey: appState.durableComposerDraftKeyOnScreen,
+            action: action,
+            placeholder: appState.composerPlaceholder,
+            shortPlaceholder: appState.composerShortPlaceholder
+        )
+    }
+
+    /// Kept only outside a resync, so it is the look from before one.
+    private func keepSettledLook(_ look: ComposerSettledLook) {
+        guard !appState.composerWaitsForResync else { return }
+        settledLook = look
+    }
+
+    static func heldLook(_ settled: ComposerSettledLook?, draftKey: ComposerDraftKey, holds: Bool) -> ComposerSettledLook? {
+        guard holds, let settled, settled.draftKey == draftKey else { return nil }
+        return settled
     }
 
     private func beginDictation() {
@@ -3268,6 +3383,15 @@ private struct SlashSuggestionsOverlay: View {
         }
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
     }
+}
+
+/// What the composer showed outside a resync, in which chat
+/// (`ComposerBar.heldLook`).
+struct ComposerSettledLook: Equatable {
+    let draftKey: ComposerDraftKey
+    let action: ComposerAction
+    let placeholder: String
+    let shortPlaceholder: String
 }
 
 /// The action button's glass, shared by its button and menu forms.

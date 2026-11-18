@@ -766,6 +766,9 @@ final class AppState: ObservableObject {
     var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    /// The dashboards whose Bot Chat copies on the phone were read into
+    /// `keptBotChatCopies` this run (`readKeptBotChatCopies`).
+    var botChatCopiesReadFromDisk: Set<UUID> = []
 
     /// The last chats left after Load earlier brought in older rows, newest
     /// last (`keepLeftBackfilledTranscript`).
@@ -1009,6 +1012,14 @@ final class AppState: ObservableObject {
             if oldValue != nil, botChatOnItsWay == nil { noteActiveChatSeen(respectingMarks: true) }
         }
     }
+    /// The bot a list of bots just marked as coming, from the tap until its
+    /// open begins its navigation (`botChatOnItsWay` takes over there): the
+    /// screen pushed as the list closes is covered from its first frame.
+    @Published var botChatMarkedComing: BotChatMarkedComing?
+    /// Counts the Bot Chat opens asked for, a list's tap
+    /// (`beginOpeningBotChat`) or a link's or card's (`openLinkedBotChat`):
+    /// one waiting for the connection stands down for any newer one.
+    var botChatOpenRequests = 0
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?

@@ -202,7 +202,7 @@ struct BotRosterView: View {
                 } : nil,
                 onChat: {
                     overviewBot = nil
-                    appState.beginOpeningBotChat(bot.name)
+                    appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
                     // Grows out of its portrait, as from a tap on it
                     // (Eric 2026-11-04), unless it opens beside the list.
                     if openBeside == nil { appState.botZoom.tap(bot.name) }
@@ -226,7 +226,7 @@ struct BotRosterView: View {
                       let bot = appState.botRoster.first(where: { $0.name == createdName }) else { return }
                 // Desktop opens a new bot's forever chat straight away, and
                 // the bot introduces itself when it can reach a model.
-                appState.beginOpeningBotChat(bot.name)
+                appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
                 Task {
                     await appState.openNewBotChat(for: bot, introduces: introduces)
                 }
@@ -320,6 +320,16 @@ struct BotRosterView: View {
     private var canStartGroups: Bool {
         hostedGroupsAvailable && GroupCreateLimits.offersNewGroup(
             visibleBots: appState.botRoster.lazy.filter { !$0.isHiddenByMeta }.count,
+            invitesPeople: !appState.invitableLinkedPeople.isEmpty || appState.invitableOwnBots.contains(where: \.ready)
+        )
+    }
+
+    /// New Group Chat's + as the list opens: the kept bots and rooms stand
+    /// in until Hermes answers, so it shows with the app; it acts only
+    /// once `canStartGroups` holds.
+    private var showsNewGroup: Bool {
+        appState.shownGroupChatsAvailable && GroupCreateLimits.offersNewGroup(
+            visibleBots: visibleBots.count,
             invitesPeople: !appState.invitableLinkedPeople.isEmpty || appState.invitableOwnBots.contains(where: \.ready)
         )
     }
@@ -1335,7 +1345,7 @@ struct BotRosterView: View {
     @State private var showingGroupCreateSheet = false
 
     private var showsGroupSection: Bool {
-        hostedGroupsAvailable || hasGroupRows || groupProbeFailure != nil
+        appState.shownGroupChatsAvailable || hasGroupRows || groupProbeFailure != nil
     }
 
     @ViewBuilder
@@ -1403,6 +1413,8 @@ struct BotRosterView: View {
     }
 
     private func startNewGroup() {
+        // VoiceOver reaches it before Hermes has answered too.
+        guard canStartGroups else { return }
         Haptics.light()
         // The sheet renders the shared error; start clean.
         appState.errorMessage = nil
@@ -1415,11 +1427,13 @@ struct BotRosterView: View {
             Section(AppLocalization.string("Group Chats", table: .bots)) {
                 groupRows
                     .modifier(HomeRoomLooksReader())
-                if canStartGroups {
+                if showsNewGroup {
                     Button(action: startNewGroup) {
                         newGroupCard
                     }
                     .buttonStyle(.plain)
+                    // Its look from the start; taps once Hermes has answered.
+                    .allowsHitTesting(canStartGroups)
                     .rosterListRow(divider: false)
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
@@ -1439,10 +1453,14 @@ struct BotRosterView: View {
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
                 Spacer(minLength: 8)
-                if canStartGroups {
+                if showsNewGroup {
                     // New Bot's glass +.
                     V2AddButton(title: AppLocalization.string("New Group Chat"), action: startNewGroup)
                         .accessibilityIdentifier("bots.newGroupChat")
+                        // Disabled would dim the glyph (V2AddGlyph) and then
+                        // brighten it as Hermes answers: it keeps its look and
+                        // takes taps once Hermes has answered.
+                        .allowsHitTesting(canStartGroups)
                 }
             }
             .padding(.horizontal, 16)
@@ -1498,14 +1516,14 @@ struct BotRosterView: View {
     /// Bots Home's Group Chats, unless there's nothing it could hold: one
     /// bot, no rooms, and nobody linked to start one with.
     private var showsHomeGroupSection: Bool {
-        showsGroupSection && (visibleBots.count >= 2 || canStartGroups || hasGroupRows || groupProbeFailure != nil)
+        showsGroupSection && (visibleBots.count >= 2 || showsNewGroup || hasGroupRows || groupProbeFailure != nil)
     }
 
     /// Group Chats has nothing to show yet, rooms can start here and there
     /// are two bots to drop one on the other; not in UI tests or the App
     /// Store screenshots, like the tip.
     private var showsRoomHint: Bool {
-        !BotsHomeGesturesTip.hiddenForTesting && canStartGroups && groupProbeFailure == nil && homeRooms.isEmpty
+        !BotsHomeGesturesTip.hiddenForTesting && showsNewGroup && groupProbeFailure == nil && homeRooms.isEmpty
             && appState.shownDesktopGroupChats.isEmpty && !hasLinkedRoomRows && newRoom.isEmpty && visibleBots.count >= 2
     }
 
@@ -1762,7 +1780,7 @@ private struct BotRosterRow: View {
     var body: some View {
         Button {
             Haptics.light()
-            appState.beginOpeningBotChat(bot.name)
+            appState.beginOpeningBotChat(bot.name, label: bot.displayLabel)
             Task {
                 await appState.openBotChatFromList(bot)
             }

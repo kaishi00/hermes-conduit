@@ -450,6 +450,10 @@ extension AppState {
             dashboardID: dashboardID,
             profile: activeProfile,
             isBotChat: isBotChat,
+            botChatCopyOwner: isBotChat
+                ? ChatResumeStore.rpcProfileName(botChatCopyOwner(openAs: oldID))
+                    .map { BackgroundChat.BotChatCopyOwner(bot: $0, openAs: oldID) }
+                : nil,
             state: leftChatState(turnRunning: turnRunning)
         )
         backgroundChats = BackgroundChat.adding(chat, to: currentBackgroundChats(), keeping: keptChatIDs)
@@ -644,11 +648,23 @@ extension AppState {
     }
 
     /// A finished reply's rows become the chat's saved copy, so it shows
-    /// even once the chat is no longer followed. A Bot Chat keeps no copy
-    /// on the phone (`keepBotChatCopy`), and the copy doesn't become the one
-    /// a cold launch shows first.
+    /// even once the chat is no longer followed. A Bot Chat's go to its own
+    /// copy (`keepBotChatCopy`), never a profile's saved chats, and the copy
+    /// doesn't become the one a cold launch shows first.
     private func saveBackgroundChatCopy(_ chat: BackgroundChat) {
-        guard !chat.isBotChat, let durableSessionID = chat.durableSessionID else { return }
+        if chat.isBotChat {
+            guard let owner = chat.botChatCopyOwner else { return }
+            keepBotChatCopy(
+                of: chat.rows,
+                bot: owner.bot,
+                dashboardID: chat.dashboardID,
+                sessionIDs: chat.sessionIDs,
+                openAs: owner.openAs,
+                title: chat.title
+            )
+            return
+        }
+        guard let durableSessionID = chat.durableSessionID else { return }
         offlineChatCache.record(
             dashboardID: chat.dashboardID,
             profile: chat.profile,

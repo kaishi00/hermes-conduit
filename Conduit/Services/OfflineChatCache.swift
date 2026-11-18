@@ -159,6 +159,27 @@ struct OfflineCachedTranscript: Codable, Equatable {
     let messages: [OfflineCachedMessage]
 }
 
+/// A Bot Chat's copy as it was left (`AppState.keepBotChatCopy`), in a file
+/// of its own per dashboard and bot, so it outlives the run.
+struct SavedBotChatCopy: Codable, Equatable {
+    static let formatVersion = 1
+
+    var version: Int = Self.formatVersion
+    /// The bot, as `ChatResumeStore.rpcProfileName` spells it.
+    let bot: String
+    /// The ids the chat was kept under: it shows only for an open as one.
+    let sessionIDs: [String]
+    let transcript: OfflineCachedTranscript
+
+    /// The same chat and rows, whenever kept.
+    func isUnchanged(from other: SavedBotChatCopy) -> Bool {
+        bot == other.bot && sessionIDs == other.sessionIDs
+            && transcript.sessionID == other.transcript.sessionID
+            && transcript.title == other.transcript.title
+            && transcript.messages == other.transcript.messages
+    }
+}
+
 /// A saved conversation as its scope's index lists it, without its rows.
 struct OfflineCachedTranscriptEntry: Codable, Equatable {
     let sessionID: String
@@ -475,6 +496,9 @@ final class OfflineChatCacheStore {
     /// the disk.
     private var keptIndexes: [URL: OfflineChatSnapshot] = [:]
     private var keptChatLists: [URL: SavedChatList] = [:]
+    /// Bot Chat copies as last written or read, by file
+    /// (`recordBotChatCopy`); at most `maxBotChatCopies` per dashboard.
+    private var keptBotChatCopyFiles: [URL: SavedBotChatCopy] = [:]
     /// Screens' kept answers as last read, written or read ahead, by file
     /// (`recordAnswer`), least recently used first in `keptAnswerOrder`,
     /// with their files' sizes once known.
@@ -1095,6 +1119,7 @@ final class OfflineChatCacheStore {
         memoryLock.withLock {
             keptIndexes = keptIndexes.filter { !isGone($0.key) }
             keptChatLists = keptChatLists.filter { !isGone($0.key) }
+            keptBotChatCopyFiles = keptBotChatCopyFiles.filter { !isGone($0.key) }
             for url in keptAnswerOrder where isGone(url) { forgetAnswerLocked(url) }
         }
     }
@@ -1134,6 +1159,116 @@ final class OfflineChatCacheStore {
         perform { [fileManager] in
             Self.writeHeldRows(held, to: url, fileManager: fileManager)
         }
+    }
+
+    // MARK: Bot Chat copies
+
+    /// At most this many bots per dashboard keep a copy; the least recently
+    /// kept goes.
+    static let maxBotChatCopies = 8
+    static let botChatCopySuffix = ".bot-chat.json"
+
+    /// Keeps a Bot Chat's copy (`keepBotChatCopy`) in a file of its own,
+    /// named by dashboard and bot, never in a profile's index: it is no
+    /// profile's saved chat, last opened chat or launch copy. Written on the
+    /// store's queue; the same rows kept again within
+    /// `unchangedCopyRewriteInterval` keep their file.
+    func recordBotChatCopy(_ copy: SavedBotChatCopy, dashboardID: UUID) {
+        let url = botChatCopyFileURL(dashboardID: dashboardID, bot: copy.bot)
+        perform { [self] in
+            if let kept = memoryLock.withLock({ keptBotChatCopyFiles[url] }),
+               copy.transcript.savedAt.timeIntervalSince(kept.transcript.savedAt) < Self.unchangedCopyRewriteInterval,
+               kept.isUnchanged(from: copy),
+               fileManager.fileExists(atPath: url.path) {
+                // Still the most recently kept, for the cap below.
+                try? fileManager.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+            } else {
+                guard let data = try? JSONEncoder().encode(copy), write(data, to: url) else { return }
+                memoryLock.withLock { keptBotChatCopyFiles[url] = copy }
+            }
+            removeOldestBotChatCopies(dashboardID: dashboardID)
+        }
+    }
+
+    /// One bot's copy on a dashboard, from memory or its file. On the
+    /// caller: a cold launch shows it from the first frame.
+    func loadBotChatCopy(dashboardID: UUID, bot: String) -> SavedBotChatCopy? {
+        let url = botChatCopyFileURL(dashboardID: dashboardID, bot: bot)
+        if let kept = memoryLock.withLock({ keptBotChatCopyFiles[url] }) { return kept }
+        return readBotChatCopy(at: url, dashboardID: dashboardID)
+    }
+
+    /// Every bot's copy on a dashboard, read on the store's queue and handed
+    /// to `completion` on the main queue; none when a removal ran meanwhile.
+    @MainActor
+    func readBotChatCopies(dashboardID: UUID, completion: @escaping @MainActor ([SavedBotChatCopy]) -> Void) {
+        guard let ioQueue else {
+            completion(loadBotChatCopies(dashboardID: dashboardID))
+            return
+        }
+        let removalsBefore = removals
+        ioQueue.async { [self] in
+            let copies = loadBotChatCopies(dashboardID: dashboardID)
+            DispatchQueue.main.async { [self] in
+                completion(removals == removalsBefore ? copies : [])
+            }
+        }
+    }
+
+    private func loadBotChatCopies(dashboardID: UUID) -> [SavedBotChatCopy] {
+        botChatCopyFiles(dashboardID: dashboardID).compactMap { url in
+            memoryLock.withLock({ keptBotChatCopyFiles[url] }) ?? readBotChatCopy(at: url, dashboardID: dashboardID)
+        }
+    }
+
+    /// A copy whose file is named for the bot it holds, else nil.
+    private func readBotChatCopy(at url: URL, dashboardID: UUID) -> SavedBotChatCopy? {
+        guard let data = try? Data(contentsOf: url),
+              let copy = try? JSONDecoder().decode(SavedBotChatCopy.self, from: data),
+              copy.version == SavedBotChatCopy.formatVersion,
+              botChatCopyFileURL(dashboardID: dashboardID, bot: copy.bot) == url else { return nil }
+        return memoryLock.withLock { () -> SavedBotChatCopy in
+            // One kept while the file was read is the newer one.
+            if let newer = keptBotChatCopyFiles[url] { return newer }
+            keptBotChatCopyFiles[url] = copy
+            return copy
+        }
+    }
+
+    /// Deletes a bot's copy on one dashboard, as the bot is deleted.
+    func removeBotChatCopy(dashboardID: UUID, bot: String) {
+        let url = botChatCopyFileURL(dashboardID: dashboardID, bot: bot)
+        performAndWait {
+            noteRemoval()
+            forgetMemory { $0 == url }
+            try? fileManager.removeItem(at: url)
+        }
+    }
+
+    private func botChatCopyFiles(dashboardID: UUID) -> [URL] {
+        let prefix = dashboardID.uuidString.lowercased() + "--"
+        guard let files = try? fileManager.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil) else {
+            return []
+        }
+        return files.filter {
+            $0.lastPathComponent.hasPrefix(prefix) && $0.lastPathComponent.hasSuffix(Self.botChatCopySuffix)
+        }
+    }
+
+    private func removeOldestBotChatCopies(dashboardID: UUID) {
+        let files = botChatCopyFiles(dashboardID: dashboardID)
+        guard files.count > Self.maxBotChatCopies else { return }
+        let newestFirst = files
+            .map { ($0, (try? $0.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast) }
+            .sorted { $0.1 > $1.1 }
+            .map(\.0)
+        let gone = Set(newestFirst.dropFirst(Self.maxBotChatCopies))
+        memoryLock.withLock { keptBotChatCopyFiles = keptBotChatCopyFiles.filter { !gone.contains($0.key) } }
+        for file in gone { try? fileManager.removeItem(at: file) }
+    }
+
+    func botChatCopyFileURL(dashboardID: UUID, bot: String) -> URL {
+        directory.appendingPathComponent(Self.scopeFileStem(dashboardID: dashboardID, profile: bot) + Self.botChatCopySuffix)
     }
 
     // MARK: Kept answers

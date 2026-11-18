@@ -181,6 +181,41 @@ extension ComposerFullEditorTests {
         XCTAssertFalse(ComposerLayout.transcriptTakesPaste(onMac: false))
     }
 
+    func testComposerMicKeepsItsLookThroughAShortResync() {
+        // Every return to the app reads the chat back: through a resync
+        // shorter than the grace the mic keeps its look (a tap does nothing:
+        // canDictate stays false), after it it dims.
+        XCTAssertTrue(ComposerBar.dictateLooksAvailable(composerIsEnabled: true, composerWaitsForResync: false, isVoiceInUse: false, resyncOutlastedGrace: false))
+        XCTAssertTrue(ComposerBar.dictateLooksAvailable(composerIsEnabled: false, composerWaitsForResync: true, isVoiceInUse: false, resyncOutlastedGrace: false))
+        XCTAssertFalse(ComposerBar.dictateLooksAvailable(composerIsEnabled: false, composerWaitsForResync: true, isVoiceInUse: false, resyncOutlastedGrace: true))
+        // Off for another reason (an offline copy, a chat being made): dim at once.
+        XCTAssertFalse(ComposerBar.dictateLooksAvailable(composerIsEnabled: false, composerWaitsForResync: false, isVoiceInUse: false, resyncOutlastedGrace: false))
+        // Voice has the microphone: dim, resync or not.
+        XCTAssertFalse(ComposerBar.dictateLooksAvailable(composerIsEnabled: false, composerWaitsForResync: true, isVoiceInUse: true, resyncOutlastedGrace: false))
+        XCTAssertFalse(ComposerBar.dictateLooksAvailable(composerIsEnabled: true, composerWaitsForResync: false, isVoiceInUse: true, resyncOutlastedGrace: false))
+        XCTAssertEqual(ComposerDictation.tap(isCapturing: false, isStarting: false, canDictate: false), .nothing)
+        // Attach follows the same rule.
+        XCTAssertTrue(ComposerBar.attachLooksAvailable(composerIsEnabled: false, composerWaitsForResync: true, resyncOutlastedGrace: false))
+        XCTAssertFalse(ComposerBar.attachLooksAvailable(composerIsEnabled: false, composerWaitsForResync: true, resyncOutlastedGrace: true))
+        XCTAssertFalse(ComposerBar.attachLooksAvailable(composerIsEnabled: false, composerWaitsForResync: false, resyncOutlastedGrace: false))
+        XCTAssertTrue(ComposerBar.attachLooksAvailable(composerIsEnabled: true, composerWaitsForResync: false, resyncOutlastedGrace: true))
+        XCTAssertEqual(ResyncGrace.duration, .milliseconds(500))
+    }
+
+    func testSendAndThePlaceholderKeepTheirLookThroughAShortResyncInTheSameChat() {
+        // Every return to the app reads the chat back: Send and the
+        // placeholder hold what they showed before it, in that chat only.
+        let chat = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "stored-a")
+        let other = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "stored-b")
+        let settled = ComposerSettledLook(draftKey: chat, action: .send, placeholder: "Message Hermes…", shortPlaceholder: "Message…")
+        XCTAssertEqual(ComposerBar.heldLook(settled, draftKey: chat, holds: true), settled)
+        // Past the grace, or outside a resync: the live look.
+        XCTAssertNil(ComposerBar.heldLook(settled, draftKey: chat, holds: false))
+        // Another chat opening has a resync of its own: never this chat's look.
+        XCTAssertNil(ComposerBar.heldLook(settled, draftKey: other, holds: true))
+        XCTAssertNil(ComposerBar.heldLook(nil, draftKey: chat, holds: true))
+    }
+
     func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {
         // The big button beside it offers voice, so the slot keeps Send.
         XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)

@@ -516,16 +516,21 @@ struct V2ConversationScreen: View {
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
                 // Under the cover, VoiceOver doesn't reach it either.
-                .accessibilityHidden(appState.botChatComingOverAnother != nil)
+                .accessibilityHidden(appState.botChatCoverBot != nil)
             // A Bot Chat tapped in Bots is pushed before its open lands:
             // the chat open before, another bot's, stays under a cover
-            // until then, and is never shown as the tapped bot's.
-            if appState.botChatComingOverAnother != nil {
-                BotChatComingCover(bot: appState.botChatOnItsWay?.bot)
-                    .transition(.opacity)
-            }
+            // until then, and is never shown as the tapped bot's. Always in
+            // the tree, shown by opacity: it is up from the push's first
+            // frame, and an inserted branch there grew the zoom push's view
+            // update past the main thread's stack (Debug, iOS 27.3).
+            // Hidden, it keeps the open bot's glow, so a fade out as the
+            // tapped bot's chat lands doesn't change color.
+            BotChatComingCover(bot: appState.botChatCoverBot ?? appState.activeBotChatProfile)
+                .opacity(appState.botChatCoverBot != nil ? 1 : 0)
+                .allowsHitTesting(appState.botChatCoverBot != nil)
+                .accessibilityHidden(appState.botChatCoverBot == nil)
         }
-        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.botChatComingOverAnother)
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.botChatCoverBot)
         // The chat's column only: a drag in a panel beside it (Artifacts,
         // its divider, the Work panel's swipes) is that panel's.
         .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)

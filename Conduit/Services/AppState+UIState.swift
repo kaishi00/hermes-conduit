@@ -77,18 +77,23 @@ extension AppState {
     }
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
-    /// open has finished, opened or not.
-    func beginOpeningBotChat(_ name: String) {
+    /// open has finished, opened or not. `label`, a bot's: the chat open
+    /// before is covered with its name from this tap on (`botChatComing`);
+    /// a room's mark passes none.
+    func beginOpeningBotChat(_ name: String, label: String? = nil) {
         botChatOpening = name
         let pushed = showSidebar || botChatMarks.values.contains { $0.pushed }
         let mark = botChatMarks[name]
         botChatMarks[name] = ((mark?.taps ?? 0) + 1, (mark?.pushed ?? false) || pushed)
         botChatLatestMark = name
+        botChatOpenRequests &+= 1
+        botChatMarkedComing = label.map { BotChatMarkedComing(bot: name, label: $0) }
         dismissSidebarDrawer()
     }
 
     func endOpeningBotChat(_ name: String) {
         if botChatOpening == name { botChatOpening = nil }
+        if botChatMarkedComing?.bot == name { botChatMarkedComing = nil }
         guard let mark = botChatMarks[name] else { return }
         if mark.taps > 1 {
             botChatMarks[name] = (mark.taps - 1, mark.pushed)

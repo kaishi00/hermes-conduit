@@ -164,6 +164,7 @@ extension AppState {
         // isn't covered by it. (A tap's own open sets its cover next.)
         botChatOnItsWay = nil
         botChatLatestMark = nil
+        botChatMarkedComing = nil
         let renderedViewport = chatViewportSnapshotProvider?.capture()
         chatResumeCoordinator.captureViewportAndFreeze(
             renderedViewport?.snapshot,

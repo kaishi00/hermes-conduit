@@ -52,13 +52,41 @@ extension AppState {
         let transition: UInt64
     }
 
+    /// A Bot Chat a list of bots marked as coming, before its open has
+    /// begun (`botChatMarkedComing`).
+    struct BotChatMarkedComing: Equatable {
+        let bot: String
+        let label: String
+    }
+
+    /// The bot whose chat is coming: its open's, or, from a list's tap until
+    /// that open begins, the tap's. The open starts in a task after the
+    /// tap, and the shell pushes the screen first: without the tap's, the
+    /// pushed screen showed the chat open before for its first frames.
+    var botChatComing: BotChatMarkedComing? {
+        if let coming = botChatOnItsWay { return BotChatMarkedComing(bot: coming.bot, label: coming.label) }
+        return botChatMarkedComing
+    }
+
     /// The coming bot's name while the screen still holds another chat
-    /// (`botChatOnItsWay`): its chat screen shows this bot's name over a
-    /// cover, never the chat open before. Nil once its own chat is open.
+    /// (`botChatOnItsWay`): its chat screen shows this bot's name, and none
+    /// of the chat open before's controls. Nil once its own chat is open.
+    /// Not from a list's mark: that would change the pushed screen's
+    /// toolbar, composer and panels in the push itself (the cover alone
+    /// does, `botChatCoverBot`).
     var botChatComingOverAnother: String? {
         guard let coming = botChatOnItsWay else { return nil }
         if activeRoomSurface == nil, let open = activeBotChatProfile, profilesMatch(open, coming.bot) { return nil }
         return coming.label
+    }
+
+    /// The bot whose cover hides the chat open before (`botChatComing`),
+    /// from a list's tap on: the screen the shell pushes is covered from
+    /// its first frame. Nil once its own chat is open.
+    var botChatCoverBot: String? {
+        guard let coming = botChatComing else { return nil }
+        if activeRoomSurface == nil, let open = activeBotChatProfile, profilesMatch(open, coming.bot) { return nil }
+        return coming.bot
     }
 
     func invalidateBotOwnershipCache() {
@@ -420,6 +448,12 @@ extension AppState {
     /// New Chat Hermes hasn't created yet.
     var composerIsEnabled: Bool {
         turnState.acceptsComposerActions && offlineChatPresentation == nil && !showsPendingNewChat && !isRewindingTurns
+    }
+
+    /// The composer is off only while the chat is read back (a return to
+    /// the app, a reconnect): enabled again once that is done.
+    var composerWaitsForResync: Bool {
+        turnState.isResyncing && offlineChatPresentation == nil && !showsPendingNewChat && !isRewindingTurns
     }
 
     func composerAction(hasText: Bool, hasAttachments: Bool) -> ComposerAction {
@@ -1813,6 +1847,7 @@ extension AppState {
         if let dashboardID {
             offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
             offlineChatCache.removeKeptAnswers(dashboardID: dashboardID, profile: bot.name)
+            forgetBotChatCopy(dashboardID: dashboardID, bot: bot.name)
         }
         // And it leaves the roster kept there, its bridge rebuilt or not.
         forgetKeptBot(bot.name, on: rosterOwner)
@@ -1945,6 +1980,7 @@ extension AppState {
         botChatOpening = nil
         botChatMarks.removeAll()
         botChatLatestMark = nil
+        botChatMarkedComing = nil
         botChatOnItsWay = nil
         botRoster = []
         botAvatarImages = [:]
