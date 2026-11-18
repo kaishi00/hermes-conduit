@@ -26,6 +26,9 @@ def describe(pairs):
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
+    if len(argv) != 1:
+        print("usage: ci-build-compiled-counts.py BUILD_LOG", file=sys.stderr)
+        return 2
     try:
         with open(argv[0], encoding="utf-8", errors="replace") as log:
             print(describe(counts(log)))

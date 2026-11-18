@@ -32,6 +32,14 @@ class CompiledCountTests(unittest.TestCase):
             compiled.main(["/nonexistent/build.log"])
         self.assertEqual("none", out.getvalue().strip())
 
+    def test_without_exactly_one_log_path_prints_usage(self):
+        for argv in ([], ["a.log", "b.log"]):
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                self.assertEqual(compiled.main(argv), 2)
+            self.assertEqual(out.getvalue(), "")
+            self.assertIn("usage:", err.getvalue())
+
     def test_reads_the_log_file(self):
         with tempfile.TemporaryDirectory() as tmp:
             log = Path(tmp) / "build.log"
