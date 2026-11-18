@@ -4462,6 +4462,63 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(state.followedChat(answering: ["rt-a"]))
     }
 
+    /// Issue 2764 (#2756's reviews): a chat restored under a runtime id
+    /// records the row it opens as, as an open does; one restored before
+    /// the catalog listed it records it once a catalog lists it, and keeps
+    /// it once that row leaves the catalog and Hermes gives its id to
+    /// another chat. A new id the chat moves to keeps the row only by the
+    /// ids still the chat's.
+    func testARestoredChatKeepsTheRowItOpenedAs() throws {
+        let (state, _, _) = makeAppState()
+        var a = session("a")
+        a.alternateIds = ["rt-a"]
+        state.sessions = [a, session("c")]
+        state.isConnected = true
+        state.adoptSessionReference(.dashboard(profile: state.activeProfile, sessionID: "rt-a"), for: state.activeProfile)
+        XCTAssertEqual(state.rowOfChatOnScreen?.row.id, "a")
+        state.messages = [ChatMessage(id: "u1", role: .user, content: "Tell me a story", timestamp: "1")]
+        state.turnState = .running
+        state.handleStreamEvent(.messageDelta(sessionId: "rt-a", text: "Once upon"))
+        a.alternateIds = []
+        state.sessions = [a, session("rt-a"), session("c")]
+        state.setActiveSessionState(id: "c")
+        let left = try XCTUnwrap(state.followedChat(answering: ["a"]))
+        XCTAssertEqual(left.durableSessionID, "a", "not the chat that owns its id now")
+        XCTAssertNil(state.followedChat(answering: ["rt-a"]))
+
+        // Restored with nothing listed yet.
+        let (empty, _, _) = makeAppState()
+        empty.adoptSessionReference(.dashboard(profile: empty.activeProfile, sessionID: "rt-a"), for: empty.activeProfile)
+        XCTAssertNil(empty.rowOfChatOnScreen)
+        var listed = session("a")
+        listed.alternateIds = ["rt-a"]
+        empty.sessions = [listed, session("c")]
+        XCTAssertEqual(empty.rowOfChatOnScreen?.row.id, "a", "recorded once a catalog lists it")
+        // Its row leaves the catalog, and Hermes makes its id another chat's.
+        empty.sessions = [session("rt-a"), session("c")]
+        XCTAssertEqual(empty.rowOfChat(openAs: "rt-a")?.id, "a", "the row as it was read, not the chat that owns its id now")
+        XCTAssertEqual(empty.followedSessionIDs(forChatOpenAs: "rt-a"), ["a"])
+
+        // The same chat under a new runtime id keeps its row…
+        let (moved, _, _) = makeAppState()
+        var m = session("a")
+        m.alternateIds = ["rt-a"]
+        moved.sessions = [m, session("c")]
+        moved.setActiveSessionState(id: "rt-a")
+        let profile = moved.activeProfile
+        moved.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-b", durableID: "a", profile: profile, source: .resume)
+        moved.setActiveSessionState(id: "rt-b")
+        XCTAssertEqual(moved.rowOfChatOnScreen?.row.id, "a")
+        // …but an id Hermes has bound to another chat since carries no row
+        // to the chat it's left for.
+        let (handed, _, _) = makeAppState()
+        handed.sessions = [m, session("c")]
+        handed.setActiveSessionState(id: "rt-a")
+        handed.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "x", profile: handed.activeProfile, source: .resume)
+        handed.setActiveSessionState(id: "x")
+        XCTAssertNil(handed.rowOfChatOnScreen, "chat x isn't chat a")
+    }
+
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
     /// alias the chat was left with that Hermes later makes a chat of its
     /// own isn't its, and an id the index has already bound to another
@@ -4526,6 +4583,21 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
                        "chat b's row carries it and the chat's own row isn't listed")
         XCTAssertTrue(unlisted.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+
+        // Its own row no longer listed, and another row carrying both its
+        // durable id and the alias among its aliases: that row isn't the
+        // chat's own, so the alias leaves it (issue 2764).
+        let (borrowed, _, _) = makeAppState()
+        var lent = session("a")
+        lent.alternateIds = ["x"]
+        borrowed.sessions = [lent, session("c")]
+        leave(borrowed, openAs: "a")
+        var borrower = session("d")
+        borrower.alternateIds = ["a", "x"]
+        borrowed.sessions = [borrower, session("c")]
+        XCTAssertFalse(borrowed.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
+                       "chat d's row lists the chat's id only as an alias")
+        XCTAssertTrue(borrowed.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
 
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
@@ -4713,6 +4785,13 @@ final class OfflineChatCacheTests: XCTestCase {
         runtimeRow.storedSessionId = "a"
         state.sessions = [a, c, runtimeRow]
         XCTAssertTrue(state.eventBelongsToActiveSession("rt-a"), "a row of the same chat")
+        // A row that owns the id and lists this chat's only as an alias is
+        // another chat's (issue 2764).
+        var borrower = session("rt-a")
+        borrower.alternateIds = ["a"]
+        state.sessions = [a, c, borrower]
+        XCTAssertFalse(state.eventBelongsToActiveSession("rt-a"), "chat rt-a's own id, though it lists this chat's")
+        state.sessions = [a, c, runtimeRow]
 
         state.conversationIdentityIndex.recordAuthoritative(runtimeID: "st-c", durableID: "a", profile: state.activeProfile, source: .resume)
         XCTAssertTrue(state.eventBelongsToActiveSession("st-c"), "the index bound it to this chat")

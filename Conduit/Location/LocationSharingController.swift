@@ -208,9 +208,14 @@ final class LocationSharingController: ObservableObject {
     @discardableResult
     func takeSpotsReply(_ watches: [LocationSpotWatch]) -> Bool {
         guard spotRepliesLand else { return false }
+        spotsRepliesTaken += 1
         spots.replied(watches, near: fixes.lastKnownFix)
         return true
     }
+
+    /// How many spots replies were taken, for tests driving the engine's
+    /// callback.
+    private(set) var spotsRepliesTaken = 0
 
     // MARK: State
 

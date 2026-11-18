@@ -424,7 +424,10 @@ extension AppState {
 
     /// Whether a catalog row of another chat than `row`'s is `sessionId`'s
     /// own: its id or its stored id, not an alias it lists. A second row of
-    /// the same chat (its runtime listed apart) doesn't count.
+    /// the same chat (its runtime listed apart) doesn't count: that one
+    /// names this chat's own or stored id as its own or stored id. One that
+    /// lists this chat's id only among its aliases is another chat's
+    /// (issue 2764).
     static func anotherRow(than row: SessionSummary, owns sessionId: String, in rows: [SessionSummary]) -> Bool {
         // Not its aliases: the stale row lists the other chat's ids there.
         let chatIDs = Set([row.id] + [row.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty })
@@ -432,7 +435,7 @@ extension AppState {
             guard other.id != row.id, other.id == sessionId || other.storedSessionId == sessionId else { return false }
             let otherIDs = [other.id, other.storedSessionId].compactMap { $0 }.filter { !$0.isEmpty }
             // The same chat: its row names this chat's own or stored id.
-            return !otherIDs.contains { $0 != sessionId && chatIDs.contains($0) } && !other.alternateIds.contains(row.id)
+            return !otherIDs.contains { $0 != sessionId && chatIDs.contains($0) }
         }
     }
 

@@ -1811,8 +1811,11 @@ extension AppState {
         // The message just before it started its turn: a send queued behind
         // a running turn waits in the dock, out of the transcript, until its
         // own turn starts, and an earlier turn that got no reply is older.
-        // A steer is part of the turn, not what started it.
-        let prompt = messages[..<index].last(where: { $0.role == .user && !$0.isSteer })?
+        // A steer is part of the turn, not what started it, and a message
+        // Hermes holds for the next turn (another client's Queue send, or
+        // this one's) stands ahead of the reply only until that turn starts
+        // (issue 2764).
+        let prompt = messages[..<index].last(where: { $0.role == .user && !$0.isSteer && !$0.isQueuedPrompt })?
             .content.trimmingCharacters(in: .whitespacesAndNewlines)
         return (reply, prompt)
     }

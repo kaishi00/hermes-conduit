@@ -736,7 +736,7 @@ extension NotificationE2ETests {
     /// next sign-in there doesn't send it under another account; another
     /// dashboard's Sign Out keeps it (issue 2482).
     @MainActor
-    func testSignOutOfTheBoundDashboardDropsWhatWasntSent() {
+    func testSignOutOfTheBoundDashboardDropsWhatWasntSent() throws {
         var unsent = LocationUnsent()
         unsent.keep(fix: LocationFixtures.fix(latitude: 51.5, longitude: -0.1), events: [
             LocationPlaceEvent(id: "e_1", kind: .arrive, placeID: "p_home", at: LocationFixtures.at, isPrivate: false),
@@ -753,14 +753,20 @@ extension NotificationE2ETests {
         XCTAssertTrue(controller.hasUnsent, "Another dashboard's Sign Out keeps the queue")
 
         XCTAssertTrue(controller.spotRepliesLand)
+        // The engine's reply callback is taken before the Sign Out
+        // (issue 2764)…
+        let replied = try XCTUnwrap(engine.spotsReplied)
+        replied([])
+        XCTAssertEqual(controller.spotsRepliesTaken, 1)
         controller.dropUnsent(boundTo: LocationFixtures.dashboardID)
         XCTAssertFalse(controller.hasUnsent)
         XCTAssertEqual(controller.binding?.dashboardID, LocationFixtures.dashboardID, "Sharing stays bound")
         XCTAssertFalse(controller.spotRepliesLand, "a reply to a batch sent before it lists no shops (issue 2616)")
-        // The engine's reply callback goes through the same fence (#2645's
-        // review, issue 2655).
-        XCTAssertNotNil(engine.spotsReplied)
-        XCTAssertFalse(controller.takeSpotsReply([]), "the reply to a batch sent before the Sign Out isn't taken")
+        // …and goes through the same fence after it (#2645's review, issues
+        // 2655 and 2764).
+        replied([])
+        XCTAssertEqual(controller.spotsRepliesTaken, 1, "the reply to a batch sent before the Sign Out isn't taken")
+        XCTAssertFalse(controller.takeSpotsReply([]))
     }
 
     /// Sign Out while the config can't be read still drops what wasn't

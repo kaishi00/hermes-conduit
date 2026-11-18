@@ -1346,6 +1346,64 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.needsYou.otherDashboards[mac.id]?.first?.id, item.id, "its row stays")
         appState.keptDashboardJSONReader = reader
 
+        // A room wait whose read was out while the two dashboards turned
+        // out one Hermes, or two: whether it's the open room's is asked once
+        // the read is back (issue 2764, DeepSeek on #2756).
+        final class Paused {
+            var holds = false
+            var waiting: CheckedContinuation<Void, Never>?
+            var roomWaits: [[String: Any]] = []
+        }
+        let paused = Paused()
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard path.contains(NeedsYouStore.path), path.contains("profile=atlas") else { return try await reader(bridge, path) }
+            if paused.holds {
+                paused.holds = false
+                await withCheckedContinuation { paused.waiting = $0 }
+            }
+            let listed = try await reader(bridge, path)["waiting"] as? [[String: Any]] ?? []
+            return ["waiting": listed + paused.roomWaits]
+        }
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0
+        )
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: vps.id, room: room))
+        let ownSessions = appState.sessions
+        let shared = session("shared-1")
+        func readPaused(_ waitID: String, meanwhile: @escaping @MainActor () -> Void) async {
+            paused.roomWaits = [["id": waitID, "kind": "approval", "session_ids": ["room-s"], "room": "room-1", "at": 2_000]]
+            paused.holds = true
+            let pass = Task { @MainActor in await appState.readOtherCombinedDashboardsNeedsYou() }
+            await waitUntil { paused.waiting != nil }
+            meanwhile()
+            paused.waiting?.resume()
+            paused.waiting = nil
+            await pass.value
+        }
+        // One Hermes by the time it's back: the open room's, no banner.
+        await readPaused("wr1") {
+            appState.sessions = ownSessions + [shared]
+            appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+                bridge: ObjectIdentifier(kept.bridge), profiles: ["default", "atlas"], sessions: [shared], at: Date()
+            )
+        }
+        XCTAssertNotNil(appState.combinedHermesGroups[vps.id])
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        XCTAssertTrue(appState.needsYou.otherDashboards[mac.id]?.contains { $0.waitID == "wr1" } == true)
+        XCTAssertNil(appState.needsYou.banner, "the same Hermes' room on screen")
+        // Two by the time it's back: another Hermes' room with the same id
+        // banners.
+        await readPaused("wr2") {
+            appState.sessions = ownSessions
+            appState.combinedDashboardChats[mac.id] = nil
+        }
+        XCTAssertEqual(appState.needsYou.banner?.waitID, "wr2", "another Hermes' room under the same id")
+        if let banner = appState.needsYou.banner { appState.needsYou.dismissBanner(banner) }
+        appState.setActiveRoomSurfaceForTesting(nil)
+        appState.keptDashboardJSONReader = reader
+
         appState.openNeedsYou(item)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertEqual(appState.activeDashboardID, mac.id)

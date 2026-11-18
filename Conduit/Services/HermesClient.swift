@@ -6537,6 +6537,11 @@ enum MessageNormalizer {
             if displayKind == .asyncDelegationComplete, projectedContent == nil, !isToolResult {
                 base.delegationReport = DelegationReport.parse(rawContent)
             }
+            // Held for the next turn: until it starts, Hermes keeps it ahead
+            // of the running turn's reply (issue 2764).
+            if role == .user, displayMetadataObject(obj["display_metadata"])?[Self.queuedPromptMetadataKey]?.boolValue == true {
+                base.isQueuedPrompt = true
+            }
 
             // External session history occasionally includes a role-less
             // metadata envelope after the last real message. It normalizes to
@@ -6574,6 +6579,10 @@ enum MessageNormalizer {
         guard let value = obj["display_content"] else { return nil }
         return extractContent(value)
     }
+
+    /// Hermes' `display_metadata` mark on a message it holds for the next
+    /// turn (QUEUED_PROMPT_METADATA_KEY).
+    static let queuedPromptMetadataKey = "_queued_prompt"
 
     /// `display_metadata` may arrive as a JSON object (current servers) or as
     /// unparsed JSON text (older backends). Anything malformed degrades to
