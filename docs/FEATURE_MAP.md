@@ -6994,7 +6994,7 @@ and Share or Save · the Markdown reader's Open In and Share copy
 - Tests: `ConduitTests/MarkdownLargeDocumentTests+MediaPreview.swift`
 
 **Rulings**
-- Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002).
+- Each download goes in a folder of its own, removed when the preview or share sheet that asked for it closes, or when it is dismissed or switched to another file while still downloading; a previous run's leftovers are swept at launch (2026-10-24, #1220, from #1002). A share sheet UIKit refuses (another presentation in flight) removes its folder at once; a file a card or list opens counts that as opened, as a refused Quick Look does, while a Share button says it couldn't open the share sheet (2026-11-18, #2705, issue 2701).
 - The Folder opens files through the media preview presenter, so its copies follow the same rule; the workspace browser's own download folder is gone (2026-10-27, #1399).
 - The Markdown reader writes the file's text to a folder of its own for Open In and Share as it opens, and removes it when the reader closes, or at once when it closes before the copy is written; the Open In menu's controller is kept only while the menu is up (2026-11-06, #1884, carrying #1879).
 - The picture viewer fetches each picture into a folder of its own the same way, removes one once the reader is two pages past it (paging back fetches it again), and removes the rest when it closes, including one still arriving then; a photo on the device or a copy kept on the phone is shown in place and stays (2026-10-29, #1491).
@@ -7002,7 +7002,7 @@ and Share or Save · the Markdown reader's Open In and Share copy
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-11-18, #2705 (a refused share sheet removes its folder at once; Share buttons report the refusal, opened files don't; the reader's Share and a link row's Share go through presentShare); 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
