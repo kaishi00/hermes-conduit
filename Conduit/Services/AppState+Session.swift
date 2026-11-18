@@ -395,6 +395,38 @@ extension AppState {
         return isConnecting || isProfileSwitching || turnState == .synchronizing
     }
 
+    /// The rows on screen may be out of date: the saved copy, a list from
+    /// before this scope's first live read (a launch, a profile or
+    /// dashboard switch), or one read before the app last went to the
+    /// background.
+    var chatListShownIsStale: Bool {
+        if isShowingSavedChatList || chatListPredatesBackground { return true }
+        guard let dashboardID = activeDashboardID else { return false }
+        return !liveChatListLanded(dashboardID: dashboardID, profile: activeProfile)
+    }
+
+    /// The Chats list says "Updating…" over its rows (issue 2706): they may
+    /// be out of date and a read, or the connection that brings one, is on
+    /// its way. Not during a pull to refresh, which has its own spinner, nor
+    /// while the list has no rows and says it's loading.
+    var showsChatListUpdating: Bool {
+        guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
+        // A saved list with no rows says it has none, not that it's updating.
+        guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
+        // The count is the app's, not a scope's: it counts only while the
+        // scope on screen is stale, so another profile's read left running
+        // after a switch doesn't say it over a list that landed.
+        return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
+    }
+
+    /// Counts a catalog read over a stale list in and out, publishing only
+    /// when the first starts or the last ends.
+    func noteStaleChatListRead(started: Bool) {
+        staleChatListReads = max(0, staleChatListReads + (started ? 1 : -1))
+        let reading = staleChatListReads > 0
+        if reading != isReadingStaleChatList { isReadingStaleChatList = reading }
+    }
+
     var savedChatListForActiveScope: SavedChatListPresentation? {
         guard let saved = savedChatList,
               saved.dashboardID == activeDashboardID,
@@ -467,6 +499,11 @@ extension AppState {
         let dashboardID = activeDashboardID
         let retainedActiveTurn = activeTurnCatalogSession()
         let readTicket = takeSessionListReadTicket()
+        // A read over rows that may be out of date shows "Updating…" while
+        // it runs, whatever its outcome (issue 2706).
+        let readsStaleList = chatListShownIsStale
+        if readsStaleList { noteStaleChatListRead(started: true) }
+        defer { if readsStaleList { noteStaleChatListRead(started: false) } }
         do {
             let loadedSessions: [SessionSummary]
             var olderPagesDeferred = false

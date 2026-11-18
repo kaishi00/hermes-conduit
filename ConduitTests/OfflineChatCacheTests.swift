@@ -1805,6 +1805,105 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.savedChatList)
     }
 
+    /// Issue 2706: the saved rows say "Updating…" while the live read
+    /// runs, and stop once it lands.
+    func testTheSavedListSaysUpdatingWhileTheLiveReadRuns() async {
+        let gate = ChatListReadGate(blocking: true)
+        let live = [session("live-a")]
+        let (appState, store, dashboard) = makeAppState(sessionCatalogLoader: { _ in
+            await gate.pass()
+            return live
+        })
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertTrue(appState.chatListShownIsStale)
+        // Nothing is reading it yet, and no connection is on its way.
+        XCTAssertFalse(appState.showsChatListUpdating)
+
+        let read = Task { await appState.loadSessions() }
+        await gate.untilReading()
+        XCTAssertTrue(appState.isReadingStaleChatList)
+        XCTAssertTrue(appState.showsChatListUpdating)
+
+        await gate.release()
+        await read.value
+        XCTAssertFalse(appState.isReadingStaleChatList)
+        XCTAssertFalse(appState.chatListShownIsStale)
+        XCTAssertFalse(appState.showsChatListUpdating)
+    }
+
+    /// Issue 2706: a connection on its way says "Updating…" over the saved
+    /// rows, but never under a pull to refresh's own spinner; and a chat
+    /// sync's commit of the live list (not only a list read's) marks a list
+    /// from before the background current again.
+    func testUpdatingStaysOutOfAPullAndAnyLiveCommitClearsTheBackgroundMark() {
+        let (appState, store, dashboard) = makeAppState()
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertTrue(appState.showsChatListUpdating)
+
+        appState.isRefreshingSessionCatalog = true
+        XCTAssertFalse(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = false
+
+        appState.noteStaleChatListRead(started: true)
+        appState.isConnecting = false
+        XCTAssertTrue(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = true
+        XCTAssertFalse(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = false
+        appState.noteStaleChatListRead(started: false)
+        XCTAssertFalse(appState.showsChatListUpdating)
+
+        appState.chatListPredatesBackground = true
+        appState.savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboard)
+        XCTAssertFalse(appState.chatListPredatesBackground)
+    }
+
+    /// Issue 2706: a read over the live list says nothing (the list's
+    /// polls), while one over a list from before the app went to the
+    /// background says "Updating…" until it lands, failed or not.
+    func testOnlyAListFromBeforeTheBackgroundSaysUpdatingWhileRead() async {
+        let gate = ChatListReadGate(blocking: false)
+        let live = [session("live-a")]
+        let (appState, _, _) = makeAppState(sessionCatalogLoader: { _ in
+            await gate.pass()
+            if await gate.fails { throw URLError(.timedOut) }
+            return live
+        })
+        await appState.loadSessions()
+        XCTAssertFalse(appState.chatListShownIsStale)
+
+        await gate.block()
+        var read = Task { await appState.loadSessions() }
+        await gate.untilReading()
+        XCTAssertFalse(appState.isReadingStaleChatList)
+        await gate.release()
+        await read.value
+
+        appState.handleScenePhase(.background)
+        XCTAssertTrue(appState.chatListShownIsStale)
+        await gate.block(failing: true)
+        read = Task { await appState.loadSessions() }
+        await gate.untilReading()
+        XCTAssertTrue(appState.isReadingStaleChatList)
+        await gate.release()
+        await read.value
+        // The failed read stops saying it; the list is still the old one.
+        XCTAssertFalse(appState.isReadingStaleChatList)
+        XCTAssertTrue(appState.chatListShownIsStale)
+
+        await gate.block()
+        read = Task { await appState.loadSessions() }
+        await gate.untilReading()
+        XCTAssertTrue(appState.isReadingStaleChatList)
+        await gate.release()
+        await read.value
+        XCTAssertFalse(appState.isReadingStaleChatList)
+        XCTAssertFalse(appState.chatListShownIsStale)
+    }
+
     /// The live list's newest page alone keeps the saved pinned chats it
     /// lacks under it, so an older pinned chat doesn't blink out while the
     /// rest loads; a chat the live list gains is then listed once, as live.
@@ -5206,5 +5305,41 @@ extension OfflineChatCacheTests {
         XCTAssertEqual(rows.first?.id, "m100")
         XCTAssertEqual(rows.last?.id, "m\(limit + 99)")
         XCTAssertEqual(OfflineChatCacheStore.keptRows(of: Array(messages.prefix(3))).map(\.id), ["m0", "m1", "m2"])
+    }
+}
+
+/// Holds a catalog read until the test lets it go (issue 2706's tests).
+private actor ChatListReadGate {
+    private var blocking: Bool
+    private(set) var fails = false
+    private var reading = false
+    private var held: CheckedContinuation<Void, Never>?
+    private var readingWaiter: CheckedContinuation<Void, Never>?
+
+    init(blocking: Bool) { self.blocking = blocking }
+
+    func pass() async {
+        reading = true
+        readingWaiter?.resume()
+        readingWaiter = nil
+        guard blocking else { return }
+        await withCheckedContinuation { held = $0 }
+    }
+
+    func untilReading() async {
+        guard !reading else { return }
+        await withCheckedContinuation { readingWaiter = $0 }
+    }
+
+    func block(failing: Bool = false) {
+        blocking = true
+        fails = failing
+        reading = false
+    }
+
+    func release() {
+        blocking = false
+        held?.resume()
+        held = nil
     }
 }

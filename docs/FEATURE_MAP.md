@@ -8799,6 +8799,40 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 
 **Checked:** 2026-11-13, #2400 (the overview's bot read while it shows, a closed screen's reads dropped at once, overlapping rounds merged; review follow-up to #2392); 2026-11-13, #2392 (each other profile on screen read by name, since the session authority lists only the named profile; Bots Home's portraits count each bot's chats; the drawer sidebar and project page read through the same sessionLiveStatus); 2026-11-13, #2370 (a Mac window inactive over 2 minutes leaves the 4 s pace, issue 2360; the drawer sidebar and a project's page run on the same pacer); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2284 (a test that the poll reads the registry in a Mac window behind another app); 2026-11-12, #2270 (the open chat's row follows its working line while its turn state is stale; a Mac window behind another app keeps the registry reads going, issue 1615); 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
+## Updating while the Chats list refreshes
+
+The small "Updating…" capsule at the bottom of the Chats list while rows
+that may be out of date are read again: the saved list at launch, a
+profile's or dashboard's list before its first live read, and a list read
+before the app last went to the background (issue 2706).
+
+**Siblings:** the Chats list (V2: iPhone, iPad's split column and the Mac,
+one view; Sessions and Projects alike) · the drawer shell's sidebar (V1,
+with or without the persistent column) · a pull to refresh (its own
+spinner, so the capsule stays out of it) · "Loading chats…" (no rows yet:
+the capsule stays out of it too) · not needed: a project's page beside the
+open chat (a chat open over it, not the list a launch shows), Bots Home,
+Watch, CarPlay and the widget (they show the list the app already holds and
+have no refresh of their own), the notifier (it serves no part of the
+catalog) · text: the shared "Updating…" key, already in every shipped
+language; no Settings caption or doc describes it
+
+**Code**
+- When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, showsChatListUpdating, noteStaleChatListRead; loadSessions counts a read over a stale list in and out), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (isReadingStaleChatList, staleChatListReads, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
+- The capsule: `Conduit/Views/Components/ChatListUpdatingPill.swift` (shows after 0.4 s, leaves 0.3 s after, takes no taps); placed in `Conduit/Views/V2/V2ChatsView.swift` (over both presentations, inside v2ProfileSwitchContent's fade) and `Conduit/Views/SidebarView.swift` (over the list)
+- Tests: `ConduitTests/OfflineChatCacheTests.swift` (testTheSavedListSaysUpdatingWhileTheLiveReadRuns, testUpdatingStaysOutOfAPullAndAnyLiveCommitClearsTheBackgroundMark, testOnlyAListFromBeforeTheBackgroundSaysUpdatingWhileRead)
+
+**Rulings**
+- The capsule floats over the rows at the bottom instead of a row above them, so a row never moves under a finger while the read lands, and it takes no taps (2026-11-18, #2718).
+- Only rows that may be out of date say it: the list's own polls and change reads over a list read since the app came back say nothing, so a list left on screen never blinks it. A connection, profile switch or chat sync still on its way to the read counts as updating too (2026-11-18, #2718).
+- A failed read stops saying it; the list stays marked stale, so the next read says it again (2026-11-18, #2718).
+- Any commit of the live list marks it current, a chat sync's on return included, so the polls after it say nothing. The read count is the app's, so it says "Updating…" only while the scope on screen is stale: another profile's read left running after a switch doesn't say it over a list that landed. A list with no rows doesn't say it (its placeholder speaks), and the capsule fades and hides with the rows during a profile switch (2026-11-18, #2718, review).
+
+**Open gaps**
+- The look and placement aren't checked on a device yet (2026-11-18, #2718).
+
+**Checked:** 2026-11-18, #2718 (issue 2706; review: a chat sync's commit clears the background mark, the count only over a stale scope, no capsule over an empty list or outside the switch's fade).
+
 ## Chats list changes made elsewhere
 
 How the Chats list learns of a chat started, renamed, archived, deleted or

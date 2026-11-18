@@ -537,6 +537,16 @@ final class AppState: ObservableObject {
     var desktopViewsCursor: [String: TimeInterval] = [:]
     @Published var sessionMutationID: String?
     @Published var isRefreshingSessionCatalog = false
+    /// A catalog read is on its way over a list Hermes may have changed
+    /// since (`chatListShownIsStale`): the Chats list says "Updating…"
+    /// (issue 2706). Published only when it flips, so the list's routine
+    /// reads over a fresh list publish nothing.
+    @Published var isReadingStaleChatList = false
+    /// How many such reads are out.
+    var staleChatListReads = 0
+    /// The list on screen was read before the app last went to the
+    /// background: it may be out of date until the next read lands.
+    var chatListPredatesBackground = false
     /// Whether `sessions` is the catalog Hermes answered for the dashboard
     /// profile on screen (see SessionCatalogLoad.swift).
     @Published var sessionCatalogLoadState = SessionCatalogLoadState()
