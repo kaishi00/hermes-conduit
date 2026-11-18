@@ -735,8 +735,6 @@ final class PushNotificationService: ObservableObject {
 
     func retainRelayGatewayID(_ gatewayID: String, forRequestID requestID: String, sealContext: RowCardSealContext? = nil) {
         if let sealContext, rowCardSealContexts[requestID] != sealContext {
-            // Session copies beyond the kept cap go too; the kept copy answers.
-            if rowCardSealContexts.count >= Self.encryptedDecisionGatewaysLimit { rowCardSealContexts.removeAll() }
             rowCardSealContexts[requestID] = sealContext
             Self.persistRowCardSealContext(sealContext, requestID: requestID)
         }

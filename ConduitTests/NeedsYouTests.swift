@@ -143,8 +143,10 @@ extension ChatOnScreenTests {
         // The session map is empty after a relaunch; the kept copy answers.
         let restored = try XCTUnwrap(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-2692a"))
         XCTAssertEqual(restored, context)
-        XCTAssertEqual(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-2692b")?.dashboardID, nil,
-                       "no dashboard is kept as none")
+        XCTAssertEqual(try XCTUnwrap(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-2692b")),
+                       .init(gatewayID: "gw-other", dashboardID: nil, profile: "default"), "no dashboard is kept as none")
+        // The send's own lookup falls back to the kept copy.
+        XCTAssertEqual(PushNotificationService.shared.rowCardSealContext(forRequestID: "conduit-row-2692a"), context)
         XCTAssertNil(PushNotificationService.savedRowCardSealContext(forRequestID: "conduit-row-unknown"))
 
         let elsewhere = E2EKeyRecord(kid: "k2", secret: Data(repeating: 4, count: 32), installationID: "inst", gatewayID: "gw-atlas",
@@ -326,6 +328,19 @@ extension ChatOnScreenTests {
         XCTAssertEqual(store.everyItem.map(\.waitID), ["w1"], "a spelling change keeps it")
         store.forgetOther(there, profilesOtherThan: ["default"])
         XCTAssertTrue(store.everyItem.isEmpty, "a profile really gone goes")
+
+        // A twin's banner survives its wait re-listed under another spelling,
+        // and clears once this dashboard lists that wait open, in any case.
+        store.applyOther([], profile: "Atlas", dashboardID: there)
+        store.applyOther([NeedsYouItem(waitID: "w2", profile: "Atlas", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                         profile: "Atlas", dashboardID: there)
+        XCTAssertEqual(store.banner?.waitID, "w2")
+        store.applyOther([NeedsYouItem(waitID: "w2", profile: "atlas", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                         profile: "atlas", dashboardID: there)
+        XCTAssertEqual(store.banner?.waitID, "w2", "re-cased, still listed: the banner stays")
+        store.apply([NeedsYouItem(waitID: "w2", profile: "ATLAS", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
+                    profile: "ATLAS", dashboardID: here) { _ in true }
+        XCTAssertNil(store.banner, "listed open here under another spelling: the twin's banner goes")
     }
 
     /// One Hermes saved at two addresses, both in the group: a wait both

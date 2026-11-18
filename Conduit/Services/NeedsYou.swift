@@ -251,7 +251,7 @@ final class NeedsYouStore: ObservableObject {
         // Another dashboard's banner for a wait this read lists as open
         // here: one Hermes saved twice, its room already on screen.
         if let banner, banner.dashboardID != nil,
-           read.contains(where: { $0.waitID == banner.waitID && AppState.profilesMatch($0.profile, banner.profile) && isOpenChat($0) }) {
+           read.contains(where: { Self.sameWait($0, banner) && isOpenChat($0) }) {
             self.banner = nil
         }
         // A wait another combined dashboard listed first (one Hermes saved
@@ -284,8 +284,8 @@ final class NeedsYouStore: ObservableObject {
     /// Whether a wait is listed already by this dashboard or by another
     /// combined one than `dashboardID`.
     private func heldElsewhere(_ item: NeedsYouItem, than dashboardID: UUID) -> Bool {
-        items.contains { $0.hostKey == item.hostKey }
-            || otherDashboards.contains { $0.key != dashboardID && $0.value.contains { $0.hostKey == item.hostKey } }
+        items.contains { Self.sameWait($0, item) }
+            || otherDashboards.contains { $0.key != dashboardID && $0.value.contains { Self.sameWait($0, item) } }
     }
 
     /// One profile's list on another combined dashboard, as just read
@@ -356,7 +356,13 @@ final class NeedsYouStore: ObservableObject {
     private func dropBannerNoLongerListed() {
         guard let banner else { return }
         let listed = banner.dashboardID.map { otherDashboards[$0] ?? [] } ?? items
-        if !listed.contains(where: { $0.id == banner.id }) { self.banner = nil }
+        // The same wait under another spelling of its profile still counts.
+        if !listed.contains(where: { Self.sameWait($0, banner) }) { self.banner = nil }
+    }
+
+    /// One wait whatever the case of its profile's name (issue 2726).
+    static func sameWait(_ a: NeedsYouItem, _ b: NeedsYouItem) -> Bool {
+        a.waitID == b.waitID && AppState.profilesMatch(a.profile, b.profile)
     }
 
     /// A profile no longer listed (removed, or its plugin can't be read).
