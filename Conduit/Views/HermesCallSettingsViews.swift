@@ -11,6 +11,7 @@
 //  Design: /mnt/project-files/designs/hermes-calls-teaching.md
 //
 
+import Combine
 import Contacts
 import ContactsUI
 import SwiftUI
@@ -198,6 +199,10 @@ struct HermesCallSettingsSection: View {
     @ObservedObject private var notifications = PushNotificationService.shared
     @State private var loadFailed = false
     @State private var addsContact = false
+    /// The plugin pairs a profile with several devices (issue 2758), read
+    /// as the plugin's status changes, so the Watch caption follows an
+    /// update landing while the page is open.
+    @State private var pluginPairsEveryDevice: Bool
     /// This iPhone's ringtones (issue 2445): every bot's, and this bot's
     /// own when it has one.
     @State private var ringtoneForAll: HermesRingtone
@@ -223,6 +228,7 @@ struct HermesCallSettingsSection: View {
         let ringtones = HermesRingtoneStore()
         _ringtoneForAll = State(initialValue: ringtones.forAll)
         _ringtoneOwn = State(initialValue: ringtones.own(profile: model.profile))
+        _pluginPairsEveryDevice = State(initialValue: Self.pairsEveryDevice)
     }
 
     /// Whether the model shown is the draft's own.
@@ -384,7 +390,12 @@ struct HermesCallSettingsSection: View {
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                         if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
-                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here.", table: .voice), systemImage: "applewatch.slash")
+                            // With a pairing per device (issue 2758) pairing adds this
+                            // iPhone; removing the other one moves the Watch's ring.
+                            Label(pluginPairsEveryDevice
+                                  ? AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, remove the other iPhone from each of your profiles in Settings > Notifications to move it here.", table: .voice)
+                                  : AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here.", table: .voice),
+                                  systemImage: "applewatch.slash")
                                 .scaledFont(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
@@ -494,6 +505,16 @@ struct HermesCallSettingsSection: View {
             ringtonePreview.stop()
         }
         .keyboardDoneButton { rulesFocused = false }
+        .onReceive(Self.pairsEveryDeviceChanges) { pluginPairsEveryDevice = $0 }
+    }
+
+    private static var pairsEveryDevice: Bool {
+        AppStateRuntimeRegistry.shared.existing?.notifierPlugin.reports("pairing-devices") == true
+    }
+
+    private static var pairsEveryDeviceChanges: AnyPublisher<Bool, Never> {
+        guard let appState = AppStateRuntimeRegistry.shared.existing else { return Empty().eraseToAnyPublisher() }
+        return appState.$notifierPlugin.map { $0.reports("pairing-devices") }.removeDuplicates().eraseToAnyPublisher()
     }
 
     /// "Don't call me while I'm at": the saved places where a call becomes

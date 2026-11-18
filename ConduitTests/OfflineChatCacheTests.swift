@@ -1864,7 +1864,7 @@ final class OfflineChatCacheTests: XCTestCase {
     /// Issue 2706: another profile's read left running after a switch
     /// says nothing over this scope's list, and a scope with no rows yet
     /// leaves the saying to "Loading chats…".
-    func testUpdatingCountsOnlyThisScopesReadAndNeedsRows() {
+    func testUpdatingCountsOnlyThisScopesReadAndNeedsRows() throws {
         let (appState, store, dashboard) = makeAppState()
         appState.isConnecting = true
         // No saved rows and no live list yet: "Loading chats…" says it.
@@ -1886,6 +1886,14 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.pinnedSessionIDs = ["stored-a"]
         XCTAssertTrue(appState.showsChatListUpdating(overProjects: true), "pinned chats over no projects")
         appState.pinnedSessionIDs = []
+        // Pulse's own chat as the only row: V2 leaves it out of its list,
+        // so says nothing; V1's sidebar draws it (#2766's review).
+        appState.pulseHomeChatID = "stored-a"
+        let pulseRow = try XCTUnwrap(appState.chatListSessions.first)
+        XCTAssertTrue(appState.isPulseHomeChat(pulseRow), "precondition: the row is Pulse's chat")
+        XCTAssertFalse(appState.showsChatListUpdating(hidesPulseHomeChat: true), "V2: nothing drawn")
+        XCTAssertTrue(appState.showsChatListUpdating(), "V1 draws it")
+        appState.pulseHomeChatID = nil
         appState.projects = [ProjectSummary(id: "home", title: "Home", primaryPath: "/home/me", isHome: true, sessionCount: 0, previewSessions: [])]
         XCTAssertTrue(appState.showsChatListUpdating(overProjects: true), "projects listed")
         appState.projectsLoading = true

@@ -358,6 +358,25 @@ extension BotModeTests {
         XCTAssertEqual(appState.allProfilesCatalog.sessions.map(\.id), ["plain"])
     }
 
+    /// Issue 2768 (#2776's review): a live call from a workstream's chat
+    /// talks as the workstream's bot, as Classic and Read Aloud there do,
+    /// though its thread names no profile; another chat's call doesn't.
+    @MainActor
+    func testAWorkstreamChatsCallSpeaksAsItsBot() throws {
+        let suite = "BotWorkstreamsTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.botWork.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        appState.activeSessionId = "20261101_w1"
+        let workstream = VoiceThreadTarget(runtimeSessionID: "20261101_w1", storedSessionID: "20261101_w1", title: "Deploy", profile: nil)
+        XCTAssertEqual(appState.callSpeaker(for: workstream), "furina")
+
+        appState.activeSessionId = "plain"
+        let plain = VoiceThreadTarget(runtimeSessionID: "plain", storedSessionID: "plain", title: "Chat", profile: nil)
+        XCTAssertNil(appState.callSpeaker(for: plain))
+    }
+
     /// A resolved workstream is shown in Hermes so Desktop's links open it
     /// (notifier #540), so the Chats list leaves it out by the plugin's
     /// list, including once that list is read after the Chats list was.

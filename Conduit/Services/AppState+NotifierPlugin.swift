@@ -125,9 +125,9 @@ extension AppState {
         // Confirmations Hermes is waiting on.
         Task { await syncPresentedScreens() }
         await provisionNotificationEncryption(bridge: bridge)
-        // Notifications from this dashboard's profile, without a pairing
+        // Notifications from this dashboard's profiles, without a pairing
         // code, after the rest so connecting doesn't wait on it.
-        Task { await pairActiveProfileAutomatically(bridge: bridge) }
+        Task { await pairProfilesAutomatically(bridge: bridge) }
         // Health data catches up once this host is known to serve it.
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.
