@@ -140,6 +140,7 @@ extension AppState {
         requestSettingsDismissal()
         showModelPicker = false
         showContextSheet = false
+        sessionUsageTarget = nil
         showWorkspaceSheet = false
         showGatewaySheet = false
         showAgentsSheet = false

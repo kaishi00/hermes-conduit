@@ -3630,6 +3630,43 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(state.backgroundChats.isEmpty, "A rebind keeps the chat on screen")
     }
 
+    /// The open chat's Usage card asks for the id Hermes stores the chat
+    /// under, as Usage Details does for its row, and an id two rows carry
+    /// isn't asked about (issue 2739). Usage Details goes down when another
+    /// chat takes the screen (issue 2740).
+    func testTheOpenChatsUsageAsksForItsStoredID() {
+        let (state, _, _) = makeAppState()
+        var listed = session("rt-a")
+        listed.storedSessionId = "st-a"
+        var shared = session("b")
+        shared.alternateIds = ["alias"]
+        var sharedToo = session("c")
+        sharedToo.alternateIds = ["alias"]
+        var borrowed = session("d")
+        borrowed.storedSessionId = "st-d"
+        borrowed.alternateIds = ["rt-d"]
+        state.sessions = [listed, shared, sharedToo, borrowed]
+
+        state.activeSessionId = "rt-a"
+        XCTAssertEqual(state.openChatUsageSessionID(), "st-a", "its row's stored id, not the runtime id")
+        state.activeSessionId = "rt-d"
+        XCTAssertEqual(state.openChatUsageSessionID(), "st-d", "the one row carrying it")
+        state.activeSessionId = "alias"
+        XCTAssertNil(state.openChatUsageSessionID(), "two rows carry it: neither's")
+        state.conversationIdentityIndex.recordAuthoritative(runtimeID: "alias", durableID: "st-c", profile: state.activeProfile, source: .resume)
+        XCTAssertEqual(state.openChatUsageSessionID(), "st-c", "the binding the open confirmed wins")
+        state.activeSessionId = "new"
+        XCTAssertEqual(state.openChatUsageSessionID(), "new", "a chat not listed yet is asked as it is")
+
+        state.activeSessionId = "rt-a"
+        state.sessionUsageTarget = borrowed
+        state.activeSessionId = "b"
+        XCTAssertNil(state.sessionUsageTarget, "another chat on screen takes Usage Details down")
+        state.sessionUsageTarget = borrowed
+        state.revealChatForWidgetLaunch()
+        XCTAssertNil(state.sessionUsageTarget, "so does a widget launch")
+    }
+
     /// A chat left while nothing runs isn't followed, and a followed chat
     /// on screen again without an open stays followed (an open lets go of
     /// it as it lands) while its events still reach the screen.
