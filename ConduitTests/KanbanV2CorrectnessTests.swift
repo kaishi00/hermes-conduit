@@ -36,6 +36,16 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: nil, nowOnBoard: "alpha"))
     }
 
+    func testATwoStepActionsStepRunsOnlyOnTheBoardItStartedOn() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        XCTAssertTrue(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: alpha))
+        // Another board, the same board on another server, or nothing loaded.
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: alpha, current: nil))
+        XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: nil, current: nil))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {

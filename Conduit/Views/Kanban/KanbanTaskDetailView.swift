@@ -972,7 +972,9 @@ struct KanbanTaskDetailView: View {
             // Upstream "Note & requeue": post the note, then reclaim so
             // the dispatcher re-runs the task with the note in context.
             Button {
-                Task { await noteAndRequeue() }
+                // The board is taken at the tap, before the task can start.
+                let board = store.loadedContextStamp
+                Task { await noteAndRequeue(startedBoard: board) }
             } label: {
                 HStack {
                     Spacer(minLength: 0)
@@ -989,7 +991,8 @@ struct KanbanTaskDetailView: View {
             // A comment alone leaves the task parked in Blocked; the
             // worker only reads the answer once the task runs again.
             Button {
-                Task { await replyAndUnblock() }
+                let board = store.loadedContextStamp
+                Task { await replyAndUnblock(startedBoard: board) }
             } label: {
                 HStack {
                     Spacer(minLength: 0)
@@ -1353,9 +1356,17 @@ struct KanbanTaskDetailView: View {
 
     /// Refuses a step whose board is no longer the one loaded.
     private func requireBoard(_ startedBoard: KanbanBoardContextStamp?) throws {
-        guard startedBoard != nil, store.loadedContextStamp == startedBoard else {
+        guard KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: startedBoard, current: store.loadedContextStamp) else {
             throw KanbanServiceError.boardNavigationInProgress
         }
+    }
+
+    /// A note posted whose second step a board change refused: the sheet
+    /// closed with the change, so the partial success shows on the board.
+    private func reportOnBoardIfClosed(_ partial: Bool, _ message: String?, startedBoard: KanbanBoardContextStamp?) {
+        guard partial, let message,
+              !KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: startedBoard, current: store.loadedContextStamp) else { return }
+        store.showMutationError(KanbanServiceError.invalidResponse(message))
     }
 
     /// Note & requeue: two supported mutations composed exactly like the
@@ -1363,14 +1374,13 @@ struct KanbanTaskDetailView: View {
     /// partial success: the draft is consumed the moment the note reaches the
     /// server, and a reclaim failure afterwards is reported as partial
     /// success without ever reposting the note.
-    private func noteAndRequeue() async {
+    private func noteAndRequeue(startedBoard: KanbanBoardContextStamp?) async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
-        // Both steps land only on the board the sheet showed when tapped: a
-        // change before the note posts nothing, and one between the steps
-        // leaves the note posted and the step undone (partial success).
-        let startedBoard = store.loadedContextStamp
+        // Both steps land only on `startedBoard`, the board shown at the
+        // tap: a change before the note posts nothing, and one between the
+        // steps leaves the note posted and the step undone (partial success).
         isRequeuing = true
         errorMessage = nil
         defer {
@@ -1397,6 +1407,7 @@ struct KanbanTaskDetailView: View {
                 }
             }
         )
+        reportOnBoardIfClosed(outcome.commentPosted && !outcome.requeued, KanbanNoteAndRequeueFlow.message(for: outcome), startedBoard: startedBoard)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
         if let message = KanbanNoteAndRequeueFlow.message(for: outcome) {
             errorMessage = message
@@ -1409,14 +1420,13 @@ struct KanbanTaskDetailView: View {
     /// & requeue, with the transition being a PATCH to Ready (upstream
     /// `unblock_task`). The draft is consumed once the reply posts, so a
     /// failed unblock never reposts it.
-    private func replyAndUnblock() async {
+    private func replyAndUnblock(startedBoard: KanbanBoardContextStamp?) async {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
-        // Both steps land only on the board the sheet showed when tapped: a
-        // change before the note posts nothing, and one between the steps
-        // leaves the note posted and the step undone (partial success).
-        let startedBoard = store.loadedContextStamp
+        // Both steps land only on `startedBoard`, the board shown at the
+        // tap: a change before the note posts nothing, and one between the
+        // steps leaves the note posted and the step undone (partial success).
         isUnblocking = true
         errorMessage = nil
         defer {
@@ -1440,6 +1450,7 @@ struct KanbanTaskDetailView: View {
                 }
             }
         )
+        reportOnBoardIfClosed(outcome.commentPosted && !outcome.requeued, KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock), startedBoard: startedBoard)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
         errorMessage = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
         // Refresh even on partial success so the posted reply shows up.
@@ -1658,6 +1669,13 @@ enum KanbanDetailLoadPolicy {
 /// surface the old task's error, dismiss the screen, or trigger a refresh
 /// for the displayed task.
 enum KanbanDetailMutationPolicy {
+    /// A step of a two-step action (Note & requeue, Reply & unblock) runs
+    /// only on the board and server it started on; with none loaded when it
+    /// started, it never runs.
+    static func stepTargetsStartedBoard(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> Bool {
+        started != nil && started == current
+    }
+
     static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {
         startedTaskID == displayedTaskID
     }
