@@ -104,6 +104,12 @@ final class KanbanStore {
     /// board. During navigation the stale snapshot stays visible but must be
     /// non-actionable: mutations are rejected in the store and the view
     /// disables creation/moves/deletes until the new board finishes loading.
+    /// The board an open task belongs to: the loaded one, or while a
+    /// switch loads, the one picked. The sheet and its reads compare it.
+    var openTaskBoardSlug: String {
+        loadedBoardSlug ?? resolvedSelectedBoardSlug
+    }
+
     var isSelectedSnapshotLoaded: Bool {
         loadedBoardSlug == resolvedSelectedBoardSlug
     }
@@ -259,7 +265,8 @@ final class KanbanStore {
     }
 
     /// How long a first load that failed in transit waits before asking
-    /// again (issue 2719).
+    /// again (issue 2719); the open task's first read waits as long. Only
+    /// tests change it.
     static var firstLoadRetryDelay: Duration = .seconds(1)
 
     /// One read of the boards, then the board picked with its profiles,

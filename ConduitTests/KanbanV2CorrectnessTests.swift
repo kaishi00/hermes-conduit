@@ -10,6 +10,32 @@ import XCTest
 @MainActor
 final class KanbanV2CorrectnessTests: XCTestCase {
 
+    // MARK: - Detail reads (issue 2719)
+
+    func testTheDetailAsksOnceMoreOnlyForAFirstReadLostInTransit() {
+        let timeout = DashboardTicketBridgeError.http(status: 0, detail: "The request timed out.")
+        XCTAssertTrue(KanbanDetailLoadPolicy.retriesFirstRead(after: timeout, hasDetail: false))
+        XCTAssertTrue(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.http(status: 503, detail: ""), hasDetail: false))
+        // A task already shown rides the poll; Hermes' own refusal stays refused.
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: timeout, hasDetail: true))
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.http(status: 404, detail: "Not Found"), hasDetail: false))
+        XCTAssertFalse(KanbanDetailLoadPolicy.retriesFirstRead(after: DashboardTicketBridgeError.signInRequired, hasDetail: false))
+    }
+
+    func testADetailAnswerAppliesOnlyToTheTaskAndBoardItWasReadFor() {
+        XCTAssertTrue(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t1", loadedBoard: "alpha"))
+        // Another task on screen, or another board loaded: the answer is dropped.
+        XCTAssertFalse(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t2", loadedBoard: "alpha"))
+        XCTAssertFalse(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t1", loadedBoard: "beta"))
+    }
+
+    func testAnOpenTasksSheetStaysOnlyOnTheBoardItOpenedOn() {
+        XCTAssertTrue(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "alpha"))
+        // Another board picked, or Server current moved by another client.
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "beta"))
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: nil, nowOnBoard: "alpha"))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {
