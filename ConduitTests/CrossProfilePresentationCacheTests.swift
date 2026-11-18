@@ -1822,6 +1822,9 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
         )
+        // The switch kept Mac's chats; this harness's two dashboards share
+        // one fake host, so its list would make them one Hermes (issue 2741).
+        appState.combinedDashboardChats[mac.id] = nil
         XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
         // Rosters cached at different times overlap only through a third
         // dashboard: still one Hermes, its bot shown once.

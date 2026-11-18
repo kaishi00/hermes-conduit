@@ -207,9 +207,10 @@ extension AppState {
             Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
         }
         // The active lists carry kept dashboards' rows too; only its own
-        // count for it. A kept dashboard's cache is all its own, each row
-        // marked with its id.
-        let own = (sessions + cronSessions).filter { $0.combinedDashboardID == nil }
+        // count for it, its other profiles' (All's catalog) included. A
+        // kept dashboard's cache is all its own, each row marked with its id.
+        let catalog = allProfilesCatalog.dashboardID == activeDashboardID ? allProfilesCatalog.sessions : []
+        let own = (sessions + cronSessions + catalog).filter { $0.combinedDashboardID == nil }
         var evidence: [UUID?: Set<String>] = [
             activeDashboardID: ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
         ]
