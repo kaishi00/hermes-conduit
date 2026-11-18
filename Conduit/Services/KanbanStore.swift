@@ -104,14 +104,15 @@ final class KanbanStore {
     /// board. During navigation the stale snapshot stays visible but must be
     /// non-actionable: mutations are rejected in the store and the view
     /// disables creation/moves/deletes until the new board finishes loading.
-    /// The board an open task belongs to: the loaded one, or while a
-    /// switch loads, the one picked. The sheet and its reads compare it.
-    var openTaskBoardSlug: String {
-        loadedBoardSlug ?? resolvedSelectedBoardSlug
-    }
-
     var isSelectedSnapshotLoaded: Bool {
         loadedBoardSlug == resolvedSelectedBoardSlug
+    }
+
+    /// The board an open task belongs to: the loaded one, or the one picked
+    /// while no snapshot is loaded (a kept board showing as a switch loads,
+    /// or a configure reset). The sheet and its reads compare it.
+    var openTaskBoardSlug: String {
+        loadedBoardSlug ?? resolvedSelectedBoardSlug
     }
 
     /// Stamp of the board/server context that currently owns mutations, or
