@@ -2881,6 +2881,24 @@ extension VoiceConversationControllerTests {
         let reachesNoMessage: [Any] = [["role": "assistant", "content": "Logs are clean."]]
         XCTAssertEqual(AppState.latestAssistantTurn(inMessageRows: reachesNoMessage)?.reply.content, "Logs are clean.")
         XCTAssertNil(AppState.latestAssistantTurn(inMessageRows: reachesNoMessage)?.prompt)
+        // Another client's Queue send, which Hermes writes as it accepts it
+        // and moves after the reply only when its own turn starts, isn't
+        // what the reply answers (issue 2764); as a JSON string too.
+        for metadata in [["_queued_prompt": true] as Any, "{\"_queued_prompt\": true}"] {
+            let queuedBetween: [Any] = [
+                ["role": "user", "content": "(voice) check the logs"],
+                ["role": "user", "content": "and the tests", "display_metadata": metadata],
+                ["role": "assistant", "content": "Logs are clean."],
+            ]
+            XCTAssertEqual(AppState.latestAssistantTurn(inMessageRows: queuedBetween)?.prompt, "(voice) check the logs")
+        }
+        let movedAfter: [Any] = [
+            ["role": "user", "content": "(voice) check the logs"],
+            ["role": "assistant", "content": "Logs are clean."],
+            ["role": "user", "content": "and the tests"],
+            ["role": "assistant", "content": "Tests pass."],
+        ]
+        XCTAssertEqual(AppState.latestAssistantTurn(inMessageRows: movedAfter)?.prompt, "and the tests", "once its turn starts it's that turn's")
     }
 }
 

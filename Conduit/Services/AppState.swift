@@ -309,6 +309,7 @@ final class AppState: ObservableObject {
             refreshActiveChatScrollSessionIdentity()
             observeChatReadState()
             updateSessionReferenceTitles()
+            noteRowOfChatOnScreenOnceListed()
         }
     }
     /// Catalog owner captured only after its asynchronous load is admitted.
@@ -414,6 +415,7 @@ final class AppState: ObservableObject {
             // Pinned runs carry read state too (#485).
             observeChatReadState()
             updateSessionReferenceTitles()
+            noteRowOfChatOnScreenOnceListed()
         }
     }
     /// The catalog's rows under every id they answer to, built once per
@@ -651,8 +653,10 @@ final class AppState: ObservableObject {
     /// it later follows that row's chat, though Hermes may since have made
     /// the id it's open under another listed chat's own (issue 2655).
     /// Kept with the ids the chat was open under, so a path that sets the
-    /// chat on screen another way never reads another chat's row.
-    var rowOfChatOnScreen: (rowID: String, openIDs: Set<String>, dashboardID: UUID?, profile: String)?
+    /// chat on screen another way never reads another chat's row, and as
+    /// the row read then, so the chat stays itself once its row leaves the
+    /// catalog (issue 2764).
+    var rowOfChatOnScreen: (row: SessionSummary, openIDs: Set<String>, dashboardID: UUID?, profile: String)?
     var shownChatChanges: AnyCancellable?
     /// The bot on screen: its scheduled jobs so far (BotState, stage 1 of
     /// the all-live rework). Its changes publish as AppState's.

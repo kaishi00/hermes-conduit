@@ -847,6 +847,12 @@ struct ChatMessage: Identifiable, Equatable {
     /// issue 1553). Nil for every other row, and for a report Conduit can't
     /// read, which keeps the plain notice.
     var delegationReport: DelegationReport? = nil
+    /// A message Hermes holds for the next turn (a Queue send, from this
+    /// client or another): written as it's accepted, so until that turn
+    /// starts, when Hermes moves it after the running turn's reply, it
+    /// stands between that turn's prompt and its reply
+    /// (`display_metadata._queued_prompt`, issue 2764).
+    var isQueuedPrompt = false
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
@@ -913,6 +919,7 @@ struct ChatMessage: Identifiable, Equatable {
         copy.stepDuration = stepDuration
         copy.connection = connection
         copy.delegationReport = delegationReport
+        copy.isQueuedPrompt = isQueuedPrompt
         return copy
     }
 
