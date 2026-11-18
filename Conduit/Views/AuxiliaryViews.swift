@@ -21,7 +21,9 @@ import UIKit
 struct ContextSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject var appState: AppState
+    @Environment(\.dismiss) private var dismiss
     @State private var breakdown: ContextBreakdown?
+    @State private var usage: SessionUsageReadout?
 
     var body: some View {
         NavigationStack {
@@ -52,6 +54,8 @@ struct ContextSheet: View {
                     .padding(.top, 4)
                 }
 
+                compressCard
+
                 if breakdown != nil {
                     ConduitSettingsSection(title: AppLocalization.string("Breakdown", table: .settings), symbol: "chart.pie", tint: .conduitAccent) {
                         ForEach(segments) { category in
@@ -69,12 +73,55 @@ struct ContextSheet: View {
                         }
                     }
                 }
+
+                // The open chat's tokens and cost (issue 2699).
+                if appState.activeSessionId != nil {
+                    SessionUsageSection(readout: usage)
+                }
             }
             .navigationTitle("Context")
         }
         // The open chat's glow: a Bot Chat's is its bot's.
         .environment(\.settingsGlowTint, appState.profileGlowTint(appState.conversationIdentityProfile))
         .task { await loadBreakdown() }
+        .task { usage = await appState.loadOpenChatUsage() ?? .failed }
+    }
+
+    /// Compress Now: the chat's `/compress`, from where its fullness shows.
+    /// It runs exactly as the typed command does, and the chat shows its
+    /// progress and result; the sheet closes so they're in view.
+    @ViewBuilder
+    private var compressCard: some View {
+        if appState.activeSessionId != nil {
+            VStack(alignment: .leading, spacing: 6) {
+                Button {
+                    Haptics.selection()
+                    let context = appState.composerSubmissionContext()
+                    dismiss()
+                    Task { await appState.executeSlashCommand("/compress", context: context) }
+                } label: {
+                    Label(AppLocalization.string("Compress Now"), systemImage: "arrow.down.right.and.arrow.up.left")
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .disabled(!canCompress)
+                Text("Summarizes older messages so the chat has room again. The chat and its memory stay.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    /// As the typed command: not while it already compresses, while a
+    /// reply runs (Hermes refuses one mid-turn), or while the composer
+    /// can't act at all (reconnecting, a branch or a profile switch).
+    private var canCompress: Bool {
+        !appState.isCompressingActiveSession
+            && appState.turnState == .idle
+            && appState.composerIsEnabled
+            && !appState.isBranchingChat
+            && !appState.isProfileSwitching
     }
 
     private func loadBreakdown() async {

@@ -1430,6 +1430,15 @@ struct SessionActionMenuItems: View {
 
         ReadStateToggleButton(session: session, nest: nest)
 
+        // The chat's tokens and cost (issue 2699).
+        Button {
+            Haptics.selection()
+            // Next turn, as Rename: the sheet waits for the menu to close.
+            DispatchQueue.main.async { appState.sessionUsageTarget = session }
+        } label: {
+            Label(AppLocalization.string("Usage Details"), systemImage: "dollarsign.circle")
+        }
+
         // A cron run keeps the job's workspace (#485). Another profile's
         // chat in All would land in this profile's projects.
         if session.source != .cron && !appState.isOtherProfileRow(session) {

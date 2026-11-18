@@ -228,4 +228,52 @@ extension HermesClientTests {
             XCTAssertNotNil(UIImage(named: "provider-" + logo, in: bundle, with: nil), logo)
         }
     }
+
+    // MARK: One chat's usage (issue 2699)
+
+    func testOneChatsUsageReadsThePluginsAnswer() {
+        let usage = SessionUsage(response: [
+            "input_tokens": 1700, "output_tokens": 170, "cache_read_tokens": 40, "reasoning_tokens": 12,
+            "api_call_count": 9, "tool_call_count": 4, "compressions": 2, "subagent_runs": 1,
+            "model": "claude-sonnet", "started_at": 1_763_400_000.0, "cost_usd": 0.17, "cost_status": "estimated",
+        ])
+        XCTAssertEqual(usage.input, 1700)
+        XCTAssertEqual(usage.output, 170)
+        XCTAssertEqual(usage.cacheRead, 40)
+        XCTAssertEqual(usage.apiCalls, 9)
+        XCTAssertEqual(usage.compressions, 2)
+        XCTAssertEqual(usage.subagentRuns, 1)
+        XCTAssertEqual(usage.model, "claude-sonnet")
+        XCTAssertEqual(usage.startedAt, Date(timeIntervalSince1970: 1_763_400_000))
+        XCTAssertEqual(usage.costStatus, .estimated)
+        XCTAssertEqual(usage.costUSD ?? -1, 0.17, accuracy: 0.0001)
+    }
+
+    func testAnUnpricedChatHasNoCostRatherThanZero() {
+        // Hermes stores an unknown price as 0; the status is what says so.
+        let unknown = SessionUsage(response: ["input_tokens": 10, "cost_usd": 0, "cost_status": "unknown"])
+        XCTAssertEqual(unknown.costStatus, .unknown)
+        XCTAssertNil(unknown.costUSD)
+        // A status Conduit doesn't know is no price either.
+        let strange = SessionUsage(response: ["cost_usd": 1.5, "cost_status": "someday"])
+        XCTAssertEqual(strange.costStatus, .unknown)
+        XCTAssertNil(strange.costUSD)
+        let included = SessionUsage(response: ["cost_usd": 0, "cost_status": "included"])
+        XCTAssertEqual(included.costStatus, .included)
+        XCTAssertEqual(included.costUSD, 0)
+        let partial = SessionUsage(response: ["cost_usd": 0.3, "cost_status": "partial"])
+        XCTAssertEqual(partial.costStatus, .partial)
+        XCTAssertEqual(partial.costUSD ?? -1, 0.3, accuracy: 0.0001)
+    }
+
+    func testOneChatsUsageRouteNamesTheChat() {
+        XCTAssertEqual(
+            SessionUsage.route(sessionID: "20261118_abc&x"),
+            "/api/plugins/conduit_push/sessions/usage?session_id=20261118_abc%26x"
+        )
+        XCTAssertEqual(
+            DashboardPath.withProfile(SessionUsage.route(sessionID: "s1") ?? "", profile: "work"),
+            "/api/plugins/conduit_push/sessions/usage?session_id=s1&profile=work"
+        )
+    }
 }

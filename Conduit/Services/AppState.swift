@@ -1120,6 +1120,9 @@ final class AppState: ObservableObject {
     var botChatLatestMark: String?
     @Published var showModelPicker = false
     @Published var showContextSheet = false
+    /// The listed chat whose Usage Details sheet is open (issue 2699),
+    /// from any chat list's long-press menu.
+    @Published var sessionUsageTarget: SessionSummary?
     @Published var showWorkspaceSheet = false
     @Published var showGatewaySheet = false
     @Published var showAgentsSheet = false
