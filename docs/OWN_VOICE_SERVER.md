@@ -199,6 +199,10 @@ from Hermes opens Local Live and the fast model says it.
   **Hermes answers** on, the server's model answered the sentences instead of
   reading them. Try another model on that service, or a server that reads
   text aloud.
+- **Every word is said and captioned twice**: the server sends each reply
+  frame under both of OpenAI Realtime's event names (the beta's and the
+  GA's). From plugin 0.178.1 the plugin passes on only the name the server
+  used first. Update the plugin.
 - **Local Live unavailable**: the plugin is older than 0.42 (0.48 on the
   Apple Watch), or Hermes lacks
   the dashboard token-route support the model address's key needs. Update Hermes and the
