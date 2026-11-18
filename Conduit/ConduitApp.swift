@@ -455,6 +455,8 @@ struct ConduitApp: App {
                 if appState.routeConnectLink(url) { return .handled }
                 // So does a Link invite, before linking.
                 if appState.routeRoomLink(url) { return .handled }
+                // And a computer's pairing code, before sending anything.
+                if appState.routeComputerPairingLink(url) { return .handled }
                 guard let link = ConduitAppLink(url: url) else {
                     // The scheme is registered, so the system would hand a
                     // conduit link Conduit can't read straight back to it.

@@ -37,8 +37,10 @@ enum PairComputerText {
             return AppLocalization.string("This code was replaced or ran out. Make a new one on the computer and scan it again.", table: .connection)
         case .rateLimited:
             return AppLocalization.string("Too many tries. Wait a minute and try again.", table: .connection)
-        case .unreachable, nil:
+        case .unreachable:
             return AppLocalization.string("Couldn't reach the pairing service. Check your connection and try again.", table: .connection)
+        case nil:
+            return AppLocalization.string("Pairing didn't work. Try again.", table: .connection)
         }
     }
 }
@@ -193,9 +195,9 @@ struct PairComputerSheet: View {
     private func loadChoices() {
         guard choices.isEmpty else { return }
         choices = appState.computerPairingChoices()
-        // The dashboard in use goes by default; the others wait for a tap.
+        // The dashboard in use goes by default; the others wait for a tap,
+        // even when the one in use can't be sent.
         chosen = Set(choices.filter { $0.isActive && $0.host != nil }.map(\.id))
-        if chosen.isEmpty, let first = choices.first(where: { $0.host != nil }) { chosen = [first.id] }
     }
 
     private func send() async {
