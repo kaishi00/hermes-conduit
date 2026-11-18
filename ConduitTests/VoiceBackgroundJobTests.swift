@@ -2603,9 +2603,13 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(supervisor.jobs.first?.status, .running, "a failed read doesn't show the chat has no reply")
         XCTAssertEqual(fake.replyReads.count, 1)
 
-        // The next read gets through and finds nothing: now it's unavailable.
+        // The next check waits a poll, as an unanswered one does.
         fake.threadReplyFails = false
         await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertEqual(fake.replyReads.count, 1)
+        // The next read gets through and finds nothing: now it's unavailable.
+        for _ in 0..<3 where supervisor.jobs.first?.status == .running { await supervisor.pollOnce() }
         XCTAssertEqual(supervisor.jobs.first?.status, .failed(AppLocalization.string("That chat is no longer available.")))
     }
 

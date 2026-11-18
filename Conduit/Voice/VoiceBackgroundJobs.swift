@@ -2456,9 +2456,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// first job, whose chat its later requests go to): one that answers a
     /// message the job never sent is another turn's, so the job's own reply
     /// isn't there (issue 2655). A read that didn't reach the reply's message
-    /// is taken as it is.
+    /// is taken as it is, unless a read of another id failed first.
     private func ownReply(_ read: VoiceThreadReplyRead, for job: VoiceBackgroundJob) -> VoiceThreadReplyRead {
-        guard job.isThreadTurn || job.isCallChat || job.sharesCallChat, case .reply(_, let prompt?, let partial) = read else { return read }
+        guard job.isThreadTurn || job.isCallChat || job.sharesCallChat, case .reply(_, let named, let partial) = read else { return read }
+        // A reply naming no message, after a read of another id failed,
+        // can't be told apart from another turn's.
+        guard let prompt = named else { return partial && sentPrompts[job.id]?.isEmpty == false ? .failed : read }
         let asked = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !asked.isEmpty, let sent = sentPrompts[job.id], !sent.isEmpty else { return read }
         if sent.contains(asked) { return read }
