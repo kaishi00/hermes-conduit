@@ -1138,13 +1138,13 @@ struct KanbanTaskDetailView: View {
         // The board it's read from too: a task id can name another task on
         // another board, so an answer from a board no longer loaded is
         // dropped like a stale identity's.
-        let expectedBoard = store.loadedBoardSlug ?? store.effectiveBoardSlug
+        let expectedBoard = store.openTaskBoardSlug
         let isCurrent = {
             KanbanDetailLoadPolicy.answerApplies(
                 startedTaskID: expectedID,
                 startedBoard: expectedBoard,
                 displayedTaskID: displayedTaskID,
-                loadedBoard: store.loadedBoardSlug ?? store.effectiveBoardSlug
+                loadedBoard: store.openTaskBoardSlug
             )
         }
         isLoadingDetail = true
@@ -1633,6 +1633,12 @@ enum KanbanDetailLoadPolicy {
     /// task id can name another task on another board.
     static func answerApplies(startedTaskID: String, startedBoard: String?, displayedTaskID: String, loadedBoard: String?) -> Bool {
         startedTaskID == displayedTaskID && startedBoard == loadedBoard
+    }
+
+    /// An open task's sheet stays only while its board is the one loaded
+    /// (`KanbanStore.openTaskBoardSlug`): its edits carry no board.
+    static func sheetStaysOpen(openedOnBoard: String?, nowOnBoard: String) -> Bool {
+        openedOnBoard == nowOnBoard
     }
 }
 

@@ -29,6 +29,13 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(KanbanDetailLoadPolicy.answerApplies(startedTaskID: "t1", startedBoard: "alpha", displayedTaskID: "t1", loadedBoard: "beta"))
     }
 
+    func testAnOpenTasksSheetStaysOnlyOnTheBoardItOpenedOn() {
+        XCTAssertTrue(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "alpha"))
+        // Another board picked, or Server current moved by another client.
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: "alpha", nowOnBoard: "beta"))
+        XCTAssertFalse(KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: nil, nowOnBoard: "alpha"))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {

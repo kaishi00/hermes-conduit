@@ -558,7 +558,7 @@ struct KanbanView: View {
 
     /// Opens a task's sheet, noting the board it belongs to.
     private func openTask(_ task: KanbanTask) {
-        selectedTaskBoard = store.loadedBoardSlug ?? store.resolvedSelectedBoardSlug
+        selectedTaskBoard = store.openTaskBoardSlug
         selectedTask = task
     }
 
@@ -904,10 +904,11 @@ struct KanbanView: View {
         // Proactive disarm: when the loaded board identity changes, any
         // staged destructive confirmation is now foreign. (The confirm-time
         // ownership check below remains the hard boundary.)
-        .onChange(of: store.loadedBoardSlug) { _, newSlug in
+        .onChange(of: store.loadedBoardSlug) { _, _ in
             // The open task belongs to the board it was opened on: its edits
             // would land on a same-id task of the new board.
-            if selectedTask != nil, (newSlug ?? store.resolvedSelectedBoardSlug) != selectedTaskBoard {
+            if selectedTask != nil,
+               !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: selectedTaskBoard, nowOnBoard: store.openTaskBoardSlug) {
                 selectedTask = nil
             }
             pendingDelete = nil
