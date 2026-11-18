@@ -83,18 +83,21 @@ extension AppState {
         // A copy is left out only for a twin that's listed itself: on
         // screen, or kept connected. With that one's connection dropped,
         // this copy lists the Hermes (#2644 review).
-        let listable = Set(savedDashboardRegistry.dashboards.map(\.id).filter {
-            $0 == activeDashboardID || keptDashboardRuntimes[$0] != nil
-        }.map { "\($0.uuidString)|" })
-        let copies = Set(combinedBotsHomeTwins.filter { key, _ in
-            listable.contains { key.hasPrefix($0) }
-        }.values.joined())
+        // One Hermes by what the lists share, bots or none (issue 2741):
+        // the one on screen keeps it, else the first in Saved Dashboards.
+        let hermes = combinedHermesGroups
+        let order = savedDashboardRegistry.dashboards.map(\.id)
+        func listsItFirst(_ other: UUID, before id: UUID) -> Bool {
+            guard other != id, hermes[other] != nil, hermes[other] == hermes[id] else { return false }
+            if other == activeDashboardID { return true }
+            guard keptDashboardRuntimes[other] != nil, id != activeDashboardID else { return false }
+            return (order.firstIndex(of: other) ?? .max) < (order.firstIndex(of: id) ?? .max)
+        }
         return savedDashboardRegistry.dashboards.compactMap { dashboard in
             guard dashboard.id != activeDashboardID, isInCombinedGroup(dashboard.id),
                   keptDashboardRuntimes[dashboard.id] != nil else { return nil }
             // A copy of a Hermes another dashboard shows already.
-            let prefix = "\(dashboard.id.uuidString)|"
-            guard !copies.contains(where: { $0.hasPrefix(prefix) }) else { return nil }
+            guard !order.contains(where: { listsItFirst($0, before: dashboard.id) }) else { return nil }
             let name = dashboard.label.trimmingCharacters(in: .whitespacesAndNewlines)
             return (dashboard.id, name, otherCombinedDashboardProfiles(dashboard.id) ?? ["default"])
         }

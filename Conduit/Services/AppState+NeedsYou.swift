@@ -69,12 +69,10 @@ extension AppState {
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
-            // dashboard of this one's Hermes (issue 2631).
-            let mine = CombinedBotsHomeOrder.key(activeDashboardID, "")
-            let theirs = CombinedBotsHomeOrder.key(id, "")
-            let sameHermes = combinedBotsHomeTwins.contains { key, copies in
-                key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
-            }
+            // dashboard of this one's Hermes (issue 2631), bots or none
+            // (issue 2741).
+            let hermes = combinedHermesGroups
+            let sameHermes = hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
             for profile in profiles {
                 guard isSceneActive else { return }
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
