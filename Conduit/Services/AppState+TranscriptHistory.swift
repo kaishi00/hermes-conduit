@@ -249,7 +249,15 @@ extension AppState {
 
     /// A voice read of a history page, told apart from a chat Hermes has no
     /// history for (404 or 410) and a read that failed (issue 2655).
-    enum VoiceHistoryRead {
+    enum VoiceHistoryRead: Equatable {
+        static func == (lhs: Self, rhs: Self) -> Bool {
+            switch (lhs, rhs) {
+            case (.notFound, .notFound), (.failed, .failed): return true
+            case (.page(let a), .page(let b)): return NSDictionary(dictionary: a).isEqual(to: b)
+            default: return false
+            }
+        }
+
         case page([String: Any])
         case notFound
         case failed
@@ -274,11 +282,16 @@ extension AppState {
             return .page(try await bridge.requestJSON(
                 path: Self.sessionMessagesPath(sessionId: sessionId, profile: profile, query: query)
             ))
-        } catch DashboardTicketBridgeError.http(let status, _) where status == 404 || status == 410 {
-            return .notFound
         } catch {
-            return .failed
+            return Self.voiceHistoryRead(failingWith: error)
         }
+    }
+
+    /// A history read's error: Hermes has no history for the chat (404 or
+    /// 410), or the read failed, which says nothing about the chat.
+    nonisolated static func voiceHistoryRead(failingWith error: Error) -> VoiceHistoryRead {
+        if case DashboardTicketBridgeError.http(let status, _) = error, status == 404 || status == 410 { return .notFound }
+        return .failed
     }
 
     /// The page through the plugin's history page route (#1525), with the

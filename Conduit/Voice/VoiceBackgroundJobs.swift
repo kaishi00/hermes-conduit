@@ -2451,12 +2451,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         sentPrompts[jobID, default: []].insert(trimmed)
     }
 
-    /// A reply read from a thread turn's or continued job's chat, which
-    /// other turns share: one that answers a message the job never sent is an
-    /// earlier turn's, so the job's own reply isn't there (issue 2655). A
-    /// read that didn't reach the reply's message is taken as it is.
+    /// A reply read from a chat other turns share (a call's chat turn, a
+    /// continued job, the request whose chat a call took, a Watch call's
+    /// first job, whose chat its later requests go to): one that answers a
+    /// message the job never sent is another turn's, so the job's own reply
+    /// isn't there (issue 2655). A read that didn't reach the reply's message
+    /// is taken as it is.
     private func ownReply(_ read: VoiceThreadReplyRead, for job: VoiceBackgroundJob) -> VoiceThreadReplyRead {
-        guard job.isThreadTurn || job.continuesChat, case .reply(_, let prompt?, let partial) = read else { return read }
+        guard job.isThreadTurn || job.isCallChat || job.sharesCallChat, case .reply(_, let prompt?, let partial) = read else { return read }
         let asked = prompt.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !asked.isEmpty, let sent = sentPrompts[job.id], !sent.isEmpty else { return read }
         if sent.contains(asked) { return read }
@@ -3705,8 +3707,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                       current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
             }
             // A gone chat whose history couldn't be read stays supervised: a
-            // failed read doesn't show the reply isn't there.
-            if missingJobs.contains(id), read == .failed { continue }
+            // failed read doesn't show the reply isn't there. Its next check
+            // waits as an unanswered one does.
+            if missingJobs.contains(id), read == .failed {
+                noteUnansweredProbe(id, runtimeID: current.runtimeSessionID ?? "", epoch: checkedEpochs[id] ?? 0)
+                continue
+            }
             let reply = read.text
             let inCallChat = runsInCallChat(current) || current.sharesCallChat
             update(id) {
@@ -3746,7 +3752,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                       current.consecutiveMissedPolls >= Self.missedPollsBeforeSettling else { continue }
             }
             // A gone chat whose history couldn't be read stays supervised.
-            if missingJobs.contains(id), read == .failed { continue }
+            if missingJobs.contains(id), read == .failed {
+                noteUnansweredProbe(id, runtimeID: current.runtimeSessionID ?? "", epoch: checkedEpochs[id] ?? 0)
+                continue
+            }
             let reply = read.text
             update(id) {
                 $0.status = missingJobs.contains(id) && reply == nil && $0.result == nil && $0.heldCompletion == nil
@@ -3776,7 +3785,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     /// A direct check got no answer (a timeout, an unsupported read, a
-    /// title-only answer): the next waits 1, 3, 7, then 8 polls.
+    /// title-only answer), or found the chat gone with its history
+    /// unreadable: the next waits 1, 3, 7, then 8 polls.
     private func noteUnansweredProbe(_ id: UUID, runtimeID: String, epoch: Int) {
         // A sign of life since the check went out started the checks over.
         guard job(id)?.runtimeSessionID == runtimeID, livenessEpochs[id, default: 0] == epoch else { return }
