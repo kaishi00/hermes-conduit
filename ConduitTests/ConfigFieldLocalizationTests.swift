@@ -32,7 +32,7 @@ final class ConfigFieldLocalizationTests: XCTestCase {
         "approvals.mode": ["manual", "smart", "off"],
         "agent.image_input_mode": ["auto", "native", "text"],
         "memory.provider": [],
-        "context.engine": ["default"],
+        "context.engine": ["compressor"],
         "display.memory_notifications": ["default", "on", "off"],
         "delegation.gateway_mode": ["auto", "inline", "background"],
         ReasoningDisplayMode.settingKey: ["show", "on_request", "off"],

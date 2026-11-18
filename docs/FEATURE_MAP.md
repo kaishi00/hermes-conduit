@@ -6001,6 +6001,32 @@ routing's lines (done); README and docs don't describe these settings
 
 **Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1981 (from #1979's reviews: a routing save is kept at once, a failed read says so over the routing shown, a route line typed during another save waits for it); 2026-11-07, #1979 (Subagent routing with model and profile routes, and the subagents' own fallback models, closing both gaps); 2026-11-07, #1951 (the Delegation section has every setting a chat reads)
 
+## Memory provider and context engine
+
+Settings > Memory & delegation's Memory provider and Context engine rows:
+the choices come from what this Hermes has installed
+(`/api/dashboard/plugins/hub`), not a fixed list.
+
+**Siblings:** the desktop app's Memory & delegation (done, the same choices,
+hermes-conduit-desktop #27) · Profile config saves (the main profile's go
+through `/api/dashboard/plugin-providers`, in the queue) · Watch, CarPlay,
+group rooms and the notifier (not needed: no settings) · Text: the rows'
+captions (unchanged); README and docs don't describe them
+
+**Code**
+- Rows: `Conduit/Views/AuxiliaryViews.swift` (memorySections, MemorySettingsDetail's optionOverrides)
+- Choices: `Conduit/Services/AppState+ProfileConfig.swift` (profileConfigOptions), `Conduit/Models/Models.swift` (ProfileConfigOptions), `Conduit/Views/AuxiliaryViews.swift` (ContextEngineChoice)
+- Saves: `Conduit/Services/AppState+ProfileConfig.swift` (setProfileSetting)
+- Tests: `ConduitTests/ProfileModelDefaultsTests+ConfigSchema.swift`, `ConduitTests/ConfigFieldLocalizationTests.swift`
+
+**Rulings**
+- Memory provider lists the providers the hub calls ready. Context engine lists Hermes' built-in `compressor` first, then the installed plugin engines; it shows `compressor` while the config has none, or holds "default" or "custom" from an older Conduit. "default" is no engine: Hermes logs it as not found and falls back to the compressor (#2779).
+
+**Open gaps**
+- None.
+
+**Checked:** 2026-11-18, #2779 (Context engine offers the compressor, not "default", and shows a saved "default" as the compressor it runs)
+
 ## Profile config saves
 
 Every change Conduit makes to a profile's Hermes config. Most are a GET, a
