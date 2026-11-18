@@ -1818,18 +1818,18 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
         XCTAssertTrue(appState.chatListShownIsStale)
         // Nothing is reading it yet, and no connection is on its way.
-        XCTAssertFalse(appState.showsChatListUpdating)
+        XCTAssertFalse(appState.showsChatListUpdating())
 
         let read = Task { await appState.loadSessions() }
         await gate.untilReading()
         XCTAssertTrue(appState.isReadingStaleChatList)
-        XCTAssertTrue(appState.showsChatListUpdating)
+        XCTAssertTrue(appState.showsChatListUpdating())
 
         await gate.release()
         await read.value
         XCTAssertFalse(appState.isReadingStaleChatList)
         XCTAssertFalse(appState.chatListShownIsStale)
-        XCTAssertFalse(appState.showsChatListUpdating)
+        XCTAssertFalse(appState.showsChatListUpdating())
     }
 
     /// Issue 2706: a connection on its way says "Updating…" over the saved
@@ -1841,24 +1841,50 @@ final class OfflineChatCacheTests: XCTestCase {
         seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
         appState.isConnecting = true
-        XCTAssertTrue(appState.showsChatListUpdating)
+        XCTAssertTrue(appState.showsChatListUpdating())
 
         appState.isRefreshingSessionCatalog = true
-        XCTAssertFalse(appState.showsChatListUpdating)
+        XCTAssertFalse(appState.showsChatListUpdating())
         appState.isRefreshingSessionCatalog = false
 
-        appState.noteStaleChatListRead(started: true)
+        appState.noteStaleChatListRead(started: true, owner: appState.sessionCatalogOwner)
         appState.isConnecting = false
-        XCTAssertTrue(appState.showsChatListUpdating)
+        XCTAssertTrue(appState.showsChatListUpdating())
         appState.isRefreshingSessionCatalog = true
-        XCTAssertFalse(appState.showsChatListUpdating)
+        XCTAssertFalse(appState.showsChatListUpdating())
         appState.isRefreshingSessionCatalog = false
-        appState.noteStaleChatListRead(started: false)
-        XCTAssertFalse(appState.showsChatListUpdating)
+        appState.noteStaleChatListRead(started: false, owner: appState.sessionCatalogOwner)
+        XCTAssertFalse(appState.showsChatListUpdating())
 
         appState.chatListPredatesBackground = true
         appState.savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboard)
         XCTAssertFalse(appState.chatListPredatesBackground)
+    }
+
+    /// Issue 2706: another profile's read left running after a switch
+    /// says nothing over this scope's list, and a scope with no rows yet
+    /// leaves the saying to "Loading chats…".
+    func testUpdatingCountsOnlyThisScopesReadAndNeedsRows() {
+        let (appState, store, dashboard) = makeAppState()
+        appState.isConnecting = true
+        // No saved rows and no live list yet: "Loading chats…" says it.
+        XCTAssertFalse(appState.showsChatListUpdating())
+        appState.isConnecting = false
+
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        let other = SessionCatalogOwner(dashboardID: dashboard, profile: "other")
+        appState.noteStaleChatListRead(started: true, owner: other)
+        XCTAssertFalse(appState.isReadingStaleChatList)
+        XCTAssertFalse(appState.showsChatListUpdating())
+
+        appState.noteStaleChatListRead(started: true, owner: appState.sessionCatalogOwner)
+        XCTAssertTrue(appState.showsChatListUpdating())
+        // Projects with none listed say nothing over the empty page.
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true))
+        appState.noteStaleChatListRead(started: false, owner: appState.sessionCatalogOwner)
+        appState.noteStaleChatListRead(started: false, owner: other)
+        XCTAssertTrue(appState.staleChatListReads.isEmpty)
     }
 
     /// Issue 2706: a read over the live list says nothing (the list's

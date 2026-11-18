@@ -405,26 +405,33 @@ extension AppState {
         return !liveChatListLanded(dashboardID: dashboardID, profile: activeProfile)
     }
 
+    /// A read over a stale list is on its way for the scope on screen.
+    /// Another profile's read left running after a switch doesn't count,
+    /// failed or not.
+    var isReadingStaleChatList: Bool {
+        (staleChatListReads[sessionCatalogOwner] ?? 0) > 0
+    }
+
     /// The Chats list says "Updating…" over its rows (issue 2706): they may
     /// be out of date and a read, or the connection that brings one, is on
-    /// its way. Not during a pull to refresh, which has its own spinner, nor
-    /// while the list has no rows and says it's loading.
-    var showsChatListUpdating: Bool {
+    /// its way. Not during a pull to refresh, which has its own spinner (a
+    /// Projects pull's is its projects read), nor while the list on screen
+    /// has no rows: "Loading chats…", or a list with none, says so itself.
+    func showsChatListUpdating(overProjects: Bool = false) -> Bool {
         guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
-        // A saved list with no rows says it has none, not that it's updating.
-        guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
-        // The count is the app's, not a scope's: it counts only while the
-        // scope on screen is stale, so another profile's read left running
-        // after a switch doesn't say it over a list that landed.
+        if overProjects {
+            guard !projectsLoading, !projects.isEmpty else { return false }
+        } else {
+            guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
+        }
         return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
     }
 
-    /// Counts a catalog read over a stale list in and out, publishing only
-    /// when the first starts or the last ends.
-    func noteStaleChatListRead(started: Bool) {
-        staleChatListReads = max(0, staleChatListReads + (started ? 1 : -1))
-        let reading = staleChatListReads > 0
-        if reading != isReadingStaleChatList { isReadingStaleChatList = reading }
+    /// Counts a catalog read over a stale list in and out, by the scope it
+    /// reads.
+    func noteStaleChatListRead(started: Bool, owner: SessionCatalogOwner) {
+        let count = (staleChatListReads[owner] ?? 0) + (started ? 1 : -1)
+        staleChatListReads[owner] = count > 0 ? count : nil
     }
 
     var savedChatListForActiveScope: SavedChatListPresentation? {
@@ -502,8 +509,9 @@ extension AppState {
         // A read over rows that may be out of date shows "Updating…" while
         // it runs, whatever its outcome (issue 2706).
         let readsStaleList = chatListShownIsStale
-        if readsStaleList { noteStaleChatListRead(started: true) }
-        defer { if readsStaleList { noteStaleChatListRead(started: false) } }
+        let readOwner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+        if readsStaleList { noteStaleChatListRead(started: true, owner: readOwner) }
+        defer { if readsStaleList { noteStaleChatListRead(started: false, owner: readOwner) } }
         do {
             let loadedSessions: [SessionSummary]
             var olderPagesDeferred = false

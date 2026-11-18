@@ -15,7 +15,7 @@ import SwiftUI
 /// doesn't flash it, and it stays a moment after, so a connection handing
 /// over to its read doesn't blink it off and on.
 struct ChatListUpdatingPill: View {
-    /// `AppState.showsChatListUpdating`.
+    /// `AppState.showsChatListUpdating(overProjects:)`.
     let isUpdating: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shown = false
