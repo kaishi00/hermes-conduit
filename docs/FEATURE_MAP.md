@@ -6008,6 +6008,7 @@ the choices come from what this Hermes has installed
 (`/api/dashboard/plugins/hub`), not a fixed list.
 
 **Siblings:** the desktop app's Memory & delegation (done, the same choices,
+and a saved "default" or "custom" shows as the compressor there too,
 hermes-conduit-desktop #27) · Profile config saves (the main profile's go
 through `/api/dashboard/plugin-providers`, in the queue) · Watch, CarPlay,
 group rooms and the notifier (not needed: no settings) · Text: the rows'
