@@ -93,13 +93,24 @@ extension AppState {
             guard keptDashboardRuntimes[other] != nil, id != activeDashboardID else { return false }
             return (order.firstIndex(of: other) ?? .max) < (order.firstIndex(of: id) ?? .max)
         }
+        // What a twin listing the Hermes first reads already: the one on
+        // screen its profile in use (All's too, when on), a kept one each
+        // of its profiles. A copy keeps the rest, so a profile only it
+        // lists is still read (#2754 review).
+        func readsAlready(_ other: UUID) -> [String] {
+            guard other == activeDashboardID else { return otherCombinedDashboardProfiles(other) ?? ["default"] }
+            return [activeProfile] + (isAllProfilesChatsOn ? allProfilesIncluded : [])
+        }
         return savedDashboardRegistry.dashboards.compactMap { dashboard in
             guard dashboard.id != activeDashboardID, isInCombinedGroup(dashboard.id),
                   keptDashboardRuntimes[dashboard.id] != nil else { return nil }
-            // A copy of a Hermes another dashboard shows already.
-            guard !order.contains(where: { listsItFirst($0, before: dashboard.id) }) else { return nil }
+            let covered = order.filter { listsItFirst($0, before: dashboard.id) }.flatMap(readsAlready)
+            let profiles = (otherCombinedDashboardProfiles(dashboard.id) ?? ["default"])
+                .filter { profile in !covered.contains { Self.profilesMatch($0, profile) } }
+            // A copy of a Hermes another dashboard shows whole already.
+            guard !profiles.isEmpty else { return nil }
             let name = dashboard.label.trimmingCharacters(in: .whitespacesAndNewlines)
-            return (dashboard.id, name, otherCombinedDashboardProfiles(dashboard.id) ?? ["default"])
+            return (dashboard.id, name, profiles)
         }
     }
 
