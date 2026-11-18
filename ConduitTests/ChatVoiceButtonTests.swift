@@ -202,6 +202,20 @@ extension ComposerFullEditorTests {
         XCTAssertEqual(ResyncGrace.duration, .milliseconds(500))
     }
 
+    func testSendAndThePlaceholderKeepTheirLookThroughAShortResyncInTheSameChat() {
+        // Every return to the app reads the chat back: Send and the
+        // placeholder hold what they showed before it, in that chat only.
+        let chat = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "stored-a")
+        let other = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "stored-b")
+        let settled = ComposerSettledLook(draftKey: chat, action: .send, placeholder: "Message Hermes…", shortPlaceholder: "Message…")
+        XCTAssertEqual(ComposerBar.heldLook(settled, draftKey: chat, holds: true), settled)
+        // Past the grace, or outside a resync: the live look.
+        XCTAssertNil(ComposerBar.heldLook(settled, draftKey: chat, holds: false))
+        // Another chat opening has a resync of its own: never this chat's look.
+        XCTAssertNil(ComposerBar.heldLook(settled, draftKey: other, holds: true))
+        XCTAssertNil(ComposerBar.heldLook(nil, draftKey: chat, holds: true))
+    }
+
     func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {
         // The big button beside it offers voice, so the slot keeps Send.
         XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)

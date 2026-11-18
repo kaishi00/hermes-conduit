@@ -443,6 +443,27 @@ extension AppState {
               // replaced, another bot's, or a Bot Chat an ordinary chat
               // replaced (#1352).
               let bot = ChatResumeStore.rpcProfileName(botChatCopyOwner(openAs: sessionID)) else { return }
+        keepBotChatCopy(
+            of: messages,
+            bot: bot,
+            dashboardID: dashboardID,
+            sessionIDs: identities.union([sessionID]),
+            openAs: sessionID,
+            title: activeSessionTitle
+        )
+    }
+
+    /// Keeps `rows` as `bot`'s Bot Chat copy on `dashboardID`: the chat on
+    /// screen as it's left, or a followed Bot Chat whose reply finished
+    /// after it was left (`saveBackgroundChatCopy`).
+    func keepBotChatCopy(
+        of messages: [ChatMessage],
+        bot: String,
+        dashboardID: UUID,
+        sessionIDs: Set<String>,
+        openAs sessionID: String,
+        title: String
+    ) {
         let rows = messages.compactMap(OfflineCachedMessage.init)
             .suffix(OfflineChatCacheStore.maxMessagesPerTranscript)
         guard !rows.isEmpty else { return }
@@ -453,10 +474,10 @@ extension AppState {
             keptBotChatCopies[oldest] = nil
         }
         let kept = KeptBotChatCopy(
-            sessionIDs: identities.union([sessionID]),
+            sessionIDs: sessionIDs.union([sessionID]),
             transcript: OfflineCachedTranscript(
                 sessionID: sessionID,
-                title: activeSessionTitle,
+                title: title,
                 savedAt: Date(),
                 messages: Array(rows)
             )
@@ -523,16 +544,21 @@ extension AppState {
         )
     }
 
-    /// A deleted bot's copy goes from memory and the phone.
+    /// A deleted bot's copy goes from memory and the phone, and its Bot
+    /// Chat is no longer followed, so a reply finishing later keeps none.
     func forgetBotChatCopy(dashboardID: UUID, bot: String) {
         guard let bot = ChatResumeStore.rpcProfileName(bot) else { return }
+        let followed = backgroundChats
+            .filter { $0.dashboardID == dashboardID && $0.botChatCopyOwner?.bot == bot }
+            .reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) }
+        if !followed.isEmpty { stopFollowingChats(dashboardID: dashboardID, sessionIDs: followed) }
         keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)] = nil
         offlineChatCache.removeBotChatCopy(dashboardID: dashboardID, bot: bot)
     }
 
     /// The bot whose copy the chat open as `sessionID` is, as it was before
     /// any bot open since noted its destination over that id.
-    private func botChatCopyOwner(openAs sessionID: String) -> String? {
+    func botChatCopyOwner(openAs sessionID: String) -> String? {
         if let outgoing = outgoingBotChatCopyOwner, outgoing.sessionID == sessionID {
             return outgoing.bot
         }

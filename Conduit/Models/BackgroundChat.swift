@@ -14,6 +14,14 @@ import Foundation
 /// Decision cards Hermes raises while it's away (a question, an approval)
 /// show when Hermes' rows land; the chat's row in Chats says it waits.
 struct BackgroundChat: Equatable {
+    /// The bot a left Bot Chat's copy is kept for, and the id it was open
+    /// as (`AppState.botChatCopyOwner(openAs:)`).
+    struct BotChatCopyOwner: Equatable {
+        let bot: String
+        let openAs: String
+    }
+
+
     /// Every id the chat answers to. A runtime id Hermes binds to it while
     /// it's away is looked up in the identity index on each event instead,
     /// since a runtime id can be reassigned to another chat.
@@ -25,8 +33,12 @@ struct BackgroundChat: Equatable {
     @EqualityIgnored var title: String
     let dashboardID: UUID
     let profile: String
-    /// Kept in memory only, as a Bot Chat's copy is: never saved as a file.
+    /// A Bot Chat: never saved in a profile's saved chats.
     @EqualityIgnored var isBotChat: Bool
+    /// A Bot Chat's bot and the id it was open as, for its copy
+    /// (`AppState.keepBotChatCopy`) once its reply finishes; nil when the
+    /// registry named no bot for it.
+    @EqualityIgnored var botChatCopyOwner: BotChatCopyOwner?
     /// The chat's own transcript and turn, which its events apply to.
     /// Compared by instance.
     @IdentityEquatable var state: ChatState
@@ -46,6 +58,7 @@ struct BackgroundChat: Equatable {
         dashboardID: UUID,
         profile: String,
         isBotChat: Bool,
+        botChatCopyOwner: BotChatCopyOwner? = nil,
         state: ChatState,
         leftAt: Date = Date()
     ) {
@@ -55,6 +68,7 @@ struct BackgroundChat: Equatable {
         self.dashboardID = dashboardID
         self.profile = profile
         self.isBotChat = isBotChat
+        self.botChatCopyOwner = botChatCopyOwner
         self.state = state
         self.leftAt = leftAt
     }

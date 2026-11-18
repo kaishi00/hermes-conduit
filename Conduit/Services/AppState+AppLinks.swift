@@ -125,8 +125,19 @@ extension AppState {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
+            self.linkedBotChatOpens &+= 1
+            let open = self.linkedBotChatOpens
+            let latestMark = self.botChatLatestMark
+            // While Conduit is still connecting (a cold launch from the
+            // link, a reconnect) it waits for the connection, as a list's
+            // tap does (`openBotChatFromList`).
+            let connected = await self.connectionComesUp(within: Self.listOpenConnectionWait)
+            // A newer link, a list's tap or another dashboard while it
+            // waited is the later choice: this one says nothing.
+            guard open == self.linkedBotChatOpens, self.botChatLatestMark == latestMark,
+                  expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
             // Offline, the roster can't say whether the bot is still there.
-            guard self.isConnected else {
+            guard connected else {
                 self.errorMessage = Self.connectToChatWithBotsMessage
                 return
             }

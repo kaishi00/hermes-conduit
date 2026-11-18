@@ -1413,6 +1413,8 @@ struct BotRosterView: View {
     }
 
     private func startNewGroup() {
+        // VoiceOver reaches it before Hermes has answered too.
+        guard canStartGroups else { return }
         Haptics.light()
         // The sheet renders the shared error; start clean.
         appState.errorMessage = nil
@@ -1430,7 +1432,8 @@ struct BotRosterView: View {
                         newGroupCard
                     }
                     .buttonStyle(.plain)
-                    .disabled(!canStartGroups)
+                    // Its look from the start; taps once Hermes has answered.
+                    .allowsHitTesting(canStartGroups)
                     .rosterListRow(divider: false)
                     .accessibilityLabel(Text(AppLocalization.string("New Group Chat")))
                 }
@@ -1454,7 +1457,10 @@ struct BotRosterView: View {
                     // New Bot's glass +.
                     V2AddButton(title: AppLocalization.string("New Group Chat"), action: startNewGroup)
                         .accessibilityIdentifier("bots.newGroupChat")
-                        .disabled(!canStartGroups)
+                        // Disabled would dim the glyph (V2AddGlyph) and then
+                        // brighten it as Hermes answers: it keeps its look and
+                        // takes taps once Hermes has answered.
+                        .allowsHitTesting(canStartGroups)
                 }
             }
             .padding(.horizontal, 16)

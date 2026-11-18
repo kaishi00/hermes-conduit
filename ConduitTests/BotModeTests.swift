@@ -2470,6 +2470,48 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(appState.botsListNotice, AppState.connectToChatWithBotsMessage)
     }
 
+    /// A link's or card's Bot Chat open made while Conduit connects waits
+    /// for the connection, as a list's tap does, and a newer link takes over.
+    func testALinkedBotChatWhileConnectingWaitsForTheConnection() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")] }
+        ))
+        let appState = harness.appState
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        appState.botRoster = [makeBot(name: "atlas"), makeBot(name: "nova")]
+        appState.isConnected = false
+        appState.isConnecting = true
+
+        appState.openLinkedBotChat("nova")
+        appState.openLinkedBotChat("atlas")
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertNil(appState.errorMessage, "no notice while it waits")
+        appState.isConnected = true
+        appState.isConnecting = false
+        for _ in 0..<500 where appState.activeBotChatProfile != "atlas" { await Task.yield() }
+        XCTAssertEqual(appState.activeBotChatProfile, "atlas", "the newer link opens")
+        XCTAssertNil(appState.errorMessage)
+
+        // Nothing connecting (offline): it says so at once.
+        appState.isConnected = false
+        appState.openLinkedBotChat("nova")
+        for _ in 0..<50 where appState.errorMessage == nil { await Task.yield() }
+        XCTAssertEqual(appState.errorMessage, AppState.connectToChatWithBotsMessage)
+    }
+
     /// A failed open whose list still shows (it never closed over a chat)
     /// says why on the list: no composer is there to say it.
     func testAFailedOpenWithTheListShowingSaysWhyThere() async {
