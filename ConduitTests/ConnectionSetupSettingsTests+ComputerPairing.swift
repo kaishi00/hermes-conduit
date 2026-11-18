@@ -99,4 +99,38 @@ extension ConnectionSetupSettingsTests {
         XCTAssertNil(choices[2].host)
         XCTAssertFalse(String(describing: choices[1]).contains("pw"))
     }
+
+    @MainActor
+    func testOpeningAPairingCodeOpensPairAComputerAndNothingElse() throws {
+        let suite = "ConnectionSetupSettingsTests.Pairing.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let key = Curve25519.KeyAgreement.PrivateKey().publicKey.rawRepresentation
+        let url = try XCTUnwrap(URL(string: pairingLinkText(key: key)))
+
+        XCTAssertTrue(appState.routeComputerPairingLink(url))
+        XCTAssertEqual(appState.pendingComputerPairing?.key, key)
+        // Nothing else reads it: not a chat, Settings, sign-in or Link.
+        XCTAssertNil(ConduitAppLink(url: url))
+        XCTAssertNil(ConduitAppLink(externalURL: url))
+        XCTAssertFalse(appState.routeConnectLink(url))
+        XCTAssertFalse(appState.routeRoomLink(url))
+
+        // The scheme and host in any case.
+        appState.pendingComputerPairing = nil
+        let shouting = try XCTUnwrap(URL(string: pairingLinkText(key: key).replacingOccurrences(of: "conduit://pair", with: "CONDUIT://PAIR")))
+        XCTAssertTrue(appState.routeComputerPairingLink(shouting))
+        XCTAssertNotNil(appState.pendingComputerPairing)
+
+        // A code Conduit can't read is still a code: it opens nothing.
+        appState.pendingComputerPairing = nil
+        XCTAssertTrue(appState.routeComputerPairingLink(try XCTUnwrap(URL(string: "conduit://pair?v=1"))))
+        XCTAssertNil(appState.pendingComputerPairing)
+        // Other links aren't codes.
+        for other in ["conduit://link/abcde", "conduit://connect?url=example.com", "conduit://session/abc", "https://pair?v=1"] {
+            XCTAssertFalse(appState.routeComputerPairingLink(try XCTUnwrap(URL(string: other))), other)
+        }
+        XCTAssertNil(appState.pendingComputerPairing)
+    }
 }

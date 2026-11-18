@@ -7260,7 +7260,7 @@ nothing there signs a computer in)
 - `Conduit/Services/ComputerPairing.swift` (ComputerPairingLink: the QR code's `conduit://pair?v=1&m&i&t&k&e`; ComputerPairing: payload, seal, words, send), `Conduit/Services/BIP39Words.swift`
 - `Conduit/Services/AppState+ComputerPairing.swift` (ComputerPairingChoice.choices: which saved dashboards go and how; routeComputerPairingLink), `Conduit/Services/AppState.swift` (pendingComputerPairing), `Conduit/ConduitApp.swift` (onOpenURL and the openURL action), `Conduit/Views/RootView.swift`
 - `Conduit/Views/PairComputerViews.swift` (PairComputerSheet, CodeScanPurpose.pairComputer, PairComputerText), `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail's section), `Conduit/Services/BiometricAuth.swift` (authenticateIfAvailable)
-- Tests: `ConduitTests/ConnectionSetupSettingsTests+ComputerPairing.swift` (the desktop app's word vector, the link, a seal opened as the desktop opens it, which dashboards go)
+- Tests: `ConduitTests/ConnectionSetupSettingsTests+ComputerPairing.swift` (the desktop app's word vector, the link, a seal opened as the desktop opens it, which dashboards go, the route a pairing link takes)
 
 **Rulings**
 - The phone sends its own sign-ins, sealed: Hermes' password sessions are stateless tokens a plugin can't mint per computer without the password, so the phone's saved password goes, or Hermes' session token (Eric, 2026-11-18, decision card). A browser or single sign-on sign-in's tokens belong to the phone and never go: that dashboard is listed as "Sign in on the computer".
