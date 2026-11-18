@@ -144,9 +144,19 @@ final class HermesVoiceConfigurationService: ObservableObject {
     /// that fails keeps what's shown (#1533).
     @Published private(set) var answered: Bool?
     @Published private(set) var errorMessage: String?
-    /// Why Hermes didn't answer the last read, for the Hermes step: nil
-    /// until one fails and once one answers (issues 2711, 2712).
-    @Published private(set) var unansweredReason: String?
+    /// The config read Hermes didn't answer last: nil until one fails and
+    /// once one answers (issues 2711, 2712). The Hermes step words it
+    /// with the connection as it is now (unansweredReason(hermesConnected:)).
+    @Published private(set) var unansweredRead: Result<[String: Any], Error>?
+    /// Why Hermes didn't answer the last read, worded for the connection
+    /// as the last reload was told it.
+    var unansweredReason: String? { unansweredReason(hermesConnected: hermesConnected) }
+    /// Why Hermes didn't answer the last read, worded for `hermesConnected`,
+    /// so a connection that drops or comes back after it failed changes
+    /// what the step says.
+    func unansweredReason(hermesConnected: Bool) -> String? {
+        unansweredRead.map { Self.unansweredReason($0, hermesConnected: hermesConnected) }
+    }
     /// The last speech server status read for this profile, for the setup step.
     @Published private(set) var speechServer: SpeechServerStatus?
     /// The last read of what the speech server needs to speak the replies,
@@ -280,8 +290,8 @@ final class HermesVoiceConfigurationService: ObservableObject {
             // The Hermes step says what failed; the line under the steps
             // would only say it again.
             answered = false
+            unansweredRead = config
             let reason = Self.unansweredReason(config, hermesConnected: hermesConnected)
-            unansweredReason = reason
             // A read that fails keeps the settings shown, Hermes' answer
             // from before or the one kept on the phone (#1533), with which
             // keys are set if Hermes said this time.
@@ -295,7 +305,7 @@ final class HermesVoiceConfigurationService: ObservableObject {
             snapshot = .unavailable(profile: profile, reason: reason)
             return
         }
-        unansweredReason = nil
+        unansweredRead = nil
 
         // A read that fails among the others keeps what it showed, Hermes'
         // answer from before, kept on the phone (#1533).
