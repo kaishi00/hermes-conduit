@@ -130,7 +130,7 @@ final class MediaPreviewPresenter {
     func present(fileURL: URL, title: String? = nil) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
         guard Self.isPreviewable(filename: fileURL.lastPathComponent, mimeType: nil) else {
-            return shareOpened(item: fileURL, ownedDirectory: nil)
+            return share(item: fileURL, ownedDirectory: nil)
         }
         return show(Session(url: fileURL, title: title ?? fileURL.lastPathComponent, ownedDirectory: nil))
     }
@@ -181,7 +181,7 @@ final class MediaPreviewPresenter {
             Self.removeDirectory(staged.directory)
             return false
         }
-        guard previewable else { return shareOpened(item: staged.file, ownedDirectory: staged.directory) }
+        guard previewable else { return share(item: staged.file, ownedDirectory: staged.directory) }
         return show(Session(url: staged.file, title: staged.file.lastPathComponent, ownedDirectory: staged.directory))
     }
 
@@ -258,14 +258,18 @@ final class MediaPreviewPresenter {
     /// The system share sheet for a file Quick Look must not render (HTML,
     /// SVG, XML), so it can still be saved to Files or sent to another app
     /// without Conduit displaying it, or for a menu's Share item. A staged
-    /// copy is removed once the sheet closes. `.refused` when UIKit turned
-    /// the sheet down (it refuses at once, leaving it unpresented, while
-    /// another presentation is in flight), so a Share button can say so
-    /// rather than leave a tap doing nothing.
-    private func share(item: URL, ownedDirectory: URL?) -> ShareOutcome {
+    /// copy is removed once the sheet closes. False only when there is no
+    /// screen to present from.
+    ///
+    /// A refusal can't be told apart at once: UIActivityViewController
+    /// presents late on iOS 27 (UIKit holds it until its service is up), so
+    /// it isn't linked to its presenter yet when `present` returns, and a
+    /// refused one never calls its completion either. So a refused sheet is
+    /// only reclaimed, later, like a refused Quick Look (`show`).
+    private func share(item: URL, ownedDirectory: URL?) -> Bool {
         guard let presenter = Self.topViewController() else {
             Self.removeDirectory(ownedDirectory)
-            return .noScreen
+            return false
         }
         let controller = UIActivityViewController(activityItems: [item], applicationActivities: nil)
         controller.completionWithItemsHandler = { _, _, _, _ in
@@ -276,23 +280,19 @@ final class MediaPreviewPresenter {
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-        presenter.present(controller, animated: true)
-        // A presentation UIKit accepts links the two at once; a refused one
-        // never does, and never calls the completion handler either.
-        guard controller.presentingViewController != nil else {
+        let presentation = SharePresentation()
+        presenter.present(controller, animated: true) { presentation.didPresent = true }
+        // A presentation refused while another is in flight never calls
+        // either completion, so reclaim the staged copy. A cold share sheet
+        // took about 4 s to come up on the iOS 27 simulator, hence the wait
+        // and the check that it never presented; one already closed by then
+        // has removed the copy itself, and removing again is a no-op.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(15))
+            guard !presentation.didPresent, controller.presentingViewController == nil else { return }
             Self.removeDirectory(ownedDirectory)
-            return .refused
         }
-        return .presented
-    }
-
-    private enum ShareOutcome { case presented, refused, noScreen }
-
-    /// A file opened from a card or list that Quick Look must not render:
-    /// a refusal counts as opened, as a refused Quick Look does (`show`),
-    /// so it isn't mistaken for a file the host no longer has.
-    private func shareOpened(item: URL, ownedDirectory: URL?) -> Bool {
-        share(item: item, ownedDirectory: ownedDirectory) != .noScreen
+        return true
     }
 
     /// The system share sheet for a staged file that has no Open In app,
@@ -305,14 +305,14 @@ final class MediaPreviewPresenter {
     @discardableResult
     func presentShare(fileURL: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        return share(item: fileURL, ownedDirectory: nil) == .presented
+        return share(item: fileURL, ownedDirectory: nil)
     }
 
     /// The system share sheet for a link (an artifact that is a web page or
     /// a hosted picture), for a menu's Share item as `presentShare(fileURL:)`.
     @discardableResult
     func presentShare(link: URL) -> Bool {
-        share(item: link, ownedDirectory: nil) == .presented
+        share(item: link, ownedDirectory: nil)
     }
 
     /// The system's Open In menu for a file another app can read (MDReader,
@@ -479,6 +479,13 @@ final class MediaPreviewPresenter {
         guard let directory else { return }
         try? FileManager.default.removeItem(at: directory)
     }
+}
+
+/// Whether a share sheet's presentation finished, read when deciding
+/// whether UIKit refused it.
+@MainActor
+private final class SharePresentation {
+    var didPresent = false
 }
 
 /// Retains the Open In controller until the system menu closes: UIKit
