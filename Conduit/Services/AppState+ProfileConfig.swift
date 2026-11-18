@@ -199,8 +199,8 @@ extension AppState {
             option["status"] as? String == "ready" ? option["name"] as? String : nil
         }.sorted()
         let contextOptions = providers["context_options"] as? [[String: Any]] ?? []
-        let plugins = contextOptions.compactMap { $0["name"] as? String }.filter { !result.contextEngines.contains($0) }
-        result.contextEngines += Array(Set(plugins)).sorted()
+        let pluginEngines = contextOptions.compactMap { $0["name"] as? String }.filter { !result.contextEngines.contains($0) }
+        result.contextEngines += Array(Set(pluginEngines)).sorted()
         return result
     }
 
