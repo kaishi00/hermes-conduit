@@ -268,6 +268,15 @@ extension ChatOnScreenTests {
         store.dismissBanner(try XCTUnwrap(twinBanner))
         store.apply([wait("w1", 10), wait("w2", 20), wait("w3", 30), wait("w4", 40)], profile: "default", dashboardID: here) { _ in false }
         XCTAssertNil(store.banner, "its banner showed once, from the twin")
+
+        // The twin banners a wait first that this dashboard's read then
+        // lists as open here: the banner goes (#2754 review).
+        let all = (1...5).map { wait("w\($0)", Double($0) * 10) }
+        store.applyOther(all, profile: "default", dashboardID: twin)
+        XCTAssertEqual(store.banner?.waitID, "w5")
+        XCTAssertEqual(store.banner?.dashboardID, twin)
+        store.apply(all, profile: "default", dashboardID: here) { $0.waitID == "w5" }
+        XCTAssertNil(store.banner, "open here, no banner from the twin")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {

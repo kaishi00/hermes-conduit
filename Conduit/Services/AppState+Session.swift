@@ -422,8 +422,9 @@ extension AppState {
         // The rows the page draws: in All, every profile's (issue 2736).
         let rows = chatListSessions
         if overProjects {
-            // The Projects page lists pinned chats over its projects.
-            guard !projectsLoading, !projects.isEmpty || rows.contains(where: { !$0.isArchived && isSessionPinned($0) }) else { return false }
+            // The Projects page lists pinned chats over its projects
+            // (Pulse's own chat stays behind the Pulse screen).
+            guard !projectsLoading, !projects.isEmpty || rows.contains(where: { !$0.isArchived && isSessionPinned($0) && !isPulseHomeChat($0) }) else { return false }
         } else {
             guard !rows.isEmpty || !chatListCronSessions.isEmpty else { return false }
         }
