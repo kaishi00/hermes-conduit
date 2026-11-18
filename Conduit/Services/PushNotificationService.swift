@@ -2161,6 +2161,13 @@ final class PushNotificationService: ObservableObject {
         var id: String { installationID }
     }
 
+    /// The devices left after a remove or a new main device; nil for any
+    /// body but a success, so a refusal never reads as an empty list.
+    static func changedDevices(response: [String: Any]) -> [PairedDevice]? {
+        guard response["ok"] as? Bool == true, let devices = response["devices"] as? [[String: Any]] else { return nil }
+        return pairedDevices(status: ["paired": true, "devices": devices])
+    }
+
     static func pairedDevices(status: [String: Any]) -> [PairedDevice] {
         guard status["paired"] as? Bool == true, let listed = status["devices"] as? [[String: Any]] else { return [] }
         return listed.compactMap { entry in

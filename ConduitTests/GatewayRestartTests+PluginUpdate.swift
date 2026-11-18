@@ -798,6 +798,14 @@ extension GatewayRestartTests {
                        "an unpaired profile notifies nothing")
         XCTAssertEqual(PushNotificationService.pairedDevices(status: ["paired": true, "installation_id": id]), [],
                        "an older plugin lists none")
+        let left = [["installation_id": id, "device_name": "iPad", "main": true]]
+        XCTAssertEqual(PushNotificationService.changedDevices(response: ["ok": true, "devices": left]),
+                       [.init(installationID: id, name: "iPad", isMain: true, relayRejected: false)])
+        XCTAssertEqual(PushNotificationService.changedDevices(response: ["ok": true, "devices": [[String: Any]]()]), [],
+                       "removing the last device leaves none")
+        XCTAssertNil(PushNotificationService.changedDevices(response: ["ok": false, "error": "not paired"]),
+                     "a refusal is never an empty list")
+        XCTAssertNil(PushNotificationService.changedDevices(response: ["ok": true]), "a success names what's left")
     }
 
     // MARK: - Updater
