@@ -4529,6 +4529,11 @@ final class OfflineChatCacheTests: XCTestCase {
         other.storedSessionId = "b"
         reused.sessions = [other, session("c")]
         XCTAssertEqual(reused.rowOfChat(openAs: "rt-a")?.storedSessionId, "a", "the row as read, not chat b's")
+        XCTAssertEqual(reused.followedSessionIDs(forChatOpenAs: "rt-a"), ["a"], "not the runtime id chat b has now")
+        // A resume onto the same id keeps the row while the id is still its.
+        reused.sessions = [session("c")]
+        reused.setActiveSessionState(id: "rt-a")
+        XCTAssertEqual(reused.rowOfChatOnScreen?.row.storedSessionId, "a")
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an

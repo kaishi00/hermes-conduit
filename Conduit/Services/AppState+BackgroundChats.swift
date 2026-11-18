@@ -290,9 +290,10 @@ extension AppState {
         // Its own row: one whose id or stored id its durable id is, never
         // one that only lists it among its aliases (issue 2764).
         guard chat.profile == activeProfile,
-              let row = owningSessionRow(for: durable)?.id,
+              let durableRow = owningSessionRow(for: durable),
+              durableRow.id == durable || durableRow.storedSessionId == durable,
               let ownRow = owningSessionRow(for: own), ownRow.id == own || ownRow.storedSessionId == own else { return false }
-        return ownRow.id == row
+        return ownRow.id == durableRow.id
     }
 
     /// Records the chat on screen's row as it opens (setActiveSessionState).
@@ -310,7 +311,7 @@ extension AppState {
             return
         }
         if let kept = rowOfChatOnScreen, kept.dashboardID == activeDashboardID, kept.profile == activeProfile,
-           let oldID, oldID != newID, kept.openIDs.contains(oldID) {
+           let oldID, kept.openIDs.contains(oldID) {
             let row = listedRow(kept.row)
             // Its own and stored ids and the ids it was open under, still
             // its: never an alias, which may be a chat of its own (issue 2764).
@@ -320,7 +321,9 @@ extension AppState {
             // one to its own or stored id.
             let newDurable = conversationIdentityIndex.durableID(forRuntime: newID, profile: activeProfile)
             let boundToRow = newDurable.map { $0 == row.id || $0 == row.storedSessionId } == true
-            if chatIDs.contains(oldID) || boundToRow, isSameConversation(chatIDs, as: newID) {
+            // The same id again (a resume onto it) stays the chat's while it's still its.
+            let same = oldID == newID && chatIDs.contains(newID)
+            if same || ((chatIDs.contains(oldID) || boundToRow) && isSameConversation(chatIDs, as: newID)) {
                 rowOfChatOnScreen = (row, kept.openIDs.union([newID]), kept.dashboardID, kept.profile)
                 return
             }
@@ -334,6 +337,7 @@ extension AppState {
     /// A recorded row the catalog lists again is kept as it's listed now.
     func noteRowOfChatOnScreenOnceListed() {
         if let recorded = rowOfChatOnScreen {
+            guard recorded.dashboardID == activeDashboardID, recorded.profile == activeProfile else { return }
             let listed = listedRow(recorded.row)
             if listed != recorded.row { rowOfChatOnScreen?.row = listed }
             return
@@ -345,18 +349,34 @@ extension AppState {
     /// `row` as the catalog lists it now, else as it was read. A row under
     /// the same id with another stored id is another chat's, which Hermes
     /// gave the runtime id to (issue 2764).
+    /// A listing with no stored id keeps the one it was read with.
     private func listedRow(_ row: SessionSummary) -> SessionSummary {
-        [sessions, cronSessions].joined().first(where: { listed in
+        guard var listed = [sessions, cronSessions].joined().first(where: { listed in
             listed.id == row.id
                 && (listed.storedSessionId == nil || row.storedSessionId == nil || listed.storedSessionId == row.storedSessionId)
-        }) ?? row
+        }) else { return row }
+        if listed.storedSessionId == nil { listed.storedSessionId = row.storedSessionId }
+        return listed
+    }
+
+    /// The ids other chats than `row`'s answer to: the other listed rows'
+    /// (sessionIDsOfOtherRows), and a listed row's under `row`'s own id
+    /// with another stored id, the chat Hermes gave that runtime id to
+    /// (issue 2764).
+    private func idsOfOtherChats(than row: SessionSummary) -> Set<String> {
+        let reused = [sessions, cronSessions].joined().filter { listed in
+            listed.id == row.id && listed.storedSessionId != nil && row.storedSessionId != nil
+                && listed.storedSessionId != row.storedSessionId
+        }
+        return sessionIDsOfOtherRows(than: row).union(reused.flatMap(\.nestingIDs))
+            .subtracting([row.storedSessionId].compactMap { $0 })
     }
 
     /// The ids of `row`'s chat, with the ids it was open under, that are
     /// still its: none another listed row answers to, nor one the identity
     /// index has bound to a conversation outside them.
     private func idsStillTheChat(ofRow row: SessionSummary, openIDs: Set<String>) -> Set<String> {
-        let others = sessionIDsOfOtherRows(than: row)
+        let others = idsOfOtherChats(than: row)
         let ids = Set(row.nestingIDs).union(openIDs).subtracting(others)
         let index = conversationIdentityIndex
         let profile = activeProfile
@@ -384,7 +404,7 @@ extension AppState {
     /// chat owns it or carries it too (issue 2655).
     func followedSessionIDs(forChatOpenAs id: String) -> Set<String> {
         guard let row = rowOfChat(openAs: id) else { return [id] }
-        let others = sessionIDsOfOtherRows(than: row)
+        let others = idsOfOtherChats(than: row)
         let own = Set(row.nestingIDs.filter { !others.contains($0) })
         return others.contains(id) ? own : own.union([id])
     }
@@ -413,7 +433,7 @@ extension AppState {
         let listed = rowOfChat(openAs: oldID)
         let isBotChat = botStoreProfile(forSessionIDs: Array(ids)) != nil
             || botConversationProfile(for: oldID) != nil
-        let ownIDs = listed.map { row in Set(row.nestingIDs).subtracting(sessionIDsOfOtherRows(than: row)) }
+        let ownIDs = listed.map { row in Set(row.nestingIDs).subtracting(idsOfOtherChats(than: row)) }
         // The chat the screen's id stands for in the identity index is
         // this one: kept, so a later rebind of one of its ids to another
         // chat shows as one (issue 2603). Not when the index has already
@@ -422,7 +442,7 @@ extension AppState {
             .flatMap { durable in ownIDs.map { $0.contains(durable) ? durable : nil } ?? durable }
         // What the caller passed, less any id another listed row owns or
         // carries too, so a borrowed or shared id never reaches this copy.
-        let others = listed.map { sessionIDsOfOtherRows(than: $0) } ?? []
+        let others = listed.map { idsOfOtherChats(than: $0) } ?? []
         let chat = BackgroundChat(
             sessionIDs: ids.union(ownIDs ?? []).union([indexed].compactMap { $0 }).subtracting(others),
             durableSessionID: isBotChat ? nil : listed.map { $0.storedSessionId ?? $0.id },
