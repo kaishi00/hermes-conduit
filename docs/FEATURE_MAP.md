@@ -7039,7 +7039,7 @@ and Share or Save · the Markdown reader's Open In and Share copy
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2735 (the reader's Save copy, made off the main actor); 2026-11-18, #2730 (Save to Files' download folder goes when the picker closes); 2026-11-18, #2705 (a refused share sheet's folder is reclaimed once it never presented, since iOS 27 presents it late; the reader's Share and a link row's Share go through presentShare, tested over a real chat on an iPad simulator); 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
+**Checked:** 2026-11-18, #2735 (the reader's Save copy, made off the main actor, one at a time and cancelled when the reader closes); 2026-11-18, #2730 (Save to Files' download folder goes when the picker closes); 2026-11-18, #2705 (a refused share sheet's folder is reclaimed once it never presented, since iOS 27 presents it late; the reader's Share and a link row's Share go through presentShare, tested over a real chat on an iPad simulator); 2026-11-06, #1884 (the Markdown reader's Open In and Share copy, carried from #1879); 2026-10-30, #1524 (the resolver gains the connected dashboard's bridge and a plugin route read for Desktop cards; previews unchanged); 2026-10-29, #1491 (the picture viewer's copies); 2026-10-27, #1399; #1220.
 
 ## Review labels
 
