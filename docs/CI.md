@@ -69,9 +69,8 @@ the breaking PR fixes `main` forward.
 Each macOS job (`smoke` and every nightly job) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
 simulator's lookup, boot and `bootstatus`) in the background and runs
-`ci-build-for-testing.sh` on the same runner, which resolves packages while
-the simulator boots, waits for the preparation to end and then compiles the
-test products. On the v3
+`ci-build-for-testing.sh` on the same runner, which waits for the preparation
+to end and then builds the test products. On the v3
 runs, boot readiness was a serial ~2.5 minutes after a separate build job and
 an artifact hop.
 
@@ -154,11 +153,11 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   minutes for the device. Even a `-resolvePackageDependencies` call alone
   during the boot sat at "Resolve Package Graph" until 43-73 s after the boot
   ended (2 of 3 jobs). So `ci-build-for-testing.sh` builds only once the
-  preparation has ended (`BUILD_AFTER`). Its separate, timed package
-  resolution ran after the boot too until 2026-11-18, when that alone took
-  105-219 s (55-78 s of it before xcodebuild printed its invocation) and the
-  build's own resolution right after took 3 s: now it starts at once, beside
-  the boot, and the build waits for both.
+  preparation has ended (`BUILD_AFTER`). A separate, timed package
+  resolution ran first until 2026-11-18 (#2747 and the change after it): it
+  took 105-219 s after the boot and 312 s beside it, while the build's own
+  resolution right after took 3 s and then 0.05 s. The build now resolves
+  for itself, and a stall there shows in the quiet-stretches notice.
 - **No whole-module Swift.** Tried in #629: the 3-core hosted runners built
   the full app in 20.5 minutes against 11-16 before, because the app is one
   large module type-checked on one core.
@@ -186,8 +185,8 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
 
 Each build posts two notices on its job: the slowest build phases from
 `-showBuildTimingSummary` (with the cache it restored, how many Swift files
-each target compiled (`ci-build-compiled-counts.py`), and the seconds spent on the destination, waiting for the simulator, and the
-packages beside it and after it before the build), and the longest
+each target compiled (`ci-build-compiled-counts.py`), and the seconds spent on the destination and waiting for the simulator before the
+build), and the longest
 stretches where the build log stopped growing, with the lines around each
 (`ci-build-quiet-stretches.py`). The second shows time the first cannot:
 package resolution, build planning, waiting on the simulator service. A

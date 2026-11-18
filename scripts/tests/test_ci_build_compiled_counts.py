@@ -25,12 +25,15 @@ class CompiledCountTests(unittest.TestCase):
         self.assertEqual("2 Conduit, 1 Conduit Watch App, 1 ConduitTests",
                          compiled.describe(compiled.counts(LOG.splitlines())))
 
-    def test_nothing_compiled_or_no_log_says_none(self):
+    def test_nothing_compiled_says_none(self):
         self.assertEqual("none", compiled.describe(compiled.counts(["Ld Conduit"])))
-        out = io.StringIO()
-        with contextlib.redirect_stdout(out):
-            compiled.main(["/nonexistent/build.log"])
-        self.assertEqual("none", out.getvalue().strip())
+
+    def test_an_unreadable_log_fails_so_the_build_warns(self):
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(compiled.main(["/nonexistent/build.log"]), 1)
+        self.assertEqual(out.getvalue(), "")
+        self.assertIn("cannot read the build log", err.getvalue())
 
     def test_without_exactly_one_log_path_prints_usage(self):
         for argv in ([], ["a.log", "b.log"]):

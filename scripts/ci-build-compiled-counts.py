@@ -32,8 +32,11 @@ def main(argv=None):
     try:
         with open(argv[0], encoding="utf-8", errors="replace") as log:
             print(describe(counts(log)))
-    except OSError:
-        print("none")
+    except OSError as error:
+        # A nonzero exit has ci-build-for-testing.sh warn: an unreadable log
+        # is not a build that compiled nothing.
+        print(f"cannot read the build log: {error}", file=sys.stderr)
+        return 1
     return 0
 
 
