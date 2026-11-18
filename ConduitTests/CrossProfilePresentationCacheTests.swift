@@ -1187,7 +1187,9 @@ extension CrossProfilePresentationCacheTests {
         _ = try XCTUnwrap(mints.hold, "the sign-in reached its mint")
         XCTAssertTrue(appState.combinedSignInsUnderWay.contains(vps.id))
         appState.combinedDashboardTrouble[vps.id] = .down
-        appState.dropAllKeptDashboardRuntimes()
+        // Called off (as Sign Out does), not a new generation: that one
+        // passes again once the sign-in ends.
+        appState.combinedSignInsCalledOff.insert(vps.id)
         mints.hold?.resume()
         mints.hold = nil
         await waitUntil { appState.combinedSignInsUnderWay.isEmpty }
