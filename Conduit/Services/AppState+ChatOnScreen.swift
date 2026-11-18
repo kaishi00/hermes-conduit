@@ -51,11 +51,11 @@ extension AppState {
     /// iPhone's (#1579; a room's, issue 2064). Other devices keep theirs.
     func clearShownChatNotifications() {
         // A sheet over the chat (Settings, a voice sheet, the chat's own
-        // Artifacts or Rename, the bot's screen) hides it: what arrives meanwhile hasn't been
+        // Artifacts or Rename, the bot's screen, Usage Details) hides it: what arrives meanwhile hasn't been
         // read. Closing it clears (V2Shell, V2ConversationScreen, RootView).
         let sessionID = chatShownOnScreen
         let roomID = roomShownOnScreen
-        guard !isModalSheetPresented, !chatCoveredBySheet, botScreenSheetsOpen == 0,
+        guard !isModalSheetPresented, !chatCoveredBySheet, botScreenSheetsOpen == 0, sessionUsageSheetsOpen == 0,
               sessionID != nil || roomID != nil else { return }
         // A launch in the background counts the scene active until its
         // first phase change: nobody has read anything then.

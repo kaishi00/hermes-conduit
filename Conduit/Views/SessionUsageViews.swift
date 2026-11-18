@@ -112,6 +112,14 @@ struct SessionUsageSheet: View {
             .navigationTitle(Text("Usage Details"))
             .navigationBarTitleDisplayMode(.inline)
         }
+        // It covers the open chat wherever it opened, the persistent sidebar
+        // column included: what arrives meanwhile hasn't been read, and
+        // closing it reads it (#1579).
+        .onAppear { appState.sessionUsageSheetsOpen += 1 }
+        .onDisappear {
+            appState.sessionUsageSheetsOpen = max(0, appState.sessionUsageSheetsOpen - 1)
+            if appState.sessionUsageSheetsOpen == 0 { appState.clearShownChatNotifications() }
+        }
         .task(id: session.id) {
             readout = nil
             readout = await appState.loadSessionUsage(for: session) ?? .failed

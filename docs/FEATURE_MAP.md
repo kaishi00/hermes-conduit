@@ -3642,7 +3642,7 @@ README's "context meter" (done)
 
 **Code**
 - Reads: `Conduit/Models/SessionUsage.swift` (route, CostStatus, SessionUsageReadout and its notFound), `Conduit/Services/AppState+Usage.swift` (loadOpenChatUsage, loadSessionUsage)
-- Views: `Conduit/Views/SessionUsageViews.swift` (SessionUsageSection, SessionUsageSheet), `Conduit/Views/AuxiliaryViews.swift` (ContextSheet's compressCard, canCompress), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' Usage Details and onUsageDetails; the drawer's and ProjectSessionsSheet's sessionPendingUsage, since the root can't present over a sheet), `Conduit/Views/RootView.swift` (the sessionUsageTarget sheet)
+- Views: `Conduit/Views/SessionUsageViews.swift` (SessionUsageSection, SessionUsageSheet and its sessionUsageSheetsOpen count, which `Conduit/Services/AppState+ChatOnScreen.swift`'s clearShownChatNotifications reads: the sheet covers the chat, the persistent sidebar's too), `Conduit/Views/AuxiliaryViews.swift` (ContextSheet's compressCard, canCompress), `Conduit/Views/SidebarView.swift` (SessionActionMenuItems' Usage Details and onUsageDetails; the drawer's and ProjectSessionsSheet's sessionPendingUsage, since the root can't present over a sheet), `Conduit/Views/RootView.swift` (the sessionUsageTarget sheet)
 - Route: `notifier/dashboard/api/session_usage.py` (chat_usage), `notifier/tests/test_session_usage.py`
 - Tests: `ConduitTests/HermesClientTests+Usage.swift` (testOneChatsUsageReadsThePluginsAnswer, testAnUnpricedChatHasNoCostRatherThanZero, testOneChatsUsageRouteNamesTheChat, testAUsage404SaysWhichOfItsThreeThingsItIs)
 
