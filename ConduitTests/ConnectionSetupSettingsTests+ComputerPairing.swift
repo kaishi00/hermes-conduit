@@ -71,6 +71,7 @@ extension ConnectionSetupSettingsTests {
         XCTAssertEqual(hosts.first?["method"] as? String, "password")
         XCTAssertEqual(hosts.first?["username"] as? String, "eric")
         XCTAssertNil(hosts.first?["token"] as? String)
+        XCTAssertNil(hosts.first?["headers"])
 
         // Another inbox's box doesn't open.
         XCTAssertThrowsError(try AES.GCM.open(sealedBox, using: key, authenticating: Data("conduit-pair/1\nother".utf8)))
@@ -98,6 +99,25 @@ extension ConnectionSetupSettingsTests {
         // A browser sign-in's tokens stay on this phone.
         XCTAssertNil(choices[2].host)
         XCTAssertFalse(String(describing: choices[1]).contains("pw"))
+    }
+
+    func testComputerPairingSendsAProxysHeadersOverHTTPSOnly() throws {
+        let secure = SavedDashboard(id: UUID(), label: "", normalizedURL: "https://hermes.example")
+        let plain = SavedDashboard(id: UUID(), label: "", normalizedURL: "http://192.168.1.20:9119")
+        let registry = SavedDashboardRegistry(activeDashboardID: secure.id, dashboards: [secure, plain])
+        let access = ["CF-Access-Client-Id": "id.access", "CF-Access-Client-Secret": "shh"]
+        let choices = ComputerPairingChoice.choices(
+            registry: registry,
+            credentials: { _ in nil },
+            tokens: { _ in .sessionToken("t") },
+            proxyHeaders: { _ in access }
+        )
+        XCTAssertEqual(choices[0].host?.headers, access)
+        XCTAssertNil(choices[1].host?.headers)
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: ComputerPairing.payload(choices.compactMap(\.host))) as? [String: Any])
+        let hosts = try XCTUnwrap(json["hosts"] as? [[String: Any]])
+        XCTAssertEqual(hosts.first?["headers"] as? [String: String], access)
+        XCTAssertFalse(String(describing: choices[0]).contains("shh"))
     }
 
     @MainActor

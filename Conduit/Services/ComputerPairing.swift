@@ -87,6 +87,9 @@ enum ComputerPairing {
         var password: String?
         var token: String?
         var name: String?
+        /// A proxy's headers for this dashboard: its Cloudflare Access
+        /// service token and its extra headers, for an https address only.
+        var headers: [String: String]?
     }
 
     private struct Payload: Encodable {
