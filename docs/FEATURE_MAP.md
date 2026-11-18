@@ -5560,13 +5560,13 @@ Classic's turn stops)
 - Tests: `ConduitTests/UserFacingErrorTests.swift` (testCancellationIsToldApartFromFailure), `ConduitTests/AppStateMultiDashboardTests.swift` (testModelDefaultsReadCancelledByLeavingThePageSaysNothing)
 
 **Rulings**
-- A cancellation is Swift's `CancellationError`, URLSession's cancelled (as `URLError` or its NSError), or the asking task being cancelled; every read that writes `errorMessage` asks `UserFacingError.isCancellation` first and returns what it kept, or nothing (2026-11-18, #PR, issue 2713).
+- A cancellation is Swift's `CancellationError`, URLSession's cancelled (as `URLError` or its NSError), or the asking task being cancelled; every read that writes `errorMessage` asks `UserFacingError.isCancellation` first and returns what it kept, or nothing (2026-11-18, #2720, issue 2713).
 - A request the user is waiting on that is cut off some other way (a dropped connection, a timeout) still says so in plain words.
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #PR.
+**Checked:** 2026-11-18, #2720.
 
 ## Phone change errors
 
