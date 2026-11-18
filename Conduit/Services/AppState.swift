@@ -2193,7 +2193,7 @@ final class AppState: ObservableObject {
                 return try await self.steerLiveVoiceFollowUp(sessionID: sessionID, text: text)
             },
             latestThreadReply: { [weak self] thread in
-                await self?.latestLiveVoiceThreadReply(thread)
+                await self?.latestLiveVoiceThreadReply(thread) ?? .failed
             },
             threadOwnsSession: { [weak self] thread, sessionID in
                 guard let self else { return thread.owns(sessionID: sessionID) }

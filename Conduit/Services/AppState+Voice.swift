@@ -1655,41 +1655,79 @@ extension AppState {
 
     /// The chat's latest assistant reply, without starting a turn: from the
     /// transcript when the chat is open, otherwise from its saved history.
-    func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> String? {
-        await latestLiveVoiceThreadReplyMessage(thread)?.message.content
+    /// A read that failed is told apart from one that found no reply
+    /// (issue 2655).
+    func latestLiveVoiceThreadReply(_ thread: VoiceThreadTarget) async -> VoiceThreadReplyRead {
+        switch await latestLiveVoiceThreadReplyRead(thread) {
+        case .found(let turn): return .reply(turn.message.content, prompt: turn.prompt)
+        case .noReply: return .noReply
+        case .failed: return .failed
+        }
     }
 
     /// The same reply as its message, whether it was read from the open
     /// chat, and the user's message it answers when the read reached it,
     /// so a caller can tell two replies worded alike apart.
     func latestLiveVoiceThreadReplyMessage(_ thread: VoiceThreadTarget) async -> (message: ChatMessage, inOpenChat: Bool, prompt: String?)? {
+        guard case .found(let turn) = await latestLiveVoiceThreadReplyRead(thread) else { return nil }
+        return turn
+    }
+
+    enum LiveVoiceThreadReplyRead {
+        case found((message: ChatMessage, inOpenChat: Bool, prompt: String?))
+        /// The chat was read and holds no reply.
+        case noReply
+        /// The read failed, or the call moved on to another profile meanwhile.
+        case failed
+    }
+
+    func latestLiveVoiceThreadReplyRead(_ thread: VoiceThreadTarget) async -> LiveVoiceThreadReplyRead {
         // Read once, without suspending: the chat on screen can change at
         // any await.
         if isOpenChat(thread) {
-            return Self.latestReplyTurn(in: messages).map { ($0.reply, true, $0.prompt) }
+            guard let turn = Self.latestReplyTurn(in: messages) else { return .noReply }
+            return .found((turn.reply, true, turn.prompt))
         }
-        guard let bridge = dashboardTicketBridge else { return nil }
+        guard let bridge = dashboardTicketBridge else { return .failed }
         // One profile for every read: a reply from another profile's history
         // is never read out. A Bot Chat's history is in the bot's profile,
         // and a call that went on across a switch reads its own profile's.
         let workspace = voiceCallProfile
-        guard let turn = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace),
-              workspace == voiceCallProfile else { return nil }
-        return (turn.reply, false, turn.prompt)
+        let read = await latestSavedThreadReply(thread, bridge: bridge, profile: thread.profile ?? workspace)
+        guard workspace == voiceCallProfile else { return .failed }
+        switch read {
+        case .found(let turn): return .found((turn.reply, false, turn.prompt))
+        case .noReply: return .noReply
+        case .failed: return .failed
+        }
+    }
+
+    private enum SavedThreadReplyRead {
+        case found((reply: ChatMessage, prompt: String?))
+        case noReply
+        case failed
     }
 
     private func latestSavedThreadReply(
         _ thread: VoiceThreadTarget,
         bridge: DashboardTicketBridge,
         profile: String
-    ) async -> (reply: ChatMessage, prompt: String?)? {
+    ) async -> SavedThreadReplyRead {
         var ids: [String] = []
         for id in [thread.storedSessionID, thread.runtimeSessionID].compactMap({ $0 }) where !id.isEmpty && !ids.contains(id) {
             ids.append(id)
         }
+        // Any read that failed leaves "no reply" unproven.
+        var readFailed = false
         for sessionID in ids {
             func read(_ query: String) async -> [String: Any]? {
-                await voiceHistoryPage(sessionId: sessionID, profile: profile, query: query, using: bridge)
+                switch await voiceHistoryRead(sessionId: sessionID, profile: profile, query: query, using: bridge) {
+                case .page(let page): return page
+                case .notFound: return nil
+                case .failed:
+                    readFailed = true
+                    return nil
+                }
             }
             // Newest pages first, until one holds an assistant reply: a
             // tool-heavy turn can fill a page with tool rows alone.
@@ -1704,16 +1742,16 @@ extension AppState {
                     if let full = await read(PersistedTranscriptPagination.legacyQuery),
                        let fullRows = Self.persistedMessageRows(in: full),
                        let turn = Self.latestAssistantTurn(inMessageRows: fullRows) {
-                        return turn
+                        return .found(turn)
                     }
                     break
                 }
-                if let turn = Self.latestAssistantTurn(inMessageRows: rows) { return turn }
+                if let turn = Self.latestAssistantTurn(inMessageRows: rows) { return .found(turn) }
                 if rows.isEmpty { break }
                 offset += rows.count
             }
         }
-        return nil
+        return readFailed ? .failed : .noReply
     }
 
     /// How far back "read the last reply" looks in a chat's saved history.

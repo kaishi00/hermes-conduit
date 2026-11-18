@@ -453,7 +453,7 @@ extension AppState {
                 storedSessionID: target.durableSessionID,
                 title: call.title ?? "",
                 profile: target.profile.map { profilesMatch($0, activeProfile) } == true ? nil : target.profile
-            ))
+            )).text
         }
         return HermesCallOpening(kind: call.kind, title: call.title, result: result, reason: call.reason, sessionIDs: call.sessionIDs)
     }
