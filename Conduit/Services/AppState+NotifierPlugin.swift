@@ -224,14 +224,15 @@ extension AppState {
     /// connection so the key never passes through the push relay. Runs on
     /// every connect and Settings > Notifications visit; pairings that
     /// already have a key are left alone.
-    func provisionNotificationEncryption(bridge: DashboardTicketBridge) async {
+    func provisionNotificationEncryption(bridge: DashboardTicketBridge, profiles selectedProfiles: [String]? = nil) async {
         let notifications = PushNotificationService.shared
         guard case .reported(_, let capabilities) = notifierPlugin.state,
               capabilities.contains("e2e-notifications"),
               notifications.isEnabled,
               let dashboardID = activeDashboardID else { return }
-        let names = Array(Set(profiles + [activeProfile])).sorted()
-        await notifications.provisionEncryption(dashboardID: dashboardID, profiles: names) { [weak self] path, method, body in
+        let names = selectedProfiles ?? Array(Set(profiles + [activeProfile])).sorted()
+        await notifications.provisionEncryption(dashboardID: dashboardID, profiles: names,
+                                               installationScoped: capabilities.contains(DeviceNotificationPairing.capability)) { [weak self] path, method, body in
             // A dashboard switch mid-run stops it: the key would belong to
             // the old dashboard's pairing.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == dashboardID else {

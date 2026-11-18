@@ -1146,7 +1146,8 @@ struct SettingsView: View {
                     save: { [profile = appState.activeProfile, dashboardID = appState.activeDashboardID] settings in
                         await appState.saveHermesCallSettings(settings, profile: profile, dashboardID: dashboardID)
                     },
-                    places: appState.locationPlacesForCalls
+                    places: appState.locationPlacesForCalls,
+                    supportsMultiDeviceNotifications: appState.notifierPlugin.reports(DeviceNotificationPairing.capability)
                 ),
                 hearsMissedCalls: appState.supportsHermesCallOutcomes,
                 startTestCall: {
@@ -4704,6 +4705,20 @@ private struct NotificationsSettingsDetail: View {
                 }
 
                 ConduitSettingsSection(title: AppLocalization.string("Connect a Hermes profile", table: .settings), symbol: "link.badge.plus", tint: .conduitAura) {
+                    Toggle(AppLocalization.string("Notifications from all bots on this device", table: .settings), isOn: Binding(
+                        get: { notifications.notificationsFromAllBotsOnThisDevice },
+                        set: { appState.setNotificationsFromAllBotsOnThisDevice($0) }
+                    ))
+                    .tint(.conduitAccent)
+                    .disabled(!appState.notifierPlugin.reports(DeviceNotificationPairing.capability)
+                              && !notifications.notificationsFromAllBotsOnThisDevice)
+                    .accessibilityIdentifier("notifications.all-bots-on-device")
+                    Text(AppLocalization.string("Receive notifications from every bot on this device, alongside your other devices. Calls keep their current device. Turning this off stops automatic pairing; existing pairings remain.", table: .settings))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                    if !appState.notifierPlugin.reports(DeviceNotificationPairing.capability) {
+                        pluginPageLink(AppLocalization.string("Install or update the Conduit plugin", table: .settings))
+                    }
                     if appState.notifierPlugin.reports("pairing") {
                         oneTapPairing
                     } else {
@@ -4870,9 +4885,11 @@ private struct NotificationsSettingsDetail: View {
     @ViewBuilder
     private var oneTapPairing: some View {
         let profile = appState.activeProfile
-        Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
-            .scaledFont(.footnote)
-            .foregroundStyle(.secondary)
+        if !appState.notifierPlugin.reports(DeviceNotificationPairing.capability) {
+            Text("Conduit pairs this dashboard's profile by itself. If it says another iPhone is paired, pairing here moves its notifications to this one.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+        }
         Button {
             Task {
                 pairing = true
@@ -4898,7 +4915,8 @@ private struct NotificationsSettingsDetail: View {
             .padding(.vertical, 6).frame(minHeight: 46)
         }
         .disabled(pairing || notifications.isPairing || notifications.isWorking || appState.activeDashboardID == nil
-                  || !notifications.isEnabled)
+                  || !notifications.isEnabled
+                  || (notifications.notificationsFromAllBotsOnThisDevice && !appState.notifierPlugin.reports(DeviceNotificationPairing.capability)))
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
         .accessibilityIdentifier("notifications.pair")
         if !notifications.isEnabled {
@@ -4913,7 +4931,9 @@ private struct NotificationsSettingsDetail: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.red)
         } else {
-            Label(AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings), systemImage: "checkmark.circle.fill")
+            Label(appState.notifierPlugin.reports(DeviceNotificationPairing.capability)
+                  ? AppLocalization.string("Paired. Notifications from this profile also come to this device.", table: .settings)
+                  : AppLocalization.string("Paired. Notifications and calls from \(appState.profileDisplayName(profile)) now come to this iPhone.", table: .settings), systemImage: "checkmark.circle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.green)
                 .accessibilityIdentifier("notifications.paired")

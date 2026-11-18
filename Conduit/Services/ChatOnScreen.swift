@@ -76,9 +76,14 @@ enum ChatOnScreen {
     }
 
     /// The route's body: `claim` held for `holdSeconds`, or released (0).
-    static func body(device: String, claim: Claim?, holdSeconds: Int) -> [String: Any] {
-        guard let claim, holdSeconds > 0 else { return ["device": device, "hold_s": 0] }
-        return ["device": device, "session_ids": claim.sessionIDs, "hold_s": min(holdSeconds, maximumHoldSeconds)]
+    static func body(device: String, claim: Claim?, holdSeconds: Int, installationID: String? = nil) -> [String: Any] {
+        var body: [String: Any] = ["device": device, "hold_s": 0]
+        if let claim, holdSeconds > 0 {
+            body["session_ids"] = claim.sessionIDs
+            body["hold_s"] = min(holdSeconds, maximumHoldSeconds)
+        }
+        if let installationID { body["installation_id"] = installationID }
+        return body
     }
 }
 

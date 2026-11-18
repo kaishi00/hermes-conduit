@@ -42282,6 +42282,252 @@
           }
         }
       }
+    },
+    "Notifications from all bots on this device" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Benachrichtigungen aller Bots auf diesem Gerät"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificaciones de todos los bots en este dispositivo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifications de tous les bots sur cet appareil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifikasi semua bot di perangkat ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notifiche di tutti i bot su questo dispositivo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このデバイスですべてのボットの通知を受信"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 기기에서 모든 봇 알림 받기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia wszystkich botów na tym urządzeniu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notificações de todos os bots neste dispositivo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления всех ботов на этом устройстве"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu aygıtta tüm botların bildirimleri"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此设备上接收所有机器人的通知"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在此裝置上接收所有機器人的通知"
+          }
+        }
+      }
+    },
+    "Paired. Notifications from this profile also come to this device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gekoppelt. Benachrichtigungen dieses Profils kommen auch auf diesem Gerät an."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vinculado. Las notificaciones de este perfil también llegan a este dispositivo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Associé. Les notifications de ce profil arrivent aussi sur cet appareil."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terhubung. Notifikasi profil ini juga masuk ke perangkat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abbinato. Le notifiche di questo profilo arrivano anche su questo dispositivo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ペアリングしました。このプロフィールの通知はこのデバイスにも届きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "페어링되었습니다. 이 프로필의 알림이 이 기기에도 도착합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sparowano. Powiadomienia tego profilu trafiają także na to urządzenie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Emparelhado. As notificações deste perfil também chegam a este dispositivo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Связь установлена. Уведомления этого профиля также приходят на это устройство."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eşlendi. Bu profilin bildirimleri bu aygıta da gelir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配对。此个人资料的通知也会发送到此设备。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已配對。此個人檔案的通知也會傳送到此裝置。"
+          }
+        }
+      }
+    },
+    "Receive notifications from every bot on this device, alongside your other devices. Calls keep their current device. Turning this off stops automatic pairing; existing pairings remain." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erhalte auf diesem Gerät Benachrichtigungen von jedem Bot, zusätzlich zu deinen anderen Geräten. Anrufe bleiben auf ihrem bisherigen Gerät. Wenn du dies ausschaltest, endet die automatische Kopplung; bestehende Kopplungen bleiben erhalten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recibe notificaciones de todos los bots en este dispositivo y en tus otros dispositivos. Las llamadas siguen en su dispositivo actual. Al desactivar esta opción, se detiene la vinculación automática; las vinculaciones existentes se mantienen."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recevez les notifications de chaque bot sur cet appareil, en plus de vos autres appareils. Les appels restent sur leur appareil actuel. Désactiver cette option arrête l’association automatique ; les associations existantes sont conservées."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terima notifikasi dari setiap bot di perangkat ini serta perangkat Anda yang lain. Panggilan tetap masuk ke perangkat saat ini. Menonaktifkan ini menghentikan penghubungan otomatis; hubungan yang sudah ada tetap dipertahankan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ricevi le notifiche di ogni bot su questo dispositivo e sugli altri tuoi dispositivi. Le chiamate restano sul dispositivo attuale. Disattivando questa opzione interrompi gli abbinamenti automatici; quelli esistenti restano attivi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "他のデバイスに加え、このデバイスでもすべてのボットの通知を受け取ります。通話先のデバイスは変わりません。 オフにすると自動ペアリングが停止します。既存のペアリングは維持されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 기기와 함께 이 기기에서도 모든 봇의 알림을 받습니다. 통화는 현재 기기로 계속 연결됩니다. 이 옵션을 끄면 자동 페어링이 중단되며 기존 페어링은 유지됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odbieraj powiadomienia każdego bota na tym urządzeniu oraz na pozostałych urządzeniach. Połączenia pozostają na dotychczasowym urządzeniu. Wyłączenie tej opcji zatrzymuje automatyczne parowanie; istniejące parowania pozostają."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Receba notificações de todos os bots neste dispositivo e nos seus outros dispositivos. As chamadas continuam no dispositivo atual. Desativar esta opção interrompe o emparelhamento automático; os emparelhamentos existentes são mantidos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Получайте уведомления от каждого бота на этом устройстве и на остальных ваших устройствах. Звонки остаются на текущем устройстве. Отключение прекращает автоматическое сопряжение; существующие сопряжения сохраняются."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diğer aygıtlarınızın yanı sıra bu aygıtta da her botun bildirimlerini alın. Aramalar mevcut aygıtta kalır. Bunu kapatmak otomatik eşlemeyi durdurur; mevcut eşlemeler korunur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在其他设备之外，也在此设备上接收每个机器人的通知。通话仍使用当前设备。 关闭此选项会停止自动配对；现有配对会保留。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除了其他裝置，也在此裝置上接收每個機器人的通知。通話仍使用目前的裝置。 關閉此選項會停止自動配對；現有配對會保留。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

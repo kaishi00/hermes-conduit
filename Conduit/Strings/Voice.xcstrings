@@ -50728,6 +50728,88 @@
           }
         }
       }
+    },
+    "Calls use the profile’s primary iPhone. Receiving notifications on several devices does not make calls ring on every device." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anrufe gehen an das primäre iPhone des Profils. Benachrichtigungen auf mehreren Geräten lassen Anrufe nicht auf jedem Gerät klingeln."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las llamadas usan el iPhone principal del perfil. Recibir notificaciones en varios dispositivos no hace que las llamadas suenen en todos ellos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les appels utilisent l’iPhone principal du profil. Recevoir les notifications sur plusieurs appareils ne fait pas sonner les appels sur chacun d’eux."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan menggunakan iPhone utama profil. Menerima notifikasi di beberapa perangkat tidak membuat panggilan berdering di setiap perangkat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiamate usano l’iPhone principale del profilo. Ricevere le notifiche su più dispositivi non fa squillare le chiamate su tutti i dispositivi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話はプロフィールのメインiPhoneに届きます。複数のデバイスで通知を受け取っても、すべてのデバイスで着信音が鳴るわけではありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화는 프로필의 기본 iPhone으로 연결됩니다. 여러 기기에서 알림을 받아도 모든 기기에서 통화 벨소리가 울리지는 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenia korzystają z głównego iPhone’a profilu. Odbieranie powiadomień na wielu urządzeniach nie sprawia, że połączenia dzwonią na każdym z nich."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chamadas usam o iPhone principal do perfil. Receber notificações em vários dispositivos não faz as chamadas tocarem em todos eles."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонки поступают на основной iPhone профиля. Получение уведомлений на нескольких устройствах не заставляет звонки звучать на каждом из них."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aramalar profilin birincil iPhone’unu kullanır. Birden fazla aygıtta bildirim almak, aramaların her aygıtta çalmasını sağlamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话使用此个人资料的主要 iPhone。在多个设备上接收通知不会让通话在每个设备上响铃。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話使用此個人檔案的主要 iPhone。在多個裝置上接收通知不會讓通話在每個裝置上響鈴。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

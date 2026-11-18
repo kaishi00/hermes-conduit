@@ -923,13 +923,16 @@ final class PushNotificationService: ObservableObject {
         routeRetryWindow: Duration = .seconds(30),
         now: @escaping () -> ContinuousClock.Instant = { ContinuousClock.now },
         keptTaps: UserDefaults? = nil,
-        date: @escaping () -> Date = Date.init
+        date: @escaping () -> Date = Date.init,
+        deviceDefaults: UserDefaults = .standard
     ) {
+        self.devicePairing = DeviceNotificationPairing(defaults: deviceDefaults)
         self.retryDelay = retryDelay
         self.routeRetryWindow = routeRetryWindow
         self.now = now
         self.keptTaps = keptTaps
         self.date = date
+        self.notificationsFromAllBotsOnThisDevice = devicePairing.enabled
         if let data = KeychainHelper.loadPushRegistration(),
            var saved = try? JSONDecoder().decode(StoredRegistration.self, from: data) {
             // Registrations saved before the relay was recorded don't say
@@ -966,9 +969,13 @@ final class PushNotificationService: ObservableObject {
     /// delivery records.
     static let e2eSeenStore: E2ESeenStore = .shared
 
-    static let e2ePath = "/api/plugins/conduit_push/e2e"
+    static let e2ePath = DeviceNotificationPairing.e2ePath
     /// Settings > Notifications disables Rotate while a run is under way.
     @Published private(set) var isProvisioningEncryption = false
+    let devicePairing: DeviceNotificationPairing
+    @Published var notificationsFromAllBotsOnThisDevice = false {
+        didSet { devicePairing.setEnabled(notificationsFromAllBotsOnThisDevice) }
+    }
 
     func refreshEncryptionState() {
         // Unreadable (a launch before first unlock): keep what was shown.
@@ -1089,6 +1096,7 @@ final class PushNotificationService: ObservableObject {
     func provisionEncryption(
         dashboardID: UUID,
         profiles: [String],
+        installationScoped: Bool = false,
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
     ) async {
         // One run at a time: two overlapping runs would each post a key for
@@ -1140,7 +1148,9 @@ final class PushNotificationService: ObservableObject {
         }
         for profile in profiles {
             let path = DashboardPath.withProfile(Self.e2ePath, profile: profile)
-            guard let status = try? await request(path, "GET", nil) else { continue }
+            let statusPath = DeviceNotificationPairing.statusPath(profile: profile, installationID: installationID,
+                                                                 supported: installationScoped)
+            guard let status = try? await request(statusPath, "GET", nil) else { continue }
             // Unregistered or moved relays while the request was out: what
             // the host says is about a pairing this iPhone no longer has, so
             // no key is adopted, retired or rotated for it.
@@ -2085,6 +2095,7 @@ final class PushNotificationService: ObservableObject {
     func pairProfile(
         _ profile: String,
         dashboardID: UUID,
+        multiDevice: Bool = false,
         request: (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
     ) async throws -> String? {
         // Not mid-move: a code from the old relay is useless once the move lands.
@@ -2101,7 +2112,11 @@ final class PushNotificationService: ObservableObject {
         guard self.registration?.installationID == registration.installationID else {
             throw DashboardTicketBridgeError.notReady
         }
-        let body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
+        var body: [String: Any] = ["pairing_code": pairing.pairingCode, "relay_url": relay.absoluteString]
+        if multiDevice {
+            body["multi_device"] = true
+            body["installation_id"] = registration.installationID
+        }
         let response = try await request(DashboardPath.withProfile(Self.pairPath, profile: profile), "POST", body)
         // Notifications turned off or moved meanwhile: that installation is
         // gone, so its pairing is nothing to confirm or refresh.

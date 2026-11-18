@@ -549,6 +549,9 @@ extension AppState {
                     Task { await reconnect() }
                 }
             }
+            if !names.isEmpty, PushNotificationService.shared.notificationsFromAllBotsOnThisDevice {
+                Task { await pairActiveProfileAutomatically(bridge: bridge) }
+            }
             return !names.isEmpty
         } catch {
             guard dashboardTicketBridge === bridge, activeDashboardID == dashboardID else { return false }

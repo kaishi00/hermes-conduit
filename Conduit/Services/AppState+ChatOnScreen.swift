@@ -174,7 +174,9 @@ extension AppState {
     /// the one the host keeps. A report that fails is dropped: the reply
     /// then pushes, as before.
     private func sendChatOnScreen(_ claim: ChatOnScreen.Claim, holdSeconds: Int, then done: (() -> Void)? = nil) {
-        let body = ChatOnScreen.body(device: ChatOnScreen.device, claim: claim, holdSeconds: holdSeconds)
+        let installationID = notifierPlugin.reports(DeviceNotificationPairing.capability)
+            ? PushNotificationService.shared.installationID : nil
+        let body = ChatOnScreen.body(device: ChatOnScreen.device, claim: claim, holdSeconds: holdSeconds, installationID: installationID)
         let path = DashboardPath.withProfile(ChatOnScreen.path, profile: claim.profile)
         let send: (String, [String: Any]) async throws -> Void
         if let chatOnScreenSender {

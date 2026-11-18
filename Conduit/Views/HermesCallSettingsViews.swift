@@ -33,6 +33,7 @@ struct HermesCallSettingsModel {
     /// This iPhone's saved places (Settings > Location), for "Don't call me
     /// while I'm at"; their ids are what the host keeps.
     var places: [LocationSavedPlace] = []
+    var supportsMultiDeviceNotifications = false
 
     /// Whose settings these are: the server and the profile.
     var owner: String { "\(dashboardID?.uuidString ?? "")|\(profile)" }
@@ -384,7 +385,9 @@ struct HermesCallSettingsSection: View {
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                         if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
-                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here.", table: .voice), systemImage: "applewatch.slash")
+                            Label(model.supportsMultiDeviceNotifications
+                                  ? AppLocalization.string("Calls use the profile’s primary iPhone. Receiving notifications on several devices does not make calls ring on every device.", table: .voice)
+                                  : AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here.", table: .voice), systemImage: "applewatch.slash")
                                 .scaledFont(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")

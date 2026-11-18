@@ -38,6 +38,14 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertEqual(many.sessionIDs.count, ChatOnScreen.maximumIDs)
     }
 
+    func testOnScreenHoldAndReleaseNameOnlyThisInstallation() {
+        let claim = ChatOnScreen.Claim(profile: "work", sessionIDs: ["chat"])
+        XCTAssertEqual(ChatOnScreen.body(device: "ipad", claim: claim, holdSeconds: 90, installationID: "ipad-one") as NSDictionary,
+                       ["device": "ipad", "session_ids": ["chat"], "hold_s": 90, "installation_id": "ipad-one"])
+        XCTAssertEqual(ChatOnScreen.body(device: "ipad", claim: nil, holdSeconds: 0, installationID: "ipad-one") as NSDictionary,
+                       ["device": "ipad", "hold_s": 0, "installation_id": "ipad-one"])
+    }
+
     func testOnlyAPluginThatReportsTheCapabilityTakesReports() {
         var plugin = NotifierPluginStatus()
         XCTAssertFalse(ChatOnScreen.isTaken(by: plugin))
