@@ -1238,6 +1238,8 @@ final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
     var failingPUTPaths: Set<String> = []
     /// Paths whose GET requests fail while their PUTs answer.
     var failingGETPaths: Set<String> = []
+    /// Paths whose next GET fails once, then answers.
+    var failingGETPathsOnce: Set<String> = []
     /// Paths Hermes answers 404 for, as a Hermes without those routes does.
     var missingRoutes: Set<String> = []
     private(set) var recorded: [(path: String, method: String, body: [String: Any]?)] = []
@@ -1246,6 +1248,9 @@ final class MockVoiceConfigurationRequester: VoiceConfigurationRequesting {
         recorded.append((path: path, method: method, body: body))
         if method == "PUT", failingPUTPaths.contains(path) {
             throw DashboardTicketBridgeError.requestFailed("Mock PUT failure for \(path)")
+        }
+        if method == "GET", failingGETPathsOnce.remove(path) != nil {
+            throw DashboardTicketBridgeError.requestFailed("Mock GET failure for \(path)")
         }
         if method == "GET", failingGETPaths.contains(path) {
             throw DashboardTicketBridgeError.requestFailed("Mock GET failure for \(path)")

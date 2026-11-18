@@ -484,7 +484,7 @@ extension AppState {
             profile: profile,
             profileParameter: { [weak self] in self?.notifierPlugin.dashboardProfileParameter ?? "profile" }
         )
-        await service.reload()
+        await service.reload(hermesConnected: isConnected)
         guard profile == activeProfile, bridge === dashboardTicketBridge else { return }
         if isFirstVoiceSetup, defaults.object(forKey: enabledKey) == nil {
             defaults.set(true, forKey: enabledKey)

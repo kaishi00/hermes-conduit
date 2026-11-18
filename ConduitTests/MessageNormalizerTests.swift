@@ -3086,6 +3086,23 @@ final class MessageNormalizerTests: XCTestCase {
             ])
             XCTAssertEqual(read.map(\.content), ["\(marker) and more"], marker)
         }
+
+        // Hermes' whole rule (issue 2700): case, stray edge punctuation, and
+        // a marker that closes a real reply on its own line.
+        let loose = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(51), "role": .string("assistant"), "content": .string("*[Silent]*")]),
+            .object(["id": .number(52), "role": .string("assistant"), "content": .string("no_reply.")]),
+            .object(["id": .number(53), "role": .string("assistant"), "content": .string("W2 is done.\n\n[SILENT]")]),
+            .object(["id": .number(54), "role": .string("assistant"), "content": .string("Say [SILENT] when idle.")])
+        ])
+        XCTAssertEqual(loose.map(\.content), ["W2 is done.", "Say [SILENT] when idle."])
+
+        // Commentary that is a marker leaves no row, as it doesn't live.
+        let commentary = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(61), "role": .string("assistant"), "content": .string("Done."),
+                     "display_commentary": .array([.string("[SILENT]"), .string("Checking W2.")])])
+        ])
+        XCTAssertEqual(commentary.map(\.content), ["Checking W2.", "Done."])
     }
 
     func testHiddenUserRowIsDroppedEntirely() {

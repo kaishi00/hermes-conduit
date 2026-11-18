@@ -1418,6 +1418,9 @@ final class HermesClient: ObservableObject {
 
     // Callback for stream events (set by AppState)
     var onEvent: ((StreamEvent) -> Void)?
+    /// Holds a reply's text while it could still be a silence marker, so
+    /// `[SILENT]` never reaches `onEvent` (issue 2700).
+    private var silenceMarkerFilter = SilenceMarkerStreamFilter()
     var onDisconnected: (() -> Void)?
 
     static let requestTimeout: TimeInterval = 30
@@ -1672,6 +1675,10 @@ final class HermesClient: ObservableObject {
         pendingDisplaySudo.merge(predecessor.pendingDisplaySudo) { mine, _ in mine }
         approvalQueueIDs.merge(predecessor.approvalQueueIDs) { mine, _ in mine }
         clarifySessions.merge(predecessor.clarifySessions) { mine, _ in mine }
+        // A reply held while it could still be a silence marker goes on
+        // being held here, as its next delta arrives on this client.
+        silenceMarkerFilter = predecessor.silenceMarkerFilter
+        predecessor.silenceMarkerFilter.reset()
         isConnected = true
         hasDropped = false
         startKeepalive(for: socket)
@@ -2135,7 +2142,9 @@ final class HermesClient: ObservableObject {
             if let event = frame.event {
                 deliveringEventGeneration = Self.exactIntValue(eventObject?["execution_generation"])
                 deliveringEventAdmissionID = speaksSessionAuthority ? eventObject?["admission_id"]?.stringValue : nil
-                onEvent?(event)
+                for shown in silenceMarkerFilter.filter(event) {
+                    onEvent?(shown)
+                }
                 deliveringEventGeneration = nil
                 deliveringEventAdmissionID = nil
             }
@@ -2389,7 +2398,9 @@ final class HermesClient: ObservableObject {
 
     private func handleStreamEvent(params: AnyCodable) {
         if let event = StreamEventParser.parse(params: params) {
-            onEvent?(event)
+            for shown in silenceMarkerFilter.filter(event) {
+                onEvent?(shown)
+            }
         }
     }
 
@@ -2412,6 +2423,7 @@ final class HermesClient: ObservableObject {
 
     func disconnect() {
         closedIntentionally = true
+        silenceMarkerFilter.reset()
         stopKeepalive()
         receiveTask?.cancel()
         receiveTask = nil
@@ -6214,12 +6226,10 @@ enum MessageNormalizer {
 
     /// Hermes' own markers for "nothing to send" (gateway/response_filters.py,
     /// `LIVE_GATEWAY_SILENT_MARKERS`), when they are the whole reply.
-    static let silenceMarkers: Set<String> = [
-        "[SILENT]", "SILENT", "NO_REPLY", "NO REPLY", "[静默]", "静默", "[沉默]", "沉默"
-    ]
+    static var silenceMarkers: Set<String> { SilenceMarkers.markers }
 
     static func isSilenceMarker(_ text: String) -> Bool {
-        silenceMarkers.contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+        SilenceMarkers.isMarker(text)
     }
 
     /// `imageScope` names the session and profile the rows were read from,
@@ -6363,8 +6373,8 @@ enum MessageNormalizer {
             // cron run). Hermes sends the live turn an empty reply for it, but
             // stores the marker, so a reload reads it back: it shows nothing
             // then too. Its tool calls and commentary stay.
-            if role == .assistant, !isToolResult, displayKind == nil, isSilenceMarker(rawContent) {
-                rawContent = ""
+            if role == .assistant, !isToolResult, displayKind == nil {
+                rawContent = SilenceMarkers.shown(rawContent)
             }
             // A refused turn stays the user's words, whatever they look like.
             let modelChange = isRefusedRow ? nil : modelChangeActivity(fromText: rawContent)
@@ -6489,7 +6499,8 @@ enum MessageNormalizer {
             if rawRole == "assistant", role == .assistant, displayKind == nil,
                let commentary = obj["display_commentary"]?.arrayValue {
                 for (commentaryIndex, value) in commentary.enumerated() {
-                    guard let text = value.stringValue,
+                    // Commentary that is a silence marker leaves no row, as live.
+                    guard let text = value.stringValue.map(SilenceMarkers.shown),
                           !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
                     messages.append(ChatMessage(
                         id: "\(id)-commentary-\(commentaryIndex)", role: .assistant,

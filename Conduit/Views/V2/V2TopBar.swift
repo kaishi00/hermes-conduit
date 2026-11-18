@@ -449,8 +449,11 @@ struct V2ProfileStrip: View {
             Haptics.selection()
             Task { @MainActor in
                 guard await appState.switchForCombinedProfile(in: dashboardID, profile: profile) else { return }
-                if !appState.profilesMatch(appState.activeProfile, profile) {
-                    shell.pickProfile(profile)
+                // Picked by the name its own list gives, never one it
+                // doesn't list (issue 2646).
+                if !appState.profilesMatch(appState.activeProfile, profile),
+                   let listed = appState.profiles.first(where: { appState.profilesMatch($0, profile) }) {
+                    shell.pickProfile(listed)
                 }
             }
         } label: {
