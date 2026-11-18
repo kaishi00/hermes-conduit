@@ -692,9 +692,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
-    /// A switch to another saved dashboard keeps each room's unsent words
-    /// and files, kept by dashboard and room (issue 2702); a sign-out still
-    /// drops them.
+    /// A switch to another saved dashboard keeps each room's send on its
+    /// way, unsent words and files, kept by dashboard and room (issue 2702);
+    /// a sign-out still drops them.
     func testADashboardSwitchKeepsRoomDraftsAndSignOutDropsThem() async throws {
         let room = self.room()
         let operations = GroupChatLifecycleOperations(
@@ -704,7 +704,8 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
-            }
+            },
+            send: { _, _, _, _, _ in throw TestError() }
         )
         let appState = makeAppState(operations: operations)
         connect(appState)
@@ -716,6 +717,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         addTeardownBlock { try? FileManager.default.removeItem(at: url) }
         let file = Attachment(id: UUID().uuidString, name: "plan.pdf", uri: url.absoluteString,
                               mimeType: "application/pdf", kind: .document)
+        // A send on its way (its outcome unknown) is held by the room.
+        await appState.sendGroupRoomMessage("still on its way")
+        let pending = try XCTUnwrap(appState.pendingRoomMessage)
         appState.saveActiveRoomDraft("half a thought")
         appState.saveActiveRoomAttachments([file])
 
@@ -724,8 +728,17 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(Array(appState.groupRoomDrafts.values), ["half a thought"])
         XCTAssertEqual(Array(appState.groupRoomAttachments.values), [[file]])
         XCTAssertTrue(FileManager.default.fileExists(atPath: url.path))
+        XCTAssertEqual(appState.parkedRoomOutboxes.count, 1)
+
+        // Back on that dashboard, the room's send comes back with its
+        // retry key.
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.pendingRoomMessage, pending)
+        appState.closeGroupRoom()
 
         appState.invalidateGroupChatState()
+        XCTAssertTrue(appState.parkedRoomOutboxes.isEmpty)
         XCTAssertTrue(appState.groupRoomDrafts.isEmpty)
         XCTAssertTrue(appState.groupRoomAttachments.isEmpty)
         XCTAssertFalse(FileManager.default.fileExists(atPath: url.path))
