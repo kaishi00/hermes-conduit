@@ -354,9 +354,18 @@ final class MediaPreviewPresenter {
     /// staged copy): the picker gets a copy of its own, so the owner
     /// removing its file (the reader leaving the screen under a full-screen
     /// picker) can't take the file away before it is saved.
-    func presentSaveToFiles(copyOf fileURL: URL) -> Bool {
-        guard let data = try? Data(contentsOf: fileURL),
-              let staged = Self.stage(data: data, filename: fileURL.lastPathComponent) else { return false }
+    /// The copy is made off the main actor, as the other staging is: the
+    /// reader's file can be up to 16 MB.
+    func presentSaveToFiles(copyOf fileURL: URL) async -> Bool {
+        let staged = await Task.detached(priority: .userInitiated) { () -> (directory: URL, file: URL)? in
+            guard let data = try? Data(contentsOf: fileURL) else { return nil }
+            return Self.stage(data: data, filename: fileURL.lastPathComponent)
+        }.value
+        guard let staged else { return false }
+        guard !Task.isCancelled else {
+            Self.removeDirectory(staged.directory)
+            return false
+        }
         return presentSaveToFiles(fileURL: staged.file, ownedDirectory: staged.directory)
     }
 

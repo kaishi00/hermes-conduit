@@ -181,8 +181,10 @@ struct MarkdownDocumentSheet: View {
                     // sheet (issue 1809). The picker gets its own copy: this
                     // sheet removes its staged file when it leaves the screen.
                     Button {
-                        if !MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: shareURL) {
-                            saveFailed = true
+                        Task {
+                            if !(await MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: shareURL)) {
+                                saveFailed = true
+                            }
                         }
                     } label: {
                         Label(AppLocalization.string("Save to Files"), systemImage: "folder")

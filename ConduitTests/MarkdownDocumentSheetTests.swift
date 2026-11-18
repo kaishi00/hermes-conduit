@@ -96,7 +96,7 @@ final class MarkdownDocumentSheetTests: XCTestCase {
     /// Save to Files (issue 1809) refuses a file that's gone and still
     /// removes the copy staged for it, so a failed save leaves nothing.
     @MainActor
-    func testSaveToFilesOfAFileThatIsGoneIsRefusedAndItsFolderRemoved() throws {
+    func testSaveToFilesOfAFileThatIsGoneIsRefusedAndItsFolderRemoved() async throws {
         let directory = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -105,6 +105,7 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
         // The reader's Save hands over a copy of its file; a file that's
         // gone has nothing to copy.
-        XCTAssertFalse(MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: gone))
+        let copied = await MediaPreviewPresenter.shared.presentSaveToFiles(copyOf: gone)
+        XCTAssertFalse(copied)
     }
 }
