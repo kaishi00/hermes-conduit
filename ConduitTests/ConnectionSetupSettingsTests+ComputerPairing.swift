@@ -118,6 +118,13 @@ extension ConnectionSetupSettingsTests {
         let hosts = try XCTUnwrap(json["hosts"] as? [[String: Any]])
         XCTAssertEqual(hosts.first?["headers"] as? [String: String], access)
         XCTAssertFalse(String(describing: choices[0]).contains("shh"))
+        // The service token wins over an extra header of the same name, in any case.
+        let merged = ComputerPairing.proxyHeaders(
+            extra: [CustomHeader(name: "cf-access-client-secret", value: "stale"), CustomHeader(name: "X-Pangolin", value: "p"), CustomHeader(name: "Cookie", value: "x")],
+            access: CloudflareAccessCredentials(clientID: " id.access ", clientSecret: "shh")
+        )
+        XCTAssertEqual(merged, ["X-Pangolin": "p", "CF-Access-Client-Id": "id.access", "CF-Access-Client-Secret": "shh"])
+        XCTAssertEqual(ComputerPairing.proxyHeaders(extra: [], access: CloudflareAccessCredentials(clientID: "", clientSecret: "")), [:])
     }
 
     @MainActor
