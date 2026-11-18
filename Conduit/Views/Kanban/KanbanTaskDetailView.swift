@@ -1354,18 +1354,19 @@ struct KanbanTaskDetailView: View {
         }
     }
 
-    /// Refuses a step whose board is no longer the one loaded.
+    /// Refuses a step whose board is no longer the one loaded, saying
+    /// whether the board changed or is still loading.
     private func requireBoard(_ startedBoard: KanbanBoardContextStamp?) throws {
-        guard KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: startedBoard, current: store.loadedContextStamp) else {
-            throw KanbanServiceError.boardNavigationInProgress
+        if let refusal = KanbanDetailMutationPolicy.stepRefusal(started: startedBoard, current: store.loadedContextStamp) {
+            throw refusal
         }
     }
 
-    /// A note posted whose second step a board change refused: the sheet
-    /// closed with the change, so the partial success shows on the board.
-    private func reportOnBoardIfClosed(_ partial: Bool, _ message: String?, startedBoard: KanbanBoardContextStamp?) {
-        guard partial, let message,
-              !KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: startedBoard, current: store.loadedContextStamp) else { return }
+    /// A note posted whose second step a board change refused, after the
+    /// change closed the sheet: the partial success shows on the board.
+    private func reportOnBoardIfClosed(_ outcome: KanbanNoteAndRequeueFlow.Outcome, _ message: String?, startedBoard: KanbanBoardContextStamp?) {
+        guard let message,
+              KanbanDetailMutationPolicy.reportsOnBoard(outcome: outcome, openedOnBoard: startedBoard?.boardSlug, nowOnBoard: store.openTaskBoardSlug) else { return }
         store.showMutationError(KanbanServiceError.invalidResponse(message))
     }
 
@@ -1407,9 +1408,10 @@ struct KanbanTaskDetailView: View {
                 }
             }
         )
-        reportOnBoardIfClosed(outcome.commentPosted && !outcome.requeued, KanbanNoteAndRequeueFlow.message(for: outcome), startedBoard: startedBoard)
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome)
+        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-        if let message = KanbanNoteAndRequeueFlow.message(for: outcome) {
+        if let message {
             errorMessage = message
             return
         }
@@ -1450,9 +1452,10 @@ struct KanbanTaskDetailView: View {
                 }
             }
         )
-        reportOnBoardIfClosed(outcome.commentPosted && !outcome.requeued, KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock), startedBoard: startedBoard)
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        reportOnBoardIfClosed(outcome, message, startedBoard: startedBoard)
         guard KanbanDetailMutationPolicy.completionIsActive(startedTaskID: expectedID, displayedTaskID: displayedTaskID) else { return }
-        errorMessage = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock)
+        errorMessage = message
         // Refresh even on partial success so the posted reply shows up.
         await loadDetail(force: true)
     }
@@ -1674,6 +1677,24 @@ enum KanbanDetailMutationPolicy {
     /// started, it never runs.
     static func stepTargetsStartedBoard(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> Bool {
         started != nil && started == current
+    }
+
+    /// Why a step of a two-step action may not run, or nil when it may: the
+    /// board it started on was replaced by another one (`boardChanged`), or
+    /// no board was loaded at the tap or is loaded now
+    /// (`boardNavigationInProgress`).
+    static func stepRefusal(started: KanbanBoardContextStamp?, current: KanbanBoardContextStamp?) -> KanbanServiceError? {
+        if stepTargetsStartedBoard(started: started, current: current) { return nil }
+        return started != nil && current != nil ? .boardChanged : .boardNavigationInProgress
+    }
+
+    /// A two-step action's partial success (the note posted, the second
+    /// step undone) also shows on the board when the sheet closed meanwhile
+    /// (`KanbanDetailLoadPolicy.sheetStaysOpen`); while the sheet stays
+    /// open, the sheet alone says it.
+    static func reportsOnBoard(outcome: KanbanNoteAndRequeueFlow.Outcome, openedOnBoard: String?, nowOnBoard: String) -> Bool {
+        outcome.commentPosted && !outcome.requeued
+            && !KanbanDetailLoadPolicy.sheetStaysOpen(openedOnBoard: openedOnBoard, nowOnBoard: nowOnBoard)
     }
 
     static func completionIsActive(startedTaskID: String, displayedTaskID: String) -> Bool {

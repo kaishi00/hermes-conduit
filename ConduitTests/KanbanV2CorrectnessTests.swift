@@ -46,6 +46,30 @@ final class KanbanV2CorrectnessTests: XCTestCase {
         XCTAssertFalse(KanbanDetailMutationPolicy.stepTargetsStartedBoard(started: nil, current: nil))
     }
 
+    func testARefusedStepSaysWhetherTheBoardChangedOrIsStillLoading() {
+        let alpha = KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 1)
+        XCTAssertNil(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: alpha))
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "beta", configurationGeneration: 1)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: KanbanBoardContextStamp(boardSlug: "alpha", configurationGeneration: 2)), .boardChanged)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: alpha, current: nil), .boardNavigationInProgress)
+        XCTAssertEqual(KanbanDetailMutationPolicy.stepRefusal(started: nil, current: alpha), .boardNavigationInProgress)
+        // The partial-success notice carries the board-changed reason, never "still switching".
+        let outcome = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: UserFacingError.message(for: KanbanServiceError.boardChanged))
+        let message = KanbanNoteAndRequeueFlow.message(for: outcome, transition: .unblock) ?? ""
+        XCTAssertTrue(message.contains(KanbanServiceError.boardChanged.localizedDescription))
+        XCTAssertFalse(message.contains(KanbanServiceError.boardNavigationInProgress.localizedDescription))
+    }
+
+    func testAPartialSuccessShowsOnTheBoardOnlyOnceTheSheetHasClosed() {
+        let partial = KanbanNoteAndRequeueFlow.Outcome(commentPosted: true, requeued: false, failureDetail: "x")
+        XCTAssertTrue(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "beta"))
+        // The sheet is still open on its board: the sheet alone says it.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: partial, openedOnBoard: "alpha", nowOnBoard: "alpha"))
+        // Refused before the note, or full success: nothing to report on the board.
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: false, requeued: false, failureDetail: "x"), openedOnBoard: "alpha", nowOnBoard: "beta"))
+        XCTAssertFalse(KanbanDetailMutationPolicy.reportsOnBoard(outcome: .init(commentPosted: true, requeued: true, failureDetail: nil), openedOnBoard: "alpha", nowOnBoard: "beta"))
+    }
+
     // MARK: - Helpers
 
     private enum CorrectnessTestError: LocalizedError {
