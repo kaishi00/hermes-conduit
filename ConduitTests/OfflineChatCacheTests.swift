@@ -810,8 +810,9 @@ final class OfflineChatCacheTests: XCTestCase {
 
     // MARK: - Presentation
 
-    /// A launch resuming a Bot Chat, which keeps no copy on the phone, shows
-    /// no copy at all, never the workspace's last chat under the bot's title
+    /// A launch resuming a Bot Chat shows only that bot's own copy: never the
+    /// workspace's last chat, another bot's copy (even one kept under the
+    /// same id), or the bot's copy of another chat, under the bot's title
     /// until the bot's chat lands.
     func testLaunchResumingABotChatShowsNoOtherChatsCopy() throws {
         let (appState, store, dashboard) = makeAppState(configureDefaults: { defaults in
@@ -828,6 +829,8 @@ final class OfflineChatCacheTests: XCTestCase {
             )
         })
         seedCopy(store, dashboard: dashboard)
+        store.recordBotChatCopy(botCopy("atlas", ids: ["bot-bee-chat"], rows: ["atlas-row"]), dashboardID: dashboard)
+        store.recordBotChatCopy(botCopy("bee", ids: ["bee-older-chat"], rows: ["bee-row"]), dashboardID: dashboard)
         XCTAssertEqual(appState.activeSessionId, "bot-bee-chat")
 
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
@@ -837,6 +840,145 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(presentation.displayedMessages.isEmpty)
         XCTAssertNil(presentation.composerSessionID, "nothing typed meanwhile goes to the other chat")
         XCTAssertEqual(appState.displayedChatTitle, "Bee")
+    }
+
+    /// A Bot Chat left keeps its copy on the phone: after a relaunch a
+    /// launch resuming it shows it at once, and the Bot Chats opened from
+    /// there find theirs. The profile's saved chats and the chat an ordinary
+    /// launch shows don't change.
+    func testABotChatCopySurvivesARelaunch() async throws {
+        useInMemoryKeychain()
+        let operations = ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [ChatMessage(id: "\(bot)-reply", role: .assistant, content: "Hi", timestamp: "1")],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        )
+        let (first, store, dashboard) = makeAppState(lifecycleOperations: operations)
+        seedCopy(store, dashboard: dashboard)
+        let savedBefore = store.load(dashboardID: dashboard, profile: "default")
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        first.connection = connection
+        first.client = HermesClient(connection: connection, profile: "default")
+        first.isConnected = true
+        first.showLogin = false
+        addTeardownBlock { first.client?.disconnect() }
+
+        let openedAtlas = await first.openBotChat(for: botProfile("atlas"))
+        let openedScout = await first.openBotChat(for: botProfile("scout"))
+        XCTAssertTrue(openedAtlas)
+        XCTAssertTrue(openedScout)
+        first.keepBotChatCopy()
+
+        XCTAssertEqual(store.load(dashboardID: dashboard, profile: "default"), savedBefore,
+                       "A Bot Chat's copy never enters the profile's saved chats or its last opened chat")
+        XCTAssertNil(store.load(dashboardID: dashboard, profile: "atlas"))
+        XCTAssertNil(store.loadChatList(dashboardID: dashboard, profile: "atlas"))
+
+        // A relaunch resuming Atlas's chat.
+        let registry = SavedDashboardRegistry(
+            activeDashboardID: dashboard,
+            dashboards: [SavedDashboard(id: dashboard, label: "One", normalizedURL: "https://one.example")]
+        )
+        let (relaunched, _, _) = makeAppState(registry: registry, store: store, configureDefaults: { defaults in
+            ChatResumeStore(defaults: defaults).setLastSession(
+                SessionReference(kind: .bot, scopeProfile: "atlas", botName: "atlas", botLabel: "Atlas",
+                                 sessionID: "atlas-chat", isUnverified: false),
+                for: "default"
+            )
+        })
+        relaunched.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        let presentation = try XCTUnwrap(relaunched.offlineChatPresentation)
+        XCTAssertEqual(presentation.displayedMessages.map(\.id), ["atlas-reply"])
+        XCTAssertEqual(presentation.composerSessionID, "atlas-chat")
+        XCTAssertTrue(relaunched.messages.isEmpty, "The copy never feeds the live transcript")
+        XCTAssertEqual(Set(relaunched.keptBotChatCopies.keys), ["\(dashboard.uuidString)|atlas", "\(dashboard.uuidString)|scout"],
+                       "Every bot's copy on the dashboard is read back for its Bot Chat's open")
+
+        // An ordinary launch still shows the workspace's own chat.
+        let (ordinary, _, _) = makeAppState(registry: registry, store: store)
+        ordinary.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(ordinary.offlineChatPresentation?.displayedSessionID, "stored-a")
+    }
+
+    /// Kept again unchanged within five minutes, a Bot Chat's copy keeps its
+    /// file; a dashboard keeps at most eight bots' copies, the least
+    /// recently kept going first.
+    func testBotChatCopiesKeepTheirFileWhenUnchangedAndAreCapped() throws {
+        let store = makeStore()
+        let dashboard = UUID()
+        let atlas = botCopy("atlas", ids: ["atlas-chat"], rows: ["a1"])
+        store.recordBotChatCopy(atlas, dashboardID: dashboard)
+        let url = store.botChatCopyFileURL(dashboardID: dashboard, bot: "atlas")
+        try Data("untouched".utf8).write(to: url)
+        store.recordBotChatCopy(botCopy("atlas", ids: ["atlas-chat"], rows: ["a1"], savedAt: Date().addingTimeInterval(60)),
+                                dashboardID: dashboard)
+        XCTAssertEqual(try Data(contentsOf: url), Data("untouched".utf8), "Unchanged within five minutes: not written again")
+        store.recordBotChatCopy(botCopy("atlas", ids: ["atlas-chat"], rows: ["a1", "a2"]), dashboardID: dashboard)
+        XCTAssertEqual(store.loadBotChatCopy(dashboardID: dashboard, bot: "atlas")?.transcript.messages.map(\.id), ["a1", "a2"])
+
+        for index in 1..<OfflineChatCacheStore.maxBotChatCopies {
+            store.recordBotChatCopy(botCopy("bot\(index)", ids: ["c\(index)"], rows: ["r"]), dashboardID: dashboard)
+        }
+        for index in 0..<OfflineChatCacheStore.maxBotChatCopies {
+            let bot = index == 0 ? "atlas" : "bot\(index)"
+            try FileManager.default.setAttributes(
+                [.modificationDate: Date(timeIntervalSince1970: TimeInterval(1_000 + index))],
+                ofItemAtPath: store.botChatCopyFileURL(dashboardID: dashboard, bot: bot).path
+            )
+        }
+        store.recordBotChatCopy(botCopy("newest", ids: ["n"], rows: ["r"]), dashboardID: dashboard)
+        XCTAssertNil(store.loadBotChatCopy(dashboardID: dashboard, bot: "atlas"), "The least recently kept goes")
+        XCTAssertNotNil(store.loadBotChatCopy(dashboardID: dashboard, bot: "bot1"))
+        XCTAssertNotNil(store.loadBotChatCopy(dashboardID: dashboard, bot: "newest"))
+    }
+
+    /// A Bot Chat's copy on the phone goes with the saved chats: a removed
+    /// dashboard or sign-out, Delete saved chats, and its deleted bot.
+    func testBotChatCopiesGoWithTheSavedChats() throws {
+        let (appState, store, dashboard) = makeAppState()
+        let other = UUID()
+        func keep(_ bot: String, _ dashboardID: UUID) {
+            store.recordBotChatCopy(botCopy(bot, ids: ["\(bot)-chat"], rows: ["r"]), dashboardID: dashboardID)
+        }
+        func copy(_ bot: String, _ dashboardID: UUID) -> SavedBotChatCopy? {
+            store.loadBotChatCopy(dashboardID: dashboardID, bot: bot)
+        }
+
+        keep("atlas", dashboard)
+        keep("scout", dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        XCTAssertEqual(appState.keptBotChatCopies.count, 2)
+        appState.forgetBotChatCopy(dashboardID: dashboard, bot: "atlas")
+        XCTAssertNil(copy("atlas", dashboard), "A deleted bot's copy goes")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: store.botChatCopyFileURL(dashboardID: dashboard, bot: "atlas").path))
+        XCTAssertNotNil(copy("scout", dashboard))
+        XCTAssertEqual(Array(appState.keptBotChatCopies.keys), ["\(dashboard.uuidString)|scout"])
+
+        keep("atlas", other)
+        appState.wipeOfflineChatCache(dashboardID: dashboard)
+        XCTAssertNil(copy("scout", dashboard), "Sign-out or a removed dashboard takes its copies")
+        XCTAssertNotNil(copy("atlas", other))
+        XCTAssertTrue(appState.keptBotChatCopies.isEmpty)
+
+        keep("scout", dashboard)
+        appState.deleteSavedChats()
+        XCTAssertNil(copy("scout", dashboard))
+        XCTAssertNil(copy("atlas", other), "Delete saved chats takes every dashboard's")
+
+        keep("atlas", dashboard)
+        appState.wipeOfflineChatCache(dashboardID: nil)
+        XCTAssertNil(copy("atlas", dashboard))
     }
 
     /// A launch shows the copy of the chat it resumes, not the one saved last.
@@ -4843,6 +4985,19 @@ final class OfflineChatCacheTests: XCTestCase {
                 ChatMessage(id: "a1", role: .assistant, content: "Answer", timestamp: "2"),
             ],
             sessions: [session("stored-a"), session("stored-b")]
+        )
+    }
+
+    private func botCopy(_ bot: String, ids: [String], rows: [String], savedAt: Date = Date()) -> SavedBotChatCopy {
+        SavedBotChatCopy(
+            bot: bot,
+            sessionIDs: ids.sorted(),
+            transcript: OfflineCachedTranscript(
+                sessionID: ids[0],
+                title: bot,
+                savedAt: savedAt,
+                messages: rows.compactMap { OfflineCachedMessage(ChatMessage(id: $0, role: .assistant, content: $0, timestamp: "1")) }
+            )
         )
     }
 

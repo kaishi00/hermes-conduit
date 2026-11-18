@@ -566,8 +566,9 @@ extension AppState {
               !messages.isEmpty,
               let dashboardID = activeDashboardID,
               let identities = offlineChatIdentities(),
-              // A Bot Chat keeps no copy on the phone, even when a stray row
-              // of it is in the workspace's list (`keepBotChatCopy` keeps it).
+              // A Bot Chat keeps no copy in a profile's saved chats, even when
+              // a stray row of it is in the workspace's list
+              // (`keepBotChatCopy` keeps its own).
               botStoreProfile(forSessionIDs: Array(identities)) == nil else { return }
         offlineChatCache.record(
             dashboardID: dashboardID,
@@ -614,9 +615,22 @@ extension AppState {
         // A message an earlier run, or an earlier visit here, left waiting
         // comes back as a draft, once the chat it goes to shows.
         defer { restorePendingSendsLeftBehind(dashboardID: dashboardID) }
-        guard offlineChatPresentation == nil,
-              messages.isEmpty,
-              let snapshot = offlineChatCache.load(dashboardID: dashboardID, profile: activeProfile),
+        // The dashboard's Bot Chat copies, for the Bot Chats opened from here.
+        defer { readKeptBotChatCopies(dashboardID: dashboardID) }
+        guard offlineChatPresentation == nil, messages.isEmpty else { return }
+        let snapshot = offlineChatCache.load(dashboardID: dashboardID, profile: activeProfile)
+        // A launch resuming a Bot Chat shows its bot's copy, never the
+        // workspace's chat.
+        if let botCopy = launchBotChatCopy(dashboardID: dashboardID) {
+            offlineChatPresentation = OfflineChatPresentation(
+                dashboardID: dashboardID,
+                profile: activeProfile,
+                snapshot: snapshot ?? OfflineChatSnapshot(lastSessionID: nil, sessions: [], transcripts: []),
+                displayedTranscript: botCopy
+            )
+            return
+        }
+        guard let snapshot,
               !snapshot.transcripts.isEmpty || !snapshot.sessions.isEmpty else { return }
         let displayed = Self.launchTranscriptID(in: snapshot, resuming: activeSessionId)
         offlineChatPresentation = OfflineChatPresentation(
@@ -631,8 +645,9 @@ extension AppState {
 
     /// The saved copy a launch shows: the conversation it resumes, by its id
     /// or a saved row's alias, never another one. A Bot Chat keeps no copy
-    /// here, so resuming one shows none, not the workspace's last chat until
-    /// the bot's lands. With nothing to resume, the chat saved last.
+    /// here (its own is `launchBotChatCopy`), so resuming one finds none,
+    /// not the workspace's last chat. With nothing to resume, the chat saved
+    /// last.
     static func launchTranscriptID(in snapshot: OfflineChatSnapshot, resuming sessionID: String?) -> String? {
         guard let sessionID = ChatScrollIdentityNormalization.sessionID(sessionID) else {
             return snapshot.lastSessionID.flatMap { snapshot.transcript(for: $0) != nil ? $0 : nil }

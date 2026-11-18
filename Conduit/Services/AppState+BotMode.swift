@@ -1813,6 +1813,7 @@ extension AppState {
         if let dashboardID {
             offlineChatCache.removeHeldRows(dashboardID: dashboardID, profile: bot.name)
             offlineChatCache.removeKeptAnswers(dashboardID: dashboardID, profile: bot.name)
+            forgetBotChatCopy(dashboardID: dashboardID, bot: bot.name)
         }
         // And it leaves the roster kept there, its bridge rebuilt or not.
         forgetKeptBot(bot.name, on: rosterOwner)
