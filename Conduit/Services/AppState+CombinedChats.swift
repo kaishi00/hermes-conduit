@@ -220,13 +220,55 @@ extension AppState {
         if !mineListed { chips = mine + chips }
         // One Hermes saved at two addresses: its profile shows once, as
         // Bots Home shows its bot, at the place its copies were saved at.
-        // This dashboard's copy is always the one kept.
-        let twins = combinedBotsHomeTwins
-        let shownKeys = Set(chips.map(\.id))
-        let copies = Set(twins.filter { shownKeys.contains($0.key) }.values.joined())
-        chips.removeAll { copies.contains($0.id) }
+        // This dashboard's copy is always the one kept. Which dashboards are
+        // one Hermes comes from what their lists share, a chat, a wait or a
+        // Bot Chat, so a Hermes running no bots is found too (issue 2741).
+        let (kept, twins) = Self.oneChipPerHermes(chips, hermes: combinedHermesGroups, onScreen: activeDashboardID)
+        chips = kept
         let saved = CombinedBotsHomeOrder.handingOn(combinedBotsHomeOrder, twins: twins)
         return CombinedBotsHomeOrder.ordered(chips, saved: saved, key: \.id)
+    }
+
+    /// Each dashboard of the group to its Hermes' number, from what the
+    /// lists share (`combinedHermesEvidence`) and the rosters' Bot Chats.
+    var combinedHermesGroups: [UUID?: Int] {
+        var evidence = combinedHermesEvidence
+        for bot in shownBotRoster {
+            if let id = bot.canonicalSession?.id { evidence[activeDashboardID, default: []].insert(id) }
+        }
+        for section in otherCombinedDashboardsBots {
+            for bot in section.bots {
+                if let id = bot.canonicalSession?.id { evidence[section.dashboardID, default: []].insert(id) }
+            }
+        }
+        return Self.oneHermesGroups(evidence)
+    }
+
+    /// One chip per profile per Hermes: the dashboard on screen's copy,
+    /// else the first in `chips`' order. `twins`: each kept chip's key to
+    /// the keys of the copies left out, which take its place in the order.
+    static func oneChipPerHermes(
+        _ chips: [CombinedProfileChip],
+        hermes: [UUID?: Int],
+        onScreen: UUID?
+    ) -> (kept: [CombinedProfileChip], twins: [String: [String]]) {
+        func oneHermes(_ a: UUID?, _ b: UUID?) -> Bool {
+            a == b || (hermes[a] != nil && hermes[a] == hermes[b])
+        }
+        var kept: [CombinedProfileChip] = []
+        var dropped = Set<String>()
+        var twins: [String: [String]] = [:]
+        let first = chips.filter { $0.dashboardID == onScreen }
+        for chip in first + chips.filter({ $0.dashboardID != onScreen }) {
+            let name = chip.profile.lowercased()
+            if let twin = kept.first(where: { $0.dashboardID != chip.dashboardID && $0.profile.lowercased() == name && oneHermes($0.dashboardID, chip.dashboardID) }) {
+                dropped.insert(chip.id)
+                twins[twin.id, default: []].append(chip.id)
+            } else {
+                kept.append(chip)
+            }
+        }
+        return (dropped.isEmpty ? chips : chips.filter { !dropped.contains($0.id) }, twins)
     }
 
     /// Another combined dashboard's profiles as last read: with its chats,

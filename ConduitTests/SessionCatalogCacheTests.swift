@@ -52,6 +52,19 @@ final class SessionCatalogCacheTests: XCTestCase {
 
         cache.removeAll()
         XCTAssertFalse(cache.hasNewerCommit(than: 1, forKey: "default:exclude"), "a purge holds nothing newer")
+
+        // Two reads that took read 4's newest page (issue 2604): whichever
+        // started later keeps its commit, its cron rows being the newer,
+        // and a read that sent its own page after 4 outranks both.
+        let shared = SessionCatalogCache.ReadOrder(rowsFrom: 4, read: 6)
+        XCTAssertTrue(cache.commit(
+            liveSessions: [session(id: "a", title: "A")], liveKey: "default:exclude",
+            cronSessions: nil, cronKey: "default:cron",
+            historyMarkers: [:], at: cache.mutationGeneration, order: shared
+        ))
+        XCTAssertTrue(cache.hasNewerCommit(than: 4, forKey: "default:exclude"), "the read that sent the page yields")
+        XCTAssertFalse(cache.hasNewerCommit(than: SessionCatalogCache.ReadOrder(rowsFrom: 4, read: 7), forKey: "default:exclude"))
+        XCTAssertFalse(cache.hasNewerCommit(than: 5, forKey: "default:exclude"), "a read whose own page went out after 4")
     }
 
     /// What a connection's early chat-list read is fenced on: a removal

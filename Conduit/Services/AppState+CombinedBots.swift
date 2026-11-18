@@ -193,36 +193,75 @@ extension AppState {
             }
         }
         if !mineListed { items = mine + items }
-        return Self.oneCopyPerHermes(items)
+        return Self.oneCopyPerHermes(items, evidence: combinedHermesEvidence)
     }
 
-    /// One Hermes saved at two addresses answers both with one roster: its
-    /// bots show once, as this dashboard's, else as the first dashboard's in
-    /// Saved Dashboards order, as a chat given twice does (issue 2640). Two
-    /// dashboards are one Hermes when a bot of each has the same Bot Chat
-    /// (its registry id is the host's own); bots of one name on two Hermes
-    /// that share none both show.
-    /// `twins`: each kept bot's key to the keys of its copies left out.
-    static func oneCopyPerHermes(_ items: [CombinedBotsHomeItem]) -> (kept: [CombinedBotsHomeItem], twins: [String: [String]]) {
-        var chats: [UUID?: Set<String>] = [:]
-        for item in items {
-            if let id = item.bot.canonicalSession?.id { chats[item.dashboardID, default: []].insert(id) }
+    /// What each dashboard of the group lists that only its Hermes could:
+    /// its chats' ids and its waits' (Hermes' and the plugin's ids are
+    /// random), so two dashboards sharing one are one Hermes saved at two
+    /// addresses, bots or none (issue 2741). Bot Chats join in
+    /// `oneHermesGroups`' callers.
+    var combinedHermesEvidence: [UUID?: Set<String>] {
+        guard isInCombinedGroup(activeDashboardID) else { return [:] }
+        func ids(_ rows: [SessionSummary]) -> Set<String> {
+            // A row with no id of its own goes by its place in the list
+            // (normalizeSessions): a number any Hermes could give.
+            Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } }.filter { !$0.isEmpty && Int($0) == nil })
         }
-        // Dashboards sharing a Bot Chat are one Hermes, and so are two that
-        // each share one with a third (rosters cached at different times).
+        // The active lists carry kept dashboards' rows too; only its own
+        // count for it, its other profiles' (All's catalog) included. A
+        // kept dashboard's cache is all its own, each row marked with its id.
+        let catalog = allProfilesCatalog.dashboardID == activeDashboardID ? allProfilesCatalog.sessions : []
+        let own = (sessions + cronSessions + catalog).filter { $0.combinedDashboardID == nil }
+        var evidence: [UUID?: Set<String>] = [
+            activeDashboardID: ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
+        ]
+        for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID && isInCombinedGroup(dashboard.id) {
+            let chats = combinedDashboardChats[dashboard.id].map { ids($0.sessions) } ?? []
+            let waits = (needsYou.otherDashboards[dashboard.id] ?? []).map { "wait\u{1F}\($0.hostKey)" }
+            evidence[dashboard.id] = chats.union(waits)
+        }
+        return evidence
+    }
+
+    /// Dashboards whose ids overlap are one Hermes, and so are two that
+    /// each overlap a third (lists read at different times): each to its
+    /// Hermes' number. A dashboard with no ids has none.
+    static func oneHermesGroups(_ ids: [UUID?: Set<String>]) -> [UUID?: Int] {
+        let known = ids.filter { !$0.value.isEmpty }
         var hermes: [UUID?: Int] = [:]
-        for (at, dashboard) in chats.keys.enumerated() { hermes[dashboard] = at }
+        for (at, dashboard) in known.keys.enumerated() { hermes[dashboard] = at }
         var merged = true
         while merged {
             merged = false
-            for a in chats.keys {
-                for b in chats.keys where hermes[a] != hermes[b] && !(chats[a] ?? []).isDisjoint(with: chats[b] ?? []) {
+            for a in known.keys {
+                for b in known.keys where hermes[a] != hermes[b] && !(known[a] ?? []).isDisjoint(with: known[b] ?? []) {
                     let from = max(hermes[a]!, hermes[b]!), to = min(hermes[a]!, hermes[b]!)
                     for (d, h) in hermes where h == from { hermes[d] = to }
                     merged = true
                 }
             }
         }
+        return hermes
+    }
+
+    /// One Hermes saved at two addresses answers both with one roster: its
+    /// bots show once, as this dashboard's, else as the first dashboard's in
+    /// Saved Dashboards order, as a chat given twice does (issue 2640). Two
+    /// dashboards are one Hermes when a bot of each has the same Bot Chat
+    /// (its registry id is the host's own), or a chat or a wait in their
+    /// lists (`evidence`, issue 2741); bots of one name on two Hermes that
+    /// share none both show.
+    /// `twins`: each kept bot's key to the keys of its copies left out.
+    static func oneCopyPerHermes(
+        _ items: [CombinedBotsHomeItem],
+        evidence: [UUID?: Set<String>] = [:]
+    ) -> (kept: [CombinedBotsHomeItem], twins: [String: [String]]) {
+        var chats = evidence
+        for item in items {
+            if let id = item.bot.canonicalSession?.id { chats[item.dashboardID, default: []].insert(id) }
+        }
+        let hermes = oneHermesGroups(chats)
         func oneHermes(_ a: UUID?, _ b: UUID?) -> Bool {
             a == b || (hermes[a] != nil && hermes[a] == hermes[b])
         }

@@ -67,6 +67,16 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
+            // A room's id is its host's own: another Hermes' room can share
+            // the open room's id, so a room wait counts as open only from a
+            // dashboard of this one's Hermes (issue 2631), bots or none
+            // (issue 2741).
+            // Asked per item, after the read: the read itself can bring
+            // the shared wait that makes the two one Hermes.
+            func sameHermes() -> Bool {
+                let hermes = combinedHermesGroups
+                return hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
+            }
             for profile in profiles {
                 guard isSceneActive else { return }
                 let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
@@ -77,11 +87,6 @@ extension AppState {
                 // A profile a strip tap found deleted while the read was
                 // out stays gone (issue 2646).
                 guard currentKeptProfiles(id, else: profiles).contains(profile) else { continue }
-                // A room's id is its host's own: another Hermes' room can
-                // share the open room's id, so a room wait counts as open
-                // only from a dashboard of this one's Hermes (issue 2631),
-                // told after the read, as the roster stands now.
-                let sameHermes = Self.isSameHermes(id, as: activeDashboardID, twins: combinedBotsHomeTwins)
                 needsYou.applyOther(
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
@@ -95,26 +100,16 @@ extension AppState {
         }
     }
 
-    /// Whether `dashboard` is the same Hermes as the one on screen: Bots
-    /// Home lists one of its bots as a twin of one of the screen's.
-    static func isSameHermes(_ dashboard: UUID, as onScreen: UUID?, twins: [String: [String]]) -> Bool {
-        let mine = CombinedBotsHomeOrder.key(onScreen, "")
-        let theirs = CombinedBotsHomeOrder.key(dashboard, "")
-        return twins.contains { key, copies in
-            key.hasPrefix(mine) && copies.contains { $0.hasPrefix(theirs) }
-        }
-    }
-
     /// Whether another combined dashboard's wait is the chat on screen's, so
     /// it doesn't banner: a room wait only from a dashboard of this one's
     /// Hermes, since another Hermes' room can share the open room's id
     /// (issue 2631, tested in issue 2655).
     static func otherDashboardWaitIsOpen(
         _ item: NeedsYouItem,
-        sameHermes: Bool,
+        sameHermes: () -> Bool,
         isOpenChat: (NeedsYouItem) -> Bool
     ) -> Bool {
-        (item.roomID == nil || sameHermes) && isOpenChat(item)
+        (item.roomID == nil || sameHermes()) && isOpenChat(item)
     }
 
     /// A kept dashboard's profiles as last read, a read since the pass

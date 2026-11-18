@@ -2678,6 +2678,10 @@ final class AppState: ObservableObject {
     /// The full catalog read under way, for a read asked for meanwhile to
     /// join rather than send its own (CatalogReadInFlight).
     var catalogReadInFlight: CatalogReadInFlight?
+    /// The chat list's newest page going out, for a newest-page read asked
+    /// for meanwhile to take its answer rather than send the same requests
+    /// (NewestCatalogPageRead, issue 2604).
+    var newestCatalogPageRead: NewestCatalogPageRead?
     /// Ticket for each read that replaces the published list wholesale
     /// (`loadSessions` and a chat sync), taken when the read starts, and
     /// the newest ticket whose answer is listed. Reads overlap (a reconnect,

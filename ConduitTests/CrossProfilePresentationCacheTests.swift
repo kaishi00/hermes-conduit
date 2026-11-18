@@ -1535,6 +1535,16 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardBots[mac.id] = nil
         appState.botRoster = roster
         appState.combinedBotsHomeOrder = []
+        // No bots anywhere: a chat both lists give is the same evidence,
+        // so the profile still shows once (issue 2741).
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 3, "two Hermes until something says otherwise")
+        let ownSessions = appState.sessions
+        appState.sessions = [SessionSummary(id: "mac-2", alternateIds: [], title: "Old", model: "Hermes", updatedLabel: "now",
+                                            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
+                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        appState.sessions = ownSessions
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
         // The Chats list shows them only in All: one profile's list is that
@@ -1839,6 +1849,9 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
             client: ObjectIdentifier(outgoing), bots: [chatBot("furina", "c9"), bot("neuvillette")], avatars: [:], at: Date()
         )
+        // The switch kept Mac's chats; this harness's two dashboards share
+        // one fake host, so its list would make them one Hermes (issue 2741).
+        appState.combinedDashboardChats[mac.id] = nil
         XCTAssertEqual(appState.combinedBotsHomeItems(own: appState.shownBotRoster).count, 4, "two Hermes, two of each")
         // Rosters cached at different times overlap only through a third
         // dashboard: still one Hermes, its bot shown once.

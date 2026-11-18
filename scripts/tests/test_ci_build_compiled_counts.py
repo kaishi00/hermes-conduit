@@ -31,7 +31,9 @@ class CompiledCountTests(unittest.TestCase):
     def test_an_unreadable_log_fails_so_the_build_warns(self):
         out, err = io.StringIO(), io.StringIO()
         with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
-            self.assertEqual(compiled.main(["/nonexistent/build.log"]), 1)
+            with tempfile.TemporaryDirectory() as folder:
+                missing = str(Path(folder) / "build.log")
+                self.assertEqual(compiled.main([missing]), 1)
         self.assertEqual(out.getvalue(), "")
         self.assertIn("cannot read the build log", err.getvalue())
 
