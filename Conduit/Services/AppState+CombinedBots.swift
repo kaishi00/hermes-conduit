@@ -453,6 +453,9 @@ extension AppState {
         // portrait stays where it is through the switch (the group's one
         // order), now this dashboard's, under the same name.
         if zooms { botZoom.tap(bot.name) }
+        // Each tap counts, so a second combined tap during the switch is the
+        // later choice over the first.
+        botChatOpenRequests &+= 1
         let request = botChatOpenRequests
         Task { @MainActor [weak self] in
             guard let self else { return }
