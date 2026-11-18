@@ -682,6 +682,28 @@ extension AppState {
         }
     }
 
+    /// The cron rows a list read shows for `profile`: the catalog cache's,
+    /// which hold the best-ranked read's (a read that fetched cron outranks
+    /// one on the same newest page that reused cached cron, #2759), else
+    /// the read's own.
+    func cronRowsToList(_ loaded: [SessionSummary], profile: String) -> [SessionSummary] {
+        guard sessionCatalogLoaderOverride == nil,
+              let cached = sessionCatalogCache.cachedSessions(forKey: "\(profile):cron") else { return loaded }
+        return cached.filter { sessionBelongsToProfile($0, profile: profile) }
+    }
+
+    /// A list read that lost its listing to a newer one may still have
+    /// fetched the newer cron rows: a later chat sync that took its newest
+    /// page reused cached cron, or got none. Its rows reach the cache
+    /// (ReadOrder), and from there the list (#2759 review).
+    func relistCachedCron(profile: String) {
+        let listed = cronRowsToList(cronSessions, profile: profile)
+        guard listed != cronSessions else { return }
+        chatListCatalogGeneration &+= 1
+        catalogChangeSignal.noteListChanged(at: chatSyncNow())
+        cronSessions = listed
+    }
+
     func uniqueSessions(_ values: [SessionSummary]) -> [SessionSummary] {
         var seen = Set<String>()
         return values.filter { session in
