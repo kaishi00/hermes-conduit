@@ -766,6 +766,9 @@ final class AppState: ObservableObject {
     var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
     var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    /// The dashboards whose Bot Chat copies on the phone were read into
+    /// `keptBotChatCopies` this run (`readKeptBotChatCopies`).
+    var botChatCopiesReadFromDisk: Set<UUID> = []
 
     /// The last chats left after Load earlier brought in older rows, newest
     /// last (`keepLeftBackfilledTranscript`).

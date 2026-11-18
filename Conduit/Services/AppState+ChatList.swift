@@ -300,9 +300,10 @@ extension AppState {
         }
     }
 
-    /// A Bot Chat has no row of its own, so it keeps no copy on the phone:
-    /// the one on screen is kept in memory when it's left, by dashboard and
-    /// bot, to show while it opens again (#1352).
+    /// A Bot Chat has no row of its own, so it keeps no copy in a profile's
+    /// saved chats: the one on screen is kept when it's left, by dashboard
+    /// and bot, to show while it opens again (#1352), in memory and in a
+    /// file of its own (`SavedBotChatCopy`), read back after a relaunch.
     struct KeptBotChatCopy {
         let sessionIDs: Set<String>
         let transcript: OfflineCachedTranscript
@@ -451,7 +452,7 @@ extension AppState {
         if let oldest = Self.keptBotChatCopyToDrop(keptAt: keptBotChatCopies.mapValues(\.transcript.savedAt), adding: key) {
             keptBotChatCopies[oldest] = nil
         }
-        keptBotChatCopies[key] = KeptBotChatCopy(
+        let kept = KeptBotChatCopy(
             sessionIDs: identities.union([sessionID]),
             transcript: OfflineCachedTranscript(
                 sessionID: sessionID,
@@ -460,6 +461,73 @@ extension AppState {
                 messages: Array(rows)
             )
         )
+        keptBotChatCopies[key] = kept
+        // And on the phone, under the dashboard and bot, never a profile's
+        // saved chats: a launch back into it shows it too. Written on the
+        // store's queue.
+        offlineChatCache.recordBotChatCopy(
+            SavedBotChatCopy(bot: bot, sessionIDs: kept.sessionIDs.sorted(), transcript: kept.transcript),
+            dashboardID: dashboardID
+        )
+    }
+
+    /// Reads the dashboard's Bot Chat copies on the phone into memory, once
+    /// a run, off the main thread, for `presentKeptBotChatCopy`. A copy kept
+    /// this run is newer and stays; the in-memory cap holds.
+    func readKeptBotChatCopies(dashboardID: UUID) {
+        guard botChatCopiesReadFromDisk.insert(dashboardID).inserted else { return }
+        offlineChatCache.readBotChatCopies(dashboardID: dashboardID) { [weak self] copies in
+            guard let self else { return }
+            for copy in copies.sorted(by: { $0.transcript.savedAt > $1.transcript.savedAt }) {
+                self.addKeptBotChatCopy(copy, dashboardID: dashboardID)
+            }
+        }
+    }
+
+    /// A copy read from the phone, unless one is kept for its bot already or
+    /// memory holds as many as it keeps. Its rows go through the same
+    /// presentation as one kept this run.
+    @discardableResult
+    private func addKeptBotChatCopy(_ copy: SavedBotChatCopy, dashboardID: UUID) -> KeptBotChatCopy? {
+        let key = Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: copy.bot)
+        if let kept = keptBotChatCopies[key] { return kept }
+        guard keptBotChatCopies.count < Self.maxKeptBotChatCopies else { return nil }
+        let kept = KeptBotChatCopy(sessionIDs: Set(copy.sessionIDs), transcript: copy.transcript)
+        keptBotChatCopies[key] = kept
+        return kept
+    }
+
+    /// A cold launch resuming a Bot Chat: its bot's copy, read on the
+    /// caller so it shows from the first frame, when it was kept under the
+    /// id being resumed. Never another bot's or the workspace's chat.
+    func launchBotChatCopy(dashboardID: UUID) -> OfflineCachedTranscript? {
+        guard let sessionID = activeSessionId,
+              let bot = ChatResumeStore.rpcProfileName(botConversationProfile(for: sessionID)) else { return nil }
+        let key = Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)
+        let kept: KeptBotChatCopy
+        if let inMemory = keptBotChatCopies[key] {
+            kept = inMemory
+        } else if let saved = offlineChatCache.loadBotChatCopy(dashboardID: dashboardID, bot: bot) {
+            kept = addKeptBotChatCopy(saved, dashboardID: dashboardID)
+                ?? KeptBotChatCopy(sessionIDs: Set(saved.sessionIDs), transcript: saved.transcript)
+        } else {
+            return nil
+        }
+        guard kept.sessionIDs.contains(sessionID) else { return nil }
+        // Under the id it opens as, as `presentKeptBotChatCopy` shows it.
+        return OfflineCachedTranscript(
+            sessionID: sessionID,
+            title: kept.transcript.title,
+            savedAt: kept.transcript.savedAt,
+            messages: kept.transcript.messages
+        )
+    }
+
+    /// A deleted bot's copy goes from memory and the phone.
+    func forgetBotChatCopy(dashboardID: UUID, bot: String) {
+        guard let bot = ChatResumeStore.rpcProfileName(bot) else { return }
+        keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)] = nil
+        offlineChatCache.removeBotChatCopy(dashboardID: dashboardID, bot: bot)
     }
 
     /// The bot whose copy the chat open as `sessionID` is, as it was before
