@@ -457,14 +457,24 @@ extension AppState {
     /// A dashboard's waiting message, and words on their way back to its
     /// drafts, leave memory with it. The message's file stays unless the
     /// dashboard's saved chats are wiped, so the next visit puts it back.
-    func leaveComposerSends(dashboardID: UUID?) {
+    /// `keepingWordsOnTheirWay`: a switch between saved dashboards keeps a
+    /// failed send's words on their way back to its chat's draft, which the
+    /// switch keeps too (issue 2702). One with a file of its own (a waiting
+    /// message, a shared draft, a dictation Retry) goes, since the file
+    /// brings it back on the next visit.
+    func leaveComposerSends(dashboardID: UUID?, keepingWordsOnTheirWay: Bool = false) {
         forgetComposerSubmissionsOfUnknownDelivery()
         if let pending = pendingComposerSend, dashboardID == nil || pending.dashboardID == dashboardID {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
         }
-        if composerRestoreRequests.contains(where: { dashboardID == nil || $0.dashboardID == dashboardID }) {
-            composerRestoreRequests.removeAll { dashboardID == nil || $0.dashboardID == dashboardID }
+        func leaves(_ request: ComposerRestoreRequest) -> Bool {
+            guard dashboardID == nil || request.dashboardID == dashboardID else { return false }
+            return !keepingWordsOnTheirWay
+                || request.pending != nil || request.sharedDraftID != nil || request.dictationClipID != nil
+        }
+        if composerRestoreRequests.contains(where: leaves) {
+            composerRestoreRequests.removeAll(where: leaves)
         }
         if dashboardID == nil || dashboardID == activeDashboardID {
             composerNotice = nil

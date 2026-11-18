@@ -600,7 +600,7 @@ extension AppState {
     /// What of the saved chats is in memory (the copy and list on screen,
     /// picture reads under way, whether the list may be saved) leaves with
     /// its dashboard, whether the dashboard's files are wiped or kept.
-    func leaveSavedChats(dashboardID: UUID?) {
+    func leaveSavedChats(dashboardID: UUID?, keepingWordsOnTheirWay: Bool = false) {
         shownChat.inlineImageRowsUnavailable.removeAll()
         shownChat.inlineImageRowFetches.values.forEach { $0.cancel() }
         shownChat.inlineImageRowFetches.removeAll()
@@ -615,7 +615,7 @@ extension AppState {
         }
         // So does a message waiting for one of its chats: its file stays for
         // the next visit there unless the dashboard's saved chats are wiped.
-        leaveComposerSends(dashboardID: dashboardID)
+        leaveComposerSends(dashboardID: dashboardID, keepingWordsOnTheirWay: keepingWordsOnTheirWay)
     }
 
     /// Settings' Delete Saved Chats: every dashboard's saved Chats lists,

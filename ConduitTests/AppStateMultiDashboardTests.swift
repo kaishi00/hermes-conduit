@@ -300,9 +300,17 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertFalse(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
         appState.composerDraftStore.save(ComposerDraft(text: "half a thought", attachments: []), for: onA)
 
+        // A failed send's words on their way back to A's draft wait for A
+        // too; a waiting message's go, since its file brings it back.
+        let wordsBack = ComposerRestoreRequest(dashboardID: a.id, key: onA,
+                                               draft: ComposerDraft(text: "sent from A", attachments: []),
+                                               focuses: false, pending: nil)
+        appState.composerRestoreRequests.append(wordsBack)
+
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: b.normalizedURL, dashboardID: b.id))
         XCTAssertEqual(appState.composerDraftStore.draft(for: onA).text, "half a thought")
         XCTAssertTrue(appState.composerDraftStore.draft(for: sameIDsOnB).isEmpty)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.id), [wordsBack.id])
         XCTAssertFalse(appState.composerDraftKeysAreSameChat(onA, sameIDsOnB))
 
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: a.normalizedURL, dashboardID: a.id))
@@ -319,6 +327,22 @@ final class AppStateMultiDashboardTests: XCTestCase {
         // could collide, so the drafts clear as before.
         XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://other.example.com", dashboardID: nil))
         XCTAssertTrue(appState.composerDraftStore.draft(for: onA).isEmpty)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+    }
+
+    func testSigningOutOfTheDashboardOnScreenKeepsTheOthersDrafts() {
+        let a = dashboard("Mac", "https://mac.tailnet.ts.net")
+        let b = dashboard("VPS", "https://hermes.example.com")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: a.id, dashboards: [a, b]))
+        let onA = ComposerDraftKey(dashboard: a.id, profile: "default", sessionID: "stored-a")
+        let onB = ComposerDraftKey(dashboard: b.id, profile: "default", sessionID: "stored-a")
+        appState.composerDraftStore.save(ComposerDraft(text: "A's words", attachments: []), for: onA)
+        appState.composerDraftStore.save(ComposerDraft(text: "B's words", attachments: []), for: onB)
+
+        appState.signOutDashboard(a.id)
+
+        XCTAssertTrue(appState.composerDraftStore.draft(for: onA).isEmpty)
+        XCTAssertEqual(appState.composerDraftStore.draft(for: onB).text, "B's words")
     }
 
     func testEachDashboardKeepsTheChatYouLeftThereAcrossASwitch() {

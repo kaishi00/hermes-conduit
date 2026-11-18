@@ -825,6 +825,14 @@ extension AppState {
     /// auth/session/cookie material — and nothing else. SavedDashboard
     /// metadata and every other dashboard's state are untouched. For the
     /// active dashboard this is the full Disconnect teardown, scoped.
+    /// A signed-out dashboard's unsent drafts, its rooms' words and files,
+    /// and words on their way back to them. The other dashboards' stay.
+    func forgetDrafts(ofDashboard id: UUID) {
+        composerDraftStore.removeDrafts(forDashboard: id)
+        composerRestoreRequests.removeAll { $0.dashboardID == id }
+        forgetRoomDrafts(dashboardID: id)
+    }
+
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
         // A combined dashboard kept connected signs out too, and one
@@ -842,9 +850,7 @@ extension AppState {
         }
         // Its unsent drafts, a room's too, outlived the switch away from it
         // (issue 2702): they belong to the signed-out user.
-        composerDraftStore.removeDrafts(forDashboard: id)
-        composerRestoreRequests.removeAll { $0.dashboardID == id }
-        forgetRoomDrafts(dashboardID: id)
+        forgetDrafts(ofDashboard: id)
         removeWidgetSnapshot(dashboardID: id)
         liveTurnActivitiesEndDashboard(id.uuidString, false)
         endServerSignIn(dashboardID: id, baseURL: dashboard.normalizedURL)

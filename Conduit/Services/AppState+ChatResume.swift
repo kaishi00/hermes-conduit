@@ -756,8 +756,9 @@ extension AppState {
         // Saved chats are kept apart per dashboard and stay for the next
         // visit there: only removing the dashboard, signing out of it or
         // Settings' Delete Saved Chats wipes them. What of them is in memory
-        // belongs to the outgoing server.
-        leaveSavedChats(dashboardID: nil)
+        // belongs to the outgoing server. A failed send's words on their way
+        // back to a saved dashboard's draft stay, as its drafts do.
+        leaveSavedChats(dashboardID: nil, keepingWordsOnTheirWay: dashboardID != nil)
         // Identity evidence and per-session overrides are keyed only by
         // (profile, session id); without this clear they would leak between
         // Hermes servers whose strings collide. Same boundary that clears
@@ -779,7 +780,13 @@ extension AppState {
         // dashboard has no key of its own, so its strings could collide:
         // those clear.
         invalidateBotModeState(keepingRoomDrafts: dashboardID != nil)
-        if dashboardID == nil { composerDraftStore.removeAll() }
+        if dashboardID == nil {
+            composerDraftStore.removeAll()
+        } else {
+            // A server with no saved dashboard left drafts nothing can
+            // load from here on.
+            composerDraftStore.removeDraftsKept(under: nil)
+        }
         return true
     }
 }

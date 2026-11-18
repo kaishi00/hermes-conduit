@@ -532,6 +532,24 @@ final class ComposerDraftStoreTests: XCTestCase {
                                                 storeClearCount: store.clearCount(for: b)))
     }
 
+    func testEachDashboardHasItsOwnDraftCap() {
+        // Drafts outlive a dashboard switch (issue 2702), so one dashboard's
+        // drafts never push out another's.
+        let store = ComposerDraftStore(capacity: 1)
+        let a = UUID()
+        let b = UUID()
+        let onA = ComposerDraftKey(dashboard: a, profile: "default", sessionID: "one")
+        let onB = ComposerDraftKey(dashboard: b, profile: "default", sessionID: "one")
+        let laterOnB = ComposerDraftKey(dashboard: b, profile: "default", sessionID: "two")
+        store.save(ComposerDraft(text: "A", attachments: []), for: onA)
+        store.save(ComposerDraft(text: "B", attachments: []), for: onB)
+        store.save(ComposerDraft(text: "B later", attachments: []), for: laterOnB)
+
+        XCTAssertEqual(store.draft(for: onA).text, "A")
+        XCTAssertTrue(store.draft(for: onB).isEmpty, "B's oldest makes room for B's newest")
+        XCTAssertEqual(store.draft(for: laterOnB).text, "B later")
+    }
+
     func testStoreEvictsTheOldestBucketWhenCapacityIsExceeded() {
         let store = ComposerDraftStore(capacity: 1)
         let first = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")

@@ -77,7 +77,7 @@ final class ComposerDraftStore {
         drafts[key] = draft
         refreshGeneration(for: key)
         touch(key)
-        evictIfNeeded()
+        evictIfNeeded(in: key.dashboard)
     }
 
     func hasDraft(for key: ComposerDraftKey) -> Bool {
@@ -122,7 +122,13 @@ final class ComposerDraftStore {
     /// the composer on screen still keeps its own.
     func removeDrafts(forDashboard dashboard: UUID) {
         dashboardClearCounts[dashboard, default: 0] &+= 1
-        for key in drafts.keys where key.dashboard == dashboard {
+        removeDraftsKept(under: dashboard)
+    }
+
+    /// Drafts kept under `dashboard` (nil: a server with no saved
+    /// dashboard) go, with no clear count moved: for ones nothing can load.
+    func removeDraftsKept(under dashboard: UUID?) {
+        for key in drafts.keys.filter({ $0.dashboard == dashboard }) {
             removeDraft(for: key)
         }
     }
@@ -147,11 +153,12 @@ final class ComposerDraftStore {
         order.append(key)
     }
 
-    private func evictIfNeeded() {
-        while order.count > capacity {
-            let oldest = order.removeFirst()
-            drafts.removeValue(forKey: oldest)
-            generations.removeValue(forKey: oldest)
+    /// The cap is each dashboard's: drafts outlive a switch, so one
+    /// dashboard's never push out another's (#2708).
+    private func evictIfNeeded(in dashboard: UUID?) {
+        var held = order.filter { $0.dashboard == dashboard }
+        while held.count > capacity {
+            removeDraft(for: held.removeFirst())
         }
     }
 
