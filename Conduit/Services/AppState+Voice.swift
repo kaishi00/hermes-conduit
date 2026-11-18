@@ -1809,13 +1809,15 @@ extension AppState {
         guard let index = messages.lastIndex(where: isReply) else { return nil }
         var reply = messages[index]
         reply.content = reply.content.trimmingCharacters(in: .whitespacesAndNewlines)
-        // The turn's first message since the reply before it started it: a
-        // later one is queued behind it. A steer is part of the turn, not
-        // what started it.
+        // The one message since the reply before it started the turn. Two
+        // or more (one queued behind the turn, or an earlier turn that never
+        // got a reply) can't tell which it answers, so it names none. A
+        // steer is part of the turn, not what started it.
         let isPrompt: (ChatMessage) -> Bool = { $0.role == .user && !$0.isSteer }
         let turnStart = messages[..<index].lastIndex(where: isReply).map { $0 + 1 } ?? messages.startIndex
-        let prompt = (messages[turnStart..<index].first(where: isPrompt) ?? messages[..<index].last(where: isPrompt))?
-            .content.trimmingCharacters(in: .whitespacesAndNewlines)
+        let asked = messages[turnStart..<index].filter(isPrompt)
+        let promptMessage = asked.isEmpty ? messages[..<index].last(where: isPrompt) : asked.count == 1 ? asked.first : nil
+        let prompt = promptMessage?.content.trimmingCharacters(in: .whitespacesAndNewlines)
         return (reply, prompt)
     }
 
