@@ -1832,6 +1832,35 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(appState.showsChatListUpdating)
     }
 
+    /// Issue 2706: a connection on its way says "Updating…" over the saved
+    /// rows, but never under a pull to refresh's own spinner; and a chat
+    /// sync's commit of the live list (not only a list read's) marks a list
+    /// from before the background current again.
+    func testUpdatingStaysOutOfAPullAndAnyLiveCommitClearsTheBackgroundMark() {
+        let (appState, store, dashboard) = makeAppState()
+        seedChatList(store, dashboard: dashboard, sessions: [session("stored-a")])
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        XCTAssertTrue(appState.showsChatListUpdating)
+
+        appState.isRefreshingSessionCatalog = true
+        XCTAssertFalse(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = false
+
+        appState.noteStaleChatListRead(started: true)
+        appState.isConnecting = false
+        XCTAssertTrue(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = true
+        XCTAssertFalse(appState.showsChatListUpdating)
+        appState.isRefreshingSessionCatalog = false
+        appState.noteStaleChatListRead(started: false)
+        XCTAssertFalse(appState.showsChatListUpdating)
+
+        appState.chatListPredatesBackground = true
+        appState.savedChatListReplacedByLiveList(newestPageOnly: false, dashboardID: dashboard)
+        XCTAssertFalse(appState.chatListPredatesBackground)
+    }
+
     /// Issue 2706: a read over the live list says nothing (the list's
     /// polls), while one over a list from before the app went to the
     /// background says "Updating…" until it lands, failed or not.

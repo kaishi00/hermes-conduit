@@ -410,10 +410,13 @@ extension AppState {
     /// its way. Not during a pull to refresh, which has its own spinner, nor
     /// while the list has no rows and says it's loading.
     var showsChatListUpdating: Bool {
-        guard !isRefreshingSessionCatalog, !isLoadingChatList else { return false }
-        if isReadingStaleChatList { return true }
-        guard chatListShownIsStale else { return false }
-        return isConnecting || isProfileSwitching || turnState == .synchronizing
+        guard !isRefreshingSessionCatalog, !isLoadingChatList, chatListShownIsStale else { return false }
+        // A saved list with no rows says it has none, not that it's updating.
+        guard !listedSessions.isEmpty || !listedCronSessions.isEmpty else { return false }
+        // The count is the app's, not a scope's: it counts only while the
+        // scope on screen is stale, so another profile's read left running
+        // after a switch doesn't say it over a list that landed.
+        return isReadingStaleChatList || isConnecting || isProfileSwitching || turnState == .synchronizing
     }
 
     /// Counts a catalog read over a stale list in and out, publishing only
@@ -555,7 +558,6 @@ extension AppState {
             if listedSessions != sessions { sessions = listedSessions }
             if listedCron != cronSessions { cronSessions = listedCron }
             catalogCommitOwner = owner
-            chatListPredatesBackground = false
             settleNewChatAwaitingListing(loaded: loadedSessions)
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()

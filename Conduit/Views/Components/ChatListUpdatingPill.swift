@@ -41,6 +41,7 @@ struct ChatListUpdatingPill: View {
                 .padding(.bottom, 8)
                 .transition(reduceMotion ? .opacity : .move(edge: .bottom).combined(with: .opacity))
                 .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.updatesFrequently)
                 .accessibilityIdentifier("chats.updating")
             }
         }

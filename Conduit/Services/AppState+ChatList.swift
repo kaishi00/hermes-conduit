@@ -69,6 +69,9 @@ extension AppState {
     /// loads, so an older pinned chat doesn't blink out meanwhile.
     func savedChatListReplacedByLiveList(newestPageOnly: Bool, dashboardID: UUID?) {
         ResponsivenessSignposts.signposter.emitEvent("Live Chats list")
+        // Every commit of the live list comes through here (a list read and
+        // a chat sync alike): the rows are current again (issue 2706).
+        chatListPredatesBackground = false
         savableChatListScope = dashboardID.map { WidgetWorkspaceID(dashboardID: $0, profile: activeProfile) }
         if let dashboardID { prefetchSavedChats(dashboardID: dashboardID) }
         guard savedChatList != nil else { return }
