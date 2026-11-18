@@ -461,7 +461,8 @@ extension AppState {
     /// failed send's words on their way back to its chat's draft, which the
     /// switch keeps too (issue 2702). One with a file of its own (a waiting
     /// message, a shared draft, a dictation Retry) goes, since the file
-    /// brings it back on the next visit.
+    /// brings it back on the next visit. Words a server with no saved
+    /// dashboard sent back go too: nothing can show them from here on.
     func leaveComposerSends(dashboardID: UUID?, keepingWordsOnTheirWay: Bool = false) {
         forgetComposerSubmissionsOfUnknownDelivery()
         if let pending = pendingComposerSend, dashboardID == nil || pending.dashboardID == dashboardID {
@@ -470,7 +471,7 @@ extension AppState {
         }
         func leaves(_ request: ComposerRestoreRequest) -> Bool {
             guard dashboardID == nil || request.dashboardID == dashboardID else { return false }
-            return !keepingWordsOnTheirWay
+            return !keepingWordsOnTheirWay || request.dashboardID == nil
                 || request.pending != nil || request.sharedDraftID != nil || request.dictationClipID != nil
         }
         if composerRestoreRequests.contains(where: leaves) {

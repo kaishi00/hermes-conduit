@@ -52,6 +52,9 @@ final class ComposerDraftStore {
     /// How many times each dashboard's drafts went on their own (a sign-out
     /// of a dashboard not on screen).
     private var dashboardClearCounts: [UUID: UInt64] = [:]
+    /// How many times a server with no saved dashboard had its drafts go
+    /// on their own (a switch to a saved dashboard).
+    private var unsavedServerClearCount: UInt64 = 0
 
     init(capacity: Int = 12) {
         self.capacity = max(0, capacity)
@@ -125,9 +128,15 @@ final class ComposerDraftStore {
         removeDraftsKept(under: dashboard)
     }
 
-    /// Drafts kept under `dashboard` (nil: a server with no saved
-    /// dashboard) go, with no clear count moved: for ones nothing can load.
-    func removeDraftsKept(under dashboard: UUID?) {
+    /// The drafts a server with no saved dashboard left go: nothing can
+    /// load them once a saved dashboard is in use. Their clear count moves,
+    /// so a composer leaving that server doesn't save its draft back.
+    func removeUnsavedServerDrafts() {
+        unsavedServerClearCount &+= 1
+        removeDraftsKept(under: nil)
+    }
+
+    private func removeDraftsKept(under dashboard: UUID?) {
         for key in drafts.keys.filter({ $0.dashboard == dashboard }) {
             removeDraft(for: key)
         }
@@ -138,7 +147,7 @@ final class ComposerDraftStore {
     /// meanwhile doesn't put its words back, and the dashboard on screen's
     /// composer still keeps its draft (#2708).
     func clearCount(for dashboard: UUID?) -> UInt64 {
-        clearCount &+ (dashboard.flatMap { dashboardClearCounts[$0] } ?? 0)
+        clearCount &+ (dashboard.map { dashboardClearCounts[$0] ?? 0 } ?? unsavedServerClearCount)
     }
 
     func removeAll() {

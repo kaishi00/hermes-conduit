@@ -550,6 +550,26 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual(store.draft(for: laterOnB).text, "B later")
     }
 
+    func testASwitchToASavedDashboardStopsTheUnsavedServersDraftComingBack() {
+        // A server with no saved dashboard's drafts go at a switch to a saved
+        // one, and its leaving composer, loaded before, can't save it back.
+        let store = ComposerDraftStore()
+        let saved = UUID()
+        let unsaved = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")
+        let onSaved = ComposerDraftKey(dashboard: saved, profile: "default", sessionID: "one")
+        store.save(ComposerDraft(text: "unsaved", attachments: []), for: unsaved)
+        store.save(ComposerDraft(text: "saved", attachments: []), for: onSaved)
+        let loadedUnsaved = store.clearCount(for: nil)
+        let loadedSaved = store.clearCount(for: saved)
+
+        store.removeUnsavedServerDrafts()
+
+        XCTAssertTrue(store.draft(for: unsaved).isEmpty)
+        XCTAssertNotEqual(store.clearCount(for: nil), loadedUnsaved)
+        XCTAssertEqual(store.draft(for: onSaved).text, "saved")
+        XCTAssertEqual(store.clearCount(for: saved), loadedSaved)
+    }
+
     func testStoreEvictsTheOldestBucketWhenCapacityIsExceeded() {
         let store = ComposerDraftStore(capacity: 1)
         let first = ComposerDraftKey(dashboard: nil, profile: "default", sessionID: "one")

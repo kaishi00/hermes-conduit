@@ -1044,7 +1044,7 @@ extension AppState {
         // back too. The other saved dashboards' wait for them (issue 2702).
         if let activeDashboardID {
             forgetDrafts(ofDashboard: activeDashboardID)
-            composerDraftStore.removeDraftsKept(under: nil)
+            composerDraftStore.removeUnsavedServerDrafts()
         } else {
             composerDraftStore.removeAll()
             composerRestoreRequests = []

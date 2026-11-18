@@ -785,7 +785,7 @@ extension AppState {
         } else {
             // A server with no saved dashboard left drafts nothing can
             // load from here on.
-            composerDraftStore.removeDraftsKept(under: nil)
+            composerDraftStore.removeUnsavedServerDrafts()
         }
         return true
     }

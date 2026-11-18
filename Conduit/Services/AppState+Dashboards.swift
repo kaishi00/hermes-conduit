@@ -824,18 +824,19 @@ extension AppState {
         SavedDashboardRegistryStore.save(registry)
     }
 
-    /// Sign Out of This Dashboard: clears the dashboard's reusable
-    /// auth/session/cookie material — and nothing else. SavedDashboard
-    /// metadata and every other dashboard's state are untouched. For the
-    /// active dashboard this is the full Disconnect teardown, scoped.
-    /// A signed-out dashboard's unsent drafts, its rooms' words and files,
-    /// and words on their way back to them. The other dashboards' stay.
+    /// A dashboard's unsent drafts, its rooms' words, files and sends on
+    /// their way, and words on their way back to them, at its sign-out or
+    /// move to another server. The other dashboards' stay.
     func forgetDrafts(ofDashboard id: UUID) {
         composerDraftStore.removeDrafts(forDashboard: id)
         composerRestoreRequests.removeAll { $0.dashboardID == id }
         forgetRoomDrafts(dashboardID: id)
     }
 
+    /// Sign Out of This Dashboard: clears the dashboard's reusable
+    /// auth/session/cookie material — and nothing else. SavedDashboard
+    /// metadata and every other dashboard's state are untouched. For the
+    /// active dashboard this is the full Disconnect teardown, scoped.
     func signOutDashboard(_ id: UUID) {
         guard let dashboard = savedDashboardRegistry.dashboard(with: id) else { return }
         // A combined dashboard kept connected signs out too, and one
