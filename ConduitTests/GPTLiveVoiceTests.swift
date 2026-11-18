@@ -2665,6 +2665,24 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(appState.liveCallSpeaker, "furina")
         appState.finishVoiceCallRecording()
         XCTAssertNil(appState.liveCallSpeaker)
+
+        // A check left over from an earlier call never clears a newer
+        // call's bot, even the same bot (#2776's review).
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        let stale = try await appState.availabilityAsCallSpeaker({ $0 }) {
+            if appState.voiceCallSpeakerProfile == "furina", checked.count == 2 {
+                checked.append("restart")
+                appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+                return false
+            }
+            return true
+        }
+        XCTAssertTrue(stale)
+        XCTAssertEqual(appState.liveCallSpeaker, "furina", "The newer call keeps its bot")
+
+        // A hang-up with no recording (saving off) still lets the bot go.
+        appState.callEndedOffItsProfile()
+        XCTAssertNil(appState.liveCallSpeaker)
     }
 
     /// A live call keeps its profile once another one is on screen

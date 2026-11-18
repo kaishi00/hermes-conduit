@@ -33,7 +33,10 @@ final class HermesVoiceGateway: VoiceGatewayService {
     let profile: String
     /// The profile whose Hermes voice speaks replies: a Bot Chat's bot in a
     /// Classic call there (issue 2768), else `profile`. Transcription stays
-    /// on `profile`, whose speech-to-text the capability checks read.
+    /// on `profile`, whose speech-to-text the capability checks read, and so
+    /// does a speech server's speak socket: speech output is the profile in
+    /// use's choice, and its server is the one set up there, as Local Live
+    /// keeps the profile in use's server.
     let speechProfile: String
     /// The query parameter naming `profile` on the speech server's sockets
     /// (DashboardPath.conduitProfileParameter).

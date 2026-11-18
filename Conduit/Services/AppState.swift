@@ -3208,8 +3208,11 @@ final class AppState: ObservableObject {
     /// keys, voice, persona and memory, while the call's chat, jobs and
     /// settings stay on `liveCallProfile`. Nil for any other call, and once
     /// the bot couldn't start the call's mode (`availabilityAsCallSpeaker`).
-    /// Set and cleared with the call's recording.
+    /// Set as the call starts, cleared as it ends.
     var liveCallSpeaker: String?
+    /// The start that set `liveCallSpeaker`, so an availability check left
+    /// over from an earlier call never clears a newer call's bot.
+    var liveCallSpeakerStart = UUID()
     /// A call that ended off its profile hands its jobs back to the profile
     /// on screen once its hang-up has let go of what it asked to be called
     /// about (`callEndedOffItsProfile`); set while that waits.

@@ -394,6 +394,7 @@ extension AppState {
         liveCallProfile = activeProfile
         // A Bot Chat's call speaks as its bot (issue 2768).
         liveCallSpeaker = callSpeaker(for: voiceBackgroundJobSupervisor.liveThread)
+        liveCallSpeakerStart = UUID()
         // The call screen shows the jobs this call starts, saved or not.
         voiceBackgroundJobSupervisor.beginLiveCall(asksBeforeSending: liveCallStyle.asksBeforeSending)
         let resume = pendingVoiceResume

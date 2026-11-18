@@ -70,7 +70,8 @@ extension AppState {
         _ isAvailable: (Status) -> Bool,
         _ check: @MainActor () async throws -> Status
     ) async throws -> Status {
-        guard let bot = liveCallSpeaker else { return try await check() }
+        guard liveCallSpeaker != nil else { return try await check() }
+        let start = liveCallSpeakerStart
         do {
             let status = try await check()
             if isAvailable(status) { return status }
@@ -78,7 +79,7 @@ extension AppState {
             throw CancellationError()
         } catch {}
         // A newer call's start or a teardown changed the speaker meanwhile.
-        guard liveCallSpeaker == bot else { return try await check() }
+        guard liveCallSpeakerStart == start, liveCallSpeaker != nil else { return try await check() }
         liveCallSpeaker = nil
         return try await check()
     }
@@ -219,7 +220,11 @@ extension AppState {
     /// the ones still to tell, and the reset would cancel it. Its ledger
     /// isn't saved meanwhile, as the restored key is still the call's.
     func callEndedOffItsProfile() {
-        guard !isLiveCallUp, let ended = liveCallProfile else { return }
+        guard !isLiveCallUp else { return }
+        // Every hang-up passes here, saved or not, so the bot goes with the
+        // call even when no recording ran (issue 2768).
+        liveCallSpeaker = nil
+        guard let ended = liveCallProfile else { return }
         liveCallProfile = nil
         guard !Self.profilesMatch(ended, activeProfile) else { return }
         // Until the hand-back the jobs, their ledger and their requests stay
