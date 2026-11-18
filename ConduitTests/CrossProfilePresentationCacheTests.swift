@@ -1377,8 +1377,15 @@ extension CrossProfilePresentationCacheTests {
             paused.holds = true
             let pass = Task { @MainActor in await appState.readOtherCombinedDashboardsNeedsYou() }
             await waitUntil { paused.waiting != nil }
+            guard let waiting = paused.waiting else {
+                // Never reached the pause: nothing would resume it.
+                paused.holds = false
+                XCTFail("atlas's read never reached the pause")
+                await pass.value
+                return
+            }
             meanwhile()
-            paused.waiting?.resume()
+            waiting.resume()
             paused.waiting = nil
             await pass.value
         }

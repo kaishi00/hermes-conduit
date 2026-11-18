@@ -4517,6 +4517,18 @@ final class OfflineChatCacheTests: XCTestCase {
         handed.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "x", profile: handed.activeProfile, source: .resume)
         handed.setActiveSessionState(id: "x")
         XCTAssertNil(handed.rowOfChatOnScreen, "chat x isn't chat a")
+
+        // A row listed again under the recorded runtime id with another
+        // stored id is the chat Hermes gave that id to.
+        let (reused, _, _) = makeAppState()
+        var runtime = session("rt-a")
+        runtime.storedSessionId = "a"
+        reused.sessions = [runtime, session("c")]
+        reused.setActiveSessionState(id: "rt-a")
+        var other = session("rt-a")
+        other.storedSessionId = "b"
+        reused.sessions = [other, session("c")]
+        XCTAssertEqual(reused.rowOfChat(openAs: "rt-a")?.storedSessionId, "a", "the row as read, not chat b's")
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
@@ -4598,6 +4610,9 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(borrowed.applyBackgroundChatEvent(.messageDelta(sessionId: "x", text: " Not ours")),
                        "chat d's row lists the chat's id only as an alias")
         XCTAssertTrue(borrowed.applyBackgroundChatEvent(.messageDelta(sessionId: "a", text: " a time")))
+        // Nor does an id the index binds to chat d's own id.
+        borrowed.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-d", durableID: "d", profile: borrowed.activeProfile, source: .resume)
+        XCTAssertNil(borrowed.followedChatIndex(reboundTo: "rt-d"), "chat d's, not the chat whose id it lists")
 
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
