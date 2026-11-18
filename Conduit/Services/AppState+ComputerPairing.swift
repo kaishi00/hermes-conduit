@@ -27,7 +27,8 @@ struct ComputerPairingChoice: Identifiable, Equatable, CustomStringConvertible {
     static func choices(
         registry: SavedDashboardRegistry,
         credentials: (UUID) -> DashboardCredentials?,
-        tokens: (UUID) -> NativeOAuthTokenSet?
+        tokens: (UUID) -> NativeOAuthTokenSet?,
+        proxyHeaders: (SavedDashboard) -> [String: String] = { _ in [:] }
     ) -> [ComputerPairingChoice] {
         let ordered = registry.dashboards.filter { $0.id == registry.activeDashboardID }
             + registry.dashboards.filter { $0.id != registry.activeDashboardID }
@@ -40,6 +41,10 @@ struct ComputerPairingChoice: Identifiable, Equatable, CustomStringConvertible {
             } else if let set = tokens(dashboard.id), set.isSessionToken, !set.accessToken.isEmpty {
                 host = ComputerPairing.Host(url: dashboard.normalizedURL, method: .token, token: set.accessToken, name: name)
             }
+            // The computer needs the proxy's headers to reach the dashboard at
+            // all; like the phone it sends them over https only.
+            let headers = dashboard.normalizedURL.lowercased().hasPrefix("https://") ? proxyHeaders(dashboard) : [:]
+            if !headers.isEmpty { host?.headers = headers }
             return ComputerPairingChoice(
                 id: dashboard.id,
                 label: name ?? (URL(string: dashboard.normalizedURL)?.host ?? dashboard.normalizedURL),
@@ -58,7 +63,18 @@ extension AppState {
         ComputerPairingChoice.choices(
             registry: savedDashboardRegistry,
             credentials: { KeychainHelper.loadCredentials(dashboardID: $0) },
-            tokens: { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) }
+            tokens: { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) },
+            proxyHeaders: { dashboard in
+                var headers: [String: String] = [:]
+                for header in CustomHeaderPolicy.sendable(CustomHeaderStore.shared.headers(forServerURL: dashboard.normalizedURL)) {
+                    headers[header.name] = header.value
+                }
+                if let access = KeychainHelper.loadCloudflareAccess(dashboardID: dashboard.id, for: dashboard.normalizedURL), access.isConfigured {
+                    headers["CF-Access-Client-Id"] = access.clientID.trimmingCharacters(in: .whitespacesAndNewlines)
+                    headers["CF-Access-Client-Secret"] = access.clientSecret
+                }
+                return headers
+            }
         )
     }
 

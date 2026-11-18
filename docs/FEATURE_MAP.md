@@ -7293,11 +7293,12 @@ nothing there signs a computer in)
 
 **Code**
 - `Conduit/Services/ComputerPairing.swift` (ComputerPairingLink: the QR code's `conduit://pair?v=1&m&i&t&k&e`; ComputerPairing: payload, seal, words, send), `Conduit/Services/BIP39Words.swift`
-- `Conduit/Services/AppState+ComputerPairing.swift` (ComputerPairingChoice.choices: which saved dashboards go and how; routeComputerPairingLink), `Conduit/Services/AppState.swift` (pendingComputerPairing), `Conduit/ConduitApp.swift` (onOpenURL and the openURL action), `Conduit/Views/RootView.swift`
+- `Conduit/Services/AppState+ComputerPairing.swift` (ComputerPairingChoice.choices: which saved dashboards go and how, with their proxy's headers; routeComputerPairingLink), `Conduit/Services/AppState.swift` (pendingComputerPairing), `Conduit/ConduitApp.swift` (onOpenURL and the openURL action), `Conduit/Views/RootView.swift`
 - `Conduit/Views/PairComputerViews.swift` (PairComputerSheet, CodeScanPurpose.pairComputer, PairComputerText), `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail's section), `Conduit/Services/BiometricAuth.swift` (authenticateIfAvailable)
 - Tests: `ConduitTests/ConnectionSetupSettingsTests+ComputerPairing.swift` (the desktop app's word vector, the link, a seal opened as the desktop opens it, which dashboards go, the route a pairing link takes)
 
 **Rulings**
+- A proxy's headers go with a dashboard's sign-in: its Cloudflare Access service token and its valid extra headers (CustomHeaderPolicy.sendable), only for an https address. The desktop keeps them for that origin only, over HTTPS and WSS, never replacing a header Conduit sets (src/main/proxyHeaders.ts in hermes-conduit-desktop).
 - The phone sends its own sign-ins, sealed: Hermes' password sessions are stateless tokens a plugin can't mint per computer without the password, so the phone's saved password goes, or Hermes' session token (Eric, 2026-11-18, decision card). A browser or single sign-on sign-in's tokens belong to the phone and never go: that dashboard is listed as "Sign in on the computer".
 - The seal is X25519 with an ephemeral key, HKDF-SHA256 and AES-256-GCM with the inbox id in the associated data; AES-GCM because Electron's BoringSSL has no ChaCha20-Poly1305 in Node's cipher API. The words are the first 44 bits of a hash of both public keys, as four BIP39 words; the desktop's test vector and this suite's agree.
 - The dashboard in use is chosen by default, other saved ones are a tap each, even when the one in use can't be sent; sending asks the device owner (Face ID, Touch ID or the passcode; a phone with none set goes ahead).
@@ -7305,9 +7306,9 @@ nothing there signs a computer in)
 - A code lasts 10 minutes. The mailbox lets one client make only a few inboxes an hour, so the computer's new code keeps its inbox with a new key and send token; a box sent to an old code is refused ("replaced or ran out").
 
 **Open gaps**
-- Cloudflare Access service tokens and extra headers don't go: the desktop app doesn't send them yet, so a dashboard behind them needs signing in on the computer.
+- None.
 
-**Checked:** 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
+**Checked:** 2026-11-18, #PRNUM (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
 
 ## Another saved dashboard's address
 
