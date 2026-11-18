@@ -553,4 +553,44 @@ extension AppStateReadAloudTests {
 
         harness.readAloudController.stop()
     }
+
+    /// Issue 2768: a Bot Chat's message is read in its bot's voice, not the
+    /// active profile's, from the button and from Read replies aloud.
+    func testABotChatsRepliesSpeakAsItsBotWhicheverProfileIsActive() async {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        let app = harness.appState
+        var built: [String] = []
+        app.readAloudGatewayFactoryForTesting = { profile in
+            built.append(profile)
+            return MockVoiceGateway(pausesAfterEmission: true, profile: profile)
+        }
+        app.botChatSessionProfiles["bot-chat"] = "atlas"
+        app.activeSessionId = "bot-chat"
+        XCTAssertEqual(app.openChatReadAloudSpeaker, "atlas")
+
+        // The button.
+        let message = ChatMessage(id: "msg-a", role: .assistant, content: "Hello from Atlas", timestamp: "1")
+        app.toggleReadAloud(message: message)
+        XCTAssertEqual(harness.readAloudController.gateway?.profile, "atlas")
+        harness.readAloudController.stop()
+
+        // A workspace chat takes the active profile's voice back.
+        app.activeSessionId = "workspace-chat"
+        XCTAssertNil(app.openChatReadAloudSpeaker)
+        app.toggleReadAloud(message: ChatMessage(id: "msg-b", role: .assistant, content: "Hello", timestamp: "2"))
+        XCTAssertEqual(harness.readAloudController.gateway?.profile, "default")
+        harness.readAloudController.stop()
+
+        // Read replies aloud, back in the Bot Chat.
+        app.appDefaults.set(true, forKey: ReadRepliesAloud.preferenceKey)
+        app.activeSessionId = "bot-chat"
+        app.notifyVoiceAssistant(.started(sessionID: "bot-chat"))
+        app.notifyVoiceAssistant(.delta(sessionID: "bot-chat", text: "Here is the plan for today, step by step. "))
+        app.notifyVoiceAssistant(.completed(sessionID: "bot-chat", content: nil, alreadyShown: true))
+        await awaitUntil("the followed reply to read in the bot's voice") {
+            harness.readAloudController.gateway?.profile == "atlas" && built.count == 3
+        }
+        XCTAssertEqual(built, ["atlas", "default", "atlas"])
+        harness.readAloudController.stop()
+    }
 }
