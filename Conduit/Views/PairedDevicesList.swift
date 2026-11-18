@@ -13,10 +13,23 @@ struct PairedDevicesList: View {
     @State private var devices: [PushNotificationService.PairedDevice] = []
     @State private var working = false
     @State private var changeError: String?
+    @State private var loadError: String?
+    /// Bumped by each change, so a read that started before it can't put
+    /// back the list the change replaced.
+    @State private var generation = 0
 
     var body: some View {
         Group {
-            if !devices.isEmpty {
+            if devices.isEmpty, let loadError {
+                HStack(spacing: 8) {
+                    Label(loadError, systemImage: "exclamationmark.triangle.fill")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                    Spacer(minLength: 8)
+                    Button(AppLocalization.string("Try Again")) { Task { await load() } }
+                        .scaledFont(.footnote)
+                }
+            } else if !devices.isEmpty {
                 Text(AppLocalization.string("Devices notified", table: .settings))
                     .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
@@ -94,16 +107,26 @@ struct PairedDevicesList: View {
     }
 
     private func load() async {
-        guard let read = try? await appState.pairedDevices(profile) else { return }
-        devices = read
+        let started = generation
+        do {
+            let read = try await appState.pairedDevices(profile)
+            guard started == generation, !Task.isCancelled else { return }
+            devices = read
+            loadError = nil
+        } catch {
+            guard started == generation, !Task.isCancelled else { return }
+            loadError = UserFacingError.message(for: error)
+        }
     }
 
     private func change(_ run: @escaping () async throws -> [PushNotificationService.PairedDevice]) {
         Task {
             working = true
             changeError = nil
+            generation += 1
             do {
                 devices = try await run()
+                loadError = nil
                 Haptics.success()
             } catch {
                 changeError = UserFacingError.message(for: error)

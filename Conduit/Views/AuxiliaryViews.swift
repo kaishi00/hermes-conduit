@@ -4934,6 +4934,8 @@ private struct NotificationsSettingsDetail: View {
         }
         if everyDevice {
             PairedDevicesList(profile: profile, refreshToken: pairedDevicesRefresh)
+                // Another dashboard's or profile's list starts empty, not with this one's rows.
+                .id("\(appState.activeDashboardID?.uuidString ?? "")|\(profile)")
         }
     }
 
