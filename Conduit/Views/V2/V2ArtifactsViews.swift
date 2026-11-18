@@ -214,6 +214,7 @@ private struct ArtifactsList: View {
     @State private var saveFailure: String?
     /// Whether `saveFailure` is from Remove from Saved.
     @State private var removeFailed = false
+    @State private var shareFailed = false
 
     private struct OpenPage: Identifiable {
         let id = UUID()
@@ -342,6 +343,9 @@ private struct ArtifactsList: View {
             Button("OK", role: .cancel) { saveFailure = nil }
         } message: {
             Text(verbatim: saveFailure ?? "")
+        }
+        .alert(Text("Couldn't open the share sheet. Try again."), isPresented: $shareFailed) {
+            Button("OK", role: .cancel) {}
         }
     }
 
@@ -821,7 +825,14 @@ private struct ArtifactsList: View {
             }
         }
         if let url = item.url {
-            ShareLink(item: url) {
+            // Not a ShareLink: inside a context menu on iPad its popover
+            // has nothing left to anchor to and never shows (issue 2701).
+            Button {
+                let failed = $shareFailed
+                if !MediaPreviewPresenter.shared.presentShare(link: url, onRefused: { failed.wrappedValue = true }) {
+                    shareFailed = true
+                }
+            } label: {
                 Label("Share", systemImage: "square.and.arrow.up")
             }
             Button {

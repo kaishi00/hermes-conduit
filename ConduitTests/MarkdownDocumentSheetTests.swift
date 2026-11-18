@@ -79,4 +79,18 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         let missing = await MarkdownArtifact.load(path: "/Users/x/gone.md", dataURL: { _ in nil })
         XCTAssertNil(missing)
     }
+
+    /// The reader's Share and Open fall back to the presenter's share sheet
+    /// (not a ShareLink, which shows nothing from a menu on iPad, issue
+    /// 2701). A staged copy that's gone is a refusal the sheet turns into
+    /// an alert, never a quiet no-op.
+    @MainActor
+    func testShareOfAStagedCopyThatIsGoneIsRefused() {
+        let gone = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("notes.md")
+        var refused = false
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentShare(fileURL: gone) { refused = true })
+        XCTAssertFalse(refused, "a refusal up front is the return value, not the late callback")
+    }
 }

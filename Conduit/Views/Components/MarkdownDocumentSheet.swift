@@ -96,6 +96,7 @@ struct MarkdownDocumentSheet: View {
     @State private var showsSource = false
     @State private var shareURL: URL?
     @State private var shareDirectory: URL?
+    @State private var shareFailed = false
 
     var body: some View {
         NavigationStack {
@@ -113,6 +114,9 @@ struct MarkdownDocumentSheet: View {
         }
         .task { await stageForSharing() }
         .onDisappear { removeShareDirectory() }
+        .alert(AppLocalization.string("Couldn't open the share sheet. Try again."), isPresented: $shareFailed) {
+            Button(AppLocalization.string("OK"), role: .cancel) {}
+        }
     }
 
     private var reader: some View {
@@ -157,12 +161,16 @@ struct MarkdownDocumentSheet: View {
                     // for a reader that only registers a Share extension.
                     Button {
                         if !MediaPreviewPresenter.shared.presentOpenIn(fileURL: shareURL) {
-                            _ = MediaPreviewPresenter.shared.presentShare(fileURL: shareURL)
+                            share(shareURL)
                         }
                     } label: {
                         Label(AppLocalization.string("Open"), systemImage: "arrow.up.forward.app")
                     }
-                    ShareLink(item: shareURL) {
+                    // Not a ShareLink: inside a Menu on iPad its popover
+                    // has nothing left to anchor to and never shows (2701).
+                    Button {
+                        share(shareURL)
+                    } label: {
                         Label(AppLocalization.string("Share"), systemImage: "square.and.arrow.up")
                     }
                 } label: {
@@ -171,6 +179,16 @@ struct MarkdownDocumentSheet: View {
                 .accessibilityLabel(AppLocalization.string("Share"))
             }
         }
+    }
+
+    /// The system share sheet for the staged copy, or an alert saying it
+    /// couldn't open, never a tap that does nothing.
+    private func share(_ url: URL) {
+        let failed = $shareFailed
+        let presented = MediaPreviewPresenter.shared.presentShare(fileURL: url) {
+            failed.wrappedValue = true
+        }
+        if !presented { shareFailed = true }
     }
 
     /// Writes the text to a temporary `.md` so Open and Share hand over a
