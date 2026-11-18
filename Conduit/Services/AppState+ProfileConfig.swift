@@ -111,6 +111,8 @@ extension AppState {
             // A read that fails after a dashboard or profile switch belongs to
             // the settings page that was left; the one on screen has no error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return [:] }
+            // A read cancelled by leaving the page didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return keptProfileSettings(keys: keys) ?? keptDisplaySettings(keys: keys) }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return keptProfileSettings(keys: keys) ?? keptDisplaySettings(keys: keys)
         }
@@ -215,6 +217,8 @@ extension AppState {
             // Same fence as the success path: a failure from the dashboard or
             // profile switched away from is not the on-screen page's error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            // A read cancelled by leaving the page didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return nil }
             errorMessage = AppLocalization.string("Could not load model defaults: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -383,6 +387,8 @@ extension AppState {
             // A failure from the dashboard or profile switched away from is
             // not the on-screen page's error.
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            // A read cancelled by leaving the page didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return nil }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return nil
         }
@@ -428,6 +434,8 @@ extension AppState {
             return ProfileFallbackChain(delegationIn: config)
         } catch {
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            // A read cancelled by leaving the page didn't fail.
+            guard !UserFacingError.isCancellation(error) else { return nil }
             errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
             return nil
         }

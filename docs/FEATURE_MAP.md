@@ -5537,6 +5537,39 @@ Hermes' own RPC)
 
 **Checked:** 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2045 (a room's files go up as Hermes' own attachments through groups.attachment.upload, its timeout growing with the file as the plugin route's does); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-29, #1515 (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 
+## A read cancelled under it says nothing
+
+A page's read that ends because nobody waits for it any more (the page was
+left, a newer read took over) is not a failure, so it puts no error on
+screen. Conduit's error line is shared: a cancelled Settings read once showed
+"Could not load model defaults: That was interrupted before it finished" on
+the chat's composer (issue 2713).
+
+**Siblings:** the Model page's catalog and defaults (done) · profile
+settings, Fallback models and Delegate fallback models (done) · archived
+chats (done) · scheduled jobs (done) · Capabilities (done: dropped as
+superseded) · a project's chats (done) · the chats list and a chat's resume
+catalog read (done, already silent; now share the check) · the connector
+test (done earlier, #1574: it runs in its own task) · opening a group chat
+(not needed: a room the user opened that fails to load still says so) ·
+Watch, CarPlay and voice modes (not needed: their own cancel paths, see
+Classic's turn stops)
+
+**Code**
+- The check: `Conduit/Services/UserFacingError.swift` (isCancellation)
+- Page reads: `Conduit/Services/AppState+ProfileConfig.swift` (loadProfileSettings, loadProfileModelDefaults, loadProfileFallbackModels, loadDelegateFallbackModels), `Conduit/Services/AppState+OneChatTwoDevices.swift` (loadArchivedSessions), `Conduit/Services/AppState+ScheduledJobs.swift`, `Conduit/Services/AppState+Capabilities.swift` (loadCapabilities), `Conduit/Services/AppState+Projects.swift` (loadProjectSessions)
+- Chats list: `Conduit/Services/AppState+Session.swift`, `Conduit/Services/AppState+Reconciliation.swift`
+- Tests: `ConduitTests/UserFacingErrorTests.swift` (testCancellationIsToldApartFromFailure), `ConduitTests/AppStateMultiDashboardTests.swift` (testModelDefaultsReadCancelledByLeavingThePageSaysNothing)
+
+**Rulings**
+- A cancellation is Swift's `CancellationError`, URLSession's cancelled (as `URLError` or its NSError), or the asking task being cancelled; every read that writes `errorMessage` asks `UserFacingError.isCancellation` first and returns what it kept, or nothing (2026-11-18, #2720, issue 2713).
+- A request the user is waiting on that is cut off some other way (a dropped connection, a timeout) still says so in plain words.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-18, #2720.
+
 ## Phone change errors
 
 What Hermes and the user are told when a calendar, reminder or alarm change
