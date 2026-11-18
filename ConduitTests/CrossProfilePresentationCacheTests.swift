@@ -1617,17 +1617,36 @@ extension CrossProfilePresentationCacheTests {
 
     /// A strip chip whose profile its Hermes deleted since the last read
     /// switches nothing, leaves the strip and its chats and waits go;
-    /// neither dashboard's All changes (issue 2646).
+    /// neither dashboard's All changes, and a switch whose own list
+    /// doesn't name the profile leaves its All as it was (issue 2646).
     func testAStaleProfileChipOfAKeptDashboardSwitchesNothingAndLeavesTheStrip() async throws {
-        final class Lists { var profiles: [String] = ["default", "atlas"]; var fails = false; var reads = 0 }
+        final class Lists {
+            var profiles: [String] = ["default", "atlas"]
+            var fails = false
+            var reads = 0
+            var duringAtlasWaits: (@MainActor () -> Void)?
+        }
+        final class Loaded { weak var app: AppState?; var profiles: [String]? }
         let lists = Lists()
+        let loaded = Loaded()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.mintTicket = { _ in "fresh-ticket" }
+        // The switch's own profile list, as its Hermes gives it.
+        operations.loadProfiles = { if let profiles = loaded.profiles { loaded.app?.profiles = profiles } }
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        loaded.app = appState
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         appState.keptDashboardJSONReader = { bridge, path in
             XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            if path.contains(NeedsYouStore.path) {
+                guard path.contains("profile=atlas") else { return ["waiting": []] }
+                if let during = lists.duringAtlasWaits { await MainActor.run { during() } }
+                return ["waiting": [[
+                    "id": "w2", "kind": "approval", "session_ids": ["atlas-1"],
+                    "title": "Garden", "summary": "water", "at": 1_000,
+                ]]]
+            }
             if path == "/api/profiles" {
                 lists.reads += 1
                 if lists.fails { throw URLError(.timedOut) }
@@ -1664,12 +1683,14 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(unread)
         lists.fails = false
 
-        // Deleted on Mac's Hermes since.
+        // Deleted on Mac's Hermes since, after a visit there left it
+        // remembered.
+        appState.rememberActiveProfile("atlas", for: mac.id)
         lists.profiles = ["default"]
         let switched = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas")
         XCTAssertFalse(switched)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "nothing switches")
-        XCTAssertNotEqual(appState.rememberedActiveProfile(for: mac.id), "atlas", "nor resumes there on it later")
+        XCTAssertNil(appState.rememberedActiveProfile(for: mac.id), "nor resumes there on it later")
         XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: mac.id].isOn, "its All stays on")
         XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: vps.id].isOn, "this one's too")
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id), [
@@ -1677,6 +1698,23 @@ extension CrossProfilePresentationCacheTests {
         ], "the chip leaves the strip")
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.sessions.map(\.id), ["default-1"], "its chats leave All")
         XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "its waits leave Needs you")
+
+        // A waits pass that read the old list before the tap brings none
+        // of its waits back.
+        lists.profiles = ["default", "atlas"]
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        lists.duringAtlasWaits = { appState.keptDashboardProfiles[mac.id]?.profiles = ["default"] }
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertNil(appState.needsYou.otherDashboards[mac.id], "the deleted profile's wait stays out")
+        lists.duringAtlasWaits = nil
+
+        // Listed when tapped, but not by the switch's own list: its All
+        // stays as it was and nothing is picked.
+        loaded.profiles = ["default"]
+        let landed = await appState.switchForCombinedProfile(in: mac.id, profile: "atlas")
+        XCTAssertFalse(landed)
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertTrue(appState.allProfilesChatsSettings[dashboard: mac.id].isOn, "its All stays on")
         appState.allProfilesChatsSettings[dashboard: vps.id] = AllProfilesChatsSettings.Dashboard()
         appState.allProfilesChatsSettings[dashboard: mac.id] = AllProfilesChatsSettings.Dashboard()
     }

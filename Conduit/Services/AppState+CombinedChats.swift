@@ -294,6 +294,12 @@ extension AppState {
             )
         }
         needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))
+        // A visit there before the deletion left it remembered: the next
+        // switch there resumes on one it lists, not on the deleted one.
+        if let remembered = rememberedActiveProfile(for: dashboardID),
+           !listed.contains(where: { profilesMatch($0, remembered) }) {
+            forgetActiveProfile(for: dashboardID)
+        }
         return false
     }
 }

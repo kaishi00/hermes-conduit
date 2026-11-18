@@ -82,6 +82,9 @@ extension AppState {
                 // Let go, or opened, while the read was out: not this pass's.
                 guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id else { break }
                 guard let listed = response?["waiting"] as? [[String: Any]] else { continue }
+                // A profile a strip tap found deleted while the read was
+                // out stays gone (issue 2646).
+                guard currentKeptProfiles(id, else: profiles).contains(profile) else { continue }
                 needsYou.applyOther(
                     listed.compactMap { NeedsYouItem(host: $0, profile: profile) },
                     profile: profile,
@@ -90,9 +93,15 @@ extension AppState {
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
-                needsYou.forgetOther(id, profilesOtherThan: Set(profiles))
+                needsYou.forgetOther(id, profilesOtherThan: Set(currentKeptProfiles(id, else: profiles)))
             }
         }
+    }
+
+    /// A kept dashboard's profiles as last read, a read since the pass
+    /// began included; the pass's own list when none is kept.
+    private func currentKeptProfiles(_ id: UUID, else profiles: [String]) -> [String] {
+        keptDashboardProfiles[id]?.profiles ?? profiles
     }
 
     /// How long a kept dashboard's profile list stands before a pass reads
