@@ -597,6 +597,8 @@ extension AppState {
         // this open fail, later passes may try it again.
         combinedSignInsRefused.remove(id)
         dashboardSwitchGeneration &+= 1
+        // Usage Details is about a row of the dashboard left (issue 2740).
+        if sessionUsageTarget != nil { sessionUsageTarget = nil }
         let generation = dashboardSwitchGeneration
         let previousDashboardID = activeDashboardID
         chatSyncSettledDashboardID = nil

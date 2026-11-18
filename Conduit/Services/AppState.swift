@@ -589,6 +589,9 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // Usage Details too: it counts as covering the chat, so
+                    // the new one's notifications would stay (issue 2740).
+                    if sessionUsageTarget != nil { sessionUsageTarget = nil }
                     // A failed send's line under the composer was the chat
                     // left's; a reconnect's new id for the same one keeps it.
                     if let failure = sendFailureShown {
