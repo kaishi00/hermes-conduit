@@ -47,10 +47,22 @@ enum BiometricAuth {
         guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else {
             return false
         }
-        return await withCheckedContinuation { continuation in
+        return await evaluate(context, reason: reason)
+    }
+
+    private static func evaluate(_ context: LAContext, reason: String) async -> Bool {
+        await withCheckedContinuation { continuation in
             context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { success, _ in
                 continuation.resume(returning: success)
             }
         }
+    }
+
+    /// As `authenticate`, but a phone with no passcode, Face ID or Touch ID
+    /// set up has nothing to ask, so it goes ahead (Pair a Computer).
+    static func authenticateIfAvailable(reason: String) async -> Bool {
+        let context = LAContext()
+        guard context.canEvaluatePolicy(.deviceOwnerAuthentication, error: nil) else { return true }
+        return await evaluate(context, reason: reason)
     }
 }

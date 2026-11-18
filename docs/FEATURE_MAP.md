@@ -7248,7 +7248,7 @@ and the page title · the legacy Settings sheet (Gateway, under Connection) ·
 the chat's Gateway sheet · Diagnostics & logs, pushed from the page, and its
 sheet from the sign-in screen (first launch and the saved dashboards list) ·
 README.md (Cloudflare Access) · the notifier's support page · the website's
-setup page (setup/index.html in hermes-conduit-website) · the Hermes section (done, #2364: the host's version, whether it's behind and what's new, Check for Updates and Update Hermes, Hermes Desktop's updater) · the plugin update (not needed: the plugin's own notice and update)
+setup page (setup/index.html in hermes-conduit-website) · the Hermes section (done, #2364: the host's version, whether it's behind and what's new, Check for Updates and Update Hermes, Hermes Desktop's updater) · the plugin update (not needed: the plugin's own notice and update) · Pair a Computer (its own entry, Pairing a computer)
 
 **Code**
 - Rows and page: `Conduit/Views/AuxiliaryViews.swift` (SettingsHome: v2Groups, classicGroups and their row views, GatewaySettingsDetail and its title)
@@ -7270,7 +7270,43 @@ setup page (setup/index.html in hermes-conduit-website) · the Hermes section (d
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-14, #2450 (the Extra headers editor says when an Authorization header is left off and README covers proxies that need it, issue 2442; its code and tests listed); 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-18, #2716 (the page gained the Pair a Computer section; see Pairing a computer); 2026-11-14, #2450 (the Extra headers editor says when an Authorization header is left off and README covers proxies that need it, issue 2442; its code and tests listed); 2026-11-13, #2384 (the host restarts exclude each other, issue 2373: Restart Gateway here, in the chat's Gateway sheet and the Plugins tab, Restart now, the plugin update and Update Hermes; tested in GatewayRestartTests+HermesUpdate); 2026-11-13, #2364 (the Hermes section: version, Check for Updates and Update Hermes; Restart Gateway, Diagnostics and the chat's Gateway sheet unchanged; README and the support page needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+
+## Pairing a computer
+
+Conduit for Windows and Mac (hermes-conduit-desktop) signs in by scanning its
+QR code with the phone: the phone sends that computer its Hermes sign-ins,
+sealed to the computer's key, through a one-time inbox on the rooms mailbox,
+and both screens show the same four words before the computer signs in.
+
+**Siblings:** Settings > Connection's Pair a Computer section (V2's Settings
+and the legacy sheet share the page, see Settings connection page) · the Camera reading the code, which opens Conduit at Pair a Computer, and a
+pairing link tapped in Conduit, which opens it too · the desktop
+app's sign-in screen and Settings > Add another Hermes (Pair with your iPhone;
+src/main/pairCrypto.ts and src/main/pairing.ts in hermes-conduit-desktop
+seal and open the same box) · the rooms mailbox (`notifier/mailbox/src/server.mjs`, used
+as it is: one inbox, one `phone` sender) · Face ID for saved dashboards
+(sending asks the device owner first, whatever that setting) · the text that
+describes it (the page's captions, README.md's feature list, the desktop
+app's pairing panel) · Watch, CarPlay, widgets and the notifier (not needed:
+nothing there signs a computer in)
+
+**Code**
+- `Conduit/Services/ComputerPairing.swift` (ComputerPairingLink: the QR code's `conduit://pair?v=1&m&i&t&k&e`; ComputerPairing: payload, seal, words, send), `Conduit/Services/BIP39Words.swift`
+- `Conduit/Services/AppState+ComputerPairing.swift` (ComputerPairingChoice.choices: which saved dashboards go and how; routeComputerPairingLink), `Conduit/Services/AppState.swift` (pendingComputerPairing), `Conduit/ConduitApp.swift` (onOpenURL and the openURL action), `Conduit/Views/RootView.swift`
+- `Conduit/Views/PairComputerViews.swift` (PairComputerSheet, CodeScanPurpose.pairComputer, PairComputerText), `Conduit/Views/AuxiliaryViews.swift` (GatewaySettingsDetail's section), `Conduit/Services/BiometricAuth.swift` (authenticateIfAvailable)
+- Tests: `ConduitTests/ConnectionSetupSettingsTests+ComputerPairing.swift` (the desktop app's word vector, the link, a seal opened as the desktop opens it, which dashboards go, the route a pairing link takes)
+
+**Rulings**
+- The phone sends its own sign-ins, sealed: Hermes' password sessions are stateless tokens a plugin can't mint per computer without the password, so the phone's saved password goes, or Hermes' session token (Eric, 2026-11-18, decision card). A browser or single sign-on sign-in's tokens belong to the phone and never go: that dashboard is listed as "Sign in on the computer".
+- The seal is X25519 with an ephemeral key, HKDF-SHA256 and AES-256-GCM with the inbox id in the associated data; AES-GCM because Electron's BoringSSL has no ChaCha20-Poly1305 in Node's cipher API. The words are the first 44 bits of a hash of both public keys, as four BIP39 words; the desktop's test vector and this suite's agree.
+- The dashboard in use is chosen by default, other saved ones are a tap each, even when the one in use can't be sent; sending asks the device owner (Face ID, Touch ID or the passcode; a phone with none set goes ahead).
+- A code lasts 10 minutes. The mailbox lets one client make only a few inboxes an hour, so the computer's new code keeps its inbox with a new key and send token; a box sent to an old code is refused ("replaced or ran out").
+
+**Open gaps**
+- Cloudflare Access service tokens and extra headers don't go: the desktop app doesn't send them yet, so a dashboard behind them needs signing in on the computer.
+
+**Checked:** 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
 
 ## Another saved dashboard's address
 
