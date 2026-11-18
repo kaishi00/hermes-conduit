@@ -86,6 +86,7 @@ extension AppState {
         let mark = botChatMarks[name]
         botChatMarks[name] = ((mark?.taps ?? 0) + 1, (mark?.pushed ?? false) || pushed)
         botChatLatestMark = name
+        botChatOpenRequests &+= 1
         botChatMarkedComing = label.map { BotChatMarkedComing(bot: name, label: $0) }
         dismissSidebarDrawer()
     }

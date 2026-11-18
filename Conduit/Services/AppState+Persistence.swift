@@ -630,6 +630,9 @@ extension AppState {
             )
             return
         }
+        // A Bot Chat with no copy of its own shows none: never a workspace
+        // transcript that happens to share its id.
+        if let sessionID = activeSessionId, botConversationProfile(for: sessionID) != nil { return }
         guard let snapshot,
               !snapshot.transcripts.isEmpty || !snapshot.sessions.isEmpty else { return }
         let displayed = Self.launchTranscriptID(in: snapshot, resuming: activeSessionId)

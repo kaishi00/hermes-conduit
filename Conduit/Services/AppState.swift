@@ -1016,9 +1016,10 @@ final class AppState: ObservableObject {
     /// open begins its navigation (`botChatOnItsWay` takes over there): the
     /// screen pushed as the list closes is covered from its first frame.
     @Published var botChatMarkedComing: BotChatMarkedComing?
-    /// Counts the Bot Chat opens from a link or card (`openLinkedBotChat`):
-    /// one waiting for the connection stands down for a newer one.
-    var linkedBotChatOpens = 0
+    /// Counts the Bot Chat opens asked for, a list's tap
+    /// (`beginOpeningBotChat`) or a link's or card's (`openLinkedBotChat`):
+    /// one waiting for the connection stands down for any newer one.
+    var botChatOpenRequests = 0
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?

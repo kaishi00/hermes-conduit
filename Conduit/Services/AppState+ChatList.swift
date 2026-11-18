@@ -508,10 +508,15 @@ extension AppState {
     /// A copy read from the phone, unless one is kept for its bot already or
     /// memory holds as many as it keeps. Its rows go through the same
     /// presentation as one kept this run.
+    /// `opening`: the copy of the chat opening now, which takes the place of
+    /// the least recently kept one when memory is full.
     @discardableResult
-    private func addKeptBotChatCopy(_ copy: SavedBotChatCopy, dashboardID: UUID) -> KeptBotChatCopy? {
+    private func addKeptBotChatCopy(_ copy: SavedBotChatCopy, dashboardID: UUID, opening: Bool = false) -> KeptBotChatCopy? {
         let key = Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: copy.bot)
         if let kept = keptBotChatCopies[key] { return kept }
+        if opening, let oldest = Self.keptBotChatCopyToDrop(keptAt: keptBotChatCopies.mapValues(\.transcript.savedAt), adding: key) {
+            keptBotChatCopies[oldest] = nil
+        }
         guard keptBotChatCopies.count < Self.maxKeptBotChatCopies else { return nil }
         let kept = KeptBotChatCopy(sessionIDs: Set(copy.sessionIDs), transcript: copy.transcript)
         keptBotChatCopies[key] = kept
@@ -529,7 +534,7 @@ extension AppState {
         if let inMemory = keptBotChatCopies[key] {
             kept = inMemory
         } else if let saved = offlineChatCache.loadBotChatCopy(dashboardID: dashboardID, bot: bot) {
-            kept = addKeptBotChatCopy(saved, dashboardID: dashboardID)
+            kept = addKeptBotChatCopy(saved, dashboardID: dashboardID, opening: true)
                 ?? KeptBotChatCopy(sessionIDs: Set(saved.sessionIDs), transcript: saved.transcript)
         } else {
             return nil
@@ -585,7 +590,12 @@ extension AppState {
         // Spelled as the registry spells the bot the copy was kept for.
         guard let dashboardID = activeDashboardID,
               let bot = ChatResumeStore.rpcProfileName(bot),
-              let kept = keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)],
+              // From the phone when memory doesn't hold it: memory was full
+              // with another dashboard's, or the read of this dashboard's
+              // copies was cut short by a removal.
+              let kept = keptBotChatCopies[Self.keptBotChatCopyKey(dashboardID: dashboardID, bot: bot)]
+                ?? offlineChatCache.loadBotChatCopy(dashboardID: dashboardID, bot: bot)
+                    .flatMap({ addKeptBotChatCopy($0, dashboardID: dashboardID, opening: true) }),
               kept.sessionIDs.contains(sessionID) else { return }
         // Under the id it opens as, the Bot Chat's own: the one it was kept
         // under was that run's runtime id, and words typed while it opens

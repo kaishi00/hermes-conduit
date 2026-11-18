@@ -181,17 +181,25 @@ struct V2VoiceButtonInputs: Equatable {
         composerTakesVoice = composerIsEnabled && !voiceInUse
         composerTakesVoiceOnceSynced = composerEnabledOnceSynced && !voiceInUse
         unavailableReason = appState.phoneVoiceUnavailableReason
+        // A live mode is off while Conduit reconnects, which a resync the
+        // composer waits on is: once synced it is connected again.
+        let blockedOnceSynced = appState.isPreparingVoiceResume || voiceInUse
+            || (unavailableReason != nil
+                && !(appState.composerWaitsForResync && unavailableReason == VoiceSetupIssue.notConnected.message))
         if appState.isPreparingVoiceResume || unavailableReason != nil || voiceInUse {
             canStartCall = false
-            canStartCallOnceSynced = false
         } else if context == .conversation {
             // In a chat, like the composer's voice button: not mid-sync, and a
             // running reply only holds back classic voice.
-            let waitsForTurn = appState.voiceWaitsForRunningTurn
-            canStartCall = composerIsEnabled && !waitsForTurn
-            canStartCallOnceSynced = composerEnabledOnceSynced && !waitsForTurn
+            canStartCall = composerIsEnabled && !appState.voiceWaitsForRunningTurn
         } else {
             canStartCall = true
+        }
+        if blockedOnceSynced {
+            canStartCallOnceSynced = false
+        } else if context == .conversation {
+            canStartCallOnceSynced = composerEnabledOnceSynced && !appState.voiceWaitsForRunningTurn
+        } else {
             canStartCallOnceSynced = true
         }
         if context == .home {

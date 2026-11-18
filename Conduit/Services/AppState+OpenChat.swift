@@ -276,11 +276,12 @@ extension AppState {
         let writes = errorMessageWrites
         let epoch = botRosterEpoch
         let waited = !(client != nil && isConnected) && isRecoveringConnection
+        let request = botChatOpenRequests
         _ = await connectionComesUp(within: connectionWait)
         // While it waited, a newer tap or navigation took over, or the
         // list came back (Back): this tap stands down, saying nothing.
         let outcome: BotChatOpenOutcome
-        if waited, epoch != botRosterEpoch || botChatLatestMark != bot.name
+        if waited, epoch != botRosterEpoch || botChatLatestMark != bot.name || request != botChatOpenRequests
             || (showSidebar && botChatMarks[bot.name]?.pushed == true) {
             outcome = .superseded
         } else {

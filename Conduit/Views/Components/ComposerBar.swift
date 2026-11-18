@@ -457,6 +457,10 @@ struct ComposerBar: View {
         action == .stop
     }
 
+    private var looksStopOnly: Bool {
+        lookAction == .stop
+    }
+
     /// Return and ⌘Return send only from the chat on screen: not a hidden
     /// tab's, one split Settings covers, or one a Bot Chat on its way covers.
     private var returnKeysReachChat: Bool {
@@ -481,7 +485,7 @@ struct ComposerBar: View {
         Self.showsEmptyDraftSend(
             action: lookAction,
             voiceButtonBeside: keepsVoiceButtonBeside,
-            composerIsEnabled: appState.composerIsEnabled || resyncHoldsLook
+            composerIsEnabled: appState.composerIsEnabled || heldLook != nil
         )
     }
 
@@ -848,10 +852,12 @@ struct ComposerBar: View {
                         dictateButton
                             .conduitFixedGlyph()
                             .padding(.leading, 6)
-                            .padding(.trailing, stopOnly ? Self.controlSpacing - Self.restingRowSpacing : 4)
+                            .padding(.trailing, looksStopOnly ? Self.controlSpacing - Self.restingRowSpacing : 4)
                             .transition(.opacity)
                     }
-                    if rests && stopOnly {
+                    // Its look held through a short resync (`lookAction`);
+                    // its tap acts on the live action only.
+                    if rests && looksStopOnly {
                         // Without the mic beside it, clear of the field by
                         // half a gap, so its 44 pt hit shape never reaches
                         // over the field (a tap there would stop the turn).
@@ -1262,7 +1268,7 @@ struct ComposerBar: View {
     /// words coming back with nothing said (issue 2095).
     private var showsStateNotice: Bool {
         let hasError = !(appState.errorMessage ?? "").isEmpty
-        guard !appState.composerIsEnabled, !resyncHoldsLook else { return hasError }
+        guard !appState.composerIsEnabled, heldLook == nil else { return hasError }
         guard appState.composerWaitsForChat else { return true }
         return hasError || showsRepairConnection
     }
@@ -1271,7 +1277,7 @@ struct ComposerBar: View {
     /// Not through a resync shorter than `ResyncGrace.duration` (every
     /// return to the app has one): the line came and went on each return.
     private var showsSyncingLine: Bool {
-        !appState.composerIsEnabled && !appState.composerWaitsForChat && !resyncHoldsLook
+        !appState.composerIsEnabled && !appState.composerWaitsForChat && heldLook == nil
     }
 
     private var showsRepairConnection: Bool {
@@ -1715,7 +1721,7 @@ struct ComposerBar: View {
     private var composerActionFace: some View {
         HStack(spacing: 6) {
             Image(systemName: actionSymbol)
-                .font(.system(size: lookAction == .stop ? 12 : 14, weight: .semibold))
+                .font(.system(size: looksStopOnly ? 12 : 14, weight: .semibold))
                 .contentTransition(.symbolEffect(.replace))
             if let actionTitle {
                 Text(actionTitle)
