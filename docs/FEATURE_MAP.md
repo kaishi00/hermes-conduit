@@ -7308,7 +7308,7 @@ nothing there signs a computer in)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-18, #PRNUM (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
+**Checked:** 2026-11-18, #2734 (a dashboard's Cloudflare Access service token and extra headers go with its sign-in, https only, and the desktop sends them as the phone does, hermes-conduit-desktop #11; the gap closed); 2026-11-18, #2731 (the captions' translations name the desktop's own translated buttons, Pair with your iPhone, They match, sign in and They don’t match, from hermes-conduit-desktop #10); 2026-11-18, #2716 (added, with hermes-conduit-desktop #8; GLM's review: only the dashboard in use is chosen by default, a link tapped in Conduit opens it)
 
 ## Another saved dashboard's address
 
