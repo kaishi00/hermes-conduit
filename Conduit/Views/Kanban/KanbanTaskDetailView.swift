@@ -1367,9 +1367,9 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isRequeuing, !isAddingComment, !isUnblocking else { return }
         let expectedID = displayedTaskID
-        // The second step lands only on the board the first one did: a
-        // board change between them leaves the note posted and the step
-        // undone, said as a partial success.
+        // Both steps land only on the board the sheet showed when tapped: a
+        // change before the note posts nothing, and one between the steps
+        // leaves the note posted and the step undone (partial success).
         let startedBoard = store.loadedContextStamp
         isRequeuing = true
         errorMessage = nil
@@ -1380,7 +1380,10 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
             reclaim: {
                 try requireBoard(startedBoard)
                 try await store.reclaimTask(taskID: expectedID)
@@ -1410,9 +1413,9 @@ struct KanbanTaskDetailView: View {
         let text = comment.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !isUnblocking, !isAddingComment, !isRequeuing else { return }
         let expectedID = displayedTaskID
-        // The second step lands only on the board the first one did: a
-        // board change between them leaves the note posted and the step
-        // undone, said as a partial success.
+        // Both steps land only on the board the sheet showed when tapped: a
+        // change before the note posts nothing, and one between the steps
+        // leaves the note posted and the step undone (partial success).
         let startedBoard = store.loadedContextStamp
         isUnblocking = true
         errorMessage = nil
@@ -1423,7 +1426,10 @@ struct KanbanTaskDetailView: View {
         }
         let outcome = await KanbanNoteAndRequeueFlow.perform(
             text: text,
-            postComment: { body in try await store.addComment(taskID: expectedID, body: body) },
+            postComment: { body in
+                try requireBoard(startedBoard)
+                try await store.addComment(taskID: expectedID, body: body)
+            },
             reclaim: {
                 try requireBoard(startedBoard)
                 _ = try await store.updateTask(id: expectedID, patch: KanbanTaskPatch(status: "ready"))
