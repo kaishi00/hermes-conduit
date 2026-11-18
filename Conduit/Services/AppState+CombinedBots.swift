@@ -453,6 +453,10 @@ extension AppState {
         // portrait stays where it is through the switch (the group's one
         // order), now this dashboard's, under the same name.
         if zooms { botZoom.tap(bot.name) }
+        // Each tap counts, so a second combined tap during the switch is the
+        // later choice over the first.
+        botChatOpenRequests &+= 1
+        let request = botChatOpenRequests
         Task { @MainActor [weak self] in
             guard let self else { return }
             // Its chat opens as soon as this connection has read the roster
@@ -468,6 +472,9 @@ extension AppState {
                 if zooms { self.botZoom.openFailed(bot.name) }
                 return
             }
+            // A list tap or link made during the switch is the later
+            // choice (`botChatOpenRequests`); its own open owns the zoom.
+            guard request == self.botChatOpenRequests else { return }
             self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
         }
     }
