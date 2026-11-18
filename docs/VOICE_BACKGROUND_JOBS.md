@@ -111,7 +111,18 @@ a job. At most three jobs run at once.
   after two successful reads omit it. If Hermes confirms it ended or its
   session is gone, Conduit reads any saved reply and releases the job slot.
   A gone session without a reply shows as unavailable; a connection error
-  or an answer that cannot confirm its state leaves the job supervised.
+  or an answer that cannot confirm its state leaves the job supervised, as
+  does a gone session whose history couldn't be read. A check that keeps
+  getting no answer waits 1, 3, 7 and then 8 polls before the next, and any
+  sign of life (an event, a listing, a running answer) starts it over and
+  overrides a check already on its way. A reply read from a chat other
+  turns share (a call's chat turn, a continued chat, the request whose chat a call took, a Watch call's first request) is the job's only when
+  it answers a message the job sent there. A read that doesn't reach the
+  reply's message (a page with the reply but not what it answers) is still
+  taken, unchecked, as before; and one answering another message after a
+  read of the chat's other id failed counts as a failed read. Matching is
+  by the message's words, so a request said twice in the same chat can't
+  be told from its earlier copy.
   Cancelling a session Hermes no longer knows removes the stale job too.
 - Approvals and clarifications stay where they are today: the job's chat and
   the push notification. Voice only says that the job is waiting. Voice

@@ -120,6 +120,12 @@ final class FakeVoiceJobBackend {
     var threadBusyDelay: Duration?
     var threadSubmitError: Error?
     var threadReply: String?
+    /// The user's message the read reply answers, when the read reaches it.
+    var threadReplyPrompt: String?
+    /// Reads of the chat's history fail.
+    var threadReplyFails = false
+    /// A read of another of the chat's ids failed before the reply came.
+    var threadReplyPartial = false
     /// The runtime the chat resumes onto; nil keeps the target's own.
     var threadRuntime: String?
     /// Thrown when the chat's runtime is resolved (a deleted chat's resume).
@@ -264,7 +270,8 @@ final class FakeVoiceJobBackend {
             latestThreadReply: { [self] chat in
                 self.replyReads.append(chat)
                 self.onLatestReply?()
-                return self.threadReply
+                if self.threadReplyFails { return .failed }
+                return self.threadReply.map { .reply($0, prompt: self.threadReplyPrompt, partial: self.threadReplyPartial) } ?? .noReply
             },
             latestThreadPrompt: { [self] _ in self.threadPrompt },
             isBotChat: { [self] _ in self.botChat },
@@ -2542,6 +2549,114 @@ extension VoiceConversationControllerTests {
         guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
         XCTAssertEqual(supervisor.jobs.first?.threadTurnSubmitted, true)
         supervisor.detachLiveThread()
+    }
+
+    func testAThreadTurnSettledByThePollNeverTakesAnEarlierTurnsReply() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.threadReply = "The earlier answer."
+        fake.threadReplyPrompt = "what's the weather"
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+        XCTAssertNil(supervisor.jobs.first?.result, "that reply answered a message the turn never sent")
+
+        // The turn's own reply, read with the message it answers, is taken.
+        let (own, ownFake) = makeThreadSupervisor()
+        ownFake.threadReply = "Build is green."
+        ownFake.threadReplyPrompt = VoiceBackgroundJobSupervisor.threadTurnText(for: "check the build")
+        _ = own.startThreadTurn(request: "check the build")
+        guard await waitFor({ own.jobs.first?.status == .running }) else { return }
+        await own.pollOnce()
+        await own.pollOnce()
+        XCTAssertEqual(own.jobs.first?.result, "Build is green.")
+        supervisor.detachLiveThread()
+        own.detachLiveThread()
+    }
+
+    func testAHistoryReadTellsAGoneChatFromAFailedRead() {
+        func kind(_ error: Error) -> String {
+            switch AppState.voiceHistoryRead(failingWith: error) {
+            case .page: return "page"
+            case .notFound: return "notFound"
+            case .failed: return "failed"
+            }
+        }
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 404, detail: "")), "notFound")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 410, detail: "")), "notFound")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.http(status: 500, detail: "")), "failed")
+        XCTAssertEqual(kind(DashboardTicketBridgeError.signInRequired), "failed")
+        XCTAssertEqual(kind(URLError(.timedOut)), "failed")
+    }
+
+    func testAGoneJobWhoseHistoryReadFailsStaysSupervised() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        fake.threadReplyFails = true
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "a failed read doesn't show the chat has no reply")
+        XCTAssertEqual(fake.replyReads.count, 1)
+
+        // The next check waits a poll, as an unanswered one does.
+        fake.threadReplyFails = false
+        await supervisor.pollOnce()
+        XCTAssertEqual(supervisor.jobs.first?.status, .running)
+        XCTAssertEqual(fake.replyReads.count, 1)
+        // The next read gets through and finds nothing: now it's unavailable.
+        for _ in 0..<3 where supervisor.jobs.first?.status == .running { await supervisor.pollOnce() }
+        XCTAssertEqual(supervisor.jobs.first?.status, .failed(AppLocalization.string("That chat is no longer available.")))
+    }
+
+    func testAnUnansweredSessionCheckWaitsLongerEachTime() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningResult = nil
+
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        XCTAssertEqual(fake.sessionReads.count, 1)
+        // One poll skipped after the first unanswered check, three after the second.
+        await supervisor.pollOnce()
+        XCTAssertEqual(fake.sessionReads.count, 1)
+        await supervisor.pollOnce()
+        XCTAssertEqual(fake.sessionReads.count, 2)
+        for _ in 0..<3 { await supervisor.pollOnce() }
+        XCTAssertEqual(fake.sessionReads.count, 2)
+        await supervisor.pollOnce()
+        XCTAssertEqual(fake.sessionReads.count, 3)
+
+        // A sign of life starts the checks over.
+        supervisor.observe(.messageDelta(sessionId: "rt-gone", text: "…"))
+        fake.sessionRunningResult = false
+        fake.threadReply = "Done."
+        await supervisor.pollOnce()
+        await supervisor.pollOnce()
+        XCTAssertEqual(fake.sessionReads.count, 4)
+        XCTAssertEqual(supervisor.jobs.first?.status, .finished)
+    }
+
+    func testASignOfLifeDuringASessionCheckKeepsTheJobRunning() async throws {
+        let (supervisor, fake) = makeSupervisor()
+        supervisor.restore([try savedRunningJob()])
+        fake.sessionRunningError = RpcError(code: 4001, message: "session not found")
+        await supervisor.pollOnce()
+        fake.parksSessionRead = true
+        let checking = Task { await supervisor.pollOnce() }
+        await fake.sessionReadParked.waitUntil(1)
+
+        // An event while the check is out: its "gone" answer is older.
+        supervisor.observe(.messageDelta(sessionId: "rt-gone", text: "…"))
+        fake.releaseSessionRead()
+        await checking.value
+
+        XCTAssertEqual(supervisor.jobs.first?.status, .running, "the check went out before the job showed signs of life")
+        XCTAssertTrue(fake.replyReads.isEmpty)
     }
 
     func testAThreadTurnSettledByThePollStillBringsBackTheChatsReply() async {
