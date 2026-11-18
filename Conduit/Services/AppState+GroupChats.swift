@@ -996,6 +996,18 @@ extension AppState {
         return groupRoomOrder.arrange(rooms, name: \.roomID)
     }
 
+    /// Hosted rooms as the Bots list opens on them: the probe's answer,
+    /// else, until it answers, whether this dashboard's rooms were listed
+    /// last time (a kept list, empty or not), so Group Chats' heading and
+    /// + come with the app instead of a second later.
+    var shownGroupChatsAvailable: Bool {
+        switch groupChatPhase {
+        case .available: return true
+        case .idle, .loading: return keptGroupRooms() != nil
+        case .gatewayUnsupported, .failed: return false
+        }
+    }
+
     /// The rooms kept on this dashboard, decoded once per answer kept.
     func keptGroupRooms() -> KeptGroupRooms? {
         let key = keptGroupRoomsMemoKey
