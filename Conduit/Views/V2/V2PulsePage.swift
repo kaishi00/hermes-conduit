@@ -385,7 +385,8 @@ struct V2PulsePage: View {
                 newCards?.insert(card)
                 Task {
                     await load(in: visit)
-                    focus(PulseOpenRequest(card: card))
+                    // Left meanwhile: the card waits, unfocused, for the next visit.
+                    if isOnScreen(in: visit) { focus(PulseOpenRequest(card: card)) }
                 }
             }
             .environmentObject(appState)
