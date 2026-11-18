@@ -3656,7 +3656,7 @@ README's "context meter" (done)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2700 (added: issue 2699).
+**Checked:** 2026-11-18, #2703 (added: issue 2699).
 
 ## /new in a Bot Chat
 
@@ -4108,7 +4108,7 @@ Conduit runs them itself; picking a row only inserts it.
 **Siblings:** commands Hermes runs (`slash.exec`) · skill, plugin and quick
 commands (`command.dispatch` when `slash.exec` turns one down) · commands
 Conduit runs itself (new, branch, model, yolo, help, background, btw, steer,
-queue, stop, undo, retry, compress (also the Context sheet's Compress Now, done, #2700, see Chat usage and Compress Now), reload-mcp and reload-skills, done,
+queue, stop, undo, retry, compress (also the Context sheet's Compress Now, done, #2703, see Chat usage and Compress Now), reload-mcp and reload-skills, done,
 #1938; rollback, done, #2353; agents and its alias tasks, done, #2364: they open the chat's Agents sheet) · Hermes' two servers, `hermes dashboard` and the gateway's listener
 (see Two Hermes servers; the reload verbs probed on both, notifier #598) ·
 /goal, /subgoal, /loop, /heartbeat and their aliases (Hermes runs them; the dock reads the chat's controls after each, done, #2364, see Goal, loop and heartbeat) · the suggestions after `/reload-skills` (done, #1938: the catalog is read
@@ -4138,7 +4138,7 @@ commands" (not needed, still true)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-18, #2700 (Compress Now in the Context sheet runs `/compress`); 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
+**Checked:** 2026-11-18, #2703 (Compress Now in the Context sheet runs `/compress`); 2026-11-13, #2379 (`/undo` on `hermes dashboard` names the files line its own `/undo` answered with); 2026-11-13, #2364 (/agents and /tasks open the Agents sheet; the session-control commands refresh the dock after Hermes runs them; voice, Watch, CarPlay and rooms take no slash commands); 2026-11-13, #2353 (`/rollback` and `/undo`'s files line; Hermes' second server serves the same verbs (gateway/session_tui_ops.py), voice, Watch, CarPlay and rooms take no slash commands; the parity check clean against Hermes main 0dbd8470); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
 
 ## Goal, loop and heartbeat
 
