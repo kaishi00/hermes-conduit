@@ -2131,6 +2131,86 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// An open folder whose listing and recent files were answered, for
+    /// the refresh tests below: every request after it is theirs.
+    private func openedFolder() async throws -> (WorkspaceExplorer, HeldDashboardRequests) {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.122.0", capabilities: [WorkspaceFilesClient.capability]))
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w/app", profile: appState.activeProfile) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        await open.value
+        return (explorer, held)
+    }
+
+    /// Hermes' file tools landing back to back read the open folder once,
+    /// half a second after the last (issue 2355, tests from issue 2604):
+    /// each change cancels the wait before it, as the Folder tab's
+    /// `.task(id: changes)` does, and only the last one's refresh goes out.
+    func testFileChangesLandingBackToBackRefreshTheFolderOnce() async throws {
+        let (explorer, held) = try await openedFolder()
+        var waits: [Task<Bool, Never>] = []
+        for _ in 0..<3 {
+            waits.last?.cancel()
+            waits.append(Task { await explorer.refreshOnceChangesSettle() })
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        XCTAssertEqual(held.sent.count, 2, "nothing is read while the changes are still landing")
+
+        try await held.waitForRequests(3)
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        var ran: [Bool] = []
+        for wait in waits { ran.append(await wait.value) }
+
+        XCTAssertEqual(ran, [false, false, true], "only the last change's refresh ran")
+        XCTAssertEqual(held.sent.map(\.path).suffix(2), [
+            "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
+        ])
+        XCTAssertEqual(held.sent.count, 4, "one refresh: the folder and its recent files, once")
+        XCTAssertTrue(explorer.rows().isEmpty, "the refresh's listing shows")
+    }
+
+    /// Several files picked at once go up one after another, and the
+    /// folder is read once after the last, not once each (issue 2355,
+    /// tests from issue 2604); a file that can't be opened is skipped and
+    /// said, and the others still go.
+    func testAnUploadOfSeveralFilesRefreshesTheFolderOnceAfterTheLast() async throws {
+        let (explorer, held) = try await openedFolder()
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appendingPathComponent("one.txt")
+        let second = folder.appendingPathComponent("two.txt")
+        try Data("one".utf8).write(to: first)
+        try Data("two".utf8).write(to: second)
+        let missing = folder.appendingPathComponent("gone.txt")
+
+        let upload = Task { await explorer.upload([first, missing, second], into: "/w/app") }
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.count, 3, "one file at a time")
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        try await held.waitForRequests(4)
+        XCTAssertEqual(held.sent.last?.path, "/api/plugins/conduit_push/workspace/upload", "the next file, not a refresh")
+        try await held.answer(["ok": true], toPathEnding: "/workspace/upload")
+        try await held.waitForRequests(5)
+        try await held.answer(["ok": true, "entries": [["name": "one.txt", "path": "/w/app/one.txt"]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [Any]()], toPathEnding: "/workspace/recent")
+        let failure = await upload.value
+
+        XCTAssertEqual(held.sent.dropFirst(2).map(\.path), [
+            "/api/plugins/conduit_push/workspace/upload",
+            "/api/plugins/conduit_push/workspace/upload",
+            "/api/plugins/conduit_push/workspace/list",
+            "/api/plugins/conduit_push/workspace/recent",
+        ], "two uploads, then one refresh")
+        XCTAssertEqual(failure, AppLocalization.string("This file couldn't be opened.", table: .chat))
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["one.txt"])
+    }
+
     /// A picture sent into a room is read back through the plugin's room
     /// files (issue 2035), only from a plugin that serves it, and a refusal
     /// says the file is gone rather than that the host was out of reach.

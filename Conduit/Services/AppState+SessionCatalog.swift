@@ -46,6 +46,8 @@ extension AppState {
     /// A full read (not forced, every page) may join one already under way
     /// for the same catalog (`joinsReadInFlight`, CatalogReadInFlight),
     /// unless that one yields to newer reads and could end without rows.
+    /// Any read of the newest page alone that may join takes the newest
+    /// page already going out instead (NewestCatalogPageRead, issue 2604).
     func profileCatalog(
         using client: HermesClient,
         forceRefresh: Bool = false,
@@ -78,7 +80,8 @@ extension AppState {
                 using: client,
                 forceRefresh: forceRefresh,
                 deferringOlderPages: deferringOlderPages,
-                yieldsToNewerReads: yieldsToNewerReads
+                yieldsToNewerReads: yieldsToNewerReads,
+                sharesNewestPage: joinsReadInFlight
             )
             finishCatalogRead(leader, with: .success(load))
             return load
@@ -98,7 +101,8 @@ extension AppState {
         using client: HermesClient,
         forceRefresh: Bool,
         deferringOlderPages: Bool,
-        yieldsToNewerReads: Bool
+        yieldsToNewerReads: Bool,
+        sharesNewestPage: Bool
     ) async throws -> ProfileCatalogLoad {
         catalogReadSequence &+= 1
         let readSequence = catalogReadSequence
@@ -136,15 +140,22 @@ extension AppState {
                         : timedCronCatalogFetch(profile: profile, using: dashboardTicketBridge)
                     let liveStartedAt = Date()
                     let scopedResult: DashboardSessionCatalog
+                    // The number this read commits under: an earlier one's
+                    // when it took that read's newest page.
+                    let commitRead: UInt64
                     do {
-                        scopedResult = try await dashboardSessions(
+                        let listed = try await dashboardSessionPages(
                             profile: profile,
                             maximumPages: SessionCatalogCache.pageBudget(
                                 fullHistoryDue: shouldLoadHistory,
                                 deferringOlderPages: deferringOlderPages
                             ),
-                            using: dashboardTicketBridge
+                            using: dashboardTicketBridge,
+                            read: readSequence,
+                            sharesNewestPage: sharesNewestPage
                         )
+                        scopedResult = listed.catalog
+                        commitRead = listed.read
                     } catch {
                         noteConnectionStep("Chat list", since: liveStartedAt, error: error)
                         throw error
@@ -209,7 +220,7 @@ extension AppState {
                     // delete or rename that one saw would come back (issue
                     // 2293). It answers with those newer rows instead (a
                     // chat sync still picks its chat from them).
-                    if sessionCatalogCache.hasNewerCommit(than: readSequence, forKey: cacheKey) {
+                    if sessionCatalogCache.hasNewerCommit(than: commitRead, forKey: cacheKey) {
                         return ProfileCatalogLoad(
                             sessions: sessionCatalogCache.sessions(forKey: cacheKey).filter {
                                 sessionBelongsToProfile($0, profile: profile)
@@ -236,7 +247,7 @@ extension AppState {
                             cronKey: cronKey,
                             historyMarkers: historyMarkers,
                             at: generation,
-                            read: readSequence
+                            read: commitRead
                         ) else {
                             catalogRetryCount += 1
                             guard catalogRetryCount < maximumCatalogRetries else {
@@ -349,8 +360,48 @@ extension AppState {
             .caseInsensitiveCompare(rhs.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
+    /// The live list's pages and the archived calls beside them, and the
+    /// catalog read whose requests they came from. The newest page alone
+    /// may come from one already going out (`sharesNewestPage`,
+    /// NewestCatalogPageRead), and is otherwise sent for others to take.
+    private func dashboardSessionPages(
+        profile: String,
+        maximumPages: Int,
+        using bridge: DashboardTicketBridge,
+        read: UInt64,
+        sharesNewestPage: Bool
+    ) async throws -> (catalog: DashboardSessionCatalog, read: UInt64) {
+        let dashboardID = activeDashboardID
+        guard maximumPages == 1 else {
+            let catalog = try await dashboardSessions(
+                profile: profile, dashboardID: dashboardID, maximumPages: maximumPages, using: bridge
+            )
+            return (catalog, read)
+        }
+        let key = NewestCatalogPageRead.Key(profile: profile, dashboardID: dashboardID, bridge: ObjectIdentifier(bridge))
+        let fence = startupReadFence(for: bridge, chatList: true)
+        if sharesNewestPage, let running = newestCatalogPageRead, running.serves(key, fence: fence) {
+            sessionCatalogLog.notice(
+                "Chat list's newest page: takes the one going out (\(running.waitingReads + 1, privacy: .public) waiting)"
+            )
+            return (try await running.answer(), running.read)
+        }
+        let sent = NewestCatalogPageRead(key: key, fence: fence, read: read)
+        newestCatalogPageRead = sent
+        sent.start({ [weak self] in
+            guard let self else { throw CancellationError() }
+            return try await self.dashboardSessions(
+                profile: profile, dashboardID: dashboardID, maximumPages: 1, using: bridge
+            )
+        }, ended: { [weak self, weak sent] in
+            if let self, let sent, self.newestCatalogPageRead === sent { self.newestCatalogPageRead = nil }
+        })
+        return (try await sent.answer(), read)
+    }
+
     private func dashboardSessions(
         profile: String,
+        dashboardID: UUID?,
         maximumPages: Int,
         using bridge: DashboardTicketBridge
     ) async throws -> DashboardSessionCatalog {
@@ -362,7 +413,7 @@ extension AppState {
         // they're under 5 minutes old, no call was tagged since, and the
         // live list holds as many chats as then: a call archived meanwhile
         // leaves it, so its total moves and they're read again.
-        let callsKey = ArchivedCallsRead.key(dashboard: activeDashboardID, profile: profile, pages: maximumPages)
+        let callsKey = ArchivedCallsRead.key(dashboard: dashboardID, profile: profile, pages: maximumPages)
         let tagCount = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)]?.count ?? 0
         let kept = archivedCallsReads[callsKey].flatMap {
             $0.servesAgain(tags: tagCount, now: Date()) ? $0 : nil

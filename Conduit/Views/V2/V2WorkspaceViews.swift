@@ -192,13 +192,8 @@ struct WorkspaceFolderView: View {
                 return
             }
             guard seen != target else { return }
-            // The agent's file tools often land back to back: they're read
-            // once they settle, not once each (issue 2355). The next change
-            // cancels this task, and its own waits again.
-            try? await Task.sleep(for: .milliseconds(500))
-            guard !Task.isCancelled else { return }
-            await explorer.refresh()
-            guard !Task.isCancelled else { return }
+            // The next change cancels this task, and its own waits again.
+            guard await explorer.refreshOnceChangesSettle() else { return }
             seenChanges = target
         }
         .task(id: handlesReveals ? appState.workspaceReveal?.id : nil) {
@@ -261,7 +256,9 @@ struct WorkspaceFolderView: View {
         }
         .fileImporter(isPresented: $showsImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result, let folder = uploadFolder else { return }
-            Task { await upload(urls, into: folder) }
+            Task {
+                if let message = await explorer.upload(urls, into: folder) { failure = message }
+            }
         }
     }
 
@@ -1039,47 +1036,13 @@ struct WorkspaceFolderView: View {
 
     /// Returns whether the change went through.
     @discardableResult
-    private func perform(refreshing: Bool = true, _ action: (WorkspaceFilesClient, String) async throws -> Void) async -> Bool {
-        if let error = await explorer.change(refreshing: refreshing, action) {
+    private func perform(_ action: (WorkspaceFilesClient, String) async throws -> Void) async -> Bool {
+        if let error = await explorer.change(action) {
             failure = UserFacingError.message(for: error)
             return false
         }
         return true
     }
-
-    /// Each file goes up in turn, and the folders are read once after the
-    /// last (issue 2355).
-    private func upload(_ urls: [URL], into folder: String) async {
-        var sent = false
-        for url in urls {
-            let accessing = url.startAccessingSecurityScopedResource()
-            defer { if accessing { url.stopAccessingSecurityScopedResource() } }
-            let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            let tooLarge = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.", table: .chat)
-            guard size <= WorkspaceFolderView.maxUploadBytes else {
-                failure = tooLarge
-                continue
-            }
-            guard let data = try? await Task.detached(priority: .userInitiated, operation: { try Data(contentsOf: url) }).value else {
-                failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
-                continue
-            }
-            guard data.count <= WorkspaceFolderView.maxUploadBytes else {
-                failure = tooLarge
-                continue
-            }
-            // Sent, whatever came back: a file the host stopped waiting on
-            // (504) may still have landed (notifier issue 834).
-            sent = true
-            await perform(refreshing: false, { client, root in
-                try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
-            })
-        }
-        if sent { await explorer.refresh() }
-    }
-
-    /// The plugin takes up to 25 MB a file.
-    static let maxUploadBytes = 25 * 1024 * 1024
 }
 
 /// A folder in the Folder's tree that takes an entry dragged from the tree,
