@@ -258,10 +258,11 @@ final class MediaPreviewPresenter {
     /// The system share sheet for a file Quick Look must not render (HTML,
     /// SVG, XML), so it can still be saved to Files or sent to another app
     /// without Conduit displaying it, or for a menu's Share item. A staged
-    /// copy is removed once the sheet closes. `onRefused` runs when UIKit
-    /// turned the sheet down (another presentation was in flight), so the
-    /// caller can say so rather than leave a tap doing nothing.
-    private func share(item: URL, ownedDirectory: URL?, onRefused: (() -> Void)? = nil) -> Bool {
+    /// copy is removed once the sheet closes. False when there is no screen
+    /// to present from or UIKit turned the sheet down (it refuses at once,
+    /// leaving it unpresented, while another presentation is in flight), so
+    /// the caller can say so rather than leave a tap doing nothing.
+    private func share(item: URL, ownedDirectory: URL?) -> Bool {
         guard let presenter = Self.topViewController() else {
             Self.removeDirectory(ownedDirectory)
             return false
@@ -275,18 +276,12 @@ final class MediaPreviewPresenter {
             popover.sourceRect = CGRect(x: presenter.view.bounds.midX, y: presenter.view.bounds.midY, width: 0, height: 0)
             popover.permittedArrowDirections = []
         }
-        let presentation = SharePresentation()
-        presenter.present(controller, animated: true) { presentation.didPresent = true }
-        // As in `show`: a presentation refused while another is in flight
-        // never calls its completion, so say so, then reclaim the staged
-        // copy. A sheet already closed by then has removed it itself;
-        // removing again is a no-op.
-        Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2))
-            if !presentation.didPresent { onRefused?() }
-            try? await Task.sleep(for: .seconds(3))
-            guard controller.presentingViewController == nil else { return }
+        presenter.present(controller, animated: true)
+        // A presentation UIKit accepts links the two at once; a refused one
+        // never does, and never calls the completion handler either.
+        guard controller.presentingViewController != nil else {
             Self.removeDirectory(ownedDirectory)
+            return false
         }
         return true
     }
@@ -299,16 +294,16 @@ final class MediaPreviewPresenter {
     /// to the menu item, which is gone once the menu closes, so no sheet
     /// shows (issue 2701). This one anchors to the screen under the menu.
     @discardableResult
-    func presentShare(fileURL: URL, onRefused: (() -> Void)? = nil) -> Bool {
+    func presentShare(fileURL: URL) -> Bool {
         guard FileManager.default.fileExists(atPath: fileURL.path) else { return false }
-        return share(item: fileURL, ownedDirectory: nil, onRefused: onRefused)
+        return share(item: fileURL, ownedDirectory: nil)
     }
 
     /// The system share sheet for a link (an artifact that is a web page or
     /// a hosted picture), for a menu's Share item as `presentShare(fileURL:)`.
     @discardableResult
-    func presentShare(link: URL, onRefused: (() -> Void)? = nil) -> Bool {
-        share(item: link, ownedDirectory: nil, onRefused: onRefused)
+    func presentShare(link: URL) -> Bool {
+        share(item: link, ownedDirectory: nil)
     }
 
     /// The system's Open In menu for a file another app can read (MDReader,
@@ -479,13 +474,6 @@ final class MediaPreviewPresenter {
 
 /// Retains the Open In controller until the system menu closes: UIKit
 /// holds its delegate weakly.
-/// Whether a share sheet's presentation completed, read after UIKit has
-/// had time to show it.
-@MainActor
-private final class SharePresentation {
-    var didPresent = false
-}
-
 private final class OpenInDelegate: NSObject, UIDocumentInteractionControllerDelegate {
     var controller: UIDocumentInteractionController?
 

@@ -184,11 +184,9 @@ struct MarkdownDocumentSheet: View {
     /// The system share sheet for the staged copy, or an alert saying it
     /// couldn't open, never a tap that does nothing.
     private func share(_ url: URL) {
-        let failed = $shareFailed
-        let presented = MediaPreviewPresenter.shared.presentShare(fileURL: url) {
-            failed.wrappedValue = true
+        if !MediaPreviewPresenter.shared.presentShare(fileURL: url) {
+            shareFailed = true
         }
-        if !presented { shareFailed = true }
     }
 
     /// Writes the text to a temporary `.md` so Open and Share hand over a

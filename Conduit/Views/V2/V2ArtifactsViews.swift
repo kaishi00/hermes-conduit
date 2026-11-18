@@ -828,8 +828,7 @@ private struct ArtifactsList: View {
             // Not a ShareLink: inside a context menu on iPad its popover
             // has nothing left to anchor to and never shows (issue 2701).
             Button {
-                let failed = $shareFailed
-                if !MediaPreviewPresenter.shared.presentShare(link: url, onRefused: { failed.wrappedValue = true }) {
+                if !MediaPreviewPresenter.shared.presentShare(link: url) {
                     shareFailed = true
                 }
             } label: {

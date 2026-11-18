@@ -89,8 +89,6 @@ final class MarkdownDocumentSheetTests: XCTestCase {
         let gone = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent("notes.md")
-        var refused = false
-        XCTAssertFalse(MediaPreviewPresenter.shared.presentShare(fileURL: gone) { refused = true })
-        XCTAssertFalse(refused, "a refusal up front is the return value, not the late callback")
+        XCTAssertFalse(MediaPreviewPresenter.shared.presentShare(fileURL: gone))
     }
 }
