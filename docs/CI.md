@@ -70,7 +70,8 @@ Each macOS job (`smoke` and every nightly job) runs
 `scripts/ci-hosted-build.sh`. It starts `ci-prepare-smoke.sh` (the pinned
 simulator's lookup, boot and `bootstatus`) in the background and runs
 `ci-build-for-testing.sh` on the same runner, which waits for the preparation
-to end and then builds the test products. On the v3
+to end (at most `BUILD_AFTER_TIMEOUT_S`, 600 s, then warns and builds
+alongside it) and then builds the test products. On the v3
 runs, boot readiness was a serial ~2.5 minutes after a separate build job and
 an artifact hop.
 

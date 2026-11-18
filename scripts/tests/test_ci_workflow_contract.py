@@ -750,8 +750,8 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_smoke_job_builds_while_the_simulator_boots(self):
         """The smoke job builds its own products with the simulator booting in
-        the background: no shared-artifact hop, and package resolution runs
-        during the boot."""
+        the background: no shared-artifact hop; the build waits for the
+        preparation and then resolves its own packages."""
         text = self._job_text("smoke")
         self.assertIn("bash scripts/ci-hosted-build.sh", text)
         self.assertIn("needs: plan", text)
@@ -770,10 +770,13 @@ class WorkflowContractTests(unittest.TestCase):
         for the one cached package while the build's own took under 3 s
         (2026-11-18, #2747). The build still starts after the boot (#629)."""
         build = _read(os.path.join(SCRIPTS_DIR, "ci-build-for-testing.sh"))
-        self.assertNotIn("\n  -resolvePackageDependencies", build)
-        self.assertNotIn("    -resolvePackageDependencies", build)
-        self.assertLess(build.index('while [ ! -e "$BUILD_AFTER" ]'),
-                        build.index("XCODEBUILD_POLL_INTERVAL_S=2 run_build"))
+        code = "\n".join(line for line in build.splitlines()
+                          if not line.lstrip().startswith("#"))
+        self.assertNotIn("-resolvePackageDependencies", code)
+        # The first build comes after the wait loop has ended, not inside it.
+        wait = build.index('while [ ! -e "$BUILD_AFTER" ]')
+        loop_end = build.index("\n  done\n", wait)
+        self.assertLess(loop_end, build.index("XCODEBUILD_POLL_INTERVAL_S=2 run_build"))
 
     def test_smoke_job_runs_unit_then_ui_on_the_same_build(self):
         text = self._job_text("smoke")
