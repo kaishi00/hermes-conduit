@@ -106,9 +106,10 @@ final class ComposerDraftStore {
     }
 
     /// A submission that failed goes back into its chat's draft, above
-    /// anything typed there since: neither is lost.
-    func restoreFailedSubmission(_ draft: ComposerDraft, for key: ComposerDraftKey) {
-        save(self.draft(for: key).restoring(draft), for: key)
+    /// anything typed there since: neither is lost. `owner` is the durable
+    /// id of the chat it's for, as `save` takes it.
+    func restoreFailedSubmission(_ draft: ComposerDraft, for key: ComposerDraftKey, owner: String? = nil) {
+        save(self.draft(for: key).restoring(draft), for: key, owner: owner)
     }
 
     func migrateDraft(from source: ComposerDraftKey, to destination: ComposerDraftKey) {

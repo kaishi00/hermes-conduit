@@ -264,6 +264,10 @@ struct RelayMetaInfo: Decodable, Equatable {
     let version: String
     let capabilities: [String]
     let gateways: [Gateway]
+    /// The ids of gateway rows that didn't decode whole: they're still
+    /// paired, so a removed dashboard's pairing waiting to go isn't taken
+    /// for gone (issue 2811).
+    var undecodedGatewayIDs: Set<String> = []
 
     var supportsDecisionCards: Bool { capabilities.contains("decisions") }
     /// The relay sends the agent's on-demand locate to a location push token.
@@ -279,18 +283,23 @@ struct RelayMetaInfo: Decodable, Equatable {
         version = try container.decode(String.self, forKey: .version)
         capabilities = try container.decode([String].self, forKey: .capabilities)
         var gateways: [Gateway] = []
+        var undecoded: Set<String> = []
         var array = try container.nestedUnkeyedContainer(forKey: .gateways)
         while !array.isAtEnd {
             if let gateway = try? array.decode(Gateway.self) {
                 gateways.append(gateway)
+            } else if let row = try? array.decode(GatewayID.self) {
+                undecoded.insert(row.id)
             } else {
                 _ = try? array.decode(Empty.self)
             }
         }
         self.gateways = gateways
+        undecodedGatewayIDs = undecoded
     }
 
     private struct Empty: Decodable {}
+    private struct GatewayID: Decodable { let id: String }
 
     private enum CodingKeys: String, CodingKey {
         case version
@@ -383,6 +392,25 @@ enum RemovedDashboardPairings {
             }
             return raw.isEmpty && removedGatewayIDs.contains(gateway.id) ? gateway.id : nil
         }
+    }
+
+    /// Whether `gateway`, listed for dropping when a sweep read the relay,
+    /// still goes now: asked again just before its DELETE, with the
+    /// dashboards saved and the gateways their hosts reported by then.
+    static func stillDrops(
+        _ gateway: RelayMetaInfo.Gateway,
+        savedDashboardIDs: Set<UUID>,
+        savedGatewayIDs: Set<String>,
+        removedGatewayIDs: Set<String>
+    ) -> Bool {
+        !toDrop(gateways: [gateway], savedDashboardIDs: savedDashboardIDs,
+                savedGatewayIDs: savedGatewayIDs, removedGatewayIDs: removedGatewayIDs).isEmpty
+    }
+
+    /// An id the relay gives a gateway: a UUID's characters only, so it's
+    /// one path segment and never `.` or `..` (issue 2811).
+    static func isRelayGatewayID(_ id: String) -> Bool {
+        !id.isEmpty && id.count <= 80 && id.allSatisfy { $0 == "-" || $0.isHexDigit && $0.isASCII }
     }
 }
 
@@ -2089,12 +2117,21 @@ final class PushNotificationService: ObservableObject {
     /// Drops these pairings from this iPhone's relay installation (relay
     /// 0.28+), one by one: the ids the relay took, an answer for one already
     /// gone included. Their hosts' pushes are refused from then on.
-    func dropRelayPairings(_ gatewayIDs: [String]) async -> Set<String> {
-        guard let registration else { return [] }
+    /// `stillDrops` asks again just before each one goes: a dashboard saved
+    /// again while the sweep ran keeps its pairing (issue 2811).
+    func dropRelayPairings(_ gatewayIDs: [String], stillDrops: (String) -> Bool = { _ in true }) async -> Set<String> {
+        guard let registration,
+              let base = Self.requestRelayURL(issuer: registration.relayURL, configured: configuredRelayURL) else { return [] }
         var dropped = Set<String>()
-        // One path segment each (URL.appending(path:) encodes the rest).
-        for gatewayID in gatewayIDs where !gatewayID.contains("/") {
-            guard let url = try? authenticatedRelayURL("/v1/installations/\(registration.installationID)/gateways/\(gatewayID)") else { break }
+        for gatewayID in gatewayIDs where RemovedDashboardPairings.isRelayGatewayID(gatewayID) {
+            // Every DELETE goes to the relay that issued the credential, and
+            // stops once notifications registered again (another relay, a
+            // new credential): the old one never goes to the new relay.
+            guard let current = self.registration, current.installationID == registration.installationID,
+                  current.credential == registration.credential, current.relayURL == registration.relayURL else { break }
+            guard stillDrops(gatewayID) else { continue }
+            let url = base.appending(path: "/v1/installations/\(registration.installationID)/gateways/\(gatewayID)")
+            guard RelayTransportPolicy.allowsCredentialTransport(url) else { break }
             var request = authorizedRequest(url: url, credential: registration.credential)
             request.httpMethod = "DELETE"
             guard let (_, response) = try? await URLSession.shared.data(for: request) else { break }

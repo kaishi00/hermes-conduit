@@ -533,6 +533,29 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertNil(state.shownChat.chatErrorShown)
     }
 
+    /// Issue 2858: a stale row still listing an id Hermes handed to another
+    /// chat merged the two into the scroll identity, so the chat left's
+    /// error stayed over the other chat. Each id's owning row decides.
+    func testAChatsOwnErrorGoesEvenWhenTheNextChatCarriesItsAlias() {
+        let state = makeAppState()
+        let startFailure = "Hermes could not start the assistant for this session."
+        installActiveSession(state, id: "bot-b")
+        state.sessions = [
+            SessionSummary(id: "bot-b", alternateIds: ["shared-runtime"], title: "bot-b", model: "Hermes",
+                           updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                           isArchived: false, lineageRootId: nil),
+            SessionSummary(id: "shared-runtime", alternateIds: [], title: "bot-a", model: "Hermes",
+                           updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                           isArchived: false, lineageRootId: nil),
+        ]
+        state.handleStreamEvent(.messageError(sessionId: "bot-b", message: startFailure))
+        XCTAssertEqual(state.errorMessage, startFailure)
+
+        state.activeSessionId = "shared-runtime"
+        XCTAssertNil(state.errorMessage, "A different chat carrying the left chat's alias doesn't show its error")
+        XCTAssertNil(state.shownChat.chatErrorShown)
+    }
+
     /// Voice's cancel notes the turn the chat runs, only when it runs one,
     /// under whichever of the chat's ids the socket knows it by, and only
     /// when the cancel goes through.

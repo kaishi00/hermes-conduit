@@ -3086,6 +3086,52 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(ids.contains("native-1"))
     }
 
+    /// Issue 2828: a card drawn from its row goes once the list no longer
+    /// names the wait (the plugin gave the question up, and the relay would
+    /// refuse an answer), from the chat and its saved copy. One this iPhone
+    /// answered stays.
+    func testAListedQuestionsCardGoesWhenThePluginLetsTheWaitGo() throws {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        let dashboard = appState.activeDashboardID
+        func wait(_ id: String, request: String) -> NeedsYouItem {
+            NeedsYouItem(waitID: id, profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                         card: .clarify(requestId: request, question: "Which \(id)?", choices: ["a", "b"]))
+        }
+        appState.needsYou.apply([wait("w1", request: "conduit-push-gone"), wait("w2", request: "conduit-push-kept")],
+                                profile: "default", dashboardID: dashboard) { _ in false }
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["conduit-push-gone", "conduit-push-kept"])
+
+        // Still listed: nothing goes.
+        appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId).count, 2)
+
+        appState.needsYou.apply([wait("w2", request: "conduit-push-kept")],
+                                profile: "default", dashboardID: dashboard) { _ in false }
+        appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-kept"])
+        let reopened = harness.appState.sessionPresentationCache.merge(
+            [], profile: appState.presentationProfile(for: "runtime-a"),
+            sessionIDs: appState.presentationCacheSessionIDs(for: "runtime-a"), includePendingClarifications: true
+        )
+        XCTAssertEqual(reopened.compactMap(\.clarify?.requestId), ["conduit-push-kept"], "its saved copy went too")
+
+        // Answered here before the plugin let it go: the answer stays.
+        let index = try XCTUnwrap(appState.messages.firstIndex { $0.clarify?.requestId == "conduit-push-kept" })
+        var answered = try XCTUnwrap(appState.messages[index].clarify)
+        answered.questions[0].status = .answered
+        appState.messages[index].clarify = answered
+        appState.needsYou.apply([], profile: "default", dashboardID: dashboard) { _ in false }
+        appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-kept"])
+    }
+
     /// Hermes' card with a failed answer, or one being sent, still holds
     /// the question: the list's card stays out, so a second answer can't go
     /// through the relay beside it.
@@ -8184,6 +8230,19 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.flushChatResumeViewport()
         XCTAssertEqual(harness.store.snapshot(for: oldKey), oldReading)
         XCTAssertEqual(harness.appState.chatResumeRestorationRequest?.destination, .latest)
+    }
+
+    /// Issue 2798: a Bot Chat copy's owner names the outgoing server's chat,
+    /// so a same-id chat on the next server mustn't be kept under its bot.
+    func testServerChangeRetiresTheBotChatCopyOwner() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        XCTAssertFalse(appState.prepareChatResumeForConnection(to: "https://one.example"))
+        appState.outgoingBotChatCopyOwner = (sessionID: "x", bot: "atlas")
+
+        XCTAssertTrue(appState.prepareChatResumeForConnection(to: "https://two.example"))
+        XCTAssertNil(appState.outgoingBotChatCopyOwner, "the next server's chat x isn't atlas's")
+        XCTAssertNotEqual(appState.botChatCopyOwner(openAs: "x"), "atlas")
     }
 
     func testServerChangeClearsServerScopedResumeAndSessionCaches() {

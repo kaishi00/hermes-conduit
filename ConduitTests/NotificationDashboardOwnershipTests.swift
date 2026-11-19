@@ -622,6 +622,18 @@ extension NotificationDashboardOwnershipTests {
         appState.removeDashboard(dashboardB)
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-4"])
+
+        // Issue 2820: a re-cased profile keeps one spelling, and a profile
+        // the host no longer lists keeps no gateway.
+        appState.recordRelayGatewayID("gw-5", for: dashboardA, profile: "Work")
+        appState.recordRelayGatewayID("gw-6", for: dashboardA, profile: "work")
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-4", "gw-6"])
+        XCTAssertEqual(appState.reportedRelayGatewayID(of: dashboardA, profile: "WORK"), "gw-6")
+        appState.recordRelayGatewayID("gw-7", for: dashboardA, profile: "deleted")
+        appState.forgetRelayGatewayIDs(of: dashboardA, keepingProfiles: [])
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-4", "gw-6", "gw-7"], "an empty list says nothing")
+        appState.forgetRelayGatewayIDs(of: dashboardA, keepingProfiles: ["default", "work"])
+        XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-4", "gw-6"])
     }
 
     func testSettingsListsTheActiveHostsPairingAsThisDashboards() {
@@ -797,6 +809,33 @@ extension NotificationDashboardOwnershipTests {
         // Bound to a dashboard no longer saved, or from before binding and
         // reported by the removed dashboard's host.
         XCTAssertEqual(toDrop, [bound.id, unboundReported.id, shortID.id])
+    }
+
+    /// Issue 2811: each DELETE asks again whether its pairing still goes, an
+    /// id is the relay's own characters only, and a list row that didn't
+    /// decode keeps a waiting pairing waiting.
+    func testARemovedDashboardsPairingIsAskedAgainBeforeItGoes() throws {
+        let removedDashboard = UUID()
+        let bound = pairing(UUID(), dashboard: removedDashboard.uuidString)
+        XCTAssertTrue(RemovedDashboardPairings.stillDrops(bound, savedDashboardIDs: [dashboardA],
+                                                          savedGatewayIDs: [], removedGatewayIDs: []))
+        XCTAssertFalse(RemovedDashboardPairings.stillDrops(bound, savedDashboardIDs: [dashboardA, removedDashboard],
+                                                           savedGatewayIDs: [], removedGatewayIDs: []),
+                       "saved again while the sweep ran")
+        XCTAssertFalse(RemovedDashboardPairings.stillDrops(bound, savedDashboardIDs: [dashboardA],
+                                                           savedGatewayIDs: [bound.id], removedGatewayIDs: []),
+                       "its host reported it for a saved dashboard meanwhile")
+
+        XCTAssertTrue(RemovedDashboardPairings.isRelayGatewayID(bound.id))
+        XCTAssertTrue(RemovedDashboardPairings.isRelayGatewayID(bound.id.uppercased()))
+        for id in ["", ".", "..", "a/b", "gw-removed", "١٢٣", String(repeating: "a", count: 81)] {
+            XCTAssertFalse(RemovedDashboardPairings.isRelayGatewayID(id), id)
+        }
+
+        let json = #"{"version": "0.28.0", "capabilities": ["device-gateway-removal"], "gateways": [{"id": "abc-1", "name": "Hermes", "plugin_capabilities": []}, {"id": "abc-2", "name": 7}, {"name": "no id"}]}"#
+        let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
+        XCTAssertEqual(meta.gateways.map(\.id), ["abc-1"])
+        XCTAssertEqual(meta.undecodedGatewayIDs, ["abc-2"])
     }
 
     func testRemovingADashboardKeepsItsPairingsUntilTheRelayDropsThem() {

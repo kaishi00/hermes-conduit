@@ -188,6 +188,7 @@ extension AppState {
             needsYou.apply(read, profile: profile, dashboardID: dashboard) { [weak self] item in
                 self?.isOpenChat(item) ?? false
             }
+            takeBackQuestionCardsNoLongerListed(profile: profile)
         }
         needsYou.forget(profilesOtherThan: Set(needsYouProfiles))
         showWaitingQuestionCards()
@@ -241,12 +242,36 @@ extension AppState {
                 cacheSessionIDs: openIDs,
                 profile: profile
             )
+            needsYou.noteDrewCard(.init(requestID: pushed.requestId, profile: item.profile, decisionKey: key,
+                                        presentationProfile: profile, cacheSessionIDs: openIDs))
             messages = sessionPresentationCache.merge(
                 messages,
                 profile: profile,
                 sessionIDs: openIDs,
                 includePendingClarifications: true
             )
+        }
+    }
+
+    /// Takes back the question cards drawn from `profile`'s rows whose
+    /// waits its list no longer names (issue 2828): the plugin forgets a
+    /// wait it gives up, the question run out or answered elsewhere, and
+    /// the relay refuses a late answer, so the card left answerable in the
+    /// chat would only say it expired. Still unanswered only: a card this
+    /// iPhone answered keeps its answer. Its saved copy goes too, so a
+    /// reopen within the day doesn't bring it back over Hermes' own record.
+    func takeBackQuestionCardsNoLongerListed(profile: String) {
+        for drawn in needsYou.takeCardsNoLongerListed(profile: profile) {
+            sessionPresentationCache.removePendingDecision(
+                key: drawn.decisionKey,
+                profile: drawn.presentationProfile,
+                sessionIDs: drawn.cacheSessionIDs
+            )
+            let isDrawn = { (message: ChatMessage) in
+                SessionPresentationCache.decisionKey(for: message) == drawn.decisionKey
+                    && SessionPresentationCache.pendingDecisionKey(for: message) != nil
+            }
+            if messages.contains(where: isDrawn) { messages.removeAll(where: isDrawn) }
         }
     }
 

@@ -2457,7 +2457,13 @@ struct ComposerBar: View {
         }
 
         guard loadedDraftKey == restorationKey else {
-            draftStore.restoreFailedSubmission(failed, for: restorationKey)
+            // As a restore request on a saved dashboard does: a draft another
+            // chat's now goes back first, and the message is saved with its
+            // chat's owner, so a runtime id Hermes hands on later can't carry
+            // it into another chat (issue 2819).
+            returnDraftsToTheirOwners(near: restorationKey, keeping: loadedDraftKey)
+            draftStore.restoreFailedSubmission(failed, for: restorationKey,
+                                               owner: appState.composerDraftOwner(for: restorationKey))
             return
         }
         let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)

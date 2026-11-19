@@ -210,6 +210,35 @@ final class NeedsYouStore: ObservableObject {
         cardsHermesDrew.insert(requestID)
     }
 
+    /// A question's card drawn into the chat on screen from its row
+    /// (`AppState.showWaitingQuestionCards`): where it went, so it's taken
+    /// back once the plugin lets the wait go (issue 2828).
+    struct DrawnCard: Equatable {
+        let requestID: String
+        /// The list's profile, whose read decides.
+        let profile: String
+        let decisionKey: String
+        let presentationProfile: String
+        let cacheSessionIDs: [String]
+    }
+
+    private(set) var cardsDrawnHere: [String: DrawnCard] = [:]
+
+    func noteDrewCard(_ card: DrawnCard) {
+        cardsDrawnHere[card.requestID] = card
+    }
+
+    /// The cards drawn here for `profile` whose waits its list read just now
+    /// no longer names, forgotten as they're handed back: the plugin gave
+    /// the question up (it ran out, or was answered elsewhere), and an
+    /// answer would be refused.
+    func takeCardsNoLongerListed(profile: String) -> [DrawnCard] {
+        let listed = Set(items.filter { $0.profile == profile }.compactMap { $0.card?.requestID })
+        let gone = cardsDrawnHere.values.filter { $0.profile == profile && !listed.contains($0.requestID) }
+        for card in gone { cardsDrawnHere[card.requestID] = nil }
+        return gone.sorted { $0.requestID < $1.requestID }
+    }
+
     /// Runs `read`, or, while one runs, has it run once more after: a
     /// burst of asks makes at most one more read, and reads never overlap
     /// (an older one landing last would bring back an answered wait).
@@ -391,6 +420,7 @@ final class NeedsYouStore: ObservableObject {
         readProfiles = []
         seen = []
         cardsHermesDrew = []
+        cardsDrawnHere = [:]
         if !items.isEmpty { items = [] }
         // The one now on screen is read as this dashboard's from here.
         if let dashboardID {

@@ -2458,7 +2458,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// isn't there (issue 2655). A read that didn't reach the reply's message
     /// is taken as it is, unless a read of another id failed first.
     private func ownReply(_ read: VoiceThreadReplyRead, for job: VoiceBackgroundJob) -> VoiceThreadReplyRead {
-        guard job.isThreadTurn || job.isCallChat || job.sharesCallChat, case .reply(_, let named, let partial) = read else { return read }
+        // A restored job too: a ledger from before #2808 carries neither its
+        // shared-chat flag nor what it sent, so the fence runs on the first
+        // message `restore` rebuilt for it (issue 2818). A job in a chat of
+        // its own names its own messages, so the fence passes them.
+        guard job.isThreadTurn || job.isCallChat || job.sharesCallChat || job.isRestored,
+              case .reply(_, let named, let partial) = read else { return read }
         // A reply naming no message, after a read of another id failed,
         // can't be told apart from another turn's.
         guard let prompt = named else { return partial && sentPrompts[job.id]?.isEmpty == false ? .failed : read }
