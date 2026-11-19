@@ -313,6 +313,7 @@ final class DemoVideoTests: XCTestCase {
         "Delete Bot": "删除机器人", "Duplicate": "复制", "Send message": "发送消息", "Username": "用户名",
         "Group name": "群聊名称", "Waiting": "正在等待", "Starting": "正在启动", "New Chat": "新聊天",
         "Tasks": "任务", "Scheduled": "已排期", "Board": "看板",
+        "A room can bring bots from one of your other Hermes": "一个房间可以在至少一个你在这里的机器人之外",
         // Lines from the zh-Hans dashboards.
         "Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning.": "帮我们规划一个莫干山周末？周六早上从上海出发。",
         "Want me to check campsites": "要我查一下营地吗",
@@ -535,7 +536,7 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         add.tap()
-        let far = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "A room can bring bots from one of your other Hermes")).firstMatch
+        let far = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", L("A room can bring bots from one of your other Hermes"))).firstMatch
         print("DEMO New Group Chat offers the other Hermes' bots: \(far.waitForExistence(timeout: 20))")
         if !far.exists {
             let labels = app.staticTexts.allElementsBoundByIndex.prefix(60).map(\.label)

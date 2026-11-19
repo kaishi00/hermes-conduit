@@ -49,7 +49,9 @@ Results:
 4. `ConduitScreenshots/AppStoreScreenshotTests.swift` signs in, walks the
    screens and saves each as a named attachment. Live voice screens use the
    DEBUG-only `-conduitScreenshotCall listening|speaking` fixture
-   (`Conduit/Services/ScreenshotCallFixture.swift`); the Watch job launches the
+   (`Conduit/Services/ScreenshotCallFixture.swift`;
+   `-conduitScreenshotCallProvider qwen|gpt|grok` retitles it, Gemini Live
+   otherwise); the Watch job launches the
    Watch app with the same argument (`home|speaking|listening|approval`;
    `ended` and `approvalDenyOnly` also exist).
 5. `testRecordPreview` runs while `simctl io recordVideo` records; its
@@ -111,9 +113,10 @@ to packet times that lag by up to 44 s, so the cut reads it with
 start and end (`scene-<name>-start.png`, `-end.png`) are there to check it
 against.
 
-The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
-`two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
-`needs-you`.
+The scenes: `chat`, `tasks`, `bots-home-layouts`, `mixed-bots-home`,
+`chats-strip`, `two-replying`, `reorder`, `room-across`, `room-approval`,
+`multiplayer`, `needs-you`, `voice` (the call screen, titled Qwen Live by
+`-conduitScreenshotCallProvider qwen`).
 
 The multiplayer scene adds a third dashboard, **Sam**
 (`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
