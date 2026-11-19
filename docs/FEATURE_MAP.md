@@ -9483,7 +9483,7 @@ Overview's talking-rooms and live status reads (a sheet: no tab changes under it
 CarPlay (no tabs), the notifier (it answers what it's asked) · text: none (no
 Settings caption or doc gives the cadence)
 
-**Desktop app:** partly: the Tasks board reads only while it shows and the window is visible, and Pulse and Needs you only while the window is visible (`desktop/src/renderer/src/state/useKanban.ts`, `desktop/src/renderer/src/state/usePulse.ts`, `desktop/src/renderer/src/state/useNeedsYou.ts`); a bot's Work panel reads every 6 s while it's open (`desktop/src/renderer/src/state/useWork.ts`), and the group chats list every 30 s while connected, the window hidden or not (`desktop/src/renderer/src/state/useGroups.ts`).
+**Desktop app:** has it: the Tasks board reads only while it shows and the window is visible; Pulse, Needs you, a bot's Work panel and the group chats list and open room only while the window is visible, reading once when it shows again (`desktop/src/renderer/src/state/visibility.ts`, `useKanban.ts`, `usePulse.ts`, `useNeedsYou.ts`, `useWork.ts`, `useGroups.ts`, desktop#125).
 
 **Code**
 - Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
@@ -9784,7 +9784,7 @@ on the authority) and self-improvement updates (the gateway reads the
 setting every turn) · the notifier's CHANGELOG ·
 README (Connecting, Architecture) · the website's FAQ
 
-**Desktop app:** partly: the socket's `gateway.ready` picks the shape; on the authority a prompt carries a `submission_id`, the queue and its refusals read the authority's words, and Move to project goes as `session.mutate` with its fences, once more on a conflict (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/chatQueue.ts`, `desktop/src/renderer/src/state/chatActions.ts`, desktop#76); rename, branch, compress and a model pick don't go as `session.mutate`.
+**Desktop app:** partly: the socket's `gateway.ready` picks the shape; on the authority a prompt carries a `submission_id`, the queue and its refusals read the authority's words, and Move to project and a model pick go as `session.mutate` with their fences, once more on a conflict, the pick with its confirm token (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/chatQueue.ts`, `desktop/src/renderer/src/state/chatActions.ts`, desktop#76, desktop#125); rename and compress go by their REST routes, and there's no Branch.
 
 **Code**
 - A Bot Chat's profile on its requests: `Conduit/Services/HermesClient.swift` (sessionProfiles, noteSessionProfile, sessionProfile(for:), scopeParams, adoptSocket, inheritSessionProfiles; noted by resumeSessionObject, createSession, createBotChatSession, authorityBranch), `Conduit/Services/AppState+Connection.swift` and `Conduit/Services/AppState+Profiles.swift` (the reconnect, connect(with:) on the same dashboard (a silent re-auth's) and the profile switch hand it to the fresh client; tested in `ConduitTests/BotModeTests.swift`, testAReconnectAndAProfileSwitchKeepTheBotChatProfileMap)
