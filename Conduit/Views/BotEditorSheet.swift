@@ -64,6 +64,10 @@ struct BotEditorSheet: View {
     /// The Start From profile's lists as Hermes gave them last time, shown
     /// read-only until it answers.
     @State private var keptCapabilities: BotCapabilities?
+    /// Edit Bot: the bot's Conduit plugin, nil until the plugin says (issue 2803).
+    @State private var pluginState: BotPlugin.State?
+    @State private var isTurningOnPlugin = false
+    @State private var pluginError: String?
 
     private enum DetailsState {
         case idle, loading, loaded, failed
@@ -113,6 +117,7 @@ struct BotEditorSheet: View {
                 }
                 personalitySection
                 workSection
+                pluginSection
                 advancedSection
             }
             .navigationTitle(isCreating ? AppLocalization.string("New Bot", table: .bots) : AppLocalization.string("Edit Bot"))
@@ -199,6 +204,9 @@ struct BotEditorSheet: View {
         .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
+        .task {
+            if let bot = editedBot { pluginState = await appState.botPluginState(profile: bot.name) }
+        }
         .task {
             // The stored picture, independent of whether the roster row's
             // fetch succeeded.
@@ -662,6 +670,51 @@ struct BotEditorSheet: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    /// Edit Bot: Turn On for a bot whose profile has the Conduit plugin off,
+    /// so its Conduit features answer "Plugin not found" (issue 2803; Eric,
+    /// 2026-11-19). Gone once it's on.
+    @ViewBuilder
+    private var pluginSection: some View {
+        if let bot = editedBot, let state = pluginState, state.offersTurnOn {
+            SettingsCard {
+                Text(AppLocalization.string("The Conduit plugin is off for \(bot.displayLabel), so its notifications, group rooms, Folder and cards don't work.", table: .bots))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                if let pluginError {
+                    Text(pluginError)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.red)
+                }
+                Button {
+                    turnOnPlugin(for: bot)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(AppLocalization.string("Turn On"))
+                        if isTurningOnPlugin { ProgressView().controlSize(.small) }
+                    }
+                }
+                .buttonStyle(.settings)
+                .disabled(isTurningOnPlugin)
+            }
+        }
+    }
+
+    private func turnOnPlugin(for bot: BotProfile) {
+        Haptics.light()
+        isTurningOnPlugin = true
+        pluginError = nil
+        Task {
+            let failure = await appState.turnOnBotPlugin(profile: bot.name)
+            isTurningOnPlugin = false
+            if let failure {
+                pluginError = failure
+                return
+            }
+            Haptics.success()
+            withAnimation { pluginState?.on = true }
         }
     }
 

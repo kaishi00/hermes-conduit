@@ -364,7 +364,7 @@ struct ConnectionCard: View {
     private func approveTitle(_ target: ConnectionActivity.Target) -> String {
         switch target.action {
         case "install": return AppLocalization.string("Install")
-        case "enable": return AppLocalization.string("Turn On", table: .connection)
+        case "enable": return AppLocalization.string("Turn On")
         default: return AppLocalization.string("Connect", table: .connection)
         }
     }

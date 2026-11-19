@@ -50242,6 +50242,334 @@
           }
         }
       }
+    },
+    "Conduit's features need the Conduit plugin turned on for this bot. Update the plugin, then turn it on in Edit Bot." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für die Conduit-Funktionen muss das Conduit-Plugin für diesen Bot aktiviert sein. Aktualisiere das Plugin und aktiviere es dann unter „Bot bearbeiten“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las funciones de Conduit necesitan el plugin de Conduit activado para este bot. Actualiza el plugin y luego actívalo en Editar bot."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les fonctionnalités de Conduit exigent que le plugin Conduit soit activé pour ce bot. Mettez à jour le plugin, puis activez-le dans Modifier le bot."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fitur Conduit memerlukan plugin Conduit diaktifkan untuk bot ini. Perbarui plugin, lalu aktifkan di Edit Bot."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le funzioni di Conduit richiedono che il plugin di Conduit sia attivo per questo bot. Aggiorna il plugin, poi attivalo in Modifica bot."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit の機能を使うには、このボットで Conduit プラグインをオンにする必要があります。プラグインをアップデートしてから、「ボットを編集」でオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 기능을 사용하려면 이 봇에서 Conduit 플러그인을 켜야 합니다. 플러그인을 업데이트한 다음 봇 편집에서 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Funkcje Conduit wymagają włączenia wtyczki Conduit dla tego bota. Zaktualizuj wtyczkę, a potem włącz ją w Edytuj bota."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os recursos do Conduit precisam do plugin do Conduit ativado para este bot. Atualize o plugin e depois ative-o em Editar Bot."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для функций Conduit у этого бота должен быть включён плагин Conduit. Обновите плагин, затем включите его в разделе «Изменить бота»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit özellikleri için bu botta Conduit eklentisinin açık olması gerekir. Eklentiyi güncelleyin, ardından Botu Düzenle'de açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要使用 Conduit 的功能，需要为这个机器人打开 Conduit 插件。请先更新插件，然后在“编辑机器人”中打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要使用 Conduit 的功能，需要為這個機器人開啟 Conduit 外掛。請先更新外掛，然後在「編輯機器人」中開啟。"
+          }
+        }
+      }
+    },
+    "Hermes still has the plugin off for this bot. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes hat das Plugin für diesen Bot noch deaktiviert. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sigue teniendo el plugin desactivado para este bot. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes a toujours désactivé le plugin pour ce bot. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes masih menonaktifkan plugin untuk bot ini. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ha ancora il plugin disattivato per questo bot. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ではこのボットのプラグインがまだオフです。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes에서 이 봇의 플러그인이 아직 꺼져 있습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nadal ma wyłączoną wtyczkę dla tego bota. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes ainda está com o plugin desativado para este bot. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В Hermes плагин для этого бота всё ещё выключен. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bu bot için eklentiyi hâlâ kapalı tutuyor. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍为这个机器人关闭着插件。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 仍為這個機器人關閉著外掛。請再試一次。"
+          }
+        }
+      }
+    },
+    "The Conduit plugin is off for %@, so its notifications, group rooms, Folder and cards don't work." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin ist für %@ deaktiviert, daher funktionieren Mitteilungen, Gruppenräume, Ordner und Karten nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit está desactivado para %@, así que sus notificaciones, salas de grupo, Carpeta y tarjetas no funcionan."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit est désactivé pour %@ : ses notifications, salons de groupe, Dossier et cartes ne fonctionnent pas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit nonaktif untuk %@, jadi notifikasi, ruang grup, Folder, dan kartunya tidak berfungsi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di Conduit è disattivato per %@, quindi notifiche, stanze di gruppo, Cartella e schede non funzionano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ では Conduit プラグインがオフのため、通知、グループルーム、フォルダ、カードが使えません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@의 Conduit 플러그인이 꺼져 있어 알림, 그룹 룸, 폴더, 카드가 작동하지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit jest wyłączona dla %@, więc powiadomienia, pokoje grupowe, Folder i karty nie działają."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit está desativado para %@, então notificações, salas de grupo, Pasta e cartões não funcionam."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit выключен для %@, поэтому его уведомления, групповые комнаты, Папка и карточки не работают."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ için Conduit eklentisi kapalı, bu yüzden bildirimleri, grup odaları, Klasörü ve kartları çalışmıyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 插件已关闭，所以它的通知、群聊房间、文件夹和卡片都无法使用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 外掛已關閉，所以它的通知、群組房間、檔案夾和卡片都無法使用。"
+          }
+        }
+      }
+    },
+    "The Conduit plugin wasn't turned on for this bot: %@ Edit the bot to try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin wurde für diesen Bot nicht aktiviert: %@ Bearbeite den Bot, um es erneut zu versuchen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se activó el plugin de Conduit para este bot: %@ Edita el bot para intentarlo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit n’a pas été activé pour ce bot : %@ Modifiez le bot pour réessayer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit tidak diaktifkan untuk bot ini: %@ Edit bot untuk mencoba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di Conduit non è stato attivato per questo bot: %@ Modifica il bot per riprovare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このボットで Conduit プラグインをオンにできませんでした: %@ ボットを編集してもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 봇의 Conduit 플러그인을 켜지 못했습니다: %@ 봇을 편집해 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie włączono wtyczki Conduit dla tego bota: %@ Edytuj bota, aby spróbować ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit não foi ativado para este bot: %@ Edite o bot para tentar novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit не был включён для этого бота: %@ Измените бота, чтобы попробовать ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bot için Conduit eklentisi açılamadı: %@ Tekrar denemek için botu düzenleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能为这个机器人打开 Conduit 插件：%@ 请编辑机器人后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未能為這個機器人開啟 Conduit 外掛：%@ 請編輯機器人後再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
