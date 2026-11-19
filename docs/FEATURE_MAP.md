@@ -114,7 +114,7 @@ empty when sealed or to relay 0.18 (capability clarify-skip), else as
 "(left blank)". Conduit's chat note asks Hermes for a form when it needs
 several details only the user can give (notifier 0.82).
 
-**Desktop app:** partly: approvals and questions in Needs you and the chat's card (`desktop/src/renderer/src/components/NeedsYou.tsx`, `desktop/src/renderer/src/components/RequestCard.tsx`), answered by voice in every live mode (desktop#36), and the computer's notification; no Watch, CarPlay, Live Activity or call from Hermes on the computer, and no Bot workstream approval box (see Bot workstreams).
+**Desktop app:** partly: approvals and questions in Needs you and the chat's card (`desktop/src/renderer/src/components/NeedsYou.tsx`, `desktop/src/renderer/src/components/RequestCard.tsx`), answered by voice in every live mode (desktop#36), and the computer's notification; a call from Hermes rings on the computer (see Calls from Hermes); no Watch, CarPlay or Live Activity, and no Bot workstream approval box (see Bot workstreams).
 
 **Code**
 - Chat card: `Conduit/Services/AppState+Clarify.swift` (rejectApprovalAndSteer, for the card's Tell Hermes what to do instead; clarifyCardTarget, the card's chat and profile every answer names; liveClarifySubmissions and staleClarifyQuestionIds, the questions a fenced-off send left until the request's last send settles; kept submitting through a reopen in `Conduit/Services/AppState+Reconciliation.swift` and an authoritative resume; tests in `ConduitTests/ClarifyBatchStateTests.swift`), `Conduit/Views/ChatView.swift` (ApprovalCard, its insteadControls; ClarifyCard, ClarifyQuestionRow's form field), `Conduit/Services/ApprovalDisplayText.swift`, `Shared/Approvals/HermesApprovalText.swift` (Hermes' own approval texts in the App Language, for every card, voice line, the notification and the Watch; their translations in both `Conduit/Localizable.xcstrings` and `ConduitWatch/Localizable.xcstrings`), `Conduit/Services/AppState+Clarify.swift` (respondToApproval, legacyApprovalTarget), `Conduit/Services/AppState+Clarify.swift` (respondToClarifyForm)
@@ -7699,7 +7699,7 @@ describes it (the page's captions, README.md's feature list, the desktop
 app's pairing panel) · Watch, CarPlay, widgets and the notifier (not needed:
 nothing there signs a computer in)
 
-**Desktop app:** has it: pairing from the phone's QR code (`desktop/src/main/pairing.ts`, desktop#8).
+**Desktop app:** has it: the computer shows the QR code the phone scans (`desktop/src/main/pairing.ts`, desktop#8).
 
 **Code**
 - `Conduit/Services/ComputerPairing.swift` (ComputerPairingLink: the QR code's `conduit://pair?v=1&m&i&t&k&e`; ComputerPairing: payload, seal, words, send, and proxyHeaders(extra:access:), which merges a dashboard's extra headers with its Cloudflare token), `Conduit/Services/BIP39Words.swift`
