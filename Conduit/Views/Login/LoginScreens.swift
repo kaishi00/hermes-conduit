@@ -564,7 +564,7 @@ struct LoginDashboardsScreen: View {
                 pendingRemoval = nil
             }
         } message: {
-            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Other dashboards are not affected.")
+            Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Its notifications stop coming to this device. Other dashboards are not affected.")
         }
     }
 

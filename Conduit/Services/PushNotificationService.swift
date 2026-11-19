@@ -268,6 +268,8 @@ struct RelayMetaInfo: Decodable, Equatable {
     var supportsDecisionCards: Bool { capabilities.contains("decisions") }
     /// The relay sends the agent's on-demand locate to a location push token.
     var supportsLocationPush: Bool { capabilities.contains("location-push") }
+    /// The phone can drop one of its own pairings (relay 0.28+).
+    var supportsDeviceGatewayRemoval: Bool { capabilities.contains("device-gateway-removal") }
 
     /// One malformed gateway record must not hide the whole section: decode
     /// gateway rows lossily so a single incompatible record degrades to just
@@ -351,6 +353,35 @@ struct NotificationDashboardPairings: Equatable {
             case .failClosed(.unrecognizedDashboard):
                 unrecognizedCount += 1
             }
+        }
+    }
+}
+
+/// Which of this iPhone's relay pairings belong to dashboards removed from
+/// it, so Conduit drops them at the relay and their hosts' pushes stop. A
+/// host can't be told: it's signed out of at removal, and may never be
+/// reachable again.
+enum RemovedDashboardPairings {
+    /// A pairing bound to a dashboard no longer saved, or one a removed
+    /// dashboard's host reported (`removedGatewayIDs`: a pairing from before
+    /// dashboard binding has only that). Never one bound to a saved
+    /// dashboard or reported by a saved dashboard's host (two entries for
+    /// one host). `savedDashboardIDs` must come from a list read for sure:
+    /// before the first unlock an empty one isn't a removal. A malformed
+    /// binding isn't a dashboard's, so it stays.
+    static func toDrop(
+        gateways: [RelayMetaInfo.Gateway],
+        savedDashboardIDs: Set<UUID>,
+        savedGatewayIDs: Set<String>,
+        removedGatewayIDs: Set<String>
+    ) -> [String] {
+        gateways.compactMap { gateway in
+            guard UUID(uuidString: gateway.id) != nil, !savedGatewayIDs.contains(gateway.id) else { return nil }
+            let raw = gateway.dashboardID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if let dashboardID = UUID(uuidString: raw) {
+                return savedDashboardIDs.contains(dashboardID) ? nil : gateway.id
+            }
+            return raw.isEmpty && removedGatewayIDs.contains(gateway.id) ? gateway.id : nil
         }
     }
 }
@@ -2053,6 +2084,22 @@ final class PushNotificationService: ObservableObject {
         registration = nil
         watchRingsForAnotherIPhone = false
         KeychainHelper.clearPushRegistration()
+    }
+
+    /// Drops these pairings from this iPhone's relay installation (relay
+    /// 0.28+), one by one: the ids the relay took, an answer for one already
+    /// gone included. Their hosts' pushes are refused from then on.
+    func dropRelayPairings(_ gatewayIDs: [String]) async -> Set<String> {
+        guard let registration else { return [] }
+        var dropped = Set<String>()
+        for gatewayID in gatewayIDs where UUID(uuidString: gatewayID) != nil {
+            guard let url = try? authenticatedRelayURL("/v1/installations/\(registration.installationID)/gateways/\(gatewayID)") else { break }
+            var request = authorizedRequest(url: url, credential: registration.credential)
+            request.httpMethod = "DELETE"
+            guard let (_, response) = try? await URLSession.shared.data(for: request) else { break }
+            if (response as? HTTPURLResponse)?.statusCode == 204 { dropped.insert(gatewayID) }
+        }
+        return dropped
     }
 
     /// Best-effort DELETE of `installation` on the relay that issued it.

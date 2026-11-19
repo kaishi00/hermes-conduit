@@ -1100,6 +1100,12 @@ final class AppState: ObservableObject {
     /// The list open's shared status read (refreshNotifierPluginStatusOnce),
     /// and the bridge it reads through.
     var notifierPluginStatusSharedRefresh: (bridge: ObjectIdentifier, task: Task<Void, Never>)?
+    /// The sweep dropping removed dashboards' relay pairings, one at a time
+    /// (dropRelayPairingsOfRemovedDashboards); a sweep asked meanwhile runs
+    /// after it.
+    var relayPairingSweep: Task<Void, Never>?
+    var relayPairingSweepAgain = false
+    var relayPairingSweepSaved: Set<UUID> = []
     @Published var modelVisibility = ModelVisibility()
     /// The model sheet's pinned and recent models, for the active dashboard.
     @Published var modelQuickPicks = ModelQuickPicks()
