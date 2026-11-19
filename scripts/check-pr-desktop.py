@@ -62,7 +62,7 @@ def problem(body):
     first_line = detail.split("\n")[0]
     detail = detail.strip()
     if said == "done" and not DESKTOP_PR.search(first_line):
-        return ("The Desktop section says Done, so it names the desktop PR "
+        return ("The Desktop section says Done, so it names the desktop PR on the Done line "
                 "(hermes-conduit-desktop#58, desktop#58 or its link).")
     if said == "not needed" and not detail:
         return "The Desktop section says Not needed, so it says why."
