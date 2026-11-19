@@ -12753,94 +12753,6 @@
         }
       }
     },
-    "New workstreams start on this model. Work that’s already running keeps its own." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Neue Workstreams starten mit diesem Modell. Laufende Arbeit behält ihr eigenes."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "New workstreams start on this model. Work that’s already running keeps its own."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Los nuevos flujos de trabajo empiezan con este modelo. El trabajo que ya está en marcha conserva el suyo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Les nouvelles tâches de fond démarrent avec ce modèle. Le travail déjà en cours garde le sien."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Workstream baru dimulai dengan model ini. Pekerjaan yang sudah berjalan tetap memakai modelnya sendiri."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "I nuovi flussi di lavoro partono con questo modello. Il lavoro già in corso mantiene il suo."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新しいワークストリームはこのモデルで始まります。実行中の作業は元のモデルのままです。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "새 워크스트림은 이 모델로 시작합니다. 이미 실행 중인 작업은 기존 모델을 유지합니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nowe wątki pracy startują na tym modelu. Praca, która już trwa, zachowuje swój."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Novos fluxos de trabalho começam com este modelo. O trabalho que já está em andamento mantém o seu."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Новые рабочие потоки запускаются на этой модели. Уже идущая работа сохраняет свою."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Yeni iş akışları bu modelle başlar. Zaten çalışan işler kendi modelini korur."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新的工作流将使用此模型启动。已在运行的工作保留其原有模型。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "新的工作流將使用此模型啟動。已在執行的工作保留其原有模型。"
-          }
-        }
-      }
-    },
     "No Bots Yet" : {
       "localizations" : {
         "de" : {
@@ -50151,6 +50063,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "新增伺服器需要 Conduit 與此 Hermes 儀表板的連線。Conduit 重新連線後即會恢復。"
+          }
+        }
+      }
+    },
+    "New workstreams start on this model. When your words to %@ name another model for a task, that one workstream runs on it, and its card says so. Work that’s already running keeps its own." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Neue Workstreams starten mit diesem Modell. Nennen deine Worte an %@ für eine Aufgabe ein anderes Modell, läuft dieser eine Workstream damit, und seine Karte zeigt es. Laufende Arbeit behält ihr eigenes."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "New workstreams start on this model. When your words to %@ name another model for a task, that one workstream runs on it, and its card says so. Work that’s already running keeps its own."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los nuevos flujos de trabajo empiezan con este modelo. Cuando tus palabras a %@ nombran otro modelo para una tarea, ese flujo usa ese modelo y su tarjeta lo indica. El trabajo que ya está en marcha conserva el suyo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les nouvelles tâches de fond démarrent avec ce modèle. Quand tes consignes à %@ nomment un autre modèle pour une tâche, cette tâche-là l’utilise et sa carte l’indique. Le travail déjà en cours garde le sien."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Workstream baru dimulai dengan model ini. Jika kata-katamu kepada %@ menyebut model lain untuk suatu tugas, workstream itu berjalan dengan model tersebut, dan kartunya menunjukkannya. Pekerjaan yang sudah berjalan tetap memakai modelnya sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I nuovi flussi di lavoro partono con questo modello. Quando le tue parole a %@ indicano un altro modello per un compito, quel flusso usa quel modello e la sua scheda lo mostra. Il lavoro già in corso mantiene il suo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいワークストリームはこのモデルで始まります。%@への指示でタスクに別のモデルが指定されていれば、そのワークストリームだけがそのモデルで動き、カードに表示されます。実行中の作業は元のモデルのままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 워크스트림은 이 모델로 시작합니다. %@에게 한 말에서 어떤 작업에 다른 모델을 지정하면 그 워크스트림만 해당 모델로 실행되고 카드에 표시됩니다. 이미 실행 중인 작업은 기존 모델을 유지합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowe wątki pracy startują na tym modelu. Gdy Twoje słowa do %@ wskazują inny model dla zadania, ten jeden wątek działa na nim, a jego karta to pokazuje. Praca, która już trwa, zachowuje swój."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Novos fluxos de trabalho começam com este modelo. Quando suas palavras para %@ indicam outro modelo para uma tarefa, esse fluxo roda nele, e o cartão mostra isso. O trabalho que já está em andamento mantém o seu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новые рабочие потоки запускаются на этой модели. Если в ваших словах для %@ для задачи названа другая модель, этот поток работает на ней, и его карточка это показывает. Уже идущая работа сохраняет свою."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni iş akışları bu modelle başlar. %@ için verdiğin talimatlar bir görev için başka bir model belirtirse, o iş akışı o modelle çalışır ve kartı bunu gösterir. Zaten çalışan işler kendi modelini korur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新的工作流将使用此模型启动。如果你给 %@ 的指示为某项任务指定了其他模型，该工作流就会使用那个模型，卡片上也会显示。已在运行的工作保留其原有模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新的工作流將使用此模型啟動。如果你給 %@ 的指示為某項任務指定了其他模型，該工作流就會使用那個模型，卡片上也會顯示。已在執行的工作保留其原有模型。"
+          }
+        }
+      }
+    },
+    "Runs on %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Läuft mit %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Runs on %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tourne sur %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berjalan dengan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Usa %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@で実行"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 실행"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Działa na %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roda em %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Работает на %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ile çalışıyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 %@ 运行"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "使用 %@ 執行"
           }
         }
       }

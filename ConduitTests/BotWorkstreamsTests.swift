@@ -145,6 +145,22 @@ extension BotModeTests {
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "agents": 3])).awaitedAgentCount, 0)
     }
 
+    /// Issue 2788: a workstream the bot started on a model the user's words
+    /// named carries it for its card; one on the Workstream Model has none.
+    func testAWorkstreamCarriesTheModelTheBotNamedForIt() throws {
+        let named = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W1", "kind": "workstream", "status": "running",
+            "model": ["model": "claude-opus-5-5", "provider": "anthropic", "reasoning_effort": "xhigh"],
+        ]))
+        XCTAssertEqual(named.model, BotWorkSettings.Model(model: "claude-opus-5-5", provider: "anthropic",
+                                                          reasoningEffort: "xhigh"))
+        XCTAssertNil(try XCTUnwrap(BotWorkItem(row: ["ref": "W2", "kind": "workstream", "model": NSNull()])).model)
+        XCTAssertNil(try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream"])).model,
+                     "an older plugin names none")
+        XCTAssertNil(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out",
+                                                     "model": ["model": "gpt-5.5"]])).model)
+    }
+
     /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
