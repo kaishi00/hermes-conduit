@@ -105,6 +105,9 @@ struct ModelChooserPage: View {
     @State private var openedPicked = false
     /// The page's own Refresh models is asking Hermes for the live lists.
     @State private var refreshingModels = false
+    /// The page's own Refresh models failed: said under the models, with
+    /// Try Again asking for the live lists again, until one lands.
+    @State private var refreshFailed = false
 
     private var searching: Bool { !ModelSearchQuery(query).isEmpty }
     private var visibleProviders: [ProviderInfo] { appState.modelVisibility.visible(catalog.providers) }
@@ -134,10 +137,10 @@ struct ModelChooserPage: View {
                     quickPicks
                     providersSection
                 }
-                if catalog.failed {
+                if catalog.failed || refreshFailed {
                     failedRows
                 }
-            } else if catalog.failed {
+            } else if catalog.failed || refreshFailed {
                 failedRows
             } else {
                 ProgressView()
@@ -181,13 +184,20 @@ struct ModelChooserPage: View {
 
     /// Hermes drops its cached model lists and fetches every provider's
     /// live list (issue 1807), then the setting reads its models again with
-    /// its own read, as Try Again does, which says a failure under them.
+    /// its own read, as Try Again does. A refresh that fails stays said
+    /// even when that read answers from Hermes' cache. One that lands after
+    /// the dashboard or profile changed leaves the setting's read alone,
+    /// as it belongs to the page that asked.
     @MainActor
     private func refreshModels() async {
         guard !refreshingModels else { return }
+        let dashboard = appState.activeDashboardID
+        let profile = appState.activeProfile
         refreshingModels = true
-        _ = await appState.loadModelProviders(refresh: true)
+        let loaded = await appState.loadModelProviders(refresh: true)
         refreshingModels = false
+        guard appState.activeDashboardID == dashboard, appState.activeProfile == profile else { return }
+        refreshFailed = loaded == nil
         retry()
     }
 
@@ -462,8 +472,14 @@ struct ModelChooserPage: View {
     private var failedRows: some View {
         Text(AppLocalization.string("Could not load models.", table: .settings))
             .foregroundStyle(.secondary)
-        Button(AppLocalization.string("Try Again"), action: retry)
-            .buttonStyle(.settings)
+        Button(AppLocalization.string("Try Again")) {
+            if refreshFailed {
+                Task { await refreshModels() }
+            } else {
+                retry()
+            }
+        }
+        .buttonStyle(.settings)
     }
 
     /// Pin or Unpin, shared with the chat's Model sheet's Quick picks.
