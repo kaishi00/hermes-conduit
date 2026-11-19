@@ -5957,7 +5957,7 @@ iPhone voice, Hermes speech, the speech server and the standalone playback
 note into it; Classic and the speech test share those and take no steps) ·
 docs/VOICE_SETTINGS.md
 
-**Desktop app:** gap: no live call trace.
+**Desktop app:** partly: Settings > Last live call keeps and copies the last Grok Live, Qwen Live, Local Live or GPT-Live call's steps (`desktop/src/renderer/src/state/callTrace.ts`, desktop #72); no Read Aloud trace.
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
@@ -7784,7 +7784,7 @@ the lock only) · Combine Dashboards (the launch's unlock signs the other combin
 dashboards in quietly once the one on screen has connected; a combined one the
 unlock doesn't cover waits for a tap, see Combined dashboards)
 
-**Desktop app:** gap: no Windows Hello or Touch ID lock; the sign-in is encrypted by the system keychain.
+**Desktop app:** has it: Settings > Lock asks for Touch ID (Mac) or Windows Hello once per launch before the saved hosts open (`desktop/src/main/appLock.ts`, desktop #74); the sign-ins stay encrypted by the system keychain.
 
 **Code**
 - `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect, through clearSavedPassword)
