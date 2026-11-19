@@ -4,7 +4,7 @@
 //
 //  Done chats: a chat the user or their agent marked done (the row's menu
 //  or swipe, or the plugin's conduit_chat_done tool). The plugin keeps the
-//  marks per profile (`/chats/done`, plugin 0.182+), so every iPhone, iPad,
+//  marks per profile (`/chats/done`, plugin 0.183+), so every iPhone, iPad,
 //  Mac and desktop shows the same ones, under every id of the chat it was
 //  given: its lineage root, which a compaction keeps, and its sessions.
 //

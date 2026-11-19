@@ -6885,7 +6885,7 @@ profile or bot · a dashboard switch
 A chat the user, or their agent, marked done: it dims in the list with a
 green check, and the Chats list's In progress and Done filters split the
 finished chats from the rest (fish0859 on Reddit, 2026-11-19). The plugin
-keeps the marks per profile (`/chats/done`, plugin 0.182.0), so the phone,
+keeps the marks per profile (`/chats/done`, plugin 0.183.0), so the phone,
 the iPad and the desktop show the same ones, and the agent's
 `conduit_chat_done` tool marks its own chat.
 
