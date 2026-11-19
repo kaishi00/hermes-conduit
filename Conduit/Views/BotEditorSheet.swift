@@ -725,6 +725,10 @@ struct BotEditorSheet: View {
         pluginError = nil
         let dashboard = appState.activeDashboardID
         Task {
+            guard appState.activeDashboardID == dashboard else {
+                isTurningOnPlugin = false
+                return
+            }
             let failure = await appState.turnOnBotPlugin(profile: bot.name)
             isTurningOnPlugin = false
             // Switched away meanwhile: the card now shows another Hermes'.
