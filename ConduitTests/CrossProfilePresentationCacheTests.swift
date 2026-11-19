@@ -1707,6 +1707,26 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
         appState.keptDashboardJSONReader = reader
+        // Cron evidence past its half hour: one profile's cron read failing
+        // keeps what the last full read gave, to read again next time;
+        // every profile answering with none clears it (#2800 review).
+        appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-mac-1"]
+        appState.combinedDashboardChats[mac.id]?.cronAt = .distantPast
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("source=cron"), path.contains("profile=atlas") { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, ["cron-mac-1"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronAt, .distantPast)
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("source=cron") { return ["sessions": [Any]()] }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, [])
+        XCTAssertNotEqual(appState.combinedDashboardChats[mac.id]?.cronAt, .distantPast)
+        appState.keptDashboardJSONReader = reader
         // A switch's seed stands against a read started before it (#2644
         // review), and gives way to one started after.
         let listed = try XCTUnwrap(appState.combinedDashboardChats[mac.id])

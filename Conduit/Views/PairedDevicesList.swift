@@ -20,6 +20,8 @@ struct PairedDevicesList: View {
     /// Bumped by each read, so only the newest one lands: a Try Again and
     /// the read after a pairing can overlap.
     @State private var readToken = 0
+    /// The newest read is running: Try Again waits for it (issue 2778).
+    @State private var reading = false
 
     var body: some View {
         Group {
@@ -32,6 +34,7 @@ struct PairedDevicesList: View {
                     Spacer(minLength: 8)
                     Button(AppLocalization.string("Try Again")) { Task { await load() } }
                         .scaledFont(.footnote)
+                        .disabled(reading)
                 }
             }
             if !devices.isEmpty {
@@ -115,6 +118,8 @@ struct PairedDevicesList: View {
         let started = generation
         readToken += 1
         let token = readToken
+        reading = true
+        defer { if token == readToken { reading = false } }
         do {
             let read = try await appState.pairedDevices(profile)
             guard started == generation, token == readToken, !Task.isCancelled else { return }
@@ -133,6 +138,10 @@ struct PairedDevicesList: View {
             generation += 1
             do {
                 devices = try await run()
+                // A read that began during the change may hold the list from
+                // before it: only one started after it lands (issue 2778).
+                readToken += 1
+                reading = false
                 loadError = nil
                 Haptics.success()
             } catch {

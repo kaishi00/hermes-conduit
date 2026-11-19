@@ -3664,8 +3664,11 @@ extension VoiceConversationControllerTests {
 
         // A board in an extra list, or one card on its own, is still drawn (notifier #876).
         let place = #"{"type": "place", "places": [{"name": "Tartine"}]}"#
+        // A JSON string of them inside the list or the wrapper too (notifier 879).
+        let nested: [Any] = [["[\(place)]"], ["cards": "[\(place)]"]]
+        let nestedText = try nested.map { String(decoding: try JSONSerialization.data(withJSONObject: $0), as: UTF8.self) }
         let wrappings = ["[[\(place)]]", place, #"{"cards": [\#(place)]}"#, #"[{"cards": [\#(place)]}]"#,
-                         #"{"cards": {"cards": [\#(place)]}}"#]
+                         #"{"cards": {"cards": [\#(place)]}}"#] + nestedText
         for (index, wrapped) in wrappings.enumerated() {
             let before = shownCards.count
             let answer = await bridge.handle(.init(id: "w\(index)", name: "show_on_screen", arguments: ["title": "Breakfast", "cards": wrapped]))

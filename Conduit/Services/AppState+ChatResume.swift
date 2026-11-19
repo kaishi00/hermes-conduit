@@ -204,6 +204,14 @@ extension AppState {
     /// and the chat open before keeps its viewport. A tab switch that only
     /// hides the screen leaves the open to land.
     func standDownBotChatOnItsWay() {
+        // A link's open still waiting for the connection or the roster has
+        // no open on its way yet: a newer request stands it down, as a newer
+        // tap would, leaving every viewport generation as it is (issue 2792).
+        if botChatOnItsWay == nil, let waiting = linkedBotChatWaitingRequest, waiting == botChatOpenRequests {
+            botChatOpenRequests &+= 1
+            linkedBotChatWaitingRequest = nil
+            return
+        }
         guard let coming = botChatOnItsWay,
               chatViewportTransitionIsCurrent(generation: coming.transition) else { return }
         finishChatViewportTransition(generation: coming.transition)

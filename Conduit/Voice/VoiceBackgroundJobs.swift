@@ -3831,7 +3831,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         let running = kept.filter { $0.status.isActive }
         let settled = kept.filter { !$0.status.isActive }.suffix(max(0, Self.maximumSavedJobs - running.count))
         let ids = Set((running + settled).map(\.id))
-        return kept.filter { ids.contains($0.id) }.compactMap { SavedVoiceJob($0) }
+        return kept.filter { ids.contains($0.id) }.compactMap { job in
+            guard var saved = SavedVoiceJob(job) else { return nil }
+            // What it sent its chat goes with it, so the fence on a reply
+            // read from a chat other turns share outlasts a relaunch (issue 2760).
+            if let sent = sentPrompts[job.id], !sent.isEmpty { saved.sentPrompts = sent.sorted() }
+            return saved
+        }
     }
 
     /// Brings back what an earlier run saved. A job already in the ledger
@@ -3852,6 +3858,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             }
             lastJobNumber = max(lastJobNumber, job.number)
             jobs.append(job)
+            // A reply its chat holds is its own only when it answers what it
+            // sent, as before the relaunch (issue 2760).
+            let sent = entry.promptsSent
+            if !sent.isEmpty { sentPrompts[job.id] = sent }
             added = true
         }
         guard added else { return }
@@ -3919,7 +3929,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The first message of a job session. Written for the model, not shown
     /// as UI copy, so it is not localized.
-    static func jobPrompt(for instructions: String) -> String {
+    nonisolated static func jobPrompt(for instructions: String) -> String {
         """
         [Background job started from a Conduit voice conversation. Nobody is watching this chat live, so work on it on your own. When you are done, end your final message with a plain-language summary that can be read aloud: what you found or did, with the key details.]
 

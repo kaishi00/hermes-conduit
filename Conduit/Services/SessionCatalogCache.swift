@@ -182,10 +182,11 @@ struct SessionCatalogCache {
 
     /// Cached rows of `key` changed here (a retitle), when they're cached.
     mutating func updateRows(forKey key: String, _ transform: (SessionSummary) -> SessionSummary) {
-        guard let rows = sessionsByKey[key] else { return }
         // A read that fetched the old rows mustn't commit them over this,
-        // even when the run isn't among the cached rows (#2800 review).
+        // even when the run isn't among the cached rows or none are cached
+        // yet (#2800 reviews).
         mutationGeneration &+= 1
+        guard let rows = sessionsByKey[key] else { return }
         let updated = rows.map(transform)
         guard updated != rows else { return }
         sessionsByKey[key] = updated

@@ -406,6 +406,18 @@ extension ChatOnScreenTests {
         XCTAssertEqual(store.banner?.dashboardID, twin)
         store.apply(all, profile: "default", dashboardID: here) { $0.waitID == "w5" }
         XCTAssertNil(store.banner, "open here, no banner from the twin")
+
+        // The twin listed a wait under another spelling of its profile: this
+        // dashboard's own read of it banners nothing again (#2800 review).
+        func spelled(_ id: String, _ profile: String) -> NeedsYouItem {
+            NeedsYouItem(waitID: id, profile: profile, kind: .approval, sessionIDs: ["s-\(id)"],
+                         since: Date(timeIntervalSince1970: 60))
+        }
+        store.apply([], profile: "atlas", dashboardID: here) { _ in false }
+        store.applyOther([spelled("w6", "Atlas")], profile: "Atlas", dashboardID: twin)
+        store.dismissBanner()
+        store.apply([spelled("w6", "atlas")], profile: "atlas", dashboardID: here) { _ in false }
+        XCTAssertNil(store.banner, "one wait under two spellings banners once")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
