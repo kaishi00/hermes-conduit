@@ -2902,7 +2902,7 @@ notifications (not needed: they draw no faces) · the notifier (not needed: it
 serves no pictures) · the text that describes it (the editor's caption under
 the Edit Picture menu, which names a brought-to-life still too, README.md's bots and profiles lines)
 
-**Desktop app:** partly: a GIF can be chosen as a bot's picture (`desktop/src/renderer/src/components/BotEditor.tsx`); no video or Bring to Life.
+**Desktop app:** partly (desktop#124): Choose GIF or Video beside Choose Photo in New Bot and Edit Bot makes the same looping animated PNG from an animated picture or a video's first 3 seconds, at most 36 frames and 256 px, smaller until it fits 1.5 MB, with the phone's caption and too-large message (`desktop/src/renderer/src/state/movingPicture.ts`, `desktop/src/renderer/src/state/apng.ts`, `desktop/src/renderer/src/components/BotEditor.tsx`, `desktop/src/renderer/src/components/NewBot.tsx`); it plays on Bots Home's portraits and in the editors, never with Reduce Motion, and every other face keeps its first frame (`desktop/src/renderer/src/state/useBots.ts` useFace); no Bring to Life (Vision's cut-out is the phone's), and the desktop has no Profiles card to set a profile's picture from.
 
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:), pick(from:): a Photos pick's own file, a still among them used as a photo)
