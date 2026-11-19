@@ -565,6 +565,9 @@ struct V2ProjectPage: View {
         isLoading = false
 
         let others = appState.projectPageProfiles(besides: pageProfile)
+        // The page draws every gathered profile's rows, All on or off, so it
+        // reads their Done marks too (each at most every 15 s).
+        appState.refreshChatDoneMarks(profiles: [pageProfile] + others)
         guard !others.isEmpty else {
             otherProfiles = nil
             return

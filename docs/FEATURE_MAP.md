@@ -6890,10 +6890,11 @@ the iPad and the desktop show the same ones, and the agent's
 `conduit_chat_done` tool marks its own chat.
 
 **Siblings:** the row's touch-and-hold menu (Mark as Done / Not Done) and
-leading swipe (done) · the row's look: dimmed title and preview, check
-before the time, Running and Approve still shown, an "In messages" search hit too (done) · the Chats list's
+leading swipe (done) · the open chat's title menu and the conversation's ⋯
+menu, which share that menu (done) · the row's look: dimmed title and preview, check
+before the time, Running and Approve still shown, a nested child row and an "In messages" search hit too (done) · the Chats list's
 In progress and Done filters, combined with status, source and project
-filters (done) · a project's page (done, same rows) · All profiles (done:
+filters (done) · a project's page (done, same rows; it reads the marks of every profile it gathers, All on or off) · All profiles (done:
 each row read and marked in its own profile) · another combined dashboard's
 row (not needed for now: its marks live on that dashboard, so it offers no
 mark) · the iPad and Mac list (done, same views) · the notifier's route,
@@ -6905,8 +6906,8 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 
 **Code**
 - Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, chatDoneMarksKey per dashboard and profile, setSessionDone and its pending writes, refreshChatDoneMarks and its 15 s throttle, a read from before a write dropped)
-- Reads with the list: `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList), `Conduit/Services/AppState+AllProfilesChats.swift` (listAllProfilesCatalog)
-- Views: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, DoneToggleButton), `Conduit/Views/V2/V2ChatsView.swift` (the leading swipe; V2SessionFilter's inProgress and done, V2FilterSelection's progress group), `Conduit/Views/V2/V2SessionRow.swift` (isDone), `Conduit/Views/V2/V2ProjectPage.swift`
+- Reads with the list: `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList), `Conduit/Services/AppState+AllProfilesChats.swift` (listAllProfilesCatalog), `Conduit/Views/V2/V2ProjectPage.swift` (reload, the gathered profiles)
+- Views: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, DoneToggleButton), `Conduit/Views/V2/V2ChatsView.swift` (the leading swipe; V2SessionFilter's inProgress and done, V2FilterSelection's progress group; childRow and the content match row's isDone), `Conduit/Views/V2/V2SessionRow.swift` (isDone), `Conduit/Views/V2/V2ProjectPage.swift`
 - Route and tool: `notifier/chat_marks_store.py`, `notifier/dashboard/api/chat_marks.py`, `notifier/chat_done_tool.py`, `notifier/tests/test_chat_marks.py`
 - Tests: `ConduitTests/SidebarLayoutTests+V2Filters.swift` (testV2FiltersInProgressAndDoneNarrowTheRestAndTogetherListBoth, testChatDoneMarksFollowTheConversationPerProfile)
 

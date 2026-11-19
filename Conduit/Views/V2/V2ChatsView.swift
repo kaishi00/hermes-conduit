@@ -2764,6 +2764,7 @@ struct V2ChatsRowContent: View, Equatable {
         let status = appState.v2RowStatus(for: session)
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
+        let isDone = appState.isSessionDone(session)
         let rowSelection = selection(session, faintAlone: false)
         // Another combined dashboard's chat nested under its parent: badged,
         // and it only opens, as its own row does.
@@ -2787,8 +2788,15 @@ struct V2ChatsRowContent: View, Equatable {
                 Text(session.title)
                     .scaledFont(.subheadline.weight(isUnread ? .semibold : .regular))
                     .foregroundStyle(.primary)
+                    .opacity(isDone ? 0.5 : 1)
                     .lineLimit(1)
                 Spacer(minLength: 6)
+                if isDone {
+                    Image(systemName: "checkmark.circle.fill")
+                        .scaledFont(.caption2)
+                        .foregroundStyle(Color.green)
+                        .accessibilityHidden(true)
+                }
                 if isStarred {
                     Image(systemName: "star.fill")
                         .scaledFont(.caption2)
@@ -2815,6 +2823,7 @@ struct V2ChatsRowContent: View, Equatable {
             dashboardBadge?.name,
             isUnread ? AppLocalization.string("Unread") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
+            isDone ? AppLocalization.string("Done") : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))
