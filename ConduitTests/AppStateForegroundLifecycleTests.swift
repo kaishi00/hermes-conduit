@@ -9962,6 +9962,7 @@ extension AppStateForegroundLifecycleTests {
     private final class ReapedHost {
         var reaped = false
         var refusesEverySend = false
+        var storedGone = false
         var resumes: [String] = []
         var sends: [String] = []
         var reads: [String] = []
@@ -9979,7 +9980,7 @@ extension AppStateForegroundLifecycleTests {
             loadCatalog: { _, _ in [self.session("stored-a")] },
             openSession: { _, id, _ in
                 host.resumes.append(id)
-                if host.reaped, id == "runtime-a" {
+                if host.reaped, id == "runtime-a" || host.storedGone {
                     throw RpcError(code: 4007, message: "session not found")
                 }
                 return SessionResumeResult(
@@ -10094,6 +10095,27 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertFalse(submitted)
         XCTAssertEqual(host.sends, ["runtime-a", "runtime-b"], "one resume and one more try, no loop")
         XCTAssertEqual(harness.appState.errorMessage, "Failed to send: session not found")
+        box.client.disconnect()
+    }
+
+    func testAResumeThatFailsAfterTheReapShowsTheFailedSend() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        host.reaped = true
+        host.storedGone = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(host.sends, ["runtime-a"], "nothing to send to once the resume fails")
+        XCTAssertEqual(
+            harness.appState.sendFailureShown, "Failed to send: session not found",
+            "the message doesn't just vanish"
+        )
         box.client.disconnect()
     }
 }

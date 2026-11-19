@@ -60,7 +60,8 @@ extension AppState {
         attachments: [Attachment],
         context: ComposerSubmissionContext,
         queued: Bool,
-        optimisticRowID: String
+        optimisticRowID: String,
+        error: Error
     ) async -> Bool {
         lifecycleLog.notice("send refused: the chat's runtime is gone; resuming the stored chat and sending again")
         // The resend draws its own bubble.
@@ -68,6 +69,11 @@ extension AppState {
         guard let recovered = await recoverComposerSubmission(using: context),
               isCurrentComposerSubmission(recovered),
               chatSyncErrorMessage == nil else {
+            // The resume didn't take: the refusal shows, as any failed send
+            // does, unless the person has left the chat meanwhile.
+            if isCurrentOrAliasedComposerSubmission(context) {
+                showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
+            }
             return false
         }
         return await sendMessage(
@@ -247,7 +253,7 @@ extension AppState {
                 if !afterResumingStoredChat, !afterReplacingLostChat, HermesClient.isSessionNotFoundError(error) {
                     return await resendAfterResumingStoredChat(
                         text, attachments: attachments, context: submissionContext, queued: queued,
-                        optimisticRowID: userMessage.id
+                        optimisticRowID: userMessage.id, error: error
                     )
                 }
                 // A file can't wait as text: it comes back, and the
@@ -469,7 +475,7 @@ extension AppState {
             if !afterResumingStoredChat, !afterReplacingLostChat, HermesClient.isSessionNotFoundError(error) {
                 return await resendAfterResumingStoredChat(
                     text, attachments: attachments, context: submissionContext, queued: queued,
-                    optimisticRowID: userMessage.id
+                    optimisticRowID: userMessage.id, error: error
                 )
             }
             if keepComposerSendForReconnect(
