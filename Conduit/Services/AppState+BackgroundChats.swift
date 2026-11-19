@@ -293,7 +293,9 @@ extension AppState {
               let durableRow = owningSessionRow(for: durable),
               durableRow.id == durable || durableRow.storedSessionId == durable,
               let ownRow = owningSessionRow(for: own), ownRow.id == own || ownRow.storedSessionId == own else { return false }
-        return ownRow.id == durableRow.id
+        // The same chat under two rows (or a row re-listed under a new
+        // runtime id) has one stored id (issue 2767).
+        return ownRow.durableKey == durableRow.durableKey
     }
 
     /// Records the chat on screen's row as it opens (setActiveSessionState).
@@ -305,6 +307,28 @@ extension AppState {
         guard let newID, !newID.isEmpty else {
             rowOfChatOnScreen = nil
             return
+        }
+        // A resume onto the same id keeps the recorded row while it's still
+        // listed under that id, though another row lists the id too (one
+        // Hermes gave it to): the first such row isn't the chat's for it
+        // (issue 2767).
+        if let kept = rowOfChatOnScreen, kept.dashboardID == activeDashboardID, kept.profile == activeProfile,
+           oldID == newID, kept.openIDs.contains(newID) {
+            let row = listedRow(kept.row)
+            let owners = [sessions, cronSessions].joined().filter { $0.id == newID || $0.storedSessionId == newID }
+            if owners.count > 1, owners.contains(where: { $0.durableKey == row.durableKey }) {
+                rowOfChatOnScreen = (row, kept.openIDs, kept.dashboardID, kept.profile)
+                return
+            }
+            // A row read with no stored id keeps itself over the one listing
+            // under the id when the index binds the id to another chat than
+            // that listing's (#2794 review), as `listedRow` refused it.
+            if row.storedSessionId == nil, owners.count == 1, let owner = owners.first, owner.durableKey != row.durableKey,
+               let durable = conversationIdentityIndex.durableID(forRuntime: newID, profile: activeProfile),
+               durable != owner.durableKey, durable != owner.id {
+                rowOfChatOnScreen = (row, kept.openIDs, kept.dashboardID, kept.profile)
+                return
+            }
         }
         if let row = owningSessionRow(for: newID) {
             rowOfChatOnScreen = (row, [newID], activeDashboardID, activeProfile)
@@ -349,11 +373,19 @@ extension AppState {
     /// `row` as the catalog lists it now, else as it was read. A row under
     /// the same id with another stored id is another chat's, which Hermes
     /// gave the runtime id to (issue 2764).
-    /// A listing with no stored id keeps the one it was read with.
+    /// A listing with no stored id keeps the one it was read with. A row
+    /// read with none takes a listing's only while the identity index binds
+    /// the row's id to no other chat: a listing under that id may be the
+    /// chat Hermes gave it to (issue 2767).
     private func listedRow(_ row: SessionSummary) -> SessionSummary {
+        let durable = conversationIdentityIndex.durableID(forRuntime: row.id, profile: activeProfile)
         guard var listed = [sessions, cronSessions].joined().first(where: { listed in
-            listed.id == row.id
-                && (listed.storedSessionId == nil || row.storedSessionId == nil || listed.storedSessionId == row.storedSessionId)
+            guard listed.id == row.id else { return false }
+            guard let listedStored = listed.storedSessionId else { return true }
+            guard let readStored = row.storedSessionId else {
+                return durable.map { $0 == row.id || $0 == listedStored } ?? true
+            }
+            return listedStored == readStored
         }) else { return row }
         if listed.storedSessionId == nil { listed.storedSessionId = row.storedSessionId }
         return listed

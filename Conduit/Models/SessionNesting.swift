@@ -326,4 +326,10 @@ extension SessionSummary {
     var nestingIDs: [String] {
         ([id, storedSessionId].compactMap { $0 } + alternateIds).filter { !$0.isEmpty }
     }
+
+    /// The id Hermes stores the chat under (its stored id, else its id):
+    /// the same chat listed twice, or under a new runtime id, keeps it.
+    var durableKey: String {
+        storedSessionId.flatMap { $0.isEmpty ? nil : $0 } ?? id
+    }
 }

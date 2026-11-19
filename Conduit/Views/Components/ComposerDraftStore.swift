@@ -46,6 +46,10 @@ final class ComposerDraftStore {
     private var drafts: [ComposerDraftKey: ComposerDraft] = [:]
     private var order: [ComposerDraftKey] = []
     private var generations: [ComposerDraftKey: UUID] = [:]
+    /// The durable id of the chat each draft was saved for, when the list
+    /// named one: a key's runtime id can later be handed to another chat
+    /// (issue 2782), and the draft stays its own chat's.
+    private var owners: [ComposerDraftKey: String] = [:]
     /// How many times `removeAll` ran: a composer loaded before a clear
     /// doesn't put its draft back after it.
     private(set) var clearCount: UInt64 = 0
@@ -66,7 +70,9 @@ final class ComposerDraftStore {
         return draft
     }
 
-    func save(_ draft: ComposerDraft, for key: ComposerDraftKey) {
+    /// Saves `draft` under `key`. `owner`, the durable id of the chat it's
+    /// for, replaces the one kept; nil keeps it (the same key's chat).
+    func save(_ draft: ComposerDraft, for key: ComposerDraftKey, owner: String? = nil) {
         if draft.isEmpty {
             removeDraft(for: key)
             return
@@ -78,6 +84,7 @@ final class ComposerDraftStore {
         }
 
         drafts[key] = draft
+        if let owner, !owner.isEmpty { owners[key] = owner }
         refreshGeneration(for: key)
         touch(key)
         evictIfNeeded(in: key.dashboard)
@@ -85,6 +92,12 @@ final class ComposerDraftStore {
 
     func hasDraft(for key: ComposerDraftKey) -> Bool {
         drafts[key] != nil
+    }
+
+    /// The durable id of the chat the draft under `key` was saved for, nil
+    /// when the list named none then.
+    func owner(of key: ComposerDraftKey) -> String? {
+        drafts[key] == nil ? nil : owners[key]
     }
 
     /// The keys with a draft, most recently used first.
@@ -100,8 +113,20 @@ final class ComposerDraftStore {
 
     func migrateDraft(from source: ComposerDraftKey, to destination: ComposerDraftKey) {
         guard source != destination, let draft = drafts[source] else { return }
+        let owner = owners[source]
         removeDraft(for: source)
-        save(draft, for: destination)
+        save(draft, for: destination, owner: owner)
+    }
+
+    /// A draft whose key's runtime id now names another chat goes back
+    /// under its own chat's durable id (issue 2782), joined with anything
+    /// kept there, so neither chat loses words and the other chat never
+    /// shows them.
+    func returnDraft(from source: ComposerDraftKey, toOwner owner: String) {
+        let destination = ComposerDraftKey(dashboard: source.dashboard, profile: source.profile, sessionID: owner)
+        guard source != destination, let draft = drafts[source] else { return }
+        removeDraft(for: source)
+        save(self.draft(for: destination).restoring(draft), for: destination, owner: owner)
     }
 
     func submissionBucket(for key: ComposerDraftKey) -> ComposerDraftSubmissionBucket {
@@ -111,6 +136,7 @@ final class ComposerDraftStore {
     func removeDraft(for key: ComposerDraftKey) {
         drafts.removeValue(forKey: key)
         generations.removeValue(forKey: key)
+        owners.removeValue(forKey: key)
         order.removeAll { $0 == key }
     }
 
@@ -154,6 +180,7 @@ final class ComposerDraftStore {
         clearCount &+= 1
         drafts.removeAll()
         generations.removeAll()
+        owners.removeAll()
         order.removeAll()
     }
 
