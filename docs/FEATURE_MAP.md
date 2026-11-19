@@ -865,7 +865,7 @@ GPT-Live, Local Live) · Classic's mode capsule · a failed live call's Switch
 voice button · Voice settings' mode picker · CarPlay and the Apple Watch (no
 mode menu)
 
-**Desktop app:** has it: every call screen shows its mode in a capsule whose menu moves the call to another mode in the same chat, and the voice mode picker beside the call button does the same during a call and sets the next call's mode before one (`desktop/src/renderer/src/components/VoiceModeCapsule.tsx`, `desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#38, desktop#87); no call fails into a mode menu of its own, the capsule stays on a failed call.
+**Desktop app:** has it: every call screen shows its mode in a capsule whose menu moves the call to another mode in the same chat, and the voice mode picker beside the call button does the same during a call and sets the next call's mode before one (`desktop/src/renderer/src/components/VoiceModeCapsule.tsx`, `desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#38, desktop#87); a failed call keeps the capsule, which serves as its Switch voice.
 
 **Code**
 - Menu and capsule: `Conduit/Views/VoiceModeMenu.swift` (VoiceModeMenu, VoiceModeCapsule), `Conduit/Voice/VoiceModeChoice.swift` (VoiceModeSwitch)
