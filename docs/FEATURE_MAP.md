@@ -9094,7 +9094,7 @@ sizes have to grow by point size, the app's text styles through
 width, and Chat text size's caption is about its slider, which still applies
 on top
 
-**Desktop app:** unchecked: whether the chat keeps a readable width on a wide window.
+**Desktop app:** has it (desktop#92): the chat's column stays 780 px until the chat passes about 1180 px, then it and everything in it, the composer included, steps up one text size at a time to 23 pt's worth, the header kept (`desktop/src/renderer/src/styles/app.css`, the `chat` container query); the desktop draws text at its true size, so it follows the iPhone and iPad steps, not the Mac's growth.
 
 **Code**
 - Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:systemGrowsTextStyles:), chatMax, chatShare, settings(available:systemGrowsTextStyles:), settingsMax, macLineGrowth, macMaxTextScale, macShare, textSteps(column:base:), textSteps(column:base:from:), chatTextGrowth, columnText(column:base:scalesChatText:size:systemGrowsTextStyles:): the Dynamic Type size, transcript steps and ColumnText a column sets, readableChatColumn, readableSettingsColumn)
