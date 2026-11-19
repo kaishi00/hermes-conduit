@@ -554,6 +554,21 @@ final class AppStateReasoningStreamTests: XCTestCase {
         state.activeSessionId = "shared-runtime"
         XCTAssertNil(state.errorMessage, "A different chat carrying the left chat's alias doesn't show its error")
         XCTAssertNil(state.shownChat.chatErrorShown)
+
+        // An id two rows claim directly is neither's: the open isn't taken
+        // for the same chat (#2864 review).
+        var claimedByA = SessionSummary(id: "dup", alternateIds: ["dup-next"], title: "a", model: "Hermes",
+                                        updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                        isArchived: false, lineageRootId: nil)
+        claimedByA.storedSessionId = "stored-a"
+        var claimedByB = claimedByA
+        claimedByB.storedSessionId = "stored-b"
+        claimedByB.alternateIds = []
+        state.sessions = [claimedByA, claimedByB]
+        state.activeSessionId = "dup"
+        state.handleStreamEvent(.messageError(sessionId: "dup", message: startFailure))
+        state.activeSessionId = "dup-next"
+        XCTAssertNil(state.shownChat.chatErrorShown, "an id two chats claim says nothing of sameness")
     }
 
     /// Voice's cancel notes the turn the chat runs, only when it runs one,

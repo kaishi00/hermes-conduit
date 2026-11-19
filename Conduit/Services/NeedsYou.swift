@@ -233,8 +233,9 @@ final class NeedsYouStore: ObservableObject {
     /// the question up (it ran out, or was answered elsewhere), and an
     /// answer would be refused.
     func takeCardsNoLongerListed(profile: String) -> [DrawnCard] {
-        let listed = Set(items.filter { $0.profile == profile }.compactMap { $0.card?.requestID })
-        let gone = cardsDrawnHere.values.filter { $0.profile == profile && !listed.contains($0.requestID) }
+        // A profile matches its own spelling in any case (issue 2726).
+        let listed = Set(items.filter { AppState.profilesMatch($0.profile, profile) }.compactMap { $0.card?.requestID })
+        let gone = cardsDrawnHere.values.filter { AppState.profilesMatch($0.profile, profile) && !listed.contains($0.requestID) }
         for card in gone { cardsDrawnHere[card.requestID] = nil }
         return gone.sorted { $0.requestID < $1.requestID }
     }
