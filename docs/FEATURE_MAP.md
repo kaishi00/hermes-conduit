@@ -2902,7 +2902,7 @@ notifications (not needed: they draw no faces) · the notifier (not needed: it
 serves no pictures) · the text that describes it (the editor's caption under
 the Edit Picture menu, which names a brought-to-life still too, README.md's bots and profiles lines)
 
-**Desktop app:** partly: a GIF can be chosen as a bot's picture (`desktop/src/renderer/src/components/BotEditor.tsx`); no video or Bring to Life.
+**Desktop app:** partly (desktop#124): Choose GIF or Video beside Choose Photo in New Bot and Edit Bot makes the same looping animated PNG from an animated picture or a video's first 3 seconds, at most 36 frames and 256 px, smaller until it fits 1.5 MB, with the phone's caption and too-large message (`desktop/src/renderer/src/state/movingPicture.ts`, `desktop/src/renderer/src/state/apng.ts`, `desktop/src/renderer/src/components/BotEditor.tsx`, `desktop/src/renderer/src/components/NewBot.tsx`); it plays on Bots Home's portraits and in the editors, never with Reduce Motion, and every other face keeps its first frame (`desktop/src/renderer/src/state/useBots.ts` useFace); no Bring to Life (Vision's cut-out is the phone's), and the desktop has no Profiles card to set a profile's picture from.
 
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:), pick(from:): a Photos pick's own file, a still among them used as a photo)
@@ -3556,7 +3556,7 @@ window (the pane's Open in New Window on an iPad and a Mac: the same rows
 in a window of its own, with Open in Main Window) · the main window's
 first-window guard (never closes a chat window) · README.md's feature list
 
-**Desktop app:** partly (desktop#77): Open Beside in a chat's menu keeps a second chat in the side panel when the window is wide enough, with its own message box, Swap Chats and Close Chat Beside (`desktop/src/renderer/src/components/BesideChat.tsx`); no chat window of its own.
+**Desktop app:** has it (desktop#77, desktop#126): Open Beside in a chat's menu keeps a second chat in the side panel when the window is wide enough, with its own message box, Swap Chats and Close Chat Beside (`desktop/src/renderer/src/components/BesideChat.tsx`); the pane's Open in New Window moves its chat to a window of its own, up to three, with the pane's rows and message box and Open in Main Window, closing when its chat opens in the main window, is deleted, or on a profile or dashboard switch, sign-out or lock (`desktop/src/main/chatWindowSet.ts`, `desktop/src/main/chatWindows.ts`, `desktop/src/renderer/src/components/ChatWindow.tsx`).
 
 **Code**
 - `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, noteUserMessageInBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
@@ -6457,7 +6457,7 @@ docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · group rooms,
 Watch and CarPlay (not needed, no voice messages) · agent settings catalog
 (not needed, dictation's engine isn't there either)
 
-**Desktop app:** partly: voice messages and dictation share one recorder (`desktop/src/renderer/src/state/useRecorder.ts`); no engine choice.
+**Desktop app:** not applicable: voice messages and dictation share one recorder and Hermes transcribes both (`desktop/src/renderer/src/state/useRecorder.ts`); Apple's recognizers aren't on a computer, so there's no engine to choose.
 
 **Code**
 - Choice: `Conduit/Voice/DictationEngine.swift` (VoiceMessageEngine)
@@ -9483,7 +9483,7 @@ Overview's talking-rooms and live status reads (a sheet: no tab changes under it
 CarPlay (no tabs), the notifier (it answers what it's asked) · text: none (no
 Settings caption or doc gives the cadence)
 
-**Desktop app:** partly: the Tasks board reads only while it shows and the window is visible, and Pulse and Needs you only while the window is visible (`desktop/src/renderer/src/state/useKanban.ts`, `desktop/src/renderer/src/state/usePulse.ts`, `desktop/src/renderer/src/state/useNeedsYou.ts`); a bot's Work panel reads every 6 s while it's open (`desktop/src/renderer/src/state/useWork.ts`), and the group chats list every 30 s while connected, the window hidden or not (`desktop/src/renderer/src/state/useGroups.ts`).
+**Desktop app:** has it: the Tasks board reads only while it shows and the window is visible; Pulse, Needs you, a bot's Work panel and the group chats list and open room poll only while the window is visible, reading once when it shows again (a bot's Work panel still reads on a `sessions.changed` or a finished reply while hidden) (`desktop/src/renderer/src/state/visibility.ts`, `useKanban.ts`, `usePulse.ts`, `useNeedsYou.ts`, `useWork.ts`, `useGroups.ts`, desktop#125).
 
 **Code**
 - Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
@@ -9784,7 +9784,7 @@ on the authority) and self-improvement updates (the gateway reads the
 setting every turn) · the notifier's CHANGELOG ·
 README (Connecting, Architecture) · the website's FAQ
 
-**Desktop app:** partly: the socket's `gateway.ready` picks the shape; on the authority a prompt carries a `submission_id`, the queue and its refusals read the authority's words, and Move to project goes as `session.mutate` with its fences, once more on a conflict (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/chatQueue.ts`, `desktop/src/renderer/src/state/chatActions.ts`, desktop#76); rename, branch, compress and a model pick don't go as `session.mutate`.
+**Desktop app:** partly: the socket's `gateway.ready` picks the shape; on the authority a prompt carries a `submission_id`, the queue and its refusals read the authority's words, and Move to project and a model pick go as `session.mutate` with their fences, once more on a conflict, the pick with its confirm token (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/chatQueue.ts`, `desktop/src/renderer/src/state/chatActions.ts`, desktop#76, desktop#125); rename goes by its REST route, Compress Now sends `/compress` through the chat as the typed command does (`slash.exec`), and there's no Branch.
 
 **Code**
 - A Bot Chat's profile on its requests: `Conduit/Services/HermesClient.swift` (sessionProfiles, noteSessionProfile, sessionProfile(for:), scopeParams, adoptSocket, inheritSessionProfiles; noted by resumeSessionObject, createSession, createBotChatSession, authorityBranch), `Conduit/Services/AppState+Connection.swift` and `Conduit/Services/AppState+Profiles.swift` (the reconnect, connect(with:) on the same dashboard (a silent re-auth's) and the profile switch hand it to the fresh client; tested in `ConduitTests/BotModeTests.swift`, testAReconnectAndAProfileSwitchKeepTheBotChatProfileMap)
