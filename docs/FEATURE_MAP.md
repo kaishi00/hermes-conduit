@@ -310,7 +310,7 @@ use, as the other Capabilities tabs do) · Watch, CarPlay and group rooms
 (not needed: no settings) · the notifier (not needed: gateway calls) ·
 Text: the section's captions and README.md's Capabilities line (done)
 
-**Desktop app:** gap: no Apps (Nous Portal) page; Capabilities lists connectors and MCP servers only.
+**Desktop app:** has it (desktop#78): Capabilities > Connectors' Apps above the MCP servers, Browse Apps by category, and an app's page with its switch, Connect (the page opens in the browser; Done or coming back to the window wakes Hermes), accounts and tool switches (`desktop/src/renderer/src/components/HostedApps.tsx`, `desktop/src/renderer/src/state/useHostedApps.ts`); it doesn't open on kept apps, as the desktop's other Capabilities tabs don't.
 
 **Code**
 - Calls: `Conduit/Services/HermesClient.swift` (hostedAppStatuses, hostedAppCatalog, hostedAppAccounts, hostedAppPolicy, setHostedAppPolicy, hostedAppTools, connectHostedApp, hostedAppOperation, wakeHostedAppOperation, settleHostedAppOperation, renameHostedAppAccount, removeHostedAppAccount)
@@ -363,7 +363,7 @@ a typed key) · CarPlay and Watch calls (not needed: they speak the voice
 modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
 no README, docs, Settings or model-facing text describes the card)
 
-**Desktop app:** partly: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`); no Browse Apps (the Apps page is a gap).
+**Desktop app:** partly: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`); the card's app directory doesn't open Browse Apps with Hermes' picks yet (the Apps page is in Capabilities, desktop#78).
 
 **Code**
 - Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
