@@ -18,6 +18,8 @@ An approval Hermes can't go on without.
 
 **Siblings:** chat card · Classic voice
 
+**Desktop app:** has it, `desktop/src/renderer/src/components/NeedsYou.tsx`.
+
 **Code**
 - Chat card: `Conduit/Views/ChatView.swift` (ApprovalCard)
 - Notifier: `notifier/clarify_loop.py`
@@ -33,10 +35,12 @@ An approval Hermes can't go on without.
 
 
 class CheckFeatureMapTests(unittest.TestCase):
-    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",), extra=()):
+    def run_check(self, text, files=("Conduit/Views/ChatView.swift",), notifier_files=("clarify_loop.py",),
+                  desktop_files=("src/renderer/src/components/NeedsYou.tsx",), extra=()):
         """main()'s exit code and output for a map in a repo holding `files`."""
-        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as notifier:
-            for root, names in ((repo, files), (notifier, notifier_files)):
+        with tempfile.TemporaryDirectory() as repo, tempfile.TemporaryDirectory() as notifier, \
+                tempfile.TemporaryDirectory() as desktop:
+            for root, names in ((repo, files), (notifier, notifier_files), (desktop, desktop_files)):
                 for name in names:
                     path = os.path.join(root, name)
                     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -46,7 +50,8 @@ class CheckFeatureMapTests(unittest.TestCase):
                 fh.write(text)
             out = io.StringIO()
             with contextlib.redirect_stdout(out):
-                code = check.main(["--repo-root", repo, "--notifier-root", notifier, *extra])
+                code = check.main(["--repo-root", repo, "--notifier-root", notifier,
+                                   "--desktop-root", desktop, *extra])
             return code, out.getvalue()
 
     def test_the_shipped_map_passes(self):
@@ -54,22 +59,25 @@ class CheckFeatureMapTests(unittest.TestCase):
             text = fh.read()
         notifier = [path[len(check.NOTIFIER_PREFIX):] for _, path in check.paths(text)
                     if path.startswith(check.NOTIFIER_PREFIX)]
+        desktop = [path[len(check.DESKTOP_PREFIX):] for _, path in check.paths(text)
+                   if path.startswith(check.DESKTOP_PREFIX)]
         local = [path for _, path in check.paths(text)
-                 if not path.startswith(check.NOTIFIER_PREFIX) and not path.endswith("/")]
+                 if not path.startswith(tuple(check.SIBLING_REPOS)) and not path.endswith("/")]
         self.assertEqual(check.shape_problems(text), [])
-        self.assertEqual(self.run_check(text, files=local, notifier_files=notifier)[0], 0)
+        self.assertEqual(self.run_check(text, files=local, notifier_files=notifier,
+                                        desktop_files=desktop)[0], 0)
         for path in local:
             self.assertTrue(os.path.isfile(os.path.join(ROOT, path)), path)
 
     def test_a_complete_entry_passes(self):
         code, out = self.run_check(ENTRY)
         self.assertEqual(code, 0, out)
-        self.assertIn("1 entries, 2 paths, all there", out)
+        self.assertIn("1 entries, 3 paths, all there", out)
 
     def test_a_missing_file_fails_on_its_line(self):
         code, out = self.run_check(ENTRY, files=())
         self.assertEqual(code, 1)
-        self.assertIn("line=8::Conduit/Views/ChatView.swift isn't in this repo", out)
+        self.assertIn("line=10::Conduit/Views/ChatView.swift isn't in this repo", out)
 
     def test_a_missing_notifier_file_fails(self):
         code, out = self.run_check(ENTRY, notifier_files=())
@@ -230,11 +238,43 @@ class CheckFeatureMapTests(unittest.TestCase):
             with open(os.path.join(repo, check.MAP), "w", encoding="utf-8") as fh:
                 fh.write(ENTRY)
             out = io.StringIO()
-            with mock.patch.object(check, "on_notifier_main", side_effect=check.Unreachable("offline")), \
+            with mock.patch.object(check, "on_main", side_effect=check.Unreachable("offline")), \
                     contextlib.redirect_stdout(out):
                 code = check.main(["--repo-root", repo])
         self.assertEqual(code, 0)
         self.assertIn("::warning::Couldn't check hermes-conduit-notifier", out.getvalue())
+        self.assertIn("::warning::Couldn't check hermes-conduit-desktop", out.getvalue())
+
+    def test_a_missing_desktop_file_fails(self):
+        code, out = self.run_check(ENTRY, desktop_files=())
+        self.assertEqual(code, 1)
+        self.assertIn("desktop/src/renderer/src/components/NeedsYou.tsx isn't on "
+                      "hermes-conduit-desktop main", out)
+
+    def test_the_desktop_app_line_says_where_or_why(self):
+        line = "**Desktop app:** has it, `desktop/src/renderer/src/components/NeedsYou.tsx`."
+        def problems(desktop):
+            return check.shape_problems(ENTRY.replace(line, desktop))
+        self.assertEqual(problems("**Desktop app:** has it (desktop#47)."), [])
+        self.assertEqual(problems("**Desktop app:** Partly, desktop#47; no Watch card."), [])
+        self.assertEqual(problems("**Desktop app:** not applicable: the Watch is phone-only."), [])
+        self.assertEqual(problems("**Desktop app:** gap: no approvals by voice yet."), [])
+        self.assertEqual(problems("**Desktop app:** unchecked: the chat's card."), [])
+        # Continued on the next line.
+        self.assertEqual(problems("**Desktop app:** gap: no approvals\nby voice yet."), [])
+        for bad in ("**Desktop app:** yes", "**Desktop app:** has it.", "**Desktop app:** partly.",
+                    "**Desktop app:** not applicable.", "**Desktop app:** gap", "**Desktop app:** unchecked.", "**Desktop app:**"):
+            found = problems(bad)
+            self.assertEqual(len(found), 1, bad)
+            self.assertIn("Desktop app line", found[0][1], bad)
+        self.assertIn("has no Desktop app", problems("")[0][1])
+
+    def test_the_desktop_app_line_is_left_out_of_the_checked_rule(self):
+        caught_up = ENTRY.replace("has it, `desktop/src/renderer/src/components/NeedsYou.tsx`.",
+                                  "has it (desktop#60).")
+        self.assertEqual(check.unchecked_edits(ENTRY, caught_up, 1201), [])
+        added = ENTRY.replace("**Desktop app:** has it, `desktop/src/renderer/src/components/NeedsYou.tsx`.\n\n", "")
+        self.assertEqual(check.unchecked_edits(added, ENTRY, 1201), [])
 
 
 if __name__ == "__main__":

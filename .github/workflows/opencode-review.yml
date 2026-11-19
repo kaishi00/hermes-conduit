@@ -739,6 +739,12 @@ jobs:
               don't ask it for one, and don't flag it for leaving an entry
               untouched. If it moves code an entry's Code lists, that entry's
               paths and Checked line still need updating.
+              The PR's Desktop section says whether Conduit for desktop
+              needs the change (CI checks that it answers). If the entry's
+              Desktop app line says has it or partly and the section says Not
+              needed without a reason that holds, or a change makes the
+              entry's Desktop app line wrong without updating it, that is a
+              minor finding.
 
             If you find no issues, say so explicitly. Don't summarize what you did
             or describe your process. Output only the review.

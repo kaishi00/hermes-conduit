@@ -33,6 +33,19 @@ current.
 5. Text that describes a behavior is one of its siblings: Settings captions,
    the briefings and tool results models read, the notifier's tool
    descriptions, README.md and docs/. List them in Siblings with the rest.
+6. Conduit for desktop
+   ([hermes-conduit-desktop](https://github.com/kaishi00/hermes-conduit-desktop))
+   is a sibling of every feature it draws. Each entry's Desktop app line says
+   whether it has the feature: has it or partly (naming where), not applicable
+   (Watch, CarPlay, widgets and other phone-only features), gap (what's
+   missing) or unchecked. The PR's Desktop section says Done (the desktop PR),
+   Not needed (why) or Follow-up (the desktop issue or PR, or the entry whose
+   Desktop app line records the gap), and CI fails a PR without one. A change
+   to a feature the desktop has makes the desktop change too, or records the
+   gap; keep the desktop compatible where it's cheap, but never hold or narrow
+   a Conduit feature for it (Eric, 2026-11-11). The Desktop app line is left
+   out of the Checked rule, so a desktop PR catching a feature up can flip it
+   from gap to has it without a Checked line.
 
 ## Checks
 
