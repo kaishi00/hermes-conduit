@@ -318,14 +318,17 @@ extension AppState {
         // The last list read serves, unless a removal's pairings wait on it:
         // then it's read again, as one read before the removal can't show
         // whether they're gone.
-        if notifications.relayMeta == nil || !removedRelayGatewayIDs.isEmpty {
+        // A read that failed last time is tried again too.
+        if notifications.relayMeta == nil || notifications.relayMetaFetchFailed || !removedRelayGatewayIDs.isEmpty {
             await notifications.refreshMeta()
         }
         guard let meta = notifications.relayMeta, !notifications.relayMetaFetchFailed else { return }
         let removed = removedRelayGatewayIDs
         let toDrop = RemovedDashboardPairings.toDrop(
             gateways: meta.gateways,
-            savedDashboardIDs: saved,
+            // A dashboard added while the list was read is saved too: its
+            // fresh pairing may be in that list.
+            savedDashboardIDs: saved.union(savedDashboardRegistry.dashboards.map(\.id)),
             savedGatewayIDs: knownRelayGatewayIDs,
             removedGatewayIDs: removed
         )
