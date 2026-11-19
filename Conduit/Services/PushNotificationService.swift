@@ -376,7 +376,7 @@ enum RemovedDashboardPairings {
         removedGatewayIDs: Set<String>
     ) -> [String] {
         gateways.compactMap { gateway in
-            guard UUID(uuidString: gateway.id) != nil, !savedGatewayIDs.contains(gateway.id) else { return nil }
+            guard !gateway.id.isEmpty, !savedGatewayIDs.contains(gateway.id) else { return nil }
             let raw = gateway.dashboardID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if let dashboardID = UUID(uuidString: raw) {
                 return savedDashboardIDs.contains(dashboardID) ? nil : gateway.id
@@ -2092,7 +2092,8 @@ final class PushNotificationService: ObservableObject {
     func dropRelayPairings(_ gatewayIDs: [String]) async -> Set<String> {
         guard let registration else { return [] }
         var dropped = Set<String>()
-        for gatewayID in gatewayIDs where UUID(uuidString: gatewayID) != nil {
+        // One path segment each (URL.appending(path:) encodes the rest).
+        for gatewayID in gatewayIDs where !gatewayID.contains("/") {
             guard let url = try? authenticatedRelayURL("/v1/installations/\(registration.installationID)/gateways/\(gatewayID)") else { break }
             var request = authorizedRequest(url: url, credential: registration.credential)
             request.httpMethod = "DELETE"

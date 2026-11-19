@@ -784,9 +784,11 @@ extension NotificationDashboardOwnershipTests {
         let saved = pairing(UUID(), dashboard: dashboardA.uuidString)
         let reportedBySaved = pairing(UUID(), dashboard: removedDashboard.uuidString)
         let malformed = pairing(UUID(), dashboard: "not-a-dashboard")
+        let shortID = RelayMetaInfo.Gateway(id: "gw-removed", name: "Hermes", pluginVersion: nil, pluginCapabilities: [],
+                                            lastEventAt: nil, dashboardID: removedDashboard.uuidString)
 
         let toDrop = RemovedDashboardPairings.toDrop(
-            gateways: [bound, unboundReported, unboundUnknown, saved, reportedBySaved, malformed],
+            gateways: [bound, unboundReported, unboundUnknown, saved, reportedBySaved, malformed, shortID],
             savedDashboardIDs: [dashboardA, dashboardB],
             savedGatewayIDs: [reportedBySaved.id],
             removedGatewayIDs: [unboundReported.id, saved.id]
@@ -794,7 +796,7 @@ extension NotificationDashboardOwnershipTests {
 
         // Bound to a dashboard no longer saved, or from before binding and
         // reported by the removed dashboard's host.
-        XCTAssertEqual(toDrop, [bound.id, unboundReported.id])
+        XCTAssertEqual(toDrop, [bound.id, unboundReported.id, shortID.id])
     }
 
     func testRemovingADashboardKeepsItsPairingsUntilTheRelayDropsThem() {
