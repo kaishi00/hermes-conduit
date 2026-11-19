@@ -2067,6 +2067,7 @@ struct V2ChatsView: View {
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
+                isDone: row.session.map { appState.isSessionDone($0) } ?? false,
                 selection: .chat(
                     isActive: row.openID == appState.activeSessionId && row.hit.profile == nil
                         && !(row.session.map(appState.isOtherProfileRow) ?? false),

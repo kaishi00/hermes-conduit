@@ -6891,7 +6891,7 @@ the iPad and the desktop show the same ones, and the agent's
 
 **Siblings:** the row's touch-and-hold menu (Mark as Done / Not Done) and
 leading swipe (done) · the row's look: dimmed title and preview, check
-before the time, Running and Approve still shown (done) · the Chats list's
+before the time, Running and Approve still shown, an "In messages" search hit too (done) · the Chats list's
 In progress and Done filters, combined with status, source and project
 filters (done) · a project's page (done, same rows) · All profiles (done:
 each row read and marked in its own profile) · another combined dashboard's

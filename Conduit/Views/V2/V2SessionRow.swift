@@ -369,6 +369,8 @@ struct V2ContentMatchRow: View {
     let snippet: SessionSearchSnippet
     var isUnread = false
     var isStarred = false
+    /// Marked done (ChatDoneMarks): dimmed with a check, as its chat's row.
+    var isDone = false
     var selection = V2RowSelection.none
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -391,8 +393,15 @@ struct V2ContentMatchRow: View {
                     Text(title)
                         .scaledFont(.callout.weight(.semibold))
                         .foregroundStyle(.primary)
+                        .opacity(isDone ? 0.5 : 1)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
+                    if isDone {
+                        Image(systemName: "checkmark.circle.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(Color.green)
+                            .accessibilityHidden(true)
+                    }
                     if isStarred {
                         Image(systemName: "star.fill")
                             .scaledFont(.caption2)
@@ -408,7 +417,7 @@ struct V2ContentMatchRow: View {
                 if !snippet.runs.isEmpty {
                     Text(snippet.attributed())
                         .scaledFont(.subheadline)
-                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .foregroundStyle(Color.primary.opacity(isDone ? 0.35 : 0.58))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 4 : 2)
                 }
             }
@@ -429,6 +438,7 @@ struct V2ContentMatchRow: View {
         [
             isUnread ? AppLocalization.string("Unread") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
+            isDone ? AppLocalization.string("Done") : nil,
             snippet.plainText.isEmpty ? nil : snippet.plainText,
             time.isEmpty ? nil : time
         ]
