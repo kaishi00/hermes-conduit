@@ -215,7 +215,7 @@ there; see Passwords & logins settings) ·
 Text (not needed: no README, docs, Settings or model-facing text describes
 these prompts)
 
-**Desktop app:** gap: no card for Hermes' password, login and code requests (secret and sudo requests); only approvals and questions are drawn.
+**Desktop app:** has it: sudo, secret and vault requests as cards in the chat (desktop#62, `desktop/src/renderer/src/state/inputPrompts.ts`).
 
 **Code**
 - Requests: `Conduit/Services/HermesClient.swift` (handleServerRequest, respondToInputPrompt; openServerRequestIDs, approvalQueueIDs and clarifySessions, which adoptSocket moves to the client taking over a socket at a profile switch), `Conduit/Services/StreamEventParser.swift` (request.cancel), `Conduit/Models/Models.swift` (InputPromptActivity: from, loginAnswer, codeAnswer)
@@ -363,7 +363,7 @@ a typed key) · CarPlay and Watch calls (not needed: they speak the voice
 modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
 no README, docs, Settings or model-facing text describes the card)
 
-**Desktop app:** gap: no card for a connection Hermes asks for in a chat.
+**Desktop app:** partly: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`); no Browse Apps (the Apps page is a gap).
 
 **Code**
 - Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
@@ -1178,7 +1178,7 @@ answer (/btw's) included, which Hermes keeps no copy of (the user's, so its
 error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
-**Desktop app:** gap: an empty new chat Hermes lost isn't recovered or dropped from the list.
+**Desktop app:** not applicable: the desktop makes a chat only on its first send, so no empty new chat is kept to lose.
 
 **Code**
 - `Conduit/Services/AppState+Reconciliation.swift` (syncSession's create when there is nothing to resume), `Conduit/Services/AppState+PendingSend.swift` (composerDraftKeysAreSameChat reads lostChatReplacement for the draft), `Conduit/Services/AppState+Session.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, handOverWhatWaitsOnLostChat), `Conduit/Services/AppState+SendMessage.swift` (resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept), `Conduit/Services/ChatState.swift` (where the state it hands over lives: lostChatReplacement, newChatOpenedSessionID, newChatOpenedDurableSessionID, pendingComposerSend, composerPrefillDraftKey, composerFocusRequest), `Conduit/Services/AppState.swift` (the session-not-found branch in reconcile's catch (`Conduit/Services/AppState+Reconciliation.swift`); what handOverWhatWaitsOnLostChat hands over: pendingScreenshots, composerPrefillDraftKey, composerFocusRequest, classicVoiceChatToArchive with its Voice tag, and pendingComposerSend with its saved copy (`Conduit/Models/PendingComposerSend.swift`); lostChatReplacement carries an earlier replacement's lost ids when its fresh chat is lost in turn; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder, NewChatAwaitingListing.cwd, from openNewChatAwaitingListing in `Conduit/Services/AppState+Session.swift`, see A new chat in the list), `Conduit/Services/AppState+Reconciliation.swift` (syncSession, reconcile, createAndReconcileSession)
@@ -1217,7 +1217,7 @@ them go at the switch; a running turn keeps its claim either way, #1452) ·
 Settings > Chat > Take over automatically and its caption · the plugin's
 update notice
 
-**Desktop app:** gap: no takeover offer when another client holds the chat (SESSION_NOT_OWNED).
+**Desktop app:** has it: automatic takeover, or the offer when it's off, with the setting in Settings > Chat (desktop#66, `desktop/src/renderer/src/state/chatTakeover.ts`).
 
 **Code**
 - Offer, owner and sentences: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverState.owner, ChatTakeoverClient, ChatTakeoverOutcome)
@@ -3758,7 +3758,7 @@ lost, replaced by a fresh one
 | The room disbanded or left the list | not applicable | dropped, files deleted |
 | An empty chat Hermes lost, replaced by a fresh one | kept, in the fresh chat | not applicable |
 
-**Desktop app:** gap: no drafts kept per chat.
+**Desktop app:** has it: a draft kept per chat, the 12 most recent, and given back when a send fails (desktop#63, `desktop/src/renderer/src/state/composerDrafts.ts`).
 
 **Code**
 - A draft's own chat (issues 2781, 2782): `Conduit/Services/AppState+PendingSend.swift` (composerDraftKeysAreSameChat, composerDraftOwner, composerDraftKey(_:isNotChatOf:), composerDraftOwningRow), `Conduit/Views/Components/ComposerDraftStore.swift` (owner(of:), returnDraft(from:toOwner:)), `Conduit/Views/Components/ComposerBar.swift` (saveDraft's owner, loadDraft), `Conduit/Models/SessionNesting.swift` (durableKey)
@@ -5572,7 +5572,7 @@ reply and Pulse models, the Kanban model override and a custom endpoint's
 model (done: they open the same Model page, #1992) · Text (not needed: no
 caption describes them)
 
-**Desktop app:** gap: no pinned or recent models.
+**Desktop app:** has it: Pinned and Recent in the model picker and every model list (desktop#64, `desktop/src/renderer/src/state/modelQuickPicks.ts`).
 
 **Code**
 - Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/AppState.swift` (modelQuickPicks), `Conduit/Services/AppState+Dashboards.swift` (updateModelQuickPicks)
@@ -6486,7 +6486,7 @@ needed, Stop, Cancel, Transcribing and the dictation labels are already
 translated) · Watch and CarPlay (not needed, no composer dictation) · the
 notifier (not needed, dictation is app-side)
 
-**Desktop app:** gap: no Send while dictating.
+**Desktop app:** has it: Send waits while dictating and Return dictates (desktop#65, `desktop/src/renderer/src/components/Composer.tsx`).
 
 **Code**
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
@@ -6523,7 +6523,7 @@ new model (not needed, on the iPhone) · docs/VOICE_SETTINGS.md "Dictate
 into the composer" (done) · Watch and CarPlay (not needed, no composer
 dictation)
 
-**Desktop app:** gap: Hermes dictation isn't kept until transcribed.
+**Desktop app:** has it: clips kept in IndexedDB until transcribed, retried, with Retry and Delete (desktop#65, `desktop/src/renderer/src/state/dictationClips.ts`).
 
 **Code**
 - Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient, which defers to DashboardTicketBridgeError.isTransient in `Conduit/Services/DashboardTicketBridge.swift` (shared with Tasks' first load), also decides which reconnect renewals retry quietly, see Reconnecting to Hermes, and which Predictive follow-up checks are asked again, see Predictions)
@@ -8356,7 +8356,7 @@ Linked Rooms) · Settings and its pages · the Profiles and All
 profiles sheets · the Live Activity's color · Settings captions and
 model-facing text (none describe the glow)
 
-**Desktop app:** gap: no profile glow color.
+**Desktop app:** has it: the backdrop and Bots Home's rings, with Background glow in Edit Bot kept on the computer (desktop#70, `desktop/src/renderer/src/state/glowColors.ts`).
 
 **Code**
 - Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState+ProfileSettings.swift` (profileGlowColors, setProfileGlowColor), `Conduit/Services/AppState+OpenChat.swift` (conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
@@ -8426,7 +8426,7 @@ name (`mainProfileNamesByDashboard`) · the text that describes them (the
 rename sheet's message, the Profiles row caption in Settings, README.md's
 profiles line)
 
-**Desktop app:** gap: profiles can't be renamed from desktop.
+**Desktop app:** partly: Edit Bot renames a bot (desktop#23); the main profile's Conduit name isn't on the desktop.
 
 **Code**
 - Names: `Conduit/Services/AppState+ProfileSettings.swift` (profileDisplayName, adoptProfileBotTitles, adoptProfileHermesNames, renameProfile, saveDefaultProfileName), `Conduit/Services/AppState+BotMode.swift` (updateBot), `Conduit/Services/ProfileAppearanceStore.swift` (the main profile's name, device names, and each dashboard's remembered titles and display names)
@@ -8608,7 +8608,7 @@ Rooms: a linked person's post opens a thread of its own on the home
 routes each (notifier #579) · a reply from the room's Reply button,
 sent in the thread it answers
 
-**Desktop app:** gap: no Who answers choice in a room.
+**Desktop app:** has it: Group Settings with Who answers, routing captions, the choosing line and Continue (desktop#71, `desktop/src/renderer/src/components/RoomSettings.tsx`).
 
 **Code**
 - Wire: `Conduit/Services/HermesClient.swift` (groupsState's context, groupsContext, groupsContinue), `Conduit/Services/GroupChatModels.swift` (GroupRoomContext with newerRouting, GroupRouting, GroupDriverStatus maxContinues, routingModes, roomContext, memberActivity, maxRounds, GroupMemberActivity)
@@ -8959,7 +8959,7 @@ list (a speech bubble for every messaging source) · the notifier's messaging
 group for reply notifications (`notifier/reply_sources.py`, the same Hermes
 platform list) · the chat header (shows no source)
 
-**Desktop app:** gap: no chat source icons or Sources filter.
+**Desktop app:** has it: a badge on each platform's row and a Sources menu in the filters (desktop#68, `desktop/src/renderer/src/state/chatSources.ts`).
 
 **Code**
 - Sources and their names, icons and colors: `Conduit/Models/Models.swift` (SessionSource, gatewayPlatforms)
@@ -9173,7 +9173,7 @@ in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
 layout)
 
-**Desktop app:** gap: no resizable columns.
+**Desktop app:** has it: the list's and the side panel's lines drag, kept on the computer (desktop#69, `desktop/src/renderer/src/state/columnWidths.ts`).
 
 **Code**
 - Widths and the line: `Conduit/Views/Components/ColumnDivider.swift` (ColumnWidth: resolved, dragged; ColumnDivider)
