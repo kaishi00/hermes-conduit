@@ -70,10 +70,11 @@ enum BotPlugin {
     static func newBotStep(plugin: NotifierPluginStatus.State, startsFresh: Bool) -> NewBotStep {
         switch plugin {
         case .reported(_, let capabilities) where capabilities.contains(capability): return .turnOn
-        case .reported: return startsFresh ? .askForUpdate : .nothing
-        // Not reported yet, or a plugin too old to say (or none at all),
-        // which Conduit already asks to update or install elsewhere.
-        case .unknown, .predatesCapabilities: return .nothing
+        // An older plugin, one too old to report what it serves included
+        // (or none at all, where the update notice offers the install).
+        case .reported, .predatesCapabilities: return startsFresh ? .askForUpdate : .nothing
+        // Not reported yet: the caller waits for the read first.
+        case .unknown: return .nothing
         }
     }
 }

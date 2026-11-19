@@ -16,9 +16,12 @@ extension BotModeTests {
         XCTAssertEqual(BotPlugin.newBotStep(plugin: older, startsFresh: true), .askForUpdate)
         XCTAssertEqual(BotPlugin.newBotStep(plugin: older, startsFresh: false), .nothing)
 
-        // Not reported yet, or too old to report (or not installed): nothing here.
+        // Too old to report what it serves (or not installed) is older too.
+        XCTAssertEqual(BotPlugin.newBotStep(plugin: .predatesCapabilities, startsFresh: true), .askForUpdate)
+        XCTAssertEqual(BotPlugin.newBotStep(plugin: .predatesCapabilities, startsFresh: false), .nothing)
+
+        // Not reported yet: nothing here (the caller waits for the read).
         XCTAssertEqual(BotPlugin.newBotStep(plugin: .unknown, startsFresh: true), .nothing)
-        XCTAssertEqual(BotPlugin.newBotStep(plugin: .predatesCapabilities, startsFresh: true), .nothing)
     }
 
     func testEditBotOffersTurnOnOnlyForABotWithThePluginOffThatTheDashboardCanHelp() {
