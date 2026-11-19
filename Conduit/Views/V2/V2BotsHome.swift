@@ -674,15 +674,47 @@ struct BotsLiveDot: View {
     }
 }
 
-/// The bots as a grid of portraits. Three across on a phone; as many as
-/// fit at about the same size on a wider column, and fewer at the largest
-/// Text Sizes, where a name needs the room.
+/// How large the grid's faces are, and how many go across a phone, for
+/// the bots it shows (Eric, 2026-11-19, 1b): a few large, more smaller, so
+/// three to six bots fill the page and twelve or more still fit on it.
+struct BotPortraitStep: Equatable {
+    let columns: Int
+    let portrait: CGFloat
+
+    static func of(count: Int) -> BotPortraitStep {
+        switch count {
+        case ...4: return BotPortraitStep(columns: 2, portrait: 112)
+        case ...9: return BotPortraitStep(columns: 3, portrait: 88)
+        case ...12: return BotPortraitStep(columns: 3, portrait: 72)
+        default: return BotPortraitStep(columns: 4, portrait: 60)
+        }
+    }
+}
+
+private struct BotPortraitSizeKey: EnvironmentKey {
+    static let defaultValue: CGFloat = 72
+}
+
+extension EnvironmentValues {
+    /// The face at the default Text Size the grid around a portrait picked
+    /// (BotPortraitStep); 72 outside one.
+    var botPortraitSize: CGFloat {
+        get { self[BotPortraitSizeKey.self] }
+        set { self[BotPortraitSizeKey.self] = newValue }
+    }
+}
+
+/// The bots as a grid of portraits, sized by how many there are
+/// (BotPortraitStep): its columns on a phone; as many as fit at about the
+/// same size on a wider column, and two at the largest Text Sizes, where a
+/// name needs the room.
 struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
     let items: [Item]
     /// A portrait dropped past the last one.
     var onDropAtEnd: ((String) -> Void)?
     @ViewBuilder let cell: (Item) -> Cell
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     /// Any kind of cell: Bots Home's mixed grid of a combined group's bots
     /// (CombinedBotsHomeItem).
@@ -697,14 +729,20 @@ struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
     }
 
     var body: some View {
-        let columns = typeSize.isAccessibilitySize
-            ? [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
-            : [GridItem(.adaptive(minimum: 100, maximum: 150), spacing: 10)]
-        LazyVGrid(columns: columns, alignment: .center, spacing: 22) {
+        let step = BotPortraitStep.of(count: items.count)
+        let columns: [GridItem] = if typeSize.isAccessibilitySize {
+            [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
+        } else if sizeClass == .compact {
+            Array(repeating: GridItem(.flexible(), spacing: 10, alignment: .top), count: step.columns)
+        } else {
+            [GridItem(.adaptive(minimum: step.portrait + 28, maximum: step.portrait + 78), spacing: 10, alignment: .top)]
+        }
+        LazyVGrid(columns: columns, alignment: .center, spacing: 18) {
             ForEach(items) { item in
                 cell(item)
             }
         }
+        .environment(\.botPortraitSize, step.portrait)
         .padding(.top, 14)
         .padding(.bottom, 4)
         // A drop between or after the portraits, not on one: the end. A
@@ -1159,9 +1197,10 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// What waits on the user in each profile's chats (Needs you), which
     /// the status counts.
     @ObservedObject var needsYou: NeedsYouStore
-    /// The face at the default Text Size: 72 in the grid, larger when Bots
-    /// Home has only one or two bots (BotsHomeFew), with a larger name.
-    var portraitSize: CGFloat = 72
+    /// The face at the default Text Size: the grid's step when nil
+    /// (BotPortraitStep), larger when Bots Home has only one or two bots
+    /// (BotsHomeFew), with a larger name.
+    var fixedPortraitSize: CGFloat?
     /// In a combined group's mixed grid, the dashboard whose bot this is:
     /// every portrait there carries its badge, this dashboard's too.
     var dashboardBadge: UUID?
@@ -1174,6 +1213,8 @@ struct BotPortraitCell<MenuContent: View>: View {
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
+    @Environment(\.botPortraitSize) private var gridPortraitSize
+    private var portraitSize: CGFloat { fixedPortraitSize ?? gridPortraitSize }
     /// A dragged bot is over this one; `mergeReady` once it has been held
     /// still over the face (or just beside it) for half a second
     /// (BotDragPayload.mergeDwell, mergeStillness, mergeZone).
@@ -1257,6 +1298,12 @@ struct BotPortraitCell<MenuContent: View>: View {
             }
             .buttonStyle(PressableButtonStyle())
             .contextMenu { menu }
+            // The status sits on the face's lower edge, so a still bot
+            // keeps no empty line under its name (Eric, 2026-11-19, 1b).
+            .overlay(alignment: .bottom) {
+                if !typeSize.isAccessibilitySize { statusLine(status, onFace: true) }
+            }
+            .padding(.bottom, typeSize.isAccessibilitySize ? 0 : 10)
             .modifier(BotPortraitDrag(name: bot.name, enabled: onDrop != nil) {
                 // A drag preview is drawn outside the view's environment:
                 // without AppState handed in, a long press crashed as the
@@ -1288,7 +1335,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             HStack(spacing: 0) {
                 Button(action: tapped) {
                     Text(bot.displayLabel)
-                        .scaledFont(portraitSize > 72 ? ScaledFont.title3.weight(.bold) : ScaledFont.subheadline.weight(.semibold))
+                        .scaledFont(portraitSize > 100 ? ScaledFont.title3.weight(.bold) : ScaledFont.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)
@@ -1303,9 +1350,13 @@ struct BotPortraitCell<MenuContent: View>: View {
             }
             .frame(maxWidth: .infinity)
 
-            HStack(spacing: 0) {
-                statusLine(status)
-                if typeSize.isAccessibilitySize { infoButton }
+            // At accessibility sizes the pill outgrows the face: it keeps
+            // its line under the name, with the ⓘ.
+            if typeSize.isAccessibilitySize {
+                HStack(spacing: 0) {
+                    statusLine(status, onFace: false)
+                    infoButton
+                }
             }
         }
         // The whole cell, pill included, takes a dropped bot, so a drop
@@ -1396,23 +1447,28 @@ struct BotPortraitCell<MenuContent: View>: View {
         .accessibilityIdentifier("bots.overview.\(bot.name)")
     }
 
-    /// What the bot is doing: nothing when idle (its still ring says so),
-    /// in the same height so a row doesn't jump when a bot starts work;
-    /// anything else a pill that opens the overview, where its work is. VoiceOver hears it as the
-    /// portrait's value, and the ⓘ opens the overview.
+    /// What the bot is doing: nothing when idle (its still ring says so);
+    /// anything else a pill that opens the overview, where its work is.
+    /// `onFace`: on the face's lower edge, centered on it, so a row never
+    /// jumps when a bot starts work; else on its own line, in the same
+    /// height either way. VoiceOver hears it as the portrait's value, and
+    /// the ⓘ opens the overview.
     @ViewBuilder
-    private func statusLine(_ status: BotPortraitStatus) -> some View {
+    private func statusLine(_ status: BotPortraitStatus, onFace: Bool) -> some View {
         if status == .idle {
-            Color.clear
-                .frame(width: 1, height: 44)
-                .accessibilityHidden(true)
+            if !onFace {
+                Color.clear
+                    .frame(width: 1, height: 44)
+                    .accessibilityHidden(true)
+            }
         } else {
             Button {
                 Haptics.light()
                 statusTapped(status)
             } label: {
-                pill(status)
+                BotStatusPill(status: status, onFace: onFace)
             }
+            .alignmentGuide(.bottom) { onFace ? $0[VerticalAlignment.center] : $0[.bottom] }
             .buttonStyle(PressableButtonStyle())
             .accessibilityHidden(true)
         }
@@ -1662,10 +1718,6 @@ struct BotPortraitCell<MenuContent: View>: View {
         }
     }
 
-    private func pill(_ status: BotPortraitStatus) -> some View {
-        BotStatusPill(status: status)
-    }
-
     private func accessibilityValue(_ status: BotPortraitStatus) -> String {
         let parts = [
             bot.isPinned ? AppLocalization.string("Pinned") : "",
@@ -1680,6 +1732,9 @@ struct BotPortraitCell<MenuContent: View>: View {
 /// dashboard's alike.
 struct BotStatusPill: View {
     let status: BotPortraitStatus
+    /// On the face's lower edge (Eric, 2026-11-19, 1b): smaller, on an
+    /// opaque ground so the face doesn't show through, its target the pill.
+    var onFace = false
 
     /// The ⓘ's words, which another combined dashboard's portrait shares.
     static var overviewTitle: String { AppLocalization.string("Overview", table: .bots) }
@@ -1688,24 +1743,26 @@ struct BotStatusPill: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: onFace ? 3 : 4) {
             if let symbol = status.symbol {
                 Image(systemName: symbol)
                     .scaledFont(.caption2.weight(.bold))
                     .accessibilityHidden(true)
             }
             Text(verbatim: status.title)
-                .scaledFont(.caption.weight(.semibold))
+                .scaledFont(onFace ? .caption2.weight(.semibold) : .caption.weight(.semibold))
                 .lineLimit(1)
         }
         .foregroundStyle(status.tint)
-        .padding(.horizontal, 11)
-        .frame(minHeight: 28)
+        .padding(.horizontal, onFace ? 8 : 11)
+        .frame(minHeight: onFace ? 22 : 28)
         .background(Capsule().fill(status.tint.opacity(0.14)))
-        .overlay(Capsule().strokeBorder(status.tint.opacity(0.35), lineWidth: 1))
-        // A 44-point target round the smaller pill.
-        .frame(minHeight: 44)
-        .contentShape(Rectangle())
+        .background(Capsule().fill(Color(.systemBackground)).opacity(onFace ? 1 : 0))
+        .overlay(Capsule().strokeBorder(status.tint.opacity(onFace ? 0.5 : 0.35), lineWidth: 1))
+        // A 44-point target round the smaller pill on its own line; on the
+        // face, the pill, so the rest of the face still opens the chat.
+        .frame(minHeight: onFace ? 0 : 44)
+        .contentShape(onFace ? AnyShape(Capsule()) : AnyShape(Rectangle()))
         // Past accessibility2 the pill's words outgrow a two-column cell
         // and truncate to nothing; the overview sheet says them in full.
         .dynamicTypeSize(...DynamicTypeSize.accessibility2)

@@ -372,7 +372,7 @@ struct BotRosterView: View {
         return nil
     }
 
-    /// Bots Home: every bot as a portrait, three across on a phone, in
+    /// Bots Home: every bot as a portrait, sized by how many (BotPortraitStep), in
     /// the roster's own order, so a bot never moves for being busy; one or
     /// two bots large instead (BotsHomeLayout). Hidden bots follow under
     /// their disclosure, dimmed, as on the list.
@@ -581,7 +581,7 @@ struct BotRosterView: View {
     /// dashboard's.
     private func portrait(
         _ bot: BotProfile,
-        size: CGFloat = 72,
+        size: CGFloat? = nil,
         mixedKey: String? = nil,
         shown: [String] = []
     ) -> some View {
@@ -618,7 +618,7 @@ struct BotRosterView: View {
             },
             onToggleRoom: { toggleNewRoom(bot) },
             needsYou: appState.needsYou,
-            portraitSize: size,
+            fixedPortraitSize: size,
             dashboardBadge: mixedKey == nil ? nil : appState.activeDashboardID,
             onMoveEarlier: mixedKey.flatMap { mixedStep($0, by: -1, shown: shown) },
             onMoveLater: mixedKey.flatMap { mixedStep($0, by: 1, shown: shown) }

@@ -96,6 +96,10 @@ extension BotModeTests {
         // Another combined dashboard's bots join the grid: one or two give way.
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 1, accessibilitySize: false, othersShown: true), .grid)
         XCTAssertEqual(BotsHomeLayout.of(visibleBots: 2, accessibilitySize: false, othersShown: true), .grid)
+        // The grid's faces step down as bots are added (1b).
+        let steps = [3, 4, 5, 9, 10, 12, 13, 16].map { BotPortraitStep.of(count: $0) }
+        XCTAssertEqual(steps.map(\.columns), [2, 2, 3, 3, 3, 3, 4, 4])
+        XCTAssertEqual(steps.map(\.portrait), [112, 112, 88, 88, 72, 72, 60, 60])
         XCTAssertNil(BotsHomeWork.lastActiveLabel(nil))
         XCTAssertNil(BotsHomeWork.lastActiveLabel(0))
         let now = Date(timeIntervalSince1970: 1_800_000_000)

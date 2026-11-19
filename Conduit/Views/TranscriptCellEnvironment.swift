@@ -61,6 +61,7 @@ struct TranscriptCellEnvironment: Equatable {
     var v2OpenBeside: V2OpenBeside?
     var botZoomNamespace: Namespace.ID?
     var botsHomeCovered: Bool
+    var botPortraitSize: CGFloat
     var botChatZoomed: Bool
     var rosterRowsInScroll: Bool
     var v2TabBarClearance: CGFloat
@@ -106,6 +107,7 @@ struct TranscriptCellEnvironment: Equatable {
         v2OpenBeside = values.v2OpenBeside
         botZoomNamespace = values.botZoomNamespace
         botsHomeCovered = values.botsHomeCovered
+        botPortraitSize = values.botPortraitSize
         botChatZoomed = values.botChatZoomed
         rosterRowsInScroll = values.rosterRowsInScroll
         v2TabBarClearance = values.v2TabBarClearance
@@ -240,6 +242,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.v2OpenBeside, values.v2OpenBeside)
             .environment(\.botZoomNamespace, values.botZoomNamespace)
             .environment(\.botsHomeCovered, values.botsHomeCovered)
+            .environment(\.botPortraitSize, values.botPortraitSize)
             .environment(\.botChatZoomed, values.botChatZoomed)
             .environment(\.rosterRowsInScroll, values.rosterRowsInScroll)
             .environment(\.v2TabBarClearance, values.v2TabBarClearance)
