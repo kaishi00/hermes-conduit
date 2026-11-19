@@ -1345,6 +1345,7 @@ extension AppState {
         } catch {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
+        let startsFresh = draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             // The server changed mid-save: the bot exists, its look,
             // picture and staged tool choices were never written.
@@ -1355,11 +1356,8 @@ extension AppState {
                !BotCapabilities.configureParams(original: baseline, edited: edited).isEmpty {
                 warning += " " + AppLocalization.string("The skills, tools or MCP choices were not saved.")
             }
-            if draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                warning += " " + AppLocalization.string(
-                    "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
-                    table: .bots
-                )
+            if let plugin = BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) {
+                warning += " " + plugin
             }
             return .saved(warning: warning)
         }
@@ -1408,20 +1406,17 @@ extension AppState {
         // The bot can use Conduit's features from the start: its profile
         // gets the plugin turned on, as a fresh one hasn't (issue 2803).
         // Only on the Hermes the bot was made on.
-        var pluginWarning: String?
+        let pluginWarning: String?
         if botOpenFenceIsCurrent(epoch: epoch, client: client) {
             pluginWarning = await turnOnPluginForNewBot(
                 slug,
-                startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                startsFresh: startsFresh,
                 isCurrent: { self.botOpenFenceIsCurrent(epoch: epoch, client: client) }
             )
-        } else if draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        } else {
             // Hermes changed before this step: the bot was left with the
             // plugin as it was made, so the save says where to turn it on.
-            pluginWarning = AppLocalization.string(
-                "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
-                table: .bots
-            )
+            pluginWarning = BotPlugin.leftAsMadeWarning(startsFresh: startsFresh)
         }
         // The introduction is a real model turn: a bot whose profile has no
         // usable model skips it and says so, instead of a failed first turn.

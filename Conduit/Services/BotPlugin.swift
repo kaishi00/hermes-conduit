@@ -67,13 +67,31 @@ enum BotPlugin {
         case nothing
     }
 
-    static func newBotStep(plugin: NotifierPluginStatus.State, startsFresh: Bool) -> NewBotStep {
-        switch plugin {
+    /// The save's words for a new bot whose plugin was left as it was made
+    /// (Hermes changed before or during the step, or the dashboard's plugin
+    /// never reported): a fresh bot, which nothing else turns it on for, is
+    /// told to use Edit Bot; a clone may have it already, so it stays quiet.
+    static func leftAsMadeWarning(startsFresh: Bool) -> String? {
+        guard startsFresh else { return nil }
+        return AppLocalization.string(
+            "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+            table: .bots
+        )
+    }
+
+    static func newBotStep(plugin: NotifierPluginStatus, startsFresh: Bool) -> NewBotStep {
+        switch plugin.state {
         case .reported(_, let capabilities) where capabilities.contains(capability): return .turnOn
-        case .reported: return startsFresh ? .askForUpdate : .nothing
-        // Not reported yet, or a plugin too old to say (or none at all),
-        // which Conduit already asks to update or install elsewhere.
-        case .unknown, .predatesCapabilities: return .nothing
+        // Not reported yet: the caller waits for the read first.
+        case .unknown: return .nothing
+        // An older plugin, one too old to report what it serves included
+        // (or none at all, where the update notice offers the install).
+        // Never asked of a host that keeps the plugin itself, nor where
+        // the host's copy is new enough but this dashboard doesn't run it:
+        // an update fixes neither, and Settings' plugin page says what does.
+        case .reported, .predatesCapabilities:
+            guard startsFresh, !plugin.isManaged, !plugin.isNotServed else { return .nothing }
+            return .askForUpdate
         }
     }
 }
@@ -124,18 +142,14 @@ extension AppState {
         startsFresh: Bool,
         isCurrent: () -> Bool = { true }
     ) async -> String? {
-        let notTurnedOn = AppLocalization.string(
-            "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
-            table: .bots
-        )
         // Right after a switch to another dashboard its plugin hasn't
         // reported yet: wait for that read rather than skip the step.
         if notifierPlugin.state == .unknown {
             await refreshNotifierPluginStatusOnce()
-            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
-            if notifierPlugin.state == .unknown { return startsFresh ? notTurnedOn : nil }
+            guard isCurrent() else { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
+            if notifierPlugin.state == .unknown { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
         }
-        switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
+        switch BotPlugin.newBotStep(plugin: notifierPlugin, startsFresh: startsFresh) {
         case .nothing:
             return nil
         case .askForUpdate:
@@ -154,7 +168,7 @@ extension AppState {
             }
             // The turn-on goes to the Hermes the bot was made on, never one
             // switched to while the state was read.
-            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
+            guard isCurrent() else { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
             guard let failure = await turnOnBotPlugin(profile: slug) else { return nil }
             return AppLocalization.string(
                 "The Conduit plugin wasn't turned on for this bot: \(failure) Edit the bot to try again.",
