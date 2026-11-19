@@ -3078,6 +3078,7 @@ final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
             harness.appState.turnState = .running
             harness.appState.messages = [pendingApproval()]
             XCTAssertTrue(harness.appState.openChatWaitsOnUserAnswer)
+            defer { harness.appState.voiceStartRefreshEndedForTesting = nil }
             harness.appState.voiceStartRefreshEndedForTesting = {
                 if change == "answered" {
                     harness.appState.messages[0].approval?.status = .approved

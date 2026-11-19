@@ -1710,6 +1710,7 @@ extension CrossProfilePresentationCacheTests {
         // Cron evidence past its half hour: one profile's cron read failing
         // keeps what the last full read gave, to read again next time;
         // every profile answering with none clears it (#2800 review).
+        appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-mac-1"]
         appState.combinedDashboardChats[mac.id]?.cronAt = .distantPast
         appState.keptDashboardJSONReader = { bridge, path in
             if path.contains("source=cron"), path.contains("profile=atlas") { throw URLError(.timedOut) }

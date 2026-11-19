@@ -130,6 +130,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
             endedHarness.appState.turnState = .idle
             return false
         }
+        defer { ended.respond = nil }
         let newTurn = await endedHarness.appState.submitVoiceTranscript("yes")
         XCTAssertTrue(newTurn)
         XCTAssertTrue(sent(ended, "steer").isEmpty, "\(ended.events)")
