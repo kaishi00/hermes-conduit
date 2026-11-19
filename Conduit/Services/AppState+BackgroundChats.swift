@@ -323,9 +323,9 @@ extension AppState {
             // A row read with no stored id keeps itself over the one listing
             // under the id when the index binds the id to another chat than
             // that listing's (#2794 review), as `listedRow` refused it.
-            if row.storedSessionId == nil, owners.count == 1, let owner = owners.first, owner.durableKey != row.durableKey,
+            if row.storedSessionId == nil, !owners.isEmpty, !owners.contains(where: { $0.durableKey == row.durableKey }),
                let durable = conversationIdentityIndex.durableID(forRuntime: newID, profile: activeProfile),
-               durable != owner.durableKey, durable != owner.id {
+               owners.allSatisfy({ durable != $0.durableKey && durable != $0.id }) {
                 rowOfChatOnScreen = (row, kept.openIDs, kept.dashboardID, kept.profile)
                 return
             }

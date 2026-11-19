@@ -4904,6 +4904,14 @@ final class OfflineChatCacheTests: XCTestCase {
         // …nor on a resume onto the same id with that one listing (#2794 review).
         unstored.setActiveSessionState(id: "rt-a")
         XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "still not chat b's row")
+        // …nor with two rival listings under the id, in either order.
+        var rival = session("rt-a")
+        rival.storedSessionId = "c"
+        for rows in [[other, rival, session("c")], [rival, other, session("c")]] {
+            unstored.sessions = rows
+            unstored.setActiveSessionState(id: "rt-a")
+            XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "neither rival's row")
+        }
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
