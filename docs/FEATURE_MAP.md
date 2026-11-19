@@ -3556,7 +3556,7 @@ window (the pane's Open in New Window on an iPad and a Mac: the same rows
 in a window of its own, with Open in Main Window) · the main window's
 first-window guard (never closes a chat window) · README.md's feature list
 
-**Desktop app:** partly (desktop#77): Open Beside in a chat's menu keeps a second chat in the side panel when the window is wide enough, with its own message box, Swap Chats and Close Chat Beside (`desktop/src/renderer/src/components/BesideChat.tsx`); no chat window of its own.
+**Desktop app:** has it (desktop#77, desktop#126): Open Beside in a chat's menu keeps a second chat in the side panel when the window is wide enough, with its own message box, Swap Chats and Close Chat Beside (`desktop/src/renderer/src/components/BesideChat.tsx`); the pane's Open in New Window moves its chat to a window of its own, up to three, with the pane's rows and message box and Open in Main Window, closing when its chat opens in the main window, is deleted, or on a profile or dashboard switch, sign-out or lock (`desktop/src/main/chatWindowSet.ts`, `desktop/src/main/chatWindows.ts`, `desktop/src/renderer/src/components/ChatWindow.tsx`).
 
 **Code**
 - `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, noteUserMessageInBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
@@ -6457,7 +6457,7 @@ docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · group rooms,
 Watch and CarPlay (not needed, no voice messages) · agent settings catalog
 (not needed, dictation's engine isn't there either)
 
-**Desktop app:** partly: voice messages and dictation share one recorder (`desktop/src/renderer/src/state/useRecorder.ts`); no engine choice.
+**Desktop app:** not applicable: voice messages and dictation share one recorder and Hermes transcribes both (`desktop/src/renderer/src/state/useRecorder.ts`); Apple's recognizers aren't on a computer, so there's no engine to choose.
 
 **Code**
 - Choice: `Conduit/Voice/DictationEngine.swift` (VoiceMessageEngine)
