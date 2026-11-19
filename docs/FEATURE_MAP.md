@@ -2006,7 +2006,7 @@ one and in group rooms · /undo and /retry, which Edit and resend and Retry run 
 restore of words put back (failed sends, the waiting message's Edit) · the
 chat's saved copy, whose rows stand in while it opens or offline
 
-**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); Pin reply in a reply's ⋯ menu, the bar over the chat and the list from the bar and the Chats list, with labels, kept per host and profile (`desktop/src/renderer/src/components/PinnedReplies.tsx`, `desktop/src/renderer/src/state/pinnedReplies.ts`, desktop#83); no passage pins (no selection menu).
+**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); Pin reply in a reply's ⋯ menu, the bar over the chat and the list from the bar and the Chats list, with labels, kept per host and profile (`desktop/src/renderer/src/components/PinnedReplies.tsx`, `desktop/src/renderer/src/state/pinnedReplies.ts`, desktop#83); the selection menu (right-click text selected in a reply) has Copy, Quote and Pin or Unpin for the passage, which the bar and the list show and go to, marking it in the reply (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#114).
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
@@ -8431,7 +8431,7 @@ name (`mainProfileNamesByDashboard`) · the text that describes them (the
 rename sheet's message, the Profiles row caption in Settings, README.md's
 profiles line)
 
-**Desktop app:** partly: Edit Bot renames a bot (desktop#23); the main profile's Conduit name isn't on the desktop.
+**Desktop app:** partly (desktop#113): every profile goes by its bot title, else Hermes' display name, else its id capitalized, and the unnamed main profile is Hermes, never Default (`desktop/src/renderer/src/state/bots.ts`); Edit Bot renames a bot (desktop#23). The main profile's Conduit name is kept on the phone, so the desktop shows the main bot's title, and it has no Profiles card to rename a profile from.
 
 **Code**
 - Names: `Conduit/Services/AppState+ProfileSettings.swift` (profileDisplayName, adoptProfileBotTitles, adoptProfileHermesNames, renameProfile, saveDefaultProfileName), `Conduit/Services/AppState+BotMode.swift` (updateBot), `Conduit/Services/ProfileAppearanceStore.swift` (the main profile's name, device names, and each dashboard's remembered titles and display names)
@@ -8662,7 +8662,7 @@ reads nothing here), Hermes Desktop's read-only group sheet in Conduit
 Linked Rooms: its rooms use this view, so the branch takes it with main ·
 Group Settings' Who answers (its Lead section's crown marks the lead's pill) · README.md's group chats line names the crown
 
-**Desktop app:** partly: room state read from groups.state (`desktop/src/renderer/src/state/groups.ts`); not checked against the phone's member statuses.
+**Desktop app:** partly (desktop#112): a pill per member under the room's title with its picture, its name, the lead's crown and its status (`desktop/src/renderer/src/components/RoomView.tsx`), read from groups.state's member activity, and the subtitle says Settled when a discussion ended with nobody having more to say (`desktop/src/renderer/src/state/groups.ts`); a pill doesn't open the member's To row, and the lead's receipt from `seen_through_seq` isn't ported.
 
 **Code**
 - Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible, leadKey)
