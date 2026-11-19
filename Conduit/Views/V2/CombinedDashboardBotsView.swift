@@ -52,10 +52,12 @@ struct CombinedDashboardBotPortrait: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var typeSize
     @ObservedObject private var devicePower = DevicePowerState.shared
-    /// 72 at the default Text Size, as this dashboard's portraits, which
-    /// stop growing at accessibility1 (about 115).
-    @ScaledMetric(relativeTo: .body) private var scaledSize: CGFloat = 72
-    private var portraitSize: CGFloat { min(scaledSize, 115) }
+    /// The grid's step at the default Text Size (BotPortraitStep), as this
+    /// dashboard's portraits, which stop growing at accessibility1 (about
+    /// 1.6 times).
+    @Environment(\.botPortraitSize) private var gridPortraitSize
+    @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
+    private var portraitSize: CGFloat { gridPortraitSize * min(scale, 1.6) }
     /// A bot in hand over this one, and held still over its face long
     /// enough to start a room (BotDragPayload.mergeDwell), as this
     /// dashboard's portraits.
@@ -141,6 +143,11 @@ struct CombinedDashboardBotPortrait: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(PressableButtonStyle())
+            // Its pill on the face's lower edge, as this dashboard's.
+            .overlay(alignment: .bottom) {
+                if !typeSize.isAccessibilitySize { statusLine(status, onFace: true) }
+            }
+            .padding(.bottom, typeSize.isAccessibilitySize ? 0 : 10)
             .modifier(BotPortraitDrag(name: item.id, enabled: true) {
                 face(size: 64, animated: false)
             })
@@ -181,9 +188,11 @@ struct CombinedDashboardBotPortrait: View {
                 if !typeSize.isAccessibilitySize { infoButton }
             }
             .frame(maxWidth: .infinity)
-            HStack(spacing: 0) {
-                statusLine(status)
-                if typeSize.isAccessibilitySize { infoButton }
+            if typeSize.isAccessibilitySize {
+                HStack(spacing: 0) {
+                    statusLine(status, onFace: false)
+                    infoButton
+                }
             }
         }
         .coordinateSpace(name: BotPortraitCellSpace.name)
@@ -287,15 +296,17 @@ struct CombinedDashboardBotPortrait: View {
         .accessibilityLabel(Text(BotStatusPill.overviewLabel(bot)))
     }
 
-    /// Its pill, as this dashboard's: nothing when idle, in the same
-    /// height. Needs you opens the newest wait in its chats (through the
-    /// switch), anything else its overview.
+    /// Its pill, as this dashboard's: nothing when idle, on the face or in
+    /// the same height. Needs you opens the newest wait in its chats
+    /// (through the switch), anything else its overview.
     @ViewBuilder
-    private func statusLine(_ status: BotPortraitStatus) -> some View {
+    private func statusLine(_ status: BotPortraitStatus, onFace: Bool) -> some View {
         if status == .idle {
-            Color.clear
-                .frame(width: 1, height: 44)
-                .accessibilityHidden(true)
+            if !onFace {
+                Color.clear
+                    .frame(width: 1, height: 44)
+                    .accessibilityHidden(true)
+            }
         } else {
             Button {
                 Haptics.light()
@@ -305,8 +316,9 @@ struct CombinedDashboardBotPortrait: View {
                     onOverview()
                 }
             } label: {
-                BotStatusPill(status: status)
+                BotStatusPill(status: status, onFace: onFace)
             }
+            .alignmentGuide(.bottom) { onFace ? $0[VerticalAlignment.center] : $0[.bottom] }
             .buttonStyle(PressableButtonStyle())
             .accessibilityHidden(true)
         }
