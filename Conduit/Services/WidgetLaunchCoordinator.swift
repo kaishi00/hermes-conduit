@@ -1,5 +1,15 @@
 import Foundation
 
+/// What sent a launch, for what its New Chat does once it opens: a
+/// widget's (or a shared draft's) keeps the keyboard down, the app's own
+/// focuses the composer on a Mac, and the New Chat shortcut (issue 2860)
+/// focuses it on every device.
+enum NewChatLaunchOrigin: Equatable {
+    case widget
+    case app
+    case shortcut
+}
+
 enum WidgetLaunchOutcome: Equatable {
     case handled
     case deferred

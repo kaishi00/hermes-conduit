@@ -41,6 +41,11 @@ final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificat
             // Low Power Mode and Low Data Mode stretch every poll.
             DeviceConditionsMonitor.shared.start()
             WatchVoiceLink.shared.activate()
+            // The New Chat control (Control Center, the Lock Screen, the
+            // Action Button; issue 2860) runs its intent here.
+            NewChatControlRequests.handler = {
+                _ = AppStateRuntimeRegistry.shared.appState.startNewChatFromShortcut(profile: nil)
+            }
             // Calls from Hermes ring through PushKit (#449): a call that
             // launched Conduit is delivered once the registry is up.
             HermesNativeCalls.shared.activate()

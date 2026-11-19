@@ -168,7 +168,7 @@ extension AppState {
             return
         }
         cancelChatResumeRestoration()
-        newChatLaunchStartedInApp = false
+        newChatLaunchOrigin = .widget
         widgetLaunchCoordinator.receive(link)
         // Recorded after receive: a launch for the same link that receive
         // supersedes isn't this one.

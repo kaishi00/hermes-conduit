@@ -1,3 +1,4 @@
+import AppIntents
 import SwiftUI
 import WidgetKit
 
@@ -39,6 +40,25 @@ struct ConduitWidgets: WidgetBundle {
         CharacterLauncherWidget()
         PulseWidget()
         HermesTurnLiveActivity()
+        if #available(iOS 18.0, *) {
+            NewChatControl()
+        }
+    }
+}
+
+/// New Chat for Control Center, the Lock Screen and the Action Button
+/// (issue 2860): opens Conduit on a new chat with the keyboard up, in the
+/// profile on screen (Shared/Widgets/NewChatControlIntent.swift).
+@available(iOS 18.0, *)
+struct NewChatControl: ControlWidget {
+    var body: some ControlWidgetConfiguration {
+        StaticControlConfiguration(kind: "com.milim.relay.widgets.newchat.control") {
+            ControlWidgetButton(action: OpenNewChatIntent()) {
+                Label("New Chat", systemImage: "square.and.pencil")
+            }
+        }
+        .displayName("New Chat")
+        .description("Open Conduit on a new chat, ready to type.")
     }
 }
 
