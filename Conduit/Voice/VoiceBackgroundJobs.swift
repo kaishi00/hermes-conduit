@@ -3929,7 +3929,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// The first message of a job session. Written for the model, not shown
     /// as UI copy, so it is not localized.
-    static func jobPrompt(for instructions: String) -> String {
+    nonisolated static func jobPrompt(for instructions: String) -> String {
         """
         [Background job started from a Conduit voice conversation. Nobody is watching this chat live, so work on it on your own. When you are done, end your final message with a plain-language summary that can be read aloud: what you found or did, with the key details.]
 
