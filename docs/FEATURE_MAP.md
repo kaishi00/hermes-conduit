@@ -802,7 +802,7 @@ read: the quiet notes and the call's instructions · README.md's voice
 features. Not the Apple Watch or CarPlay:
 neither has a camera surface.
 
-**Desktop app:** partly: Gemini and Qwen Live carry pictures (`desktop/src/renderer/src/state/geminiLive.ts`, `desktop/src/renderer/src/state/qwenLive.ts`); no Ask Hermes About Screen or photo button on the call screen.
+**Desktop app:** has it (desktop#90): every call's picture button offers a picture from the computer or Ask Hermes About Screen's screenshot, which waits on the call's chat for its next request with a chip that takes it off; Gemini and Qwen Live are sent it, GPT-Live, Grok and Local Live hear the phone's notes (`desktop/src/renderer/src/state/callPicture.ts`, `desktop/src/renderer/src/components/CallPictureControls.tsx`). No camera capture; a waiting picture is dropped when the call ends.
 
 **Code**
 - The button: `Conduit/Views/VoicePhotoButton.swift` (VoicePhotoButton, LiveVoiceCallPhotoButton), `Conduit/Views/LiveVoiceCallSheet.swift` (showsCamera, showsPhoto), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/VoiceConversationSheet.swift` (Classic, both layouts)
@@ -5543,7 +5543,7 @@ on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
 Models & providers line)
 
-**Desktop app:** partly: provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23); no logos on provider rows.
+**Desktop app:** has it: provider logos on the model picker's groups, Settings > Providers and Usage's quota titles (`desktop/src/renderer/src/state/providerLogos.ts`, `desktop/src/renderer/src/components/ProviderLogo.tsx`, desktop#90), provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23).
 
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
