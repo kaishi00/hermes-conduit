@@ -170,6 +170,27 @@ struct SessionCatalogCache {
         fullHistoryLoadedAt.removeValue(forKey: key)
     }
 
+    /// A cron run restored here goes into its profile's cached cron rows,
+    /// when they're cached, so a list read that reuses them keeps it (issue
+    /// 2763). A read in flight from before it doesn't commit over it.
+    mutating func keepCronRow(_ row: SessionSummary, forKey key: String, replacing matches: (SessionSummary) -> Bool) {
+        guard var rows = sessionsByKey[key] else { return }
+        mutationGeneration &+= 1
+        rows.removeAll(where: matches)
+        sessionsByKey[key] = [row] + rows
+    }
+
+    /// Cached rows of `key` changed here (a retitle), when they're cached.
+    mutating func updateRows(forKey key: String, _ transform: (SessionSummary) -> SessionSummary) {
+        guard let rows = sessionsByKey[key] else { return }
+        // A read that fetched the old rows mustn't commit them over this,
+        // even when the run isn't among the cached rows (#2800 review).
+        mutationGeneration &+= 1
+        let updated = rows.map(transform)
+        guard updated != rows else { return }
+        sessionsByKey[key] = updated
+    }
+
     mutating func removeSession(withIDs sessionIDs: Set<String>) {
         mutationGeneration &+= 1
         for key in sessionsByKey.keys {

@@ -668,9 +668,9 @@ extension AppState {
         }
     }
 
-    private func cronSessionsPath(_ profile: String, offset: Int = 0) -> String {
+    func cronSessionsPath(_ profile: String, offset: Int = 0, limit: Int = 200) -> String {
         DashboardPath.withExplicitProfile(
-            "/api/profiles/sessions?limit=200&offset=\(offset)&min_messages=1&archived=exclude&order=recent&source=cron",
+            "/api/profiles/sessions?limit=\(limit)&offset=\(offset)&min_messages=1&archived=exclude&order=recent&source=cron",
             profile: profile
         )
     }
@@ -711,15 +711,31 @@ extension AppState {
     /// fetched the newer cron rows: a later chat sync that took its newest
     /// page reused cached cron, or got none. Its rows reach the cache
     /// (ReadOrder), and from there the list (#2759 review). Only a read
-    /// that fetched cron relists: the newer listing may be the gateway's.
+    /// that fetched cron relists, and only over a listing that took its
+    /// cron rows from the cache too: the gateway's fills none (issue 2763).
     func relistCachedCron(after load: ProfileCatalogLoad, profile: String) {
-        guard load.fetchedCron else { return }
+        guard load.fetchedCron, sessionListListedCronFromCache else { return }
         let kept = activeTurnCatalogSession().map { [$0] } ?? []
         let listed = cronRowsToList(cronSessions, keeping: kept, profile: profile, fromCache: true)
         guard listed != cronSessions else { return }
         chatListCatalogGeneration &+= 1
         catalogChangeSignal.noteListChanged(at: chatSyncNow())
         cronSessions = listed
+    }
+
+    /// The rows a list read records in the identity index: its own
+    /// non-cron rows, and the cron rows it lists, less those kept here
+    /// whatever the host says and not in what it read (issue 2763).
+    static func identityRows(
+        listedSessions: [SessionSummary],
+        listedCron: [SessionSummary],
+        kept: [SessionSummary],
+        read: [SessionSummary]
+    ) -> [SessionSummary] {
+        let readIDs = Set(read.map(\.id))
+        let keptIDs = Set(kept.filter { $0.source == .cron && !readIDs.contains($0.id) }.map(\.id))
+        return listedSessions.filter { $0.source != .cron }
+            + listedCron.filter { !keptIDs.contains($0.id) }
     }
 
     func uniqueSessions(_ values: [SessionSummary]) -> [SessionSummary] {

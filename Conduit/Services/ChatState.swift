@@ -1,6 +1,13 @@
 import Foundation
 import Combine
 
+/// An error a chat put on screen (`ChatState.chatErrorShown`).
+struct ChatErrorShown: Equatable {
+    let message: String
+    /// A failed restore's, which the chat resuming takes down.
+    let isRestoreFailure: Bool
+}
+
 /// One chat's own state: its transcript, and the reply streaming into it.
 ///
 /// Stage 1 of the all-live rework moves AppState's chat state here a slice at
@@ -369,9 +376,12 @@ final class ChatState: ObservableObject {
     /// nothing its card shows renews this without publishing the cards, and
     /// the roster check counts it as the card's latest news.
     var delegateAgentSeenAt: [String: Date] = [:]
-    /// The restore error the open chat's last failed resume showed, which a
-    /// later resume of it that works clears (issue 2025).
-    var chatRestoreFailureShown: String?
+    /// The error on screen that the open chat itself put there: its failed
+    /// resume's restore error, or Hermes' own error for it (a model that
+    /// can't start, a turn that failed). Leaving the chat takes it down
+    /// (issue 2801); a later resume of the chat that works takes down a
+    /// restore error (issue 2025).
+    var chatErrorShown: ChatErrorShown?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.
     @Published var activeChatRepliesElsewhere = false
