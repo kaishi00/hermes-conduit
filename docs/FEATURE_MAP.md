@@ -1970,7 +1970,7 @@ body), which draw the same contact card · group rooms · the Watch · CarPlay �
 Messages, and the Mac (the text is copied; the Mac opens no sms: link) · what conduit_show, conduit_contacts and the voice contacts tool
 tell models · Settings > Contacts' caption
 
-**Desktop app:** gap: no texting someone (conduit_text) or contact picker on the computer.
+**Desktop app:** partly (desktop#82): a contact card draws each person with Send text, which copies the text and opens the computer's `sms:` handler, and Call, Message, Email and Website (`desktop/src/renderer/src/components/BoardView.tsx`, `desktop/src/renderer/src/state/boards.ts`); no contact picker, and the computer may have no app for `sms:`.
 
 **Code**
 - Card and Send text: `Conduit/Cards/RichMediaCard.swift` (RichPerson.message, textRecipient, smsURL), `Conduit/Cards/RichMediaCardViews.swift` (RichPersonRow, RichTextComposeSheet)
@@ -2006,7 +2006,7 @@ one and in group rooms · /undo and /retry, which Edit and resend and Retry run 
 restore of words put back (failed sends, the waiting message's Edit) · the
 chat's saved copy, whose rows stand in while it opens or offline
 
-**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); no pinned replies.
+**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); Pin reply in a reply's ⋯ menu, the bar over the chat and the list from the bar and the Chats list, with labels, kept per host and profile (`desktop/src/renderer/src/components/PinnedReplies.tsx`, `desktop/src/renderer/src/state/pinnedReplies.ts`, desktop#83); no passage pins (no selection menu).
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
