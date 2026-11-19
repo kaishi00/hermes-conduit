@@ -462,10 +462,11 @@ jobs:
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
         # SIMULATOR_UDID for the steps below.
         env:
-          # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
-          # A clean build (no cache from this Xcode yet, as after an Xcode
+          # 1500: main's own cached builds took 1050-1100 s on 2026-11-19,
+          # and a PR that edits AppState.swift (a near-full rebuild) outran
+          # 1200 s three times in a row (#2830). A clean build (no cache from this Xcode yet, as after an Xcode
           # move) gets 1800: the first Xcode 27 build outran 1200 s (#2319).
-          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
+          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1500' || '1800' }}
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh

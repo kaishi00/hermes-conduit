@@ -177,8 +177,9 @@ class WorkflowContractTests(unittest.TestCase):
         a build that restored no cache gets 1800 s, and the nightly UI shards,
         which never restore one, always do. The unit shards and timing repeats
         always do too: their restored cache is a day behind and still outran
-        1200 s on Xcode 27 (2026-11-13)."""
-        expr = "BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}"
+        1200 s on Xcode 27 (2026-11-13). A cached Smoke build gets 1500 s:
+        a near-full rebuild from main's cache outran 1200 s (#2830)."""
+        expr = "BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1500' || '1800' }}"
         self.assertIn(expr, self._job_text("smoke"))
         for job in ("unit", "timing", "ui"):
             self.assertIn('BUILD_TIMEOUT_SECS: "1800"', _job_text(NIGHTLY, job), job)
