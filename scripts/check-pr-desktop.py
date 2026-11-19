@@ -26,17 +26,50 @@ import sys
 SECTION = re.compile(r"^##\s+Desktop\s*$", re.IGNORECASE | re.MULTILINE)
 NEXT_SECTION = re.compile(r"^##\s", re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-# A fenced block, such as the template quoted in a PR that changes it.
-# It opens with up to three spaces of indent (four is an indented code
-# block, which GitHub draws without treating the ticks as a fence), and its
-# closing line, also within three spaces, repeats the opening run or a
-# longer run of the same character, so a ```` block that quotes a ``` block
-# goes as a whole. One opened after a list marker closes on an indented
-# line, inside the item. One never closed runs to the end, as GitHub draws it.
-CLOSE = r"(?:(?<=`)`*|(?<=~)~*)[ \t]*$|\Z)"
-FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,}).*?(?:^ {0,3}\1" + CLOSE + "|"
-                   r"^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(`{3,}|~{3,}).*?(?:^[ \t]+\2" + CLOSE,
-                   re.DOTALL | re.MULTILINE)
+# A fenced block, such as the template quoted in a PR that changes it, read
+# line by line as GitHub draws it. It opens with up to three spaces of indent
+# (four is an indented code block, which GitHub draws without treating the
+# ticks as a fence); a backtick fence whose info string has a backtick is a
+# paragraph. Its closing line, also within three spaces, repeats the opening
+# run or a longer run of the same character, so a ```` block that quotes a
+# ``` block goes as a whole. One opened after a list marker belongs to the
+# item: it closes only on a line within three spaces of the item's content
+# indent, and a line indented less than that ends the item and the fence with
+# it (that line may open a fence of its own). One never closed runs to the
+# end, as GitHub draws it. ASCII digits only in a list marker.
+OPENER = re.compile(r"^( {0,3})((?:[-*+]|[0-9]{1,9}[.)])[ \t]+)?(`{3,}|~{3,})(.*)$")
+CLOSER = re.compile(r"^( *)(`{3,}|~{3,})[ \t]*$")
+
+
+def unfenced(body):
+    """`body` without its fenced blocks."""
+    kept = []
+    fence = None  # (character, run length, content indent, in a list item)
+    for raw in body.split("\n"):
+        line = raw.expandtabs(4)
+        if fence:
+            char, run, indent, in_item = fence
+            stripped = line.lstrip(" ")
+            spaces = len(line) - len(stripped)
+            if in_item and stripped and spaces < indent:
+                fence = None  # The item ends here, and its fence with it.
+            else:
+                close = CLOSER.match(line)
+                if close and close.group(2)[0] == char and len(close.group(2)) >= run \
+                        and len(close.group(1)) - indent <= 3:
+                    fence = None
+                continue
+        opened = OPENER.match(line)
+        if opened and not (opened.group(3)[0] == "`" and "`" in opened.group(4)):
+            marker = opened.group(2) or ""
+            # A closer counts its indent from the item's content, else from the margin.
+            indent = len(opened.group(1)) + len(marker) if marker else 0
+            fence = (opened.group(3)[0], len(opened.group(3)), indent, bool(marker))
+            continue
+        kept.append(raw)
+    return "\n".join(kept)
+
+
 # A Follow-up that names nothing yet.
 PLACEHOLDER = re.compile(r"^(later|tbd|todo|none|n/?a|soon|maybe)\W*$", re.IGNORECASE)
 ANSWER = re.compile(r"^[\s>*_-]*(done|not needed|follow-up|follow up)\b[ \t:.,;()*_-]*(.*)",
@@ -53,7 +86,7 @@ HOW = ("Fill in the Desktop section of the PR description: \"Done: desktop#58\",
 def problem(body):
     """What's wrong with a PR description's Desktop section, or None."""
     body = COMMENT.sub("", (body or "").replace("\r\n", "\n"))
-    fenced, body = body, FENCE.sub("", body)
+    fenced, body = body, unfenced(body)
     found = SECTION.search(body)
     if not found and SECTION.search(fenced):
         return ("The Desktop section is inside a code fence, which shows it as code: close "

@@ -3062,11 +3062,11 @@ final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
     /// ends: a card answered during it, or another chat opened meanwhile,
     /// refuses the call as a running reply does.
     func testACallFromHermesChecksItsJoinAgainAfterTheRefresh() async {
-        func pendingApproval() -> ChatMessage {
+        func pendingApproval(in session: String = "s1") -> ChatMessage {
             ChatMessage(
-                id: "approval-1", role: .approval, content: "Delete the scratch folder?", timestamp: "1",
+                id: "approval-\(session)", role: .approval, content: "Delete the scratch folder?", timestamp: "1",
                 approval: ApprovalActivity(
-                    sessionId: "s1", requestId: "req-1", command: "rm -rf scratch",
+                    sessionId: session, requestId: "req-\(session)", command: "rm -rf scratch",
                     description: "Delete the scratch folder?", choices: nil, allowPermanent: false,
                     smartDenied: false, status: .pending, choice: nil, error: nil
                 )
@@ -3083,7 +3083,12 @@ final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
                 if change == "answered" {
                     harness.appState.messages[0].approval?.status = .approved
                 } else {
+                    // s2 waits on the user too, so only the chat's identity
+                    // refuses the join (issue 2810).
                     harness.appState.activeSessionId = "s2"
+                    harness.appState.turnState = .running
+                    harness.appState.messages = [pendingApproval(in: "s2")]
+                    XCTAssertTrue(harness.appState.openChatWaitsOnUserAnswer, "s2 waits on the user as well")
                 }
             }
             let called = await harness.appState.prepareVoiceConversation(

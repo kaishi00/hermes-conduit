@@ -78,6 +78,22 @@ class CheckPrDesktopTests(unittest.TestCase):
         coded = "## Summary\n    - ```bash\n    npm test\n\n## Desktop\nNot needed: docs.\n"
         self.assertIsNone(check.problem(coded))
 
+    def test_list_fences_info_strings_and_digits_as_github_draws_them(self):
+        # notifier 924: a list item's fence closes only within three spaces
+        # of the item's content indent, so six spaces in is code and the
+        # closer after it ends the block; one space in ends the item, its
+        # line then opening a fence of its own that hides what follows.
+        six = "## Summary\n- ```bash\n  npm test\n      ```\n   ```\n\n## Desktop\nNot needed: docs.\n"
+        self.assertIsNone(check.problem(six))
+        one = "## Summary\n- ```bash\n  npm test\n ```\n## Desktop\nDone: desktop#58.\n"
+        self.assertIn("inside a code fence", check.problem(one))
+        # A backtick fence whose info string has a backtick is a paragraph.
+        ticked = "## Summary\n``` js `x`\n\n## Desktop\nNot needed: docs.\n"
+        self.assertIsNone(check.problem(ticked))
+        self.assertIsNotNone(check.problem(ticked.replace("```", "~~~")), "a tilde fence may hold one")
+        # Only ASCII digits make a list marker.
+        self.assertIsNone(check.problem("## Summary\n\u0661. ```\n## Desktop\nNot needed: docs.\n"))
+
     def test_done_names_a_pr_not_an_issue(self):
         issue = "Done: https://github.com/kaishi00/hermes-conduit-desktop/issues/59"
         self.assertIn("An issue goes under Follow-up", check.problem(body(issue)))

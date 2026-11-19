@@ -122,6 +122,21 @@ final class SessionCatalogCacheTests: XCTestCase {
         XCTAssertNotEqual(cache.mutationGeneration, afterValue)
     }
 
+    /// Issue 2810 (#2808's reviews): a retitle with nothing cached under its
+    /// key still moves the generation, so a read that started before it
+    /// can't commit the old title.
+    func testARetitleWithNothingCachedFencesAReadStartedBeforeIt() {
+        var cache = SessionCatalogCache()
+        let started = cache.mutationGeneration
+        cache.updateRows(forKey: "default:exclude") { $0 }
+        XCTAssertNotEqual(cache.mutationGeneration, started)
+        XCTAssertFalse(cache.commit(
+            liveSessions: [session(id: "a", title: "Old title")], liveKey: "default:exclude",
+            cronSessions: nil, cronKey: "default:cron",
+            historyMarkers: [:], at: started
+        ))
+    }
+
     func testRemoveSessionPurgesMatchingAlternateID() {
         var cache = SessionCatalogCache()
         let session = session(

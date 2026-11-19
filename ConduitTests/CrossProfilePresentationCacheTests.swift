@@ -1710,7 +1710,12 @@ extension CrossProfilePresentationCacheTests {
         // Cron evidence past its half hour: one profile's cron read failing
         // keeps what the last full read gave, to read again next time;
         // every profile answering with none clears it (#2800 review).
-        appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-mac-1"]
+        // The evidence comes from a full read that every profile answered
+        // (issue 2810), not seeded by hand.
+        appState.combinedDashboardChats[mac.id]?.cronIDs = []
+        appState.combinedDashboardChats[mac.id]?.cronAt = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, ["cron-mac-1"], "a full read records it")
         appState.combinedDashboardChats[mac.id]?.cronAt = .distantPast
         appState.keptDashboardJSONReader = { bridge, path in
             if path.contains("source=cron"), path.contains("profile=atlas") { throw URLError(.timedOut) }
@@ -2008,10 +2013,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedDashboardBots[vps.id]?.bots.map(\.name), ["furina"])
         appState.combinedDashboardBots[vps.id] = nil
 
+        let requestsBefore = appState.botChatOpenRequests
         appState.openCombinedBot(section.bots[0], in: mac.id)
         XCTAssertEqual(appState.botZoom.tapped, "raiden", "the chat grows out of the portrait")
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
         XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        // The tap's link carries the tap's own request (`counted:`), so the
+        // open after the switch counts no second one (issue 2810).
+        await waitUntil { appState.activeBotChatProfile == "raiden" || appState.linkedBotChatWaitingRequest != nil }
+        XCTAssertEqual(appState.botChatOpenRequests, requestsBefore &+ 1, "one tap, one request")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
         XCTAssertTrue(appState.otherCombinedDashboardsBots.allSatisfy { $0.dashboardID != mac.id }, "on screen, its bots are Bots Home's own")
         // Signed out of, its bots go, even with no connection kept.
