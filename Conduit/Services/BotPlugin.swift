@@ -29,13 +29,26 @@ enum BotPlugin {
             self.canTurnOn = canTurnOn
         }
 
-        init(response: [String: Any]) {
-            on = response["on"] as? Bool == true
+        /// Nil for an answer that doesn't say whether it's on.
+        init?(response: [String: Any]) {
+            guard let on = response["on"] as? Bool else { return nil }
+            self.on = on
             canTurnOn = response["can_turn_on"] as? Bool == true
         }
 
         /// Edit Bot shows Turn On only for a bot it can help.
         var offersTurnOn: Bool { !on && canTurnOn }
+    }
+
+    enum StateStep: Equatable { case leave, hostSteps, turnOn }
+
+    /// What New Bot does once it has read the bot's plugin (nil: it couldn't).
+    static func stateStep(_ state: State?, startsFresh: Bool) -> StateStep {
+        if let state, state.on { return .leave }
+        // A dashboard running a profile's own copy can't share it: a fresh
+        // bot is told the host steps instead.
+        if let state, !state.canTurnOn { return startsFresh ? .hostSteps : .leave }
+        return .turnOn
     }
 
     static func route(profile: String) -> String? {
@@ -91,7 +104,7 @@ extension AppState {
                 body: ["name": profile],
                 timeoutMilliseconds: BotPlugin.turnOnTimeoutMilliseconds
             )
-            return BotPlugin.State(response: response).on
+            return BotPlugin.State(response: response)?.on == true
                 ? nil
                 : AppLocalization.string("Hermes still has the plugin off for this bot. Try again.", table: .bots)
         } catch {
@@ -127,13 +140,13 @@ extension AppState {
                 table: .bots
             )
         case .turnOn:
-            let state = await botPluginState(profile: slug)
-            if let state, state.on { return nil }
-            if let state, !state.canTurnOn {
-                // A dashboard running a profile's own copy can't share it:
-                // a fresh bot is told the host steps instead.
-                guard startsFresh else { return nil }
+            switch BotPlugin.stateStep(await botPluginState(profile: slug), startsFresh: startsFresh) {
+            case .leave:
+                return nil
+            case .hostSteps:
                 return DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: slug)
+            case .turnOn:
+                break
             }
             // The turn-on goes to the Hermes the bot was made on, never one
             // switched to while the state was read.

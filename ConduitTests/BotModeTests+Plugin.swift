@@ -25,16 +25,31 @@ extension BotModeTests {
         let off = BotPlugin.State(response: ["profile": "furina", "on": false, "allowed": false, "linked": false,
                                              "can_turn_on": true])
         XCTAssertEqual(off, BotPlugin.State(on: false, canTurnOn: true))
-        XCTAssertTrue(off.offersTurnOn)
-        XCTAssertFalse(BotPlugin.State(response: ["on": true, "can_turn_on": true]).offersTurnOn)
+        XCTAssertEqual(off?.offersTurnOn, true)
+        XCTAssertEqual(BotPlugin.State(response: ["on": true, "can_turn_on": true])?.offersTurnOn, false)
         // A dashboard running a profile's own copy can't share it.
-        XCTAssertFalse(BotPlugin.State(response: ["on": false, "can_turn_on": false]).offersTurnOn)
-        // A malformed answer offers nothing.
-        XCTAssertFalse(BotPlugin.State(response: [:]).offersTurnOn)
+        XCTAssertEqual(BotPlugin.State(response: ["on": false, "can_turn_on": false])?.offersTurnOn, false)
+        // An answer that doesn't say whether it's on is no answer.
+        XCTAssertNil(BotPlugin.State(response: [:]))
+        XCTAssertNil(BotPlugin.State(response: ["can_turn_on": true]))
     }
 
     func testTheBotPluginRouteNamesTheBotAndNoProfile() {
         XCTAssertEqual(BotPlugin.route(profile: "furina"), "/api/plugins/conduit_push/profiles/plugin?name=furina")
         XCTAssertEqual(BotPlugin.route(profile: "a&b"), "/api/plugins/conduit_push/profiles/plugin?name=a%26b")
+    }
+
+    func testNewBotTellsAFreshBotTheHostStepsWhereTheDashboardCantTurnItOn() {
+        let cant = BotPlugin.State(on: false, canTurnOn: false)
+        XCTAssertEqual(BotPlugin.stateStep(cant, startsFresh: true), .hostSteps)
+        XCTAssertEqual(BotPlugin.stateStep(cant, startsFresh: false), .leave)
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: true, canTurnOn: true), startsFresh: true), .leave)
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: false, canTurnOn: true), startsFresh: false), .turnOn)
+        // A read that failed is tried by turning it on.
+        XCTAssertEqual(BotPlugin.stateStep(nil, startsFresh: true), .turnOn)
+        XCTAssertEqual(
+            DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: "furina"),
+            "Hermes has the conduit_push plugin turned off for the “furina” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."
+        )
     }
 }
