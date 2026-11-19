@@ -32,6 +32,14 @@ struct SavedVoiceJob: Codable, Equatable {
     /// Its profile's registry listed it, so its absence there settles it
     /// after a relaunch too (issue 2639). Nil in a ledger from before.
     var listed: Bool?
+    /// The call took its chat for its later requests, so other turns share
+    /// it (issue 2760). Nil in a ledger from before.
+    var opensCallChat: Bool?
+    /// The messages it sent its chat, so a reply read there after a
+    /// relaunch is its own only when it answers one of them, as before the
+    /// relaunch (#2752's fence, issue 2760). Nil in a ledger from before:
+    /// its first message is rebuilt from `instructions` then.
+    var sentPrompts: [String]?
 
     init?(_ job: VoiceBackgroundJob) {
         guard let runtimeID = job.runtimeSessionID, !runtimeID.isEmpty else { return nil }
@@ -55,6 +63,7 @@ struct SavedVoiceJob: Codable, Equatable {
         callChatIDs = job.callChatIDs
         ledgerKey = job.ledgerKey
         listed = job.listedByLivenessPoll ? true : nil
+        opensCallChat = job.opensCallChat ? true : nil
     }
 
     /// The job as the ledger takes it back: running until the poll or an
@@ -87,8 +96,17 @@ struct SavedVoiceJob: Codable, Equatable {
         job.callChatIDs = callChatIDs
         job.ledgerKey = ledgerKey
         job.listedByLivenessPoll = listed == true
+        job.opensCallChat = opensCallChat == true
         job.isRestored = true
         return job
+    }
+
+    /// The messages the restored job counts as its own in its chat: the
+    /// ones saved, else its first message as `instructions` makes it.
+    var promptsSent: Set<String> {
+        if let sentPrompts, !sentPrompts.isEmpty { return Set(sentPrompts) }
+        let first = VoiceBackgroundJobSupervisor.jobPrompt(for: instructions).trimmingCharacters(in: .whitespacesAndNewlines)
+        return first.isEmpty ? [] : [first]
     }
 
     static func decode(_ data: Data?) -> [SavedVoiceJob] {

@@ -2087,6 +2087,16 @@ final class BotModeTests: XCTestCase {
         appState.beginOpeningBotChat("atlas", label: "Atlas")
         appState.beginOpeningBotChat(BotZoomArm.roomKey("lobby"))
         XCTAssertNil(appState.botChatCoverBot, "a room tapped after it covers nothing")
+
+        // Two taps on the same bot: the cover stays until the second open
+        // ends too (issue 2792).
+        let other = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations()).appState
+        other.beginOpeningBotChat("atlas", label: "Atlas")
+        other.beginOpeningBotChat("atlas", label: "Atlas")
+        other.endOpeningBotChat("atlas")
+        XCTAssertEqual(other.botChatCoverBot, "atlas", "the second tap is still on its way")
+        other.endOpeningBotChat("atlas")
+        XCTAssertNil(other.botChatCoverBot)
     }
 
     /// An earlier tap whose lookup fails after a newer tap took over says
@@ -2512,6 +2522,37 @@ final class BotModeTests: XCTestCase {
         await waitUntil { appState.activeBotChatProfile == "atlas" }
         XCTAssertEqual(appState.activeBotChatProfile, "atlas", "the newer link opens")
         XCTAssertNil(appState.errorMessage)
+
+        // Back, or a navigation of its own, while a link waits stands it
+        // down: nothing opens once connected (issue 2792).
+        let leaves: [@MainActor () -> Void] = [
+            { appState.standDownBotChatOnItsWay() },
+            { _ = appState.beginExplicitChatViewportTransition() },
+        ]
+        for leave in leaves {
+            appState.isConnected = false
+            appState.isConnecting = true
+            appState.openLinkedBotChat("nova")
+            await waitUntil { appState.linkedBotChatWaitingRequest != nil }
+            XCTAssertNotNil(appState.linkedBotChatWaitingRequest, "waiting for the connection")
+            leave()
+            appState.isConnected = true
+            appState.isConnecting = false
+            await waitUntil { appState.linkedBotChatWaitingRequest == nil }
+            try? await Task.sleep(for: .milliseconds(50))
+            XCTAssertEqual(appState.activeBotChatProfile, "atlas", "the left link never opens")
+        }
+
+        // A combined tap's link carries the tap's own request: a newer one
+        // since stands it down, and it counts none of its own.
+        let counted = appState.botChatOpenRequests
+        appState.openLinkedBotChat("nova", counted: counted - 1)
+        try? await Task.sleep(for: .milliseconds(50))
+        XCTAssertEqual(appState.botChatOpenRequests, counted, "a stale request counts nothing")
+        XCTAssertEqual(appState.activeBotChatProfile, "atlas")
+        appState.openLinkedBotChat("nova", counted: counted)
+        await waitUntil { appState.activeBotChatProfile == "nova" }
+        XCTAssertEqual(appState.activeBotChatProfile, "nova", "its own request opens it")
 
         // Nothing connecting (offline): it says so at once.
         appState.isConnected = false

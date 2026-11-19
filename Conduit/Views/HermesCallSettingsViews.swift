@@ -203,6 +203,9 @@ struct HermesCallSettingsSection: View {
     /// as the plugin's status changes, so the Watch caption follows an
     /// update landing while the page is open.
     @State private var pluginPairsEveryDevice: Bool
+    /// Built once with the view, so `.onReceive` doesn't subscribe again on
+    /// each render (issue 2778).
+    @State private var pairsEveryDeviceChanges: AnyPublisher<Bool, Never>
     /// This iPhone's ringtones (issue 2445): every bot's, and this bot's
     /// own when it has one.
     @State private var ringtoneForAll: HermesRingtone
@@ -229,6 +232,7 @@ struct HermesCallSettingsSection: View {
         _ringtoneForAll = State(initialValue: ringtones.forAll)
         _ringtoneOwn = State(initialValue: ringtones.own(profile: model.profile))
         _pluginPairsEveryDevice = State(initialValue: Self.pairsEveryDevice)
+        _pairsEveryDeviceChanges = State(initialValue: Self.makePairsEveryDeviceChanges())
     }
 
     /// Whether the model shown is the draft's own.
@@ -505,14 +509,14 @@ struct HermesCallSettingsSection: View {
             ringtonePreview.stop()
         }
         .keyboardDoneButton { rulesFocused = false }
-        .onReceive(Self.pairsEveryDeviceChanges) { pluginPairsEveryDevice = $0 }
+        .onReceive(pairsEveryDeviceChanges) { pluginPairsEveryDevice = $0 }
     }
 
     private static var pairsEveryDevice: Bool {
         AppStateRuntimeRegistry.shared.existing?.notifierPlugin.reports("pairing-devices") == true
     }
 
-    private static var pairsEveryDeviceChanges: AnyPublisher<Bool, Never> {
+    private static func makePairsEveryDeviceChanges() -> AnyPublisher<Bool, Never> {
         guard let appState = AppStateRuntimeRegistry.shared.existing else { return Empty().eraseToAnyPublisher() }
         return appState.$notifierPlugin.map { $0.reports("pairing-devices") }.removeDuplicates().eraseToAnyPublisher()
     }

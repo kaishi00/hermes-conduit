@@ -259,10 +259,13 @@ final class NeedsYouStore: ObservableObject {
             self.banner = nil
         }
         // A wait another combined dashboard listed first (one Hermes saved
-        // at two addresses) had its banner there already (issue 2631).
-        let listedElsewhere = Set(otherDashboards.values.joined().map(\.hostKey))
+        // at two addresses) had its banner there already (issue 2631),
+        // under any spelling of its profile (#2800 review).
+        let listedElsewhere = Array(otherDashboards.values.joined())
         guard !firstRead,
-              let newest = fresh.filter({ !isOpenChat($0) && !listedElsewhere.contains($0.hostKey) })
+              let newest = fresh.filter({ item in
+                  !isOpenChat(item) && !listedElsewhere.contains { Self.sameWait($0, item) }
+              })
                 .max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
         if let banner, banner.since > newest.since { return }
@@ -275,10 +278,11 @@ final class NeedsYouStore: ObservableObject {
     /// dashboard's, as the Chats list does (issue 2631).
     var everyItem: [NeedsYouItem] {
         guard !otherDashboards.isEmpty else { return items }
-        var taken = Set(items.map(\.hostKey))
+        // One wait once, under any spelling of its profile (`sameWait`): a
+        // re-cased copy listed for a moment under both isn't two (issue 2770).
         var listed = items
         for id in otherDashboards.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
-            for item in otherDashboards[id] ?? [] where taken.insert(item.hostKey).inserted {
+            for item in otherDashboards[id] ?? [] where !listed.contains(where: { Self.sameWait($0, item) }) {
                 listed.append(item)
             }
         }

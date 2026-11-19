@@ -74,29 +74,45 @@ struct RichCardSchema {
     /// The valid cards in `value`, normalized; invalid ones are dropped.
     /// The cards a model sent, as the flat list the schema asks for: one
     /// card on its own, a `{"cards": ...}` wrapper, or the list inside
-    /// another list (`[[{...}]]`), each of these inside the others too, as
-    /// the plugin's conduit_show reads them (notifier #876, #878: a smaller
-    /// model retried a board for 35 minutes over its wrapping). Past eight
-    /// levels the cards are left as they are, and refused.
+    /// another list (`[[{...}]]`), each of these inside the others too, a
+    /// JSON string of them sitting in the list or the wrapper included, as
+    /// the plugin's conduit_show reads them (notifier #876, #878, 879: a
+    /// smaller model retried a board for 35 minutes over its wrapping). Past
+    /// eight levels the cards are left as they are, and refused.
     static func unwrappedCards(_ value: Any?, depth: Int = 0) -> Any? {
         guard depth <= 8 else { return value }
+        var value = value
+        if let text = cardJSON(value) {
+            guard let parsed = text.data(using: .utf8).flatMap({ try? JSONSerialization.jsonObject(with: $0) }) else { return value }
+            value = parsed
+        }
         if let card = value as? [String: Any] {
             if let inner = cardsInWrapper(card) { return unwrappedCards(inner, depth: depth + 1) }
             return [card]
         }
         guard let list = value as? [Any] else { return value }
         return list.flatMap { item -> [Any] in
-            let opens = item is [Any] || (item as? [String: Any]).flatMap(cardsInWrapper) != nil
+            let opens = item is [Any] || cardJSON(item) != nil || (item as? [String: Any]).flatMap(cardsInWrapper) != nil
             guard opens else { return [item] }
             let opened = unwrappedCards(item, depth: depth + 1)
             return (opened as? [Any]) ?? [opened as Any]
         }
     }
 
-    /// What a `{"cards": ...}` around cards holds; nil for a card of its own.
+    /// What a `{"cards": ...}` around cards holds: a list, one card, or a
+    /// JSON string of them. Nil for a card of its own.
     private static func cardsInWrapper(_ value: [String: Any]) -> Any? {
-        guard value["type"] == nil, let inner = value["cards"], inner is [Any] || inner is [String: Any] else { return nil }
+        guard value["type"] == nil, let inner = value["cards"],
+              inner is [Any] || inner is [String: Any] || cardJSON(inner) != nil else { return nil }
         return inner
+    }
+
+    /// A string that may be cards sent as JSON: a list or an object.
+    private static func cardJSON(_ value: Any?) -> String? {
+        guard let text = value as? String,
+              let first = text.trimmingCharacters(in: .whitespacesAndNewlines).first,
+              first == "[" || first == "{" else { return nil }
+        return text
     }
 
     func normalizeCards(_ value: Any?) -> [[String: Any]] {

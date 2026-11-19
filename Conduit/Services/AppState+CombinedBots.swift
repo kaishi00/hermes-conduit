@@ -203,10 +203,13 @@ extension AppState {
     /// `oneHermesGroups`' callers.
     var combinedHermesEvidence: [UUID?: Set<String>] {
         guard isInCombinedGroup(activeDashboardID) else { return [:] }
+        // A row with no id of its own goes by its place in the list
+        // (normalizeSessions): a number any Hermes could give.
+        func hostIDs<S: Sequence>(_ ids: S) -> Set<String> where S.Element == String {
+            Set(ids.filter { !$0.isEmpty && Int($0) == nil })
+        }
         func ids(_ rows: [SessionSummary]) -> Set<String> {
-            // A row with no id of its own goes by its place in the list
-            // (normalizeSessions): a number any Hermes could give.
-            Set(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } }.filter { !$0.isEmpty && Int($0) == nil })
+            hostIDs(rows.flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
         }
         // The active lists carry kept dashboards' rows too; only its own
         // count for it, its other profiles' (All's catalog) included. A
@@ -217,7 +220,8 @@ extension AppState {
             activeDashboardID: ids(own).union(needsYou.items.map { "wait\u{1F}\($0.hostKey)" }),
         ]
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID && isInCombinedGroup(dashboard.id) {
-            let chats = combinedDashboardChats[dashboard.id].map { ids($0.sessions) } ?? []
+            // Its cron runs count as the dashboard on screen's do (issue 2761).
+            let chats = combinedDashboardChats[dashboard.id].map { ids($0.sessions).union(hostIDs($0.cronIDs)) } ?? []
             let waits = (needsYou.otherDashboards[dashboard.id] ?? []).map { "wait\u{1F}\($0.hostKey)" }
             evidence[dashboard.id] = chats.union(waits)
         }
@@ -475,7 +479,10 @@ extension AppState {
             // A list tap or link made during the switch is the later
             // choice (`botChatOpenRequests`); its own open owns the zoom.
             guard request == self.botChatOpenRequests else { return }
-            self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
+            // The tap's own request carries on, so a tap landing before the
+            // link's task starts is the later choice, not lost to a second
+            // count (issue 2792).
+            self.openLinkedBotChat(bot.name, inDashboard: dashboardID, counted: request)
         }
     }
 

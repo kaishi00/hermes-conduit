@@ -1539,7 +1539,7 @@ extension CrossProfilePresentationCacheTests {
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
-        final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
+        final class Counts { var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = [] }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
@@ -1555,6 +1555,13 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
             if path == "/api/profiles" { return ["profiles": ["default", "atlas"]] }
             guard path.contains("/api/profiles/sessions") else { return [:] }
+            if path.contains("source=cron") {
+                // Its cron runs, read for twin evidence only (issue 2761).
+                counts.cronReads.append(path)
+                return ["sessions": path.contains("profile=atlas") ? [] : [
+                    ["id": "cron-mac-1", "title": "Daily brief", "message_count": 2, "profile": "default", "last_active": 900],
+                ]]
+            }
             counts.reads.append(path)
             if path.contains("profile=atlas") {
                 return ["sessions": [
@@ -1573,6 +1580,12 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats()
         XCTAssertEqual(counts.reads.count, 2)
         XCTAssertTrue(counts.reads[0].contains("profile=default"), counts.reads[0])
+        // Its cron runs' ids, every profile's few newest, for twin evidence
+        // only: never listed (issue 2761).
+        XCTAssertEqual(counts.cronReads.count, 2)
+        XCTAssertTrue(counts.cronReads.allSatisfy { $0.contains("limit=\(AppState.combinedDashboardCronLimit)") })
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, ["cron-mac-1"])
+        XCTAssertFalse(appState.otherCombinedDashboardsChats(excluding: []).contains { $0.id == "cron-mac-1" })
         XCTAssertTrue(counts.reads[1].contains("profile=atlas"), counts.reads[1])
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default", "atlas"])
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: ["mac-2"]).map(\.id), ["mac-1", "atlas-1"],
@@ -1616,6 +1629,31 @@ extension CrossProfilePresentationCacheTests {
         // No bots anywhere: a chat both lists give is the same evidence,
         // so the profile still shows once (issue 2741).
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 3, "two Hermes until something says otherwise")
+        // A Hermes sharing only cron runs: the kept dashboard's cron ids
+        // count as this one's cron rows do, so it's still one Hermes
+        // (issue 2761); a cron id only one side lists says nothing.
+        let ownCron = appState.cronSessions
+        appState.cronSessions = [SessionSummary(id: "cron-run-7f3a", alternateIds: [], title: "Daily brief", model: "Hermes",
+                                                updatedLabel: "now", profile: "default", source: .cron, isActive: false,
+                                                isArchived: false, lineageRootId: nil)]
+        XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("cron-run-7f3a") ?? false)
+        XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
+        let evidence = appState.combinedHermesEvidence
+        XCTAssertTrue(evidence[mac.id]?.contains("cron-run-7f3a") ?? false, "its cron runs are its evidence")
+        XCTAssertTrue(evidence[vps.id]?.contains("cron-run-7f3a") ?? false, "as this one's cron rows are")
+        XCTAssertFalse(evidence[mac.id]?.contains("42") ?? true, "never a placeholder number")
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 2, "its profile shows once")
+        appState.combinedDashboardChats[mac.id]?.cronIDs = ["42"]
+        appState.cronSessions = [SessionSummary(id: "42", alternateIds: [], title: "Daily brief", model: "Hermes",
+                                                updatedLabel: "now", profile: "default", source: .cron, isActive: false,
+                                                isArchived: false, lineageRootId: nil)]
+        XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("42") ?? false,
+                       "a placeholder number any Hermes could give isn't evidence")
+        XCTAssertFalse(appState.combinedHermesEvidence[vps.id]?.contains("42") ?? false)
+        appState.cronSessions = ownCron
+        appState.combinedDashboardChats[mac.id]?.cronIDs = []
         let ownSessions = appState.sessions
         appState.sessions = [SessionSummary(id: "mac-2", alternateIds: [], title: "Old", model: "Hermes", updatedLabel: "now",
                                             profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
@@ -1655,6 +1693,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.reads.count, 2)
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(counts.reads.count, 4)
+        XCTAssertEqual(counts.cronReads.count, 2, "cron ids stand for half an hour on one connection")
         // A failed read keeps what the list showed.
         let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
         appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
@@ -1667,6 +1706,26 @@ extension CrossProfilePresentationCacheTests {
         }
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-1", "atlas-1", "mac-2"])
+        appState.keptDashboardJSONReader = reader
+        // Cron evidence past its half hour: one profile's cron read failing
+        // keeps what the last full read gave, to read again next time;
+        // every profile answering with none clears it (#2800 review).
+        appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-mac-1"]
+        appState.combinedDashboardChats[mac.id]?.cronAt = .distantPast
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("source=cron"), path.contains("profile=atlas") { throw URLError(.timedOut) }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, ["cron-mac-1"])
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronAt, .distantPast)
+        appState.keptDashboardJSONReader = { bridge, path in
+            if path.contains("source=cron") { return ["sessions": [Any]()] }
+            return try await reader(bridge, path)
+        }
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.cronIDs, [])
+        XCTAssertNotEqual(appState.combinedDashboardChats[mac.id]?.cronAt, .distantPast)
         appState.keptDashboardJSONReader = reader
         // A switch's seed stands against a read started before it (#2644
         // review), and gives way to one started after.

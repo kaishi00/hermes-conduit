@@ -496,6 +496,43 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(events, [.delta(sessionID: "stored-a", text: "this chat")])
     }
 
+    /// Issue 2801: a bot whose model can't start leaves Hermes' error on
+    /// its chat, and it stayed over the next chat opened until a send. A
+    /// chat's own error, Hermes' or a failed restore's, goes when another
+    /// chat opens; a new id for the same chat keeps it, and an error that
+    /// isn't a chat's own stays.
+    func testAChatsOwnErrorGoesWhenAnotherChatOpens() {
+        let state = makeAppState()
+        let startFailure = "Hermes could not start the assistant for this session."
+        installActiveSession(state, id: "bot-b")
+        state.sessions = [SessionSummary(
+            id: "bot-b", alternateIds: ["bot-b-runtime"], title: "bot-b", model: "Hermes",
+            updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+            isArchived: false, lineageRootId: nil
+        )]
+        state.handleStreamEvent(.messageError(sessionId: "bot-b", message: startFailure))
+        XCTAssertEqual(state.errorMessage, startFailure)
+        state.activeSessionId = "bot-b-runtime"
+        XCTAssertEqual(state.errorMessage, startFailure, "A new id for the same chat keeps it")
+        XCTAssertEqual(state.shownChat.chatErrorShown, ChatErrorShown(message: startFailure, isRestoreFailure: false))
+
+        installActiveSession(state, id: "bot-a")
+        XCTAssertNil(state.errorMessage, "Another chat doesn't show the chat it left's error")
+        XCTAssertNil(state.shownChat.chatErrorShown)
+
+        state.errorMessage = "Update Hermes to use Bot Mode."
+        installActiveSession(state, id: "bot-c")
+        XCTAssertEqual(state.errorMessage, "Update Hermes to use Bot Mode.", "An error that isn't a chat's own stays")
+
+        // A failed restore's error is the chat's own too.
+        let restoreFailure = "Failed to restore this conversation: The network connection was lost."
+        state.errorMessage = restoreFailure
+        state.shownChat.chatErrorShown = ChatErrorShown(message: restoreFailure, isRestoreFailure: true)
+        installActiveSession(state, id: "bot-d")
+        XCTAssertNil(state.errorMessage, "A failed restore's error goes with its chat")
+        XCTAssertNil(state.shownChat.chatErrorShown)
+    }
+
     /// Voice's cancel notes the turn the chat runs, only when it runs one,
     /// under whichever of the chat's ids the socket knows it by, and only
     /// when the cancel goes through.

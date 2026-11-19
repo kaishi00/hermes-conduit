@@ -600,6 +600,14 @@ final class AppState: ObservableObject {
                         if errorMessage == failure { errorMessage = nil }
                         sendFailureShown = nil
                     }
+                    // So was an error the chat left put there itself (a
+                    // bot whose model can't start), which read as the next
+                    // chat's until a send cleared it (issue 2801).
+                    if let shown = shownChat.chatErrorShown {
+                        if errorMessage == shown.message { errorMessage = nil }
+                        if chatErrorBehindRoom == shown.message { chatErrorBehindRoom = nil }
+                        shownChat.chatErrorShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
@@ -1020,6 +1028,10 @@ final class AppState: ObservableObject {
     /// (`beginOpeningBotChat`) or a link's or card's (`openLinkedBotChat`):
     /// one waiting for the connection stands down for any newer one.
     var botChatOpenRequests = 0
+    /// The request of a link's or card's Bot Chat open still waiting for the
+    /// connection or the roster (`openLinkedBotChat`), before any open is on
+    /// its way: Back stands it down (issue 2792).
+    var linkedBotChatWaitingRequest: Int?
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?
@@ -1100,6 +1112,12 @@ final class AppState: ObservableObject {
     /// The list open's shared status read (refreshNotifierPluginStatusOnce),
     /// and the bridge it reads through.
     var notifierPluginStatusSharedRefresh: (bridge: ObjectIdentifier, task: Task<Void, Never>)?
+    /// The sweep dropping removed dashboards' relay pairings, one at a time
+    /// (dropRelayPairingsOfRemovedDashboards); a sweep asked meanwhile runs
+    /// after it.
+    var relayPairingSweep: Task<Void, Never>?
+    var relayPairingSweepAgain = false
+    var relayPairingSweepSaved: Set<UUID> = []
     @Published var modelVisibility = ModelVisibility()
     /// The model sheet's pinned and recent models, for the active dashboard.
     @Published var modelQuickPicks = ModelQuickPicks()
@@ -2527,6 +2545,9 @@ final class AppState: ObservableObject {
     /// `refreshVoiceCapabilities` hermetic in tests. Mirrors the
     /// `installVoiceCapabilityStateForTesting` precedent.
     var voiceCapabilityRequesterForTesting: VoiceConfigurationRequesting?
+    /// Test-only seam: runs once a voice start's capability refresh ends,
+    /// so a test can change the chat in that await (issue 2797).
+    var voiceStartRefreshEndedForTesting: (@MainActor () -> Void)?
 
     // MARK: - Cron
 
@@ -2714,6 +2735,10 @@ final class AppState: ObservableObject {
     /// lands after a newer one would put back a list from before it (#786).
     var sessionListReadTicket: UInt64 = 0
     var sessionListListedTicket: UInt64 = 0
+    /// Whether the listing that holds `sessionListListedTicket` took its
+    /// cron rows from the catalog cache: a gateway listing fills none, so a
+    /// later relist from the cache doesn't replace its rows (issue 2763).
+    var sessionListListedCronFromCache = false
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
     var leaveCatalogRefreshTask: Task<Void, Never>?

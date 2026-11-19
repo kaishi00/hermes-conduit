@@ -680,6 +680,8 @@ extension AppState {
             resetReasoningTurn()
             clearStreamingText()
             errorMessage = message
+            // The chat's own: opening another chat takes it down (issue 2801).
+            shownChat.chatErrorShown = ChatErrorShown(message: message, isRestoreFailure: false)
             setRunning(false)
             // A follow-up that failed wrote nothing to tag.
             predictiveTurnEnded(sessionId: streamSessionId)

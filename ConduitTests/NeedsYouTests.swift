@@ -349,6 +349,17 @@ extension ChatOnScreenTests {
         store.apply([NeedsYouItem(waitID: "w2", profile: "ATLAS", kind: .question, sessionIDs: ["b"], since: Date(timeIntervalSince1970: 20))],
                     profile: "ATLAS", dashboardID: here) { _ in true }
         XCTAssertNil(store.banner, "listed open here under another spelling: the twin's banner goes")
+
+        // Issue 2770: one wait listed here and there under two spellings is
+        // one row (the banner counts no other), and a new wait there that
+        // this dashboard holds under another spelling banners nothing.
+        store.apply([NeedsYouItem(waitID: "w3", profile: "Atlas", kind: .approval, sessionIDs: ["c"], since: Date(timeIntervalSince1970: 30))],
+                    profile: "Atlas", dashboardID: here) { _ in false }
+        store.applyOther([NeedsYouItem(waitID: "w3", profile: "atlas", kind: .approval, sessionIDs: ["c"], since: Date(timeIntervalSince1970: 30))],
+                         profile: "atlas", dashboardID: there)
+        XCTAssertEqual(store.everyItem.filter { $0.waitID == "w3" }.count, 1, "one wait, not two spellings of it")
+        XCTAssertFalse(store.banner?.waitID == "w3" && store.banner?.dashboardID == there,
+                       "held here under another spelling: no banner from there")
     }
 
     /// One Hermes saved at two addresses, both in the group: a wait both
@@ -395,6 +406,18 @@ extension ChatOnScreenTests {
         XCTAssertEqual(store.banner?.dashboardID, twin)
         store.apply(all, profile: "default", dashboardID: here) { $0.waitID == "w5" }
         XCTAssertNil(store.banner, "open here, no banner from the twin")
+
+        // The twin listed a wait under another spelling of its profile: this
+        // dashboard's own read of it banners nothing again (#2800 review).
+        func spelled(_ id: String, _ profile: String) -> NeedsYouItem {
+            NeedsYouItem(waitID: id, profile: profile, kind: .approval, sessionIDs: ["s-\(id)"],
+                         since: Date(timeIntervalSince1970: 60))
+        }
+        store.apply([], profile: "atlas", dashboardID: here) { _ in false }
+        store.applyOther([spelled("w6", "Atlas")], profile: "Atlas", dashboardID: twin)
+        store.dismissBanner()
+        store.apply([spelled("w6", "atlas")], profile: "atlas", dashboardID: here) { _ in false }
+        XCTAssertNil(store.banner, "one wait under two spellings banners once")
     }
 
     func testNeedsYouBannerIsDismissedOnlyForItsOwnWait() {
