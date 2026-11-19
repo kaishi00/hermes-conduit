@@ -6668,7 +6668,7 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · a project's page, which gathers the same profiles' chats in its
 folder (Whose project page) · VoiceOver · README.md
 
-**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover from the strip's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); no reordering pins within a section.
+**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover from the strip's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); a section's pins reorder among themselves by dragging and Move Earlier or Later (desktop#121).
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
@@ -8574,7 +8574,7 @@ not needed: Watch and CarPlay (no group rooms there), Linked Rooms (its rooms us
 this view, so the branch takes it with main) · text: no caption or doc gives
 the width or the color
 
-**Desktop app:** has it: bot messages in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`).
+**Desktop app:** has it: bot messages in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`); a click on a bot's picture picks it in the To row over the message box, whose chips are the bots' (desktop#122).
 
 **Code**
 - `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface, mediaResolver; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
@@ -8662,7 +8662,7 @@ reads nothing here), Hermes Desktop's read-only group sheet in Conduit
 Linked Rooms: its rooms use this view, so the branch takes it with main ·
 Group Settings' Who answers (its Lead section's crown marks the lead's pill) · README.md's group chats line names the crown
 
-**Desktop app:** partly (desktop#112): a pill per member under the room's title with its picture, its name, the lead's crown and its status (`desktop/src/renderer/src/components/RoomView.tsx`), read from groups.state's member activity, and the subtitle says Settled when a discussion ended with nobody having more to say (`desktop/src/renderer/src/state/groups.ts`); a pill doesn't open the member's To row, and the lead's receipt from `seen_through_seq` isn't ported.
+**Desktop app:** partly (desktop#112): a pill per member under the room's title with its picture, its name, the lead's crown and its status (`desktop/src/renderer/src/components/RoomView.tsx`), read from groups.state's member activity, and the subtitle says Settled when a discussion ended with nobody having more to say (`desktop/src/renderer/src/state/groups.ts`); a pill picks the bot in the To row over the message box, as its picture over a message does (desktop#122); the lead's receipt from `seen_through_seq` isn't ported.
 
 **Code**
 - Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible, leadKey)
