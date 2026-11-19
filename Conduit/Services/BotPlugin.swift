@@ -67,6 +67,18 @@ enum BotPlugin {
         case nothing
     }
 
+    /// The save's words for a new bot whose plugin was left as it was made
+    /// (Hermes changed before or during the step, or the dashboard's plugin
+    /// never reported): a fresh bot, which nothing else turns it on for, is
+    /// told to use Edit Bot; a clone may have it already, so it stays quiet.
+    static func leftAsMadeWarning(startsFresh: Bool) -> String? {
+        guard startsFresh else { return nil }
+        return AppLocalization.string(
+            "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+            table: .bots
+        )
+    }
+
     static func newBotStep(plugin: NotifierPluginStatus.State, startsFresh: Bool) -> NewBotStep {
         switch plugin {
         case .reported(_, let capabilities) where capabilities.contains(capability): return .turnOn
@@ -125,16 +137,12 @@ extension AppState {
         startsFresh: Bool,
         isCurrent: () -> Bool = { true }
     ) async -> String? {
-        let notTurnedOn = AppLocalization.string(
-            "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
-            table: .bots
-        )
         // Right after a switch to another dashboard its plugin hasn't
         // reported yet: wait for that read rather than skip the step.
         if notifierPlugin.state == .unknown {
             await refreshNotifierPluginStatusOnce()
-            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
-            if notifierPlugin.state == .unknown { return startsFresh ? notTurnedOn : nil }
+            guard isCurrent() else { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
+            if notifierPlugin.state == .unknown { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
         }
         switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
         case .nothing:
@@ -155,7 +163,7 @@ extension AppState {
             }
             // The turn-on goes to the Hermes the bot was made on, never one
             // switched to while the state was read.
-            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
+            guard isCurrent() else { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
             guard let failure = await turnOnBotPlugin(profile: slug) else { return nil }
             return AppLocalization.string(
                 "The Conduit plugin wasn't turned on for this bot: \(failure) Edit the bot to try again.",

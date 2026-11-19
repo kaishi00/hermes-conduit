@@ -24,6 +24,16 @@ extension BotModeTests {
         XCTAssertEqual(BotPlugin.newBotStep(plugin: .unknown, startsFresh: true), .nothing)
     }
 
+    func testABotLeftWithThePluginAsMadeWarnsOnlyWhenItStartedFresh() {
+        // Every path that leaves the plugin as it was made (Hermes changed
+        // before or during the step, the dashboard's plugin never reported)
+        // shares this one decision: a fresh bot is told where to turn it on,
+        // a clone, which may have it already, stays quiet.
+        let fresh = BotPlugin.leftAsMadeWarning(startsFresh: true)
+        XCTAssertEqual(fresh, "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.")
+        XCTAssertNil(BotPlugin.leftAsMadeWarning(startsFresh: false))
+    }
+
     func testEditBotOffersTurnOnOnlyForABotWithThePluginOffThatTheDashboardCanHelp() {
         let off = BotPlugin.State(response: ["profile": "furina", "on": false, "allowed": false, "linked": false,
                                              "can_turn_on": true])
