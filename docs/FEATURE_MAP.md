@@ -6825,7 +6825,7 @@ VoiceOver · pin sync with Hermes (#555) · Sync across devices and its
 Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
 
-**Desktop app:** partly: Pin on chat rows (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19); no reordering.
+**Desktop app:** has it: a pinned chat is dragged in place or moved with Move Earlier and Move Later in its menu, while the list shows every pinned chat; the order is kept per host and profile under each chat's lineage root, with All's mixed places on the computer, and goes to and from the host's synced `chats.pinned_order` (`desktop/src/renderer/src/state/pinnedOrder.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#19, desktop#88).
 
 **Code**
 - Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState+PinnedChatOrder.swift` (setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder), `Conduit/Services/AppState+PinSync.swift` (storePins and removePinnedState call dropFromPinnedChatOrder), `Conduit/Services/AppState.swift` (pinnedChatOrder; deleting a profile clears its own, in the mix too), `Conduit/Services/AppState+PinnedChatOrder.swift` (loadDashboardLists, forgetDashboardLists: per dashboard, Sign Out and Remove clear that dashboard's; adoptLegacyDashboardLists, also from registerDashboard and `Conduit/Services/AppState+SignIn.swift`'s retrySignInFromBackground)
