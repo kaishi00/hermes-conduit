@@ -259,10 +259,13 @@ final class NeedsYouStore: ObservableObject {
             self.banner = nil
         }
         // A wait another combined dashboard listed first (one Hermes saved
-        // at two addresses) had its banner there already (issue 2631).
-        let listedElsewhere = Set(otherDashboards.values.joined().map(\.hostKey))
+        // at two addresses) had its banner there already (issue 2631),
+        // under any spelling of its profile (#2800 review).
+        let listedElsewhere = Array(otherDashboards.values.joined())
         guard !firstRead,
-              let newest = fresh.filter({ !isOpenChat($0) && !listedElsewhere.contains($0.hostKey) })
+              let newest = fresh.filter({ item in
+                  !isOpenChat(item) && !listedElsewhere.contains { Self.sameWait($0, item) }
+              })
                 .max(by: { $0.since < $1.since }) else { return }
         // Another profile read in the same refresh may have shown a newer one.
         if let banner, banner.since > newest.since { return }

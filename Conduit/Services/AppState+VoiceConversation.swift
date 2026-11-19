@@ -1103,6 +1103,7 @@ extension AppState {
             guard widgetLease?.isCurrent != false else { return .deferred }
         }
         await refreshVoiceCapabilities()
+        voiceStartRefreshEndedForTesting?()
         guard widgetLease?.isCurrent != false else { return .deferred }
         // The card answered elsewhere (or another chat opened) during the
         // refresh: the turn writes again, and a running reply refuses

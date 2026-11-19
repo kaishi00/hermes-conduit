@@ -121,12 +121,24 @@ extension AppState {
     /// yet (just after launch).
     /// `expectedDashboardID`: the dashboard the bot was picked on; another
     /// one opened meanwhile drops the open rather than finding a namesake.
-    func openLinkedBotChat(_ profile: String, inDashboard expectedDashboardID: UUID? = nil) {
+    /// `counted`: the request a combined tap already counted
+    /// (`openCombinedBot`); a newer one since stands this open down, and it
+    /// counts no second request a tap between could lose to (issue 2792).
+    func openLinkedBotChat(_ profile: String, inDashboard expectedDashboardID: UUID? = nil, counted: Int? = nil) {
         Task { @MainActor [weak self] in
             guard let self else { return }
             guard expectedDashboardID.map({ $0 == self.activeDashboardID }) ?? true else { return }
-            self.botChatOpenRequests &+= 1
-            let request = self.botChatOpenRequests
+            let request: Int
+            if let counted {
+                guard counted == self.botChatOpenRequests else { return }
+                request = counted
+            } else {
+                self.botChatOpenRequests &+= 1
+                request = self.botChatOpenRequests
+            }
+            // Back while it waits stands it down (`standDownBotChatOnItsWay`).
+            self.linkedBotChatWaitingRequest = request
+            defer { if self.linkedBotChatWaitingRequest == request { self.linkedBotChatWaitingRequest = nil } }
             let dashboardID = self.activeDashboardID
             let epoch = self.botRosterEpoch
             // A navigation of its own (a chat or notification opened, Back)
@@ -161,6 +173,8 @@ extension AppState {
                 self.errorMessage = Self.missingLinkedBotMessage(for: self.botModePhase)
                 return
             }
+            // Its open is on its way from here (`botChatOnItsWay`).
+            self.linkedBotChatWaitingRequest = nil
             // Like a chat link, a bot's chat comes forward over V2's Chats
             // list. True means this open finished and holds the viewport (a
             // superseded one returns false), as for the roster's own taps.
