@@ -363,7 +363,7 @@ a typed key) · CarPlay and Watch calls (not needed: they speak the voice
 modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
 no README, docs, Settings or model-facing text describes the card)
 
-**Desktop app:** partly: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`); the card's app directory doesn't open Browse Apps with Hermes' picks yet (the Apps page is in Capabilities, desktop#78).
+**Desktop app:** has it: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`), and the app directory card's Browse Apps, which opens Capabilities > Connectors' Browse Apps on the chat's bot with Hermes' picks first (desktop#80, `desktop/src/renderer/src/state/appsDirectory.ts`).
 
 **Code**
 - Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
