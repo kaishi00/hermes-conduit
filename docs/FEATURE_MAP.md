@@ -5403,7 +5403,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 (not needed: it picks from the catalog the section reads each time it loads)
 · Text (not needed: no README, docs or Settings caption describes the lists)
 
-**Desktop app:** partly (desktop#91): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and the model panel and a bot's Model section have Refresh models (`desktop/src/renderer/src/state/modelCatalog.ts`); gap: the other settings' model drop-downs have no Refresh models.
+**Desktop app:** has it (desktop#91, desktop#154): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and every one has Refresh models: the model panel, a bot's Model section, Settings > Models, Fallback and Delegate fallback models, the Delegate model, a scheduled job's model and New Bot (`desktop/src/renderer/src/state/modelCatalog.ts`, `desktop/src/renderer/src/components/ModelCatalogNote.tsx`).
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState+HelperModels.swift` (loadModelProviders' refresh)
