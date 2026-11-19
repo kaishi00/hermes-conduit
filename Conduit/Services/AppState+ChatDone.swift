@@ -106,9 +106,15 @@ extension AppState {
                 self.chatDoneMarksReads.remove(key)
                 // A dashboard switched meanwhile has marks of its own.
                 guard self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge else { return }
-                // A mark made since this read went out: its write's answer
-                // reads them again.
-                guard (self.chatDoneMarksWrites[key] ?? 0) == writes else { return }
+                // A mark made since this read went out: dropped. Its write's
+                // answer reads them again, or, when that answer came while
+                // this read was out (so it read nothing), this does.
+                guard (self.chatDoneMarksWrites[key] ?? 0) == writes else {
+                    if self.chatDoneMarksPendingWrites[key] == nil {
+                        self.refreshChatDoneMarks(profiles: [profile], force: true)
+                    }
+                    return
+                }
                 guard let answer, let marks = ChatDoneMarks.marks(from: answer) else { return }
                 self.chatDoneMarksReadFailureLogged.remove(key)
                 let next = self.chatDoneMarks.replacing(marks, profile: profile, dashboardID: dashboardID)
