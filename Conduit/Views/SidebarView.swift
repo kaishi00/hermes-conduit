@@ -1445,6 +1445,11 @@ struct SessionActionMenuItems: View {
             }
         }
 
+        // Done chats: kept on the host, so every Conduit shows the mark.
+        if appState.canMarkSessionDone(session) {
+            DoneToggleButton(session: session)
+        }
+
         ReadStateToggleButton(session: session, nest: nest)
 
         // The chat's tokens and cost (issue 2699).
@@ -1482,6 +1487,26 @@ struct SessionActionMenuItems: View {
             Label(AppLocalization.string("Delete"), systemImage: "trash")
         }
         .disabled(appState.isSessionMutationInFlight(session))
+    }
+}
+
+/// Mark as Done / Mark as Not Done for one conversation (Done chats).
+struct DoneToggleButton: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    let session: SessionSummary
+
+    var body: some View {
+        let done = appState.isSessionDone(session)
+        Button {
+            Haptics.light()
+            appState.setSessionDone(session, done: !done)
+        } label: {
+            Label(
+                done ? AppLocalization.string("Mark as Not Done", table: .chat) : AppLocalization.string("Mark as Done", table: .chat),
+                systemImage: done ? "arrow.uturn.backward.circle" : "checkmark.circle"
+            )
+        }
     }
 }
 

@@ -23,11 +23,15 @@ enum V2SessionFilter: Equatable, Hashable {
     case unread
     case needsApproval
     case running
+    /// Done chats: not marked done, and marked done.
+    case inProgress
+    case done
     case voice
     case scheduled
     case source(SessionSource)
 
-    static let menuCases: [V2SessionFilter] = [.all, .starred, .unread, .needsApproval, .running, .voice, .scheduled]
+    static let menuCases: [V2SessionFilter] = [.all, .starred, .unread, .needsApproval, .running, .inProgress, .done,
+                                               .voice, .scheduled]
 
     init(rawValue: String) {
         switch rawValue {
@@ -35,6 +39,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case "unread": self = .unread
         case "needsApproval": self = .needsApproval
         case "running": self = .running
+        case "inProgress": self = .inProgress
+        case "done": self = .done
         case "voice": self = .voice
         case "scheduled": self = .scheduled
         default:
@@ -54,6 +60,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case .unread: return "unread"
         case .needsApproval: return "needsApproval"
         case .running: return "running"
+        case .inProgress: return "inProgress"
+        case .done: return "done"
         case .voice: return "voice"
         case .scheduled: return "scheduled"
         case .source(let source): return "source.\(source.rawValue)"
@@ -67,6 +75,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case .unread: return AppLocalization.string("Unread")
         case .needsApproval: return AppLocalization.string("Needs approval", table: .chat)
         case .running: return AppLocalization.string("Running")
+        case .inProgress: return AppLocalization.string("In progress")
+        case .done: return AppLocalization.string("Done")
         case .voice: return AppLocalization.string("Voice")
         case .scheduled: return AppLocalization.string("Scheduled")
         case .source(let source): return source.label
@@ -80,6 +90,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case .unread: return "circle.fill"
         case .needsApproval: return "checkmark.shield"
         case .running: return "arrow.triangle.2.circlepath"
+        case .inProgress: return "circle.dashed"
+        case .done: return "checkmark.circle"
         case .voice: return "waveform"
         case .scheduled: return "clock"
         case .source(let source): return source.iconName
@@ -97,13 +109,18 @@ enum V2SessionFilter: Equatable, Hashable {
     /// starred chats that are unread), where statuses list any of theirs.
     var isScope: Bool { self == .starred }
 
+    /// In progress and Done: whether a chat's work is finished (Done
+    /// chats). Either one narrows whatever else is chosen, as Starred does,
+    /// and the two together list both.
+    var isProgress: Bool { self == .inProgress || self == .done }
+
     /// The source a source filter lists (Scheduled lists cron runs).
     var sessionSource: SessionSource? {
         switch self {
         case .voice: return .voice
         case .scheduled: return .cron
         case .source(let source): return source
-        case .all, .starred, .unread, .needsApproval, .running: return nil
+        case .all, .starred, .unread, .needsApproval, .running, .inProgress, .done: return nil
         }
     }
 
@@ -120,6 +137,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case .unread: return SessionStatusFilter.unread.emptyTitle
         case .needsApproval: return SessionStatusFilter.needsInput.emptyTitle
         case .running: return SessionStatusFilter.working.emptyTitle
+        case .inProgress: return AppLocalization.string("No chats in progress", table: .chat)
+        case .done: return AppLocalization.string("No done chats", table: .chat)
         default: return AppLocalization.string("No Sessions", table: .chat)
         }
     }
@@ -130,6 +149,8 @@ enum V2SessionFilter: Equatable, Hashable {
         case .unread: return SessionStatusFilter.unread.emptyDescription
         case .needsApproval: return SessionStatusFilter.needsInput.emptyDescription
         case .running: return SessionStatusFilter.working.emptyDescription
+        case .inProgress: return AppLocalization.string("Every chat here is marked done.", table: .chat)
+        case .done: return AppLocalization.string("Swipe a chat or touch and hold it to mark it done.", table: .chat)
         default: return AppLocalization.string("Sessions will appear here once created.", table: .chat)
         }
     }
@@ -167,12 +188,14 @@ struct V2FilterSelection: Equatable {
     }
 
     var statuses: [V2SessionFilter] { ordered.filter(\.isStatus) }
-    var sources: [V2SessionFilter] { ordered.filter { !$0.isStatus && !$0.isScope } }
+    var sources: [V2SessionFilter] { ordered.filter { !$0.isStatus && !$0.isScope && !$0.isProgress } }
     var scopes: [V2SessionFilter] { ordered.filter(\.isScope) }
+    var progress: [V2SessionFilter] { ordered.filter(\.isProgress) }
 
-    /// A status or Starred is a lookup, not a browse: the list flattens to
-    /// the matching rows, project chats included and no section closed.
-    var flattens: Bool { !statuses.isEmpty || !scopes.isEmpty }
+    /// A status, Starred, In progress or Done is a lookup, not a browse:
+    /// the list flattens to the matching rows, project chats included and
+    /// no section closed.
+    var flattens: Bool { !statuses.isEmpty || !scopes.isEmpty || !progress.isEmpty }
 
     /// All counts as chosen when nothing else is.
     func contains(_ filter: V2SessionFilter) -> Bool {
@@ -193,6 +216,11 @@ struct V2FilterSelection: Equatable {
         V2FilterSelection(filters: filters.filter { !$0.isLive })
     }
 
+    /// Without a plugin that keeps Done marks, In progress and Done sit out.
+    var withoutProgress: V2FilterSelection {
+        V2FilterSelection(filters: filters.filter { !$0.isProgress })
+    }
+
     /// What the menu counts beside `filter`: the other group's choices with
     /// `filter` alone in its own group, so with Unread on, Chat counts the
     /// unread chats. Starred narrows every count while it's on, and its own
@@ -200,13 +228,14 @@ struct V2FilterSelection: Equatable {
     func facet(_ filter: V2SessionFilter) -> V2FilterSelection {
         guard filter != .all else { return .empty }
         if filter.isScope { return V2FilterSelection(filters: filters.union([filter])) }
+        if filter.isProgress { return V2FilterSelection(filters: Set(statuses + sources + scopes + [filter])) }
         let otherGroup = filter.isStatus ? sources : statuses
-        return V2FilterSelection(filters: Set(otherGroup + scopes + [filter]))
+        return V2FilterSelection(filters: Set(otherGroup + scopes + progress + [filter]))
     }
 
     /// The filter whose empty-list wording fits the selection.
     var emptyStateFilter: V2SessionFilter {
-        scopes.first ?? statuses.first ?? sources.first ?? .all
+        scopes.first ?? progress.first ?? statuses.first ?? sources.first ?? .all
     }
 
     /// The rows the selection lists. `everything` is what a status or
@@ -223,8 +252,9 @@ struct V2FilterSelection: Equatable {
     ) -> [SessionSummary] {
         let kinds = Set(sources.compactMap(\.sessionSource))
         let scopes = self.scopes
+        let progress = self.progress
         let listed: [SessionSummary]
-        if kinds.isEmpty, !scopes.isEmpty {
+        if kinds.isEmpty, !scopes.isEmpty || !progress.isEmpty {
             // A run starred under Scheduled is listed under Starred alone
             // too, not only once it is pinned.
             let rows = everything()
@@ -246,10 +276,11 @@ struct V2FilterSelection: Equatable {
                 : chats
         }
         let wanted = statuses
-        guard !wanted.isEmpty || !scopes.isEmpty else { return listed }
+        guard !wanted.isEmpty || !scopes.isEmpty || !progress.isEmpty else { return listed }
         return listed.filter { session in
             (wanted.isEmpty || wanted.contains { hasStatus($0, session) })
                 && scopes.allSatisfy { hasStatus($0, session) }
+                && (progress.isEmpty || progress.contains { hasStatus($0, session) })
         }
     }
 
@@ -552,9 +583,11 @@ struct V2ChatsView: View {
     }
 
     /// A live filter saved while the gateway can't report live status sits
-    /// out, so the list doesn't empty out behind a filter nobody can see.
+    /// out, so the list doesn't empty out behind a filter nobody can see;
+    /// so do In progress and Done on a plugin that keeps no Done marks.
     private var selection: V2FilterSelection {
-        appState.liveSessionStatusAvailable ? savedSelection : savedSelection.withoutLive
+        let saved = appState.chatDoneAvailable ? savedSelection : savedSelection.withoutProgress
+        return appState.liveSessionStatusAvailable ? saved : saved.withoutLive
     }
 
     private func select(_ newSelection: V2FilterSelection) {
@@ -1060,6 +1093,13 @@ struct V2ChatsView: View {
                     }
                 }
 
+                if appState.chatDoneAvailable {
+                    Section {
+                        filterToggle(.inProgress)
+                        filterToggle(.done)
+                    }
+                }
+
                 Section(AppLocalization.string("Sources", table: .chat)) {
                     ForEach(sourceFilters, id: \.self) { option in
                         filterToggle(option)
@@ -1312,6 +1352,8 @@ struct V2ChatsView: View {
         case .unread: return appState.isSessionUnread(session)
         case .needsApproval: return appState.sessionLiveStatus(session) == .needsInput
         case .running: return appState.sessionLiveStatus(session) == .working
+        case .inProgress: return !appState.isSessionDone(session)
+        case .done: return appState.isSessionDone(session)
         case .all, .voice, .scheduled, .source: return false
         }
     }
@@ -2025,6 +2067,7 @@ struct V2ChatsView: View {
                 snippet: row.hit.snippet,
                 isUnread: row.session.map { appState.isSessionUnread($0) } ?? false,
                 isStarred: row.session.map { appState.isSessionStarred($0) } ?? false,
+                isDone: row.session.map { appState.isSessionDone($0) } ?? false,
                 selection: .chat(
                     isActive: row.openID == appState.activeSessionId && row.hit.profile == nil
                         && !(row.session.map(appState.isOtherProfileRow) ?? false),
@@ -2662,6 +2705,7 @@ struct V2ChatsRowContent: View, Equatable {
                 status: appState.v2RowStatus(for: session),
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
+                isDone: appState.isSessionDone(session),
                 selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
@@ -2720,6 +2764,7 @@ struct V2ChatsRowContent: View, Equatable {
         let status = appState.v2RowStatus(for: session)
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
+        let isDone = appState.isSessionDone(session)
         let rowSelection = selection(session, faintAlone: false)
         // Another combined dashboard's chat nested under its parent: badged,
         // and it only opens, as its own row does.
@@ -2743,8 +2788,15 @@ struct V2ChatsRowContent: View, Equatable {
                 Text(session.title)
                     .scaledFont(.subheadline.weight(isUnread ? .semibold : .regular))
                     .foregroundStyle(.primary)
+                    .opacity(isDone ? 0.5 : 1)
                     .lineLimit(1)
                 Spacer(minLength: 6)
+                if isDone {
+                    Image(systemName: "checkmark.circle.fill")
+                        .scaledFont(.caption2)
+                        .foregroundStyle(Color.green)
+                        .accessibilityHidden(true)
+                }
                 if isStarred {
                     Image(systemName: "star.fill")
                         .scaledFont(.caption2)
@@ -2771,6 +2823,7 @@ struct V2ChatsRowContent: View, Equatable {
             dashboardBadge?.name,
             isUnread ? AppLocalization.string("Unread") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
+            isDone ? AppLocalization.string("Done") : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))
@@ -2940,6 +2993,11 @@ private struct V2SessionLeadingSwipes: View {
             )
         }
         .tint(.yellow)
+
+        if appState.canMarkSessionDone(session) {
+            DoneToggleButton(session: session)
+                .tint(.green)
+        }
 
         ReadStateToggleButton(session: session, nest: nest())
             .tint(.blue)

@@ -74,6 +74,8 @@ extension AppState {
         chatListPredatesBackground = false
         savableChatListScope = dashboardID.map { WidgetWorkspaceID(dashboardID: $0, profile: activeProfile) }
         if let dashboardID { prefetchSavedChats(dashboardID: dashboardID) }
+        // Done marks the agent set come with its turn's list read.
+        refreshChatDoneMarks(profiles: [activeProfile])
         guard savedChatList != nil else { return }
         guard newestPageOnly, let saved = savedChatListForActiveScope else {
             savedChatList = nil
