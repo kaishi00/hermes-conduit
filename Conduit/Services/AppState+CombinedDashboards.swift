@@ -202,9 +202,10 @@ extension AppState {
                 at: .distantPast,
                 seededAt: Date(),
                 // Its cron runs' ids, the evidence it gave as the dashboard
-                // on screen, stand until the next half-hourly read (issue 2761).
+                // on screen (issue 2761). Only its profile on screen's, so
+                // the next read still reads every profile's (#2800 review).
                 cronIDs: cronIDs.isEmpty ? (combinedDashboardChats[outgoingID]?.cronIDs ?? []) : cronIDs,
-                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : Date()
+                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : nil
             )
         }
         self.client = nil

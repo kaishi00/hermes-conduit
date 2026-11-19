@@ -1629,13 +1629,6 @@ extension CrossProfilePresentationCacheTests {
         // No bots anywhere: a chat both lists give is the same evidence,
         // so the profile still shows once (issue 2741).
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 3, "two Hermes until something says otherwise")
-        let ownSessions = appState.sessions
-        appState.sessions = [SessionSummary(id: "mac-2", alternateIds: [], title: "Old", model: "Hermes", updatedLabel: "now",
-                                            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
-        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
-                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
-        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
-        appState.sessions = ownSessions
         // A Hermes sharing only cron runs: the kept dashboard's cron ids
         // count as this one's cron rows do, so it's still one Hermes
         // (issue 2761); a cron id only one side lists says nothing.
@@ -1643,18 +1636,31 @@ extension CrossProfilePresentationCacheTests {
         appState.cronSessions = [SessionSummary(id: "cron-run-7f3a", alternateIds: [], title: "Daily brief", model: "Hermes",
                                                 updatedLabel: "now", profile: "default", source: .cron, isActive: false,
                                                 isArchived: false, lineageRootId: nil)]
+        XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("cron-run-7f3a") ?? false)
         XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
+        let evidence = appState.combinedHermesEvidence
+        XCTAssertTrue(evidence[mac.id]?.contains("cron-run-7f3a") ?? false, "its cron runs are its evidence")
+        XCTAssertTrue(evidence[vps.id]?.contains("cron-run-7f3a") ?? false, "as this one's cron rows are")
+        XCTAssertFalse(evidence[mac.id]?.contains("42") ?? true, "never a placeholder number")
         XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).count, 2, "its profile shows once")
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["42"]
         appState.cronSessions = [SessionSummary(id: "42", alternateIds: [], title: "Daily brief", model: "Hermes",
                                                 updatedLabel: "now", profile: "default", source: .cron, isActive: false,
                                                 isArchived: false, lineageRootId: nil)]
-        XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id],
-                          "a placeholder number any Hermes could give isn't evidence")
+        XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("42") ?? false,
+                       "a placeholder number any Hermes could give isn't evidence")
+        XCTAssertFalse(appState.combinedHermesEvidence[vps.id]?.contains("42") ?? false)
         appState.cronSessions = ownCron
         appState.combinedDashboardChats[mac.id]?.cronIDs = []
+        let ownSessions = appState.sessions
+        appState.sessions = [SessionSummary(id: "mac-2", alternateIds: [], title: "Old", model: "Hermes", updatedLabel: "now",
+                                            profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)]
+        XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.id),
+                       [CombinedBotsHomeOrder.key(mac.id, "atlas"), CombinedBotsHomeOrder.key(vps.id, "default")])
+        XCTAssertEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
+        appState.sessions = ownSessions
         let rows = appState.otherCombinedDashboardsChats(excluding: ["mac-2", "atlas-1"])
         XCTAssertEqual(rows.map(\.id), ["mac-1"], "an empty chat and one this list holds stay out")
         // The Chats list shows them only in All: one profile's list is that
