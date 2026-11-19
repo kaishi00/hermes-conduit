@@ -22,10 +22,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           sparse-checkout: scripts/check-pr-desktop.py
           sparse-checkout-cone-mode: false
+          persist-credentials: false
       - name: Check the PR's Desktop section
         env:
           PR_BODY: ${{ github.event.pull_request.body }}

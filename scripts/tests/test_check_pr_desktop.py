@@ -41,6 +41,17 @@ class CheckPrDesktopTests(unittest.TestCase):
         self.assertIn("says why", check.problem(body("Not needed.")))
         self.assertIn("Follow-up", check.problem(body("Follow-up")))
         self.assertIn("starts with", check.problem(body("Maybe later.")))
+        # Done names the desktop PR in its own answer, not in an aside.
+        self.assertIn("names the desktop PR", check.problem(body("Done.\nTracked as desktop#58.")))
+
+    def test_a_fenced_heading_isnt_the_section(self):
+        quoted = "## Summary\nThe template now reads:\n```\n## Desktop\nDone: desktop#58.\n```\n\n"
+        self.assertIn("no \"## Desktop\" section", check.problem(quoted))
+        self.assertIsNone(check.problem(quoted + "## Desktop\nNot needed: template only.\n"))
+
+    def test_a_follow_up_names_something(self):
+        for placeholder in ("Follow-up: later", "Follow-up: TBD.", "Follow-up: none"):
+            self.assertIn("Follow-up", check.problem(body(placeholder)), placeholder)
 
     def test_the_section_ends_at_the_next_heading(self):
         self.assertIn("empty", check.problem(body("", after="## Testing\nDone: desktop#58.\n")))

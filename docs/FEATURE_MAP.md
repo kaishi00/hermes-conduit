@@ -9937,6 +9937,7 @@ CONTRIBUTING.md, PR template (Feature map section) and its check
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
 - CI checks that the Desktop section answers, not that the answer is right: a Not needed for a feature the desktop has is a reviewer's catch (minor). The 21 entries backfilled as unchecked wait for someone to look.
+- The Desktop section's check runs the PR's own copy of the script and workflow (`pull_request`), so a PR that edits them could pass itself; running main's copy needs `pull_request_target`, which GitHub blocks in public repos from 2026-12-02. A reviewer catches such an edit.
 - On a merge of main into `pulse`, `linked-rooms` or `all-live`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse`, `linked-rooms` or `all-live` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 

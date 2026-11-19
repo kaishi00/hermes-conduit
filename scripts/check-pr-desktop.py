@@ -26,7 +26,11 @@ import sys
 SECTION = re.compile(r"^##\s+Desktop\s*$", re.IGNORECASE | re.MULTILINE)
 NEXT_SECTION = re.compile(r"^##\s", re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-ANSWER = re.compile(r"^[\s>*_-]*(done|not needed|follow-up|follow up)\b[\s:.,;()*_-]*(.*)",
+# A fenced block, such as the template quoted in a PR that changes it.
+FENCE = re.compile(r"^[ \t]*(```|~~~).*?^[ \t]*\1[^\n]*$", re.DOTALL | re.MULTILINE)
+# A Follow-up that names nothing yet.
+PLACEHOLDER = re.compile(r"^(later|tbd|todo|none|n/?a|soon|maybe)\W*$", re.IGNORECASE)
+ANSWER = re.compile(r"^[\s>*_-]*(done|not needed|follow-up|follow up)\b[ \t:.,;()*_-]*(.*)",
                     re.IGNORECASE | re.DOTALL)
 DESKTOP_PR = re.compile(r"\b(?:hermes-conduit-)?desktop#\d+|"
                         r"github\.com/kaishi00/hermes-conduit-desktop/(?:pull|issues)/\d+",
@@ -39,7 +43,7 @@ HOW = ("Fill in the Desktop section of the PR description: \"Done: desktop#58\",
 
 def problem(body):
     """What's wrong with a PR description's Desktop section, or None."""
-    body = (body or "").replace("\r\n", "\n")
+    body = FENCE.sub("", COMMENT.sub("", (body or "").replace("\r\n", "\n")))
     found = SECTION.search(body)
     if not found:
         return f"The PR description has no \"## Desktop\" section. {HOW}"
@@ -52,13 +56,15 @@ def problem(body):
     if not answer:
         return f"The Desktop section starts with Done, Not needed or Follow-up. {HOW}"
     said = answer.group(1).lower().replace("follow up", "follow-up")
-    detail = answer.group(2).strip()
-    if said == "done" and not DESKTOP_PR.search(section):
+    detail = answer.group(2)
+    first_line = detail.split("\n")[0]
+    detail = detail.strip()
+    if said == "done" and not DESKTOP_PR.search(first_line):
         return ("The Desktop section says Done, so it names the desktop PR "
                 "(hermes-conduit-desktop#58, desktop#58 or its link).")
     if said == "not needed" and not detail:
         return "The Desktop section says Not needed, so it says why."
-    if said == "follow-up" and not detail:
+    if said == "follow-up" and (not detail or PLACEHOLDER.match(detail)):
         return ("The Desktop section says Follow-up, so it names the desktop issue or PR, or "
                 "the feature map entry whose Desktop app line records the gap.")
     return None
