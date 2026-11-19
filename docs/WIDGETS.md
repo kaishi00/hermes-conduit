@@ -6,6 +6,10 @@ The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. 
 
 The small Pulse widget shows the top card with **Not now** and **Done** under it; **Do it** is on the medium and large sizes only.
 
+## New Chat control
+
+On iOS 18 and later, the **New Chat** control opens Conduit on a fresh chat with the keyboard up, in the profile on screen. Add it in Control Center (touch and hold, **Add a Control**, search for Conduit), on the Lock Screen (**Customize**, then a control slot), or under Settings > Action Button > Controls. The **New Chat** shortcut does the same and can pick a profile: Settings > Action Button > Shortcut lists it under Conduit, and Siri and Shortcuts run it ("New chat in Conduit"; issue 2860).
+
 ## Apple HomeView
 
 HomeView shows small widgets from a paired iPhone or iPad, and opens only CarPlay audio and video apps from the phone, so a tap that would open Conduit says **App Unavailable**. The small Pulse widget's **Not now** and **Done** are made to work there: HomeView sends a widget's button taps to the iPhone, which runs them (not yet tried on a HomeView). The launcher widgets show but can't open anything on HomeView; turn on **Hide conversation title** to keep a chat's title off a shared screen. In Night Mode, Conduit-chan's artwork is drawn light on dark (also untried on a device). HomeView is one screen the household shares, which is why **Do it** isn't on the small size (issue 2561).

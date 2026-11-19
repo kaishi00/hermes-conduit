@@ -7299,34 +7299,36 @@ The New Chat App Intent (issue 2860): Siri, a shortcut or the iPhone's
 Action Button opens Conduit on a fresh chat with the keyboard up, ready to
 type, in the profile picked (the one on screen when none is). It is listed
 as an App Shortcut, so Settings > Action Button > Shortcut offers it
-without building a shortcut.
+without building a shortcut, and a New Chat control (iOS 18) does the same
+from Control Center, the Lock Screen or the Action Button's Controls.
 
 **Siblings:** a widget's New Chat (the same launch: it switches profile,
 waits for the connection and says when it can't; done) · the app's own New
 Chat and its focus (done: one launch origin now says whose launch it is, see
 A new chat that something waits on) · Talk to Conduit (the same Profile
 parameter and its Siri phrases; not needed) · Open Chat and Send to Hermes
-(other App Shortcuts; not needed) · a Control Center or Lock Screen control
-(gap) · the Watch's shortcuts (not needed: the Watch has no composer) ·
+(other App Shortcuts; not needed) · the New Chat control in Control Center,
+the Lock Screen and the Action Button (done) · the Watch's shortcuts (not needed: the Watch has no composer) ·
 CarPlay (not needed: no keyboard) · Conduit/AppShortcuts.xcstrings and the
-intent's title and description · README.md
+intent's title and description · docs/WIDGETS.md · README.md
 
-**Desktop app:** not applicable: Siri, Shortcuts and the Action Button are iOS-only.
+**Desktop app:** not applicable: Siri, Shortcuts, controls and the Action Button are iOS-only.
 
 **Code**
 - Intent: `Conduit/Intents/NewChatIntent.swift` (NewChatIntent), listed in `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), phrases in `Conduit/AppShortcuts.xcstrings`
+- Control: `ConduitWidgets/LauncherWidgets.swift` (NewChatControl, in the widget bundle on iOS 18), `Shared/Widgets/NewChatControlIntent.swift` (OpenNewChatIntent, built into the app and the extension; NewChatControlRequests), its handler set in `Conduit/ConduitApp.swift` (didFinishLaunching)
 - Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
 - Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing)
 
 **Rulings**
 - It starts on the dashboard in use, never another: the Profile parameter picks a profile there, as Talk to Conduit's does. With no dashboard signed in it starts nothing and Conduit opens on its sign-in (2026-11-19, #2863, issue 2860).
 - It brings the keyboard up on every device, unlike the app's New Chat, which does only on a Mac, and a widget's, which never does: running it is asking to type. Only the chat it made takes the focus (2026-11-19, #2863).
+- The control has no profile to pick: it starts in the profile on screen, as the widget extension can't read Conduit's profile list (2026-11-19, #2863).
 
 **Open gaps**
-- No Control Center or Lock Screen control (iOS 18 ControlWidget) for it yet; the issue named it as a follow-up.
-- Not tried on a device yet: the Action Button, a cold launch and Siri's phrases.
+- Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-19, #2863 (added, issue 2860).
+**Checked:** 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
 
 ## Shortcuts Hermes can run
 
