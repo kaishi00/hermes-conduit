@@ -4770,7 +4770,7 @@ connection · a Send to Hermes run with Conduit in the background (Siri's
 "Ask ‹chat› in Conduit" included) · the backoff
 itself · the hidden dashboard page's failed load
 
-**Desktop app:** has it: the connection retries with backoff (`desktop/src/main/connection.ts`); a chat resumes by its stored id when the connection comes back, and a text send into a cleared runtime resumes it and sends again (`src/renderer/src/state/useChat.ts`, `src/renderer/src/state/runtimeGone.ts`, desktop#96).
+**Desktop app:** has it: the connection retries with backoff (`desktop/src/main/connection.ts`); a chat resumes by its stored id when the connection comes back, and a text send into a cleared runtime resumes it and sends again (desktop#96).
 
 **Code**
 - A send into a cleared runtime: `Conduit/Services/AppState+SendMessage.swift` (resendAfterResumingStoredChat, from both of sendMessage's session-not-found catches), tests in `ConduitTests/AppStateForegroundLifecycleTests.swift` (testASendIntoAReapedRuntimeResumesTheStoredChatAndSends, testABackgroundReturnAfterTheReapResumesTheStoredChat, testThePreSendCheckAfterTheReapResumesTheStoredChat, testASecondRefusalAfterTheResumeShowsTheFailedSend)
