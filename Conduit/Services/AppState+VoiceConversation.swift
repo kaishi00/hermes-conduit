@@ -31,6 +31,14 @@ extension AppState {
         // losing signal): the turn, and a yes or no in it, wait for the
         // connection rather than fail (#1060).
         await waitForTransportIfDropped()
+        // Classic joined a turn paused on an approval or question (a call
+        // from Hermes, issue 2791): the words answer it as in Classic's own
+        // answer window, a steer, and the turn's reply is the one this voice
+        // turn waits for. Sent as a new turn they would queue behind the
+        // paused one, or stop it.
+        if openChatWaitsOnUserAnswer {
+            return await steerForVoice(transcript) == .steered
+        }
         // A yes or no to the one card waiting answers it first (Hermes can't
         // approve for the user); Hermes then hears the words and how it went.
         await answerWaitingBySpeech(transcript)
@@ -964,7 +972,8 @@ extension AppState {
             profile: intent.profile,
             startsFreshConversation: intent.startsFreshConversation,
             widgetLease: widgetLease,
-            yieldsToACall: intent.source == .screenQuestion
+            yieldsToACall: intent.source == .screenQuestion,
+            joinsTurnWaitingOnUser: intent.source == .hermesCall
         )
         guard widgetLease?.isCurrent != false else { return false }
         switch outcome {
@@ -1024,11 +1033,17 @@ extension AppState {
     /// `yieldsToACall`: a call answered meanwhile (the Watch, CarPlay, a call
     /// from Hermes) keeps going and the preparation stops as `.deferred`
     /// (a screenshot's voice, issue 2390).
+    ///
+    /// `joinsTurnWaitingOnUser`: a call from Hermes opens in the chat whose
+    /// turn is paused on the approval or question the call is about. That
+    /// turn writes nothing until the user answers, so Classic joins it
+    /// rather than refusing it as a reply still running (issue 2791).
     func prepareVoiceConversation(
         profile: String?,
         startsFreshConversation: Bool,
         widgetLease: WidgetLaunchLease? = nil,
-        yieldsToACall: Bool = false
+        yieldsToACall: Bool = false,
+        joinsTurnWaitingOnUser: Bool = false
     ) async -> VoiceConversationPrepareOutcome {
         // The classic conversation (e.g. CarPlay) takes over from Gemini
         // Live: the two voice modes never run at once.
@@ -1069,7 +1084,7 @@ extension AppState {
             }
             return .handled
         }
-        if turnState.isRunning {
+        if turnState.isRunning, !(joinsTurnWaitingOnUser && !startsFreshConversation && openChatWaitsOnUserAnswer) {
             guard startsFreshConversation else {
                 errorMessage = AppLocalization.string("Stop the current response before starting voice in this conversation.")
                 return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))

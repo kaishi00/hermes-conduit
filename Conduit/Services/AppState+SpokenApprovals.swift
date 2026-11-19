@@ -250,6 +250,12 @@ extension AppState {
         )
     }
 
+    /// The open chat's running turn is paused on an approval or a question
+    /// that voice can answer: nothing more comes from it until the user does.
+    var openChatWaitsOnUserAnswer: Bool {
+        turnState.isRunning && (!openChatWaitingApprovals.isEmpty || !openChatWaitingQuestions.isEmpty)
+    }
+
     /// The open chat's question cards with a question still open.
     var openChatWaitingQuestions: [ChatMessage] {
         guard let sessionId = activeSessionId, !sessionId.isEmpty else { return [] }

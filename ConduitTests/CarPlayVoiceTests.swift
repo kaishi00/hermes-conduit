@@ -3016,6 +3016,74 @@ final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
         XCTAssertFalse(harness.controller.hasLiveVoiceSession)
         XCTAssertEqual(harness.capture.startCount, 0)
     }
+
+    /// Issue 2791: a call from Hermes about an approval opens Classic in the
+    /// chat whose turn is paused on that approval. The paused turn writes
+    /// nothing until the user answers, so the call joins it (and leaves it
+    /// running) instead of failing as "Stop the current response". Any
+    /// other start still refuses a running turn (#767).
+    func testACallFromHermesJoinsATurnPausedOnItsApproval() async {
+        let harness = makeHarness(activeSessionID: "s1")
+        harness.appState.turnState = .running
+        harness.appState.messages = [
+            ChatMessage(
+                id: "approval-1",
+                role: .approval,
+                content: "Delete the scratch folder?",
+                timestamp: "1",
+                approval: ApprovalActivity(
+                    sessionId: "s1", requestId: "req-1", command: "rm -rf scratch",
+                    description: "Delete the scratch folder?", choices: nil, allowPermanent: false,
+                    smartDenied: false, status: .pending, choice: nil, error: nil
+                )
+            ),
+        ]
+        XCTAssertTrue(harness.appState.openChatWaitsOnUserAnswer)
+
+        let tapped = await harness.appState.prepareVoiceConversation(profile: nil, startsFreshConversation: false)
+        XCTAssertEqual(
+            tapped,
+            .failed("Stop the current response before starting voice in this conversation."),
+            "Started any other way, Classic still waits for the reply"
+        )
+        harness.appState.errorMessage = nil
+
+        let called = await harness.appState.prepareVoiceConversation(
+            profile: nil, startsFreshConversation: false, joinsTurnWaitingOnUser: true
+        )
+        XCTAssertEqual(called, .handled)
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertTrue(harness.controller.hasLiveVoiceSession, "Classic is armed in the call's chat")
+        XCTAssertEqual(harness.appState.activeSessionId, "s1", "The same chat, not a new one")
+        XCTAssertEqual(harness.appState.turnState, .running, "The paused turn is left to the user's answer")
+    }
+
+    /// A call only joins a turn that waits on the user: one still writing
+    /// its reply, or whose card was answered, refuses it as before.
+    func testACallFromHermesDoesNotJoinATurnStillWriting() async {
+        let harness = makeHarness(activeSessionID: "s1")
+        harness.appState.turnState = .running
+        harness.appState.messages = [
+            ChatMessage(
+                id: "approval-1",
+                role: .approval,
+                content: "Delete the scratch folder?",
+                timestamp: "1",
+                approval: ApprovalActivity(
+                    sessionId: "s1", requestId: "req-1", command: "rm -rf scratch",
+                    description: "Delete the scratch folder?", choices: nil, allowPermanent: false,
+                    smartDenied: false, status: .approved, choice: "once", error: nil
+                )
+            ),
+        ]
+        XCTAssertFalse(harness.appState.openChatWaitsOnUserAnswer)
+
+        let called = await harness.appState.prepareVoiceConversation(
+            profile: nil, startsFreshConversation: false, joinsTurnWaitingOnUser: true
+        )
+        XCTAssertEqual(called, .failed("Stop the current response before starting voice in this conversation."))
+        XCTAssertFalse(harness.controller.hasLiveVoiceSession)
+    }
 }
 
 @MainActor
