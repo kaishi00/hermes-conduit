@@ -575,10 +575,23 @@ extension AppState {
     /// runtime id can be reassigned to a different durable conversation.
     func liveChatOwnsComposerDraftSessionID(_ sessionID: String) -> Bool {
         guard let activeSessionId else { return false }
-        if let row = (sessions + cronSessions).first(where: {
-            sessionBelongsToProfile($0, profile: activeProfile) && $0.nestingIDs.contains(activeSessionId)
-        }) {
-            return row.nestingIDs.contains(sessionID)
+        // The chat on screen's row: the one recorded as it opened, else the
+        // row owning its id (own or stored id first, else a single
+        // borrower), so two rows carrying a moved alias never decide by
+        // their order (#2794 review).
+        // Two chats claiming the id with nothing recorded can't say which is
+        // on screen: the message waits rather than land in the other one.
+        let row: SessionSummary?
+        if let kept = rowOfChatOnScreen, kept.dashboardID == activeDashboardID, kept.profile == activeProfile,
+           kept.openIDs.contains(activeSessionId) {
+            row = kept.row
+        } else {
+            let owning = Self.composerDraftOwningRow(of: activeSessionId, in: composerDraftRows(profile: activeProfile))
+            if owning.isListed, owning.row == nil { return false }
+            row = owning.row
+        }
+        if let row {
+            return row.nestingIDs.contains(sessionID) || row.durableKey == sessionID
         }
         return liveChatSessionIDs().contains(sessionID)
     }

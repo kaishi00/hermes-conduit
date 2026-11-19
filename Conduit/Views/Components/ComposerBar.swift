@@ -2761,6 +2761,15 @@ struct ComposerBar: View {
            let other = draftStore.keys.first(where: { $0 != key && appState.composerDraftKeysAreSameChat($0, key) }) {
             draftStore.migrateDraft(from: other, to: key)
         }
+        // Saved for this chat under a runtime id no row lists any more:
+        // the owner it was saved for says it's this chat's (#2794 review).
+        if !draftStore.hasDraft(for: key), let owner = appState.composerDraftOwner(for: key),
+           let stranded = draftStore.keys.first(where: {
+               $0 != key && $0.dashboard == key.dashboard && $0.profile == key.profile
+                   && !$0.isNewConversation && draftStore.owner(of: $0) == owner
+           }) {
+            draftStore.migrateDraft(from: stranded, to: key)
+        }
         let draft = draftStore.draft(for: key)
         if text != draft.text {
             suppressNextTextChangeSuggestions = true

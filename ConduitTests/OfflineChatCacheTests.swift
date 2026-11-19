@@ -3404,11 +3404,28 @@ final class OfflineChatCacheTests: XCTestCase {
         let runtimeX = ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "runtime-x")
         let storedB = ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "stored-b")
 
+        let pending = PendingComposerSend(
+            draftText: "Only for A", replyReference: nil, dashboardID: dashboard,
+            profile: "default", sessionIDs: ["stored-a", "runtime-x"],
+            draftSessionID: "stored-a", isNewChat: false, title: "A"
+        )
         for rows in [[original, other], [other, original]] {
             appState.sessions = rows
             XCTAssertFalse(appState.composerDraftKeysAreSameChat(storedA, runtimeX), "A shared alias is neither chat's")
             XCTAssertFalse(appState.composerDraftKeysAreSameChat(runtimeX, storedB))
             XCTAssertNil(appState.composerDraftOwner(for: runtimeX))
+            // A waiting message's on-screen check doesn't go by row order
+            // either: the row recorded as the chat opened decides, and with
+            // none, neither chat is taken for the one on screen (#2794 review).
+            appState.activeSessionId = "runtime-x"
+            appState.rowOfChatOnScreen = nil
+            XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-a"))
+            XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
+            appState.rowOfChatOnScreen = (original, ["runtime-x"], appState.activeDashboardID, appState.activeProfile)
+            XCTAssertTrue(appState.isOnScreen(pending), "A is on screen, in either order")
+            XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
+            appState.rowOfChatOnScreen = nil
+            appState.activeSessionId = nil
         }
 
         // While only A carries it, the alias is A's: a rotation keeps the draft.
