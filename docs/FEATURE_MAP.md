@@ -7818,7 +7818,7 @@ the background (Health, places, phone sync, pushes) · the on-screen retry of a
 sign-in that failed off screen · the combined group (one row on the list) ·
 README.md
 
-**Desktop app:** gap: a launch signs in to the last dashboard used (`desktop/src/main/hosts.ts`); no Ask Which Dashboard at Launch.
+**Desktop app:** has it (desktop#102): Settings' Ask Which Dashboard at Launch, shown with two or more dashboards saved; with it on, a launch (after the lock when it's on) lists them under Your dashboards until one is clicked, and Add a dashboard goes to the sign-in (`desktop/src/main/connection.ts` restore, `desktop/src/renderer/src/components/AskDashboard.tsx`). The desktop has no notification, link or background launch that needs Hermes before a pick, and no combined group.
 
 **Code**
 - Launch: `Conduit/Services/AppState+Connection.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch), `Conduit/Services/AppState+WatchCalls.swift` (setWatchVoiceCallActive), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase)
@@ -9311,7 +9311,7 @@ have no refresh of their own), the notifier (it serves no part of the
 catalog) · text: the shared "Updating…" key, already in every shipped
 language; no Settings caption or doc describes it
 
-**Desktop app:** gap: no Updating… capsule; the desktop keeps no saved list, so a launch says Loading chats… until the first read, and a later read swaps the rows in place (`desktop/src/renderer/src/components/ChatList.tsx`).
+**Desktop app:** partly (desktop#104): rows listed before the connection dropped say Updating… in a floating capsule (after 0.4 s, no clicks) while the read after the reconnect runs, and the list's own refreshes say nothing (`desktop/src/renderer/src/state/useChatList.ts`, `desktop/src/renderer/src/components/UpdatingCapsule.tsx`). It keeps no saved list, so a launch still says Loading chats… until the first read.
 
 **Code**
 - When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, isReadingStaleChatList, showsChatListUpdating(overProjects:hidesPulseHomeChat:), noteStaleChatListRead; loadSessions counts a read over a stale list in and out, by the scope it reads), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (staleChatListReads by SessionCatalogOwner, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
