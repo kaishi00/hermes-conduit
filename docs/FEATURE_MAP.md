@@ -9569,7 +9569,7 @@ keep MetricKit reports or draw a transcript), a delegate agent's tail sheet
 and a call's transcript sheet (short logs with lists of their own), Desktop's
 read-only legacy groups (no transcript to watch)
 
-**Desktop app:** gap: no crash or freeze reports.
+**Desktop app:** partly (desktop#81): a crash of the window, the GPU or a utility process, or the window not responding, is kept as a report; a card asks once whether to send it to the developer's relay, and Settings > Device reports lists them with Send (`desktop/src/main/deviceReports.ts`, `desktop/src/renderer/src/components/DeviceReports.tsx`). No call stacks (Electron's minidumps aren't something the relay takes) and no chat traces.
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
