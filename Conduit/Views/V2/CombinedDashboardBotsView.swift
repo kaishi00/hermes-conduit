@@ -175,7 +175,7 @@ struct CombinedDashboardBotPortrait: View {
             HStack(spacing: 0) {
                 Button(action: open) {
                     Text(bot.displayLabel)
-                        .scaledFont(.subheadline.weight(.semibold))
+                        .scaledFont(gridPortraitSize > 100 ? ScaledFont.title3.weight(.bold) : ScaledFont.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
                         .minimumScaleFactor(0.85)

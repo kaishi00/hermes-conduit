@@ -742,7 +742,9 @@ struct BotPortraitGrid<Item: Identifiable, Cell: View>: View {
                 cell(item)
             }
         }
-        .environment(\.botPortraitSize, step.portrait)
+        // At accessibility sizes two columns hold faces grown from 72 (about
+        // 115 pt); a larger step would spill into the next column.
+        .environment(\.botPortraitSize, typeSize.isAccessibilitySize ? 72 : step.portrait)
         .padding(.top, 14)
         .padding(.bottom, 4)
         // A drop between or after the portraits, not on one: the end. A

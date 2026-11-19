@@ -52,6 +52,8 @@ extension AppState {
         let next = chatDoneMarks.setting(session, done: done, profile: profile, dashboardID: dashboardID)
         if next != chatDoneMarks { chatDoneMarks = next }
         chatDoneMarksPendingWrites[key, default: 0] += 1
+        // The fence: a read that went out before this is dropped. No read
+        // starts while the write is pending, so one move per write is enough.
         chatDoneMarksWrites[key, default: 0] += 1
         // One write at a time per profile, in the order they were made: each
         // sets done outright, so the last one the user made is the one kept.
@@ -67,7 +69,6 @@ extension AppState {
             guard let self else { return }
             let pending = max((self.chatDoneMarksPendingWrites[key] ?? 1) - 1, 0)
             self.chatDoneMarksPendingWrites[key] = pending == 0 ? nil : pending
-            self.chatDoneMarksWrites[key, default: 0] += 1
             if pending == 0, self.activeDashboardID == dashboardID {
                 self.refreshChatDoneMarks(profiles: [profile], force: true)
             }
@@ -95,8 +96,9 @@ extension AppState {
         for profile in profiles ?? chatDoneMarksProfiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatDoneMarksReads.contains(key), chatDoneMarksPendingWrites[key] == nil else { continue }
-            // Marks another dashboard's read replaced are read again at once.
-            if !force, chatDoneMarks.dashboardID == dashboardID, let last = chatDoneMarksReadAt[key],
+            // Marks another dashboard's read dropped are read again at once,
+            // each profile's, even once this dashboard's marks are back.
+            if !force, chatDoneMarks.hasRead(profile, dashboardID: dashboardID), let last = chatDoneMarksReadAt[key],
                now.timeIntervalSince(last) < Self.chatDoneMarksReadInterval { continue }
             chatDoneMarksReads.insert(key)
             chatDoneMarksReadAt[key] = now

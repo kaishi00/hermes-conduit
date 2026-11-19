@@ -27,10 +27,18 @@ struct ChatDoneMarks: Equatable {
     /// The dashboard these marks are from: another's chats aren't these.
     private(set) var dashboardID: UUID?
     private(set) var marksByProfile: [String: [Mark]] = [:]
+    /// The profiles (lowercased) whose marks a read of this dashboard put
+    /// here: one another dashboard's read dropped is read again at once.
+    private(set) var readProfiles: Set<String> = []
 
     init(dashboardID: UUID? = nil, marksByProfile: [String: [Mark]] = [:]) {
         self.dashboardID = dashboardID
         self.marksByProfile = marksByProfile
+    }
+
+    /// This dashboard's marks for the profile came from a read and are kept.
+    func hasRead(_ profile: String, dashboardID: UUID?) -> Bool {
+        self.dashboardID == dashboardID && readProfiles.contains(profile.lowercased())
     }
 
     func mark(for session: SessionSummary, profile: String) -> Mark? {
@@ -48,6 +56,7 @@ struct ChatDoneMarks: Equatable {
     func replacing(_ marks: [Mark], profile: String, dashboardID: UUID?) -> ChatDoneMarks {
         var next = self.dashboardID == dashboardID ? self : ChatDoneMarks(dashboardID: dashboardID)
         next.marksByProfile[profile] = marks.isEmpty ? nil : marks
+        next.readProfiles.insert(profile.lowercased())
         return next
     }
 
