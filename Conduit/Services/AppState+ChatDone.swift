@@ -53,7 +53,11 @@ extension AppState {
         if next != chatDoneMarks { chatDoneMarks = next }
         chatDoneMarksPendingWrites[key, default: 0] += 1
         chatDoneMarksWrites[key, default: 0] += 1
-        Task { @MainActor [weak self] in
+        // One write at a time per profile, in the order they were made: each
+        // sets done outright, so the last one the user made is the one kept.
+        let previous = chatDoneMarksWriteTail[key]
+        let write = Task { @MainActor [weak self] in
+            await previous?.value
             do {
                 _ = try await bridge.requestJSON(path: ChatDoneMarks.savePath(profile: profile), method: "POST",
                                                  body: ChatDoneMarks.body(for: session, done: done))
@@ -67,6 +71,11 @@ extension AppState {
             if pending == 0, self.activeDashboardID == dashboardID {
                 self.refreshChatDoneMarks(profiles: [profile], force: true)
             }
+        }
+        chatDoneMarksWriteTail[key] = write
+        Task { @MainActor [weak self] in
+            await write.value
+            if self?.chatDoneMarksWriteTail[key] == write { self?.chatDoneMarksWriteTail[key] = nil }
         }
     }
 
@@ -86,7 +95,8 @@ extension AppState {
         for profile in profiles ?? chatDoneMarksProfiles {
             let key = chatDoneMarksKey(profile, dashboardID: dashboardID)
             guard !chatDoneMarksReads.contains(key), chatDoneMarksPendingWrites[key] == nil else { continue }
-            if !force, let last = chatDoneMarksReadAt[key],
+            // Marks another dashboard's read replaced are read again at once.
+            if !force, chatDoneMarks.dashboardID == dashboardID, let last = chatDoneMarksReadAt[key],
                now.timeIntervalSince(last) < Self.chatDoneMarksReadInterval { continue }
             chatDoneMarksReads.insert(key)
             chatDoneMarksReadAt[key] = now

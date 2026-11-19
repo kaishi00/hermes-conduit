@@ -470,6 +470,7 @@ final class AppState: ObservableObject {
     var chatDoneMarksReads: Set<String> = []
     var chatDoneMarksPendingWrites: [String: Int] = [:]
     var chatDoneMarksWrites: [String: Int] = [:]
+    var chatDoneMarksWriteTail: [String: Task<Void, Never>] = [:]
     var chatDoneMarksReadFailureLogged: Set<String> = []
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
