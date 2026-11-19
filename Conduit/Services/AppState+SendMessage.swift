@@ -53,7 +53,8 @@ extension AppState {
     /// eviction) and refused the send with "session not found". Nothing was
     /// taken, so the chat is resumed by its stored id, which a cleared
     /// runtime's id no longer finds, and the message goes once more to the
-    /// runtime the resume made. A second refusal shows as a failed send.
+    /// runtime the resume made. A second refusal shows as a failed send, and
+    /// so does a refusal of the fresh chat that replaced a lost empty one.
     private func resendAfterResumingStoredChat(
         _ text: String,
         attachments: [Attachment],
@@ -243,7 +244,7 @@ extension AppState {
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
-                if !afterResumingStoredChat, HermesClient.isSessionNotFoundError(error) {
+                if !afterResumingStoredChat, !afterReplacingLostChat, HermesClient.isSessionNotFoundError(error) {
                     return await resendAfterResumingStoredChat(
                         text, attachments: attachments, context: submissionContext, queued: queued,
                         optimisticRowID: userMessage.id
@@ -465,7 +466,7 @@ extension AppState {
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
             }
-            if !afterResumingStoredChat, HermesClient.isSessionNotFoundError(error) {
+            if !afterResumingStoredChat, !afterReplacingLostChat, HermesClient.isSessionNotFoundError(error) {
                 return await resendAfterResumingStoredChat(
                     text, attachments: attachments, context: submissionContext, queued: queued,
                     optimisticRowID: userMessage.id
