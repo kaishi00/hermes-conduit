@@ -498,7 +498,12 @@ enum DashboardTicketBridgeError: LocalizedError {
             // Conduit can turn its own plugin on for a bot (issue 2803).
             return AppLocalization.string("Hermes has the Conduit plugin turned off for the “\(profile)” profile. Turn it on in that bot's Edit Bot, or on the Hermes host add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.", table: .connection)
         }
-        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.", table: .connection)
+        return pluginOffOnHost(plugin: plugin, profile: profile)
+    }
+
+    /// The host steps for a plugin a profile has off.
+    static func pluginOffOnHost(plugin: String, profile: String) -> String {
+        AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.", table: .connection)
     }
 
     /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for

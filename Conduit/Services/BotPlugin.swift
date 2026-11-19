@@ -107,6 +107,17 @@ extension AppState {
         startsFresh: Bool,
         isCurrent: () -> Bool = { true }
     ) async -> String? {
+        let notTurnedOn = AppLocalization.string(
+            "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+            table: .bots
+        )
+        // Right after a switch to another dashboard its plugin hasn't
+        // reported yet: wait for that read rather than skip the step.
+        if notifierPlugin.state == .unknown {
+            await refreshNotifierPluginStatusOnce()
+            guard isCurrent() else { return notTurnedOn }
+            if notifierPlugin.state == .unknown { return startsFresh ? notTurnedOn : nil }
+        }
         switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
         case .nothing:
             return nil
@@ -116,15 +127,17 @@ extension AppState {
                 table: .bots
             )
         case .turnOn:
-            if let state = await botPluginState(profile: slug), state.on || !state.canTurnOn { return nil }
+            let state = await botPluginState(profile: slug)
+            if let state, state.on { return nil }
+            if let state, !state.canTurnOn {
+                // A dashboard running a profile's own copy can't share it:
+                // a fresh bot is told the host steps instead.
+                guard startsFresh else { return nil }
+                return DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: slug)
+            }
             // The turn-on goes to the Hermes the bot was made on, never one
             // switched to while the state was read.
-            guard isCurrent() else {
-                return AppLocalization.string(
-                    "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
-                    table: .bots
-                )
-            }
+            guard isCurrent() else { return notTurnedOn }
             guard let failure = await turnOnBotPlugin(profile: slug) else { return nil }
             return AppLocalization.string(
                 "The Conduit plugin wasn't turned on for this bot: \(failure) Edit the bot to try again.",

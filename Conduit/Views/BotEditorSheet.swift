@@ -207,7 +207,17 @@ struct BotEditorSheet: View {
         .task(id: appState.servesBotPlugin) {
             // Read again once the plugin reports, so a sheet opened before
             // its capabilities arrive still offers Turn On.
-            if let bot = editedBot { pluginState = await appState.botPluginState(profile: bot.name) }
+            guard let bot = editedBot, appState.servesBotPlugin else { return }
+            // A dropped read is tried again, so the card isn't lost for the
+            // life of the sheet.
+            for delay in [UInt64(0), 3, 10, 30] {
+                if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
+                if Task.isCancelled { return }
+                if let state = await appState.botPluginState(profile: bot.name) {
+                    pluginState = state
+                    return
+                }
+            }
         }
         .task {
             // The stored picture, independent of whether the roster row's
