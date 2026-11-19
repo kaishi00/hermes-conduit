@@ -620,7 +620,11 @@ final class DemoVideoTests: XCTestCase {
     }
 
     private func send(_ text: String) {
-        let composer = app.textViews.firstMatch.exists ? app.textViews.firstMatch : app.textFields.firstMatch
+        // A chat's composer is a text view; wait for it, since a chat just
+        // opened may still be loading and a tab left earlier keeps its
+        // search field (Tasks' 搜索任务) in the tree, off screen.
+        let composer = app.textViews.firstMatch.waitForExistence(timeout: 10)
+            ? app.textViews.firstMatch : app.textFields.firstMatch
         guard composer.waitForExistence(timeout: 20) else {
             XCTFail("No composer to send \(text)")
             return
