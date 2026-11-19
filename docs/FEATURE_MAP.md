@@ -3808,7 +3808,7 @@ its Ask (0.150.0), which leaves the pick's words instead
 · the fresh chat that stands in for an empty one Hermes lost, which takes
 what waited (An empty new chat Hermes lost)
 
-**Desktop app:** unchecked: whether a new chat something waits on (quick ask, a call's chat) is kept.
+**Desktop app:** partly: a first send or command from the new chat's canvas goes in only while the chat its `session.create` made is still the one open; when another chat opened meanwhile nothing is sent and the words go back to the composer (`desktop/src/renderer/src/state/useChat.ts`, desktop#97), and a Classic call tags only its own fresh chat (desktop#93). The desktop has no screen question, Hermes call setup or Pulse Do it that starts a chat.
 
 **Code**
 - Creating the chat: `Conduit/Services/AppState+Session.swift` (createNewSession returns the chat it opened; startNewChat and focusNewChatComposer), `Conduit/Services/AppState+Composer.swift` (startChatForComposerSubmission), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation), `Conduit/Services/AppState+Reconciliation.swift` (createAndReconcileSession, which returns it too)
