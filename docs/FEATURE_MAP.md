@@ -5359,7 +5359,7 @@ task composer and on a task's page) · Delegate fallback models (done: the
 Fallback models editor, #1979) · Subagent routing's route sheet (done: with
 no models yet it says so, and keeps a route's own provider and model, #1979)
 
-**Desktop app:** unchecked: how the model panel shows a catalog that failed.
+**Desktop app:** has it (desktop#91): the model panel, a bot's and a new bot's model, Settings > Models, the delegate model and fallback models open on the catalog kept from the host's last answer, picked and saved only once Hermes answers, and say "Could not load models." with Try Again or "No models are available from this gateway." (`desktop/src/renderer/src/state/modelCatalog.ts`, `desktop/src/renderer/src/components/ModelCatalogNote.tsx`).
 
 **Code**
 - The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's catalogStateRows, quickPicksSection, modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
@@ -5401,7 +5401,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 (not needed: it picks from the catalog the section reads each time it loads)
 · Text (not needed: no README, docs or Settings caption describes the lists)
 
-**Desktop app:** unchecked: how the model panel shows a catalog still loading.
+**Desktop app:** has it (desktop#91): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and the model panel and a bot's Model section have Refresh models (`desktop/src/renderer/src/state/modelCatalog.ts`).
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState+HelperModels.swift` (loadModelProviders' refresh)
