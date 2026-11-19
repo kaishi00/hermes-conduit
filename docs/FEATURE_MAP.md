@@ -992,7 +992,7 @@ under the list key on the tab, not its place), the drawer shell (no tabs;
 its own "Open to"), Watch and CarPlay (no tabs), the notifier (its prefs
 store takes any key)
 
-**Desktop app:** not applicable: desktop has no tab bar.
+**Desktop app:** partly: no tab bar to order, but a launch opens on the first tab the phone's synced layout shows, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160).
 
 **Code**
 - The layout and its store: `Conduit/Views/V2/V2TabLayout.swift` (V2TabLayout: stored, shown, first(without:), bar(selected:without:), madeAtLaunch, alwaysShown, optional, mostShown, canShow; V2TabLayoutStore with tabs, unavailable and setAvailable; V2TabsOrderSheet)
@@ -3616,7 +3616,7 @@ When returning to Conduit caption · Settings > Appearance > Tabs, which picks
 the first tab (The tabs' order and the tab Conduit opens on) · Watch and CarPlay (not needed: no chat
 list to land on)
 
-**Desktop app:** partly: a launch opens on Chats with no chat open, on the new chat's canvas (`desktop/src/renderer/src/App.tsx`, reopenedSection, which keeps Settings open only across a reload); the OS doesn't end the app in the background, so there is no chat to reopen, and there is no Bots tab to open on first.
+**Desktop app:** has it: a launch opens on the first tab the phone's synced layout (`app.tabs`) shows, Bots until it's reordered, with no chat open; the layout is read once per connection and kept per dashboard for the next launch, and a language change's reload keeps Settings open (`desktop/src/renderer/src/state/launchTab.ts`, `desktop/src/renderer/src/App.tsx` reopenedSection, desktop#160); the OS doesn't end the app in the background, so there is no chat to reopen.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, giveUpRoomIfLeft, Launch.roomStep), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
