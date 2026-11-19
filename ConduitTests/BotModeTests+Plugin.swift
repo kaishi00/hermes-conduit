@@ -5,7 +5,7 @@ import XCTest
 /// Turn On. An extension of BotModeTests: the unit suite is at its class cap.
 extension BotModeTests {
     func testNewBotTurnsThePluginOnWhereTheDashboardsPluginCan() {
-        let serves = NotifierPluginStatus.State.reported(version: "0.180.0", capabilities: [BotPlugin.capability])
+        let serves = NotifierPluginStatus.State.reported(version: "0.181.0", capabilities: [BotPlugin.capability])
         XCTAssertEqual(BotPlugin.newBotStep(plugin: serves, startsFresh: true), .turnOn)
         // A clone may come from a profile without it: asked as well.
         XCTAssertEqual(BotPlugin.newBotStep(plugin: serves, startsFresh: false), .turnOn)

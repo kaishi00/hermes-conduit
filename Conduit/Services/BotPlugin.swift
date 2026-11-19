@@ -5,7 +5,7 @@ import Foundation
 /// from a fresh profile (no Start From) hasn't, so its notifications, rooms,
 /// Folder and cards answer "Plugin not found". Hermes' own plugin switches
 /// reach only the dashboard's own profile, so the plugin does it for the bot
-/// (`/profiles/plugin`, plugin 0.180.0+): it links the bot's profile to the
+/// (`/profiles/plugin`, plugin 0.181.0+): it links the bot's profile to the
 /// main install and runs Hermes' own `plugins enable` there. New Bot turns
 /// it on for every bot it makes, and Edit Bot offers Turn On for one that
 /// has it off (Eric, 2026-11-19).
