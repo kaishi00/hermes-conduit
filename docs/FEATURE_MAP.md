@@ -2246,7 +2246,7 @@ agent list (picking an agent there is how a driver changes who they talk
 to, and it ends its own conversation first, as before), a call from Hermes
 opening its own chat (see Notifications), adding a dashboard or signing in (no call can run without a connection to it, and the new sign-in replaces the connection by design) · a live call that goes on across a profile switch: what it reads and sends names its own profile (its jobs and their ledger, its chat and its replies, chat search and reads, approvals and answers, "call me when it's done", the host's tools, the live engines' host routes, its style and its end phrases), its sheet's header and its minimised bar name that profile while another is on screen, and its chat's link opens on it · docs/VOICE_SETTINGS.md (the minimised call) · the refusals and the asks for a profile switch (the strip, the Profiles sheet, a notification or chat link for another profile, a chat from All profiles, New Chat or a project folder in another profile, a room's chat, Pulse's Bot Chat, Needs you, an artifact's chat, Ask Hermes About Screen naming another profile) all go ahead for such a call · not needed: a widget's launch of a chat (it refuses any move during a call, its own profile's chats included)
 
-**Desktop app:** partly: several Hermes hosts with a switch in the title bar (`desktop/src/renderer/src/components/TitleBar.tsx`); not checked what a host switch does to a call in progress.
+**Desktop app:** partly (desktop#110): a dashboard picked during a call (the title bar's menu, Saved Dashboards' Switch, Add a dashboard) asks End the call and switch? first, ending the call before it switches (`desktop/src/renderer/src/state/callSwitch.ts`, `desktop/src/renderer/src/components/TitleBar.tsx`); the profile strip only filters the list, so no profile pick ends a call; a pairing from the phone that opens its first dashboard doesn't ask yet.
 
 **Code**
 - App: `Conduit/Services/AppState+CallProfile.swift` (liveCallProfile, voiceCallProfile, callProfileOffScreen, callSurvivesProfileSwitch, isCallEndingProfileSwitch, keepCallSessionsOnTheirProfile, callEndedOffItsProfile, handBackCallJobs taking the ended jobs' callback settles before the reset, callChatLink, liveCallBarSubject), `Conduit/Views/CallEndingSwitchConfirmation.swift` (switchEndingCall, `profileOnly`, the dialog), `Conduit/Services/AppState+ScreenQuestion.swift` (a screenshot during a call stays in this profile), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation's yieldsToACall), `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2Shell.swift` (pickProfile), `Conduit/Views/V2/V2TopBar.swift` (DashboardSwitchMenu), `Conduit/Views/SavedDashboardsView.swift`, `Conduit/Views/ConnectionSetupView.swift` (Repair's address conflict), `Conduit/Services/AppState+Voice.swift` (isVoiceCallInProgress), `Conduit/Services/AppState+Profiles.swift` (the switch's voice teardown, `keepsCall`, and refusingCallsWith), the voice job backend in `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor, the live engines' host clients) and `Conduit/Voice/VoiceBackgroundJobs.swift` (sessionIDsOnActiveProfile), `Conduit/Services/AppState+Voice.swift` (the call's chat reads and turns), `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Services/AppState+HermesCalls.swift` (makeHermesCallbackBackend), `Conduit/Services/AppState+BotWorkstreams.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Services/HermesClient.swift` (handOffSocket, socketHolder, sendPrompt's resend); a restored job's profile on the client: `Conduit/Services/AppState+Voice.swift` (noteVoiceJobProfiles); the settles taken out of the supervisor: `Conduit/Voice/VoiceBackgroundJobs.swift` (detachEndedCallbackSettles)
@@ -3215,7 +3215,7 @@ to the dashboard's own cron routes) · Watch, CarPlay and group rooms (not
 needed: no scheduled jobs there) · Text (done: the editor's caption and
 README.md's Scheduled jobs line)
 
-**Desktop app:** partly: a job's model is shown (`desktop/src/renderer/src/components/ScheduledJobs.tsx`); not checked whether the editor sets it.
+**Desktop app:** has it (desktop#108): New job and Edit job have Model and Reasoning rows, Profile default first, from the job's profile's catalog; a new job's reasoning follows as an edit, Profile default clears the model, provider and endpoint, and a job that runs no agent has none; a pinned job's row and every job's details say what it runs on (`desktop/src/renderer/src/components/ScheduledJobs.tsx`, `desktop/src/renderer/src/state/cron.ts`).
 
 **Code**
 - App: `Conduit/Models/Models.swift` (CronJob's model, provider, baseURL, reasoningEffort), `Conduit/Models/CronJobDraft.swift` (CronJobDraft's modelTag, reasoning, runsAgent, createReasoningUpdate and modelFields; CronJob's modelTag, pinnedReasoningEffort, pinsModel, modelSummary), `Conduit/Views/V2/CronJobEditorSheet.swift` (modelSection, loadModels, the create's reasoning edit), `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's row), `Conduit/Views/SidebarView.swift` (CronJobRow's model, CronJobDetailSheet's Model row)
@@ -3890,7 +3890,7 @@ text and the slash suggestions' "Start a new conversation" (the general
 command, still right outside Bot Chats) · "A new chat that something waits
 on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
-**Desktop app:** partly: /new starts a new chat (`desktop/src/renderer/src/state/slash.ts`, desktop#17); not checked whether it compacts a Bot Chat.
+**Desktop app:** has it (desktop#109): `/new`, `/reset` and `/clear` start a new chat, and in a Bot Chat (opened as the bot's, or carrying the roster's canonical id) compact it instead with the phone's note; with attachments there it's refused and the draft kept (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/slash.ts`).
 
 **Code**
 - The guard: `Conduit/Services/AppState+SlashCommands.swift` (executeSlashCommand's new/reset/clear case), `Conduit/Services/AppState+Composer.swift` (the attachment refusal in performComposerSubmission), `Conduit/Services/AppState+GroupChats.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset)
@@ -7749,7 +7749,7 @@ saved as another.
 Sign In Again · the two alerts' text (no Settings caption, README or doc
 describes this case)
 
-**Desktop app:** partly: several hosts (`desktop/src/main/hosts.ts`); not checked how another saved host's address is edited.
+**Desktop app:** partly: the desktop has no Edit Connection or Repair, so a saved dashboard's address is never edited and two never merge; adding an address already saved signs in to that same dashboard again (`desktop/src/main/hosts.ts`).
 
 **Code**
 - Edit Connection: `Conduit/Services/ConnectionSetupApplication.swift` (perform, addressBelongsToDashboard), `Conduit/Views/AuxiliaryViews.swift` (the Settings not applied alert)
@@ -9012,7 +9012,7 @@ link or notification (the message shown) · a Pulse card drawn from a
 worker's session (it links the task, and Do it starts a new chat) · the Kanban task's Worker Log ·
 Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
-**Desktop app:** partly: kanban workers' chats found by live calls (`desktop/src/renderer/src/state/chatFinder.ts`); not checked in the chat list.
+**Desktop app:** has it (desktop#111): the chat list (and its `session.list` fallback), In messages and find chat on a call leave out `kanban`, `tool` and `oneshot` rows and workers stored before the tag, told apart by the phone's rule, and a worker reached anyway says only the board can run it and points at its Worker Log (`desktop/src/renderer/src/state/chats.ts`, `desktop/src/renderer/src/state/chatFinder.ts`, `desktop/src/renderer/src/state/contentSearch.ts`, `desktop/src/renderer/src/state/useChat.ts`).
 
 **Code**
 - Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, hermesInternalSources, nonChatExcludedSources, chatListExcludedSources, isLegacyKanbanWorker)
