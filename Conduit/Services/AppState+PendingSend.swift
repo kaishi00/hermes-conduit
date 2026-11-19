@@ -609,15 +609,54 @@ extension AppState {
                 && (chat.sessionID == shownChat.newChatOpenedSessionID || chat.sessionID == shownChat.newChatOpenedDurableSessionID)
                 && shownChat.newChatOpenedDurableSessionID.map(liveChatOwnsComposerDraftSessionID) == true
         }
-        let rows = (sessions + cronSessions).filter { sessionBelongsToProfile($0, profile: lhs.profile) }
-        if let destination = rows.first(where: { $0.nestingIDs.contains(rhs.sessionID) }) {
-            return destination.nestingIDs.contains(lhs.sessionID)
-        }
-        if let origin = rows.first(where: { $0.nestingIDs.contains(lhs.sessionID) }) {
-            return origin.nestingIDs.contains(rhs.sessionID)
+        // Each id is the chat of the row that owns it: a row whose id or
+        // stored id it is, else the one row carrying it among its aliases.
+        // An alias two rows carry is neither's (issue 2781), so a moved
+        // alias never carries one chat's draft into another, whatever the
+        // rows' order.
+        let rows = composerDraftRows(profile: lhs.profile)
+        let left = Self.composerDraftOwningRow(of: lhs.sessionID, in: rows)
+        let right = Self.composerDraftOwningRow(of: rhs.sessionID, in: rows)
+        if left.isListed || right.isListed {
+            guard let leftRow = left.row, let rightRow = right.row else { return false }
+            return leftRow.durableKey == rightRow.durableKey
         }
         return lhs.profile == activeProfile
             && ComposerBar.draftKeysAreEquivalent(lhs, rhs, identity: activeChatScrollSessionIdentity)
+    }
+
+    /// The durable id of the chat a draft under `key` is for, from the list
+    /// on screen: the owning row's stored id (else its id). Nil when no row
+    /// owns the key's id, an alias two rows carry included (issue 2782).
+    func composerDraftOwner(for key: ComposerDraftKey) -> String? {
+        guard !key.isNewConversation, key.dashboard == activeDashboardID else { return nil }
+        return Self.composerDraftOwningRow(of: key.sessionID, in: composerDraftRows(profile: key.profile)).row?.durableKey
+    }
+
+    /// Whether the draft kept under `key` for the chat `owner` names is
+    /// another chat's now: Hermes handed the key's runtime id to a chat the
+    /// list names otherwise, or two rows carry it (issue 2782). An id no
+    /// row lists says nothing, and the draft stays.
+    func composerDraftKey(_ key: ComposerDraftKey, isNotChatOf owner: String) -> Bool {
+        guard !key.isNewConversation, key.sessionID != owner, key.dashboard == activeDashboardID else { return false }
+        let owning = Self.composerDraftOwningRow(of: key.sessionID, in: composerDraftRows(profile: key.profile))
+        guard owning.isListed else { return false }
+        return owning.row?.durableKey != owner
+    }
+
+    private func composerDraftRows(profile: String) -> [SessionSummary] {
+        (sessions + cronSessions).filter { sessionBelongsToProfile($0, profile: profile) }
+    }
+
+    /// The row owning `sessionID` among `rows`, and whether any row lists it
+    /// at all: own id or stored id first, else a single borrower.
+    static func composerDraftOwningRow(of sessionID: String, in rows: [SessionSummary]) -> (row: SessionSummary?, isListed: Bool) {
+        if let own = rows.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) {
+            return (own, true)
+        }
+        let borrowers = rows.filter { $0.alternateIds.contains(sessionID) }
+        let owners = Set(borrowers.map(\.durableKey))
+        return (owners.count == 1 ? borrowers.first : nil, !borrowers.isEmpty)
     }
 
     /// Typing over a saved copy makes its chat the one that opens, as a tap

@@ -2021,7 +2021,8 @@ struct ComposerBar: View {
             } else {
                 let key = draftStore.keys.first { appState.composerDraftKeysAreSameChat($0, request.key) }
                     ?? request.key
-                draftStore.save(draftStore.draft(for: key).restoring(request.draft), for: key)
+                draftStore.save(draftStore.draft(for: key).restoring(request.draft), for: key,
+                                owner: appState.composerDraftOwner(for: key))
             }
             appState.consumeComposerRestoreRequest(request.id)
         }
@@ -2737,13 +2738,23 @@ struct ComposerBar: View {
     }
 
     private func saveDraft(for key: ComposerDraftKey) {
+        // Kept with the durable id of its chat, while the list names one: a
+        // runtime id Hermes later hands to another chat doesn't take the
+        // words with it (issue 2782).
         draftStore.save(
             ComposerDraft(text: text, attachments: attachments, replyReference: replyReference),
-            for: key
+            for: key,
+            owner: appState.composerDraftOwner(for: key)
         )
     }
 
     private func loadDraft(for key: ComposerDraftKey) {
+        // Saved for another chat under the id this one opens by (Hermes
+        // handed the runtime id on): it goes back under its own chat's
+        // durable id, and this chat starts without it (issue 2782).
+        if let owner = draftStore.owner(of: key), appState.composerDraftKey(key, isNotChatOf: owner) {
+            draftStore.returnDraft(from: key, toOwner: owner)
+        }
         // Kept under another of the chat's ids (typed over its saved copy,
         // or in the New Chat that created it): it's this chat's draft.
         if !draftStore.hasDraft(for: key),

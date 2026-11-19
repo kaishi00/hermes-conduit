@@ -3389,6 +3389,55 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.messages.isEmpty)
     }
 
+    /// Issues 2781, 2782: an alias two listed rows carry is neither's, in
+    /// either row order, and a draft saved under a runtime id Hermes later
+    /// handed to another chat goes back to its own chat's durable id.
+    func testADraftNeverFollowsARuntimeIdToAnotherChat() throws {
+        let (appState, _, dashboard) = makeAppState()
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-x"]
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-x"]
+        let storedA = ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "stored-a")
+        let runtimeX = ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "runtime-x")
+        let storedB = ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "stored-b")
+
+        for rows in [[original, other], [other, original]] {
+            appState.sessions = rows
+            XCTAssertFalse(appState.composerDraftKeysAreSameChat(storedA, runtimeX), "A shared alias is neither chat's")
+            XCTAssertFalse(appState.composerDraftKeysAreSameChat(runtimeX, storedB))
+            XCTAssertNil(appState.composerDraftOwner(for: runtimeX))
+        }
+
+        // While only A carries it, the alias is A's: a rotation keeps the draft.
+        appState.sessions = [original]
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(storedA, runtimeX))
+        XCTAssertEqual(appState.composerDraftOwner(for: runtimeX), "stored-a")
+
+        let store = ComposerDraftStore()
+        store.save(ComposerDraft(text: "Only for A", attachments: []), for: runtimeX,
+                   owner: appState.composerDraftOwner(for: runtimeX))
+        XCTAssertFalse(appState.composerDraftKey(runtimeX, isNotChatOf: "stored-a"))
+
+        // Hermes hands runtime-x to B, alone or with A still carrying it.
+        for rows in [[other], [original, other]] {
+            appState.sessions = rows
+            XCTAssertTrue(appState.composerDraftKey(runtimeX, isNotChatOf: "stored-a"), "runtime-x isn't A's any more")
+        }
+        // An id no row lists says nothing: the draft stays where it is.
+        appState.sessions = []
+        XCTAssertFalse(appState.composerDraftKey(runtimeX, isNotChatOf: "stored-a"))
+
+        store.save(ComposerDraft(text: "Earlier words", attachments: []), for: storedA)
+        store.returnDraft(from: runtimeX, toOwner: "stored-a")
+        XCTAssertFalse(store.hasDraft(for: runtimeX), "B opening as runtime-x starts empty")
+        XCTAssertTrue(store.draft(for: storedA).text.contains("Only for A"))
+        XCTAssertTrue(store.draft(for: storedA).text.contains("Earlier words"), "Neither draft is lost")
+        XCTAssertEqual(store.owner(of: storedA), "stored-a")
+    }
+
     func testACardTapKeepsToItsChatAcrossARotationButNotAReattribution() throws {
         let (appState, _, _) = makeAppState()
         var original = session("stored-a")
@@ -4785,6 +4834,43 @@ final class OfflineChatCacheTests: XCTestCase {
         reused.sessions = [session("c")]
         reused.setActiveSessionState(id: "rt-a")
         XCTAssertEqual(reused.rowOfChatOnScreen?.row.storedSessionId, "a")
+        // …and while its own row is still listed under that id beside the
+        // row Hermes gave it to, in either order (issue 2767).
+        for rows in [[runtime, other, session("c")], [other, runtime, session("c")]] {
+            reused.sessions = rows
+            reused.setActiveSessionState(id: "rt-a")
+            XCTAssertEqual(reused.rowOfChatOnScreen?.row.storedSessionId, "a", "not the other row listing rt-a")
+        }
+
+        // Issue 2767: a recorded row refreshed by a listing with no stored
+        // id keeps its stored id; an agreeing listing refreshes it; another
+        // profile's record is left alone.
+        let (refreshed, _, _) = makeAppState()
+        refreshed.sessions = [runtime, session("c")]
+        refreshed.setActiveSessionState(id: "rt-a")
+        var titled = session("rt-a")
+        titled.title = "Renamed"
+        refreshed.sessions = [titled, session("c")]
+        XCTAssertEqual(refreshed.rowOfChatOnScreen?.row.storedSessionId, "a", "the recorded stored id survives")
+        XCTAssertEqual(refreshed.rowOfChatOnScreen?.row.title, "Renamed")
+        var agreeing = runtime
+        agreeing.title = "Agreed"
+        refreshed.sessions = [agreeing, session("c")]
+        XCTAssertEqual(refreshed.rowOfChatOnScreen?.row.title, "Agreed")
+        let recordedElsewhere = (runtime, Set(["rt-a"]), refreshed.activeDashboardID, "someone-else")
+        refreshed.rowOfChatOnScreen = recordedElsewhere
+        refreshed.sessions = [other, session("c")]
+        XCTAssertEqual(refreshed.rowOfChatOnScreen?.profile, "someone-else")
+        XCTAssertEqual(refreshed.rowOfChatOnScreen?.row.storedSessionId, "a", "another profile's record is skipped")
+
+        // A row read with no stored id doesn't take the stored id of the
+        // chat the index binds its runtime id away from (issue 2767).
+        let (unstored, _, _) = makeAppState()
+        unstored.sessions = [session("rt-a"), session("c")]
+        unstored.setActiveSessionState(id: "rt-a")
+        unstored.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: unstored.activeProfile, source: .resume)
+        unstored.sessions = [other, session("c")]
+        XCTAssertNil(unstored.rowOfChat(openAs: "rt-a")?.storedSessionId, "chat b's stored id isn't this chat's")
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
