@@ -1406,7 +1406,8 @@ extension AppState {
         if botOpenFenceIsCurrent(epoch: epoch, client: client) {
             pluginWarning = await turnOnPluginForNewBot(
                 slug,
-                startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                isCurrent: { self.botOpenFenceIsCurrent(epoch: epoch, client: client) }
             )
         } else if servesBotPlugin {
             // Hermes changed before this step: the bot was left with the

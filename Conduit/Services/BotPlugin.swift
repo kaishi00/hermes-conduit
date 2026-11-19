@@ -102,7 +102,11 @@ extension AppState {
     /// New Bot's last step (issue 2803): the bot it made gets the plugin
     /// turned on, a clone that has it already included. A warning for the
     /// save's result, or nil.
-    func turnOnPluginForNewBot(_ slug: String, startsFresh: Bool) async -> String? {
+    func turnOnPluginForNewBot(
+        _ slug: String,
+        startsFresh: Bool,
+        isCurrent: () -> Bool = { true }
+    ) async -> String? {
         switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
         case .nothing:
             return nil
@@ -113,6 +117,14 @@ extension AppState {
             )
         case .turnOn:
             if let state = await botPluginState(profile: slug), state.on || !state.canTurnOn { return nil }
+            // The turn-on goes to the Hermes the bot was made on, never one
+            // switched to while the state was read.
+            guard isCurrent() else {
+                return AppLocalization.string(
+                    "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+                    table: .bots
+                )
+            }
             guard let failure = await turnOnBotPlugin(profile: slug) else { return nil }
             return AppLocalization.string(
                 "The Conduit plugin wasn't turned on for this bot: \(failure) Edit the bot to try again.",
