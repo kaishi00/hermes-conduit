@@ -4545,7 +4545,8 @@ hides again only once words are typed) ·
 a chat or room opening on a Mac (done, #2270: its field takes focus, a
 chat's, a project chat's, a Bot Chat's and a group room's, a room copy
 hosted elsewhere included; New Chat already did, see A new chat that
-something waits on) · ⌘V in a chat's or a room's transcript on a Mac (done,
+something waits on) · the New Chat shortcut and control (done, #2863:
+its own chat opens focused on every device) · ⌘V in a chat's or a room's transcript on a Mac (done,
 #2270) · the Keyboard Shortcuts sheet (not needed: ⌘V is the system's own
 Paste, not one of Conduit's keys) · iPhone, iPad and Mac · README.md's
 keyboard line (done, #2270) · no Settings caption describes it
@@ -4611,7 +4612,10 @@ keyboard line (done, #2270) · no Settings caption describes it
   has it. It never takes focus over a sheet or from another text field
   that has it (the list's search, a rename), and only the composer on
   screen does (`chatTakesKeys`). An iPhone or iPad keeps the keyboard down
-  until the field is tapped (2026-11-12, #2270, issue 1692).
+  until the field is tapped (2026-11-12, #2270, issue 1692), except for the
+  chat the New Chat shortcut or control made, which opens ready to type
+  everywhere (see New Chat from Siri, Shortcuts and the Action Button,
+  #2863).
 - On a Mac a click in a chat's or room's transcript, on a row too, that
   leaves nobody the keys gives them to the transcript, so ⌘V (or Edit ›
   Paste) still has somewhere to go: the conversation's composer takes
@@ -4637,7 +4641,7 @@ keyboard line (done, #2270) · no Settings caption describes it
   row's own gestures). Typing letters with the transcript holding the keys
   doesn't go to the composer (#2270).
 
-**Checked:** 2026-11-12, #2284 (a chat or room switch drops a transcript paste still waiting for focus); 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-19, #PRNUM2 (the New Chat shortcut's and control's chat opens focused on an iPhone and iPad too, #2863); 2026-11-12, #2284 (a chat or room switch drops a transcript paste still waiting for focus); 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7309,7 +7313,8 @@ waits for the connection and says when it can't; done) · the app's own New
 Chat and its focus (done: one launch origin now says whose launch it is, see
 A new chat that something waits on) · Talk to Conduit (the same Profile
 parameter and its Siri phrases; not needed) · Open Chat and Send to Hermes
-(other App Shortcuts; not needed) · the New Chat control in Control Center,
+(other App Shortcuts; not needed) · Which dashboard a launch signs in to
+(done: the launch's own switch, see there) · the New Chat control in Control Center,
 the Lock Screen and the Action Button (done) · the Watch's shortcuts (not needed: the Watch has no composer) ·
 CarPlay (not needed: no keyboard) · Conduit/AppShortcuts.xcstrings and the
 intent's title and description · docs/WIDGETS.md · README.md
@@ -7318,19 +7323,21 @@ intent's title and description · docs/WIDGETS.md · README.md
 
 **Code**
 - Intent: `Conduit/Intents/NewChatIntent.swift` (NewChatIntent), listed in `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), phrases in `Conduit/AppShortcuts.xcstrings`
-- Control: `ConduitWidgets/LauncherWidgets.swift` (NewChatControl, in the widget bundle on iOS 18), `Shared/Widgets/NewChatControlIntent.swift` (OpenNewChatIntent, built into the app and the extension; NewChatControlRequests), its handler set in `Conduit/ConduitApp.swift` (didFinishLaunching)
-- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
-- Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing)
+- Control: `ConduitWidgets/LauncherWidgets.swift` (NewChatControl, in the widget bundle on iOS 18; its kind is `Shared/Widgets/WidgetSnapshot.swift`'s ConduitWidgetKind.newChatControl), `Shared/Widgets/NewChatControlIntent.swift` (OpenNewChatIntent, built into the app and the extension; NewChatControlRequests), its handler set in `Conduit/ConduitApp.swift` (didFinishLaunching)
+- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin, receiveLaunch), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
+- Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing, testNewChatShortcutStartsInTheProfileItNames, testNewChatShortcutDuringACallSaysToEndTheCall, testNewChatShortcutRepeatingAWidgetsLaunchKeepsTheWidgetsOrigin)
 
 **Rulings**
 - It starts on the dashboard in use, never another: the Profile parameter picks a profile there, as Talk to Conduit's does. With no dashboard signed in it starts nothing and Conduit opens on its sign-in (2026-11-19, #2863, issue 2860).
 - It brings the keyboard up on every device, unlike the app's New Chat, which does only on a Mac, and a widget's, which never does: running it is asking to type. Only the chat it made takes the focus (2026-11-19, #2863).
+- A run while the same launch is already being carried out (a widget's New Chat for the same workspace mid-create) adds nothing to it, and that launch keeps its own origin and focus (2026-11-19, #PRNUM2).
+- Its failure says so in Conduit's words, never the widget's: "End the call to start a new chat." during a call, which refuses it as it does a widget's New Chat, otherwise "Couldn't start a new chat…" as the app's New Chat says (2026-11-19, #PRNUM2).
 - The control has no profile to pick: it starts in the profile on screen, as the widget extension can't read Conduit's profile list (2026-11-19, #2863).
 
 **Open gaps**
 - Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+**Checked:** 2026-11-19, #PRNUM2 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
 
 ## Shortcuts Hermes can run
 
@@ -7902,7 +7909,8 @@ signing in to the last dashboard used.
 and its caption · a notification tap or button (a call from Hermes answered, a
 phone change to review and Pulse's retry included) · a
 link from another app · Pulse's Quiet for Today (the notification action and its retry) · a widget · a shared draft · Siri · Send to Hermes
-shortcuts · Log to Hermes (not needed: it queues offline and drains on connect) · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
+shortcuts · the New Chat shortcut and control (done: a widget's launch on the
+dashboard in use, the last one used, whose own switch ends the wait, #2863) · Log to Hermes (not needed: it queues offline and drains on connect) · CarPlay · the Apple Watch · a call from Hermes ringing · launches in
 the background (Health, places, phone sync, pushes) · the on-screen retry of a
 sign-in that failed off screen · the combined group (one row on the list) ·
 README.md
@@ -7925,7 +7933,7 @@ README.md
 **Open gaps**
 - None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
 
-**Checked:** 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
+**Checked:** 2026-11-19, #PRNUM2 (the New Chat shortcut and control in the siblings: they sign in through a widget's New Chat launch); 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
 
 ## Combined dashboards
 

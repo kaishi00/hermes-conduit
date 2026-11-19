@@ -162,8 +162,11 @@ final class WidgetLaunchCoordinator {
     /// The link still waiting to be carried out, if any.
     var pendingLink: WidgetLaunchLink? { request?.link }
 
-    func receive(_ link: WidgetLaunchLink) {
-        if let request, request.link == link, request.inFlight { return }
+    /// False when the same link is already being carried out: that launch
+    /// goes on, and this one adds nothing to it.
+    @discardableResult
+    func receive(_ link: WidgetLaunchLink) -> Bool {
+        if let request, request.link == link, request.inFlight { return false }
         supersede()
         generation &+= 1
         let next = Request(link: link, generation: generation, deadline: now() + Self.launchTimeout)
@@ -181,6 +184,7 @@ final class WidgetLaunchCoordinator {
         }
         activeLeaseExpiryTask = next.expiryTask
         advance(next)
+        return true
     }
 
     /// A newer user destination, sign-out, or true background invalidates
