@@ -1636,6 +1636,8 @@ private struct CustomEndpointForm: View {
                         ModelChooserPage(
                             catalog: ModelChooserCatalog(providers: [endpoint], loaded: true, answered: true),
                             retry: { check() },
+                            // The endpoint's own Find models, not Hermes' lists.
+                            offersRefresh: false,
                             pick: draft.model.isEmpty ? nil : ModelChooserPick(provider: endpoint.name, model: draft.model),
                             isPicked: { _, item in item.id == draft.model },
                             onDefault: {},

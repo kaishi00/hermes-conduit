@@ -5403,23 +5403,24 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 (not needed: it picks from the catalog the section reads each time it loads)
 · Text (not needed: no README, docs or Settings caption describes the lists)
 
-**Desktop app:** has it (desktop#91): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and the model panel and a bot's Model section have Refresh models (`desktop/src/renderer/src/state/modelCatalog.ts`).
+**Desktop app:** partly (desktop#91): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and the model panel and a bot's Model section have Refresh models (`desktop/src/renderer/src/state/modelCatalog.ts`); gap: the other settings' model drop-downs have no Refresh models.
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState+HelperModels.swift` (loadModelProviders' refresh)
-- Bots: `Conduit/Views/BotModelPicker.swift` (load, refreshModels), `Conduit/Views/ModelChooserPage.swift` (the toolbar's Refresh models)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load, refreshModels), `Conduit/Views/ModelChooserPage.swift` (the toolbar's Refresh models; toolbarRefresh and refreshModels, the page's own for every other setting, offersRefresh)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings and FallbackModelsSettings' tasks and settleCatalog), `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders' task and readAgain, ProviderDetailPage's task), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection's loadProviders, VoiceReplyModelSettingsSection's read and reloadProviders), `Conduit/Views/PulseSettingsViews.swift` (the model picker's task and loadModels)
 - Tests: `ConduitTests/HermesClientTests.swift` (testRefreshModelsAsksHermesForLiveListsAndAPlainReadDoesNot, testRefreshModelsOnAHermesWithoutTheFlagReadsAgainWithoutIt)
 
 **Rulings**
 - Every model picker reads Hermes' models once more four seconds after it opens, while it's still open, so the lists Hermes fetched meanwhile show without a reopen. A read that fails then is like any other (see Model lists that fail to load). The Model page's editors take only the models from it, so a save that lands meanwhile keeps its picks, and one that fails leaves the models they show as they are, without a failure row, as Hermes listed them on this visit (after a first read that failed, they read the whole page again); the voice reply section skips it after a setting read that failed (the page's next check asks again), and Models & providers and a provider's page hold it while a default is being picked, reading once the pick ends (a failed save included). A provider's page opened before the providers list's read again landed (leaving the list cancels it) reads again four seconds after it opens, through the list's read. In every picker only the last read asked lands, so an older read again never undoes a newer Try Again. On the Model page's editors an older whole-page read keeps the models of a newer read again that has landed, and a save Hermes took while a read was asked keeps its picks.
+- Every other setting's Model page has Refresh models too (issue 2841): Hermes fetches every provider's live list, then the setting reads its models again with its own read, as Try Again does. A refresh that fails says so under the models even when that read answers from Hermes' cache, and its Try Again asks for the live lists again; one that lands after the dashboard or profile changed leaves the setting's read alone. It's left out of the Kanban override (the plugin's route waits for the live lists), Settings > Pulse's page and Edit Bot > Work's Watch Model when they're another profile's (the refresh asks the open profile's Hermes), Subagent routing's route sheet (its models are the section's, handed in when the sheet opened) and a custom endpoint's Model page (its models are the endpoint's own Find models). A provider's page in Models & providers keeps only the read again: it lists one provider's models to choose a default from, not a model setting's page.
 - The model sheet and a bot's Model page have Refresh models in their toolbar: Hermes drops its cached lists and fetches every provider's live list before it answers, which can take a while (a 60 s wait), with a spinner in its place meanwhile. The search, the open provider, the checked row and the model sheet's keyboard highlight (on the same match, wherever it moves) stay, after the read again too; a read that fails keeps the models shown, saying so with Try Again. A Hermes that doesn't know the flag answers from its cache. Only the last read asked lands, and no other read (the read again, Try Again, the read after adding a provider) is asked while a refresh runs; the model sheet and a bot's Model page ask one plain read when the refresh lands if one was skipped, unless the refresh failed (its failure row stays, and its Try Again asks for the live lists again). Hermes Desktop's model menu has the same Refresh Models. A row picked in the sheet that Hermes ran under another id keeps its checkmark through a read while the session still runs it.
 - A provider's models are Hermes' rows as given; the same model from two providers is two rows (see Searching for a model).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #1992 (each setting keeps its read again; a bot's Model page keeps Refresh models, now in the shared page's toolbar); 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
+**Checked:** 2026-11-19, #2847 (Refresh models on every setting's Model page but the Kanban override's, another profile's Pulse and Watch Model, the route sheet's and a custom endpoint's, issue 2841); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #1992 (each setting keeps its read again; a bot's Model page keeps Refresh models, now in the shared page's toolbar); 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
 
 ## The Model sheet's settings
 
@@ -5472,13 +5473,16 @@ setting's Model page: a bot's, the Kanban override's, the Model page's
 Default, Delegate and Fallback editors', the route sheet's and the voice
 job, voice reply, Helper and Pulse models' (done: one page, #1992) · Edit's
 (visibility) search (not needed: its matches sit under their provider's
-name) · Text (not needed: no README, docs or Settings caption describes the
-pickers)
+name) · a model id typed into the search (done, issue 2841: the model sheet
+and every Model page) · Local Live's and ElevenLabs' model fields (not
+needed: typed names already) · Text (not needed: no README, docs or Settings
+caption describes the pickers)
 
-**Desktop app:** has it: the model picker's search (`desktop/src/renderer/src/components/ModelPicker.tsx`).
+**Desktop app:** has it: the model picker's search and its typed model id (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/state/models.ts` typedModelId and typedModelProviders, desktop#145); gap: the settings' model drop-downs (a bot's, fallbacks, scheduled jobs, memory) take only listed models.
 
 **Code**
 - Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
+- A typed model id: `Conduit/Views/ModelSearch.swift` (modelSearchTypedID, modelSearchTypedIDProviders, ModelTypedIDMenu)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
 - Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (searchResults, matchRow)
 - Tests: `ConduitTests/ModelPickerTests.swift`
@@ -5488,11 +5492,12 @@ pickers)
 - Every word typed must appear in the model's id or label or the provider's names, so "sonnet openrouter" finds one provider's Sonnet.
 - The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them. A setting's Model page finds them too, marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
 - On a Mac or with a hardware keyboard the sheet opens with the search focused, ↑ and ↓ move a highlight, Return picks the highlighted match as a tap would (the sheet stays open, per "The Model sheet's settings") and Esc closes the sheet. On touch the keyboard stays down until the field is tapped, and Return only puts it away.
+- A model a provider serves but Hermes doesn't list (a custom endpoint's, a preview the catalog lags behind, a snapshot id) is typed into the search: once Hermes has answered, a one-word search ends with "Use “…” as a model ID", whose menu names every provider that doesn't list that exact id, the one holding the pick first (the model sheet leaves out providers hidden with Edit and never offers an id hidden there; a setting's Model page marks hidden providers Hidden, as its search does), and choosing one picks it as a listed row would be (issue 2841). Hermes checks it like any other pick and its refusal shows as one does; a setting holding it shows it on top as "Not listed by Hermes". The highlight and Return stay on the listed matches. On the desktop it's the panel's last group, a row per provider.
 
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-11-11, #2185 (the page's search sits under its title, the Kanban model sheet's too; see Search on a page under the tabs); 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-19, #2847 (a typed model id, issue 2841: "Use “…” as a model ID" under the matches in the model sheet and every Model page, desktop#145 in the desktop panel); 2026-11-11, #2185 (the page's search sits under its title, the Kanban model sheet's too; see Search on a page under the tabs); 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Model lists grouped by provider
 
@@ -5633,7 +5638,7 @@ menus)
 
 **Rulings**
 - Every model setting outside the composer opens this page; none is a drop-down menu (Eric 2026-11-08, #1992). Each keeps its own reads, saves and Save button; the page only shows what the setting holds and hands back a pick.
-- The setting's own default ("Same as chats", "Profile default", "Inherit chat model", "Inherit from profile") is the first choice; a pick the catalog doesn't list stays on top as saved, never as another model.
+- The setting's own default ("Same as chats", "Profile default", "Inherit chat model", "Inherit from profile") is the first choice; a pick the catalog doesn't list stays on top as saved, never as another model. One can be made by typing its id into the search (see Searching for a model, issue 2841).
 - Models hidden with Edit leave every page's lists, as in the Model sheet. A setting on a hidden model still shows it on top, marked Hidden, and search finds hidden models, marked Hidden, so a setting can still be put on one (Eric 2026-11-08). The page has its own Edit.
 - A setting's reasoning sits in the top card as the rising bars, with the setting's own levels (a helper slot, a voice job: no Ultra; a delegate: no Off) and its inherit choice under them. The page closes on a pick unless it has reasoning to set.
 - Add fallback opens the page and adds the model picked.
@@ -5641,7 +5646,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-10, #2161 (each provider shows its logo and quota left, its models under its name, and Edit's list finds a provider by the name it shows; see Provider logos and quota on provider rows); 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-19, #2847 (a model the catalog doesn't list is typed into the page's search, and Refresh models on every page but the Kanban override's, another profile's Pulse and Watch Model, the route sheet's and a custom endpoint's; issue 2841); 2026-11-10, #2161 (each provider shows its logo and quota left, its models under its name, and Edit's list finds a provider by the name it shows; see Provider logos and quota on provider rows); 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 

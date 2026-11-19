@@ -493,6 +493,8 @@ struct KanbanModelOverrideSheet: View {
                     loadFailed = false
                     Task { await loadOptions() }
                 },
+                // The kanban plugin's route waits for the live lists.
+                offersRefresh: false,
                 defaultChoice: ModelChooserDefault(
                     title: inheritCopy,
                     detail: AppLocalization.string("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.", table: .tasks)

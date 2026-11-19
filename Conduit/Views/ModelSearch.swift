@@ -94,3 +94,71 @@ struct ModelSearchResultText: View {
         }
     }
 }
+
+/// The search text as a model id the catalog doesn't list (issue 2841): a
+/// model a provider serves but doesn't list, a preview its catalog lags
+/// behind, or a snapshot id for the alias it shows. One word only, as a
+/// model id never has a space; nil otherwise.
+func modelSearchTypedID(_ query: String) -> String? {
+    let id = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !id.isEmpty, !id.contains(where: \.isWhitespace) else { return nil }
+    return id
+}
+
+/// The providers a typed model id can be put on: every one that doesn't
+/// already list that exact id (its listed row is the pick there), the
+/// provider holding the current pick first.
+func modelSearchTypedIDProviders(_ providers: [ProviderInfo], id: String, preferred: String?) -> [ProviderInfo] {
+    let offered = providers.filter { provider in
+        !provider.models.contains { $0.id.caseInsensitiveCompare(id) == .orderedSame }
+    }
+    guard let preferred, !preferred.isEmpty,
+          let first = offered.first(where: { $0.name == preferred }) ?? offered.first(where: { $0.matches(preferred) })
+    else { return offered }
+    return [first] + offered.filter { $0.name != first.name }
+}
+
+/// "Use “…” as a model ID", under a picker's search matches: its menu names
+/// the providers, and choosing one picks the typed id there as a listed
+/// row would be picked. Hermes checks it like any other pick.
+struct ModelTypedIDMenu: View {
+    let id: String
+    let providers: [ProviderInfo]
+    /// A provider hidden with Edit, marked Hidden as its search rows are.
+    var isHidden: (ProviderInfo) -> Bool = { _ in false }
+    let onPick: (ProviderInfo, ModelInfo) -> Void
+
+    var body: some View {
+        Menu {
+            Section(AppLocalization.string("Provider")) {
+                ForEach(providers, id: \.name) { provider in
+                    Button {
+                        Haptics.selection()
+                        onPick(provider, ModelInfo(id: id, label: nil, reasoningCapable: false))
+                    } label: {
+                        Text(verbatim: isHidden(provider) ? provider.title + " · " + AppLocalization.string("Hidden") : provider.title)
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "character.cursor.ibeam")
+                    .foregroundStyle(Color.conduitAccent)
+                    .accessibilityHidden(true)
+                Text(verbatim: AppLocalization.string("Use “\(id)” as a model ID", table: .settings))
+                    .scaledFont(.subheadline.weight(.medium))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.up.chevron.down")
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("modelSearch.typedID")
+    }
+}

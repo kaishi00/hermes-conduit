@@ -74,7 +74,12 @@ struct ModelChooserPage: View {
     var title = AppLocalization.string("Model")
     let catalog: ModelChooserCatalog
     let retry: () -> Void
+    /// The setting's own Refresh models; nil where the page's runs.
     var refresh: ModelChooserRefresh? = nil
+    /// Whether the page has Refresh models of its own where the setting
+    /// gives none: off where its models aren't the open profile's
+    /// `model.options` (the Kanban plugin's roster, another profile's).
+    var offersRefresh = true
     var defaultChoice: ModelChooserDefault? = nil
     let pick: ModelChooserPick?
     /// Whether a listed row is the pick. By default a row of the pick's
@@ -98,6 +103,11 @@ struct ModelChooserPage: View {
     /// list reads as its providers, except the one holding the pick.
     @State private var expandedProviders: Set<String> = []
     @State private var openedPicked = false
+    /// The page's own Refresh models is asking Hermes for the live lists.
+    @State private var refreshingModels = false
+    /// The page's own Refresh models failed: said under the models, with
+    /// Try Again asking for the live lists again, until one lands.
+    @State private var refreshFailed = false
 
     private var searching: Bool { !ModelSearchQuery(query).isEmpty }
     private var visibleProviders: [ProviderInfo] { appState.modelVisibility.visible(catalog.providers) }
@@ -127,10 +137,10 @@ struct ModelChooserPage: View {
                     quickPicks
                     providersSection
                 }
-                if catalog.failed {
+                if catalog.failed || refreshFailed {
                     failedRows
                 }
-            } else if catalog.failed {
+            } else if catalog.failed || refreshFailed {
                 failedRows
             } else {
                 ProgressView()
@@ -145,7 +155,7 @@ struct ModelChooserPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let refresh {
+                if let refresh = toolbarRefresh {
                     RefreshModelsButton(refreshing: refresh.refreshing, action: refresh.run)
                         .accessibilityIdentifier("modelChooser.refreshModels")
                 }
@@ -162,6 +172,37 @@ struct ModelChooserPage: View {
         }
         .onAppear(perform: openPickedProvider)
         .onChange(of: catalog.providers.map(\.name)) { _, _ in openPickedProvider() }
+    }
+
+    // MARK: Refresh models
+
+    private var toolbarRefresh: ModelChooserRefresh? {
+        if let refresh { return refresh }
+        guard offersRefresh else { return nil }
+        return ModelChooserRefresh(refreshing: refreshingModels) { Task { await refreshModels() } }
+    }
+
+    /// Hermes drops its cached model lists and fetches every provider's
+    /// live list (issue 1807), then the setting reads its models again with
+    /// its own read, as Try Again does. A refresh that fails stays said
+    /// even when that read answers from Hermes' cache. One that lands after
+    /// the dashboard or profile changed leaves the setting's read alone,
+    /// as it belongs to the page that asked.
+    @MainActor
+    private func refreshModels() async {
+        guard !refreshingModels else { return }
+        let dashboard = appState.activeDashboardID
+        let profile = appState.activeProfile
+        refreshingModels = true
+        let loaded = await appState.loadModelProviders(refresh: true)
+        refreshingModels = false
+        guard let failed = modelChooserRefreshLanded(
+            loaded: loaded != nil,
+            asked: (dashboard, profile),
+            now: (appState.activeDashboardID, appState.activeProfile)
+        ) else { return }
+        refreshFailed = failed
+        retry()
     }
 
     // MARK: The pick
@@ -343,6 +384,17 @@ struct ModelChooserPage: View {
             let hidden = appState.modelVisibility.isHidden(model: match.model.id, provider: match.provider)
             matchRow(match, note: hidden ? AppLocalization.string("Hidden") : nil)
         }
+        // A model the catalog doesn't list (issue 2841), on any provider.
+        if catalog.answered, let id = modelSearchTypedID(query) {
+            let providers = modelSearchTypedIDProviders(catalog.providers, id: id, preferred: pickedProvider?.name ?? pick?.provider)
+            if !providers.isEmpty {
+                ModelTypedIDMenu(id: id, providers: providers, isHidden: { appState.modelVisibility.isHidden(provider: $0) }) { provider, model in
+                    onPick(provider, model)
+                    if reasoning == nil { dismiss() }
+                }
+                .disabled(disabled)
+            }
+        }
     }
 
     /// A model under any provider, naming it: a search match or a quick pick.
@@ -424,8 +476,14 @@ struct ModelChooserPage: View {
     private var failedRows: some View {
         Text(AppLocalization.string("Could not load models.", table: .settings))
             .foregroundStyle(.secondary)
-        Button(AppLocalization.string("Try Again"), action: retry)
-            .buttonStyle(.settings)
+        Button(AppLocalization.string("Try Again")) {
+            if refreshFailed {
+                Task { await refreshModels() }
+            } else {
+                retry()
+            }
+        }
+        .buttonStyle(.settings)
     }
 
     /// Pin or Unpin, shared with the chat's Model sheet's Quick picks.
@@ -478,6 +536,15 @@ struct ModelChooserPage: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+}
+
+/// What a page's own Refresh models does once Hermes answers: nil when
+/// the dashboard or profile changed meanwhile (the setting's read is left
+/// alone), else whether the refresh failed, which stays said until one
+/// lands; the setting reads its models again either way.
+func modelChooserRefreshLanded(loaded: Bool, asked: (UUID?, String), now: (UUID?, String)) -> Bool? {
+    guard asked.0 == now.0, asked.1 == now.1 else { return nil }
+    return !loaded
 }
 
 /// A model setting's row in Settings: its name, then the model and the

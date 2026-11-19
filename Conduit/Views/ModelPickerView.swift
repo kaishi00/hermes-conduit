@@ -606,6 +606,25 @@ struct ModelPickerView: View {
                         .padding(.leading, 16)
                 }
             }
+            // A model the catalog doesn't list (issue 2841), on any provider.
+            if catalog.answered, let id = modelSearchTypedID(searchQuery) {
+                // Checked against every listed row, so a model hidden with
+                // Edit stays hidden; providers hidden with Edit stay out.
+                let providers = modelSearchTypedIDProviders(catalog.providers, id: id, preferred: selectedProvider)
+                    .filter { !visibility.isHidden(provider: $0) }
+                if !providers.isEmpty {
+                    if !matches.isEmpty {
+                        Divider()
+                            .overlay(rowStroke)
+                            .padding(.leading, 16)
+                    }
+                    ModelTypedIDMenu(id: id, providers: providers) { provider, model in
+                        pick(model, provider: provider)
+                    }
+                    .padding(.horizontal, 12)
+                    .disabled(modelRowsLocked)
+                }
+            }
             if catalog.keptRowsFailed {
                 catalogFailedRow
             }

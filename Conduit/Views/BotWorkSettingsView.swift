@@ -339,7 +339,9 @@ struct BotWorkSettingsView: View {
             keptProviders: { appState.keptModelProviders(inProfile: profile) },
             load: { try await appState.loadHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
             loadProviders: { await appState.loadModelProviders(inProfile: profile) },
-            save: { await appState.setHelperModel($0, confirmed: $1, profile: profile) }
+            save: { await appState.setHelperModel($0, confirmed: $1, profile: profile) },
+            // Refresh models asks the open profile's Hermes.
+            offersRefresh: appState.profilesMatch(profile, appState.activeProfile)
         )
     }
 
