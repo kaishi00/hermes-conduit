@@ -6,7 +6,7 @@ real agent loop, tools and session store produce every chat; only the model's
 words come from the script. A reply is chosen by the newest user message:
 the script entry whose "match" text it contains (and, with "system_has", whose
 text the system prompt holds, so each bot in a room answers in its own words),
-then the step numbered by how many tool results follow that message. Entries
+and every one of its "also" texts, then the step numbered by how many tool results follow that message. Entries
 come from "chats", "bots" and "replies" (turns sent live, never seeded). Anything unmatched (titles, memory
 reviews, compression) gets a short neutral answer so Hermes never stalls.
 
@@ -54,7 +54,9 @@ def pick_step(script, messages):
             # words (a room): its text must be in that bot's system prompt.
             if turn.get("system_has") and turn["system_has"].lower() not in system:
                 continue
-            if turn["match"].lower() in prompt:
+            # "also": more words the newest user message must hold, for a
+            # turn whose match words are shared (each workstream's task).
+            if turn["match"].lower() in prompt and all(w.lower() in prompt for w in turn.get("also", [])):
                 steps = turn["steps"]
                 # Title requests quote the first exchange; answer with the title.
                 if "title" in system and entry.get("title") and len(messages) <= 3:

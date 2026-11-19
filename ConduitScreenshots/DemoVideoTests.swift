@@ -51,13 +51,19 @@ final class DemoVideoTests: XCTestCase {
     }
 
     func testRecordDemoScenes() throws {
-        // Setup: Home alone, one bot.
-        signIn(to: homeURL)
-        dismissSystemAlerts()
-        dismissFinishSetupCard()
-        openTab("Bots")
-        XCTAssertTrue(named("Conduit-chan").waitForExistence(timeout: 40),
-                      "Home's lone bot never showed on Bots Home")
+        // Getting started: the sign-in screen, its Connection Setup guide
+        // (is the dashboard running, then the ways to reach it, and what
+        // to ask Hermes for Tailscale), then signing in to Home, one bot.
+        scene("onboarding") {
+            showConnectionSetup()
+            signIn(to: homeURL)
+            dismissSystemAlerts()
+            dismissFinishSetupCard()
+            openTab("Bots")
+            XCTAssertTrue(named("Conduit-chan").waitForExistence(timeout: 40),
+                          "Home's lone bot never showed on Bots Home")
+            settle(3)
+        }
         // Bots Home shows its own Finish setting up card, kept out of the shots.
         dismissFinishSetupCard()
         settle(3)
@@ -120,6 +126,38 @@ final class DemoVideoTests: XCTestCase {
                 }
                 settle(4)
             }
+        }
+
+        // Bot Mode: Mira's Bot Chat hands a two-part request to two
+        // workstreams, the Work panel shows them running, and each one's
+        // report comes back into the chat.
+        scene("bot-work") {
+            tapBot("Mira")
+            settle(2)
+            send(L("Tidy up the 2.4 release notes, and see what people on Reddit are saying about 2.4."))
+            XCTAssertTrue(waitForText(L("Started two workstreams"), timeout: 60), "Mira never started her workstreams")
+            settle(2)
+            let titleLine = app.buttons["botWork.titleLine"].firstMatch
+            if titleLine.waitForExistence(timeout: 30) {
+                titleLine.tap()
+                let panel = app.descendants(matching: .any)["botWork.panel"].firstMatch
+                XCTAssertTrue(app.descendants(matching: .any)["botWork.row.W1"].firstMatch.waitForExistence(timeout: 30),
+                              "The Work panel never listed W1")
+                settle(10)
+                // The panel is a sheet on a phone: pulled down from its top.
+                if panel.exists {
+                    panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
+                        .press(forDuration: 0.05, thenDragTo: app.windows.firstMatch
+                            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.98)))
+                    settle(1)
+                }
+            } else {
+                XCTFail("Mira's Bot Chat showed no work under its title")
+            }
+            XCTAssertTrue(waitForText(L("add a setup section"), timeout: 120), "W2's report never came back to Mira's Bot Chat")
+            settle(5)
+            goBack()
+            settle(2)
         }
 
         // Setup: add Studio and combine the two, then come back to Home.
@@ -337,6 +375,10 @@ final class DemoVideoTests: XCTestCase {
         "Love it! @nori what's the drive time from the city, and where do we stop for lunch?":
             "太好了！@nori 从市区开过去要多久，中午在哪儿吃？",
         "Carmel": "德清",
+        "Tidy up the 2.4 release notes, and see what people on Reddit are saying about 2.4.":
+            "把 2.4 的发布说明整理好，再看看 V2EX 上大家对 2.4 的反馈。",
+        "Started two workstreams": "开了两个工作",
+        "add a setup section": "加一节连接设置",
         "Clear out the old mockups": "清理一下旧的设计稿",
         "current designs are untouched": "现在的设计都没动",
     ]
@@ -636,6 +678,39 @@ final class DemoVideoTests: XCTestCase {
     }
 
     // MARK: - Dashboards
+
+    /// The sign-in screen's "Need help connecting?" guide, as a newcomer
+    /// walks it: the dashboard is running, the three ways to reach it, the
+    /// Tailscale page with the prompt for Hermes, then Done, back at sign-in.
+    private func showConnectionSetup() {
+        let help = app.buttons["login.connection-setup"].firstMatch
+        guard help.waitForExistence(timeout: 20) else {
+            XCTFail("No Need help connecting? on the sign-in screen")
+            return
+        }
+        settle(3)
+        help.tap()
+        let running = app.buttons["setup.answer-yes"].firstMatch
+        guard running.waitForExistence(timeout: 10) else {
+            XCTFail("Connection Setup never asked whether the dashboard runs")
+            return
+        }
+        settle(3)
+        running.tap()
+        let tailscale = app.buttons["setup.method-tailscale"].firstMatch
+        if tailscale.waitForExistence(timeout: 10) {
+            settle(5)
+            tailscale.tap()
+            settle(4)
+            app.swipeUp(velocity: .slow)
+            settle(4)
+        } else {
+            XCTFail("Connection Setup never showed the ways to reach Hermes")
+        }
+        let done = app.buttons["connection-setup.done"].firstMatch
+        if done.waitForExistence(timeout: 5) { done.tap() }
+        settle(2)
+    }
 
     /// Signs in on the first-launch login (`login.` fields) or the Add
     /// Dashboard sheet (`add-dashboard.`; LoginContext.identifierPrefix).

@@ -113,10 +113,12 @@ to packet times that lag by up to 44 s, so the cut reads it with
 start and end (`scene-<name>-start.png`, `-end.png`) are there to check it
 against.
 
-The scenes: `chat`, `tasks`, `bots-home-layouts`, `mixed-bots-home`,
-`chats-strip`, `two-replying`, `reorder`, `room-across`, `room-approval`,
-`multiplayer`, `needs-you`, `voice` (the call screen, titled Qwen Live by
-`-conduitScreenshotCallProvider qwen`).
+The scenes: `onboarding` (the sign-in screen's Connection Setup guide, then
+signing in to Home), `chat`, `tasks`, `bots-home-layouts`, `bot-work` (Mira's
+Bot Chat starts two workstreams, the Work panel shows them, and their reports
+come back), `mixed-bots-home`, `chats-strip`, `two-replying`, `reorder`,
+`room-across`, `room-approval`, `multiplayer`, `needs-you`, `voice` (the call
+screen, titled Qwen Live by `-conduitScreenshotCallProvider qwen`).
 
 The multiplayer scene adds a third dashboard, **Sam**
 (`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
@@ -146,4 +148,6 @@ Conduit gives their Hermes; for Sam's Nori the director gives it before she
 joins, from `avatars/<avatar>.look.jpg` (96 px, at most 8 KB) and the bot's
 `"look_color"`. A turn sent live rather than seeded goes under `"replies"`, and
 `"system_has"` picks which bot answers when several hear the same words in a
-room. A script can borrow chats from another with `"include_chats"`.
+room, and `"also"` lists more words the message must hold, for turns whose
+match words are shared: each workstream's task starts with the plugin's same
+brief, so a workstream's turn matches that and its own instructions. A script can borrow chats from another with `"include_chats"`.

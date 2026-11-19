@@ -131,6 +131,98 @@
               "content": "莫干山有个营地 22 号还剩两个营位，都在竹林边的平台上，一晚 ¥280。周五中午前基本就订满了，建议现在就订。"
             }
           ]
+        },
+        {
+          "match": "you're working on a task for",
+          "steps": [
+            {
+              "reasoning": "先理一下：2.4 的更新日志一共 14 条。群聊占 6 条（跨仪表盘的房间、群里的审批、和别人的机器人一起聊），Bot 模式 5 条，语音 3 条。每条写一行，按大家用到的顺序排。",
+              "delay": 0.35,
+              "tool_calls": [
+                {
+                  "name": "work_progress",
+                  "arguments": {
+                    "found": "共 14 条改动：群聊 6、Bot 模式 5、语音 3"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "发布说明写好了：分三组共 14 条，群聊排在最前。"
+            }
+          ],
+          "also": [
+            "按群聊、bot 模式、语音分组，每条改动一行"
+          ]
+        },
+        {
+          "match": "you're working on a task for",
+          "steps": [
+            {
+              "reasoning": "在看帖子：回复里说得最多的是多人群聊，其次是实时语音，然后是连接设置。好几个人希望有一份从外网连到 Hermes 的详细教程。正在按提到的次数排个序。",
+              "delay": 0.7,
+              "tool_calls": [
+                {
+                  "name": "work_progress",
+                  "arguments": {
+                    "found": "前三：多人群聊、实时语音、更清楚的连接教程"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "大家最常提的三点：多人群聊、实时语音，还有希望连接教程再清楚一些。"
+            }
+          ],
+          "also": [
+            "归纳大家最常提的三点"
+          ]
+        },
+        {
+          "match": "把 2.4 的发布说明整理好",
+          "system_has": "你是 Mira",
+          "steps": [
+            {
+              "content": "好，两件事一起做。",
+              "tool_calls": [
+                {
+                  "name": "work_start",
+                  "arguments": {
+                    "title": "2.4 发布说明",
+                    "instructions": "根据更新日志写 2.4 的发布说明，按群聊、Bot 模式、语音分组，每条改动一行。"
+                  }
+                },
+                {
+                  "name": "work_start",
+                  "arguments": {
+                    "title": "V2EX 反馈",
+                    "instructions": "读一下 V2EX 上关于 Conduit 2.4 的帖子和回复，归纳大家最常提的三点。"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "开了两个工作：W1 写发布说明，W2 看 V2EX 上的反馈。好了我告诉你，你先忙别的。"
+            }
+          ]
+        },
+        {
+          "match": "希望连接教程再清楚一些",
+          "system_has": "你是 Mira",
+          "steps": [
+            {
+              "content": "W2 也好了。大家最常提的是：多人群聊、实时语音，还有更清楚的连接教程。要不要我在发布说明里加一节连接设置？"
+            }
+          ]
+        },
+        {
+          "match": "群聊排在最前",
+          "system_has": "你是 Mira",
+          "steps": [
+            {
+              "content": "W1 好了：发布说明写完了，分三组共 14 条。"
+            }
+          ]
         }
       ]
     }
