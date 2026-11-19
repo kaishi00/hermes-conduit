@@ -6668,7 +6668,7 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · a project's page, which gathers the same profiles' chats in its
 folder (Whose project page) · VoiceOver · README.md
 
-**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); no reordering pins within a section, and no Show in All sheet.
+**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover from the strip's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); no reordering pins within a section.
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
@@ -7518,7 +7518,7 @@ Ask Hermes fingerprint prompt) · the
 website's setup page (When it doesn't connect, in scripts/build_site.py in
 hermes-conduit-website)
 
-**Desktop app:** partly: its own sign-in messages for an address that isn't a dashboard, a dashboard asking for a password, no session cookie, no connection ticket and redirect loops (`desktop/src/main/auth.ts`); a refused certificate or an unreachable address shows the network error's own words, with no named check, no Server refused access for a proxy's 401 or 403, and no troubleshooting.
+**Desktop app:** partly: its own sign-in messages for an address that isn't a dashboard, a dashboard asking for a password, no session cookie, no connection ticket and redirect loops (`desktop/src/main/auth.ts`); a failure is classified from the error's codes (never its text) into the phone's messages: a certificate's date, a hostname mismatch, an untrusted or failed certificate, a timeout, a host not found, an unreachable server; a 401 or 403 on the dashboard's status says access was refused, and the system's root certificates are trusted alongside the bundled ones (`desktop/src/main/connectionFailure.ts`, `desktop/src/main/systemRoots.ts`, desktop#118); no troubleshooting page and no Install this server's certificate.
 
 **Code**
 - Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
