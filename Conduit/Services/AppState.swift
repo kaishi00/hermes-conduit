@@ -2714,6 +2714,10 @@ final class AppState: ObservableObject {
     /// lands after a newer one would put back a list from before it (#786).
     var sessionListReadTicket: UInt64 = 0
     var sessionListListedTicket: UInt64 = 0
+    /// Whether the listing that holds `sessionListListedTicket` took its
+    /// cron rows from the catalog cache: a gateway listing fills none, so a
+    /// later relist from the cache doesn't replace its rows (issue 2763).
+    var sessionListListedCronFromCache = false
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
     var leaveCatalogRefreshTask: Task<Void, Never>?

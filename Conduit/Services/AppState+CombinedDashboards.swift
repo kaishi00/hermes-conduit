@@ -137,7 +137,7 @@ extension AppState {
     /// plugin serves, taken then too.
     func keepOutgoingDashboardRuntimeIfCombined(
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
-        profiles: [String] = [], chats: [SessionSummary] = [],
+        profiles: [String] = [], chats: [SessionSummary] = [], cronIDs: Set<String> = [],
         work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
         glows: [String: ProfileGlowRGB]? = nil
     ) {
@@ -182,7 +182,7 @@ extension AppState {
         // An entry even with no chats listed, so its profiles outlast the
         // kept connection dropping; one not listed yet keeps the chats it
         // had (#2644 review).
-        if !chats.isEmpty || !profiles.isEmpty {
+        if !chats.isEmpty || !profiles.isEmpty || !cronIDs.isEmpty {
             let rows = chats.isEmpty
                 ? (combinedDashboardChats[outgoingID]?.sessions ?? [])
                 : chats.map { row in
@@ -194,10 +194,18 @@ extension AppState {
             // a read started before now can't overwrite them.
             combinedDashboardChats[outgoingID] = CombinedDashboardChats(
                 bridge: ObjectIdentifier(bridge),
-                profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
+                // A seed with cron ids alone keeps the profiles it had (#2800 review).
+                profiles: !profiles.isEmpty ? profiles
+                    : chats.isEmpty ? (combinedDashboardChats[outgoingID]?.profiles ?? [])
+                    : Array(Set(chats.compactMap(\.profile))).sorted(),
                 sessions: rows,
                 at: .distantPast,
-                seededAt: Date()
+                seededAt: Date(),
+                // Its cron runs' ids, the evidence it gave as the dashboard
+                // on screen (issue 2761). Only its profile on screen's, so
+                // the next read still reads every profile's (#2800 review).
+                cronIDs: cronIDs.isEmpty ? (combinedDashboardChats[outgoingID]?.cronIDs ?? []) : cronIDs,
+                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : nil
             )
         }
         self.client = nil

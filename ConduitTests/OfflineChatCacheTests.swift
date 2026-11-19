@@ -2075,6 +2075,17 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
         appState.isConnecting = true
         XCTAssertTrue(appState.showsChatListUpdating())
+        // The Projects page says it only over what it draws: its projects,
+        // or pinned chats, and not while its projects load (issue 2770).
+        appState.projects = []
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true), "nothing drawn on Projects")
+        appState.projects = [ProjectSummary(id: "project", title: "Project", isHome: false, sessionCount: 1,
+                                            previewSessions: [session("stored-a")])]
+        XCTAssertTrue(appState.showsChatListUpdating(overProjects: true))
+        appState.projectsLoading = true
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true), "its own loading says so")
+        appState.projectsLoading = false
+        appState.projects = []
 
         appState.isRefreshingSessionCatalog = true
         XCTAssertFalse(appState.showsChatListUpdating())
@@ -4903,7 +4914,15 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(unstored.rowOfChat(openAs: "rt-a")?.storedSessionId, "chat b's stored id isn't this chat's")
         // …nor on a resume onto the same id with that one listing (#2794 review).
         unstored.setActiveSessionState(id: "rt-a")
-        XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "still not chat b's row")
+        XCTAssertNil(try XCTUnwrap(unstored.rowOfChatOnScreen, "the recorded row survives").row.storedSessionId, "still not chat b's row")
+        // …nor with two rival listings under the id, in either order.
+        var rival = session("rt-a")
+        rival.storedSessionId = "c"
+        for rows in [[other, rival, session("c")], [rival, other, session("c")]] {
+            unstored.sessions = rows
+            unstored.setActiveSessionState(id: "rt-a")
+            XCTAssertNil(try XCTUnwrap(unstored.rowOfChatOnScreen, "the recorded row survives").row.storedSessionId, "neither rival's row")
+        }
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an
