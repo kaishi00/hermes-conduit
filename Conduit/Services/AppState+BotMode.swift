@@ -1355,6 +1355,12 @@ extension AppState {
                !BotCapabilities.configureParams(original: baseline, edited: edited).isEmpty {
                 warning += " " + AppLocalization.string("The skills, tools or MCP choices were not saved.")
             }
+            if draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                warning += " " + AppLocalization.string(
+                    "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+                    table: .bots
+                )
+            }
             return .saved(warning: warning)
         }
 
