@@ -4914,14 +4914,14 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(unstored.rowOfChat(openAs: "rt-a")?.storedSessionId, "chat b's stored id isn't this chat's")
         // …nor on a resume onto the same id with that one listing (#2794 review).
         unstored.setActiveSessionState(id: "rt-a")
-        XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "still not chat b's row")
+        XCTAssertNil(try XCTUnwrap(unstored.rowOfChatOnScreen, "the recorded row survives").row.storedSessionId, "still not chat b's row")
         // …nor with two rival listings under the id, in either order.
         var rival = session("rt-a")
         rival.storedSessionId = "c"
         for rows in [[other, rival, session("c")], [rival, other, session("c")]] {
             unstored.sessions = rows
             unstored.setActiveSessionState(id: "rt-a")
-            XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "neither rival's row")
+            XCTAssertNil(try XCTUnwrap(unstored.rowOfChatOnScreen, "the recorded row survives").row.storedSessionId, "neither rival's row")
         }
     }
 

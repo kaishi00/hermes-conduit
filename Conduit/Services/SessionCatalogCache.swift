@@ -184,7 +184,10 @@ struct SessionCatalogCache {
     mutating func updateRows(forKey key: String, _ transform: (SessionSummary) -> SessionSummary) {
         guard let rows = sessionsByKey[key] else { return }
         let updated = rows.map(transform)
-        if updated != rows { sessionsByKey[key] = updated }
+        guard updated != rows else { return }
+        // A read that fetched the old rows mustn't commit them over this.
+        mutationGeneration &+= 1
+        sessionsByKey[key] = updated
     }
 
     mutating func removeSession(withIDs sessionIDs: Set<String>) {

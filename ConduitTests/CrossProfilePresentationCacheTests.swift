@@ -1242,7 +1242,7 @@ extension CrossProfilePresentationCacheTests {
     /// their kept connections for every profile there, badged; a row opens
     /// by switching through the kept connection (all-live stage 4a).
     func testNeedsYouListsAKeptDashboardsWaitsAndOpensThroughIt() async throws {
-        final class Counts { var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = [] }
+        final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
@@ -1539,7 +1539,7 @@ extension CrossProfilePresentationCacheTests {
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
-        final class Counts { var connects = 0; var mints = 0; var reads: [String] = [] }
+        final class Counts { var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = [] }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }

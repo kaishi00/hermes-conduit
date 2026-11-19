@@ -63,7 +63,7 @@ extension AppState {
             // No profile list to be had (a reconnect lost it and the read
             // failed): the profiles it listed last, so none of them drops.
             let profiles = await keptDashboardProfileNames(id, runtime)
-                ?? combinedDashboardChats[id]?.profiles
+                ?? combinedDashboardChats[id].flatMap { $0.profiles.isEmpty ? nil : $0.profiles }
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
             if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
@@ -109,14 +109,16 @@ extension AppState {
             var cronAt = last?.cronAt
             if cronAt.map({ now.timeIntervalSince($0) >= Self.combinedDashboardCronMaxAge }) ?? true {
                 var read: Set<String> = []
-                var cronAnswered = false
+                // Replaced only when every profile answers, so one that
+                // failed keeps the evidence it gave last (#2800 review).
+                var cronAnswered = true
                 for profile in profiles {
                     guard isSceneActive else { return }
                     let path = cronSessionsPath(profile, limit: Self.combinedDashboardCronLimit)
                     guard let batch = (try? await readKeptDashboardJSON(runtime.bridge, path: path))?["sessions"] as? [Any] else {
+                        cronAnswered = false
                         continue
                     }
-                    cronAnswered = true
                     read.formUnion(Self.dashboardOwnedSessions(batch, profile: profile)
                         .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
                 }

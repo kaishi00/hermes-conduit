@@ -194,7 +194,10 @@ extension AppState {
             // a read started before now can't overwrite them.
             combinedDashboardChats[outgoingID] = CombinedDashboardChats(
                 bridge: ObjectIdentifier(bridge),
-                profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
+                // A seed with cron ids alone keeps the profiles it had (#2800 review).
+                profiles: !profiles.isEmpty ? profiles
+                    : chats.isEmpty ? (combinedDashboardChats[outgoingID]?.profiles ?? [])
+                    : Array(Set(chats.compactMap(\.profile))).sorted(),
                 sessions: rows,
                 at: .distantPast,
                 seededAt: Date(),
