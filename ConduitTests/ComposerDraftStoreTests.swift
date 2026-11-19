@@ -151,6 +151,21 @@ final class ComposerDraftStoreTests: XCTestCase {
         XCTAssertEqual(store.draft(for: key), failedSubmission)
     }
 
+    /// Issue 2819: a failed send on an unsaved connection came back with no
+    /// owner, so the reused-id sweep couldn't send it home. With its owner
+    /// it goes back to its own chat when Hermes hands the id on.
+    func testAFailedSubmissionKeepsItsChatsOwner() {
+        let store = ComposerDraftStore(capacity: 12)
+        let runtime = ComposerBar.composerDraftKey(for: "runtime-x", profile: "default", dashboard: nil)
+        let storedA = ComposerBar.composerDraftKey(for: "stored-a", profile: "default", dashboard: nil)
+        store.restoreFailedSubmission(ComposerDraft(text: "For A", attachments: []), for: runtime, owner: "stored-a")
+        XCTAssertEqual(store.owner(of: runtime), "stored-a")
+
+        store.returnDraft(from: runtime, toOwner: "stored-a")
+        XCTAssertFalse(store.hasDraft(for: runtime), "The chat taking runtime-x next starts empty")
+        XCTAssertEqual(store.draft(for: storedA).text, "For A")
+    }
+
     func testSuccessfulSubmissionRemovesOnlyUnchangedSubmittedDraft() {
         let store = ComposerDraftStore(capacity: 12)
         let key = ComposerBar.composerDraftKey(for: "session-a", profile: "default", dashboard: nil)

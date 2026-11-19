@@ -638,6 +638,25 @@ extension AppState {
             && ComposerBar.draftKeysAreEquivalent(lhs, rhs, identity: activeChatScrollSessionIdentity)
     }
 
+    /// Whether the chat left under `leftID` is the chat now on screen under
+    /// another of its ids (a reconnect's new runtime id), not another
+    /// conversation. The scroll identity unions catalog aliases, so a row
+    /// still listing an id Hermes handed to another chat would read the
+    /// two as one: when the list names a different owning row for each id,
+    /// they're different chats (issue 2858), as for drafts (issue 2781).
+    func leftChatIsChatOnScreen(_ leftID: String?) -> Bool {
+        guard let leftID, activeChatScrollSessionIdentity.contains(leftID) else { return false }
+        guard let activeSessionId, leftID != activeSessionId else { return true }
+        if reconciliation?.movedOnSessionIDs.contains(leftID) == true { return false }
+        let rows = composerDraftRows(profile: activeProfile)
+        if let left = Self.composerDraftOwningRow(of: leftID, in: rows).row,
+           let open = Self.composerDraftOwningRow(of: activeSessionId, in: rows).row,
+           left.durableKey != open.durableKey {
+            return false
+        }
+        return true
+    }
+
     /// The durable id of the chat a draft under `key` is for, from the list
     /// on screen: the owning row's stored id (else its id). Nil when no row
     /// owns the key's id, an alias two rows carry included (issue 2782).

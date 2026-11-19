@@ -590,14 +590,15 @@ final class AppState: ObservableObject {
                 // chat keeps them.
                 // Cleared even while empty, so a read the last visit started
                 // can't fill it either.
-                let sameChat = activeChatScrollSessionIdentity.contains(oldValue)
+                let leftChatIsOnScreen = leftChatIsChatOnScreen(oldValue)
+                let sameChat = leftChatIsOnScreen
                     || sessionControl.sessionID.map(sessionControlIsOpenChat) == true
                 if !sameChat { sessionControl.clear() }
                 // The Model and Context sheets act on the chat they came up
                 // over. Another chat taking its place (a notification, an
                 // app link) takes them down; a new id for the same
                 // conversation leaves them up.
-                if !activeChatScrollSessionIdentity.contains(oldValue) {
+                if !leftChatIsOnScreen {
                     // Only when they're up: assigning false to a flag
                     // already false still publishes AppState, and this runs
                     // on every chat the person opens.

@@ -762,6 +762,13 @@ extension AppState {
         clearSessionPresentationCache()
         // Guesses name sessions, and a new server's ids can repeat the old one's.
         forgetPredictiveState()
+        // So can a Bot Chat copy's owner: the bot an open was leaving names
+        // the outgoing server's chat, and a same-id chat here would be kept
+        // as that bot's copy over its own (issue 2798). Cleared after the
+        // leave above kept the outgoing chat's copy for it.
+        // A followed chat's owner needs no clear: only a saved dashboard's
+        // chats are followed, and they keep to its key.
+        outgoingBotChatCopyOwner = nil
         // Saved chats are kept apart per dashboard and stay for the next
         // visit there: only removing the dashboard, signing out of it or
         // Settings' Delete Saved Chats wipes them. What of them is in memory

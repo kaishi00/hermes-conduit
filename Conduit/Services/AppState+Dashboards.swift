@@ -247,8 +247,29 @@ extension AppState {
         let gatewayID = gatewayID.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !gatewayID.isEmpty, gatewayID.count <= 80 else { return }
         var stored = storedRelayGatewayIDs()
-        guard stored[dashboardID.uuidString]?[profile] != gatewayID else { return }
-        stored[dashboardID.uuidString, default: [:]][profile] = gatewayID
+        var profiles = stored[dashboardID.uuidString] ?? [:]
+        // One spelling per profile: a re-cased profile's old spelling would
+        // keep its gateway, and its aging key, forever (issue 2820).
+        let otherSpellings = profiles.keys.filter { $0 != profile && Self.profilesMatch($0, profile) }
+        guard profiles[profile] != gatewayID || !otherSpellings.isEmpty else { return }
+        for spelling in otherSpellings { profiles[spelling] = nil }
+        profiles[profile] = gatewayID
+        stored[dashboardID.uuidString] = profiles
+        saveRelayGatewayIDs(stored)
+    }
+
+    /// Forgets the gateways `dashboardID`'s host reported for profiles it no
+    /// longer lists (`listed`, its whole list): a deleted or re-cased
+    /// profile's pairing is never asked about again, so its record (and its
+    /// key, unrotated) would take the dashboard's padlock away once old, or
+    /// claim one for a pairing gone (issue 2820).
+    func forgetRelayGatewayIDs(of dashboardID: UUID, keepingProfiles listed: Set<String>) {
+        guard !listed.isEmpty else { return }
+        var stored = storedRelayGatewayIDs()
+        guard let profiles = stored[dashboardID.uuidString] else { return }
+        let kept = profiles.filter { listed.contains($0.key) }
+        guard kept.count != profiles.count else { return }
+        stored[dashboardID.uuidString] = kept.isEmpty ? nil : kept
         saveRelayGatewayIDs(stored)
     }
 
@@ -333,11 +354,22 @@ extension AppState {
             removedGatewayIDs: removed
         )
         // The rest of the waiting ones are gone already, or a saved
-        // dashboard's after all.
-        forgetRemovedRelayGatewayIDs(removed.subtracting(toDrop))
+        // dashboard's after all. A row the list had but that didn't decode
+        // is neither: it waits for the next sweep (issue 2811).
+        forgetRemovedRelayGatewayIDs(removed.subtracting(toDrop).subtracting(meta.undecodedGatewayIDs))
         // An older relay keeps them waiting for its update.
         guard meta.supportsDeviceGatewayRemoval, !toDrop.isEmpty else { return }
-        let dropped = await notifications.dropRelayPairings(toDrop)
+        let listed = Dictionary(meta.gateways.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let dropped = await notifications.dropRelayPairings(toDrop) { [weak self] gatewayID in
+            // A dashboard saved again while the sweep ran keeps its pairing.
+            guard let self, let gateway = listed[gatewayID] else { return false }
+            return RemovedDashboardPairings.stillDrops(
+                gateway,
+                savedDashboardIDs: self.relayPairingSweepSaved.union(self.savedDashboardRegistry.dashboards.map(\.id)),
+                savedGatewayIDs: self.knownRelayGatewayIDs,
+                removedGatewayIDs: self.removedRelayGatewayIDs
+            )
+        }
         guard !dropped.isEmpty else { return }
         forgetRemovedRelayGatewayIDs(dropped)
         await notifications.refreshMeta()

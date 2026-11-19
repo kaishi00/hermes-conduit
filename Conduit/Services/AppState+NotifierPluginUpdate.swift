@@ -309,6 +309,12 @@ extension AppState {
               let dashboardID = activeDashboardID else { return }
         let everyDevice = notifierPlugin.reports("pairing-devices")
         let names = everyDevice ? Array(Set(profiles + [activeProfile])).sorted() : [activeProfile]
+        // The host's whole list is known: a profile it no longer lists keeps
+        // no gateway (issue 2820). An older plugin checks only the active
+        // profile, so its others stay as they were.
+        if everyDevice, !profiles.isEmpty {
+            forgetRelayGatewayIDs(of: dashboardID, keepingProfiles: Set(names))
+        }
         for profile in names {
             guard bridge === dashboardTicketBridge, activeDashboardID == dashboardID else { return }
             await pairAutomatically(profile, besideOthers: everyDevice, bridge: bridge, dashboardID: dashboardID)

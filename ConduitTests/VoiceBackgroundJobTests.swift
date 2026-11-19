@@ -982,6 +982,27 @@ extension VoiceConversationControllerTests {
         var older = saved
         older.sentPrompts = nil
         XCTAssertEqual(older.promptsSent, [VoiceBackgroundJobSupervisor.jobPrompt(for: "check the router").trimmingCharacters(in: .whitespacesAndNewlines)])
+
+        // Issue 2818: a ledger from before carries neither the flag nor the
+        // messages; the fence still runs on the rebuilt first message.
+        older.opensCallChat = nil
+        let legacy = SavedVoiceJob.decode(try JSONEncoder().encode([older]))
+        XCTAssertEqual(legacy.first?.job?.opensCallChat, false)
+        let (legacyRelaunch, legacyFake) = makeSupervisor()
+        legacyRelaunch.restore(legacy)
+        legacyFake.liveRows = fake.liveRows
+        legacyFake.threadReply = "It's sunny."
+        legacyFake.threadReplyPrompt = "what's the weather"
+        await legacyRelaunch.pollOnce()
+        XCTAssertNil(legacyRelaunch.jobs.first?.result, "a ledger from before still fences another turn's reply")
+
+        let (legacyOwn, legacyOwnFake) = makeSupervisor()
+        legacyOwn.restore(legacy)
+        legacyOwnFake.liveRows = fake.liveRows
+        legacyOwnFake.threadReply = "The router is fine."
+        legacyOwnFake.threadReplyPrompt = VoiceBackgroundJobSupervisor.jobPrompt(for: "check the router")
+        await legacyOwn.pollOnce()
+        XCTAssertEqual(legacyOwn.jobs.first?.result, "The router is fine.", "a reply to its first message is its own")
     }
 
     /// M5b: a job brought back is said only to a call kept with its call's
