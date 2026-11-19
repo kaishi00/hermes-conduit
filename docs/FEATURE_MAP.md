@@ -8574,7 +8574,7 @@ not needed: Watch and CarPlay (no group rooms there), Linked Rooms (its rooms us
 this view, so the branch takes it with main) · text: no caption or doc gives
 the width or the color
 
-**Desktop app:** has it: bot messages in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`).
+**Desktop app:** has it: bot messages in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`); a click on a bot's picture picks it in the To row over the message box, whose chips are the bots' (desktop#122).
 
 **Code**
 - `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface, mediaResolver; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
@@ -8662,7 +8662,7 @@ reads nothing here), Hermes Desktop's read-only group sheet in Conduit
 Linked Rooms: its rooms use this view, so the branch takes it with main ·
 Group Settings' Who answers (its Lead section's crown marks the lead's pill) · README.md's group chats line names the crown
 
-**Desktop app:** partly (desktop#112): a pill per member under the room's title with its picture, its name, the lead's crown and its status (`desktop/src/renderer/src/components/RoomView.tsx`), read from groups.state's member activity, and the subtitle says Settled when a discussion ended with nobody having more to say (`desktop/src/renderer/src/state/groups.ts`); a pill doesn't open the member's To row, and the lead's receipt from `seen_through_seq` isn't ported.
+**Desktop app:** partly (desktop#112): a pill per member under the room's title with its picture, its name, the lead's crown and its status (`desktop/src/renderer/src/components/RoomView.tsx`), read from groups.state's member activity, and the subtitle says Settled when a discussion ended with nobody having more to say (`desktop/src/renderer/src/state/groups.ts`); a pill picks the bot in the To row over the message box, as its picture over a message does (desktop#122); the lead's receipt from `seen_through_seq` isn't ported.
 
 **Code**
 - Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible, leadKey)
