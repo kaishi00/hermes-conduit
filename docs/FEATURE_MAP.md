@@ -3066,7 +3066,7 @@ Hermes Desktop's bot chat · chat list previews and quotes · Read Aloud and liv
 the bot's SOUL messaging section · README.md's bots line · the plugin's
 move of an old Bot Chat under its gateway, which keeps a bot reachable while its chat is open
 
-**Desktop app:** partly: the @ list and Mention a Bot in chats with the phone's note (`desktop/src/renderer/src/state/botMentions.ts`, `desktop/src/renderer/src/components/Composer.tsx`, desktop#89), a teammate's delivery as "Message from", "Messaged" steps and previews (`desktop/src/renderer/src/state/teammateMessages.ts`, desktop#89), @ mentions in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`), and the bot's replies to a delivery it didn't ask for folded under "Replied to Atlas" until the user writes (desktop#116).
+**Desktop app:** has it: the @ list and Mention a Bot in chats with the phone's note (`desktop/src/renderer/src/state/botMentions.ts`, `desktop/src/renderer/src/components/Composer.tsx`, desktop#89), a teammate's delivery as "Message from", "Messaged" steps and previews (`desktop/src/renderer/src/state/teammateMessages.ts`, desktop#89), @ mentions in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`), and the bot's replies to a delivery it didn't ask for folded under "Replied to Atlas" until the user writes (desktop#116).
 
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete), `Conduit/Services/AppState+GroupChats.swift` (composerMentionCandidates and mentionAnnotatedOutboundText, from the shown roster, which is in the bots' order, see Bots Home)
