@@ -264,6 +264,85 @@ extension AppState {
         saveRelayGatewayIDs(stored)
     }
 
+    private static let removedRelayGatewayIDsKey = "conduit.relayGatewayIDsOfRemovedDashboards"
+
+    /// Pairings a removed dashboard's host reported, until the relay drops
+    /// them: one from before dashboard binding is known by nothing else.
+    var removedRelayGatewayIDs: Set<String> {
+        Set(defaults.stringArray(forKey: Self.removedRelayGatewayIDsKey) ?? [])
+    }
+
+    private func rememberRemovedRelayGatewayIDs(_ gatewayIDs: Set<String>) {
+        guard !gatewayIDs.isSubset(of: removedRelayGatewayIDs) else { return }
+        defaults.set(Array(removedRelayGatewayIDs.union(gatewayIDs)).sorted(), forKey: Self.removedRelayGatewayIDsKey)
+    }
+
+    private func forgetRemovedRelayGatewayIDs(_ gatewayIDs: Set<String>) {
+        let left = removedRelayGatewayIDs.subtracting(gatewayIDs)
+        if left.isEmpty {
+            defaults.removeObject(forKey: Self.removedRelayGatewayIDsKey)
+        } else {
+            defaults.set(Array(left).sorted(), forKey: Self.removedRelayGatewayIDsKey)
+        }
+    }
+
+    /// Drops this iPhone's relay pairings with dashboards no longer saved
+    /// (RemovedDashboardPairings), so their hosts' pushes stop: a removed
+    /// dashboard's host can't be told to unpair. Runs on removal, connect,
+    /// launch and return to the front, so one the relay couldn't take then
+    /// (offline, a relay before 0.28) goes later, and pairings left by a
+    /// removal before this existed go too. One sweep at a time; one asked
+    /// meanwhile runs after it, with the newest saved list.
+    func dropRelayPairingsOfRemovedDashboards(saved: Set<UUID>) {
+        relayPairingSweepSaved = saved
+        guard relayPairingSweep == nil else {
+            relayPairingSweepAgain = true
+            return
+        }
+        relayPairingSweep = Task { @MainActor [weak self] in
+            repeat {
+                guard let self else { return }
+                self.relayPairingSweepAgain = false
+                await self.sweepRelayPairings(saved: self.relayPairingSweepSaved)
+            } while self?.relayPairingSweepAgain == true
+            self?.relayPairingSweep = nil
+        }
+    }
+
+    private func sweepRelayPairings(saved: Set<UUID>) async {
+        let notifications = PushNotificationService.shared
+        // Notifications off, or the registration not read yet (before the
+        // first unlock): nothing to drop now. A new installation lists none
+        // of the waiting ones, so they're forgotten then.
+        guard notifications.installationID != nil else { return }
+        // The last list read serves, unless a removal's pairings wait on it:
+        // then it's read again, as one read before the removal can't show
+        // whether they're gone.
+        // A read that failed last time is tried again too.
+        if notifications.relayMeta == nil || notifications.relayMetaFetchFailed || !removedRelayGatewayIDs.isEmpty {
+            await notifications.refreshMeta()
+        }
+        guard let meta = notifications.relayMeta, !notifications.relayMetaFetchFailed else { return }
+        let removed = removedRelayGatewayIDs
+        let toDrop = RemovedDashboardPairings.toDrop(
+            gateways: meta.gateways,
+            // A dashboard added while the list was read is saved too: its
+            // fresh pairing may be in that list.
+            savedDashboardIDs: saved.union(savedDashboardRegistry.dashboards.map(\.id)),
+            savedGatewayIDs: knownRelayGatewayIDs,
+            removedGatewayIDs: removed
+        )
+        // The rest of the waiting ones are gone already, or a saved
+        // dashboard's after all.
+        forgetRemovedRelayGatewayIDs(removed.subtracting(toDrop))
+        // An older relay keeps them waiting for its update.
+        guard meta.supportsDeviceGatewayRemoval, !toDrop.isEmpty else { return }
+        let dropped = await notifications.dropRelayPairings(toDrop)
+        guard !dropped.isEmpty else { return }
+        forgetRemovedRelayGatewayIDs(dropped)
+        await notifications.refreshMeta()
+    }
+
     /// Settings > Notifications sorts pairings by these, so it redraws; and
     /// Pulse pushes from a host's gateways offer Quiet for today by them.
     private func saveRelayGatewayIDs(_ stored: [String: [String: String]]) {
@@ -915,6 +994,8 @@ extension AppState {
     /// other saved dashboard is auto-connected.
     func removeDashboard(_ id: UUID) {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
+        // Read before the sign-out below, which forgets them.
+        let reportedGatewayIDs = relayGatewayIDs(of: id)
         dropKeptDashboardRuntime(id)
         let wasActive = id == activeDashboardID
         if wasActive {
@@ -943,6 +1024,10 @@ extension AppState {
         // A group that fell to one lets its other kept connection go.
         letGoKeptRuntimesOutsideTheGroup()
         removeDashboardScopedPresentation(id)
+        // Its host's pairings with this iPhone are dropped at the relay
+        // (endSharingWithRemovedDashboards, below): kept until the relay
+        // took them, since the host can't be told and may never be reachable.
+        rememberRemovedRelayGatewayIDs(reportedGatewayIDs)
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a
         // moved entry's new host says for itself. Signing out keeps them
@@ -964,13 +1049,15 @@ extension AppState {
     /// were turned on for. Once it's no longer saved, nothing can switch back
     /// to it, so sharing with it ends here, as turning it off without
     /// deleting would, and the next turn-on binds to the dashboard in use
-    /// (issue 1800). Run when a dashboard is removed, and on each connect for
-    /// one removed before this ran: connected, the saved dashboards were
-    /// read for sure (before the first unlock they may not be, and an empty
-    /// list then isn't a removal).
+    /// (issue 1800). Its notifications stop too: its relay pairings with this
+    /// iPhone are dropped. Run when a dashboard is removed, and on each
+    /// connect for one removed before this ran: connected, the saved
+    /// dashboards were read for sure (before the first unlock they may not
+    /// be, and an empty list then isn't a removal).
     func endSharingWithRemovedDashboards(saved: Set<UUID>? = nil) {
         let saved = saved ?? Set(savedDashboardRegistry.dashboards.map(\.id))
         LocationSharingController.shared.endSharing(unlessBoundTo: saved)
+        dropRelayPairingsOfRemovedDashboards(saved: saved)
         // Each turn-off checks that sharing still goes there when it runs:
         // a turn-on for the dashboard in use may have come first.
         if let destination = healthSyncPreferences.destination, !saved.contains(destination.dashboardID) {

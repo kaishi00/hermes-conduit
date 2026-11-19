@@ -769,3 +769,47 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(switches, 2)
     }
 }
+
+extension NotificationDashboardOwnershipTests {
+    private func pairing(_ id: UUID, dashboard: String?) -> RelayMetaInfo.Gateway {
+        RelayMetaInfo.Gateway(id: id.uuidString.lowercased(), name: "Hermes", pluginVersion: nil, pluginCapabilities: [],
+                              lastEventAt: nil, dashboardID: dashboard)
+    }
+
+    func testARemovedDashboardsPairingsAreDroppedAndNoSavedDashboardsAre() {
+        let removedDashboard = UUID()
+        let bound = pairing(UUID(), dashboard: removedDashboard.uuidString)
+        let unboundReported = pairing(UUID(), dashboard: nil)
+        let unboundUnknown = pairing(UUID(), dashboard: nil)
+        let saved = pairing(UUID(), dashboard: dashboardA.uuidString)
+        let reportedBySaved = pairing(UUID(), dashboard: removedDashboard.uuidString)
+        let malformed = pairing(UUID(), dashboard: "not-a-dashboard")
+        let shortID = RelayMetaInfo.Gateway(id: "gw-removed", name: "Hermes", pluginVersion: nil, pluginCapabilities: [],
+                                            lastEventAt: nil, dashboardID: removedDashboard.uuidString)
+
+        let toDrop = RemovedDashboardPairings.toDrop(
+            gateways: [bound, unboundReported, unboundUnknown, saved, reportedBySaved, malformed, shortID],
+            savedDashboardIDs: [dashboardA, dashboardB],
+            savedGatewayIDs: [reportedBySaved.id],
+            removedGatewayIDs: [unboundReported.id, saved.id]
+        )
+
+        // Bound to a dashboard no longer saved, or from before binding and
+        // reported by the removed dashboard's host.
+        XCTAssertEqual(toDrop, [bound.id, unboundReported.id, shortID.id])
+    }
+
+    func testRemovingADashboardKeepsItsPairingsUntilTheRelayDropsThem() {
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [
+            SavedDashboard(id: dashboardA, label: "A", normalizedURL: "https://a.example"),
+            SavedDashboard(id: dashboardB, label: "B", normalizedURL: "https://b.example"),
+        ]))
+        let gateway = UUID().uuidString.lowercased()
+        appState.recordRelayGatewayID(gateway, for: dashboardB, profile: "default")
+
+        appState.removeDashboard(dashboardB)
+
+        XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
+        XCTAssertEqual(appState.removedRelayGatewayIDs, [gateway])
+    }
+}
