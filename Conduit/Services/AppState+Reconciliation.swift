@@ -2422,10 +2422,12 @@ extension AppState {
             // stayed over a chat that came back on the next try).
             if settled {
                 chatErrorBehindRoom = nil
-                if let failed = shownChat.chatRestoreFailureShown, errorMessage == failed {
-                    errorMessage = nil
+                // Hermes' own error for the chat (a model that can't
+                // start) comes after the resume and stays (issue 2801).
+                if let failed = shownChat.chatErrorShown, failed.isRestoreFailure {
+                    if errorMessage == failed.message { errorMessage = nil }
+                    shownChat.chatErrorShown = nil
                 }
-                shownChat.chatRestoreFailureShown = nil
             }
             if settled, reconcileExplicitYolo {
                 // Re-assert only after the ownership guard above (token,
@@ -2502,7 +2504,7 @@ extension AppState {
                 chatSyncErrorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
             // A later restore of the chat that works takes it down again.
-            shownChat.chatRestoreFailureShown = chatSyncErrorMessage
+            shownChat.chatErrorShown = chatSyncErrorMessage.map { ChatErrorShown(message: $0, isRestoreFailure: true) }
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync(ownedBy: automaticSyncOperationID)
             return false
@@ -2808,6 +2810,7 @@ extension AppState {
             turnState = .idle
             noteConnectionStep("New chat ready")
             errorMessage = nil
+            shownChat.chatErrorShown = nil
             // A fresh conversation has no per-session override and no
             // server-reported flag yet; re-resolve from the profile mode
             // (still valid — it is profile-scoped) so the new chat does not

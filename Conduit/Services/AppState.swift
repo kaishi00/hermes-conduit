@@ -600,6 +600,14 @@ final class AppState: ObservableObject {
                         if errorMessage == failure { errorMessage = nil }
                         sendFailureShown = nil
                     }
+                    // So was an error the chat left put there itself (a
+                    // bot whose model can't start), which read as the next
+                    // chat's until a send cleared it (issue 2801).
+                    if let shown = shownChat.chatErrorShown {
+                        if errorMessage == shown.message { errorMessage = nil }
+                        if chatErrorBehindRoom == shown.message { chatErrorBehindRoom = nil }
+                        shownChat.chatErrorShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
