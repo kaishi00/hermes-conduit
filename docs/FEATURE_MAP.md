@@ -1250,7 +1250,7 @@ What happens to a call's words, its jobs and Hermes' memory when it ends.
 Classic in a chat it created · Watch calls · CarPlay calls · calls from
 Hermes · Resume Call · memory at call end (notifier)
 
-**Desktop app:** partly: live calls saved with their chat and shown as call cards (`desktop/src/renderer/src/state/voiceSave.ts`, `desktop/src/renderer/src/components/CallCards.tsx`, desktop#33, desktop#34); no Resume Call.
+**Desktop app:** has it: live calls saved with their chat and shown as call cards (`desktop/src/renderer/src/state/voiceSave.ts`, `desktop/src/renderer/src/components/CallCards.tsx`, desktop#33, desktop#34); Resume call in a saved call's sheet starts a live call that continues it, seeded with its latest turns and saved under the same call (`desktop/src/renderer/src/components/CallTranscriptSheet.tsx`, desktop#85); a long call's older turns aren't summarized, as the phone's are.
 
 **Code**
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink, VoiceTranscriptOutbox, VoiceCallCheckpoint)
@@ -6567,7 +6567,7 @@ open one) · the notifier's release of an idle chat's claim (#1123) ·
 Sync across devices (the four Sessions bar preferences, as
 `app.main_button_new_chat` does) · the Settings caption (Sessions bar)
 
-**Desktop app:** partly: the chat list's search (`desktop/src/renderer/src/components/ChatList.tsx`); no In messages search.
+**Desktop app:** has it (desktop#84): the chat list's search filters by title and preview, and In messages lists the chats Hermes' full-text search finds by what was said in them, the matched words picked out, on the profile shown or every profile the list holds (`desktop/src/renderer/src/components/ChatList.tsx`, `desktop/src/renderer/src/state/contentSearch.ts`); its bar is one row, with no stacked layout.
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles; never reported wider than offered, see A split window's columns fill the window)
