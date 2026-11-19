@@ -74,7 +74,12 @@ struct ModelChooserPage: View {
     var title = AppLocalization.string("Model")
     let catalog: ModelChooserCatalog
     let retry: () -> Void
+    /// The setting's own Refresh models; nil where the page's runs.
     var refresh: ModelChooserRefresh? = nil
+    /// Whether the page has Refresh models of its own where the setting
+    /// gives none: off where its models aren't the open profile's
+    /// `model.options` (the Kanban plugin's roster, another profile's).
+    var offersRefresh = true
     var defaultChoice: ModelChooserDefault? = nil
     let pick: ModelChooserPick?
     /// Whether a listed row is the pick. By default a row of the pick's
@@ -98,6 +103,8 @@ struct ModelChooserPage: View {
     /// list reads as its providers, except the one holding the pick.
     @State private var expandedProviders: Set<String> = []
     @State private var openedPicked = false
+    /// The page's own Refresh models is asking Hermes for the live lists.
+    @State private var refreshingModels = false
 
     private var searching: Bool { !ModelSearchQuery(query).isEmpty }
     private var visibleProviders: [ProviderInfo] { appState.modelVisibility.visible(catalog.providers) }
@@ -145,7 +152,7 @@ struct ModelChooserPage: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
-                if let refresh {
+                if let refresh = toolbarRefresh {
                     RefreshModelsButton(refreshing: refresh.refreshing, action: refresh.run)
                         .accessibilityIdentifier("modelChooser.refreshModels")
                 }
@@ -162,6 +169,26 @@ struct ModelChooserPage: View {
         }
         .onAppear(perform: openPickedProvider)
         .onChange(of: catalog.providers.map(\.name)) { _, _ in openPickedProvider() }
+    }
+
+    // MARK: Refresh models
+
+    private var toolbarRefresh: ModelChooserRefresh? {
+        if let refresh { return refresh }
+        guard offersRefresh else { return nil }
+        return ModelChooserRefresh(refreshing: refreshingModels) { Task { await refreshModels() } }
+    }
+
+    /// Hermes drops its cached model lists and fetches every provider's
+    /// live list (issue 1807), then the setting reads its models again with
+    /// its own read, as Try Again does, which says a failure under them.
+    @MainActor
+    private func refreshModels() async {
+        guard !refreshingModels else { return }
+        refreshingModels = true
+        _ = await appState.loadModelProviders(refresh: true)
+        refreshingModels = false
+        retry()
     }
 
     // MARK: The pick
@@ -342,6 +369,17 @@ struct ModelChooserPage: View {
         ForEach(matches) { match in
             let hidden = appState.modelVisibility.isHidden(model: match.model.id, provider: match.provider)
             matchRow(match, note: hidden ? AppLocalization.string("Hidden") : nil)
+        }
+        // A model the catalog doesn't list (issue 2841), on any provider.
+        if catalog.answered, let id = modelSearchTypedID(query) {
+            let providers = modelSearchTypedIDProviders(catalog.providers, id: id, preferred: pickedProvider?.name ?? pick?.provider)
+            if !providers.isEmpty {
+                ModelTypedIDMenu(id: id, providers: providers) { provider, model in
+                    onPick(provider, model)
+                    if reasoning == nil { dismiss() }
+                }
+                .disabled(disabled)
+            }
         }
     }
 

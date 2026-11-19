@@ -820,7 +820,9 @@ struct PulseSettingsPage: View {
                     let pick = tag.isEmpty ? nil : VoiceJobModelSettingsSection.parse(tag)
                     setModel(pick.map { PulseModel(provider: $0.provider ?? "", model: $0.model) })
                 },
-                identifier: "settings.pulse.model"
+                identifier: "settings.pulse.model",
+                // Refresh models asks the open profile's Hermes.
+                offersRefresh: appState.profilesMatch(state.profile ?? AppState.pulseDefaultProfile, appState.activeProfile)
             )
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.

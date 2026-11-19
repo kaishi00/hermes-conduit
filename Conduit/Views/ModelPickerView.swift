@@ -606,6 +606,22 @@ struct ModelPickerView: View {
                         .padding(.leading, 16)
                 }
             }
+            // A model the catalog doesn't list (issue 2841), on any provider.
+            if catalog.answered, let id = modelSearchTypedID(searchQuery) {
+                let providers = modelSearchTypedIDProviders(visibleProviders, id: id, preferred: selectedProvider)
+                if !providers.isEmpty {
+                    if !matches.isEmpty {
+                        Divider()
+                            .overlay(rowStroke)
+                            .padding(.leading, 16)
+                    }
+                    ModelTypedIDMenu(id: id, providers: providers) { provider, model in
+                        pick(model, provider: provider)
+                    }
+                    .padding(.horizontal, 12)
+                    .disabled(modelRowsLocked)
+                }
+            }
             if catalog.keptRowsFailed {
                 catalogFailedRow
             }

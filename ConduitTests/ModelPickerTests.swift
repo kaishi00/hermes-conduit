@@ -2,6 +2,25 @@ import XCTest
 @testable import Conduit
 
 final class ModelPickerTests: XCTestCase {
+    /// A model the catalog doesn't list can be typed into the search and
+    /// used as an id (issue 2841): one word only, offered on every provider
+    /// that doesn't list it, the provider holding the pick first.
+    func testATypedModelIDIsOfferedOnProvidersThatDontListIt() {
+        XCTAssertEqual(modelSearchTypedID("  deepseek-v4-0528 "), "deepseek-v4-0528")
+        XCTAssertNil(modelSearchTypedID("sonnet openrouter"))
+        XCTAssertNil(modelSearchTypedID("   "))
+
+        let openai = ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
+        let deepinfra = ProviderInfo(name: "deepinfra", models: [], displayName: "DeepInfra")
+        let custom = ProviderInfo(name: "custom:lab", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)], aliases: ["lab"])
+        let providers = [openai, deepinfra, custom]
+
+        XCTAssertEqual(modelSearchTypedIDProviders(providers, id: "gpt-5-preview", preferred: nil).map(\.name), ["openai", "deepinfra", "custom:lab"])
+        XCTAssertEqual(modelSearchTypedIDProviders(providers, id: "gpt-5-preview", preferred: "lab").map(\.name), ["custom:lab", "openai", "deepinfra"])
+        // A provider listing that exact id picks its own row instead.
+        XCTAssertEqual(modelSearchTypedIDProviders(providers, id: "GPT-5", preferred: "openai").map(\.name), ["deepinfra", "custom:lab"])
+    }
+
     /// A catalog fetch that failed says so, with Try Again, instead of
     /// "No models are available" or loading forever (#1016). A re-load that
     /// fails keeps the rows it already had.

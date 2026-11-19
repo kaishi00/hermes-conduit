@@ -629,6 +629,8 @@ struct TaggedModelChooserLink: View {
     var reasoningTitle: String? = nil
     var footer: AnyView? = nil
     var identifier: String? = nil
+    /// The page's Refresh models: off for another profile's models.
+    var offersRefresh = true
 
     var body: some View {
         NavigationLink {
@@ -636,6 +638,7 @@ struct TaggedModelChooserLink: View {
                 title: pageTitle,
                 catalog: catalog,
                 retry: retry,
+                offersRefresh: offersRefresh,
                 defaultChoice: ModelChooserDefault(title: defaultTitle, detail: defaultDetail),
                 pick: choice.pick,
                 isPicked: { choice.isPicked($0, $1, in: catalog.providers) },
