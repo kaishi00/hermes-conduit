@@ -66,7 +66,7 @@ SIBLINGS, DESKTOP, CODE, RULINGS, GAPS, CHECKED = range(len(PARTS))
 # What the Desktop app line starts with, and whether it names where (a
 # desktop/ path or a desktop PR) or says why.
 DESKTOP_STATUS = re.compile(r"(has it|partly|not applicable|gap|unchecked)\b[\s.,:;()-]*", re.IGNORECASE)
-NAMES_DESKTOP = re.compile(r"`desktop/[^`\s]+`|\bdesktop#\d+|hermes-conduit-desktop(?:#|/pull/)\d+")
+NAMES_DESKTOP = re.compile(r"`desktop/[^`\s]+`|\bdesktop#\d+|hermes-conduit-desktop(?:#|/pull/|/issues/)\d+")
 DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 # A PR (#1167) or a commit (64d53c3): hex with a digit in it, so not a word.
 CHECKED_AT = re.compile(r"#\d+|\b(?=[a-f]*\d)[0-9a-f]{7,40}\b")

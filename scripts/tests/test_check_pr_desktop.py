@@ -66,6 +66,16 @@ class CheckPrDesktopTests(unittest.TestCase):
         # The template's own section is only a comment, so a PR has to fill it in.
         self.assertIn("empty", check.problem(template))
 
+    def test_the_workflow_hands_the_body_over_in_the_environment(self):
+        """The description is untrusted text: it reaches the script as PR_BODY,
+        never through the shell, and reruns when it is edited."""
+        with open(os.path.join(ROOT, ".github", "workflows", "pr-desktop.yml"), encoding="utf-8") as fh:
+            workflow = fh.read()
+        self.assertIn("PR_BODY: ${{ github.event.pull_request.body }}", workflow)
+        self.assertIn("run: python3 scripts/check-pr-desktop.py\n", workflow)
+        self.assertEqual(workflow.count("github.event.pull_request.body"), 1)
+        self.assertIn("edited", workflow)
+
     def test_main_reads_the_body_from_the_environment(self):
         out = io.StringIO()
         with mock.patch.dict(os.environ, {"PR_BODY": body("Not needed: docs only.")}), \
