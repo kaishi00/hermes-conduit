@@ -6401,7 +6401,7 @@ other ways to start, in Starting a call) · Start a new conversation, the
 chat a live call joins (Starting a call) · the Sherpa wake service (not
 wired into the app, so not needed)
 
-**Desktop app:** gap: no wake phrase.
+**Desktop app:** partly (desktop#161): Settings > Wake phrase keeps each profile's phrases per dashboard on the computer, with Start a new conversation, and a heard phrase starts voice on that profile in its voice mode. Vosk listens offline in a hidden window, with the small model for the language the person picks downloaded once from Vosk (Eric, 2026-11-19), and stops during calls and while Conduit is hidden (`desktop/src/main/wake.ts`, `desktop/src/main/wakeModels.ts`, `desktop/src/shared/wakePhrase.ts`, `desktop/src/renderer/src/components/WakePhraseSettings.tsx`). One language at a time, so a phrase in another writing system needs that language's model; no per-phrase language notes (the phone's CarPlay and other-audio switches don't apply).
 
 **Code**
 - Listener: `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (makeRecognizers, watchInterruption), `Conduit/Voice/Wake/WakeSpeechLocale.swift`, `Conduit/Voice/Wake/WakePhraseMatcher.swift`
