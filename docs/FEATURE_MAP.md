@@ -1316,7 +1316,7 @@ CarPlay, Classic, the Watch's relay and the iPhone's jobs for a Watch call)
 · the chat an unattached call took · `docs/VOICE_BACKGROUND_JOBS.md` · the
 notifier's README
 
-**Desktop app:** partly: call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); no Voice filter or call nests in the chat list.
+**Desktop app:** partly (desktop#93): the Sources filter's Voice and Voice Jobs read the plugin's tags, Voice lists every chat a call was kept with, a call's row names its engine and a job's the chat it came from, the rows the plugin archived for voice are listed again, voice jobs send the phone's job prompt and a Classic call's fresh chat is tagged and archived as the call ends (`desktop/src/renderer/src/state/voiceList.ts`), call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); no nests of voice rows under their call.
 
 **Code**
 - Filing and listing: `Conduit/Services/AppState+Voice.swift` (sessionCategory, refreshVoiceSessionTags), `Conduit/Services/AppState+Persistence.swift` (voiceCallChatFilter, adoptHostChatCalls), `Conduit/Services/AppState+SessionCatalog.swift` (isArchivedVoiceChat), `Conduit/Voice/VoiceHistory.swift` (VoiceSessionTag, VoiceHostChatCall, VoiceCallChatLinks adopt and chatIDs)
