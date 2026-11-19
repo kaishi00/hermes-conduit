@@ -9949,3 +9949,173 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(ended, [UIBackgroundTaskIdentifier(rawValue: 7)])
     }
 }
+
+// MARK: - A reaped runtime (Hermes' ws_orphan_reap_grace_s)
+
+/// Hermes parks a chat whose socket dropped and, after
+/// `dashboard.ws_orphan_reap_grace_s` (20 s by default), clears its runtime.
+/// From then on the old runtime id gets 4001 "session not found" on chat
+/// calls, a 404 on the history read and 4007 on a resume; only the stored id
+/// resumes (checked on a real dashboard, Hermes main 2026-11-19). The app
+/// resumes the stored chat itself and carries on.
+extension AppStateForegroundLifecycleTests {
+    private final class ReapedHost {
+        var reaped = false
+        var refusesEverySend = false
+        var storedGone = false
+        var resumes: [String] = []
+        var sends: [String] = []
+        var reads: [String] = []
+    }
+
+    private func reapedHostOperations(_ host: ReapedHost) -> ChatResumeLifecycleOperations {
+        let page: [String: Any] = [
+            "messages": [
+                ["id": "100", "role": "user", "content": "Earlier question", "timestamp": "1"],
+                ["id": "101", "role": "assistant", "content": "Earlier answer", "timestamp": "2"]
+            ],
+            "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 2]
+        ]
+        return ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [self.session("stored-a")] },
+            openSession: { _, id, _ in
+                host.resumes.append(id)
+                if host.reaped, id == "runtime-a" || host.storedGone {
+                    throw RpcError(code: 4007, message: "session not found")
+                }
+                return SessionResumeResult(
+                    sessionId: host.reaped ? "runtime-b" : "runtime-a",
+                    storedSessionId: "stored-a",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { id, _, _ in
+                host.reads.append(id)
+                if host.reaped, id == "runtime-a" {
+                    return .failed(DashboardTicketBridgeError.http(status: 404, detail: "Session not found"))
+                }
+                return .payload(page)
+            },
+            refreshContext: { _, _ in },
+            sendPrompt: { _, id, _ in
+                host.sends.append(id)
+                if host.refusesEverySend || (host.reaped && id == "runtime-a") {
+                    throw RpcError(code: 4001, message: "session not found")
+                }
+                return .accepted
+            },
+            verifyTransportHealth: { _ in },
+            probeActiveSessions: { _ in
+                host.reaped ? [] : [LiveSessionStatus(
+                    runtimeSessionId: "runtime-a",
+                    storedSessionId: "stored-a",
+                    status: "idle"
+                )]
+            }
+        )
+    }
+
+    func testASendIntoAReapedRuntimeResumesTheStoredChatAndSends() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-a")
+
+        host.reaped = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(host.sends.last, "runtime-b", "the message goes to the resumed runtime")
+        XCTAssertEqual(host.sends.filter { $0 == "runtime-b" }.count, 1, "sent once")
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-b")
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertNil(harness.appState.chatSyncErrorMessage)
+        box.client.disconnect()
+    }
+
+    func testABackgroundReturnAfterTheReapResumesTheStoredChat() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        harness.appState.handleScenePhase(.background)
+        host.reaped = true
+        await runSceneActivation(harness)
+
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-b")
+        XCTAssertFalse(host.resumes.dropFirst().contains("runtime-a"), "never resumed by the cleared runtime id: \(host.resumes)")
+        XCTAssertNil(harness.appState.chatSyncErrorMessage)
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+        XCTAssertTrue(submitted)
+        XCTAssertEqual(host.sends, ["runtime-b"])
+        XCTAssertNil(harness.appState.errorMessage)
+        box.client.disconnect()
+    }
+
+    func testThePreSendCheckAfterTheReapResumesTheStoredChat() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        // A freshness read failed for now while away: the next send reads
+        // the chat first.
+        harness.appState.transcriptFreshnessIsStale = true
+        host.reaped = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertTrue(submitted, "error: \(harness.appState.errorMessage ?? "-")")
+        XCTAssertEqual(host.sends, ["runtime-b"])
+        XCTAssertNotEqual(harness.appState.errorMessage, "Unable to refresh this conversation. Try again.")
+        XCTAssertEqual(harness.appState.activeSessionId, "runtime-b")
+        box.client.disconnect()
+    }
+
+    func testASecondRefusalAfterTheResumeShowsTheFailedSend() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        host.reaped = true
+        host.refusesEverySend = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(host.sends, ["runtime-a", "runtime-b"], "one resume and one more try, no loop")
+        XCTAssertEqual(harness.appState.errorMessage, "Failed to send: session not found")
+        box.client.disconnect()
+    }
+
+    func testAResumeThatFailsAfterTheReapShowsTheFailedSend() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        host.reaped = true
+        host.storedGone = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(host.sends, ["runtime-a"], "nothing to send to once the resume fails")
+        XCTAssertEqual(
+            harness.appState.sendFailureShown, "Failed to send: session not found",
+            "the message doesn't just vanish"
+        )
+        box.client.disconnect()
+    }
+}
