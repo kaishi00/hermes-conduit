@@ -1,0 +1,29 @@
+seeded: 花园浇水计划
+seeded: 回复房东
+seeded: 日语学习计划，第 3 周
+seeded: 咖啡机候选清单
+seeded: 莫干山周末行
+board: 比较去东京的机票 (running)
+board: 预订莫干山营地 (ready)
+board: 给房东发跟进消息 (ready)
+board: 选一台咖啡机 (ready)
+board: 买一台磨豆机 (todo)
+board: 续签护照 (blocked)
+board: 本周菜单 (done)
+board: 第三季度开销总结 (done)
+Created job: 691f7db73177
+  Name: 早间简报
+  Schedule: 0 7 * * *
+  Next run: 2026-11-20T07:00:00+00:00
+Created job: a6a42c1463b1
+  Name: 邮件摘要
+  Schedule: every 240m
+  Next run: 2026-11-19T17:32:18.402742+00:00
+Created job: 4444b6912862
+  Name: 每周回顾
+  Schedule: 0 18 * * 0
+  Next run: 2026-11-22T18:00:00+00:00
+Created job: 8348831df145
+  Name: 机票价格提醒
+  Schedule: every 360m
+  Created PAUSED — resume to schedule, or explicitly run now.

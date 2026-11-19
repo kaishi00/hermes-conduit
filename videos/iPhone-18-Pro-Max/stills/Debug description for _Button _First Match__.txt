@@ -1,0 +1,5 @@
+Query chain:
+ →Find: Target Application 'com.milim.relay'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate 'label == "发布计划" AND identifier BEGINSWITH "bots.room."'
+      ↪︎Find: First Match

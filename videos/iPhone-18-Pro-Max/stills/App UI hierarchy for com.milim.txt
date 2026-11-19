@@ -1,0 +1,149 @@
+Application, 0x106fda1c0, pid: 82350, label: 'Conduit' <App element pid: 82350>
+  Window (Main), 0x106fda440, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4361256960.3>
+    Other, 0x106fda6c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4426225920.4>
+      Other, 0x106fd92c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4426228480.5>
+        Other, 0x106fda300, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4361275904.6>
+          Other, 0x106fd9e00, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4558233248.7>
+            Other, 0x106fd8f00, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4425906688.321>
+              Other, 0x106fdad00, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5099362432.329>
+                Other, 0x106fdaf80, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4425672704.344>
+                  Other, 0x106fda580, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5088882688.352>
+                    Other, 0x106fd8c80, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5184003744.356>
+                      Other, 0x106fdb5c0, {{-329.3, -254.8}, {1076.3, 1505.3}} <AX element pid: 82350, elementOrHash.elementID: 5184000224.358>
+                      Button, 0x106fd9f40, {{380.0, 66.0}, {44.0, 44.0}}, identifier: 'plus', label: '新建机器人', Disabled <AX element pid: 82350, elementOrHash.elementID: 5184002944.359>
+                      StaticText, 0x106fd9400, {{16.0, 74.8}, {63.0, 26.3}}, label: '机器人' <AX element pid: 82350, elementOrHash.elementID: 5183999584.360>
+                      Button, 0x106fd8500, {{16.0, 114.0}, {83.0, 44.0}}, identifier: 'bots.artifacts', label: '产物' <AX element pid: 82350, elementOrHash.elementID: 5184003104.361>
+                        StaticText, 0x106fdbe80, {{16.0, 114.0}, {83.0, 44.0}}, label: '产物' <AX element pid: 82350, elementOrHash.elementID: 5184003424.379>
+                        Image, 0x106fdb480, {{32.0, 129.0}, {14.0, 14.0}}, identifier: 'square.grid.2x2', label: '网格视图' <AX element pid: 82350, elementOrHash.elementID: 5184003264.380>
+                      StaticText, 0x106fdb200, {{30.0, 180.0}, {350.7, 33.7}}, label: 'Hermes 未及时响应。请确认 Hermes 服务器正在运行，然后重试。' <AX element pid: 82350, elementOrHash.elementID: 5184007584.420>
+                      Button, 0x106fdae40, {{30.0, 223.7}, {380.0, 58.0}}, identifier: 'bots.repair-connection', label: '修复连接' <AX element pid: 82350, elementOrHash.elementID: 5184006944.421>
+                        StaticText, 0x106fdb0c0, {{30.0, 223.7}, {380.0, 58.0}}, label: '修复连接' <AX element pid: 82350, elementOrHash.elementID: 5184006784.422>
+                        Image, 0x106fd8a00, {{182.3, 245.0}, {16.0, 15.7}}, identifier: 'wrench.and.screwdriver', label: '交叉的扳手和螺丝刀' <AX element pid: 82350, elementOrHash.elementID: 5184007104.423>
+                      Other, 0x106fdbc00, {{220.0, 461.0}, {0.0, 0.0}} <AX element pid: 82350, elementOrHash.elementID: 5183999424.364>
+                      StaticText, 0x106fdb340, {{148.0, 503.7}, {144.0, 84.7}}, label: '无法加载机器人。' <AX element pid: 82350, elementOrHash.elementID: 5184000064.362>
+                      Image, 0x106fdbd40, {{199.7, 503.7}, {41.0, 37.3}}, identifier: 'exclamationmark.triangle', label: '警告' <AX element pid: 82350, elementOrHash.elementID: 5184000384.363>
+                      StaticText, 0x106fdbac0, {{70.3, 591.3}, {299.3, 24.0}}, label: '连接到 Hermes 以查看你的机器人。' <AX element pid: 82350, elementOrHash.elementID: 5183999744.365>
+                      Button, 0x106fd9cc0, {{205.0, 645.3}, {30.0, 18.0}}, label: '重试' <AX element pid: 82350, elementOrHash.elementID: 5183999904.366>
+                      Other, 0x106fdb700, {{0.0, 860.0}, {440.0, 62.0}} <AX element pid: 82350, elementOrHash.elementID: 5184003584.367>
+              Toolbar, 0x106fdabc0, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'Toolbar', label: '工具栏' <AX element pid: 82350, elementOrHash.elementID: 4425902592.330>
+                Other, 0x106fdb980, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5119109120.345>
+            Other, 0x106fdb840, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4425778176.322>
+              NavigationBar, 0x106e33700, {{0.0, 62.0}, {440.0, 54.0}}, identifier: '会话' <AX element pid: 82350, elementOrHash.elementID: 5155010816.331>
+              Other, 0x10a630000, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5099369152.332>
+                Other, 0x10a630140, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4425672192.346>
+                  Other, 0x10a630280, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5088879616.353>
+                    Other, 0x10a6303c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5184006304.357>
+                      Other, 0x10a630500, {{-277.7, -170.0}, {1048.8, 1352.3}} <AX element pid: 82350, elementOrHash.elementID: 5184004384.368>
+                      Other, 0x10a630640, {{0.0, 62.0}, {440.0, 798.0}} <AX element pid: 82350, elementOrHash.elementID: 4425696768.369>
+                      Button, 0x10a630780, {{16.0, 68.0}, {112.3, 44.0}}, identifier: 'sidebar.workspace', label: 'Hermes 配置文件', Selected <AX element pid: 82350, elementOrHash.elementID: 5184005024.370>
+                        StaticText, 0x10a6308c0, {{31.2, 82.7}, {9.7, 14.7}}, label: 'H' <AX element pid: 82350, elementOrHash.elementID: 5184004704.381>
+                        StaticText, 0x10a630a00, {{60.0, 81.0}, {56.3, 18.0}}, label: 'Hermes' <AX element pid: 82350, elementOrHash.elementID: 5184004864.382>
+                      Button, 0x10a630b40, {{246.0, 68.0}, {44.0, 44.0}}, identifier: 'folder', label: '浏览项目' <AX element pid: 82350, elementOrHash.elementID: 5184005184.371>
+                      Button, 0x10a630c80, {{290.0, 68.0}, {44.0, 44.0}}, identifier: 'square.grid.2x2', label: '产物' <AX element pid: 82350, elementOrHash.elementID: 5184005344.372>
+                      Button, 0x10a630dc0, {{334.0, 68.0}, {44.0, 44.0}}, label: '筛选', value: 全部 <AX element pid: 82350, elementOrHash.elementID: 5184005824.373>
+                        Button, 0x10a630f00, {{334.0, 68.0}, {44.0, 44.0}} <AX element pid: 82350, elementOrHash.elementID: 5098543232.383>
+                          Image, 0x10a631040, {{334.0, 68.0}, {44.0, 44.0}}, identifier: 'line.3.horizontal.decrease', label: '过滤' <AX element pid: 82350, elementOrHash.elementID: 5184005504.392>
+                      Button, 0x10a631180, {{378.0, 68.0}, {44.0, 44.0}}, identifier: 'square.and.pencil', label: '新聊天', Disabled <AX element pid: 82350, elementOrHash.elementID: 5184005984.374>
+                      CollectionView, 0x10a6312c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5158322176.375>
+                        Other, 0x10a631400, {{0.0, -1790.0}, {440.0, 4187.7}} <AX element pid: 82350, elementOrHash.elementID: 5183213312.384>
+                        Other, 0x10a631540, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5099367360.385>
+                          Other, 0x10a631680, {{0.0, 0.0}, {440.0, 102.0}} <AX element pid: 82350, elementOrHash.elementID: 5096864192.393>
+                        Other, 0x10a6317c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5099366912.386>
+                          Other, 0x10a631900, {{0.0, 0.0}, {440.0, 102.0}} <AX element pid: 82350, elementOrHash.elementID: 5183214592.394>
+                        Cell, 0x10a631a40, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5182947328.387>
+                          Other, 0x10a631b80, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5118294400.395>
+                            Other, 0x10a631cc0, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 4425608192.400>
+                              Other, 0x10a631e00, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5088883712.406>
+                                Other, 0x10a631f40, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5184007424.411>
+                          Other, 0x10a632080, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5096862400.396>
+                            Other, 0x10a6321c0, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 4360610816.401>
+                              Other, 0x10a632300, {{0.0, 122.0}, {440.0, 50.0}} <AX element pid: 82350, elementOrHash.elementID: 5184006624.407>
+                                TextField, 0x10a632440, {{16.0, 126.0}, {408.0, 40.0}}, placeholderValue: '搜索 Hermes' <AX element pid: 82350, elementOrHash.elementID: 5182948608.412>
+                                Image, 0x10a632580, {{31.7, 138.7}, {14.7, 15.0}}, identifier: 'magnifyingglass', label: '搜索' <AX element pid: 82350, elementOrHash.elementID: 5184006464.413>
+                        Other, 0x10a6326c0, {{0.0, 122.0}, {440.0, 60.0}}, label: '正在刷新内容' <AX element pid: 82350, elementOrHash.elementID: 5119056128.388>
+                          Other, 0x10a632800, {{0.0, 122.0}, {440.0, 60.0}} <AX element pid: 82350, elementOrHash.elementID: 5118279680.397>
+                            Other, 0x10a632940, {{170.0, 102.0}, {100.0, 100.0}} <AX element pid: 82350, elementOrHash.elementID: 5121211264.402>
+                              Other, 0x10a632a80, {{170.0, 102.0}, {100.0, 100.0}} <AX element pid: 82350, elementOrHash.elementID: 5096839296.408>
+                                Other, 0x10a632bc0, {{218.3, 137.0}, {3.7, 10.0}} <AX element pid: 82350, elementOrHash.elementID: 5096842880.414>
+                            StaticText, 0x10a632d00, {{10.0, 170.7}, {420.0, 0.0}} <AX element pid: 82350, elementOrHash.elementID: 4425701888.403>
+                        Cell, 0x10a632e40, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5182951168.424>
+                          Other, 0x10a632f80, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5183219712.426>
+                            Other, 0x10a6330c0, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 4425930240.430>
+                              Other, 0x10a633200, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5088881664.434>
+                                Other, 0x10a633340, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5182922080.439>
+                          Other, 0x10a633480, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5099374336.427>
+                            Other, 0x10a6335c0, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 4360612352.431>
+                              Other, 0x10a633700, {{0.0, 172.0}, {440.0, 143.7}} <AX element pid: 82350, elementOrHash.elementID: 5182918400.435>
+                                StaticText, 0x10a633840, {{30.0, 188.0}, {350.7, 33.7}}, label: 'Hermes 未及时响应。请确认 Hermes 服务器正在运行，然后重试。' <AX element pid: 82350, elementOrHash.elementID: 5182915360.440>
+                                Button, 0x10a633980, {{30.0, 231.7}, {380.0, 58.0}}, identifier: 'chats.repair-connection', label: '修复连接' <AX element pid: 82350, elementOrHash.elementID: 5182915200.441>
+                                  StaticText, 0x10a633ac0, {{30.0, 231.7}, {380.0, 58.0}}, label: '修复连接' <AX element pid: 82350, elementOrHash.elementID: 5182917920.446>
+                                  Image, 0x10a633c00, {{176.0, 250.7}, {20.3, 20.3}}, identifier: 'wrench.and.screwdriver', label: '交叉的扳手和螺丝刀' <AX element pid: 82350, elementOrHash.elementID: 5182915040.447>
+                        Cell, 0x10a633d40, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5182949888.389>
+                          Other, 0x10a633e80, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5183209472.398>
+                            Other, 0x10a59c000, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 4425611264.404>
+                              Other, 0x10a59c140, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5088885760.409>
+                                Other, 0x10a59c280, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5184007264.442>
+                          Other, 0x10a59c3c0, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5096862848.399>
+                            Other, 0x10a59c500, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 4360613888.405>
+                              Other, 0x10a59c640, {{0.0, 172.0}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5184010464.436>
+                                ActivityIndicator, 0x10a59c780, {{0.0, 172.0}, {440.0, 170.0}}, label: '正在载入聊天…', value: 1 <AX element pid: 82350, elementOrHash.elementID: 5184010304.443>
+                                  ActivityIndicator, 0x10a59c8c0, {{210.0, 233.7}, {20.0, 20.0}}, value: 1 <AX element pid: 82350, elementOrHash.elementID: 5183212032.417>
+                                    Image, 0x10a59ca00, {{210.0, 233.7}, {20.0, 20.0}} <AX element pid: 82350, elementOrHash.elementID: 5183212672.419>
+                                  StaticText, 0x10a59cb40, {{0.0, 0.0}, {0.0, 0.0}}, label: '正在载入聊天…' <AX element pid: 82350, elementOrHash.elementID: 5184011904.448>
+                        Cell, 0x10a59cc80, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5182952448.425>
+                          Other, 0x10a59cdc0, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5183222912.428>
+                            Other, 0x10a59cf00, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 4425576960.432>
+                              Other, 0x10a59d040, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5184782336.437>
+                                Other, 0x10a59d180, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5182923200.444>
+                          Other, 0x10a59d2c0, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5099376576.429>
+                            Other, 0x10a59d400, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5184765952.433>
+                              Other, 0x10a59d540, {{0.0, 315.7}, {440.0, 170.0}} <AX element pid: 82350, elementOrHash.elementID: 5182929760.438>
+                                ActivityIndicator, 0x10a59d680, {{0.0, 315.7}, {440.0, 170.0}}, label: '正在载入聊天…', value: 1 <AX element pid: 82350, elementOrHash.elementID: 5182922240.445>
+                                  ActivityIndicator, 0x10a59d7c0, {{210.0, 377.3}, {20.0, 20.0}}, value: 1 <AX element pid: 82350, elementOrHash.elementID: 5183222272.449>
+                                    Image, 0x10a59d900, {{210.0, 377.3}, {20.0, 20.0}} <AX element pid: 82350, elementOrHash.elementID: 5183220992.451>
+                                  StaticText, 0x10a59da40, {{0.0, 0.0}, {0.0, 0.0}}, label: '正在载入聊天…' <AX element pid: 82350, elementOrHash.elementID: 5182930080.450>
+                        Other, 0x10a59db80, {{20.0, 366.7}, {400.0, 1.0}} <AX element pid: 82350, elementOrHash.elementID: 5183213952.390>
+                        Other, 0x10a59dcc0, {{407.0, 122.0}, {30.0, 738.0}}, label: '垂直滚动条, 1页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425598464.391>
+                        Other, 0x10a59de00, {{407.0, 122.0}, {30.0, 738.0}}, label: '垂直滚动条, 1页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425598464.391>
+                      Button, 0x10a59df40, {{219.7, 451.0}, {1.0, 20.3}}, label: '搜索' <AX element pid: 82350, elementOrHash.elementID: 5182925280.452>
+                        StaticText, 0x10a59e080, {{219.7, 451.0}, {1.0, 20.3}}, label: '搜索' <AX element pid: 82350, elementOrHash.elementID: 5184003904.376>
+                      Other, 0x10a59e1c0, {{220.0, 461.0}, {0.0, 0.0}} <AX element pid: 82350, elementOrHash.elementID: 5184004224.377>
+                      Other, 0x10a59e300, {{0.0, 860.0}, {440.0, 62.0}} <AX element pid: 82350, elementOrHash.elementID: 5184006144.378>
+              Toolbar, 0x10a59e440, {{0.0, 0.0}, {440.0, 956.0}}, identifier: 'Toolbar', label: '工具栏' <AX element pid: 82350, elementOrHash.elementID: 4425778688.333>
+                Other, 0x10a59e580, {{0.0, 0.0}, {0.0, 0.0}} <AX element pid: 82350, elementOrHash.elementID: 5099370944.347>
+                Other, 0x10a59e6c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 5119053568.348>
+            Other, 0x10a59e800, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 82350, elementOrHash.elementID: 4429158528.8>
+            Other, 0x10a59e940, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 82350, elementOrHash.elementID: 4429158976.9>
+            Other, 0x10a59ea80, {{0.0, 62.0}, {440.0, 860.0}} <AX element pid: 82350, elementOrHash.elementID: 4425914624.10>
+            WebView, 0x10a59ebc0, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 82350, elementOrHash.elementID: 5119502336.323>
+              WebView, 0x10a59ed00, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 82350, elementOrHash.elementID: 5097504768.334>
+                WebView, 0x10a59ee40, {{219.7, 491.7}, {1.0, 1.0}} <AX element pid: 82350, elementOrHash.elementID: 4361601024.349>
+                  Other, 0x10a59ef80, {{0.0, 0.0}, {1.0, 1.0}} <AX element pid: 82350, elementOrHash.elementID: 5434521806784784092.9999>
+                    Other, 0x10a59f0c0, {{0.0, 0.0}, {1.0, 1.0}} <AX element pid: 84017, elementOrHash.elementID: 4349957744.3>
+                      Other, 0x10a59f200, {{219.0, 491.0}, {1.0, 1.0}} <AX element pid: 84017, elementOrHash.elementID: 5238367648.4>
+                        Other, 0x10a59f340, {{219.0, 491.0}, {981.0, 981.0}}, Focused <AX element pid: 84017, elementOrHash.elementID: 5238367808.5>
+                Other, 0x10a59f480, {{217.2, 491.7}, {0.5, 1.0}}, label: '垂直滚动条, 980页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425579008.350>
+                  Other, 0x10a59f5c0, {{214.7, 450.0}, {3.0, 36.0}} <AX element pid: 82350, elementOrHash.elementID: 5099380608.354>
+                Other, 0x10a59f700, {{219.7, 489.2}, {1.0, 0.5}}, label: '水平滚动条, 980页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425576448.351>
+                  Other, 0x10a59f840, {{175.0, 486.7}, {36.0, 3.0}} <AX element pid: 82350, elementOrHash.elementID: 5099380160.355>
+                Other, 0x10a59f980, {{217.2, 491.7}, {0.5, 1.0}}, label: '垂直滚动条, 980页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425579008.350>
+                  Other, 0x10a59fac0, {{214.7, 450.0}, {3.0, 36.0}} <AX element pid: 82350, elementOrHash.elementID: 5099380608.354>
+                Other, 0x10a59fc00, {{219.7, 489.2}, {1.0, 0.5}}, label: '水平滚动条, 980页', value: 0% <AX element pid: 82350, elementOrHash.elementID: 4425576448.351>
+                  Other, 0x10a59fd40, {{175.0, 486.7}, {36.0, 3.0}} <AX element pid: 82350, elementOrHash.elementID: 5099380160.355>
+            Button, 0x10a59fe80, {{20.0, 864.0}, {82.0, 48.0}}, label: '机器人', Selected <AX element pid: 82350, elementOrHash.elementID: 5177993856.324>
+              Image, 0x10a584000, {{49.3, 872.0}, {24.7, 17.0}}, identifier: 'person.2', label: '两个人' <AX element pid: 82350, elementOrHash.elementID: 5177993536.335>
+              StaticText, 0x10a584140, {{44.5, 892.2}, {33.0, 13.3}}, label: '机器人' <AX element pid: 82350, elementOrHash.elementID: 5177993696.336>
+            Button, 0x10a584280, {{104.0, 864.0}, {82.0, 48.0}}, label: '会话' <AX element pid: 82350, elementOrHash.elementID: 5177994336.325>
+              Image, 0x10a5843c0, {{132.7, 870.7}, {25.0, 19.7}}, identifier: 'bubble.left.and.bubble.right', label: '对话' <AX element pid: 82350, elementOrHash.elementID: 5177994016.337>
+              StaticText, 0x10a584500, {{134.0, 893.5}, {22.0, 13.3}}, label: '会话' <AX element pid: 82350, elementOrHash.elementID: 5177994176.338>
+            Button, 0x10a584640, {{188.0, 864.0}, {82.0, 48.0}}, label: '任务' <AX element pid: 82350, elementOrHash.elementID: 5177994816.326>
+              Image, 0x10a584780, {{219.3, 871.7}, {19.7, 17.3}}, identifier: 'checklist', label: '带勾号的核对清单' <AX element pid: 82350, elementOrHash.elementID: 5177994496.339>
+              StaticText, 0x10a5848c0, {{218.0, 892.3}, {22.0, 13.3}}, label: '任务' <AX element pid: 82350, elementOrHash.elementID: 5177994656.340>
+            Button, 0x10a584a00, {{272.0, 864.0}, {82.0, 48.0}}, label: '设置' <AX element pid: 82350, elementOrHash.elementID: 5177995296.327>
+              Image, 0x10a584b40, {{304.3, 873.0}, {17.7, 15.0}}, identifier: 'slider.horizontal.3', label: '编辑' <AX element pid: 82350, elementOrHash.elementID: 5177994976.341>
+              StaticText, 0x10a584c80, {{302.0, 891.2}, {22.0, 13.3}}, label: '设置' <AX element pid: 82350, elementOrHash.elementID: 5177995136.342>
+            Button, 0x10a584dc0, {{368.0, 860.0}, {56.0, 56.0}}, label: '新语音通话', Disabled <AX element pid: 82350, elementOrHash.elementID: 5177995616.328>
+              Other, 0x10a584f00, {{368.0, 860.0}, {56.0, 56.0}}, Disabled <AX element pid: 82350, elementOrHash.elementID: 5177995456.343>
+  Window, 0x10a585040, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4361286144.51>
+    Other, 0x10a585180, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4426170880.52>
+      Other, 0x10a5852c0, {{0.0, 0.0}, {440.0, 956.0}} <AX element pid: 82350, elementOrHash.elementID: 4426172928.53>

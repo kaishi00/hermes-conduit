@@ -1,0 +1,16 @@
+/add-bot {"bot": "mira", "dashboard": "home"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "piko"}
+"POST /add-bot HTTP/1.1" 200 -
+/add-bot {"dashboard": "home", "bot": "riri"}
+"POST /add-bot HTTP/1.1" 200 -
+/prompt {"dashboard": "studio", "profile": "lucien", "text": "\u5199\u4e00\u4e0b 2.4 \u7684\u7248\u672c\u8bf4\u660e"}
+"POST /prompt HTTP/1.1" 200 -
+/join-room {"dashboard": "sam", "room": "\u83ab\u5e72\u5c71\u5468\u672b"}
+"POST /join-room HTTP/1.1" 200 -
+/room-say {"text": "\u592a\u597d\u4e86\uff01@nori \u4ece\u5e02\u533a\u5f00\u8fc7\u53bb\u8981\u591a\u4e45\uff0c\u4e2d\u5348\u5728\u54ea\u513f\u5403\uff1f", "dashboard": "sam", "room": "\u83ab\u5e72\u5c71\u5468\u672b"}
+"POST /room-say HTTP/1.1" 200 -
+/prompt {"profile": "chibi-conduit", "text": "\u6e05\u7406\u4e00\u4e0b\u65e7\u7684\u8bbe\u8ba1\u7a3f", "dashboard": "studio"}
+"POST /prompt HTTP/1.1" 200 -
+/stop-recording {}
+"POST /stop-recording HTTP/1.1" 200 -

@@ -1,0 +1,4 @@
+Query chain:
+ →Find: Application 'com.apple.springboard'
+  ↪︎Find: Descendants matching type Button
+    ↪︎Find: Elements matching predicate '"以后再说" IN identifiers'
