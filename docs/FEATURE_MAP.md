@@ -2006,7 +2006,7 @@ one and in group rooms · /undo and /retry, which Edit and resend and Retry run 
 restore of words put back (failed sends, the waiting message's Edit) · the
 chat's saved copy, whose rows stand in while it opens or offline
 
-**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); Pin reply in a reply's ⋯ menu, the bar over the chat and the list from the bar and the Chats list, with labels, kept per host and profile (`desktop/src/renderer/src/components/PinnedReplies.tsx`, `desktop/src/renderer/src/state/pinnedReplies.ts`, desktop#83); the selection menu (right-click text selected in a reply) has Copy, Quote and Pin or Unpin for the passage, which the bar and the list show and go to, marking it in the reply (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#114); no Read Aloud or Branch.
+**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); Pin reply in a reply's ⋯ menu, the bar over the chat and the list from the bar and the Chats list, with labels, kept per host and profile (`desktop/src/renderer/src/components/PinnedReplies.tsx`, `desktop/src/renderer/src/state/pinnedReplies.ts`, desktop#83); the selection menu (right-click text selected in a reply) has Copy, Quote and Pin or Unpin for the passage, which the bar and the list show and go to, marking it in the reply (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#114).
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
