@@ -202,6 +202,7 @@ extension SidebarLayoutTests {
         let other = marks.replacing([], profile: "work", dashboardID: UUID())
         XCTAssertFalse(other.isDone(compacted, profile: "default"), "another dashboard's read drops this one's marks")
         XCTAssertEqual(ChatDoneMarks.readPath(profile: "my bot"), "/api/plugins/conduit_push/chats/done?profile=my%20bot")
+        XCTAssertEqual(ChatDoneMarks.savePath(profile: "default"), "/api/plugins/conduit_push/chats/done")
         XCTAssertEqual(ChatDoneMarks.body(for: compacted, done: true)["ids"] as? [String], ["chat-1", "chat-2"])
     }
 

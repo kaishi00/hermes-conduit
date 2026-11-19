@@ -462,10 +462,15 @@ final class AppState: ObservableObject {
     @Published var sessionStars = SessionStars()
     /// Done chats, per profile, as the plugin keeps them (ChatDoneMarks).
     @Published var chatDoneMarks = ChatDoneMarks()
-    /// When each profile's Done marks were last read, and the reads on
-    /// their way (AppState+ChatDone).
+    /// When each dashboard and profile's Done marks were last read, the
+    /// reads on their way, the writes not answered yet and a count each
+    /// write moves, so a read from before one is dropped (AppState+ChatDone,
+    /// keyed by chatDoneMarksKey).
     var chatDoneMarksReadAt: [String: Date] = [:]
     var chatDoneMarksReads: Set<String> = []
+    var chatDoneMarksPendingWrites: [String: Int] = [:]
+    var chatDoneMarksWrites: [String: Int] = [:]
+    var chatDoneMarksReadFailureLogged: Set<String> = []
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).

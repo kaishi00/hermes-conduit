@@ -6904,7 +6904,7 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 **Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done filters (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`).
 
 **Code**
-- Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, setSessionDone, refreshChatDoneMarks and its 15 s per-profile throttle)
+- Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, chatDoneMarksKey per dashboard and profile, setSessionDone and its pending writes, refreshChatDoneMarks and its 15 s throttle, a read from before a write dropped)
 - Reads with the list: `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList), `Conduit/Services/AppState+AllProfilesChats.swift` (listAllProfilesCatalog)
 - Views: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, DoneToggleButton), `Conduit/Views/V2/V2ChatsView.swift` (the leading swipe; V2SessionFilter's inProgress and done, V2FilterSelection's progress group), `Conduit/Views/V2/V2SessionRow.swift` (isDone), `Conduit/Views/V2/V2ProjectPage.swift`
 - Route and tool: `notifier/chat_marks_store.py`, `notifier/dashboard/api/chat_marks.py`, `notifier/chat_done_tool.py`, `notifier/tests/test_chat_marks.py`
@@ -6913,6 +6913,7 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 **Rulings**
 - A mark stays until the chat is opened again by hand or by the agent; a new turn doesn't clear it, since a "thanks" would (2026-11-19, Eric picked a Done mark set by the user or the agent).
 - Kept under every id of the chat, its lineage root first, so a compacted chat stays done.
+- A mark shows at once. A read that went out before its write was answered is dropped, and the marks are read again once no write is pending, so a quick read never un-marks the row the user just marked (#2830 review).
 - The agent marks a chat only when the user, or their own instructions or a skill, ask it to; never on its own judgment (the tool's description says so).
 - Done and In progress show only on a plugin that reports `chat-done`; before it answers, the filters and the menu item stay hidden.
 

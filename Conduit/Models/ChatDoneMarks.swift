@@ -72,12 +72,13 @@ struct ChatDoneMarks: Equatable {
         return Array(ids.prefix(maxIDs))
     }
 
+    /// The default profile's without a parameter, as every plugin route.
     static func readPath(profile: String) -> String {
-        path + "?" + query(profile: profile)
+        DashboardPath.withProfile(path, profile: profile)
     }
 
     static func savePath(profile: String) -> String {
-        path + "?" + query(profile: profile)
+        DashboardPath.withProfile(path, profile: profile)
     }
 
     static func body(for session: SessionSummary, done: Bool) -> [String: Any] {
@@ -93,11 +94,5 @@ struct ChatDoneMarks: Equatable {
                   let at = (row["at"] as? NSNumber)?.doubleValue else { return nil }
             return Mark(ids: Set(ids), at: Date(timeIntervalSince1970: at), byAgent: row["by"] as? String == "agent")
         }
-    }
-
-    private static func query(profile: String) -> String {
-        var components = URLComponents()
-        components.queryItems = [URLQueryItem(name: "profile", value: profile)]
-        return components.percentEncodedQuery ?? ""
     }
 }
