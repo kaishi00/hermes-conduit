@@ -289,7 +289,7 @@ struct OpenChatSync {
     /// settle it.
     private var notRunningSnapshots = 0
     private var messageCountBaseline: Int?
-    private var sentHereSinceBaseline = false
+    private(set) var sentHereSinceBaseline = false
     private var sawRunElsewhere = false
     private var lastReadAt: Date?
     /// Another device is getting the reply of a turn in this chat.
