@@ -763,6 +763,9 @@ struct VoiceReplyModelSettingsModel {
     var loadProviders: () async -> [ProviderInfo]?
     /// Writes the setting; `confirmed` answers Hermes' price check.
     var save: (VoiceReplyModelSetting, _ confirmed: Bool) async -> HelperModelSaveResult
+    /// The Model page's Refresh models: off for another profile's slot,
+    /// as the refresh asks the open profile's Hermes.
+    var offersRefresh = true
 }
 
 /// The Voice replies section's setting and picks, apart from its view so
@@ -1032,7 +1035,8 @@ struct VoiceReplyModelSettingsSection: View {
             ),
             reasoningTitle: inherits ? nil : ReasoningEffortLevel.displayTitle(for: picks.reasoning),
             footer: AnyView(warnings),
-            identifier: helper.map { "settings.helperModel.\($0.id)" } ?? "settings.voiceReplies.model"
+            identifier: helper.map { "settings.helperModel.\($0.id)" } ?? "settings.voiceReplies.model",
+            offersRefresh: settings.offersRefresh
         )
         if providersFailed || picks.readFailed {
             // What's listed stays up; Hermes didn't answer.

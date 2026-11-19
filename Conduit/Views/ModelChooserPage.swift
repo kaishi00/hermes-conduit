@@ -196,8 +196,12 @@ struct ModelChooserPage: View {
         refreshingModels = true
         let loaded = await appState.loadModelProviders(refresh: true)
         refreshingModels = false
-        guard appState.activeDashboardID == dashboard, appState.activeProfile == profile else { return }
-        refreshFailed = loaded == nil
+        guard let failed = modelChooserRefreshLanded(
+            loaded: loaded != nil,
+            asked: (dashboard, profile),
+            now: (appState.activeDashboardID, appState.activeProfile)
+        ) else { return }
+        refreshFailed = failed
         retry()
     }
 
@@ -532,6 +536,15 @@ struct ModelChooserPage: View {
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
+}
+
+/// What a page's own Refresh models does once Hermes answers: nil when
+/// the dashboard or profile changed meanwhile (the setting's read is left
+/// alone), else whether the refresh failed, which stays said until one
+/// lands; the setting reads its models again either way.
+func modelChooserRefreshLanded(loaded: Bool, asked: (UUID?, String), now: (UUID?, String)) -> Bool? {
+    guard asked.0 == now.0, asked.1 == now.1 else { return nil }
+    return !loaded
 }
 
 /// A model setting's row in Settings: its name, then the model and the

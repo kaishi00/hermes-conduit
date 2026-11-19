@@ -21,6 +21,17 @@ final class ModelPickerTests: XCTestCase {
         XCTAssertEqual(modelSearchTypedIDProviders(providers, id: "GPT-5", preferred: "openai").map(\.name), ["deepinfra", "custom:lab"])
     }
 
+    /// A Model page's own Refresh models keeps a failure said until one
+    /// lands, and leaves the setting's read alone once the dashboard or
+    /// profile changed under it (#2847's reviews).
+    func testAModelPageRefreshKeepsItsFailureAndSkipsAStalePage() {
+        let dashboard = UUID()
+        XCTAssertEqual(modelChooserRefreshLanded(loaded: false, asked: (dashboard, "default"), now: (dashboard, "default")), true)
+        XCTAssertEqual(modelChooserRefreshLanded(loaded: true, asked: (dashboard, "default"), now: (dashboard, "default")), false)
+        XCTAssertNil(modelChooserRefreshLanded(loaded: true, asked: (dashboard, "default"), now: (UUID(), "default")))
+        XCTAssertNil(modelChooserRefreshLanded(loaded: false, asked: (dashboard, "default"), now: (dashboard, "work")))
+    }
+
     /// A catalog fetch that failed says so, with Try Again, instead of
     /// "No models are available" or loading forever (#1016). A re-load that
     /// fails keeps the rows it already had.
