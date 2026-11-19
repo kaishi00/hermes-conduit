@@ -310,7 +310,7 @@ use, as the other Capabilities tabs do) · Watch, CarPlay and group rooms
 (not needed: no settings) · the notifier (not needed: gateway calls) ·
 Text: the section's captions and README.md's Capabilities line (done)
 
-**Desktop app:** gap: no Apps (Nous Portal) page; Capabilities lists connectors and MCP servers only.
+**Desktop app:** has it (desktop#78): Capabilities > Connectors' Apps above the MCP servers, Browse Apps by category, and an app's page with its switch, Connect (the page opens in the browser; Done or coming back to the window wakes Hermes), accounts and tool switches (`desktop/src/renderer/src/components/HostedApps.tsx`, `desktop/src/renderer/src/state/useHostedApps.ts`); it doesn't open on kept apps, as the desktop's other Capabilities tabs don't.
 
 **Code**
 - Calls: `Conduit/Services/HermesClient.swift` (hostedAppStatuses, hostedAppCatalog, hostedAppAccounts, hostedAppPolicy, setHostedAppPolicy, hostedAppTools, connectHostedApp, hostedAppOperation, wakeHostedAppOperation, settleHostedAppOperation, renameHostedAppAccount, removeHostedAppAccount)
@@ -363,7 +363,7 @@ a typed key) · CarPlay and Watch calls (not needed: they speak the voice
 modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
 no README, docs, Settings or model-facing text describes the card)
 
-**Desktop app:** partly: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`); no Browse Apps (the Apps page is a gap).
+**Desktop app:** has it: the connection card with Connect, set up with keys, Install, Skip, Try Again and Continue (desktop#67, `desktop/src/renderer/src/components/ConnectionCardView.tsx`), and the app directory card's Browse Apps, which opens Capabilities > Connectors' Browse Apps on the chat's bot with Hermes' picks first (desktop#80, `desktop/src/renderer/src/state/appsDirectory.ts`).
 
 **Code**
 - Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
@@ -3556,7 +3556,7 @@ window (the pane's Open in New Window on an iPad and a Mac: the same rows
 in a window of its own, with Open in Main Window) · the main window's
 first-window guard (never closes a chat window) · README.md's feature list
 
-**Desktop app:** gap: no second chat open beside the first.
+**Desktop app:** partly (desktop#77): Open Beside in a chat's menu keeps a second chat in the side panel when the window is wide enough, with its own message box, Swap Chats and Close Chat Beside (`desktop/src/renderer/src/components/BesideChat.tsx`); no chat window of its own.
 
 **Code**
 - `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, noteUserMessageInBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
@@ -5957,7 +5957,7 @@ iPhone voice, Hermes speech, the speech server and the standalone playback
 note into it; Classic and the speech test share those and take no steps) ·
 docs/VOICE_SETTINGS.md
 
-**Desktop app:** gap: no live call trace.
+**Desktop app:** has it: Settings > Last live call keeps and copies the last Grok Live, Qwen Live, Local Live or GPT-Live call's steps (`desktop/src/renderer/src/state/callTrace.ts`, desktop#72), and Settings > Last Read Aloud the last reading's: how much was spoken, Hermes speech's answer, the clip's length, playback and how it ended (`desktop/src/renderer/src/state/readAloud.ts`, desktop#79). Desktop reads a reply as one clip, so it has no sentence, fallback or route steps.
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
@@ -7784,7 +7784,7 @@ the lock only) · Combine Dashboards (the launch's unlock signs the other combin
 dashboards in quietly once the one on screen has connected; a combined one the
 unlock doesn't cover waits for a tap, see Combined dashboards)
 
-**Desktop app:** gap: no Windows Hello or Touch ID lock; the sign-in is encrypted by the system keychain.
+**Desktop app:** has it: Settings > Lock asks for Touch ID (Mac) or Windows Hello once per launch before the saved hosts open (`desktop/src/main/appLock.ts`, desktop#74); the sign-ins stay encrypted by the system keychain.
 
 **Code**
 - `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect, through clearSavedPassword)
@@ -9569,7 +9569,7 @@ keep MetricKit reports or draw a transcript), a delegate agent's tail sheet
 and a call's transcript sheet (short logs with lists of their own), Desktop's
 read-only legacy groups (no transcript to watch)
 
-**Desktop app:** gap: no crash or freeze reports.
+**Desktop app:** partly (desktop#81): a crash of the window, the GPU or a utility process, or the window not responding, is kept as a report; a card asks once whether to send it to the developer's relay, and Settings > Device reports lists them with Send (`desktop/src/main/deviceReports.ts`, `desktop/src/renderer/src/components/DeviceReports.tsx`). No call stacks (Electron's minidumps aren't something the relay takes) and no chat traces.
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
@@ -9816,7 +9816,7 @@ call's Local Live chat), which let go of their own cut-off turns · group
 rooms (not needed: rooms run on the gateway's groups API, not a chat's
 queue) · the notifier's CHANGELOG
 
-**Desktop app:** gap: no chat queue on the Webapp.
+**Desktop app:** has it: the queue above the composer with Send now, Edit, Remove from queue, Resend and Discard (`desktop/src/renderer/src/components/ChatQueueDock.tsx`, `desktop/src/renderer/src/state/chatQueue.ts`, desktop#76); off-screen sends (voice, Quick Ask) don't read the queue.
 
 **Code**
 - The queue and its rows: `Conduit/Models/AuthorityQueue.swift` (QueuedPrompt, QueuedPromptReceipt, AuthorityQueueStore)
