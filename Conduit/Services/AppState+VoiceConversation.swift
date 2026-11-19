@@ -1084,7 +1084,9 @@ extension AppState {
             }
             return .handled
         }
-        if turnState.isRunning, !(joinsTurnWaitingOnUser && !startsFreshConversation && openChatWaitsOnUserAnswer) {
+        let joinsWaitingTurn = joinsTurnWaitingOnUser && !startsFreshConversation && openChatWaitsOnUserAnswer
+        let joinedChat = activeSessionId
+        if turnState.isRunning, !joinsWaitingTurn {
             guard startsFreshConversation else {
                 errorMessage = AppLocalization.string("Stop the current response before starting voice in this conversation.")
                 return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))
@@ -1094,6 +1096,13 @@ extension AppState {
         }
         await refreshVoiceCapabilities()
         guard widgetLease?.isCurrent != false else { return .deferred }
+        // The card answered elsewhere (or another chat opened) during the
+        // refresh: the turn writes again, and a running reply refuses
+        // Classic as above.
+        if joinsWaitingTurn, turnState.isRunning, !openChatWaitsOnUserAnswer || activeSessionId != joinedChat {
+            errorMessage = AppLocalization.string("Stop the current response before starting voice in this conversation.")
+            return .failed(AppLocalization.string("Stop the current response before starting voice in this conversation."))
+        }
         if yieldsToACall, isVoiceCallInProgress { return .deferred }
         guard canStartVoiceConversation else {
             errorMessage = voiceUnavailableReason
