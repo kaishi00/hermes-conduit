@@ -600,6 +600,14 @@ final class AppState: ObservableObject {
                         if errorMessage == failure { errorMessage = nil }
                         sendFailureShown = nil
                     }
+                    // So was an error the chat left put there itself (a
+                    // bot whose model can't start), which read as the next
+                    // chat's until a send cleared it (issue 2801).
+                    if let shown = shownChat.chatErrorShown {
+                        if errorMessage == shown.message { errorMessage = nil }
+                        if chatErrorBehindRoom == shown.message { chatErrorBehindRoom = nil }
+                        shownChat.chatErrorShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
@@ -2720,6 +2728,10 @@ final class AppState: ObservableObject {
     /// lands after a newer one would put back a list from before it (#786).
     var sessionListReadTicket: UInt64 = 0
     var sessionListListedTicket: UInt64 = 0
+    /// Whether the listing that holds `sessionListListedTicket` took its
+    /// cron rows from the catalog cache: a gateway listing fills none, so a
+    /// later relist from the cache doesn't replace its rows (issue 2763).
+    var sessionListListedCronFromCache = false
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
     var leaveCatalogRefreshTask: Task<Void, Never>?

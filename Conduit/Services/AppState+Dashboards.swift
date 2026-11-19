@@ -699,6 +699,10 @@ extension AppState {
         let outgoingProfiles = profiles
         // Its own chats as listed (every profile's, with All on), each
         // naming its profile: another dashboard's All lists them at once.
+        // Its cron runs' ids too: identity evidence for one Hermes saved
+        // twice, as it counted them on screen (issue 2761).
+        let outgoingCronIDs = Set(cronSessions.filter { $0.combinedDashboardID == nil }
+            .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
         let outgoingChats = chatListSessions.filter { $0.combinedDashboardID == nil }.map { row -> SessionSummary in
             var row = row
             if row.profile == nil { row.profile = activeProfile }
@@ -727,7 +731,7 @@ extension AppState {
         // switch back is at once (multi-instance stage 3).
         keepOutgoingDashboardRuntimeIfCombined(
             previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats,
-            work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows
+            cronIDs: outgoingCronIDs, work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows
         )
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {

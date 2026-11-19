@@ -578,6 +578,8 @@ extension AppState {
                     // A restored cron run goes back to the Cron list, not the chats.
                     if updated.source == .cron {
                         cronSessions = [updated] + cronSessions.filter { !sessionMatches($0, updated) }
+                        // A list read reusing the cached cron rows keeps it too (issue 2763).
+                        sessionCatalogCache.keepCronRow(updated, forKey: "\(profile):cron") { sessionMatches($0, updated) }
                     } else {
                         sessions = [updated] + sessions.filter { !sessionMatches($0, updated) }
                     }

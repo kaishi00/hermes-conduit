@@ -429,7 +429,12 @@ extension AppState {
         let retitled = sessions.map(updated)
         if retitled != sessions { sessions = retitled; listsChanged = true }
         let retitledCron = cronSessions.map(updated)
-        if retitledCron != cronSessions { cronSessions = retitledCron; listsChanged = true }
+        if retitledCron != cronSessions {
+            cronSessions = retitledCron
+            listsChanged = true
+            // A list read reusing the cached cron rows shows the new title (issue 2763).
+            sessionCatalogCache.updateRows(forKey: "\(activeProfile):cron", updated)
+        }
         let retitledArchived = archivedSessions.map(updated)
         if retitledArchived != archivedSessions { archivedSessions = retitledArchived; listsChanged = true }
         // Catalog rows may carry the recovered title either way, but the
