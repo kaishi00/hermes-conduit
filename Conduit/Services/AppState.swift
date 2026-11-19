@@ -2531,6 +2531,9 @@ final class AppState: ObservableObject {
     /// `refreshVoiceCapabilities` hermetic in tests. Mirrors the
     /// `installVoiceCapabilityStateForTesting` precedent.
     var voiceCapabilityRequesterForTesting: VoiceConfigurationRequesting?
+    /// Test-only seam: runs once a voice start's capability refresh ends,
+    /// so a test can change the chat in that await (issue 2797).
+    var voiceStartRefreshEndedForTesting: (@MainActor () -> Void)?
 
     // MARK: - Cron
 

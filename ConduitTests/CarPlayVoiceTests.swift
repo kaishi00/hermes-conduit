@@ -3058,6 +3058,41 @@ final class CarPlayVoicePrepareOutcomeTests: XCTestCase {
         XCTAssertEqual(harness.appState.turnState, .running, "The paused turn is left to the user's answer")
     }
 
+    /// Issue 2797: the join is checked again once the capability refresh
+    /// ends: a card answered during it, or another chat opened meanwhile,
+    /// refuses the call as a running reply does.
+    func testACallFromHermesChecksItsJoinAgainAfterTheRefresh() async {
+        func pendingApproval() -> ChatMessage {
+            ChatMessage(
+                id: "approval-1", role: .approval, content: "Delete the scratch folder?", timestamp: "1",
+                approval: ApprovalActivity(
+                    sessionId: "s1", requestId: "req-1", command: "rm -rf scratch",
+                    description: "Delete the scratch folder?", choices: nil, allowPermanent: false,
+                    smartDenied: false, status: .pending, choice: nil, error: nil
+                )
+            )
+        }
+        let refused = AppLocalization.string("Stop the current response before starting voice in this conversation.")
+        for change in ["answered", "other chat"] {
+            let harness = makeHarness(activeSessionID: "s1")
+            harness.appState.turnState = .running
+            harness.appState.messages = [pendingApproval()]
+            XCTAssertTrue(harness.appState.openChatWaitsOnUserAnswer)
+            harness.appState.voiceStartRefreshEndedForTesting = {
+                if change == "answered" {
+                    harness.appState.messages[0].approval?.status = .approved
+                } else {
+                    harness.appState.activeSessionId = "s2"
+                }
+            }
+            let called = await harness.appState.prepareVoiceConversation(
+                profile: nil, startsFreshConversation: false, joinsTurnWaitingOnUser: true
+            )
+            XCTAssertEqual(called, .failed(refused), change)
+            XCTAssertFalse(harness.controller.hasLiveVoiceSession, change)
+        }
+    }
+
     /// A call only joins a turn that waits on the user: one still writing
     /// its reply, or whose card was answered, refuses it as before.
     func testACallFromHermesDoesNotJoinATurnStillWriting() async {

@@ -74,6 +74,68 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(recorder.events.first, "report rt-voice \(TurnSurface.device.rawValue) spoken")
     }
 
+    /// Issue 2797 (#2793): Classic joined to a turn paused on an approval
+    /// answers it, or steers it, and never sends the words as a new turn
+    /// while the turn runs.
+    func testClassicSpeechIntoAPausedTurnAnswersOrSteersIt() async {
+        func pausedTurn(_ recorder: TurnSurfaceRecorder) -> Harness {
+            let harness = makeHarness(recorder: recorder)
+            openChat("rt-paused", in: harness)
+            harness.appState.turnState = .running
+            harness.appState.messages = [ChatMessage(
+                id: "approval-1", role: .approval, content: "Delete the scratch folder?", timestamp: "1",
+                approval: ApprovalActivity(
+                    sessionId: "rt-paused", requestId: "req-1", command: "rm -rf scratch",
+                    description: "Delete the scratch folder?", choices: nil, allowPermanent: false,
+                    smartDenied: false, status: .pending, choice: nil, error: nil
+                )
+            )]
+            XCTAssertTrue(harness.appState.openChatWaitsOnUserAnswer)
+            return harness
+        }
+        func sent(_ recorder: TurnSurfaceRecorder, _ kind: String) -> [String] {
+            recorder.events.filter { $0.hasPrefix(kind + " ") }
+        }
+
+        // A yes answers the card: no steer, no new turn.
+        let yes = TurnSurfaceRecorder()
+        let yesHarness = pausedTurn(yes)
+        let answered = await yesHarness.appState.submitVoiceTranscript("yes")
+        XCTAssertTrue(answered)
+        XCTAssertEqual(sent(yes, "approval"), ["approval rt-paused once"])
+        XCTAssertTrue(sent(yes, "prompt").isEmpty && sent(yes, "steer").isEmpty, "\(yes.events)")
+
+        // Other words steer the paused turn, with no new prompt.
+        let words = TurnSurfaceRecorder()
+        let wordsHarness = pausedTurn(words)
+        let steered = await wordsHarness.appState.submitVoiceTranscript("Only the tmp files")
+        XCTAssertTrue(steered)
+        XCTAssertEqual(sent(words, "steer"), ["steer rt-paused Only the tmp files"])
+        XCTAssertTrue(sent(words, "prompt").isEmpty, "\(words.events)")
+
+        // A failed steer is false, and the words aren't sent again.
+        let failing = TurnSurfaceRecorder()
+        failing.steerError = URLError(.networkConnectionLost)
+        let failingHarness = pausedTurn(failing)
+        let failed = await failingHarness.appState.submitVoiceTranscript("Only the tmp files")
+        XCTAssertFalse(failed)
+        XCTAssertEqual(sent(failing, "steer").count, 1)
+        XCTAssertTrue(sent(failing, "prompt").isEmpty, "\(failing.events)")
+
+        // The turn ended meanwhile (the answer didn't take): the words go as
+        // a new turn.
+        let ended = TurnSurfaceRecorder()
+        let endedHarness = pausedTurn(ended)
+        ended.respond = {
+            endedHarness.appState.turnState = .idle
+            return false
+        }
+        let newTurn = await endedHarness.appState.submitVoiceTranscript("yes")
+        XCTAssertTrue(newTurn)
+        XCTAssertTrue(sent(ended, "steer").isEmpty, "\(ended.events)")
+        XCTAssertEqual(sent(ended, "prompt"), ["prompt rt-paused yes"])
+    }
+
     func testACallersSurfaceWinsOverTheComposers() async {
         let recorder = TurnSurfaceRecorder()
         let harness = makeHarness(recorder: recorder)
@@ -291,13 +353,21 @@ final class AppStateTurnSurfaceTests: XCTestCase {
 
     private func makeHarness(recorder: TurnSurfaceRecorder?, registry: SavedDashboardRegistry? = nil) -> Harness {
         let defaults = makeScratchDefaults("AppStateTurnSurfaceTests")
-        let operations = ChatResumeLifecycleOperations(
+        var operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
                 recorder?.events.append("prompt \(sessionID) \(text)")
                 if let error = recorder?.sendError { throw error }
                 return .accepted
             }
         )
+        operations.steer = { _, sessionID, text in
+            recorder?.events.append("steer \(sessionID) \(text)")
+            if let error = recorder?.steerError { throw error }
+        }
+        operations.respondToApproval = { _, sessionID, _, choice, _ in
+            recorder?.events.append("approval \(sessionID) \(choice)")
+            return recorder?.respond?() ?? true
+        }
         let store = ChatResumeStore(defaults: defaults)
         let appState = AppState(
             defaults: defaults,
@@ -348,6 +418,8 @@ private final class TurnSurfaceRecorder {
     var reportDelay: Duration?
     var reportError: Error?
     var sendError: Error?
+    var steerError: Error?
+    var respond: (() -> Bool)?
     var discards: [String] = []
     var discardErrors: [Error] = []
     var discardTries = 0
