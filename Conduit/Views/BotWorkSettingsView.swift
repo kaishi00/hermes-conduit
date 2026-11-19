@@ -175,7 +175,7 @@ struct BotWorkSettingsView: View {
                     ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                 }
                 .buttonStyle(.plain)
-                caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own.", table: .bots))
+                caption(AppLocalization.string("New workstreams start on this model. When your words to \(botName) name another model for a task, that one workstream runs on it, and its card says so. Work that’s already running keeps its own.", table: .bots))
             }
             ConduitSettingsSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", tint: .green) {
                 ConduitMenuPicker(
