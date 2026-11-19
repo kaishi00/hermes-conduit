@@ -944,6 +944,46 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(relaunched.savedLedger().first?.state, .finished, "still kept until a call says it")
     }
 
+    /// Issue 2760: a job whose chat the call took keeps that, and what it
+    /// sent there, across a relaunch, so another turn's reply in that chat
+    /// never becomes its result.
+    func testARelaunchKeepsTheFenceOnASharedCallChat() async throws {
+        var job = VoiceBackgroundJob(id: UUID(), title: "Router", instructions: "check the router",
+                                     runtimeSessionID: "rt-1", storedSessionID: "st-1", status: .running,
+                                     startedAt: Date())
+        job.opensCallChat = true
+        var saved = try XCTUnwrap(SavedVoiceJob(job))
+        XCTAssertEqual(saved.opensCallChat, true)
+        saved.sentPrompts = ["check the router", "and the switch"]
+        let decoded = SavedVoiceJob.decode(try JSONEncoder().encode([saved]))
+        XCTAssertEqual(decoded, [saved], "kept as JSON")
+        XCTAssertEqual(decoded.first?.job?.opensCallChat, true)
+
+        // Another turn's reply in the shared chat is not the job's.
+        let (relaunched, fake) = makeSupervisor()
+        relaunched.restore(decoded)
+        fake.liveRows = [LiveSessionStatus(runtimeSessionId: "rt-1", storedSessionId: "st-1", status: "idle")]
+        fake.threadReply = "It's sunny."
+        fake.threadReplyPrompt = "what's the weather"
+        await relaunched.pollOnce()
+        XCTAssertNil(relaunched.jobs.first?.result, "that reply answered a message the job never sent")
+        XCTAssertEqual(relaunched.savedLedger().first?.sentPrompts, ["and the switch", "check the router"])
+
+        // A reply to a later message it sent is its own.
+        let (own, ownFake) = makeSupervisor()
+        own.restore(decoded)
+        ownFake.liveRows = fake.liveRows
+        ownFake.threadReply = "The switch is fine."
+        ownFake.threadReplyPrompt = "and the switch"
+        await own.pollOnce()
+        XCTAssertEqual(own.jobs.first?.result, "The switch is fine.")
+
+        // A ledger from before keeps its first message as instructions make it.
+        var older = saved
+        older.sentPrompts = nil
+        XCTAssertEqual(older.promptsSent, [VoiceBackgroundJobSupervisor.jobPrompt(for: "check the router").trimmingCharacters(in: .whitespacesAndNewlines)])
+    }
+
     /// M5b: a job brought back is said only to a call kept with its call's
     /// chat; a settled one nobody heard goes after a day.
     func testARestoredJobIsSaidOnlyInItsCallsChat() {
