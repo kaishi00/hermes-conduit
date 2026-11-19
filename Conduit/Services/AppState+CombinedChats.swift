@@ -25,6 +25,12 @@ struct CombinedDashboardChats: Equatable {
     /// ago, so the next pass reads anew): a read started before this
     /// can't overwrite it (#2644 review).
     var seededAt: Date? = nil
+    /// Its cron runs' ids, read only to tell one Hermes saved twice (issue
+    /// 2761): the dashboard on screen counts its own cron rows, so this one's
+    /// count too. Read once per connection and again every half hour, as a
+    /// cron run's id never changes.
+    var cronIDs: Set<String> = []
+    var cronAt: Date? = nil
 }
 
 extension AppState {
@@ -34,6 +40,11 @@ extension AppState {
     /// How long another dashboard's chats stand before the poll reads them
     /// again. A pull on the list reads them at once.
     static let combinedDashboardChatsMaxAge: TimeInterval = 60
+
+    /// How long another dashboard's cron ids stand, and how many of each
+    /// profile's newest are read (identity evidence only, issue 2761).
+    static let combinedDashboardCronMaxAge: TimeInterval = 30 * 60
+    static let combinedDashboardCronLimit = 20
 
     /// Reads each other combined dashboard's newest chats, every one of its
     /// profiles (Eric, 2026-11-16: All combines all of it), through its
@@ -90,11 +101,42 @@ extension AppState {
                 sessions = V2FilterSelection.mergedByRecency(sessions, rows)
             }
             guard !stale, answered else { continue }
+            // Its cron runs' ids, so it counts them as the dashboard on
+            // screen does (issue 2761). Kept from the last read on this
+            // connection while fresh.
+            let last = combinedDashboardChats[id].flatMap { $0.bridge == bridge ? $0 : nil }
+            var cronIDs = last?.cronIDs ?? []
+            var cronAt = last?.cronAt
+            if cronAt.map({ now.timeIntervalSince($0) >= Self.combinedDashboardCronMaxAge }) ?? true {
+                var read: Set<String> = []
+                var cronAnswered = false
+                for profile in profiles {
+                    guard isSceneActive else { return }
+                    let path = cronSessionsPath(profile, limit: Self.combinedDashboardCronLimit)
+                    guard let batch = (try? await readKeptDashboardJSON(runtime.bridge, path: path))?["sessions"] as? [Any] else {
+                        continue
+                    }
+                    cronAnswered = true
+                    read.formUnion(Self.dashboardOwnedSessions(batch, profile: profile)
+                        .flatMap { [$0.id, $0.storedSessionId].compactMap { $0 } })
+                }
+                guard keptDashboardRuntimes[id]?.bridge === runtime.bridge, activeDashboardID != id,
+                      isInCombinedGroup(id),
+                      !(combinedDashboardChats[id].map { $0.at > now || ($0.seededAt.map { $0 > now } ?? false) } ?? false) else {
+                    continue
+                }
+                if cronAnswered {
+                    cronIDs = read
+                    cronAt = now
+                }
+            }
             combinedDashboardChats[id] = CombinedDashboardChats(
                 bridge: bridge,
                 profiles: profiles,
                 sessions: sessions,
-                at: now
+                at: now,
+                cronIDs: cronIDs,
+                cronAt: cronAt
             )
         }
     }
@@ -332,7 +374,9 @@ extension AppState {
                 profiles: chats.profiles.filter { !profilesMatch($0, profile) },
                 sessions: chats.sessions.filter { !profilesMatch($0.profile ?? "", profile) },
                 at: chats.at,
-                seededAt: Date()
+                seededAt: Date(),
+                cronIDs: chats.cronIDs,
+                cronAt: chats.cronAt
             )
         }
         needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))

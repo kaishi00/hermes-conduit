@@ -137,7 +137,7 @@ extension AppState {
     /// plugin serves, taken then too.
     func keepOutgoingDashboardRuntimeIfCombined(
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
-        profiles: [String] = [], chats: [SessionSummary] = [],
+        profiles: [String] = [], chats: [SessionSummary] = [], cronIDs: Set<String> = [],
         work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
         glows: [String: ProfileGlowRGB]? = nil
     ) {
@@ -182,7 +182,7 @@ extension AppState {
         // An entry even with no chats listed, so its profiles outlast the
         // kept connection dropping; one not listed yet keeps the chats it
         // had (#2644 review).
-        if !chats.isEmpty || !profiles.isEmpty {
+        if !chats.isEmpty || !profiles.isEmpty || !cronIDs.isEmpty {
             let rows = chats.isEmpty
                 ? (combinedDashboardChats[outgoingID]?.sessions ?? [])
                 : chats.map { row in
@@ -197,7 +197,11 @@ extension AppState {
                 profiles: profiles.isEmpty ? Array(Set(chats.compactMap(\.profile))).sorted() : profiles,
                 sessions: rows,
                 at: .distantPast,
-                seededAt: Date()
+                seededAt: Date(),
+                // Its cron runs' ids, the evidence it gave as the dashboard
+                // on screen, stand until the next half-hourly read (issue 2761).
+                cronIDs: cronIDs.isEmpty ? (combinedDashboardChats[outgoingID]?.cronIDs ?? []) : cronIDs,
+                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : Date()
             )
         }
         self.client = nil

@@ -553,6 +553,7 @@ extension AppState {
                 if let dashboardLoad { relistCachedCron(after: dashboardLoad, profile: profile) }
                 return true
             }
+            sessionListListedCronFromCache = dashboardLoad?.cronFromCache ?? false
             let awaitingListing = newChatRowAwaitingListing(loaded: loadedSessions)
             // The newest page alone (a pull to refresh, whose older pages
             // are read right after) keeps the older rows already listed
@@ -563,9 +564,11 @@ extension AppState {
                 [retainedActiveTurn, awaitingListing].compactMap { $0 } + loadedSessions + olderListed
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
+            // A cron run that started during the read is kept too (issue 2763).
+            let keptCron = [retainedActiveTurn, activeTurnCatalogSession(), awaitingListing].compactMap { $0 }
             let listedCron = cronRowsToList(
                 allSessions.filter { $0.source == .cron },
-                keeping: [retainedActiveTurn, awaitingListing].compactMap { $0 },
+                keeping: keptCron,
                 profile: profile,
                 fromCache: dashboardLoad?.cronFromCache ?? false
             )
@@ -596,7 +599,12 @@ extension AppState {
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
             if !sameListAgain {
-                conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
+                // The cron rows it lists (the cache's, maybe), not those it
+                // read, nor the ones kept here whatever the host says (issue 2763).
+                conversationIdentityIndex.recordCatalogIdentity(
+                    Self.identityRows(listedSessions: allSessions, listedCron: listedCron, kept: keptCron, read: loadedSessions),
+                    profile: profile
+                )
             }
             // A canonical Bot Chat's raw catalog row is titled exactly
             // "Bot Chat": refreshing the ordinary active-title cache from it

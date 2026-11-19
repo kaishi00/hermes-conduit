@@ -2075,6 +2075,17 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
         appState.isConnecting = true
         XCTAssertTrue(appState.showsChatListUpdating())
+        // The Projects page says it only over what it draws: its projects,
+        // or pinned chats, and not while its projects load (issue 2770).
+        appState.projects = []
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true), "nothing drawn on Projects")
+        appState.projects = [ProjectSummary(id: "project", title: "Project", isHome: false, sessionCount: 1,
+                                            previewSessions: [session("stored-a")])]
+        XCTAssertTrue(appState.showsChatListUpdating(overProjects: true))
+        appState.projectsLoading = true
+        XCTAssertFalse(appState.showsChatListUpdating(overProjects: true), "its own loading says so")
+        appState.projectsLoading = false
+        appState.projects = []
 
         appState.isRefreshingSessionCatalog = true
         XCTAssertFalse(appState.showsChatListUpdating())

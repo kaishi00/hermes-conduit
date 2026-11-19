@@ -275,10 +275,11 @@ final class NeedsYouStore: ObservableObject {
     /// dashboard's, as the Chats list does (issue 2631).
     var everyItem: [NeedsYouItem] {
         guard !otherDashboards.isEmpty else { return items }
-        var taken = Set(items.map(\.hostKey))
+        // One wait once, under any spelling of its profile (`sameWait`): a
+        // re-cased copy listed for a moment under both isn't two (issue 2770).
         var listed = items
         for id in otherDashboards.keys.sorted(by: { $0.uuidString < $1.uuidString }) {
-            for item in otherDashboards[id] ?? [] where taken.insert(item.hostKey).inserted {
+            for item in otherDashboards[id] ?? [] where !listed.contains(where: { Self.sameWait($0, item) }) {
                 listed.append(item)
             }
         }

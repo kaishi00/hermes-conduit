@@ -24,6 +24,8 @@ final class HeldDashboardRequests {
     /// Every request sent, oldest first, answered or not.
     private(set) var sent: [Sent] = []
     private var waiting: [(url: URL, continuation: CheckedContinuation<(Data, URLResponse), Error>)] = []
+    /// Set by `shutdown()`: later requests fail at once rather than wait.
+    private var isShutDown = false
 
     init(baseURL: String, dashboardID: UUID? = nil) {
         bridge = DashboardTicketBridge(baseURL: baseURL, dashboardID: dashboardID)
@@ -35,7 +37,7 @@ final class HeldDashboardRequests {
         // Weak: a request a test left running (an early read it didn't
         // take, still in its cookie lookup) can reach here after the test.
         bridge.loadWithoutPageForTesting = { [weak self] request in
-            guard let self else { throw URLError(.cancelled) }
+            guard let self, !self.isShutDown else { throw URLError(.cancelled) }
             self.sent.append(Sent(
                 method: request.httpMethod ?? "GET",
                 path: request.url?.path ?? "",
@@ -119,6 +121,14 @@ final class HeldDashboardRequests {
     }
 
     /// Fails every request still waiting, so nothing is left suspended.
+    /// Releases every request held and fails any sent later, so a test
+    /// that gives up early never hangs on a request made after it (#2759
+    /// review, issue 2763).
+    func shutdown() {
+        isShutDown = true
+        releaseAll()
+    }
+
     func releaseAll() {
         let held = waiting
         waiting.removeAll()
