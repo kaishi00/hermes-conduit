@@ -70,7 +70,10 @@ extension AppState {
               isCurrentComposerSubmission(recovered),
               chatSyncErrorMessage == nil else {
             // The resume didn't take: the refusal shows, as any failed send
-            // does, unless the person has left the chat meanwhile.
+            // does, unless the person has left the chat meanwhile. It takes
+            // the place of the resume's own "Failed to restore" line on
+            // purpose: the person pressed Send, and what they need to know
+            // is that the message didn't go.
             if isCurrentOrAliasedComposerSubmission(context) {
                 showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
             }

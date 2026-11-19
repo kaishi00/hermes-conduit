@@ -10034,6 +10034,10 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-b")
         XCTAssertNil(harness.appState.errorMessage)
         XCTAssertNil(harness.appState.chatSyncErrorMessage)
+        XCTAssertTrue(
+            harness.appState.openChatSync.sentHereSinceBaseline,
+            "the open chat knows the next count change is this send's"
+        )
         box.client.disconnect()
     }
 

@@ -473,8 +473,11 @@ extension AppState {
         // hides the other device's turn.
         let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
         // One left waiting for a reconnect (keepComposerSendForReconnect)
-        // isn't Hermes' yet.
-        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID, pendingComposerSendOnScreen == nil {
+        // isn't Hermes' yet. A send that resumed the chat after Hermes
+        // cleared its runtime went to the runtime the resume made: the same
+        // chat under a new id.
+        if sent, !isSlashCommand, pendingComposerSendOnScreen == nil,
+           activeSessionId == submissionContext.sessionID || isCurrentOrAliasedComposerSubmission(submissionContext) {
             noteOpenChatSentHere()
         }
         return sent

@@ -1084,6 +1084,29 @@ final class SessionRenameTests: XCTestCase {
         XCTAssertNotNil(appState.errorMessage)
     }
 
+    /// The send into the fresh chat that replaced a lost empty one is the
+    /// last try: refused too, it shows as a failed send, with no resume of
+    /// the fresh chat and no third try (#2825).
+    func testARefusalOfTheFreshChatsSendIsTheLastTry() async {
+        var lost: Set<String> = []
+        var created = 0
+        var prompts: [String] = []
+        let appState = makeLostChatAppState(lost: { lost }, onCreate: { created += 1 }) { session, _ in
+            prompts.append(session)
+        }
+
+        await appState.createNewSession()
+        // The fresh chat's runtime is refused too; its stored id would
+        // still resume.
+        lost = ["created-runtime-1", "created-stored-1", "created-runtime-2"]
+        let sent = await appState.sendMessage("hello")
+
+        XCTAssertFalse(sent)
+        XCTAssertEqual(created, 2, "one fresh chat")
+        XCTAssertEqual(prompts, [], "no third try")
+        XCTAssertEqual(appState.errorMessage, "Failed to send: session not found")
+    }
+
     func testAFailedFreshChatKeepsTheFirstMessagesWords() async {
         var lost: Set<String> = []
         var createFails = false
