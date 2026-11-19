@@ -15,6 +15,9 @@
 //
 //  Skipped unless CONDUIT_DEMO_VIDEOS=1. CONDUIT_DEMO_SCENES (comma-separated
 //  names) limits which scenes are marked; the setup they need still runs.
+//  CONDUIT_DEMO_LOCALE=zh-Hans runs the app in Simplified Chinese against the
+//  dashboards of scripts/app-store/videos/zh-Hans/: every label the test taps
+//  and every line it types or waits for goes through L(_:).
 //
 
 import XCTest
@@ -27,6 +30,7 @@ final class DemoVideoTests: XCTestCase {
     private var studioURL: String { env["CONDUIT_DEMO_URL_B"] ?? "" }
     private var demoUser: String { env["CONDUIT_DEMO_USER"] ?? "demo" }
     private var demoPassword: String { env["CONDUIT_DEMO_PASSWORD"] ?? "" }
+    private var locale: String { env["CONDUIT_DEMO_LOCALE"] ?? "" }
     private var director: URL {
         URL(string: env["CONDUIT_DEMO_DIRECTOR"] ?? "") ?? URL(string: "http://127.0.0.1:8780")!
     }
@@ -39,6 +43,9 @@ final class DemoVideoTests: XCTestCase {
         app = XCUIApplication()
         app.launchEnvironment["TZ"] = AppStoreScreenshotTests.timeZoneNearStatusBarTime()
         app.launchEnvironment["CONDUIT_HIDE_TIPS"] = "1"
+        if locale == "zh-Hans" {
+            app.launchArguments += ["-AppleLanguages", "(zh-Hans)", "-AppleLocale", "zh_CN"]
+        }
         // The backdrop drifts as it does for people: these are videos.
         app.launch()
     }
@@ -53,6 +60,54 @@ final class DemoVideoTests: XCTestCase {
                       "Home's lone bot never showed on Bots Home")
         // Bots Home shows its own Finish setting up card, kept out of the shots.
         dismissFinishSetupCard()
+        settle(3)
+
+        // A new chat on Home: a plan that streams in as Markdown, then a follow-up.
+        scene("chat") {
+            openTab("Sessions")
+            settle(2)
+            let newChat = app.buttons[L("New Chat")].firstMatch
+            if newChat.waitForExistence(timeout: 10) {
+                newChat.tap()
+                settle(1.5)
+                send(L("Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning."))
+                XCTAssertTrue(waitForText(L("Want me to check campsites"), timeout: 60), "The trip plan never arrived")
+                settle(4)
+                send(L("Yes please, and find somewhere good for dinner Saturday."))
+                XCTAssertTrue(waitForText(L("trip notes"), timeout: 60), "The dinner answer never arrived")
+                settle(5)
+                goBack()
+            } else {
+                XCTFail("No New Chat button on Sessions")
+            }
+            settle(2)
+        }
+
+        // The Tasks tab: Home's board, then its scheduled jobs.
+        scene("tasks") {
+            openTab("Tasks")
+            if waitForText(L("Book campsite for Big Sur"), timeout: 30) {
+                settle(3)
+                let board = app.windows.firstMatch
+                for _ in 0..<2 {
+                    board.coordinate(withNormalizedOffset: CGVector(dx: 0.85, dy: 0.55))
+                        .press(forDuration: 0.05, thenDragTo: board.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.55)))
+                    settle(2)
+                }
+                let scheduled = app.buttons[L("Scheduled")].firstMatch
+                if scheduled.waitForExistence(timeout: 5) {
+                    scheduled.tap()
+                    _ = waitForText(L("Morning briefing"), timeout: 10)
+                    settle(4)
+                    app.buttons[L("Board")].firstMatch.tap()
+                }
+            } else {
+                XCTFail("Home's board never loaded")
+            }
+            settle(2)
+        }
+
+        openTab("Bots")
         settle(3)
 
         scene("bots-home-layouts") {
@@ -80,7 +135,7 @@ final class DemoVideoTests: XCTestCase {
         scene("mixed-bots-home") {
             settle(4)
             tapBot("Lucien")
-            XCTAssertTrue(waitForText("friendly, one line per change", timeout: 30), "Lucien's Bot Chat never opened")
+            XCTAssertTrue(waitForText(L("friendly, one line per change"), timeout: 30), "Lucien's Bot Chat never opened")
             settle(4)
             goBack()
             settle(3)
@@ -92,7 +147,7 @@ final class DemoVideoTests: XCTestCase {
             // The other dashboard's default profile (Conduit-chan on Home,
             // Kael on Studio): its chip is v2.profile.<dashboard id>.default
             // and a tap switches straight there.
-            let studioChats = "Release checklist for 2.4", homeChats = "Garden watering schedule"
+            let studioChats = L("Release checklist for 2.4"), homeChats = L("Garden watering schedule")
             // Each tap lands on the dashboard it didn't start on. On a profile
             // without either list (Lucien's, say) the first tap may land on either.
             var shown: String? = waitForText(studioChats, timeout: 4) ? studioChats
@@ -122,10 +177,10 @@ final class DemoVideoTests: XCTestCase {
             openTab("Bots")
             settle(2)
             tapBot("Piko")
-            send("Plan a picnic for Saturday, four of us, no grill.")
+            send(L("Plan a picnic for Saturday, four of us, no grill."))
             settle(3)
             goBack()
-            direct("prompt", ["dashboard": "studio", "profile": "lucien", "text": "Draft the release notes for 2.4"])
+            direct("prompt", ["dashboard": "studio", "profile": "lucien", "text": L("Draft the release notes for 2.4")])
             settle(8)
             openTab("Sessions")
             settle(6)
@@ -152,7 +207,7 @@ final class DemoVideoTests: XCTestCase {
                 let name = app.textFields["bots.newRoom.name"]
                 if name.exists {
                     name.tap()
-                    name.typeText("Launch plan")
+                    name.typeText(L("Launch plan"))
                 }
                 settle(1)
                 create.tap()
@@ -160,21 +215,21 @@ final class DemoVideoTests: XCTestCase {
                 XCTFail("Dropping Lucien on Mira started no room")
             }
             settle(2)
-            openRoom("Launch plan")
-            send("@Mira @Lucien plan the launch post for Friday")
-            XCTAssertTrue(waitForText("subreddit", timeout: 60), "The room's bots never answered")
+            openRoom(L("Launch plan"))
+            send(L("@Mira @Lucien plan the launch post for Friday"))
+            XCTAssertTrue(waitForText(L("subreddit"), timeout: 60), "The room's bots never answered")
             settle(6)
         }
 
         scene("room-approval") {
             // Mira is the room host's own bot, so her approval is the room's
             // to answer; a far bot's waits on its own Hermes.
-            send("@Mira publish the draft to the blog")
-            let run = app.buttons["Run"].firstMatch
+            send(L("@Mira publish the draft to the blog"))
+            let run = app.buttons[L("Run")].firstMatch
             if run.waitForExistence(timeout: 60) {
                 settle(3)
                 run.tap()
-                XCTAssertTrue(waitForText("Published", timeout: 60), "Mira never finished after the approval")
+                XCTAssertTrue(waitForText(L("Published"), timeout: 60), "Mira never finished after the approval")
             } else {
                 XCTFail("No approval card in the room")
             }
@@ -188,16 +243,16 @@ final class DemoVideoTests: XCTestCase {
         // the director, as they would from his Conduit.
         scene("multiplayer") {
             settle(2)
-            inviteSam(to: "Weekend at Big Sur")
-            direct("join-room", ["dashboard": "sam", "room": "Weekend at Big Sur"], timeout: 300)
-            openRoom("Weekend at Big Sur")
-            send("@conduit-chan can you find us a campsite near Big Sur for the 22nd?")
-            XCTAssertTrue(waitForText("Kirk Creek", timeout: 60), "Conduit-chan never answered in the room with Sam")
+            inviteSam(to: L("Weekend at Big Sur"))
+            direct("join-room", ["dashboard": "sam", "room": L("Weekend at Big Sur")], timeout: 300)
+            openRoom(L("Weekend at Big Sur"))
+            send(L("@conduit-chan can you find us a campsite near Big Sur for the 22nd?"))
+            XCTAssertTrue(waitForText(L("Kirk Creek"), timeout: 60), "Conduit-chan never answered in the room with Sam")
             settle(3)
-            direct("room-say", ["dashboard": "sam", "room": "Weekend at Big Sur",
-                                "text": "Love it! @nori what's the drive time from the city, and where do we stop for lunch?"],
+            direct("room-say", ["dashboard": "sam", "room": L("Weekend at Big Sur"),
+                                "text": L("Love it! @nori what's the drive time from the city, and where do we stop for lunch?")],
                    timeout: 300)
-            XCTAssertTrue(waitForText("Carmel", timeout: 90), "Sam's Nori never answered")
+            XCTAssertTrue(waitForText(L("Carmel"), timeout: 90), "Sam's Nori never answered")
             settle(6)
             goBack()
         }
@@ -205,16 +260,16 @@ final class DemoVideoTests: XCTestCase {
         scene("needs-you") {
             openTab("Sessions")
             settle(3)
-            direct("prompt", ["dashboard": "studio", "profile": "chibi-conduit", "text": "Clear out the old mockups"])
+            direct("prompt", ["dashboard": "studio", "profile": "chibi-conduit", "text": L("Clear out the old mockups")])
             let banner = app.buttons["needsYou.banner.open"]
             if banner.waitForExistence(timeout: 60) {
                 settle(3)
                 banner.tap()
-                let run = app.buttons["Run"].firstMatch
+                let run = app.buttons[L("Run")].firstMatch
                 if run.waitForExistence(timeout: 30) {
                     settle(3)
                     run.tap()
-                    XCTAssertTrue(waitForText("current designs are untouched", timeout: 60),
+                    XCTAssertTrue(waitForText(L("current designs are untouched"), timeout: 60),
                                   "Chibi never finished after the approval")
                 } else {
                     XCTFail("Needs you opened no approval")
@@ -226,12 +281,64 @@ final class DemoVideoTests: XCTestCase {
         }
         // The video is dated from its end (cut-scenes.sh): a last change on
         // screen, the mark, and the recorder stopped right then.
-        if !app.buttons["Bots"].firstMatch.exists { goBack() }
+        if !app.buttons[L("Bots")].firstMatch.exists { goBack() }
         openTab("Bots")
+        settle(2)
+        // Live voice: the real call screen over a scripted conversation
+        // (ScreenshotCallFixture), titled Qwen Live, the provider a person in
+        // China would pick; the sign-in is saved across the relaunch.
+        app.terminate()
+        app.launchArguments += ["-conduitScreenshotCall", "speaking", "-conduitScreenshotCallProvider", "qwen"]
+        app.launch()
+        settle(6)
+        scene("voice") {
+            settle(8)
+        }
         print("SCENE stop all \(Date().timeIntervalSince1970)")
         direct("stop-recording", [:])
         app.terminate()
     }
+
+    // MARK: - Locale
+
+    /// `s` as the zh-Hans run shows or types it: the app's own label for a
+    /// control (Localizable.xcstrings), or the line in videos/zh-Hans/.
+    private func L(_ s: String) -> String {
+        locale == "zh-Hans" ? (Self.zhHans[s] ?? s) : s
+    }
+
+    private static let zhHans: [String: String] = [
+        // The app's labels.
+        "Bots": "机器人", "Sessions": "会话", "Settings": "设置", "Run": "运行", "Create": "创建", "Cancel": "取消",
+        "Delete Bot": "删除机器人", "Duplicate": "复制", "Send message": "发送消息", "Username": "用户名",
+        "Group name": "群聊名称", "Waiting": "正在等待", "Starting": "正在启动", "New Chat": "新聊天",
+        "Tasks": "任务", "Scheduled": "已排期", "Board": "看板",
+        // Lines from the zh-Hans dashboards.
+        "Can you plan a weekend in Big Sur for us? Leaving from SF Saturday morning.": "帮我们规划一个莫干山周末？周六早上从上海出发。",
+        "Want me to check campsites": "要我查一下营地吗",
+        "Yes please, and find somewhere good for dinner Saturday.": "好啊，再找个周六晚饭的地方。",
+        "trip notes": "行程笔记",
+        "Book campsite for Big Sur": "预订莫干山营地",
+        "Morning briefing": "早间简报",
+        "friendly, one line per change": "每条改动一行",
+        "Release checklist for 2.4": "2.4 发布清单",
+        "Garden watering schedule": "花园浇水计划",
+        "Plan a picnic for Saturday, four of us, no grill.": "帮我们安排周六的野餐，四个人，不能烧烤。",
+        "Draft the release notes for 2.4": "写一下 2.4 的版本说明",
+        "Launch plan": "发布计划",
+        "@Mira @Lucien plan the launch post for Friday": "@Mira @Lucien 规划一下周五的发布帖",
+        "subreddit": "V2EX",
+        "@Mira publish the draft to the blog": "@Mira 把草稿发布到博客",
+        "Published": "已发布",
+        "Weekend at Big Sur": "莫干山周末",
+        "@conduit-chan can you find us a campsite near Big Sur for the 22nd?": "@conduit-chan 帮我们找一下莫干山附近的营地，22 号的？",
+        "Kirk Creek": "营位",
+        "Love it! @nori what's the drive time from the city, and where do we stop for lunch?":
+            "太好了！@nori 从市区开过去要多久，中午在哪儿吃？",
+        "Carmel": "德清",
+        "Clear out the old mockups": "清理一下旧的设计稿",
+        "current designs are untouched": "现在的设计都没动",
+    ]
 
     // MARK: - Scenes
 
@@ -280,7 +387,7 @@ final class DemoVideoTests: XCTestCase {
     // MARK: - Steps
 
     private func openTab(_ name: String) {
-        let tab = app.buttons[name].firstMatch
+        let tab = app.buttons[L(name)].firstMatch
         if tab.waitForExistence(timeout: 10) { tab.tap() } else { XCTFail("No \(name) tab") }
     }
 
@@ -355,7 +462,7 @@ final class DemoVideoTests: XCTestCase {
     /// so it waits for the row to go before tapping the tile.
     private func openRoom(_ name: String) {
         let draft = app.buttons.matching(NSPredicate(
-            format: "label == %@ AND (value BEGINSWITH 'Waiting' OR value BEGINSWITH 'Starting')", name)).firstMatch
+            format: "label == %@ AND (value BEGINSWITH %@ OR value BEGINSWITH %@)", name, L("Waiting"), L("Starting"))).firstMatch
         let deadline = Date().addingTimeInterval(120)
         while draft.exists, Date() < deadline { settle(2) }
         if draft.exists { print("DEMO \(name) is still a draft: \(draft.value ?? "")") }
@@ -385,7 +492,7 @@ final class DemoVideoTests: XCTestCase {
             return
         }
         add.tap()
-        let field = app.textFields["Group name"].firstMatch
+        let field = app.textFields[L("Group name")].firstMatch
         guard field.waitForExistence(timeout: 10) else {
             XCTFail("New Group Chat has no name field")
             return
@@ -413,7 +520,7 @@ final class DemoVideoTests: XCTestCase {
             XCTFail("No Sam in New Group Chat")
         }
         settle(2)
-        let create = app.navigationBars.buttons["Create"].firstMatch
+        let create = app.navigationBars.buttons[L("Create")].firstMatch
         if create.waitForExistence(timeout: 5) { create.tap() } else { XCTFail("No Create in New Group Chat") }
         settle(3)
     }
@@ -434,14 +541,14 @@ final class DemoVideoTests: XCTestCase {
             let labels = app.staticTexts.allElementsBoundByIndex.prefix(60).map(\.label)
             print("DEMO New Group Chat shows: \(labels)")
         }
-        let cancel = app.navigationBars.buttons["Cancel"].firstMatch
+        let cancel = app.navigationBars.buttons[L("Cancel")].firstMatch
         if cancel.exists { cancel.tap() } else { app.swipeDown() }
         settle(2)
     }
 
     /// A bot's long-press menu (Edit Bot, Duplicate, Delete Bot, …) is up.
     private func botMenuIsOpen() -> Bool {
-        app.buttons["Delete Bot"].exists || app.buttons["Duplicate"].exists
+        app.buttons[L("Delete Bot")].exists || app.buttons[L("Duplicate")].exists
     }
 
     /// Closes the menu by a tap well clear of it, at the top of the screen.
@@ -484,7 +591,7 @@ final class DemoVideoTests: XCTestCase {
         settle(0.5)
         // A chat's composer labels it Send message; a room's is room.composer.send.
         let roomSend = app.buttons["room.composer.send"].firstMatch
-        let button = roomSend.exists ? roomSend : app.buttons["Send message"].firstMatch
+        let button = roomSend.exists ? roomSend : app.buttons[L("Send message")].firstMatch
         guard button.waitForExistence(timeout: 5) else {
             XCTFail("No send button for \(text)")
             return
@@ -558,7 +665,7 @@ final class DemoVideoTests: XCTestCase {
         }
         username.tap()
         waitForKeyboardFocus(username)
-        if let current = username.value as? String, !current.isEmpty, current != "Username" {
+        if let current = username.value as? String, !current.isEmpty, current != L("Username") {
             username.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
         }
         username.typeText(demoUser)
@@ -643,7 +750,7 @@ final class DemoVideoTests: XCTestCase {
         welcome.tap()
         enterCredentials(for: text)
         dismissSystemAlerts()
-        _ = app.buttons["Bots"].waitForExistence(timeout: 60)
+        _ = app.buttons[L("Bots")].waitForExistence(timeout: 60)
         dismissFinishSetupCard()
         settle(3)
     }
@@ -651,21 +758,20 @@ final class DemoVideoTests: XCTestCase {
     private func dismissFinishSetupCard() {
         // The card can show on more than one screen at once (Settings and
         // the tab behind it), so each copy is answered by its own element.
+        // Only a copy on screen is tapped: a tap at a hidden copy's place lands
+        // on whatever covers it, the card's own Turn on for notifications
+        // among them, and that system prompt then blocks every later tap.
         let cards = app.buttons.matching(identifier: "finish-setup.not-now")
         guard cards.firstMatch.waitForExistence(timeout: 8) else { return }
-        for notNow in cards.allElementsBoundByIndex where notNow.exists {
-            if notNow.isHittable {
-                notNow.tap()
-            } else {
-                notNow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
-            }
+        for notNow in cards.allElementsBoundByIndex where notNow.exists && notNow.isHittable {
+            notNow.tap()
             settle(1)
         }
     }
 
     private func dismissSystemAlerts() {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        for label in ["Allow", "Don’t Allow", "Not Now", "OK"] {
+        for label in ["Allow", "Don’t Allow", "Not Now", "OK", "允许", "不允许", "以后再说", "好"] {
             let button = springboard.buttons[label]
             if button.waitForExistence(timeout: 2) { button.tap() }
         }

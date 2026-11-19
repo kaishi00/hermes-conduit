@@ -144,5 +144,75 @@
       "Espresso machine shortlist",
       "Weekend trip to Big Sur"
     ]
-  }
+  },
+  "kanban": [
+    {
+      "title": "Compare flights to Tokyo",
+      "body": "Early December, under $700 round trip from SFO.",
+      "assignee": "mira",
+      "status": "running"
+    },
+    {
+      "title": "Book campsite for Big Sur",
+      "body": "Pfeiffer Big Sur, Saturday night, redwood loop #112 or #148.",
+      "status": "ready"
+    },
+    {
+      "title": "Send the landlord follow-up",
+      "body": "Use the draft from the landlord chat.",
+      "status": "ready"
+    },
+    {
+      "title": "Pick an espresso machine",
+      "body": "Shortlist is in the espresso chat.",
+      "status": "ready",
+      "id": "espresso"
+    },
+    {
+      "title": "Order a grinder",
+      "body": "Baratza Encore ESP once the machine is picked.",
+      "parent": "espresso"
+    },
+    {
+      "title": "Renew passport",
+      "body": "Needed before the Tokyo trip.",
+      "status": "blocked",
+      "reason": "Waiting on new passport photos"
+    },
+    {
+      "title": "Weekly meal plan",
+      "body": "Three dinners, use up the lemons.",
+      "assignee": "piko",
+      "status": "done",
+      "result": "Planned Monday, Wednesday and Friday dinners."
+    },
+    {
+      "title": "Q3 spending summary",
+      "status": "done",
+      "result": "Q3 was $72 over budget, all from dining out."
+    }
+  ],
+  "cron": [
+    {
+      "name": "Morning briefing",
+      "schedule": "0 7 * * *",
+      "prompt": "Summarise my calendar, the weather and anything urgent in my inbox."
+    },
+    {
+      "name": "Inbox digest",
+      "schedule": "every 4h",
+      "prompt": "Digest new email and flag anything that needs a reply today."
+    },
+    {
+      "name": "Weekly review",
+      "schedule": "0 18 * * 0",
+      "prompt": "Review this week's notes and tasks and draft next week's priorities."
+    },
+    {
+      "name": "Flight price watch",
+      "schedule": "every 6h",
+      "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.",
+      "paused": true
+    }
+  ]
 }

@@ -15,6 +15,11 @@ on:
       scenes:
         description: "Scenes to cut, comma-separated (empty: all)"
         default: ""
+      locale:
+        description: "App language and demo dashboards: en, or zh-Hans (scripts/app-store/videos/zh-Hans/)"
+        type: choice
+        options: [en, zh-Hans]
+        default: en
 
 # The capture job runs the demo Hermes, its plugins and Homebrew packages, so
 # it only reads; the publish job, which runs none of them, pushes the ref.
@@ -32,6 +37,8 @@ jobs:
     env:
       DEVICES: ${{ inputs.devices || 'iPhone 18 Pro Max' }}
       SCENES: ${{ inputs.scenes }}
+      DEMO_LOCALE: ${{ inputs.locale || 'en' }}
+      DEMO_SCRIPTS: scripts/app-store/videos${{ inputs.locale == 'zh-Hans' && '/zh-Hans' || '' }}
       DEMO_USER: demo
       # Not a secret: the demo dashboards live only on this runner.
       DEMO_PASSWORD: conduit-demo-2026
@@ -65,14 +72,14 @@ jobs:
       - name: Start Home
         timeout-minutes: 25
         run: |
-          DEMO_WORK="$PWD/demo-hermes/home" DEMO_SCRIPT=scripts/app-store/videos/home.json \
+          DEMO_WORK="$PWD/demo-hermes/home" DEMO_SCRIPT="$DEMO_SCRIPTS/home.json" \
           DEMO_HOST=hermes.tail-demo.ts.net DEMO_PORT=9119 STUB_PORT=8765 DEMO_APPROVALS=manual \
             bash scripts/app-store/start-demo-hermes.sh
 
       - name: Start Studio
         timeout-minutes: 20
         run: |
-          DEMO_WORK="$PWD/demo-hermes/studio" DEMO_SCRIPT=scripts/app-store/videos/studio.json \
+          DEMO_WORK="$PWD/demo-hermes/studio" DEMO_SCRIPT="$DEMO_SCRIPTS/studio.json" \
           DEMO_HOST=studio.tail-demo.ts.net DEMO_PORT=9129 STUB_PORT=8766 DEMO_APPROVALS=manual DEMO_ROOM_GUEST=1 \
             bash scripts/app-store/start-demo-hermes.sh
 
@@ -82,7 +89,7 @@ jobs:
       - name: Start Sam
         timeout-minutes: 20
         run: |
-          DEMO_WORK="$PWD/demo-hermes/sam" DEMO_SCRIPT=scripts/app-store/videos/sam.json \
+          DEMO_WORK="$PWD/demo-hermes/sam" DEMO_SCRIPT="$DEMO_SCRIPTS/sam.json" \
           DEMO_HOST=sam.tail-demo.ts.net DEMO_PORT=9139 STUB_PORT=8767 DEMO_ROOM_GUEST=1 \
             bash scripts/app-store/start-demo-hermes.sh
 
@@ -103,7 +110,7 @@ jobs:
           w = os.path.join(os.getcwd(), "demo-hermes")
           def entry(name, url, script, **more):
               return {"base": url, "user": os.environ["DEMO_USER"], "password": os.environ["DEMO_PASSWORD"],
-                      "script": os.path.abspath(f"scripts/app-store/videos/{script}"), "bot_chats": f"{w}/{name}/bot-chats.json",
+                      "script": os.path.abspath(os.path.join(os.environ["DEMO_SCRIPTS"], script)), "bot_chats": f"{w}/{name}/bot-chats.json",
                       "hermes_home": f"{w}/{name}/home", **more}
           json.dump({"home": entry("home", os.environ["HOME_URL"], "home.json"),
                      "studio": entry("studio", os.environ["STUDIO_URL"], "studio.json"),
@@ -172,6 +179,7 @@ jobs:
             TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
             TEST_RUNNER_CONDUIT_DEMO_DIRECTOR=http://127.0.0.1:8780 \
             TEST_RUNNER_CONDUIT_DEMO_SCENES="$SCENES" \
+            TEST_RUNNER_CONDUIT_DEMO_LOCALE="$DEMO_LOCALE" \
             perl -e 'alarm shift; exec @ARGV' 2700 xcodebuild test-without-building \
               -project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd \
               -only-testing:ConduitScreenshots/DemoVideoTests/testRecordDemoScenes \
