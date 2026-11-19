@@ -43,11 +43,11 @@ enum BotPlugin {
     enum StateStep: Equatable { case leave, hostSteps, turnOn }
 
     /// What New Bot does once it has read the bot's plugin (nil: it couldn't).
-    static func stateStep(_ state: State?, startsFresh: Bool) -> StateStep {
+    static func stateStep(_ state: State?) -> StateStep {
         if let state, state.on { return .leave }
-        // A dashboard running a profile's own copy can't share it: a fresh
-        // bot is told the host steps instead.
-        if let state, !state.canTurnOn { return startsFresh ? .hostSteps : .leave }
+        // A dashboard running a profile's own copy can't share it: the bot
+        // is told the host steps instead.
+        if let state, !state.canTurnOn { return .hostSteps }
         return .turnOn
     }
 
@@ -98,12 +98,16 @@ extension AppState {
             return AppLocalization.string("Connect to Hermes to manage bots.")
         }
         do {
-            let response = try await bridge.requestJSON(
-                path: BotPlugin.path,
-                method: "POST",
-                body: ["name": profile],
-                timeoutMilliseconds: BotPlugin.turnOnTimeoutMilliseconds
-            )
+            // Hermes' enable writes the profile's config.yaml: queued with
+            // Conduit's own config saves so neither puts back the other's.
+            let response = try await ProfileConfigWriteQueue.runThrowing {
+                try await bridge.requestJSON(
+                    path: BotPlugin.path,
+                    method: "POST",
+                    body: ["name": profile],
+                    timeoutMilliseconds: BotPlugin.turnOnTimeoutMilliseconds
+                )
+            }
             return BotPlugin.State(response: response)?.on == true
                 ? nil
                 : AppLocalization.string("Hermes still has the plugin off for this bot. Try again.", table: .bots)
@@ -140,7 +144,7 @@ extension AppState {
                 table: .bots
             )
         case .turnOn:
-            switch BotPlugin.stateStep(await botPluginState(profile: slug), startsFresh: startsFresh) {
+            switch BotPlugin.stateStep(await botPluginState(profile: slug)) {
             case .leave:
                 return nil
             case .hostSteps:

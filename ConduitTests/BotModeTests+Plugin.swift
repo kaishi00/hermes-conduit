@@ -39,14 +39,13 @@ extension BotModeTests {
         XCTAssertEqual(BotPlugin.route(profile: "a&b"), "/api/plugins/conduit_push/profiles/plugin?name=a%26b")
     }
 
-    func testNewBotTellsAFreshBotTheHostStepsWhereTheDashboardCantTurnItOn() {
-        let cant = BotPlugin.State(on: false, canTurnOn: false)
-        XCTAssertEqual(BotPlugin.stateStep(cant, startsFresh: true), .hostSteps)
-        XCTAssertEqual(BotPlugin.stateStep(cant, startsFresh: false), .leave)
-        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: true, canTurnOn: true), startsFresh: true), .leave)
-        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: false, canTurnOn: true), startsFresh: false), .turnOn)
+    func testNewBotTellsTheHostStepsWhereTheDashboardCantTurnItOn() {
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: false, canTurnOn: false)), .hostSteps)
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: true, canTurnOn: false)), .leave)
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: true, canTurnOn: true)), .leave)
+        XCTAssertEqual(BotPlugin.stateStep(BotPlugin.State(on: false, canTurnOn: true)), .turnOn)
         // A read that failed is tried by turning it on.
-        XCTAssertEqual(BotPlugin.stateStep(nil, startsFresh: true), .turnOn)
+        XCTAssertEqual(BotPlugin.stateStep(nil), .turnOn)
         XCTAssertEqual(
             DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: "furina"),
             "Hermes has the conduit_push plugin turned off for the “furina” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."

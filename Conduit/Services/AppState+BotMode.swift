@@ -1409,7 +1409,7 @@ extension AppState {
                 startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                 isCurrent: { self.botOpenFenceIsCurrent(epoch: epoch, client: client) }
             )
-        } else if servesBotPlugin {
+        } else {
             // Hermes changed before this step: the bot was left with the
             // plugin as it was made, so the save says where to turn it on.
             pluginWarning = AppLocalization.string(
