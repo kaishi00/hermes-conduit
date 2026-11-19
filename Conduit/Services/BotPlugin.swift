@@ -132,7 +132,7 @@ extension AppState {
         // reported yet: wait for that read rather than skip the step.
         if notifierPlugin.state == .unknown {
             await refreshNotifierPluginStatusOnce()
-            guard isCurrent() else { return notTurnedOn }
+            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
             if notifierPlugin.state == .unknown { return startsFresh ? notTurnedOn : nil }
         }
         switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
@@ -148,13 +148,13 @@ extension AppState {
             case .leave:
                 return nil
             case .hostSteps:
-                return DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: slug)
+                return DashboardTicketBridgeError.pluginOffOnHost(plugin: "conduit_push", profile: slug)
             case .turnOn:
                 break
             }
             // The turn-on goes to the Hermes the bot was made on, never one
             // switched to while the state was read.
-            guard isCurrent() else { return notTurnedOn }
+            guard isCurrent() else { return startsFresh ? notTurnedOn : nil }
             guard let failure = await turnOnBotPlugin(profile: slug) else { return nil }
             return AppLocalization.string(
                 "The Conduit plugin wasn't turned on for this bot: \(failure) Edit the bot to try again.",

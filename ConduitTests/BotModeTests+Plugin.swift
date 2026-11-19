@@ -47,7 +47,7 @@ extension BotModeTests {
         // A read that failed is tried by turning it on.
         XCTAssertEqual(BotPlugin.stateStep(nil), .turnOn)
         XCTAssertEqual(
-            DashboardTicketBridge.pluginOffOnHost(plugin: "conduit_push", profile: "furina"),
+            DashboardTicketBridgeError.pluginOffOnHost(plugin: "conduit_push", profile: "furina"),
             "Hermes has the conduit_push plugin turned off for the “furina” profile. On the Hermes host, add conduit_push to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes."
         )
     }
