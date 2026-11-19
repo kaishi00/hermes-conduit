@@ -3215,7 +3215,7 @@ to the dashboard's own cron routes) · Watch, CarPlay and group rooms (not
 needed: no scheduled jobs there) · Text (done: the editor's caption and
 README.md's Scheduled jobs line)
 
-**Desktop app:** partly: a job's model is shown (`desktop/src/renderer/src/components/ScheduledJobs.tsx`); not checked whether the editor sets it.
+**Desktop app:** has it (desktop#108): New job and Edit job have Model and Reasoning rows, Profile default first, from the job's profile's catalog; a new job's reasoning follows as an edit, Profile default clears the model, provider and endpoint, and a job that runs no agent has none; a pinned job's row and every job's details say what it runs on (`desktop/src/renderer/src/components/ScheduledJobs.tsx`, `desktop/src/renderer/src/state/cron.ts`).
 
 **Code**
 - App: `Conduit/Models/Models.swift` (CronJob's model, provider, baseURL, reasoningEffort), `Conduit/Models/CronJobDraft.swift` (CronJobDraft's modelTag, reasoning, runsAgent, createReasoningUpdate and modelFields; CronJob's modelTag, pinnedReasoningEffort, pinsModel, modelSummary), `Conduit/Views/V2/CronJobEditorSheet.swift` (modelSection, loadModels, the create's reasoning edit), `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's row), `Conduit/Views/SidebarView.swift` (CronJobRow's model, CronJobDetailSheet's Model row)
@@ -3890,7 +3890,7 @@ text and the slash suggestions' "Start a new conversation" (the general
 command, still right outside Bot Chats) · "A new chat that something waits
 on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
 
-**Desktop app:** partly: /new starts a new chat (`desktop/src/renderer/src/state/slash.ts`, desktop#17); not checked whether it compacts a Bot Chat.
+**Desktop app:** has it (desktop#109): `/new`, `/reset` and `/clear` start a new chat, and in a Bot Chat (opened as the bot's, or carrying the roster's canonical id) compact it instead with the phone's note; with attachments there it's refused and the draft kept (`desktop/src/renderer/src/state/useChat.ts`, `desktop/src/renderer/src/state/slash.ts`).
 
 **Code**
 - The guard: `Conduit/Services/AppState+SlashCommands.swift` (executeSlashCommand's new/reset/clear case), `Conduit/Services/AppState+Composer.swift` (the attachment refusal in performComposerSubmission), `Conduit/Services/AppState+GroupChats.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset)
@@ -7749,7 +7749,7 @@ saved as another.
 Sign In Again · the two alerts' text (no Settings caption, README or doc
 describes this case)
 
-**Desktop app:** partly: several hosts (`desktop/src/main/hosts.ts`); not checked how another saved host's address is edited.
+**Desktop app:** partly: the desktop has no Edit Connection or Repair, so a saved dashboard's address is never edited and two never merge; adding an address already saved signs in to that same dashboard again (`desktop/src/main/hosts.ts`).
 
 **Code**
 - Edit Connection: `Conduit/Services/ConnectionSetupApplication.swift` (perform, addressBelongsToDashboard), `Conduit/Views/AuxiliaryViews.swift` (the Settings not applied alert)
