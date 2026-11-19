@@ -130,6 +130,10 @@ stills at the start and end of each scene in `stills/`), and the git ref
 over 90 MB, past what git takes), for
 sessions that can't download artifacts.
 Each run makes its own ref; delete old ones with `git push --delete`.
+Its `locale` input picks the language: `zh-Hans` runs the app in
+Simplified Chinese against `videos/zh-Hans/`, the same dashboards and scenes
+in Chinese (a line the test types or waits for is in DemoVideoTests' L(_:)
+table too, so a change to one goes into both).
 The workflow's steps also run by hand on a Mac of your own, which takes
 about 25 minutes with a warm Xcode build, against about two hours hosted.
 
