@@ -664,8 +664,12 @@ extension AppState {
     /// The row owning `sessionID` among `rows`, and whether any row lists it
     /// at all: own id or stored id first, else a single borrower.
     static func composerDraftOwningRow(of sessionID: String, in rows: [SessionSummary]) -> (row: SessionSummary?, isListed: Bool) {
-        if let own = rows.first(where: { $0.id == sessionID || $0.storedSessionId == sessionID }) {
-            return (own, true)
+        // Two chats owning the id directly (Hermes gave a runtime id on
+        // while the old row is still listed) is neither's, as a shared alias
+        // is (#2794 review).
+        let direct = rows.filter { $0.id == sessionID || $0.storedSessionId == sessionID }
+        if let own = direct.first {
+            return Set(direct.map(\.durableKey)).count == 1 ? (own, true) : (nil, true)
         }
         let borrowers = rows.filter { $0.alternateIds.contains(sessionID) }
         let owners = Set(borrowers.map(\.durableKey))

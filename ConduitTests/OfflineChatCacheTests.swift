@@ -3428,6 +3428,19 @@ final class OfflineChatCacheTests: XCTestCase {
             appState.activeSessionId = nil
         }
 
+        // Two rows owning the id directly (the old row still listed under
+        // it) is neither's too, in either order (#2794 review).
+        var ownA = session("runtime-x")
+        ownA.storedSessionId = "stored-a"
+        var ownB = session("runtime-x")
+        ownB.storedSessionId = "stored-b"
+        for rows in [[ownA, ownB], [ownB, ownA]] {
+            appState.sessions = rows
+            XCTAssertNil(appState.composerDraftOwner(for: runtimeX))
+            XCTAssertTrue(appState.composerDraftKey(runtimeX, isNotChatOf: "stored-a"), "B opening as runtime-x doesn't get A's draft")
+            XCTAssertFalse(appState.composerDraftKeysAreSameChat(runtimeX, storedB))
+        }
+
         // While only A carries it, the alias is A's: a rotation keeps the draft.
         appState.sessions = [original]
         XCTAssertTrue(appState.composerDraftKeysAreSameChat(storedA, runtimeX))
@@ -4888,6 +4901,9 @@ final class OfflineChatCacheTests: XCTestCase {
         unstored.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a", durableID: "a", profile: unstored.activeProfile, source: .resume)
         unstored.sessions = [other, session("c")]
         XCTAssertNil(unstored.rowOfChat(openAs: "rt-a")?.storedSessionId, "chat b's stored id isn't this chat's")
+        // …nor on a resume onto the same id with that one listing (#2794 review).
+        unstored.setActiveSessionState(id: "rt-a")
+        XCTAssertNil(unstored.rowOfChatOnScreen?.row.storedSessionId, "still not chat b's row")
     }
 
     /// Issues 2602 and 2603: an alias two rows carry is neither's, an

@@ -2816,6 +2816,10 @@ struct ComposerBar: View {
         // chat a New Chat created): the field stays as it is, focus and
         // dictation with it.
         if let loadedDraftKey = keptKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
+            // The chat the words go on in owns them from here: a fresh chat
+            // replacing a lost one is another stored id (#2794 review).
+            loadedDraftOwner = destinationKey.isNewConversation
+                ? nil : (appState.composerDraftOwner(for: destinationKey) ?? loadedDraftOwner)
             saveDraft(for: destinationKey)
             draftStore.removeDraft(for: loadedDraftKey)
             self.loadedDraftKey = destinationKey
