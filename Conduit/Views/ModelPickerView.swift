@@ -608,10 +608,11 @@ struct ModelPickerView: View {
             }
             // A model the catalog doesn't list (issue 2841), on any provider.
             if catalog.answered, let id = modelSearchTypedID(searchQuery) {
-                // Checked against every listed row, so a model hidden with
-                // Edit stays hidden; providers hidden with Edit stay out.
+                // Checked against every listed row and what Edit hid, so a
+                // hidden model stays hidden even once its row is gone, and
+                // providers hidden with Edit stay out.
                 let providers = modelSearchTypedIDProviders(catalog.providers, id: id, preferred: selectedProvider)
-                    .filter { !visibility.isHidden(provider: $0) }
+                    .filter { !visibility.isHidden(model: id, provider: $0) }
                 if !providers.isEmpty {
                     if !matches.isEmpty {
                         Divider()
