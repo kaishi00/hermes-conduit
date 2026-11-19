@@ -6704,7 +6704,7 @@ dots on its chats) · the Running line on the same row · Mark as read and
 unread · VoiceOver · the profile strip's dot, the same signal a level up ·
 README.md
 
-**Desktop app:** partly: unread dots on chats (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); not checked on projects.
+**Desktop app:** partly: the dot on a project's tile corner beside its Running line, and on the chats of its page (`desktop/src/renderer/src/components/ProjectsPane.tsx`, desktop#94), reading the marks the chat rows read (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); Home isn't listed as a project on the desktop, so it has no dot.
 
 **Code**
 - Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread), `Conduit/Services/AppState+Projects.swift` (catalogRow: a chat's catalog copy, its own ids before the ids it shares, cached per catalog change)
