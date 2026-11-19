@@ -37,11 +37,19 @@ extension AppState {
         // turn waits for. Sent as a new turn they would queue behind the
         // paused one, or stop it.
         if openChatWaitsOnUserAnswer {
-            return await steerForVoice(transcript) == .steered
+            switch await steerForVoice(transcript) {
+            case .steered: return true
+            case .failed: return false
+            // The turn ended meanwhile: the words go as a new turn, the
+            // card already tried.
+            case .noRunningTurn: break
+            }
+        } else {
+            // A yes or no to the one card waiting answers it first (Hermes
+            // can't approve for the user); Hermes then hears the words and
+            // how it went.
+            await answerWaitingBySpeech(transcript)
         }
-        // A yes or no to the one card waiting answers it first (Hermes can't
-        // approve for the user); Hermes then hears the words and how it went.
-        await answerWaitingBySpeech(transcript)
         // Marks this exact text as a spoken turn for the prompt.submit it
         // reaches, so Hermes asks for a reply meant to be read aloud. A typed
         // send interleaving on another text never matches.
