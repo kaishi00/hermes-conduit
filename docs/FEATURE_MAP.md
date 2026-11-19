@@ -992,7 +992,7 @@ under the list key on the tab, not its place), the drawer shell (no tabs;
 its own "Open to"), Watch and CarPlay (no tabs), the notifier (its prefs
 store takes any key)
 
-**Desktop app:** not applicable: desktop has no tab bar.
+**Desktop app:** partly: no tab bar to order, but a launch opens on the first tab the phone's synced layout shows, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160).
 
 **Code**
 - The layout and its store: `Conduit/Views/V2/V2TabLayout.swift` (V2TabLayout: stored, shown, first(without:), bar(selected:without:), madeAtLaunch, alwaysShown, optional, mostShown, canShow; V2TabLayoutStore with tabs, unavailable and setAvailable; V2TabsOrderSheet)
@@ -3616,7 +3616,7 @@ When returning to Conduit caption · Settings > Appearance > Tabs, which picks
 the first tab (The tabs' order and the tab Conduit opens on) · Watch and CarPlay (not needed: no chat
 list to land on)
 
-**Desktop app:** partly: a launch opens on Chats with no chat open, on the new chat's canvas (`desktop/src/renderer/src/App.tsx`, reopenedSection, which keeps Settings open only across a reload); the OS doesn't end the app in the background, so there is no chat to reopen, and there is no Bots tab to open on first.
+**Desktop app:** has it: a launch opens on the first tab the phone's synced layout (`app.tabs`) shows, Bots until it's reordered, with no chat open; the layout is read once per connection and kept per dashboard for the next launch, and a language change's reload keeps Settings open (`desktop/src/renderer/src/state/launchTab.ts`, `desktop/src/renderer/src/App.tsx` reopenedSection, desktop#160); the OS doesn't end the app in the background, so there is no chat to reopen.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, giveUpRoomIfLeft, Launch.roomStep), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
@@ -9359,7 +9359,7 @@ have no refresh of their own), the notifier (it serves no part of the
 catalog) · text: the shared "Updating…" key, already in every shipped
 language; no Settings caption or doc describes it
 
-**Desktop app:** partly (desktop#104): rows listed before the connection dropped say Updating… in a floating capsule (after 0.4 s, no clicks) while the read after the reconnect runs, and the list's own refreshes say nothing (`desktop/src/renderer/src/state/useChatList.ts`, `desktop/src/renderer/src/components/UpdatingCapsule.tsx`). It keeps no saved list, so a launch still says Loading chats… until the first read.
+**Desktop app:** has it (desktop#104, desktop#159): rows listed before the connection dropped say Updating… in a floating capsule (after 0.4 s, no clicks) while the read after the reconnect runs, and the list's own refreshes say nothing (`desktop/src/renderer/src/state/useChatList.ts`, `desktop/src/renderer/src/components/UpdatingCapsule.tsx`). Each read keeps the newest 200 rows on this computer for that dashboard, so a launch shows them at once, even while connecting, and the first read says Updating… until its first page lands; they move with Connection Setup's address change and go when the dashboard is signed out (`desktop/src/renderer/src/state/savedChatList.ts`, desktop#159).
 
 **Code**
 - When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, isReadingStaleChatList, showsChatListUpdating(overProjects:hidesPulseHomeChat:), noteStaleChatListRead; loadSessions counts a read over a stale list in and out, by the scope it reads), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (staleChatListReads by SessionCatalogOwner, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
