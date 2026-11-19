@@ -9265,7 +9265,7 @@ signals) · Bots Home's portraits, which count each bot's running and waiting
 chats from its profile's read (see Bots Home) · not needed: CarPlay's
 and the widget's pickers (no status), and no Settings caption or doc names it
 
-**Desktop app:** partly: the Running filter (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); no Needs approval on rows.
+**Desktop app:** has it: Running and Needs approval on every chat row from each listed profile's live sessions, and Running and Needs approval filters (`desktop/src/renderer/src/state/liveStatus.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#20, desktop#86).
 
 **Code**
 - Status: `Conduit/Services/AppState+OneChatTwoDevices.swift` (chatListPollTick), `Conduit/Services/AppState+ChatList.swift` (sessionLiveStatus, refreshLiveSessionStatuses, readOwnLiveSessionStatuses), `Conduit/Services/AppState.swift` (chatListCatalogGeneration's wake; inactiveSceneStaysInView and, in `Conduit/Services/AppState+UIState.swift`, sceneIsInView, for a Mac window behind another app), `Conduit/Services/AppState+Lifecycle.swift` (recordActiveListEvidence), `Conduit/Services/SessionLiveStatusIndex.swift` (SessionLiveStatusIndex and its busyRows, isProfileScoped and counts; BotLiveChats; OtherProfilesLiveStatus), `Conduit/Services/HermesClient.swift` (LiveSessionStatus.isProfileScoped, activeSessions(inProfile:)), `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, its inactiveFor, chatListInactiveAfter and chatListInactiveFloor; PollCadence.chatListSteps and chatListStepsFollowingChanges)
