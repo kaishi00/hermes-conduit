@@ -514,6 +514,7 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertEqual(state.errorMessage, startFailure)
         state.activeSessionId = "bot-b-runtime"
         XCTAssertEqual(state.errorMessage, startFailure, "A new id for the same chat keeps it")
+        XCTAssertEqual(state.shownChat.chatErrorShown, ChatErrorShown(message: startFailure, isRestoreFailure: false))
 
         installActiveSession(state, id: "bot-a")
         XCTAssertNil(state.errorMessage, "Another chat doesn't show the chat it left's error")
