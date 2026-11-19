@@ -1345,6 +1345,7 @@ extension AppState {
         } catch {
             return .failed(AppLocalization.string("Could not create the bot: \(UserFacingError.message(for: error))"))
         }
+        let startsFresh = draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
             // The server changed mid-save: the bot exists, its look,
             // picture and staged tool choices were never written.
@@ -1355,9 +1356,7 @@ extension AppState {
                !BotCapabilities.configureParams(original: baseline, edited: edited).isEmpty {
                 warning += " " + AppLocalization.string("The skills, tools or MCP choices were not saved.")
             }
-            if let plugin = BotPlugin.leftAsMadeWarning(
-                startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            ) {
+            if let plugin = BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) {
                 warning += " " + plugin
             }
             return .saved(warning: warning)
@@ -1407,7 +1406,6 @@ extension AppState {
         // The bot can use Conduit's features from the start: its profile
         // gets the plugin turned on, as a fresh one hasn't (issue 2803).
         // Only on the Hermes the bot was made on.
-        let startsFresh = draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let pluginWarning: String?
         if botOpenFenceIsCurrent(epoch: epoch, client: client) {
             pluginWarning = await turnOnPluginForNewBot(

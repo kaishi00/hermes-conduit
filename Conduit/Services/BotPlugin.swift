@@ -79,14 +79,19 @@ enum BotPlugin {
         )
     }
 
-    static func newBotStep(plugin: NotifierPluginStatus.State, startsFresh: Bool) -> NewBotStep {
-        switch plugin {
+    static func newBotStep(plugin: NotifierPluginStatus, startsFresh: Bool) -> NewBotStep {
+        switch plugin.state {
         case .reported(_, let capabilities) where capabilities.contains(capability): return .turnOn
-        // An older plugin, one too old to report what it serves included
-        // (or none at all, where the update notice offers the install).
-        case .reported, .predatesCapabilities: return startsFresh ? .askForUpdate : .nothing
         // Not reported yet: the caller waits for the read first.
         case .unknown: return .nothing
+        // An older plugin, one too old to report what it serves included
+        // (or none at all, where the update notice offers the install).
+        // Never asked of a host that keeps the plugin itself, nor where
+        // the host's copy is new enough but this dashboard doesn't run it:
+        // an update fixes neither, and Settings' plugin page says what does.
+        case .reported, .predatesCapabilities:
+            guard startsFresh, !plugin.isManaged, !plugin.isNotServed else { return .nothing }
+            return .askForUpdate
         }
     }
 }
@@ -144,7 +149,7 @@ extension AppState {
             guard isCurrent() else { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
             if notifierPlugin.state == .unknown { return BotPlugin.leftAsMadeWarning(startsFresh: startsFresh) }
         }
-        switch BotPlugin.newBotStep(plugin: notifierPlugin.state, startsFresh: startsFresh) {
+        switch BotPlugin.newBotStep(plugin: notifierPlugin, startsFresh: startsFresh) {
         case .nothing:
             return nil
         case .askForUpdate:
