@@ -4641,7 +4641,7 @@ keyboard line (done, #2270) · no Settings caption describes it
   row's own gestures). Typing letters with the transcript holding the keys
   doesn't go to the composer (#2270).
 
-**Checked:** 2026-11-19, #PRNUM2 (the New Chat shortcut's and control's chat opens focused on an iPhone and iPad too, #2863); 2026-11-12, #2284 (a chat or room switch drops a transcript paste still waiting for focus); 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-19, #2867 (the New Chat shortcut's and control's chat opens focused on an iPhone and iPad too, #2863); 2026-11-12, #2284 (a chat or room switch drops a transcript paste still waiting for focus); 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7330,14 +7330,14 @@ intent's title and description · docs/WIDGETS.md · README.md
 **Rulings**
 - It starts on the dashboard in use, never another: the Profile parameter picks a profile there, as Talk to Conduit's does. With no dashboard signed in it starts nothing and Conduit opens on its sign-in (2026-11-19, #2863, issue 2860).
 - It brings the keyboard up on every device, unlike the app's New Chat, which does only on a Mac, and a widget's, which never does: running it is asking to type. Only the chat it made takes the focus (2026-11-19, #2863).
-- A run while the same launch is already being carried out (a widget's New Chat for the same workspace mid-create) adds nothing to it, and that launch keeps its own origin and focus (2026-11-19, #PRNUM2).
-- Its failure says so in Conduit's words, never the widget's: "End the call to start a new chat." during a call, which refuses it as it does a widget's New Chat, otherwise "Couldn't start a new chat…" as the app's New Chat says (2026-11-19, #PRNUM2).
+- A run while the same launch is already being carried out (a widget's New Chat for the same workspace mid-create) adds nothing to it, and that launch keeps its own origin and focus (2026-11-19, #2867).
+- Its failure says so in Conduit's words, never the widget's: "End the call to start a new chat." during a call, which refuses it as it does a widget's New Chat, otherwise "Couldn't start a new chat…" as the app's New Chat says (2026-11-19, #2867).
 - The control has no profile to pick: it starts in the profile on screen, as the widget extension can't read Conduit's profile list (2026-11-19, #2863).
 
 **Open gaps**
 - Not tried on a device yet: the Action Button, the control, a cold launch and Siri's phrases.
 
-**Checked:** 2026-11-19, #PRNUM2 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
+**Checked:** 2026-11-19, #2867 (#2863's review: its failures in Conduit's words, a repeat of a launch in flight keeps that launch's origin, the Profile parameter and a call's refusal tested, the control's kind in ConduitWidgetKind); 2026-11-19, #2863 (added, issue 2860, with the New Chat control).
 
 ## Shortcuts Hermes can run
 
@@ -7933,7 +7933,7 @@ README.md
 **Open gaps**
 - None known. A background launch that signed in before the phone opened stays signed in: by then Conduit is already running, not launching.
 
-**Checked:** 2026-11-19, #PRNUM2 (the New Chat shortcut and control in the siblings: they sign in through a widget's New Chat launch); 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
+**Checked:** 2026-11-19, #2867 (the New Chat shortcut and control in the siblings: they sign in through a widget's New Chat launch); 2026-11-16, #2599 (the combined group as one row); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1911.
 
 ## Combined dashboards
 
