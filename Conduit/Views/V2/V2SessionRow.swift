@@ -6,7 +6,8 @@
 //  between rows than between a row's own lines so each conversation reads
 //  as one block. A Chats row leads with a round icon for where the
 //  conversation came from, the gold unread dot on its corner. Line one is
-//  the title and time, with a star before the time on a starred chat; line
+//  the title and time, with a star before the time on a starred chat (and
+//  a green check on a done one, dimmed: Done chats); line
 //  two a dimmer one-line preview, and a status glyph and action word only
 //  when the row needs one (Running, Approve).
 //
@@ -175,6 +176,8 @@ struct V2SessionRow: View {
     var isUnread = false
     var isPinned = false
     var isStarred = false
+    /// Marked done (Done chats): dimmed, with a check before the time.
+    var isDone = false
     var selection = V2RowSelection.none
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
@@ -201,6 +204,7 @@ struct V2SessionRow: View {
         HStack(alignment: icon == nil ? .top : .center, spacing: 0) {
             if let icon {
                 V2SessionIcon(source: icon, isUnread: isUnread)
+                    .opacity(isDone ? 0.5 : 1)
                     .overlay(alignment: .bottomTrailing) {
                         if let profileBadge {
                             ProfileAvatarView(
@@ -250,9 +254,15 @@ struct V2SessionRow: View {
                     }
                     Text(title)
                         .scaledFont(.callout.weight(.semibold))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(Color.primary.opacity(isDone ? 0.5 : 1))
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     Spacer(minLength: 4)
+                    if isDone {
+                        Image(systemName: "checkmark.circle.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(Color.green)
+                            .accessibilityHidden(true)
+                    }
                     if isStarred {
                         Image(systemName: "star.fill")
                             .scaledFont(.caption2)
@@ -271,7 +281,7 @@ struct V2SessionRow: View {
                     }
                     Text(preview)
                         .scaledFont(.subheadline)
-                        .foregroundStyle(Color.primary.opacity(0.5))
+                        .foregroundStyle(Color.primary.opacity(isDone ? 0.35 : 0.5))
                         .lineLimit(1)
                     Spacer(minLength: 4)
                     if !leadingGlyph, let word = status.actionWord {
@@ -340,6 +350,7 @@ struct V2SessionRow: View {
             isUnread ? AppLocalization.string("Unread") : nil,
             isPinned ? AppLocalization.string("Pinned") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
+            isDone ? AppLocalization.string("Done") : nil,
             status.accessibilityWord,
             preview.isEmpty ? nil : preview,
             time.isEmpty ? nil : time

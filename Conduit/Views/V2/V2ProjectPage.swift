@@ -737,6 +737,7 @@ struct V2ProjectSessionRowContent: View, Equatable {
                     isUnread: appState.isSessionUnread(session),
                     isPinned: appState.isSessionPinned(session),
                     isStarred: appState.isSessionStarred(session),
+                    isDone: appState.isSessionDone(session),
                     selection: .chat(isActive: appState.isOpenChatRow(session), beside: openBeside),
                     leadingGlyph: true,
                     profileBadge: profileBadge

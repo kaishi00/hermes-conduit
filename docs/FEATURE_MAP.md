@@ -6880,6 +6880,47 @@ profile or bot · a dashboard switch
 
 **Checked:** 2026-11-14, #2480 (the phone-wide stars also go to the first dashboard added or restored while running); 2026-11-14, #2477 (added; stars kept per dashboard).
 
+## Done chats
+
+A chat the user, or their agent, marked done: it dims in the list with a
+green check, and the Chats list's In progress and Done filters split the
+finished chats from the rest (fish0859 on Reddit, 2026-11-19). The plugin
+keeps the marks per profile (`/chats/done`, plugin 0.182.0), so the phone,
+the iPad and the desktop show the same ones, and the agent's
+`conduit_chat_done` tool marks its own chat.
+
+**Siblings:** the row's touch-and-hold menu (Mark as Done / Not Done) and
+leading swipe (done) · the row's look: dimmed title and preview, check
+before the time, Running and Approve still shown (done) · the Chats list's
+In progress and Done filters, combined with status, source and project
+filters (done) · a project's page (done, same rows) · All profiles (done:
+each row read and marked in its own profile) · another combined dashboard's
+row (not needed for now: its marks live on that dashboard, so it offers no
+mark) · the iPad and Mac list (done, same views) · the notifier's route,
+capability, tool, CHANGELOG and README (done, notifier PR) · the drawer
+shell's sidebar (not needed: V1 has no filters, like Stars) · Bots Home, the
+Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
+
+**Desktop app:** has it: Mark as Done in the row menu, the dimmed row with a check, and In progress and Done filters (`desktop/src/renderer/src/state/chatDone.ts`, `desktop/src/renderer/src/components/ChatList.tsx`).
+
+**Code**
+- Marks: `Conduit/Models/ChatDoneMarks.swift` (ids(for:), the lineage root first; marks(from:), setting, replacing), `Conduit/Services/AppState+ChatDone.swift` (chatDoneAvailable, setSessionDone, refreshChatDoneMarks and its 15 s per-profile throttle)
+- Reads with the list: `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList), `Conduit/Services/AppState+AllProfilesChats.swift` (listAllProfilesCatalog)
+- Views: `Conduit/Views/SidebarView.swift` (SessionActionMenuItems, DoneToggleButton), `Conduit/Views/V2/V2ChatsView.swift` (the leading swipe; V2SessionFilter's inProgress and done, V2FilterSelection's progress group), `Conduit/Views/V2/V2SessionRow.swift` (isDone), `Conduit/Views/V2/V2ProjectPage.swift`
+- Route and tool: `notifier/chat_marks_store.py`, `notifier/dashboard/api/chat_marks.py`, `notifier/chat_done_tool.py`, `notifier/tests/test_chat_marks.py`
+- Tests: `ConduitTests/SidebarLayoutTests+V2Filters.swift` (testV2FiltersInProgressAndDoneNarrowTheRestAndTogetherListBoth, testChatDoneMarksFollowTheConversationPerProfile)
+
+**Rulings**
+- A mark stays until the chat is opened again by hand or by the agent; a new turn doesn't clear it, since a "thanks" would (2026-11-19, Eric picked a Done mark set by the user or the agent).
+- Kept under every id of the chat, its lineage root first, so a compacted chat stays done.
+- The agent marks a chat only when the user, or their own instructions or a skill, ask it to; never on its own judgment (the tool's description says so).
+- Done and In progress show only on a plugin that reports `chat-done`; before it answers, the filters and the menu item stay hidden.
+
+**Open gaps**
+- Another combined dashboard's rows offer no Done mark.
+
+**Checked:** 2026-11-19, #APP (added).
+
 ## Deleting from a list row
 
 A row's swipe Delete in the lists that ask before deleting: the chat, the

@@ -460,6 +460,12 @@ final class AppState: ObservableObject {
     @Published var pinnedSessionIDs: [String] = []
     /// Starred chats, per profile, on this phone only (#757).
     @Published var sessionStars = SessionStars()
+    /// Done chats, per profile, as the plugin keeps them (ChatDoneMarks).
+    @Published var chatDoneMarks = ChatDoneMarks()
+    /// When each profile's Done marks were last read, and the reads on
+    /// their way (AppState+ChatDone).
+    var chatDoneMarksReadAt: [String: Date] = [:]
+    var chatDoneMarksReads: Set<String> = []
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).

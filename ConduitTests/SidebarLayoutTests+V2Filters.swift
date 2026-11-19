@@ -57,7 +57,8 @@ extension SidebarLayoutTests {
         _ selection: V2FilterSelection,
         unread: Set<String> = [],
         working: Set<String> = [],
-        starred: Set<String> = []
+        starred: Set<String> = [],
+        done: Set<String> = []
     ) -> [String] {
         selection.rows(
             everything: filterChats.filter { !$0.isArchived },
@@ -69,6 +70,8 @@ extension SidebarLayoutTests {
                 case .unread: return unread.contains(session.id)
                 case .running: return working.contains(session.id)
                 case .starred: return starred.contains(session.id)
+                case .done: return done.contains(session.id)
+                case .inProgress: return !done.contains(session.id)
                 default: return false
                 }
             }
@@ -150,6 +153,56 @@ extension SidebarLayoutTests {
         XCTAssertEqual(V2FilterSelection(filters: [.unread]).facet(.starred), V2FilterSelection(filters: [.unread, .starred]))
         XCTAssertEqual(selection.facet(.running), V2FilterSelection(filters: [.running, .starred, .source(.chat)]))
         XCTAssertEqual(selection.facet(.voice), V2FilterSelection(filters: [.unread, .starred, .voice]))
+    }
+
+    func testV2FiltersInProgressAndDoneNarrowTheRestAndTogetherListBoth() {
+        let done: Set<String> = ["chat-old", "run-new"]
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.done]), done: done), ["run-new", "chat-old"],
+                       "Done looks through every chat, cron runs included, as Starred does")
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.inProgress]), done: done),
+                       ["chat-new", "voice", "telegram", "run-old"])
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.inProgress, .source(.chat)]), done: done), ["chat-new"])
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.done, .unread]), unread: ["chat-new", "chat-old"], done: done),
+                       ["chat-old"], "Done narrows a status")
+        XCTAssertEqual(filterIDs(V2FilterSelection(filters: [.inProgress, .done]), done: done).count, 6,
+                       "the two together list both")
+        let selection = V2FilterSelection(rawValue: "done,unread")
+        XCTAssertEqual(selection, V2FilterSelection(filters: [.done, .unread]))
+        XCTAssertTrue(selection.flattens)
+        XCTAssertEqual(selection.withoutProgress, V2FilterSelection(filters: [.unread]))
+        XCTAssertEqual(V2FilterSelection(filters: [.inProgress]).emptyStateFilter, .inProgress)
+        XCTAssertEqual(selection.facet(.inProgress), V2FilterSelection(filters: [.inProgress, .unread]),
+                       "In progress counts beside the other groups, not beside Done")
+    }
+
+    func testChatDoneMarksFollowTheConversationPerProfile() {
+        let compacted = SessionSummary(
+            id: "chat-2", alternateIds: ["chat-1"], title: "chat", model: "Hermes", updatedLabel: "now",
+            lastActivityAt: nil, profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: "chat-1"
+        )
+        let original = filterRow("chat-1", source: .chat)
+        let dashboard = UUID()
+        var marks = ChatDoneMarks().setting(compacted, done: true, profile: "default", dashboardID: dashboard)
+        XCTAssertEqual(ChatDoneMarks.ids(for: compacted), ["chat-1", "chat-2"], "the lineage root first")
+        XCTAssertTrue(marks.isDone(original, profile: "default"), "a compacted chat keeps its mark")
+        XCTAssertFalse(marks.isDone(original, profile: "work"), "marks are per profile")
+        marks = marks.setting(original, done: false, profile: "default", dashboardID: dashboard)
+        XCTAssertFalse(marks.isDone(compacted, profile: "default"))
+
+        let read = ChatDoneMarks.marks(from: ["done": [
+            ["ids": ["chat-1", "chat-2"], "at": 1_000.0, "by": "agent"],
+            ["ids": [], "at": 1.0, "by": "user"],
+            ["ids": ["x"]]
+        ]])
+        XCTAssertEqual(read, [ChatDoneMarks.Mark(ids: ["chat-1", "chat-2"], at: Date(timeIntervalSince1970: 1_000), byAgent: true)])
+        XCTAssertNil(ChatDoneMarks.marks(from: ["error": "nope"]))
+        marks = marks.replacing(read ?? [], profile: "default", dashboardID: dashboard)
+        XCTAssertTrue(marks.isDone(compacted, profile: "default"))
+        let other = marks.replacing([], profile: "work", dashboardID: UUID())
+        XCTAssertFalse(other.isDone(compacted, profile: "default"), "another dashboard's read drops this one's marks")
+        XCTAssertEqual(ChatDoneMarks.readPath(profile: "my bot"), "/api/plugins/conduit_push/chats/done?profile=my%20bot")
+        XCTAssertEqual(ChatDoneMarks.body(for: compacted, done: true)["ids"] as? [String], ["chat-1", "chat-2"])
     }
 
     func testSessionStarsFollowTheConversationPerProfile() throws {
