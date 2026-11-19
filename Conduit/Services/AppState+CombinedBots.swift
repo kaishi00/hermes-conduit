@@ -479,7 +479,10 @@ extension AppState {
             // A list tap or link made during the switch is the later
             // choice (`botChatOpenRequests`); its own open owns the zoom.
             guard request == self.botChatOpenRequests else { return }
-            self.openLinkedBotChat(bot.name, inDashboard: dashboardID)
+            // The tap's own request carries on, so a tap landing before the
+            // link's task starts is the later choice, not lost to a second
+            // count (issue 2792).
+            self.openLinkedBotChat(bot.name, inDashboard: dashboardID, counted: request)
         }
     }
 

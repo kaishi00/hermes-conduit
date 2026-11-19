@@ -1020,6 +1020,10 @@ final class AppState: ObservableObject {
     /// (`beginOpeningBotChat`) or a link's or card's (`openLinkedBotChat`):
     /// one waiting for the connection stands down for any newer one.
     var botChatOpenRequests = 0
+    /// The request of a link's or card's Bot Chat open still waiting for the
+    /// connection or the roster (`openLinkedBotChat`), before any open is on
+    /// its way: Back stands it down (issue 2792).
+    var linkedBotChatWaitingRequest: Int?
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?
