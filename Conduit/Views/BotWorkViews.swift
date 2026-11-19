@@ -1100,6 +1100,9 @@ private struct BotWorkRow: View {
                 if !item.room.isEmpty {
                     fromRoomLine
                 }
+                if item.model != nil {
+                    modelLine
+                }
                 if !item.result.isEmpty {
                     Text(BotWorkLook.rendered(item.result))
                         .scaledFont(.footnote)
@@ -1141,6 +1144,27 @@ private struct BotWorkRow: View {
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// The model the bot named for this one workstream, as the user's
+    /// words asked (issue 2788): shown so a start off the Workstream Model
+    /// is never silent. The catalog's names, as Edit Bot > Work's row.
+    @ViewBuilder
+    private var modelLine: some View {
+        if let picked = item.model {
+            let lines = ModelChooserLinkRow.lines(
+                pick: ModelChooserPick(provider: picked.provider, model: picked.model),
+                providers: appState.keptModelProviders(inProfile: profile),
+                defaultTitle: picked.model,
+                reasoning: picked.reasoningEffort.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: picked.reasoningEffort)
+            )
+            let named = [lines.value, lines.detail].compactMap { $0 }.joined(separator: " · ")
+            Label(AppLocalization.string("Runs on \(named)", table: .bots), systemImage: "cpu")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("botWork.model.\(item.ref)")
+        }
     }
 
     private var roomName: String? {

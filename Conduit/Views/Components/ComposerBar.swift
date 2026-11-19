@@ -75,6 +75,10 @@ struct ComposerBar: View {
     /// The latest replacement puts the cursor after the text.
     @State private var composerCursorAtEnd = false
     @State private var loadedDraftKey: ComposerDraftKey?
+    /// The stored id of the chat the field's words were loaded for: saved
+    /// with them, though Hermes hands their key's runtime id on while the
+    /// field stays mounted (#2794 review).
+    @State private var loadedDraftOwner: String?
     /// The store's clear count when the draft was loaded: a sign-out or a
     /// server switch since then cleared the store on purpose.
     @State private var loadedDraftClearCount: UInt64 = 0
@@ -2019,9 +2023,13 @@ struct ComposerBar: View {
                     }
                 }
             } else {
+                // A draft another chat's now goes back first, so the message
+                // never joins words saved for another chat (#2794 review).
+                returnDraftsToTheirOwners(near: request.key, keeping: loadedDraftKey)
                 let key = draftStore.keys.first { appState.composerDraftKeysAreSameChat($0, request.key) }
                     ?? request.key
-                draftStore.save(draftStore.draft(for: key).restoring(request.draft), for: key)
+                draftStore.save(draftStore.draft(for: key).restoring(request.draft), for: key,
+                                owner: appState.composerDraftOwner(for: key))
             }
             appState.consumeComposerRestoreRequest(request.id)
         }
@@ -2737,18 +2745,48 @@ struct ComposerBar: View {
     }
 
     private func saveDraft(for key: ComposerDraftKey) {
+        // Kept with the durable id of its chat, while the list names one: a
+        // runtime id Hermes later hands to another chat doesn't take the
+        // words with it (issue 2782).
         draftStore.save(
             ComposerDraft(text: text, attachments: attachments, replyReference: replyReference),
-            for: key
+            for: key,
+            owner: loadedDraftOwner ?? appState.composerDraftOwner(for: key)
         )
     }
 
+    /// Drafts of this profile saved for a chat whose key's runtime id
+    /// Hermes has since handed to another go back under their own chat's
+    /// durable id (issue 2782), so no lookup below takes them for another
+    /// chat's. `keeping`: the key the field holds, whose words it saves.
+    private func returnDraftsToTheirOwners(near key: ComposerDraftKey, keeping kept: ComposerDraftKey? = nil) {
+        for other in draftStore.keys where other != kept && other.dashboard == key.dashboard && other.profile == key.profile {
+            if let owner = draftStore.owner(of: other), appState.composerDraftKey(other, isNotChatOf: owner) {
+                draftStore.returnDraft(from: other, toOwner: owner)
+            }
+        }
+    }
+
     private func loadDraft(for key: ComposerDraftKey) {
+        // Saved for another chat under the id this one opens by (Hermes
+        // handed the runtime id on), or under one a lookup below could take
+        // for this chat's: it goes back under its own chat's durable id
+        // first, and this chat starts without it (issue 2782, #2794 review).
+        returnDraftsToTheirOwners(near: key)
         // Kept under another of the chat's ids (typed over its saved copy,
         // or in the New Chat that created it): it's this chat's draft.
         if !draftStore.hasDraft(for: key),
            let other = draftStore.keys.first(where: { $0 != key && appState.composerDraftKeysAreSameChat($0, key) }) {
             draftStore.migrateDraft(from: other, to: key)
+        }
+        // Saved for this chat under a runtime id no row lists any more:
+        // the owner it was saved for says it's this chat's (#2794 review).
+        if !draftStore.hasDraft(for: key), let owner = appState.composerDraftOwner(for: key),
+           let stranded = draftStore.keys.first(where: {
+               $0 != key && $0.dashboard == key.dashboard && $0.profile == key.profile
+                   && !$0.isNewConversation && draftStore.owner(of: $0) == owner
+           }) {
+            draftStore.migrateDraft(from: stranded, to: key)
         }
         let draft = draftStore.draft(for: key)
         if text != draft.text {
@@ -2758,6 +2796,7 @@ struct ComposerBar: View {
         attachments = draft.attachments
         replyReference = draft.replyReference
         loadedDraftKey = key
+        loadedDraftOwner = draftStore.owner(of: key) ?? appState.composerDraftOwner(for: key)
         loadedDraftClearCount = draftStore.clearCount(for: key.dashboard)
         composerTextHeight = restingTextHeight
         isFocused = false
@@ -2777,6 +2816,10 @@ struct ComposerBar: View {
         // chat a New Chat created): the field stays as it is, focus and
         // dictation with it.
         if let loadedDraftKey = keptKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
+            // The chat the words go on in owns them from here: a fresh chat
+            // replacing a lost one is another stored id (#2794 review).
+            loadedDraftOwner = destinationKey.isNewConversation
+                ? nil : (appState.composerDraftOwner(for: destinationKey) ?? loadedDraftOwner)
             saveDraft(for: destinationKey)
             draftStore.removeDraft(for: loadedDraftKey)
             self.loadedDraftKey = destinationKey

@@ -109,6 +109,9 @@ struct BotWorkItem: Identifiable, Equatable {
     /// Its own turn has ended and this many delegate agents it started
     /// still run (plugin 0.162.1+): it stays Working, waiting for them.
     let awaitedAgentCount: Int
+    /// The model the bot named for it at its start, as the user's words
+    /// asked (issue 2788); nil when it runs on the Workstream Model.
+    let model: BotWorkSettings.Model?
 
     var id: String { ref }
 
@@ -147,6 +150,7 @@ struct BotWorkItem: Identifiable, Equatable {
         screenUsedAt = used > 0 ? Date(timeIntervalSince1970: used) : nil
         screenAsk = (row["screen_ask"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         awaitedAgentCount = kind == .workstream ? max(0, (row["agents"] as? NSNumber)?.intValue ?? 0) : 0
+        model = kind == .workstream ? BotWorkSettings.Model(row["model"]) : nil
         room = kind == .workstream ? (row["room"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
