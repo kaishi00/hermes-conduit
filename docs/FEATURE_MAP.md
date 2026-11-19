@@ -6919,7 +6919,7 @@ Watch, CarPlay and widgets (not needed: no chat list rows) · README (done)
 **Open gaps**
 - Another combined dashboard's rows offer no Done mark.
 
-**Checked:** 2026-11-19, #APP (added).
+**Checked:** 2026-11-19, #2830 (added: a Done mark set by the user or the agent, fish0859 on Reddit).
 
 ## Deleting from a list row
 
