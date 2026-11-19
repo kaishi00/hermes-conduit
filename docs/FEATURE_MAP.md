@@ -865,7 +865,7 @@ GPT-Live, Local Live) · Classic's mode capsule · a failed live call's Switch
 voice button · Voice settings' mode picker · CarPlay and the Apple Watch (no
 mode menu)
 
-**Desktop app:** partly: the voice mode picker beside the call button switches before a call (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#38); no mode capsule that switches during a call.
+**Desktop app:** has it: every call screen shows its mode in a capsule whose menu moves the call to another mode in the same chat, and the voice mode picker beside the call button does the same during a call and sets the next call's mode before one (`desktop/src/renderer/src/components/VoiceModeCapsule.tsx`, `desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#38, desktop#87); a failed call keeps the capsule, which serves as its Switch voice.
 
 **Code**
 - Menu and capsule: `Conduit/Views/VoiceModeMenu.swift` (VoiceModeMenu, VoiceModeCapsule), `Conduit/Voice/VoiceModeChoice.swift` (VoiceModeSwitch)
@@ -1250,7 +1250,7 @@ What happens to a call's words, its jobs and Hermes' memory when it ends.
 Classic in a chat it created · Watch calls · CarPlay calls · calls from
 Hermes · Resume Call · memory at call end (notifier)
 
-**Desktop app:** partly: live calls saved with their chat and shown as call cards (`desktop/src/renderer/src/state/voiceSave.ts`, `desktop/src/renderer/src/components/CallCards.tsx`, desktop#33, desktop#34); no Resume Call.
+**Desktop app:** has it: live calls saved with their chat and shown as call cards (`desktop/src/renderer/src/state/voiceSave.ts`, `desktop/src/renderer/src/components/CallCards.tsx`, desktop#33, desktop#34); Resume call in a saved call's sheet starts a live call that continues it, seeded with its latest turns and saved under the same call (`desktop/src/renderer/src/components/CallTranscriptSheet.tsx`, desktop#85); a long call's older turns aren't summarized, as the phone's are.
 
 **Code**
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink, VoiceTranscriptOutbox, VoiceCallCheckpoint)
@@ -6567,7 +6567,7 @@ open one) · the notifier's release of an idle chat's claim (#1123) ·
 Sync across devices (the four Sessions bar preferences, as
 `app.main_button_new_chat` does) · the Settings caption (Sessions bar)
 
-**Desktop app:** partly: the chat list's search (`desktop/src/renderer/src/components/ChatList.tsx`); no In messages search.
+**Desktop app:** has it (desktop#84): the chat list's search filters by title and preview, and In messages lists the chats Hermes' full-text search finds by what was said in them, the matched words picked out, on the profile shown or every profile the list holds (`desktop/src/renderer/src/components/ChatList.tsx`, `desktop/src/renderer/src/state/contentSearch.ts`); its bar is one row, with no stacked layout.
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles; never reported wider than offered, see A split window's columns fill the window)
@@ -6825,7 +6825,7 @@ VoiceOver · pin sync with Hermes (#555) · Sync across devices and its
 Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
 
-**Desktop app:** partly: Pin on chat rows (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19); no reordering.
+**Desktop app:** has it: a pinned chat is dragged in place or moved with Move Earlier and Move Later in its menu, while the list shows every pinned chat; the order is kept per host and profile under each chat's lineage root, with All's mixed places on the computer, and goes to and from the host's synced `chats.pinned_order` (`desktop/src/renderer/src/state/pinnedOrder.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#19, desktop#88).
 
 **Code**
 - Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState+PinnedChatOrder.swift` (setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder), `Conduit/Services/AppState+PinSync.swift` (storePins and removePinnedState call dropFromPinnedChatOrder), `Conduit/Services/AppState.swift` (pinnedChatOrder; deleting a profile clears its own, in the mix too), `Conduit/Services/AppState+PinnedChatOrder.swift` (loadDashboardLists, forgetDashboardLists: per dashboard, Sign Out and Remove clear that dashboard's; adoptLegacyDashboardLists, also from registerDashboard and `Conduit/Services/AppState+SignIn.swift`'s retrySignInFromBackground)
@@ -9265,7 +9265,7 @@ signals) · Bots Home's portraits, which count each bot's running and waiting
 chats from its profile's read (see Bots Home) · not needed: CarPlay's
 and the widget's pickers (no status), and no Settings caption or doc names it
 
-**Desktop app:** partly: the Running filter (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); no Needs approval on rows.
+**Desktop app:** has it: Running and Needs approval on every chat row from each listed profile's live sessions, and Running and Needs approval filters (`desktop/src/renderer/src/state/liveStatus.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#20, desktop#86).
 
 **Code**
 - Status: `Conduit/Services/AppState+OneChatTwoDevices.swift` (chatListPollTick), `Conduit/Services/AppState+ChatList.swift` (sessionLiveStatus, refreshLiveSessionStatuses, readOwnLiveSessionStatuses), `Conduit/Services/AppState.swift` (chatListCatalogGeneration's wake; inactiveSceneStaysInView and, in `Conduit/Services/AppState+UIState.swift`, sceneIsInView, for a Mac window behind another app), `Conduit/Services/AppState+Lifecycle.swift` (recordActiveListEvidence), `Conduit/Services/SessionLiveStatusIndex.swift` (SessionLiveStatusIndex and its busyRows, isProfileScoped and counts; BotLiveChats; OtherProfilesLiveStatus), `Conduit/Services/HermesClient.swift` (LiveSessionStatus.isProfileScoped, activeSessions(inProfile:)), `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, its inactiveFor, chatListInactiveAfter and chatListInactiveFloor; PollCadence.chatListSteps and chatListStepsFollowingChanges)
