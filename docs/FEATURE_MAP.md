@@ -9648,7 +9648,7 @@ background (no poll) · Tasks' scheduled runs and the drawer's Cron list
 opening Tasks reads; the drawer's Cron list reads the newest chat page and
 the cron rows when shown, the full replace on a pull)
 
-**Desktop app:** partly: the board reads every 8 s while it shows and the window is visible (`desktop/src/renderer/src/state/useKanban.ts`); no live event stream to slow it, no spacing out when reads find nothing new, and no quick second try before a first failure shows.
+**Desktop app:** partly: the board reads every 8 s while it shows and the window is visible, spaced out to 15 s after 15 reads that find nothing new and 30 s after 45, back to 8 s on a change or a failure, and a first read lost in transit asks once more after 1 s before the failure shows (`desktop/src/renderer/src/state/useKanban.ts`, `desktop/src/renderer/src/state/kanban.ts`, desktop#119); no live event stream to slow it.
 
 **Code**
 - Scheduled runs on show, the drawer's Cron list: `Conduit/Services/AppState+OneChatTwoDevices.swift` (refreshCronContent), `Conduit/Services/AppState+Session.swift` (refreshNewestSessionCatalogPage), `Conduit/Views/SidebarView.swift` (the drawer's Cron list), test in `ConduitTests/SessionCatalogLoadTests.swift` (testShowingTasksReadsTheNewestRowsOverTheCatalog, which now pins this path; the V2 tab's show read is pinned by `scripts/tests/test_scheduled_tab_reads_source_contract.py`)
