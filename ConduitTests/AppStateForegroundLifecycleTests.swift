@@ -9961,6 +9961,7 @@ extension AppStateForegroundLifecycleTests {
 extension AppStateForegroundLifecycleTests {
     private final class ReapedHost {
         var reaped = false
+        var refusesEverySend = false
         var resumes: [String] = []
         var sends: [String] = []
         var reads: [String] = []
@@ -9998,7 +9999,7 @@ extension AppStateForegroundLifecycleTests {
             refreshContext: { _, _ in },
             sendPrompt: { _, id, _ in
                 host.sends.append(id)
-                if host.reaped, id == "runtime-a" {
+                if host.refusesEverySend || (host.reaped && id == "runtime-a") {
                     throw RpcError(code: 4001, message: "session not found")
                 }
                 return .accepted
@@ -10075,6 +10076,24 @@ extension AppStateForegroundLifecycleTests {
         XCTAssertEqual(host.sends, ["runtime-b"])
         XCTAssertNotEqual(harness.appState.errorMessage, "Unable to refresh this conversation. Try again.")
         XCTAssertEqual(harness.appState.activeSessionId, "runtime-b")
+        box.client.disconnect()
+    }
+
+    func testASecondRefusalAfterTheResumeShowsTheFailedSend() async {
+        let host = ReapedHost()
+        let harness = makeHarness(lifecycleOperations: reapedHostOperations(host))
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a")]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+
+        host.reaped = true
+        host.refusesEverySend = true
+        let submitted = await harness.appState.submitComposer(text: "Follow-up")
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(host.sends, ["runtime-a", "runtime-b"], "one resume and one more try, no loop")
+        XCTAssertEqual(harness.appState.errorMessage, "Failed to send: session not found")
         box.client.disconnect()
     }
 }

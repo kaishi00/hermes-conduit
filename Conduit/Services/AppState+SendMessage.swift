@@ -48,6 +48,33 @@ extension AppState {
         return await sendMessage(text, attachments: attachments, queued: queued, afterReplacingLostChat: true)
     }
 
+    /// Hermes cleared the chat's runtime (a dropped socket's park outlived
+    /// `dashboard.ws_orphan_reap_grace_s`, 20 s by default; an idle or LRU
+    /// eviction) and refused the send with "session not found". Nothing was
+    /// taken, so the chat is resumed by its stored id, which a cleared
+    /// runtime's id no longer finds, and the message goes once more to the
+    /// runtime the resume made. A second refusal shows as a failed send.
+    private func resendAfterResumingStoredChat(
+        _ text: String,
+        attachments: [Attachment],
+        context: ComposerSubmissionContext,
+        queued: Bool,
+        optimisticRowID: String
+    ) async -> Bool {
+        lifecycleLog.notice("send refused: the chat's runtime is gone; resuming the stored chat and sending again")
+        // The resend draws its own bubble.
+        messages.removeAll { $0.id == optimisticRowID }
+        guard let recovered = await recoverComposerSubmission(using: context),
+              isCurrentComposerSubmission(recovered),
+              chatSyncErrorMessage == nil else {
+            return false
+        }
+        return await sendMessage(
+            text, attachments: attachments, context: recovered, queued: queued,
+            afterReplacingLostChat: true, afterResumingStoredChat: true
+        )
+    }
+
     /// `queued` is Queue (#842): Hermes keeps the message as the next turn
     /// while one runs. That turn's reply goes on streaming meanwhile.
     func sendMessage(
@@ -55,7 +82,8 @@ extension AppState {
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
         queued: Bool = false,
-        afterReplacingLostChat: Bool = false
+        afterReplacingLostChat: Bool = false,
+        afterResumingStoredChat: Bool = false
     ) async -> Bool {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
@@ -213,6 +241,12 @@ extension AppState {
                     return await resendInPlaceOfLostEmptyChat(
                         text, attachments: attachments, context: submissionContext, queued: queued,
                         lostSessionIDs: submissionSessionIDs, using: client
+                    )
+                }
+                if !afterResumingStoredChat, HermesClient.isSessionNotFoundError(error) {
+                    return await resendAfterResumingStoredChat(
+                        text, attachments: attachments, context: submissionContext, queued: queued,
+                        optimisticRowID: userMessage.id
                     )
                 }
                 // A file can't wait as text: it comes back, and the
@@ -429,6 +463,12 @@ extension AppState {
                 return await resendInPlaceOfLostEmptyChat(
                     text, attachments: attachments, context: submissionContext, queued: queued,
                     lostSessionIDs: submissionSessionIDs, using: client
+                )
+            }
+            if !afterResumingStoredChat, HermesClient.isSessionNotFoundError(error) {
+                return await resendAfterResumingStoredChat(
+                    text, attachments: attachments, context: submissionContext, queued: queued,
+                    optimisticRowID: userMessage.id
                 )
             }
             if keepComposerSendForReconnect(
