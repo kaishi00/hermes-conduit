@@ -217,6 +217,8 @@ struct BotEditorSheet: View {
                 if delay > 0 { try? await Task.sleep(nanoseconds: delay * 1_000_000_000) }
                 if Task.isCancelled { return }
                 if let state = await appState.botPluginState(profile: bot.name) {
+                    // A switch mid-read cancelled this task: the answer was another Hermes'.
+                    if Task.isCancelled { return }
                     pluginState = state
                     return
                 }
@@ -721,9 +723,12 @@ struct BotEditorSheet: View {
         Haptics.light()
         isTurningOnPlugin = true
         pluginError = nil
+        let dashboard = appState.activeDashboardID
         Task {
             let failure = await appState.turnOnBotPlugin(profile: bot.name)
             isTurningOnPlugin = false
+            // Switched away meanwhile: the card now shows another Hermes'.
+            guard appState.activeDashboardID == dashboard else { return }
             if let failure {
                 pluginError = failure
                 return
