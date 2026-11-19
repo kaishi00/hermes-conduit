@@ -1718,7 +1718,7 @@ first on every socket it relays, the phone's Local Live, Classic's listen
 and speak sockets and the Watch's bridge, so the app needs no change; the
 notifier's README and docs/OWN_VOICE_SERVER.md's When it doesn't work say so)
 
-**Desktop app:** partly: Local Live on the speech server (`desktop/src/renderer/src/state/localLive.ts`, desktop#37); the server's own model switch isn't offered.
+**Desktop app:** has it: Local Live on the speech server (`desktop/src/renderer/src/state/localLive.ts`, desktop#37); Settings > Voice > Local Live's 1. Your speech server sets the address, key, model, voice and transcription model, with Known servers, Hermes answers and Test connection, and 3. Your fast model has the server's own model switch, each shown only when the plugin reports it (`desktop/src/renderer/src/components/SpeechServerSettings.tsx`, `desktop/src/renderer/src/state/speechServer.ts`, `desktop/src/renderer/src/components/LocalLiveAgentSettings.tsx`, desktop#120).
 
 **Code**
 - The setting and what a driven server is told: `notifier/dashboard/api/speech_server.py` (speech_server_drives, SpeechServerDrive, SPEECH_SERVER_SAY_INSTRUCTIONS, speech_server_status's drive_turns, _speech_server_relay's drive)
