@@ -802,7 +802,7 @@ read: the quiet notes and the call's instructions · README.md's voice
 features. Not the Apple Watch or CarPlay:
 neither has a camera surface.
 
-**Desktop app:** partly: Gemini and Qwen Live carry pictures (`desktop/src/renderer/src/state/geminiLive.ts`, `desktop/src/renderer/src/state/qwenLive.ts`); no Ask Hermes About Screen or photo button on the call screen.
+**Desktop app:** has it (desktop#90): every call's picture button offers a picture from the computer or Ask Hermes About Screen's screenshot, which waits on the call's chat for its next request with a chip that takes it off; Gemini and Qwen Live are sent it, GPT-Live, Grok and Local Live hear the phone's notes (`desktop/src/renderer/src/state/callPicture.ts`, `desktop/src/renderer/src/components/CallPictureControls.tsx`). No camera capture; a waiting picture is dropped when the call ends.
 
 **Code**
 - The button: `Conduit/Views/VoicePhotoButton.swift` (VoicePhotoButton, LiveVoiceCallPhotoButton), `Conduit/Views/LiveVoiceCallSheet.swift` (showsCamera, showsPhoto), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/VoiceConversationSheet.swift` (Classic, both layouts)
@@ -5359,7 +5359,7 @@ task composer and on a task's page) · Delegate fallback models (done: the
 Fallback models editor, #1979) · Subagent routing's route sheet (done: with
 no models yet it says so, and keeps a route's own provider and model, #1979)
 
-**Desktop app:** unchecked: how the model panel shows a catalog that failed.
+**Desktop app:** has it (desktop#91): the model panel, a bot's and a new bot's model, Settings > Models, the delegate model and fallback models open on the catalog kept from the host's last answer, picked and saved only once Hermes answers, and say "Could not load models." with Try Again or "No models are available from this gateway." (`desktop/src/renderer/src/state/modelCatalog.ts`, `desktop/src/renderer/src/components/ModelCatalogNote.tsx`).
 
 **Code**
 - The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's catalogStateRows, quickPicksSection, modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
@@ -5401,7 +5401,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 (not needed: it picks from the catalog the section reads each time it loads)
 · Text (not needed: no README, docs or Settings caption describes the lists)
 
-**Desktop app:** unchecked: how the model panel shows a catalog still loading.
+**Desktop app:** has it (desktop#91): every model picker reads again 4 s after it opens, quietly on the Model page's editors, and the model panel and a bot's Model section have Refresh models (`desktop/src/renderer/src/state/modelCatalog.ts`).
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState+HelperModels.swift` (loadModelProviders' refresh)
@@ -5543,7 +5543,7 @@ on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
 Models & providers line)
 
-**Desktop app:** partly: provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23); no logos on provider rows.
+**Desktop app:** has it: provider logos on the model picker's groups, Settings > Providers and Usage's quota titles (`desktop/src/renderer/src/state/providerLogos.ts`, `desktop/src/renderer/src/components/ProviderLogo.tsx`, desktop#90), provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23).
 
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
