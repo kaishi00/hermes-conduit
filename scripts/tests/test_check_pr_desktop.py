@@ -87,6 +87,9 @@ class CheckPrDesktopTests(unittest.TestCase):
         self.assertIsNone(check.problem(six))
         one = "## Summary\n- ```bash\n  npm test\n ```\n## Desktop\nDone: desktop#58.\n"
         self.assertIn("inside a code fence", check.problem(one))
+        # The line that ends the item is kept as it is: a heading shows.
+        ended = "## Summary\n- ```bash\n  npm test\n## Desktop\nNot needed: docs only.\n"
+        self.assertIsNone(check.problem(ended))
         # A backtick fence whose info string has a backtick is a paragraph.
         ticked = "## Summary\n``` js `x`\n\n## Desktop\nNot needed: docs.\n"
         self.assertIsNone(check.problem(ticked))

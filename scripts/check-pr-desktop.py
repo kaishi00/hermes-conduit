@@ -32,10 +32,11 @@ COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 # ticks as a fence); a backtick fence whose info string has a backtick is a
 # paragraph. Its closing line, also within three spaces, repeats the opening
 # run or a longer run of the same character, so a ```` block that quotes a
-# ``` block goes as a whole. One opened after a list marker belongs to the
-# item: it closes only on a line within three spaces of the item's content
-# indent, and a line indented less than that ends the item and the fence with
-# it (that line may open a fence of its own). One never closed runs to the
+# ``` block goes as a whole. One opened on a list marker's line belongs to
+# the item: it closes only on a line within three spaces of the item's
+# content indent, and a line indented less than that ends the item and the
+# fence with it (that line may open a fence of its own). A fence opened on a
+# later line of an item isn't tied to it: it closes as one at the margin. One never closed runs to the
 # end, as GitHub draws it. ASCII digits only in a list marker.
 OPENER = re.compile(r"^( {0,3})((?:[-*+]|[0-9]{1,9}[.)])[ \t]+)?(`{3,}|~{3,})(.*)$")
 CLOSER = re.compile(r"^( *)(`{3,}|~{3,})[ \t]*$")
