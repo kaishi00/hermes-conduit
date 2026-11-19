@@ -206,6 +206,109 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatDoneMarks.body(for: compacted, done: true)["ids"] as? [String], ["chat-1", "chat-2"])
     }
 
+    /// An AppState that offers Done (V2 on, a plugin with the route) over a
+    /// bridge whose requests wait for the test to answer them.
+    @MainActor
+    private func chatDoneAppState() throws -> (AppState, HeldDashboardRequests) {
+        let standard = UserDefaults.standard
+        let savedShell = standard.object(forKey: V2ShellPreference.key)
+        standard.set(true, forKey: V2ShellPreference.key)
+        addTeardownBlock {
+            if let savedShell {
+                standard.set(savedShell, forKey: V2ShellPreference.key)
+            } else {
+                standard.removeObject(forKey: V2ShellPreference.key)
+            }
+        }
+        let appState = AppState(defaults: makeScratchDefaults("ChatDoneMarks"), loadSavedConnection: false)
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [ChatDoneMarks.capability]))
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        appState.dashboardTicketBridge = held.bridge
+        XCTAssertTrue(appState.chatDoneAvailable)
+        return (appState, held)
+    }
+
+    @MainActor
+    private func untilChatDone(_ condition: @MainActor () -> Bool, _ message: String,
+                               file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<500 where !condition() { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(condition(), message, file: file, line: line)
+    }
+
+    /// A read that went out before a mark can't take it away, and the
+    /// write's answer reads the marks again.
+    @MainActor
+    func testADoneMarkOutlivesAReadSentBeforeIt() async throws {
+        let (appState, held) = try chatDoneAppState()
+        defer { held.shutdown() }
+        let chat = filterRow("chat-1", source: .chat)
+        appState.refreshChatDoneMarks(profiles: [appState.activeProfile])
+        try await held.waitForRequests(1)
+        appState.setSessionDone(chat, done: true)
+        XCTAssertTrue(appState.isSessionDone(chat), "marked at once")
+        try await held.waitForRequests(2)
+        XCTAssertEqual(held.sent.map(\.method), ["GET", "POST"])
+
+        try await held.answer(["done": [Any]()], at: 0)
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty }, "the early read answered")
+        XCTAssertTrue(appState.isSessionDone(chat), "the read from before the mark is dropped")
+
+        try await held.answer(["ok": true])
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.last?.method, "GET", "the write's answer reads the marks again")
+        try await held.answer(["done": [Any]()])
+        try await untilChatDone({ !appState.isSessionDone(chat) }, "a mark the host doesn't keep goes, as the host has it")
+    }
+
+    /// Writes for one profile go out one at a time, in the order made.
+    @MainActor
+    func testDoneMarkWritesGoOutInTheOrderMade() async throws {
+        let (appState, held) = try chatDoneAppState()
+        defer { held.shutdown() }
+        let chat = filterRow("chat-1", source: .chat)
+        appState.setSessionDone(chat, done: true)
+        appState.setSessionDone(chat, done: false)
+        XCTAssertFalse(appState.isSessionDone(chat), "the last one shows")
+        try await held.waitForRequests(1)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(held.sent.count, 1, "the second waits for the first")
+        try await held.answer(["ok": true])
+        try await held.waitForRequests(2)
+        XCTAssertEqual(held.sent.map(\.method), ["POST", "POST"])
+        try await held.answer(["ok": true])
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.last?.method, "GET", "then one read, once both are answered")
+    }
+
+    /// The read interval holds only while a read of this dashboard's marks
+    /// for the profile is kept: marks another dashboard's read dropped are
+    /// read again at once, even after this dashboard's marks are back.
+    @MainActor
+    func testDoneMarksAnotherDashboardDroppedAreReadAgainAtOnce() async throws {
+        let (appState, held) = try chatDoneAppState()
+        defer { held.shutdown() }
+        let profile = appState.activeProfile
+        appState.refreshChatDoneMarks(profiles: [profile])
+        try await held.waitForRequests(1)
+        try await held.answer(["done": [Any]()])
+        try await untilChatDone({ appState.chatDoneMarksReads.isEmpty }, "read")
+        XCTAssertTrue(appState.chatDoneMarks.hasRead(profile, dashboardID: appState.activeDashboardID))
+
+        appState.refreshChatDoneMarks(profiles: [profile])
+        XCTAssertTrue(appState.chatDoneMarksReads.isEmpty, "within the interval: not read again")
+
+        // Another dashboard's read dropped them; this one's marks came back
+        // with another profile's read.
+        appState.chatDoneMarks = ChatDoneMarks()
+            .replacing([], profile: "elsewhere", dashboardID: UUID())
+            .replacing([], profile: "work", dashboardID: appState.activeDashboardID)
+        XCTAssertFalse(appState.chatDoneMarks.hasRead(profile, dashboardID: appState.activeDashboardID))
+        appState.refreshChatDoneMarks(profiles: [profile])
+        XCTAssertFalse(appState.chatDoneMarksReads.isEmpty, "read again at once")
+        try await held.waitForRequests(2)
+    }
+
     func testSessionStarsFollowTheConversationPerProfile() throws {
         let compacted = SessionSummary(
             id: "chat-2", alternateIds: ["chat-1"], title: "chat", model: "Hermes", updatedLabel: "now",
