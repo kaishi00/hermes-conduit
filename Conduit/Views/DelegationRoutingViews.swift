@@ -531,6 +531,8 @@ private struct DelegationModelRouteSheet: View {
                         ModelChooserPage(
                             catalog: ModelChooserCatalog(providers: providers, loaded: models != nil, answered: models != nil),
                             retry: {},
+                            // The section's models, handed in when the sheet opened.
+                            offersRefresh: false,
                             pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
                             reasoning: ModelChooserReasoning(
                                 effort: draft.reasoningEffort,

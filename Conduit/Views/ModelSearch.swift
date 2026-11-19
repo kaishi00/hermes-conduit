@@ -124,6 +124,8 @@ func modelSearchTypedIDProviders(_ providers: [ProviderInfo], id: String, prefer
 struct ModelTypedIDMenu: View {
     let id: String
     let providers: [ProviderInfo]
+    /// A provider hidden with Edit, marked Hidden as its search rows are.
+    var isHidden: (ProviderInfo) -> Bool = { _ in false }
     let onPick: (ProviderInfo, ModelInfo) -> Void
 
     var body: some View {
@@ -134,7 +136,7 @@ struct ModelTypedIDMenu: View {
                         Haptics.selection()
                         onPick(provider, ModelInfo(id: id, label: nil, reasoningCapable: false))
                     } label: {
-                        Text(verbatim: provider.title)
+                        Text(verbatim: isHidden(provider) ? provider.title + " · " + AppLocalization.string("Hidden") : provider.title)
                     }
                 }
             }

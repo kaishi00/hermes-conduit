@@ -384,7 +384,7 @@ struct ModelChooserPage: View {
         if catalog.answered, let id = modelSearchTypedID(query) {
             let providers = modelSearchTypedIDProviders(catalog.providers, id: id, preferred: pickedProvider?.name ?? pick?.provider)
             if !providers.isEmpty {
-                ModelTypedIDMenu(id: id, providers: providers) { provider, model in
+                ModelTypedIDMenu(id: id, providers: providers, isHidden: { appState.modelVisibility.isHidden(provider: $0) }) { provider, model in
                     onPick(provider, model)
                     if reasoning == nil { dismiss() }
                 }
