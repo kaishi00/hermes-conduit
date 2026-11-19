@@ -1,0 +1,27 @@
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-19 12:53:22,007 WARNING gateway.run: No messaging platforms enabled.
+2026-11-19 12:53:25,916 WARNING agent.model_metadata: Could not determine context length for model 'hermes-4-405b' (base_url=http://127.0.0.1:8766/v1) — falling back to 256,000 tokens. Set model.context_length in config.yaml to override.
+2026-11-19 12:54:01,645 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:08,122 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:15,131 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:34,598 WARNING gateway.run: Shutdown context: signal=SIGTERM under_systemd=no supervisor=none parent_pid=14528 parent_name=? loadavg_1m=11.80
+┌─────────────────────────────────────────────────────────┐
+│           ☤ Hermes Gateway Starting...                 │
+├─────────────────────────────────────────────────────────┤
+│  Messaging platforms + cron scheduler                    │
+│  Press Ctrl+C to stop                                   │
+└─────────────────────────────────────────────────────────┘
+
+2026-11-19 12:54:40,583 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/chibi-conduit; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:40,786 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-19 12:54:40,883 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/lucien; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:41,134 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-19 12:54:41,225 WARNING hermes_cli.plugins: Plugin 'basic' tried to register dashboard-auth provider 'basic' from profile scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home/profiles/pulse-chan; ignoring it because dashboard auth is owned by launch scope /Users/runner/work/hermes-conduit/hermes-conduit/demo-hermes/studio/home.
+2026-11-19 12:54:41,406 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
+2026-11-19 12:54:42,466 WARNING hermes.plugins.conduit_push: conduit_push: Hermes' turn stopper wasn't found, so a workstream a clean restart stops is left interrupted rather than recovered
