@@ -6668,7 +6668,7 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · a project's page, which gathers the same profiles' chats in its
 folder (Whose project page) · VoiceOver · README.md
 
-**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover from the strip's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); no reordering pins within a section.
+**Desktop app:** partly: the profile strip picks one profile or every one, and All can group by profile: a section per profile in the strip's order, its pins and five newest until Show more, a closed section kept across launches (`desktop/src/renderer/src/state/profileGroups.ts`, `desktop/src/renderer/src/components/ChatList.tsx`, desktop#95); Show in All is a popover from the strip's All (right-click, or a click while All is picked) with a checkbox per profile, the last one kept, and Group by profile, kept on this computer (desktop#117); a section's pins reorder among themselves by dragging and Move Earlier or Later (desktop#121).
 
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
