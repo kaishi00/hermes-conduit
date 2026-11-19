@@ -1,0 +1,33 @@
+name: pr-desktop
+# Fails a PR whose description doesn't say what Conduit for desktop
+# (hermes-conduit-desktop) needs: the PR template's Desktop section, "Done"
+# with the desktop PR, "Not needed" and why, or "Follow-up" and where
+# (scripts/check-pr-desktop.py). It runs again when the description is
+# edited, so fixing the section doesn't need a push. The description reaches
+# the script through the environment, never the shell.
+on:
+  pull_request:
+    types: [opened, edited, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-desktop-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  desktop:
+    name: Desktop section
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          sparse-checkout: scripts/check-pr-desktop.py
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
+      - name: Check the PR's Desktop section
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: python3 scripts/check-pr-desktop.py

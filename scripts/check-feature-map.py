@@ -5,11 +5,19 @@ is missing a part.
 The feature map lists, for each feature with siblings, where each sibling's
 code lives, so a thread changing one finds the rest. A path that no longer
 exists sends that thread to the wrong place, so every path in backticks is
-checked: Conduit's in this checkout, and those starting notifier/ on
-hermes-conduit-notifier main. Every entry (a `## ` section) has its parts in
-one order, so each reads the same: Siblings (listed on that line), Code
-(naming at least one path), Rulings, Open gaps, and a Checked line with the
-date and the PR or commit it was checked at.
+checked: Conduit's in this checkout, those starting notifier/ on
+hermes-conduit-notifier main, and those starting desktop/ on
+hermes-conduit-desktop main. Every entry (a `## ` section) has its parts in
+one order, so each reads the same: Siblings (listed on that line), Desktop
+app, Code (naming at least one path), Rulings, Open gaps, and a Checked line
+with the date and the PR or commit it was checked at.
+
+The Desktop app line says whether Conduit for desktop (hermes-conduit-desktop,
+not Hermes Desktop) has the feature: "has it" or "partly", naming where (a
+desktop/ path or a desktop PR, desktop#47), "not applicable" or "gap", saying
+why or what's missing, or "unchecked" (nobody has looked yet), saying what to
+look at. So a change to the phone's side finds the desktop's,
+and the desktop's missing features are listed in one place.
 
 On a pull request, CI also passes the PR's number and the base's copy of the
 map: an entry the PR adds or edits names that PR on its Checked line, so the
@@ -19,8 +27,12 @@ main's copies where the PR meets main and where its base did: an entry main
 changed between the two that matches main's copy came in with the merge and
 keeps main's Checked line.
 
-A notifier file missing on main fails. If GitHub can't be reached for that
-lookup, the check warns and skips it, so an outage doesn't block every PR.
+The Desktop app line is left out of that comparison: it carries its own
+reference, and a desktop PR that catches a feature up changes only that line.
+
+A notifier or desktop file missing on main fails. If GitHub can't be reached
+for that lookup, the check warns and skips it, so an outage doesn't block
+every PR.
 """
 
 import argparse
@@ -35,14 +47,26 @@ import urllib.request
 
 MAP = os.path.join("docs", "FEATURE_MAP.md")
 NOTIFIER_PREFIX = "notifier/"
-NOTIFIER_RAW = "https://raw.githubusercontent.com/kaishi00/hermes-conduit-notifier/main/"
+DESKTOP_PREFIX = "desktop/"
+# The sibling repos whose files the map names, by the prefix it names them with.
+SIBLING_REPOS = {
+    NOTIFIER_PREFIX: "hermes-conduit-notifier",
+    DESKTOP_PREFIX: "hermes-conduit-desktop",
+}
+RAW = "https://raw.githubusercontent.com/kaishi00/{repo}/main/"
 UNREACHABLE = (OSError, http.client.HTTPException)
 
 CODE_SPAN = re.compile(r"`([^`\n]+)`")
 # A file named without a directory: README.md, project.yml.
 FILE_NAME = re.compile(r"^[\w.+-]+\.(swift|py|md|mjs|js|json|ya?ml|xcstrings|sh|plist|txt|entitlements)$")
 # What every entry has, as the line each part starts with, in this order.
-PARTS = ["**Siblings:**", "**Code**", "**Rulings**", "**Open gaps**", "**Checked:**"]
+PARTS = ["**Siblings:**", "**Desktop app:**", "**Code**", "**Rulings**", "**Open gaps**",
+         "**Checked:**"]
+SIBLINGS, DESKTOP, CODE, RULINGS, GAPS, CHECKED = range(len(PARTS))
+# What the Desktop app line starts with, and whether it names where (a
+# desktop/ path or a desktop PR) or says why.
+DESKTOP_STATUS = re.compile(r"(has it|partly|not applicable|gap|unchecked)\b[\s.,:;()-]*", re.IGNORECASE)
+NAMES_DESKTOP = re.compile(r"`desktop/[^`\s]+`|\bdesktop#\d+|hermes-conduit-desktop(?:#|/pull/|/issues/)\d+")
 DATE = re.compile(r"\b\d{4}-\d{2}-\d{2}\b")
 # A PR (#1167) or a commit (64d53c3): hex with a digit in it, so not a word.
 CHECKED_AT = re.compile(r"#\d+|\b(?=[a-f]*\d)[0-9a-f]{7,40}\b")
@@ -91,6 +115,25 @@ def entries(text):
     return found
 
 
+def desktop_problem(desktop):
+    """What's wrong with an entry's Desktop app line (the text after its
+    label), or None."""
+    status = DESKTOP_STATUS.match(desktop)
+    if not status:
+        return ("the Desktop app line starts with has it, partly, not applicable, gap or "
+                "unchecked "
+                "(Conduit for desktop, hermes-conduit-desktop).")
+    said = status.group(1).lower()
+    rest = desktop[status.end():].strip()
+    if said in ("has it", "partly") and not NAMES_DESKTOP.search(desktop):
+        return (f"the Desktop app line says {said}, so it names where: a desktop/ path in "
+                "backticks or the desktop PR (desktop#47).")
+    if said in ("not applicable", "gap", "unchecked") and not rest:
+        return (f"the Desktop app line says {said}, so it says why (not applicable), what "
+                "desktop lacks (gap) or what to look at (unchecked).")
+    return None
+
+
 def shape_problems(text):
     """[(line number, problem)] for entries that miss a part, repeat or
     reorder one, or repeat another entry's name."""
@@ -108,7 +151,8 @@ def shape_problems(text):
         missing = [part.strip("*:") for part in PARTS if not starts[part]]
         if missing:
             problems.append((number, f"{name!r} has no {', '.join(missing)}: every entry has "
-                                     "Siblings, Code, Rulings, Open gaps and Checked, in that "
+                                     "Siblings, Desktop app, Code, Rulings, Open gaps and "
+                                     "Checked, in that "
                                      "order (write \"- None known.\" when there's nothing)."))
             continue
         repeated = [part.strip("*:") for part in PARTS if len(starts[part]) > 1]
@@ -117,20 +161,25 @@ def shape_problems(text):
             continue
         order = [starts[part][0] for part in PARTS]
         if order != sorted(order):
-            problems.append((number, f"{name!r} has its parts out of order: Siblings, Code, "
-                                     "Rulings, Open gaps, Checked."))
+            problems.append((number, f"{name!r} has its parts out of order: Siblings, Desktop "
+                                     "app, Code, Rulings, Open gaps, Checked."))
             continue
-        siblings = next(line for n, line in lines if n == order[0])
-        if not siblings[len(PARTS[0]):].strip():
-            problems.append((order[0], f"{name!r} names no siblings: list them on the Siblings "
-                                       "line, after **Siblings:**."))
-        code = "\n".join(line for n, line in lines if order[1] <= n < order[2])
+        siblings = next(line for n, line in lines if n == order[SIBLINGS])
+        if not siblings[len(PARTS[SIBLINGS]):].strip():
+            problems.append((order[SIBLINGS], f"{name!r} names no siblings: list them on the "
+                                              "Siblings line, after **Siblings:**."))
+        desktop = " ".join(line.strip() for n, line in lines
+                           if order[DESKTOP] <= n < order[CODE])[len(PARTS[DESKTOP]):].strip()
+        problem = desktop_problem(desktop)
+        if problem:
+            problems.append((order[DESKTOP], f"{name!r}: {problem}"))
+        code = "\n".join(line for n, line in lines if order[CODE] <= n < order[RULINGS])
         if not any(is_path(span) for span in CODE_SPAN.findall(code)):
-            problems.append((order[1], f"{name!r} names no path under Code: list where each "
-                                       "sibling's code lives, in backticks."))
-        checked = next(line for n, line in lines if n == order[4])
+            problems.append((order[CODE], f"{name!r} names no path under Code: list where each "
+                                          "sibling's code lives, in backticks."))
+        checked = next(line for n, line in lines if n == order[CHECKED])
         if not (DATE.search(checked) and CHECKED_AT.search(checked)):
-            problems.append((order[4], f"{name!r}: the Checked line needs the date it was "
+            problems.append((order[CHECKED], f"{name!r}: the Checked line needs the date it was "
                                        "checked against the code (YYYY-MM-DD) and the PR or "
                                        "commit (#1167, 64d53c3)."))
     return problems
@@ -144,7 +193,16 @@ def unchecked_edits(base_text, text, pr, main_text=None, main_base_text=None):
     from the PR."""
     def body(lines):
         # Blank lines at the end come and go as entries are added after it.
-        return "\n".join(line.rstrip() for _, line in lines).strip()
+        # The Desktop app line (up to Code) carries its own reference.
+        kept, desktop = [], False
+        for _, line in lines:
+            if line.startswith(PARTS[DESKTOP]):
+                desktop = True
+            elif line.startswith(PARTS[CODE]):
+                desktop = False
+            if not desktop:
+                kept.append(line.rstrip())
+        return "\n".join(kept).strip()
 
     def bodies(map_text):
         return {name.lower(): body(lines) for _, name, lines in entries(map_text)}
@@ -160,16 +218,17 @@ def unchecked_edits(base_text, text, pr, main_text=None, main_base_text=None):
     for _, name, lines in entries(text):
         if body(lines) in (before.get(name.lower()), from_main.get(name.lower())):
             continue
-        checked = [(n, line) for n, line in lines if line.startswith(PARTS[4])]
+        checked = [(n, line) for n, line in lines if line.startswith(PARTS[CHECKED])]
         if checked and not named.search(checked[0][1]):
             problems.append((checked[0][0], f"{name!r} changes in this PR, so its Checked line "
                                             f"names it: \"**Checked:** <today>, #{pr}.\""))
     return problems
 
 
-def on_notifier_main(path, attempts=3):
-    """Whether hermes-conduit-notifier main has this file."""
-    request = urllib.request.Request(NOTIFIER_RAW + urllib.parse.quote(path), method="HEAD")
+def on_main(repo, path, attempts=3):
+    """Whether this sibling repo's main has this file."""
+    request = urllib.request.Request(RAW.format(repo=repo) + urllib.parse.quote(path),
+                                     method="HEAD")
     for attempt in range(attempts):
         try:
             with urllib.request.urlopen(request, timeout=15):
@@ -192,6 +251,8 @@ def main(argv=None):
     parser.add_argument("--repo-root", default=".")
     parser.add_argument("--notifier-root",
                         help="check notifier/ paths in this checkout instead of on GitHub")
+    parser.add_argument("--desktop-root",
+                        help="check desktop/ paths in this checkout instead of on GitHub")
     parser.add_argument("--pr", type=int,
                         help="the pull request's number: entries it adds or edits name it")
     parser.add_argument("--base-map", help="the map on the PR's base, to tell which entries it edits")
@@ -235,35 +296,38 @@ def main(argv=None):
                 print(f"::error::Couldn't read main's map {error.filename} ({error.strerror}).")
                 return 1
         problems += unchecked_edits(base_text, text, args.pr, main_text, main_base_text)
-    notifier = {}
+    sibling = {prefix: {} for prefix in SIBLING_REPOS}
     found = paths(text)
     for number, path in found:
-        if path.startswith(NOTIFIER_PREFIX):
-            notifier.setdefault(path[len(NOTIFIER_PREFIX):], number)
+        prefix = next((p for p in SIBLING_REPOS if path.startswith(p)), None)
+        if prefix:
+            sibling[prefix].setdefault(path[len(prefix):], number)
             continue
         local = os.path.join(args.repo_root, path)
         if not (os.path.isdir(local) if path.endswith("/") else os.path.isfile(local)):
             problems.append((number, f"{path} isn't in this repo. Point the entry at where "
                                      "that code lives now."))
 
-    for path, number in notifier.items():
-        if not path or path.endswith("/"):
-            problems.append((number, f"notifier/{path}: name a file in hermes-conduit-notifier, "
-                                     "not a directory."))
-            continue
-        if args.notifier_root:
-            there = os.path.isfile(os.path.join(args.notifier_root, path))
-        else:
-            try:
-                there = on_notifier_main(path)
-            except Unreachable as error:
-                print(f"::warning::Couldn't check hermes-conduit-notifier on GitHub ({error}); "
-                      "its paths in the feature map weren't checked.")
-                break
-        if not there:
-            problems.append((number, f"notifier/{path} isn't on hermes-conduit-notifier main. "
-                                     "Point the entry at where that code lives now, or merge "
-                                     "the notifier change first."))
+    roots = {NOTIFIER_PREFIX: args.notifier_root, DESKTOP_PREFIX: args.desktop_root}
+    for prefix, repo in SIBLING_REPOS.items():
+        for path, number in sibling[prefix].items():
+            if not path or path.endswith("/"):
+                problems.append((number, f"{prefix}{path}: name a file in {repo}, "
+                                         "not a directory."))
+                continue
+            if roots[prefix]:
+                there = os.path.isfile(os.path.join(roots[prefix], path))
+            else:
+                try:
+                    there = on_main(repo, path)
+                except Unreachable as error:
+                    print(f"::warning::Couldn't check {repo} on GitHub ({error}); "
+                          "its paths in the feature map weren't checked.")
+                    break
+            if not there:
+                problems.append((number, f"{prefix}{path} isn't on {repo} main. "
+                                         "Point the entry at where that code lives now, or merge "
+                                         f"the {prefix.rstrip('/')} change first."))
 
     for number, problem in sorted(problems):
         print(f"::error file={MAP},line={number}::{problem}")

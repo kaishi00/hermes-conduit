@@ -18,16 +18,23 @@ moves code an entry's Code lists, it updates those paths and the Checked line.
 
 An entry holds the current state only; history stays in the PRs it cites.
 Keep each to about a screen, and split one that grows past that. Every entry
-has Siblings, Code, Rulings, Open gaps and a Checked line (the date of the
-last check against the code, and the PR that checked it; an entry seeded from
-main may name a commit). `scripts/check-feature-map.py` runs in CI: it checks
+has Siblings, a Desktop app line, Code, Rulings, Open gaps and a Checked line
+(the date of the last check against the code, and the PR that checked it; an
+entry seeded from main may name a commit). The Desktop app line says whether
+Conduit for desktop
+([hermes-conduit-desktop](https://github.com/kaishi00/hermes-conduit-desktop),
+not Hermes Desktop) has the feature: "has it" or "partly", naming where (a
+desktop/ path or a desktop PR, desktop#47), "not applicable" and why, "gap"
+and what's missing, or "unchecked" and what to look at. A PR's Desktop
+section follows it, and the line is left out of the Checked rule below. `scripts/check-feature-map.py` runs in CI: it checks
 that shape, that every path in backticks exists, and that an entry a PR adds
 or edits names that PR on its Checked line (on a PR into `pulse`,
 `linked-rooms` or `all-live` that merges main, one main changed since that branch last took
 it that matches main's copy came in with main). A path that starts with
 notifier/ is in
 [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier),
-checked against its main.
+and one that starts with desktop/ in hermes-conduit-desktop, each checked
+against its main.
 
 **Sibling sets.** Most entries draw on these. A change to one member is
 checked against the rest, and where one can't follow, the PR says so and the
@@ -106,6 +113,8 @@ card on the call screen has Leave blank. Through the relay a blank goes
 empty when sealed or to relay 0.18 (capability clarify-skip), else as
 "(left blank)". Conduit's chat note asks Hermes for a form when it needs
 several details only the user can give (notifier 0.82).
+
+**Desktop app:** partly: approvals and questions in Needs you and the chat's card (`desktop/src/renderer/src/components/NeedsYou.tsx`, `desktop/src/renderer/src/components/RequestCard.tsx`), answered by voice in every live mode (desktop#36), and the computer's notification; a call from Hermes rings on the computer (see Calls from Hermes); no Watch, CarPlay or Live Activity, and no Bot workstream approval box (see Bot workstreams).
 
 **Code**
 - Chat card: `Conduit/Services/AppState+Clarify.swift` (rejectApprovalAndSteer, for the card's Tell Hermes what to do instead; clarifyCardTarget, the card's chat and profile every answer names; liveClarifySubmissions and staleClarifyQuestionIds, the questions a fenced-off send left until the request's last send settles; kept submitting through a reopen in `Conduit/Services/AppState+Reconciliation.swift` and an authoritative resume; tests in `ConduitTests/ClarifyBatchStateTests.swift`), `Conduit/Views/ChatView.swift` (ApprovalCard, its insteadControls; ClarifyCard, ClarifyQuestionRow's form field), `Conduit/Services/ApprovalDisplayText.swift`, `Shared/Approvals/HermesApprovalText.swift` (Hermes' own approval texts in the App Language, for every card, voice line, the notification and the Watch; their translations in both `Conduit/Localizable.xcstrings` and `ConduitWatch/Localizable.xcstrings`), `Conduit/Services/AppState+Clarify.swift` (respondToApproval, legacyApprovalTarget), `Conduit/Services/AppState+Clarify.swift` (respondToClarifyForm)
@@ -206,6 +215,8 @@ there; see Passwords & logins settings) ·
 Text (not needed: no README, docs, Settings or model-facing text describes
 these prompts)
 
+**Desktop app:** gap: no card for Hermes' password, login and code requests (secret and sudo requests); only approvals and questions are drawn.
+
 **Code**
 - Requests: `Conduit/Services/HermesClient.swift` (handleServerRequest, respondToInputPrompt; openServerRequestIDs, approvalQueueIDs and clarifySessions, which adoptSocket moves to the client taking over a socket at a profile switch), `Conduit/Services/StreamEventParser.swift` (request.cancel), `Conduit/Models/Models.swift` (InputPromptActivity: from, loginAnswer, codeAnswer)
 - Reopening: `Conduit/Models/Models.swift` (InputPromptActivity.pending(inOpenRequests:)), `Conduit/Services/HermesClient.swift` (resumeSessionObject, which refuses a replayed request no card can show)
@@ -252,6 +263,8 @@ Watch, CarPlay and group rooms (not needed: no settings) · the notifier
 (not needed: gateway calls) · Text: the page's captions (done); README and
 docs don't describe the vault
 
+**Desktop app:** has it: Settings > Passwords & logins (`desktop/src/renderer/src/components/VaultPage.tsx`, desktop#28).
+
 **Code**
 - Calls: `Conduit/Services/HermesClient.swift` (vaultItems, vaultSources, setVaultSource, unlockVaultSource, lockVaultSource, addVaultItem, removeVaultItem)
 - Models: `Conduit/Models/CredentialVault.swift` (VaultItem, VaultSource, CredentialVaultSnapshot, VaultItemDraft and its request and normalizedOrigin)
@@ -296,6 +309,8 @@ reports) · a bot's profile (not needed: the section shows the profile in
 use, as the other Capabilities tabs do) · Watch, CarPlay and group rooms
 (not needed: no settings) · the notifier (not needed: gateway calls) ·
 Text: the section's captions and README.md's Capabilities line (done)
+
+**Desktop app:** gap: no Apps (Nous Portal) page; Capabilities lists connectors and MCP servers only.
 
 **Code**
 - Calls: `Conduit/Services/HermesClient.swift` (hostedAppStatuses, hostedAppCatalog, hostedAppAccounts, hostedAppPolicy, setHostedAppPolicy, hostedAppTools, connectHostedApp, hostedAppOperation, wakeHostedAppOperation, settleHostedAppOperation, renameHostedAppAccount, removeHostedAppAccount)
@@ -348,6 +363,8 @@ a typed key) · CarPlay and Watch calls (not needed: they speak the voice
 modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
 no README, docs, Settings or model-facing text describes the card)
 
+**Desktop app:** gap: no card for a connection Hermes asks for in a chat.
+
 **Code**
 - Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
 - Events and calls: `Conduit/Services/StreamEventParser.swift` (connection.request, connection.update), `Conduit/Services/HermesClient.swift` (StreamEvent.connection, respondToConnection, reissueConnection, wakeConnection, SessionRuntimeSnapshot.pendingConnectionPayload)
@@ -387,6 +404,8 @@ the outcome text each model is told
 | Local Live, Hermes turns | none | a correction redirects the running reply |
 | Classic | speech while Hermes thinks, or over its acknowledgement, steers it | talking over the reply starts a new turn |
 | Watch | the relay's `interrupt_job` carries the kind; GPT-Live reads "Add to job N:" | as on the phone |
+
+**Desktop app:** has it: live calls steer and correct running jobs (desktop#53, `desktop/src/renderer/src/state/voiceJobs.ts`) and the composer's Steer and Stop for delegate agents and processes (`desktop/src/renderer/src/components/AgentsDock.tsx`).
 
 **Code**
 - Gemini, Grok and Local Live agent: `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (interrupt_job)
@@ -434,6 +453,8 @@ kept as a call's (see Bot workstreams) · `docs/VOICE_BACKGROUND_JOBS.md`
 | Local Live, Hermes turns | dropped: Hermes' reply is already the call's turn |
 | Watch | the relay's job news, at the next quiet moment; sent once more if the model says nothing for 6 s |
 
+**Desktop app:** has it: background jobs from live calls, told at the next quiet moment and kept in the bot's Work panel (`desktop/src/renderer/src/state/voiceJobs.ts`, desktop#52, desktop#54).
+
 **Code**
 - All modes: `Conduit/Voice/VoiceBackgroundJobs.swift` (takeNotice, outcomePrompt, showOnScreen, VoiceJobCallAnchor)
 - Gemini and Grok: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift`
@@ -480,6 +501,8 @@ finding chats, web lookups) and the consent each needs.
 (Hermes' own tools) · Watch calls · CarPlay · the phone features set · the
 consent screens · the tool text each model reads, in Conduit and the notifier
 
+**Desktop app:** has it: each live mode's tools, the consent sheet before a company's first call (`desktop/src/renderer/src/components/ProviderConsent.tsx`, desktop#35); the phone features set is not applicable on a computer.
+
 **Code**
 - Phone tools: `Conduit/Phone/PhoneVoiceTools.swift`, `Conduit/Phone/PhoneChangeConfirmation.swift`
 - Host reads for live modes: `Conduit/Voice/VoiceHostTools.swift` (VoiceHostTool, gptLiveRules), `Conduit/Services/AppState+VoiceHostTools.swift`
@@ -518,6 +541,8 @@ instructions preview in Voice settings · Classic (Hermes speaks for itself:
 its `message.interim` notes are said as they arrive) · Local Live, Hermes turns (not needed: Hermes' reply is the
 turn) · the notifier (its one spoken line, when Local Live's fast model can't be reached, is first person too: notifier #586) · Settings captions and
 README (none: nothing describes the wording) · docs/VOICE_SETTINGS.md (Classic's acknowledgement and cutting it short)
+
+**Desktop app:** has it: the live modes' shared call instructions (`desktop/src/renderer/src/state/liveCall.ts`, desktop#32 to desktop#38).
 
 **Code**
 - The shared rule: `Shared/GeminiLive/LiveVoiceAcknowledgement.swift` (rule and firstPerson; GPT-Live's delegationRule); Grok and Local Live's job-claim rule (no acknowledgement text): `Shared/GrokLive/GrokLiveProtocol.swift` (jobClaimInstructions)
@@ -562,6 +587,8 @@ instructions isn't offered, agent settings take only switches and choices) ·
 the notifier (not needed: Local Live's plugin passes the phone's
 instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
+**Desktop app:** has it: Settings > Voice's personality and instructions for live calls (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32).
+
 **Code**
 - The user's instructions: `Conduit/Voice/LiveVoiceStyle.swift` (extraInstructions, cleanedExtraInstructions, instructions), stored in `Conduit/Voice/VoiceTypes.swift` (liveVoiceExtraInstructions), saved by `Conduit/Services/AppState+Voice.swift` (setLiveVoiceStyle)
 - The field: `Conduit/Views/LiveVoiceStyleViews.swift`; the section shown for Local Live's agent mode: `Conduit/Views/AuxiliaryViews.swift` (liveStyle)
@@ -598,6 +625,8 @@ start, on the phone and the Watch alike) ·
 the call trace (Live call trace) · text: docs/VOICE_SETTINGS.md (Diagnostics),
 the notifier README's session route and CHANGELOG.md
 
+**Desktop app:** has it: GPT-Live's briefing through the plugin's gpt-live routes (`desktop/src/renderer/src/state/gptLive.ts`, desktop#32).
+
 **Code**
 - The briefing: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, maxBriefingCharacters, the late-briefing fallback where `briefingApplied` is false)
 - The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped, gaEvents), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep, dialect, dropsRequestBriefing)
@@ -633,6 +662,8 @@ rule decides it, not the voice; see The language a live call speaks) ·
 text: the picker's captions, docs/VOICE_SETTINGS.md (GPT-Live billing), the
 notifier CHANGELOG.md
 
+**Desktop app:** has it: GPT-Live's voice per path in Settings > Voice (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32).
+
 **Code**
 - The voices: `Conduit/Voice/VoiceTypes.swift` (GPTLiveVoice.all, the ChatGPT plan's; GPTLiveVoice.apiNames, the API key's)
 - The picker and its captions: `Conduit/Views/GPTLiveViews.swift` (voiceChoices, apiVoiceChoices); the agent setting: `Conduit/Services/AppState+AgentSettings.swift` (voice.gpt.voice)
@@ -662,6 +693,8 @@ conversation choice, with its caption) · widgets · CarPlay ·
 the Apple Watch · Resume Call · group rooms · a call from Hermes (its own
 entry) · the hands-free profile (Settings > Voice > Watch and Siri calls, its
 caption, README.md's Apple Watch line) · the Watch caption in Settings > Voice, naming each Watch voice and where it runs
+
+**Desktop app:** partly: the chat header's call button and voice mode picker (`desktop/src/renderer/src/components/VoiceCall.tsx`, desktop#38); Siri, Shortcuts, the Action button, Home's main button and the Watch are not applicable.
 
 **Code**
 - Start paths: `Conduit/Voice/VoiceTypes.swift` (PendingVoiceIntent.Source), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation), `Conduit/Services/AppState+BotMode.swift` (voiceWaitsForRunningTurn), widget and Shortcut launches: `Conduit/Services/WidgetLaunchCoordinator.swift` (WidgetInitialCaptureAuthorization), `Conduit/Voice/VoiceConversationController.swift` (startListening)
@@ -730,6 +763,8 @@ entry: Calls from Hermes) · the notifier's GPT-Live session route
 start · the call trace · text that describes it: Live call style's "What
 Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
+**Desktop app:** has it: each live mode opens in the open chat (`desktop/src/renderer/src/state/liveCall.ts`, desktop#32 to desktop#37).
+
 **Code**
 - The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
 - Phone: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (sendOpeningIfNeeded, checkOpening), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (sendOpeningIfNeeded; Gemini, Qwen, Grok), `Shared/LocalLive/LocalLiveSession.swift` (greeting; ask, heldTurns: an asked turn waits for the server's response), `Conduit/Services/AppState+WatchCalls.swift` (openingPrompt: a call from Hermes' openingTurn, else the greeting)
@@ -766,6 +801,8 @@ screen's row of buttons (see Audio route, Speaker and mute) · what models
 read: the quiet notes and the call's instructions · README.md's voice
 features. Not the Apple Watch or CarPlay:
 neither has a camera surface.
+
+**Desktop app:** partly: Gemini and Qwen Live carry pictures (`desktop/src/renderer/src/state/geminiLive.ts`, `desktop/src/renderer/src/state/qwenLive.ts`); no Ask Hermes About Screen or photo button on the call screen.
 
 **Code**
 - The button: `Conduit/Views/VoicePhotoButton.swift` (VoicePhotoButton, LiveVoiceCallPhotoButton), `Conduit/Views/LiveVoiceCallSheet.swift` (showsCamera, showsPhoto), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/VoiceConversationSheet.swift` (Classic, both layouts)
@@ -804,6 +841,8 @@ that describes it: "What Conduit sends" (shows the rule), docs/VOICE_SETTINGS.md
 what Conduit reads from the model's words: GPT-Live's send-claim fallback
 (see Acknowledging work handed to Hermes)
 
+**Desktop app:** has it: live calls speak the app's language (`desktop/src/renderer/src/state/liveCall.ts`, desktop#33).
+
 **Code**
 - The rule and the language: `Conduit/Voice/LiveVoiceLanguage.swift` (rule, name; the language from `Conduit/Voice/OnDeviceSpeech.swift` appLanguage)
 - Where it goes: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, after the persona, memory and `followedBy`; claimsToSendToHermes reads the call's language), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (last in instructions, after `followedBy`, the blocks each call passes: Gemini, Qwen, Grok, Local Live's agent mode, and the Watch's setups in `Conduit/Services/AppState+WatchCalls.swift`, whose phone tools' briefing goes in `systemInstructionWithHostTools`, read by `Conduit/Watch/WatchDirectBroker.swift`)
@@ -825,6 +864,8 @@ mode picked, in the same chat, and Voice settings keep the new mode.
 GPT-Live, Local Live) · Classic's mode capsule · a failed live call's Switch
 voice button · Voice settings' mode picker · CarPlay and the Apple Watch (no
 mode menu)
+
+**Desktop app:** partly: the voice mode picker beside the call button switches before a call (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#38); no mode capsule that switches during a call.
 
 **Code**
 - Menu and capsule: `Conduit/Views/VoiceModeMenu.swift` (VoiceModeMenu, VoiceModeCapsule), `Conduit/Voice/VoiceModeChoice.swift` (VoiceModeSwitch)
@@ -860,6 +901,8 @@ Tasks and Settings on a wide window · Bots and Bot Chat · group rooms · the
 Main button caption · a list the user widened (Resizable columns on a split
 window) · a Duo's status strip, where the button stands under the tabs (The
 tabs in a Duo's status strip)
+
+**Desktop app:** not applicable: desktop has no tab bar or main button; a chat's header holds its call button.
 
 **Code**
 - Bots Home's bot list: `Conduit/Views/V2/V2VoiceButton.swift` (V2VoiceContext.bots, showsBotMenu, botsToCall; V2VoiceBotChoice, the menu's name and label for each bot; call, which reads the bot from the roster as it is at the tap (`bot(_:in:)`) and, when it has gone, says so in Bots Home's notice, `botsListNotice`), from `V2Shell.voiceContext`; test: `ConduitTests/BotWorkstreamsTests.swift` (testBotsHomesVoiceButtonListsTheBotUsedLastFirst, which also covers the tap's roster read)
@@ -900,6 +943,8 @@ same tabs as the capsule) · the screens' side safe area (A split
 window's columns fill the window: they keep clear of the strip) · the
 drawer shell (V2 off: no tab bar, not needed) · Watch and CarPlay (no tabs,
 not needed) · text: no Settings caption or doc describes the bar's place
+
+**Desktop app:** not applicable: the Galaxy Z Fold/Duo status strip is iPad-only.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2StatusStrip with columnWidth and columnOuterMargin, V2StripTabBar, stripTabs, tabs' strip, sizedTabs, barClearance)
@@ -946,6 +991,8 @@ hidden), the split layout (Settings beside the Sessions list and the bar
 under the list key on the tab, not its place), the drawer shell (no tabs;
 its own "Open to"), Watch and CarPlay (no tabs), the notifier (its prefs
 store takes any key)
+
+**Desktop app:** not applicable: desktop has no tab bar.
 
 **Code**
 - The layout and its store: `Conduit/Views/V2/V2TabLayout.swift` (V2TabLayout: stored, shown, first(without:), bar(selected:without:), madeAtLaunch, alwaysShown, optional, mostShown, canShow; V2TabLayoutStore with tabs, unavailable and setAvailable; V2TabsOrderSheet)
@@ -997,6 +1044,8 @@ and the Capabilities page's own search (not needed: their own fields in the
 page) · Watch and CarPlay (not needed: no
 such pages) · text: no caption or doc says where the field sits
 
+**Desktop app:** partly: search on the Skill Hub, Plugins and the model picker (`desktop/src/renderer/src/components/SkillHub.tsx`, `desktop/src/renderer/src/components/PluginsTab.tsx`, `desktop/src/renderer/src/components/ModelPicker.tsx`); the phone's page-under-the-tabs layout doesn't apply.
+
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (pageSearchable)
 - Users: `Conduit/Views/Capabilities/SkillHubViews.swift`, `Conduit/Views/Capabilities/PluginCatalogViews.swift`, `Conduit/Views/Capabilities/HostedAppsViews.swift`, `Conduit/Views/ModelChooserPage.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
@@ -1023,6 +1072,8 @@ chat's column and the empty placeholder (nothing marked) · the list hidden,
 and a phone (one column) · the drawer shell's persistent sidebar (V2 off) ·
 the unread dot and the Running and Approve signals on the same rows · text:
 no Settings caption or doc describes it
+
+**Desktop app:** has it: the chat list beside the open chat marks it (`desktop/src/renderer/src/components/ChatList.tsx`).
 
 **Code**
 - What shows beside the list: `Conduit/Views/V2/V2Shell.swift` (V2OpenBeside, the v2OpenBeside environment set in tabs(), V2SplitLayout.openBeside, V2RowSelection, V2OpenRowHighlight, v2RowSelection, v2SelectedTrait)
@@ -1063,6 +1114,8 @@ Hermes lists it, and its own create waits for that read), CarPlay's chat
 list and the widget's pickers (they pick a chat to talk to, and the open one
 is already open), the Watch (no list) · text: no Settings caption or doc
 describes it
+
+**Desktop app:** has it: a new chat shows in the list as it starts (`desktop/src/renderer/src/state/useChatList.ts`).
 
 **Code**
 - Keeping the row: `Conduit/Services/AppState.swift` (newChatAwaitingListing), `Conduit/Services/AppState+Projects.swift` (knownProjectID; loadProjectSessions, quiet when a newer read cancels it), `Conduit/Services/AppState+Reconciliation.swift` (newChatAwaitingListing set in createAndReconcileSession for createNewSession, and syncSession's catalog), `Conduit/Services/AppState+Session.swift` (newChatRowAwaitingListing and settleNewChatAwaitingListing, in loadSessions), `Conduit/Services/AppState+Reconciliation.swift` (createAndReconcileSession, syncSession), `Conduit/Services/AppState+OneChatTwoDevices.swift` (chatListListedIDs), `Conduit/Services/ChatSync.swift` (NewChatAwaitingListing)
@@ -1125,6 +1178,8 @@ answer (/btw's) included, which Hermes keeps no copy of (the user's, so its
 error shows), the notifier (Hermes' behavior, nothing for the plugin to
 keep) · text: no Settings caption or doc describes it
 
+**Desktop app:** gap: an empty new chat Hermes lost isn't recovered or dropped from the list.
+
 **Code**
 - `Conduit/Services/AppState+Reconciliation.swift` (syncSession's create when there is nothing to resume), `Conduit/Services/AppState+PendingSend.swift` (composerDraftKeysAreSameChat reads lostChatReplacement for the draft), `Conduit/Services/AppState+Session.swift` (openChatIsEmptyNewChat, replaceLostEmptyNewChat, handOverWhatWaitsOnLostChat), `Conduit/Services/AppState+SendMessage.swift` (resendInPlaceOfLostEmptyChat from sendMessage's attach and prompt.submit catches, Queue kept), `Conduit/Services/ChatState.swift` (where the state it hands over lives: lostChatReplacement, newChatOpenedSessionID, newChatOpenedDurableSessionID, pendingComposerSend, composerPrefillDraftKey, composerFocusRequest), `Conduit/Services/AppState.swift` (the session-not-found branch in reconcile's catch (`Conduit/Services/AppState+Reconciliation.swift`); what handOverWhatWaitsOnLostChat hands over: pendingScreenshots, composerPrefillDraftKey, composerFocusRequest, classicVoiceChatToArchive with its Voice tag, and pendingComposerSend with its saved copy (`Conduit/Models/PendingComposerSend.swift`); lostChatReplacement carries an earlier replacement's lost ids when its fresh chat is lost in turn; newChatOpenedSessionID and newChatOpenedDurableSessionID, set in createAndReconcileSession; the fresh chat's folder, NewChatAwaitingListing.cwd, from openNewChatAwaitingListing in `Conduit/Services/AppState+Session.swift`, see A new chat in the list), `Conduit/Services/AppState+Reconciliation.swift` (syncSession, reconcile, createAndReconcileSession)
 - `Conduit/Services/HermesClient.swift` (resumeLiveness and resumeSnapshotFields, read by resumeResult: a lazy reattach without `running` is idle; a JSON null says nothing)
@@ -1140,7 +1195,7 @@ keep) · text: no Settings caption or doc describes it
 **Open gaps**
 - Upstream: Hermes' `_resume_live_unpersisted` should send `running: false` and `status` like every other resume; Conduit no longer depends on it (2026-11-04, #1758).
 
-**Checked:** 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2424 (the Code line names ChatState for the rest of the state the handover moves, #2422's review; nothing else changed); 2026-11-14, #2422 (lostChatReplacement moved into ChatState, all-live stage 1; nothing else changed); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2243 (a waiting voice photo is handed to the fresh chat as a photo); 2026-11-04, #1758 (a lazy reattach without `running` reads idle; the old not-reproduced gap closed: Eric's screenshot showed the cause); 2026-11-04, #1752 (added).
+**Checked:** 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2424 (the Code line names ChatState for the rest of the state the handover moves, #2422's review; nothing else changed); 2026-11-14, #2422 (lostChatReplacement moved into ChatState, all-live stage 1; nothing else changed); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2243 (a waiting voice photo is handed to the fresh chat as a photo); 2026-11-04, #1758 (a lazy reattach without `running` reads idle; the old not-reproduced gap closed: Eric's screenshot showed the cause); 2026-11-04, #1752 (added).
 
 ## Chat open elsewhere
 
@@ -1161,6 +1216,8 @@ left for another in the same profile is, where the socket's close used to let
 them go at the switch; a running turn keeps its claim either way, #1452) ·
 Settings > Chat > Take over automatically and its caption · the plugin's
 update notice
+
+**Desktop app:** gap: no takeover offer when another client holds the chat (SESSION_NOT_OWNED).
 
 **Code**
 - Offer, owner and sentences: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverState.owner, ChatTakeoverClient, ChatTakeoverOutcome)
@@ -1192,6 +1249,8 @@ What happens to a call's words, its jobs and Hermes' memory when it ends.
 **Siblings:** a call joined to a chat · a call on its own · a Bot Chat call ·
 Classic in a chat it created · Watch calls · CarPlay calls · calls from
 Hermes · Resume Call · memory at call end (notifier)
+
+**Desktop app:** partly: live calls saved with their chat and shown as call cards (`desktop/src/renderer/src/state/voiceSave.ts`, `desktop/src/renderer/src/components/CallCards.tsx`, desktop#33, desktop#34); no Resume Call.
 
 **Code**
 - Recording and saving: `Conduit/Voice/VoiceHistory.swift` (VoiceTranscriptRecorder, VoiceTranscriptSaveRequest, VoiceCallChatLink, VoiceTranscriptOutbox, VoiceCallCheckpoint)
@@ -1228,6 +1287,8 @@ voice modes and agents) · the Chats and More bar buttons · the More and
 Shortcuts grids · not needed: the phone's call screen, the minimised call bar
 and the Watch (their taps come from UIKit and SwiftUI on the main thread)
 
+**Desktop app:** not applicable: CarPlay is phone-only.
+
 **Code**
 - `Conduit/CarPlay/CarPlayVoiceTemplateFactory.swift` (CarPlayMainThread, makeButton), `Conduit/CarPlay/CarPlayBrowseTemplates.swift` (barButton, moreTemplate, chatSections, chatItems, jobSections, shortcutsTemplate, optionItem)
 - Handlers: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (makeHandlers, makeBrowseHandlers: fenced to the connection their template is on)
@@ -1255,6 +1316,8 @@ CarPlay, Classic, the Watch's relay and the iPhone's jobs for a Watch call)
 · the chat an unattached call took · `docs/VOICE_BACKGROUND_JOBS.md` · the
 notifier's README
 
+**Desktop app:** partly: call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); no Voice filter or call nests in the chat list.
+
 **Code**
 - Filing and listing: `Conduit/Services/AppState+Voice.swift` (sessionCategory, refreshVoiceSessionTags), `Conduit/Services/AppState+Persistence.swift` (voiceCallChatFilter, adoptHostChatCalls), `Conduit/Services/AppState+SessionCatalog.swift` (isArchivedVoiceChat), `Conduit/Voice/VoiceHistory.swift` (VoiceSessionTag, VoiceHostChatCall, VoiceCallChatLinks adopt and chatIDs)
 - Lists: `Conduit/Views/V2/V2ChatsView.swift` (V2FilterSelection.rows), `Conduit/Views/SidebarView.swift` (SidebarSourceRows), `Conduit/Models/SessionNesting.swift`
@@ -1281,6 +1344,8 @@ into one line per utterance, on screen and in the saved call.
 **Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live · Local Live ·
 Classic (speech server) · Watch calls · CarPlay · a call from Hermes · the
 saved transcript (see Ending a call and what gets saved)
+
+**Desktop app:** has it: each live mode keeps the user's transcribed words (`desktop/src/renderer/src/state/liveCall.ts`, desktop#33).
 
 **Code**
 - Gemini and Qwen: `Shared/GeminiLive/GeminiLiveProtocol.swift` (inputTranscription), `Shared/GeminiLive/QwenLiveSocket.swift` (maps Qwen's one completed transcript per item)
@@ -1315,6 +1380,8 @@ file and its Clear button · the iPhone's copy, with Share call log and Clear
 Log in Voice settings > Apple Watch · the iPhone's own Watch-call lines
 (WatchVoiceLink)
 
+**Desktop app:** not applicable: the Apple Watch is phone-only.
+
 **Code**
 - Watch: `ConduitWatch/WatchCallLog.swift`, `ConduitWatch/WatchHomeView.swift` (Clear), `Shared/WatchVoice/WatchCallLogBatch.swift`
 - iPhone: `Conduit/Watch/WatchPhoneCallLog.swift`, `Conduit/Watch/WatchVoiceLink.swift` (note), `Conduit/Watch/WatchSettingsSection.swift`
@@ -1338,6 +1405,8 @@ small Python environment the plugin makes once with aiortc.
 caption in Voice settings > Apple Watch · `engines` in a Watch grant, which
 lists GPT-Live only once the runtime is ready · the reason a Watch hears when
 it starts GPT-Live without one · the notifier README's Watch audio section
+
+**Desktop app:** not applicable: the Apple Watch is phone-only.
 
 **Code**
 - Host: `notifier/dashboard/api/watch_audio.py` (_WatchAudioRuntime), `notifier/dashboard/watch_audio_helper.py`, `notifier/tests/test_watch_audio.py`
@@ -1368,6 +1437,8 @@ on the Watch, which runs the same calls · the end message · the call log's
 lines · phone, CarPlay and CallKit calls, which reconnect on the iPhone's own
 network (Reconnecting to Hermes) · watchOS 10: the home screen's note, Settings' Call on open (hidden there), a call
 started any other way (the button, the watch face complication, Siri and the Action button), and calls from Hermes ringing the Watch ("Calls from Hermes" records it) · README.md's requirements · docs/OWN_VOICE_SERVER.md (Local Live on the Watch)
+
+**Desktop app:** not applicable: the Apple Watch is phone-only.
 
 **Code**
 - Shared rule: `Shared/WatchVoice/WatchNoNetwork.swift`, tests in `ConduitTests/WatchAudioBridgeTests.swift`
@@ -1410,6 +1481,8 @@ and Grok Live's call_me_when_done tool, GPT-Live's call-me rule) and what the
 live model is told when the host won't keep the watch · Conduit on a computer
 (hermes-conduit-desktop rings beside the iPhone and its Answer opens the call
 in its chat) and the plugin's `call-rings` capability it reads
+
+**Desktop app:** has it: rings on the computer and Answer opens the call (desktop#58), Settings > Calls from Hermes (`desktop/src/renderer/src/components/HermesCallSettings.tsx`, desktop#56); the entry's Open gaps list what's left.
 
 **Code**
 - The missed call's buttons: `Conduit/Voice/HermesCalls.swift` (HermesCallNotifications: missedCategory, openChatActionIdentifier, isCallCategory, localTarget's `opensChatOnly`), `Conduit/Voice/HermesNativeCalls.swift` (HermesNativeCallPlan's `.busy`), `Conduit/Services/NotificationCategories.swift`, `Conduit/ConduitApp.swift` (the Open Chat answer), `Conduit/Services/PushNotificationService.swift` (receiveLocalCallNotification)
@@ -1502,6 +1575,8 @@ kept on the iPhone's headset (the Watch's Mute and End) · composer
 dictation and voice messages (chats and group rooms), which take the
 microphone · voice clips in the chat · audio and video on cards Hermes shows · the Read Aloud buttons in chats and group rooms · the microphone and output pickers (Settings > Voice > Microphone and output, and every call screen's header; outside a call the picker's capture lease stops Read Aloud like any capture) · wake listening on CarPlay and the built-in microphone fallback, which move the preferred input · docs/VOICE_SETTINGS.md (Microphone and output)
 
+**Desktop app:** partly: mute in every call (`desktop/src/renderer/src/components/VoiceCall.tsx`); the output device is the system's, no Speaker toggle (no CallKit or AirPods routes on a computer).
+
 **Code**
 - The microphone and output pickers: `Conduit/Voice/VoiceAudioDevicePickers.swift` (VoiceAudioRouteNames, VoiceInputPicker, VoiceCallAudioDeviceButtons, VoiceAudioDeviceSettingsSection), the hold in `Conduit/Voice/VoiceAudioEngineRecovery.swift` (VoicePreferredInputHold, tested in `ConduitTests/VoiceAudioEngineRecoveryTests.swift`), shown from `Conduit/Views/LiveVoiceCallSheet.swift` (header), `Conduit/Views/VoiceConversationSheet.swift` (v2Header, statusCard) and `Conduit/Views/VoiceSettingsView.swift`; the preferred input put back by `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (clearPreferredInput) and `Conduit/Voice/VoiceAudioEngineRecovery.swift` (VoiceBuiltInMicrophoneFallback)
 - Session owner: `Conduit/Voice/VoiceAudioSessionCoordinator.swift` (ensureConversationSpeaker, isNativeCallAudioActive), `Conduit/Voice/VoiceAudioSessionConfiguration.swift`
@@ -1576,6 +1651,8 @@ calls send their setup the same way too, and the plugin sorts the keys of
 what it hands the fast model, a server's own model and `/local-live/v1/tools`,
 for builds from before; GPT-Live's encoder already sorted them)
 
+**Desktop app:** has it: Local Live through your speech server with agent mode's fast model (`desktop/src/renderer/src/state/localLive.ts`, desktop#37, desktop#38).
+
 **Code**
 - The fast model and its tools: `notifier/dashboard/api/local_live_agent.py` (_LocalLiveAgent.reply, _local_live_front_target, LOCAL_LIVE_READY_PREFIX, LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
 - The model address: `notifier/dashboard/api/local_live.py` (post_local_live_chat_completions)
@@ -1641,6 +1718,8 @@ first on every socket it relays, the phone's Local Live, Classic's listen
 and speak sockets and the Watch's bridge, so the app needs no change; the
 notifier's README and docs/OWN_VOICE_SERVER.md's When it doesn't work say so)
 
+**Desktop app:** partly: Local Live on the speech server (`desktop/src/renderer/src/state/localLive.ts`, desktop#37); the server's own model switch isn't offered.
+
 **Code**
 - The setting and what a driven server is told: `notifier/dashboard/api/speech_server.py` (speech_server_drives, SpeechServerDrive, SPEECH_SERVER_SAY_INSTRUCTIONS, speech_server_status's drive_turns, _speech_server_relay's drive)
 - The turns: `notifier/dashboard/api/local_live_read_back.py` (_LocalLiveReadBack's drive: on from the start, _send_update, _pump, the unasked response.created and the busy error, _note_who_answered)
@@ -1696,6 +1775,8 @@ docs/OWN_VOICE_SERVER.md · the notifier's README (read-back)
 
 Calls from Hermes use the default audio in every mode, so the speaker and car column's talk-over does not apply to them (see the rulings below).
 
+**Desktop app:** has it: words said over a running reply interrupt it in the live modes and Local Live (`desktop/src/renderer/src/state/liveCall.ts`, `desktop/src/renderer/src/state/localLive.ts`).
+
 **Code**
 - Routes: `Conduit/Voice/VoiceBargeInRoutePolicy.swift`
 - Classic: `Conduit/Voice/VoiceConversationController.swift` (isTalkOverAvailable, isSteerAvailable, isAcknowledgementSteerable, beginPushToTalk, isWholeUtteranceStopCommand, cancelRetiredTurn), `Conduit/Services/AppState.swift` (voiceCancelledTurns, runningTurnGenerationLookup, voiceBackgroundJobSupervisor (its cancel notes the open chat's turn), voiceCancelNoteWrites, handledStreamEventGeneration), `Conduit/Services/AppState+VoiceConversation.swift` (interruptForVoice, noteRunningTurnBeforeCancel, noteVoiceCancelledTurn, voiceCancelNote, restoreVoiceCancelNote, noteVoiceStoppedTurn, takeVoiceEventAfterCancel), `Conduit/Services/AppState+Steering.swift` (cancelCurrent, interruptForReplacement), `Conduit/Services/AppState+StreamEvents.swift` (bufferIfReconciling, applyNumberedStreamEvent, handleStreamEvent), `Conduit/Services/AppState+Reconciliation.swift` (generations(_:of:keptIn:)), `Conduit/Services/AppState+Lifecycle.swift` (Reconciliation.bufferedGenerations, Reconciliation.bufferedEntries), `Conduit/Services/HermesClient.swift` (runningTurnGeneration, deliveringEventGeneration, cancel), `Conduit/Voice/VoiceSpeechDetector.swift`, `Conduit/Voice/EchoCancellingVoiceConversationAudio.swift`
@@ -1741,6 +1822,8 @@ during a call) · the plugin's turn line (a typed message whose reply is read
 aloud is heard) · Hermes changing Conduit's settings · Sync across devices ·
 the Voice settings caption · the notifier README and changelog
 
+**Desktop app:** has it: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23).
+
 **Code**
 - Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
 - Reading: `Conduit/Voice/MessageReadAloudController.swift` (followReply, runLivePlayback, adoptLiveReply, enqueue, holdSessionForNext), the session held between streams in `Conduit/Voice/AVSpeechPlaybackService.swift` (holdSession) and `Conduit/Voice/VoiceTypes.swift` (SpeechPlaybackService.holdSession), `Conduit/Services/AppState+VoiceConversation.swift` (followReplyAloud from notifyVoiceAssistant, readyAutomaticReadAloud, readNewRoomMessagesAloud; openChatReadAloudSpeaker, which toggleReadAloud(message:) passes too), `Conduit/Services/AppState.swift` (stopFollowing in activeSessionId), `Conduit/Services/AppState+StreamingText.swift` (adoptLiveReply in finalizeStreamingCompletion), `Conduit/Services/AppState+RoomBoards.swift` (roomReplayChanged), `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay.memberMessages)
@@ -1781,6 +1864,8 @@ heard · chat bubbles (the file card; a Markdown file opens in the
 Markdown reader, see Artifacts) · a bot's message in a group room (the same
 cards, read from the bot's profile, see Pictures in messages)
 
+**Desktop app:** has it: replies naming delivered files instead of reading paths (`desktop/src/renderer/src/state/media.ts`, desktop#51).
+
 **Code**
 - The file card: `Conduit/Views/Components/MarkdownText.swift` (GatewayMediaFileCard; a Markdown file opens `Conduit/Views/Components/MarkdownDocumentSheet.swift`)
 - The tag grammar: `Conduit/Views/Components/GatewayMediaTags.swift` (removingTags, namingFiles; also built into the Watch app, `project.yml`)
@@ -1814,6 +1899,8 @@ Watch, with temporary credentials the notifier mints.
 
 **Siblings:** phone direct voice · Watch direct voice · CarPlay · incoming
 Hermes calls · tools and jobs · consent · saved transcripts · notifier tokens
+
+**Desktop app:** has it: Qwen Live calls (`desktop/src/renderer/src/state/qwenLive.ts`, desktop#35).
 
 **Code**
 - Adapter: `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift`
@@ -1883,6 +1970,8 @@ body), which draw the same contact card · group rooms · the Watch · CarPlay �
 Messages, and the Mac (the text is copied; the Mac opens no sms: link) · what conduit_show, conduit_contacts and the voice contacts tool
 tell models · Settings > Contacts' caption
 
+**Desktop app:** gap: no texting someone (conduit_text) or contact picker on the computer.
+
 **Code**
 - Card and Send text: `Conduit/Cards/RichMediaCard.swift` (RichPerson.message, textRecipient, smsURL), `Conduit/Cards/RichMediaCardViews.swift` (RichPersonRow, RichTextComposeSheet)
 - Schema: `Conduit/Cards/card-schema.json`, `Conduit/Cards/RichCardSchema.swift`; features "text-drafts" and "email-texts" in `Conduit/Services/PresentedScreens.swift`
@@ -1916,6 +2005,8 @@ message's row · the "Replying to" card on a sent message, on a steered
 one and in group rooms · /undo and /retry, which Edit and resend and Retry run · the composer's
 restore of words put back (failed sends, the waiting message's Edit) · the
 chat's saved copy, whose rows stand in while it opens or offline
+
+**Desktop app:** partly: Copy, Quote, Retry and Edit and resend (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16, desktop#17); no pinned replies.
 
 **Code**
 - Reply row: `Conduit/Views/ChatView.swift` (AssistantMessageActions, ReadAloudButton, AssistantMessageMoreMenu), `Conduit/Views/Components/MessageReactionViews.swift` (MessageReactButton)
@@ -1968,6 +2059,8 @@ Update notices, which decides when all three ask · a host that manages the plug
 notifier (`/self/update`) and its push when it ends · the phone-run steps for
 a plugin without it · Restart Gateway (Settings > Connection and the chat's Gateway sheet), which shares the drain step's running-work list and Restart now (`GatewayWaitView`) · Update Hermes, which neither starts under the update nor lets it start (#2384) · every profile that turns the plugin on, which the dashboard links to the main install (`notifier/profile_copies.py`) · what a plugin request says on a profile that turned the plugin off, and the README's steps for turning it on there · every screen that reads a plugin route's 404 as "update the plugin": call watches, Gemini, Qwen, Grok, GPT-Live and Local Live (and the Watch's GPT-Live check, its Grok and Local Live session failures, Local Live's start and a live mode's refused start in the Watch broker), the speech server, chat takeover, phone, health and location sharing and their deletes, Log to Hermes, voice-call saves, Kanban's task lookup · Pulse's loop, which runs in the dashboard (`notifier/pulse.py`, its lease in `notifier/pulse_store.py`) · the plugin's CHANGELOG.md (What's New) · what the
 confirmation and README say about restarts
+
+**Desktop app:** has it: Settings > Conduit plugin with version, what's new and host update (`desktop/src/renderer/src/components/ConduitPluginPage.tsx`, `desktop/src/main/pluginRelease.ts`, desktop#28); relaunch after an update is a known gap.
 
 **Code**
 - Updater and state: `Conduit/Services/NotifierPluginUpdate.swift` (NotifierPluginUpdater, its restartOnly for a managed host, and runOnHost's 409, and managedRefusal after a start that started nothing on a host now managed, NotifierPluginUpdateSlot), `Conduit/Services/AppState+NotifierPluginUpdate.swift` (the run, reconnecting after it, settled outcomes) (notifierPluginOnlyDashboardLeft: the update here ended with only the dashboard left)
@@ -2036,6 +2129,8 @@ Saved Dashboards and the Profiles sheet, and in the Watch's Settings) · the pri
 docs/privacy: what the relay gets for each kind, and what end-to-end encryption seals) ·
 every device a profile notifies (a pairing per device, issue 2758: the pairing on connect, Settings > Notifications' Devices notified, calls on the main device, the Watch caption in Settings > Calls from Hermes, Needs you answers through the device's own gateway) ·
 removing a dashboard (its host's pairings with this device dropped at the relay, the relay's route for it, and Remove Dashboard's confirmation in Saved Dashboards and on the sign-in screen)
+
+**Desktop app:** partly: the computer's notifications for replies and requests (`desktop/src/renderer/src/state/notifications.ts`); the phone's push kinds (Live Activity, call pushes, quiet updates) don't apply.
 
 **Code**
 - Extension: `ConduitNotificationService/NotificationService.swift`, `ConduitNotificationService/NotificationLocalization.swift` (a private Pulse push's line in the App Language, see Pulse)
@@ -2150,6 +2245,8 @@ agent list (picking an agent there is how a driver changes who they talk
 to, and it ends its own conversation first, as before), a call from Hermes
 opening its own chat (see Notifications), adding a dashboard or signing in (no call can run without a connection to it, and the new sign-in replaces the connection by design) · a live call that goes on across a profile switch: what it reads and sends names its own profile (its jobs and their ledger, its chat and its replies, chat search and reads, approvals and answers, "call me when it's done", the host's tools, the live engines' host routes, its style and its end phrases), its sheet's header and its minimised bar name that profile while another is on screen, and its chat's link opens on it · docs/VOICE_SETTINGS.md (the minimised call) · the refusals and the asks for a profile switch (the strip, the Profiles sheet, a notification or chat link for another profile, a chat from All profiles, New Chat or a project folder in another profile, a room's chat, Pulse's Bot Chat, Needs you, an artifact's chat, Ask Hermes About Screen naming another profile) all go ahead for such a call · not needed: a widget's launch of a chat (it refuses any move during a call, its own profile's chats included)
 
+**Desktop app:** partly: several Hermes hosts with a switch in the title bar (`desktop/src/renderer/src/components/TitleBar.tsx`); not checked what a host switch does to a call in progress.
+
 **Code**
 - App: `Conduit/Services/AppState+CallProfile.swift` (liveCallProfile, voiceCallProfile, callProfileOffScreen, callSurvivesProfileSwitch, isCallEndingProfileSwitch, keepCallSessionsOnTheirProfile, callEndedOffItsProfile, handBackCallJobs taking the ended jobs' callback settles before the reset, callChatLink, liveCallBarSubject), `Conduit/Views/CallEndingSwitchConfirmation.swift` (switchEndingCall, `profileOnly`, the dialog), `Conduit/Services/AppState+ScreenQuestion.swift` (a screenshot during a call stays in this profile), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation's yieldsToACall), `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2Shell.swift` (pickProfile), `Conduit/Views/V2/V2TopBar.swift` (DashboardSwitchMenu), `Conduit/Views/SavedDashboardsView.swift`, `Conduit/Views/ConnectionSetupView.swift` (Repair's address conflict), `Conduit/Services/AppState+Voice.swift` (isVoiceCallInProgress), `Conduit/Services/AppState+Profiles.swift` (the switch's voice teardown, `keepsCall`, and refusingCallsWith), the voice job backend in `Conduit/Services/AppState.swift` (voiceBackgroundJobSupervisor, the live engines' host clients) and `Conduit/Voice/VoiceBackgroundJobs.swift` (sessionIDsOnActiveProfile), `Conduit/Services/AppState+Voice.swift` (the call's chat reads and turns), `Conduit/Services/AppState+VoiceHostTools.swift`, `Conduit/Services/AppState+HermesCalls.swift` (makeHermesCallbackBackend), `Conduit/Services/AppState+BotWorkstreams.swift`, `Conduit/Views/MinimisedLiveVoiceBar.swift`, `Conduit/Views/LiveVoiceCallSheet.swift`, `Conduit/Services/HermesClient.swift` (handOffSocket, socketHolder, sendPrompt's resend); a restored job's profile on the client: `Conduit/Services/AppState+Voice.swift` (noteVoiceJobProfiles); the settles taken out of the supervisor: `Conduit/Voice/VoiceBackgroundJobs.swift` (detachEndedCallbackSettles)
 - Tests: `ConduitTests/NotificationDashboardOwnershipTests.swift`, `ConduitTests/AppStateScreenQuestionTests.swift`, `ConduitTests/HermesClientTests.swift` (testALiveCallGoesOnAcrossAProfileSwitchThroughTheKeptSocket, testACarriedSubmitsResendGoesToTheClientHoldingTheSocket), `ConduitTests/GPTLiveVoiceTests.swift` (testALiveCallKeepsItsProfileWhileAnotherIsOnScreen, testARestoredJobsOwnProfileIsNamedOnTheClient, testACallEndedOffItsProfileHandsItsJobsBackAfterTheHangUpsCallbackPass), `ConduitTests/HermesCallsTests.swift` (testAResetDuringTheHangUpsPassStillSettlesTheEndedJobs, testAResetDuringTheHangUpsPassTellsAJobTheHostSawEnd, testTheHangUpsNoticeNamesTheCallsProfile)
@@ -2213,6 +2310,8 @@ tools' `pulse_turn` refusal, and what a suggestion's refusals say) · Phone data
 approved on a card; past events within the window shared, read on the host for next steps) · Hermes's scheduled jobs and
 its notes (the report reads them, with each job's health) · a new chat Do it starts, for an item from
 no chat or from a Kanban task's worker · the Kanban task such a card links, opened in Tasks › Board · the `hermes conduit-push pulse` commands
+
+**Desktop app:** has it: Pulse's feed, looks, suggestions and settings (`desktop/src/renderer/src/components/PulsePage.tsx`, `desktop/src/renderer/src/components/PulseSettings.tsx`, desktop#21, desktop#30).
 
 **Code**
 - App: `Conduit/Views/V2/V2PulsePage.swift` (the screen, the morning brief's block, What Pulse learned, What Pulse left out, suggestion cards with Add, Not now, Undo and its question), `Conduit/Views/V2/V2ChatsView.swift` (V2PulseButton in the Chats bar, PulseFeedReader on the Chats and Bots tabs, Pulse's chat left out of the list and content search), `Conduit/Views/V2/V2VoiceButton.swift` (Pulse's chat left out of voice recents), `Conduit/Services/AppState+Reconciliation.swift` (isUnlistedChat: left out of the chat Conduit resumes and a call's chat search), `Conduit/Services/PulseFeed.swift` (isPulseHomeChat, by row or by id; readPulseHomeIfUnknown), AppState's dropSavedPulseChat and forgetResumedPulseChat, in `Conduit/Services/AppState+Reconciliation.swift` (a saved Pulse chat is dropped as the resume choice before the sync resumes a saved id directly or picks one), `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (chatList leaves it out; chatsObservation rebuilds when the feed names it), `Conduit/Views/PhoneSettingsViews.swift` (People's caption on birthdays, with a plugin that reports `pulse_dates`), `Conduit/Views/V2/V2Shell.swift` (the `.pulse` route, full screen on a phone, from Sessions or Bots), `Conduit/Views/V2/V2BotsHome.swift` (BotsHomeShortcuts, V2PulseButton's named pill), `Conduit/Services/PulseFeed.swift` (cards, marks, ratings, which cards take Done and Do it and which ask why on a thumbs down, Do it's message per topic, a deadline's and a next step's among them, the brief's layout, which chat is Pulse's, what Pulse learned and left out, what a card's Why? says learning did, what Pulse looked at and when a card back after a stalled Do it had Do it tapped, and a suggestion's states and its Add, Not now and Undo calls; pulseFeedIsFresh, and formatted's cache of card news), `Conduit/Services/AppState+Pulse.swift` and `Conduit/Services/AppState.swift` (opensPulseScreen, for pushes; pulseRememberedHomes, Pulse's chat per dashboard across launches; pulseFoldedBriefs, the briefs folded per dashboard across launches, the newest 30 of each and the one just folded), `Conduit/Services/AppState+Pulse.swift` (unfoldPulseCard, a card put back open in a folded brief; startPulseNewChat, the new chat Do it fills; quietPulseForToday, Quiet for today from a notification, which a call keeps from switching dashboards and which keeps the state Pulse answers with for Settings > Pulse), `Conduit/Services/PulseSettings.swift` and `Conduit/Views/PulseSettingsViews.swift` (Settings > Pulse, quiet times, deadlines from Shortcuts, Look things up first, Where you are and Walking past, Hide private reminders on the Lock Screen, What Pulse remembers, a yearly fact's day, where a deadline came from and the place a promise waits for, and what a suggestion's refusals say), `Conduit/Services/AppState+PhoneSync.swift` (applyPulseApproval) and `Conduit/Phone/PhoneSyncEngine.swift` (approveFromCard: a change approved on a card, of the kind it showed, PulseProposal.phoneChangeKind, in the sharing it was tapped in, sharingSession, applied without the phone's own card), `Conduit/Views/ShortcutInboxSettingsViews.swift` (Settings > Shortcuts inbox's caption and delete-all message on Pulse's deadlines, with a plugin that reports `pulse_inbox`), `Shared/Notifications/PulseNotifications.swift` and `ConduitNotificationService/NotificationService.swift` (which Pulse pushes get Quiet for today), `Shared/Notifications/NotificationCopy.swift` (a private push's line, in the App Language), `Shared/NotificationE2E.swift` (pulseQuietGateways, the hosts whose pushes offer it, shared with the extension), `Conduit/Services/NotificationCategories.swift` and `Conduit/ConduitApp.swift` (its button, done in the background, and the retry), `Conduit/Services/PushNotificationService.swift` (pulseQuietTarget, the push's dashboard and gateway, checked again on the tap; pulseQuietAwaitsCall and takePendingPulseQuiet, the retry's wait for a call, kept across a relaunch on the day it was pressed); a card from a Kanban task's worker: `Conduit/Services/PulseFeed.swift` (kanbanTask, its Do it message, pulseCardHasChat, pulseCardTask, openPulseCardTask), `Conduit/Views/V2/V2PulsePage.swift` (sourceLink, taskLink), `Conduit/Services/AppState.swift` (kanbanTaskOpenRequest); Do it's bot for cards from no chat: `Conduit/Services/PulseFeed.swift` (pulseDoItBot, pulseActedChat, PulseClient.acted's chat) and `Conduit/Services/AppState.swift` (pulseDoItBots), `Conduit/Views/V2/V2Shell.swift` and `Conduit/Views/V2/V2TasksView.swift` (Tasks › Board for it), `Conduit/Views/KanbanViews.swift` (openRequestedTask) and `Conduit/Services/KanbanStore.swift` (findTask, on whichever board holds it)
@@ -2343,6 +2442,8 @@ location batch, `spot_entries` in the next one) · the `hermes conduit-push
 pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Where you are; walking past's state and entries are in `pulse spots`) · the privacy policy
 (notifier docs/privacy: what Pulse keeps of walking past and how to turn it off)
 
+**Desktop app:** not applicable: where you are comes from the phone's location.
+
 **Code**
 - App: `Conduit/Services/PulseSettings.swift` (PulseState's whereYouAre, whereReady and walkingPast, PulseMemoryPlace), `Conduit/Views/PulseSettingsViews.swift` (the switch, its caption and the line when Pulse can't read the location yet, the Walking past switch, its caption and the lines when this iPhone isn't watching shops (Location settings, or saved places using every place iOS lets Conduit watch), which update as Location settings change, either switch or Pulse's own off, turned off here or found off in Pulse's answer when the page loads (never in the state the page kept from last time), stopping this iPhone's watches at once through LocationSharingController.forgetSpots, and all three on sending at once so the reply brings the shops to watch; a reply to a batch sent before the off is ignored and a batch still connecting then carries no shop entries, shops becoming allowed again in iOS Settings sends at once, and a change made elsewhere otherwise reaches this iPhone with the host's next reply, and a promise's place in What Pulse remembers), `Conduit/Services/PulseFeed.swift` (pulseReadsWhere, and "where you are" in what a card's turn looked at), `Conduit/Location/PulseSpotWatcher.swift` (walking past: the shops searched and watched, first state, entries), `Shared/Location/LocationSpots.swift` (watches, entries, the sealed reply, PulseSpotState), `Conduit/Location/LocationSharingController.swift` (watchesSpots, spotEntered, sendNow's spot_entries and spots_room), `Conduit/Location/LocationSyncEngine.swift` (spotsReplied), `Shared/Location/LocationBatch.swift` and `Shared/Location/LocationSharedStore.swift` (spot entries in the batch and unsent, spots.json)
 - Saved places' arrivals and departures on the iPhone: `Conduit/Location/LocationBackgroundMonitor.swift` (the saved places' CLMonitor, released when its events end so the next sync opens it again by name)
@@ -2387,6 +2488,8 @@ needed) · Apple HomeView (a tap can't open Conduit there, so the launchers
 only show; Night Mode's vibrant drawing done; see the Pulse widget for its
 buttons) · docs/WIDGETS.md · README.md
 
+**Desktop app:** not applicable: iOS widgets are phone-only.
+
 **Code**
 - Widget: `ConduitWidgets/LauncherWidgets.swift` (the three sizes), `ConduitWidgets/LauncherTimelineProvider.swift`
 - Shared: `Shared/Widgets/WidgetConfiguration.swift` (the configuration intent, its pickers and Small size opens, asked only in the small size), `Shared/Widgets/WidgetSelection.swift` (what an entry shows, its links, the large list and the small tap), `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Shared/Widgets/WidgetLocalization.swift`
@@ -2430,6 +2533,8 @@ Watch and CarPlay (not needed: no Pulse screen there) · Apple HomeView (done:
 the small size's buttons; see the launcher widgets for Night Mode) ·
 docs/WIDGETS.md · README.md
 
+**Desktop app:** not applicable: iOS widgets are phone-only.
+
 **Code**
 - Widget: `ConduitWidgets/PulseWidget.swift` (the view and its reads: the feed with `looks=1` where served, Next look from Pulse's state when nothing is open, every 30 minutes and on each reload), `ConduitWidgets/PulseWidgetRunner.swift` (the widget's stand-in for Do it's runner), `ConduitWidgets/Info.plist` (ATS as the app's, for http Tailscale hosts), `ConduitWidgets/ConduitWidgets.entitlements` (both App Groups)
 - Shared: `Shared/Widgets/PulseWidgetFeed.swift` (PulseWidgetAccess, its Keychain item in the notifications group, and the rows from the feed), `Shared/Widgets/PulseWidgetSnapshot.swift` (the last good read with sent rows and a button's note, the store, the tap's link), `Shared/Widgets/PulseWidgetIntents.swift` (Done and Not now from the widget to the host; Do it as a LiveActivityIntent, run in the app), `Shared/Location/LocationHostClient.swift` (requests with a host pass)
@@ -2470,6 +2575,8 @@ beside the chat on a wide window · Bot Chats
 group rooms (no Artifacts list) · a Bot Chat's Work panel (done: it shares the column beside
 the chat, one at a time; see Bot workstreams) · the Folder's Markdown reader (Workspace files) ·
 the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's artifacts route · Saved (done: every list above, the page, a bot's overview, a chat's sheet and the panel, each over the stores it reads; the notifier's saved-artifacts route and its README; the app's README) · README.md
+
+**Desktop app:** has it: Artifacts beside the chat and across every chat (`desktop/src/renderer/src/components/ArtifactsPanel.tsx`, desktop#38, desktop#39).
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient, its keptRoute, keptPage and answer(_:withoutRowsOf:))
@@ -2526,6 +2633,8 @@ prepared for preview (how the Folder opens pages and Quick Look) ·
 Attaching files (a Folder row dropped on the chat puts its path in the
 draft) · the Markdown document sheet's Show Source (shares the code view) ·
 Work Here in This Chat (done, #2364: the folder header's menu moves the open chat's working folder to the folder shown, through Hermes' `session.workspace.move`) · README.md
+
+**Desktop app:** has it: the Folder beside the chat (`desktop/src/renderer/src/components/FilesPanel.tsx`, desktop#21).
 
 **Code**
 - Client and path links: `Conduit/Services/WorkspaceFiles.swift` (WorkspaceFilesClient and its kept listing and recent files, resolve, WorkspacePathLinks, WorkspaceRoot, WorkspaceReveal)
@@ -2613,6 +2722,8 @@ from the hosted rooms only (talkingRooms; a gap for a copy's own agents) · Voic
 bar's name field and the new room's tile, a live room's "Talking now") · the transcript's environment copy
 (TranscriptCellEnvironment copies `botsHomeCovered`, `botChatZoomed` and
 `rosterRowsInScroll`, as CI's check asks; the rows don't read them) · a moving picture on the portrait and the Bot Overview's header (see Moving pictures) · README.md's Bots Home line · a text selection in the chat, whose handles' drags aren't the swipe home (issue 1948), a sideways scroller under the finger (cards, wide tables and code blocks, chips) that could scroll back, whose drag isn't the swipe home either unless it starts at the screen's leading edge (Eric 2026-11-15), and one in the Work or Artifacts panel beside the chat, which holds it too · how the gestures are found: the one tip under the bots and the empty Group Chats' line (the UI tests and App Store screenshots run without tips) · one or two bots (BotsHomeLayout, Eric 2026-11-15): a lone bot's large portrait, its Ask field (Done above its keyboard and a drag of the page put the keyboard away, #2546; sent through the Bot Chat's own composer path once that opens, see Opening a Bot Chat), its last reply (read as Send to Hermes and the voice modes read "what did it say", latestLiveVoiceThreadReplyMessage) and its open work (the Work panel's mark and line, BotWorkMark and BotWorkLook.subtitle, opening the overview); two bots large side by side with their last replies; Group Chats hidden with one bot and nobody linked to start a room with · the other combined dashboards' bots (all-live stage 4c: in the same grid, mixed with this dashboard's in the group's one order the person arranges, every portrait badged, opening through the kept connection, listed through a dropped connection until it's back; see Combined dashboards)
+
+**Desktop app:** has it: Bots home (`desktop/src/renderer/src/components/BotsHome.tsx`).
 
 **Code**
 - Tabs and routes: `Conduit/Services/AppState+UIState.swift` (beginOpeningBotChat and placesConversationAsBotChat, with botChatOpening in `Conduit/Services/AppState.swift`, a Bot Chat or room coming from Bots; see Opening a Bot Chat), `Conduit/Views/V2/V2Shell.swift` (V2Tab's title and conversationTab, the bar's order in `Conduit/Views/V2/V2TabLayout.swift`, openConversation, the first tab, pulseVisible and openConversation on Bots too, the Bots stack's botZoom namespace)
@@ -2715,6 +2826,8 @@ open on their last answer) · Edit Bot > Work, the bot's workstream settings,
 kept by the plugin (see Bot workstreams; done) · a combined group (New Bot's sheet picks the dashboard it's made on; see Combined dashboards) · the text that describes them (the editor's footers
 and README.md's bots line)
 
+**Desktop app:** has it: New Bot and Edit Bot (`desktop/src/renderer/src/components/NewBot.tsx`, `desktop/src/renderer/src/components/BotEditor.tsx`, desktop#23, desktop#27).
+
 **Code**
 - Editor: `Conduit/Views/SoulEditorPage.swift` (SoulEditorPage and SoulPreview, the Personality page both editors open; ProfilePersonalitySection, Settings > Edit profile's row and its Save), `Conduit/Views/AuxiliaryViews.swift` (ProfileSettingsDetail), `Conduit/Views/BotEditorSheet.swift` (also opened from a Bot Chat's ⋯ menu, `V2ConversationMenu` in `Conduit/Views/V2/V2ConversationScreen.swift`), `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotCapabilitiesView.swift` (BotSkillsView, BotToolsView and BotMcpServersView, the three pages; BotCapabilityRows, their equatable lazy switches), `Conduit/Views/BotRosterView.swift`, `Conduit/Views/BotWorkSettingsView.swift` (Edit Bot > Work, see Bot workstreams)
 - Skills page: `Conduit/Services/BotManagement.swift` (BotSkillGrouping, BotCapabilities.onSummary and setEnabled), `Conduit/Services/AppState+BotMode.swift` (loadBotSkillDetails, keptBotSkillDetails), `Conduit/Views/AuxiliaryViews.swift` (SettingsFoldRow, shared with Settings > Multiplayer); tests `ConduitTests/BotManagementTests.swift` (testSkillsGroupByHermesCategoryWithDescriptions), `ConduitTests/AppStateMultiDashboardTests.swift` (testCapabilitiesOpenOnTheSkillsAndToolsetsHermesGaveLastTime, the kept list per profile)
@@ -2786,6 +2899,8 @@ notifications (not needed: they draw no faces) · the notifier (not needed: it
 serves no pictures) · the text that describes it (the editor's caption under
 the Edit Picture menu, which names a brought-to-life still too, README.md's bots and profiles lines)
 
+**Desktop app:** partly: a GIF can be chosen as a bot's picture (`desktop/src/renderer/src/components/BotEditor.tsx`); no video or Bring to Life.
+
 **Code**
 - Making one: `Conduit/Services/AnimatedAvatar.swift` (frames from a picture file or a video, thinned, squared and written as a looping APNG under maxBytes, picture(fromPicked:), message(for:), pick(from:): a Photos pick's own file, a still among them used as a photo)
 - Saving: `Conduit/Views/BotEditorSheet.swift` (Choose GIF or Video's photosPicker, useAnimation, previewPlayback, canSave waiting for it, the caption), `Conduit/Views/ProfilePickerSheet.swift` (the Edit menu's Choose GIF or Video, saveAnimation), `Conduit/Services/AppState+ProfileSettings.swift` (setProfilePhoto's animation), `Conduit/Services/AppState+ProfilePhotos.swift` (moveDevicePhotoToHermes carrying a phone-only moving picture over as it is, through BotAvatarImage.hermesPicture in `Conduit/Services/BotManagement.swift`), `Conduit/Services/AppState+BotMode.swift` (botAvatarPlayback, profileAvatarPlayback), `Conduit/Services/ProfileAppearanceStore.swift` (saveAvatar keeps a moving picture's bytes; ProfileAvatarImageCache.isAnimated and revision)
@@ -2823,6 +2938,8 @@ widgets and notifications (not needed: they draw no faces) · Hermes Desktop
 and the notifier (not needed: the picture is saved like a chosen photo) ·
 the text that describes it (the editor's hint, README.md's bots and
 profiles lines)
+
+**Desktop app:** not applicable: Image Playground is Apple's on-device generator.
 
 **Code**
 - `Conduit/Views/Components/ImagePlaygroundPicture.swift` (availability, current, Prompt, image(at:), imagePlaygroundPicture, readsImagePlaygroundAvailability)
@@ -2864,6 +2981,8 @@ and another person's agent with no picture (keep the initial: not your bots)
 · the text that describes it (the editor's Face caption, README.md's Bots
 Home line)
 
+**Desktop app:** has it: starter faces (`desktop/src/renderer/src/components/StarterFaceArt.tsx`, `desktop/src/renderer/src/state/starterFaces.ts`).
+
 **Code**
 - `Conduit/Services/StarterFaces.swift` (StarterFace, StarterFaces.set, face(_:), assign, nextFree, storedFace, image(_:color:); StarterFaceView; BotFaceDirectory)
 - Roster: `Conduit/Services/BotModeModels.swift` (BotProfile.starterFace, faceLook, shownColor; BotRosterDecoder.decode assigns), `Conduit/Services/AppState+BotMode.swift` (performBotRosterRefresh and keptBotRoster assign; nextStarterFace; createBot and updateBot write `face`), `Conduit/Services/AppState.swift` (botFaceDirectoryUpdates, otherBotFaceDirectoryUpdates)
@@ -2895,6 +3014,8 @@ its last answer, a Bots Home portrait or its overview's Chat (#1678) · Bots Hom
 introduction · a push or a call from a Bot Chat · a link, card or artifact
 that names a bot · Pulse's Do it and Ask on a card from no chat when a bot is picked for it (#2211; opens an existing chat or makes the first, as a Bots row) · a widget, Shortcuts or shared-draft open of a Bot Chat (opens an existing chat only, by the lookup's row) · a last-chat restore that lands on a Bot Chat (resumes the saved row's stored id) · Hermes Desktop's Bot Chat open (same lookup, same title,
 same stored-id open) · the list callers (Bots Home portrait, Bot Overview's Chat, Bots list row, a new bot, Bots Home's voice menu via V2VoiceButton) all go through openBotChatFromList, which waits for the connection (done, #2772) · a notification or widget route (not needed: it already waits for the connection) · a combined dashboard's bot open, through the switch and then `openLinkedBotChat` (done, #2789: `openCombinedBot` counts its own request) · a link's or card's open (done, #2787: `openLinkedBotChat` waits for the connection the same way; a newer link, a list tap or another dashboard stands it down)
+
+**Desktop app:** has it: a bot opens its Bot Chat or newest chat (`desktop/src/renderer/src/state/bots.ts`, desktop#9).
 
 **Code**
 - Open: `Conduit/Services/AppState+OpenChat.swift` (openBotChat, openBotChatOutcome, openBotChatFromList, resolveAndOpenBotChat, createAndOpenBotChat, adoptWinningBotChat, openCanonicalBotChat), `Conduit/Services/AppState+OpenChat.swift` (openBotChatFromList, connectionComesUp, listOpenConnectionWait), `Conduit/Services/AppState+BotMode.swift` (openNewBotChat), `Conduit/Services/AppState+CombinedBots.swift` (openCombinedBot), `Conduit/Services/AppState+AppLinks.swift` (openLinkedBotChat)
@@ -2941,6 +3062,8 @@ chat's copy · the sender's step ("Messaged Atlas") · the Live Activity's tool 
 Hermes Desktop's bot chat · chat list previews and quotes · Read Aloud and live voice ·
 the bot's SOUL messaging section · README.md's bots line · the plugin's
 move of an old Bot Chat under its gateway, which keeps a bot reachable while its chat is open
+
+**Desktop app:** partly: @ mentions in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`); no Mention a Bot in chats.
 
 **Code**
 - Tags and the note to the bot: `Conduit/Services/BotMentions.swift`, `Conduit/Services/GroupChatModels.swift` (MentionAutocomplete), `Conduit/Services/AppState+GroupChats.swift` (composerMentionCandidates and mentionAnnotatedOutboundText, from the shown roster, which is in the bots' order, see Bots Home)
@@ -2998,6 +3121,8 @@ compaction folded its summary into the note's row (the card, `/undo` and
 to the workstream and doesn't carry the report) · Watch and CarPlay (not
 needed: no transcript cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
+**Desktop app:** partly: the job editor's delivery choice (`desktop/src/renderer/src/components/ScheduledJobs.tsx`); delivery into a Bot Chat is the plugin's.
+
 **Code**
 - Notifier: `notifier/cron_bot_chat.py` (install, show, the note's HEADER, reference_tags, annotate for the cron tool), `notifier/cron_store.py` (act, set_act, lets_act), `notifier/dashboard/api/notifications.py` (`act` and `shows_reports` on /cron/notifications), `notifier/dashboard/api/capabilities.py` (cron-bot-chat-reports), `notifier/__init__.py` (install, _transform_tool_result), `notifier/artifacts_index.py` (CRON_NOTE_PREFIX, user_items, _own_text and Hermes' three merge markers)
 - App: `Conduit/Services/CronNotifications.swift` (Choices with showsReports, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, offersCronBotChatChoice, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (CronBotChoiceSection, deliversToBotChat, the editor's save, CronBlueprintForm's choice and create), `Conduit/Views/CronReportCard.swift` (CronBotChatReport with shown and preview, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row), `Conduit/Services/HermesClient.swift` (MessageNormalizer.isUntypedNote, the normalizer's note read back untyped, SessionRewindSnapshot.userTurn)
@@ -3044,6 +3169,8 @@ schedule at accessibility sizes, plus next run in Tasks) · the chat list's
 the job's detail sheet for row wrapping (not needed: it scrolls and has no
 Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 
+**Desktop app:** has it: a scheduled job's run history (`desktop/src/renderer/src/components/ScheduledJobs.tsx`, desktop#19).
+
 **Code**
 - App: `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronRuns, decodeCronRun), `Conduit/Services/BotState.swift` (cronRunsJobID, cronRunsLoaded, read through AppState's forwarders), `Conduit/Models/Models.swift` (CronRun, isRun(ofJob:)), `Conduit/Services/HermesClient.swift` (cronRuns), `Conduit/Views/SidebarView.swift` (CronJobDetailSheet's Run history, CronJobRow), `Conduit/Views/V2/V2TasksView.swift` (the sheet from Tasks, V2ScheduledList's row)
 - Test: `ConduitTests/SidebarLayoutTests+CronRunHistory.swift`
@@ -3058,7 +3185,7 @@ Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the run history's state moved into BotState, all-live stage 1; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2429 (the run history's state moved into BotState, all-live stage 1; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## A scheduled job's model
 
@@ -3084,6 +3211,8 @@ editor reads what they wrote) · the notifier (not needed: the editor talks
 to the dashboard's own cron routes) · Watch, CarPlay and group rooms (not
 needed: no scheduled jobs there) · Text (done: the editor's caption and
 README.md's Scheduled jobs line)
+
+**Desktop app:** partly: a job's model is shown (`desktop/src/renderer/src/components/ScheduledJobs.tsx`); not checked whether the editor sets it.
 
 **Code**
 - App: `Conduit/Models/Models.swift` (CronJob's model, provider, baseURL, reasoningEffort), `Conduit/Models/CronJobDraft.swift` (CronJobDraft's modelTag, reasoning, runsAgent, createReasoningUpdate and modelFields; CronJob's modelTag, pinnedReasoningEffort, pinsModel, modelSummary), `Conduit/Views/V2/CronJobEditorSheet.swift` (modelSection, loadModels, the create's reasoning edit), `Conduit/Views/V2/V2TasksView.swift` (V2ScheduledList's row), `Conduit/Views/SidebarView.swift` (CronJobRow's model, CronJobDetailSheet's Model row)
@@ -3111,6 +3240,8 @@ Keyboard Access (the text view mounts and lays out when they ask for the
 reply's elements) · long-press Open Link · file paths, linked to the Folder
 (Workspace files) · a reply's `conduit://session/` links to its workstreams,
 drawn as work cards under it, and the workstream refs a Bot Chat reply names in its words, linked in place (Bot workstreams, #1677)
+
+**Desktop app:** has it: links in messages open in the browser (`desktop/src/renderer/src/components/Markdown.tsx`).
 
 **Code**
 - Drawn until touched, mounted on touch: `Conduit/Views/Components/SelectableTextView.swift` (drawsUntilTouched, SelectableTextViewHostView.hitTest and accessibilityElements, mountTextViewForTouch)
@@ -3142,6 +3273,8 @@ job cards · Read Aloud and live voice read-back · chat list previews and
 quotes · the Apple Watch · the notifier · the Markdown reader (artifacts and a
 chat's file card) and the Folder's Markdown preview
 
+**Desktop app:** has it: Markdown line breaks (`desktop/src/renderer/src/components/Markdown.tsx`).
+
 **Code**
 - One inline parse for every block's text: `Conduit/Views/Components/MarkdownText.swift` (InlineMarkdownContent.attributed and keepingLineBreaks; MarkdownSelectionFormatter.inline goes through it)
 - Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift` (InlineMarkdownContent.bridged)
@@ -3171,6 +3304,8 @@ delegation report cards (opened) · the Markdown reader and the Folder's
 preview · the Mac (same views) · quotes in a prose-only reply (the same
 hanging indent) · nested sub-lists · Read Aloud and live voice read-back · chat list previews
 and quotes · folded previews (cron card, Work panel, briefs)
+
+**Desktop app:** has it: Markdown lists (`desktop/src/renderer/src/components/Markdown.tsx`).
 
 **Code**
 - Parser and block views: `Conduit/Views/Components/MarkdownText.swift` (MarkdownParser with listDepth and sameListLevel, MarkdownBlock.listDepth, MarkdownList; MarkdownSelectionFormatter.list and its quote lines for a prose-only reply, drawn with keepsParagraphStyles)
@@ -3213,6 +3348,8 @@ that draws Markdown.
 very long replies and big tables (paged) · the long-press menu (Copy Table,
 Select Text), the pointer's Copy Table button, and VoiceOver's actions for them (Copy Table on every surface) · a pointer on a Mac or an
 iPad · selection across the reply · Copy response · links in cells (a cell with a link is always a selectable cell and opens it as Links in messages does)
+
+**Desktop app:** has it: Markdown tables (`desktop/src/renderer/src/components/Markdown.tsx`).
 
 **Code**
 - Tables, cells and the menu: `Conduit/Views/Components/MarkdownText.swift` (MarkdownTable, MarkdownTableRowView, MarkdownPlainCell, MarkdownTableMenu, LargeMarkdownTable; MarkdownTableLayout for column widths and Copy Table's text)
@@ -3269,6 +3406,8 @@ screen's Camera, whose photo waits in the chat's composer as a screenshot does
 | A picture pasted in the field | yes, one picture | no |
 | Text pasted in the field, over 3,000 characters | yes, as a text attachment | yes, where the room takes files (as above) |
 | Files dragged onto the chat, the room, the field or the full editor | yes | yes, where the room takes files (as above) |
+
+**Desktop app:** has it: Attach, paste and drop in chats, quick ask and rooms (`desktop/src/renderer/src/state/attachments.ts`, desktop#12 to desktop#14).
 
 **Code**
 - Staging and its limits: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, AttachmentTypePolicy, AttachmentStaging's stageCopy and finishStaging)
@@ -3330,6 +3469,8 @@ a chat left while its reply is still coming (all-live stage 2), by an open, a pr
 | A group room | the events it had | in memory, per dashboard and room, up to 400 events, until the room leaves the list |
 | A chat left while its reply was still coming (all-live branch) | its rows and its turn as far as it got: the reply's words, thinking and tool steps keep coming in while it's away, Hermes streaming them on the same socket, through the chat's own state | in memory, per dashboard, the last 4 chats left mid-reply, one a profile switch left included, each opened again only in its own profile (finished replies go first); a finished reply's rows also become the chat's saved copy on the phone, without becoming the chat a launch opens on (a Bot Chat's become its bot's copy instead, in memory and on the phone, #2787) |
 | A chat never opened | nothing, as before | not applicable |
+
+**Desktop app:** has it: a chat shows while its history loads (`desktop/src/renderer/src/state/useChat.ts`).
 
 **Code**
 - The chat's header on a push from the Sessions list: `Conduit/Views/V2/V2ListNavigationBar.swift` (v2ListNavigationBar and its keeper: the list's safe area, the bar's touches and accessibility while the list is on top; V2ListNavigationBarPolicy, which keeps the bar hidden on a Mac; a keeper whose lookups ran out looks again on each later update of the list), from `Conduit/Views/V2/V2ChatsView.swift`; test `ConduitTests/SidebarLayoutTests.swift` (testListKeepsItsBarShownExceptOnAMac, testListKeepsItsShownBarOutOfTheWayOnlyWhileItsOnTop)
@@ -3412,6 +3553,8 @@ window (the pane's Open in New Window on an iPad and a Mac: the same rows
 in a window of its own, with Open in Main Window) · the main window's
 first-window guard (never closes a chat window) · README.md's feature list
 
+**Desktop app:** gap: no second chat open beside the first.
+
 **Code**
 - `Conduit/Services/AppState+BesideChat.swift` (besideChat, canOpenBeside, openBeside, swapBesideChat, closeBesideChat, noteUserMessageInBesideChat, BesideChatLive), `Conduit/Services/AppState.swift` (besideChatIDs, besideChatLive)
 - The followed copy: `Conduit/Services/AppState+BackgroundChats.swift` (followChatOnScreen's staysBeside, followLeftChatIfItsReplyRuns, applyBackgroundChatEvent telling the pane), `Conduit/Models/BackgroundChat.swift` (newestSettledRows, liveThinkingRow, adding's keeping)
@@ -3469,6 +3612,8 @@ while it opens) · the drawer shell's "Open to" (Sessions) choice · Settings'
 When returning to Conduit caption · Settings > Appearance > Tabs, which picks
 the first tab (The tabs' order and the tab Conduit opens on) · Watch and CarPlay (not needed: no chat
 list to land on)
+
+**Desktop app:** unchecked: which chat a launch opens on.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, giveUpRoomIfLeft, Launch.roomStep), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
@@ -3548,6 +3693,8 @@ catalog, the accounts' names and the rules, never a sign-in) · README and docs 
 and panel and a workstream's bar (done: they open on the bot's kept list; see
 Bot workstreams)
 
+**Desktop app:** unchecked: whether settings pages open on their last answer.
+
 **Code**
 - Store: `Conduit/Services/OfflineChatCache.swift` (keptAnswer, recordAnswer, withoutCredentials and withoutUnparsedURLCredentials, trimKeptAnswersLocked, removeKeptAnswers, readKeptAnswersAhead from prefetch's answers, forgetMemory; lastOpenedRoutePrefix, whose answers keep the newest maxLastOpenedAnswers per scope through removeOldestFiles, as the held rows do, and removeLastOpenedAnswers, which takes a deleted chat's by the session ids its route names (sessionIDs(namedIn:)); KeptAnswers, how Voice settings, Capabilities, the Tasks board, Artifacts and the Folder tab reach them)
 - Reads and saves: `Conduit/Services/AppState+KeptAnswers.swift` (KeptRoute, readKeepingAnswer, keepingAnswer and its writes, keepWrittenAnswer, noteKeptAnswerWrite, keepAnswer and keptAnswerTurns (stored in `Conduit/Services/AppState.swift`), keptAnswer(on:) for a write's dashboard), `Conduit/Services/AppState+ProfileConfig.swift` (keptProfileSettings, keptProfileConfigOptions, keptProfileModelDefaults, keptProfileConfigSchema, keptProfileFallbackModels; updateProfileConfig and setProfileSetting keep what they saved, setProfileMainModel reads the catalog and the model's info again), `Conduit/Services/AppState+HelperModels.swift` (loadHelperModels, keptHelperModels, loadHelperModel, keptHelperModel and readHelperModels on the Voice replies model's route, loadModelProviders, keptModelProviders and modelProviders, loadVoiceReplyModel and keptVoiceReplyModel, keptLiveVoiceStatus, liveVoiceStatusKeeper and gptLiveStatusKeeper; setVoiceReplyModel reads the slots again, saying why when Hermes doesn't take one), `Conduit/Services/AppState+DelegateAgents.swift` (loadDelegationPaused, setDelegationPaused and keptDelegationPaused), `Conduit/Services/AppState+ChatList.swift` (prefetchSavedChats; deleteSavedChats), `Conduit/Services/AppState+BotMode.swift` (deleteBot)
@@ -3611,6 +3758,8 @@ lost, replaced by a fresh one
 | The room disbanded or left the list | not applicable | dropped, files deleted |
 | An empty chat Hermes lost, replaced by a fresh one | kept, in the fresh chat | not applicable |
 
+**Desktop app:** gap: no drafts kept per chat.
+
 **Code**
 - A draft's own chat (issues 2781, 2782): `Conduit/Services/AppState+PendingSend.swift` (composerDraftKeysAreSameChat, composerDraftOwner, composerDraftKey(_:isNotChatOf:), composerDraftOwningRow), `Conduit/Views/Components/ComposerDraftStore.swift` (owner(of:), returnDraft(from:toOwner:)), `Conduit/Views/Components/ComposerBar.swift` (saveDraft's owner, loadDraft), `Conduit/Models/SessionNesting.swift` (durableKey)
 - The replaced chat's draft: `Conduit/Services/ChatState.swift` (lostChatReplacement), `Conduit/Services/AppState+PendingSend.swift` (composerDraftKeysAreSameChat reads it; see An empty new chat Hermes lost)
@@ -3656,6 +3805,8 @@ its Ask (0.150.0), which leaves the pick's words instead
 · the fresh chat that stands in for an empty one Hermes lost, which takes
 what waited (An empty new chat Hermes lost)
 
+**Desktop app:** unchecked: whether a new chat something waits on (quick ask, a call's chat) is kept.
+
 **Code**
 - Creating the chat: `Conduit/Services/AppState+Session.swift` (createNewSession returns the chat it opened; startNewChat and focusNewChatComposer), `Conduit/Services/AppState+Composer.swift` (startChatForComposerSubmission), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation), `Conduit/Services/AppState+Reconciliation.swift` (createAndReconcileSession, which returns it too)
 - Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
@@ -3699,6 +3850,8 @@ unchanged; its estimates caption still holds) · group rooms, voice modes,
 the Watch and CarPlay (not needed: no context ring or chat list menu) ·
 README's "context meter" (done)
 
+**Desktop app:** has it: the Context panel with tokens, cost and Compress Now (`desktop/src/renderer/src/components/ContextPanel.tsx`, desktop#20).
+
 **Code**
 - Reads: `Conduit/Models/SessionUsage.swift` (route, CostStatus, SessionUsageReadout and its notFound), `Conduit/Services/AppState+Usage.swift` (loadOpenChatUsage and openChatUsageSessionID, loadSessionUsage and its stillAsked fence)
 - Teardown: `Conduit/Services/AppState.swift` (activeSessionId's chat-change teardown), `Conduit/Services/AppState+Dashboards.swift` (a dashboard switch), `Conduit/Services/AppState+WidgetLaunch.swift` (revealChatForWidgetLaunch) take sessionUsageTarget down
@@ -3733,6 +3886,8 @@ shows (says the chat compacts and keeps its memory and skills) · the `/help`
 text and the slash suggestions' "Start a new conversation" (the general
 command, still right outside Bot Chats) · "A new chat that something waits
 on" (a Bot Chat's `/new` opens no chat, so nothing waits on one)
+
+**Desktop app:** partly: /new starts a new chat (`desktop/src/renderer/src/state/slash.ts`, desktop#17); not checked whether it compacts a Bot Chat.
 
 **Code**
 - The guard: `Conduit/Services/AppState+SlashCommands.swift` (executeSlashCommand's new/reset/clear case), `Conduit/Services/AppState+Composer.swift` (the attachment refusal in performComposerSubmission), `Conduit/Services/AppState+GroupChats.swift` (activeChatIsCanonicalBotChat, isCanonicalForeverChatReset)
@@ -3872,6 +4027,8 @@ Screen and Done, Carry On; see Bot Screen) · a workstream that hands part of
 its work to delegate agents (it stays Working while they run, "Waiting for 2
 background agents" on its card and `waiting_for` in `work_list`; see Delegate
 agents a chat started)
+
+**Desktop app:** has it: workstreams in Bots home and the Work panel (`desktop/src/renderer/src/components/WorkPanel.tsx`, desktop#24, desktop#47).
 
 **Code**
 - Notifier: `notifier/work_store.py` (the registry, conduit/workstreams.db in the bot's home), `notifier/work_broker.py` (Hermes' session API in the process that serves Conduit's chats: the dashboard's TUI gateway, or where the gateway's listener runs, its session authority through `notifier/gateway_chats.py`'s `session_api`, every request naming the bot's profile; `server`, `on_authority`, `Broker.live` and `approvals` read the authority's snapshot), `notifier/gateway_chats.py` (`authority_for_home`, `authority_session_ids`; a link names a chat's profile on its own reads and answers a snapshot's waiting approval), `notifier/upstream/test_gateway_listener.py` (test_a_workstream_runs_on_the_authority_so_the_phone_opens_it, on the launch profile and a sibling), `notifier/work_tool.py` (the tools, the policy, the hooks' work, the note and the updates; the restart sweep, `_sweep_once`, which leaves another live process's work to it by `_host_stamp` and `_hosted_elsewhere`), `notifier/__init__.py` (the hook calls), `notifier/cli.py` (`work`), `notifier/tests/test_work.py`, `notifier/upstream/test_bot_work.py`
@@ -4025,6 +4182,8 @@ description · the notifier's README and the app's README · Hermes Desktop's
 own Bot Screen panel (Hermes', not ours) · the sheet covering its chat, so replies under it keep their notifications (see Notifications) · a takeover handed back when the app goes to the background or the sheet closes, one answered after either handed straight back, and the status read again on return · an install's sudo ask shown again after a reconnect, from the resume's open requests · which hosts can have a screen, read per bot and read again for a new server · the Watch and CarPlay (not
 needed: driving a desktop needs a screen to see it on)
 
+**Desktop app:** has it: Bot's Screen (`desktop/src/renderer/src/components/BotScreen.tsx`, desktop#42).
+
 **Code**
 - App: `Conduit/Services/BotScreen.swift` (`BotScreenStatus`, `BotScreenLease`, `BotScreenUse` with `controllingLine` and `menuProfile`, `BotScreenKey`, `BotScreenModel`, which opens the stream itself and relays it to the page through `BotScreenStreamPump` and `BotScreenStreamBuffer`, `BotScreenSupport`), `Conduit/Views/BotScreenViews.swift` (`BotScreenTarget.chatSessionIDs`, `BotScreenSheet`, which counts itself in `botScreenSheetsOpen` while open, from the chat's menu, a Work panel card or Bots Home, its full screen, `BotScreenWebView`, `BotScreenZoomView`, `BotScreenButton`), `Conduit/Services/InterfaceOrientationGate.swift` (`supported`, and `layoutWidth`, the width the screens under the full screen lay out by, `layoutReleased`, after which they take up the window's width, and `holdLayout`/`releaseLayout`, called by `BotScreenSheet`, read by `Conduit/Views/V2/V2Shell.swift`'s `sizedTabs` and `Conduit/Views/V2/V2ConversationScreen.swift`'s `screenWidth`) with `Conduit/ConduitApp.swift` (`ConduitAppDelegate`'s supported orientations) and `Conduit/Info.plist` (landscape listed for the iPhone, allowed only by the gate), `ConduitTests/InterfaceOrientationTests.swift` (the Info.plist lists), `Conduit/Services/HermesClient.swift` (`display`, `displayStreamRequest`, `respondToDisplaySudo`, the `display.*` events and `display.install.sudo`), `Conduit/Resources/BotScreen/BotScreenViewer.html` (noVNC 1.7.0, MPL-2.0, built by `scripts/bot-screen/build.sh` from `scripts/bot-screen/viewer.js`), `Conduit/Views/BotWorkViews.swift` (`BotWorkRow.screenBox`), `Conduit/Services/BotWorkstreams.swift` (`BotWorkItem.screen`, `screenUsedAt`, `screenAsk`; `BotWorkSnapshot.screen`), `Conduit/Views/V2/V2ConversationScreen.swift` (`V2ConversationMenu.screenProfile`, picked by `BotScreenUse.menuProfile`, and its screen sheet setting `chatCoveredBySheet`), `Conduit/Views/V2/V2BotsHome.swift` (`BotOverviewSheet`), `Conduit/Services/AppState.swift` (`botScreens`; `chatCoveredBySheet`, `botScreenSheetsOpen`), `Conduit/Services/AppState+BotMode.swift` (`botScreens` reset in `invalidateBotModeState`), `ConduitTests/BotWorkstreamsTests.swift`, `ConduitTests/HermesClientTests.swift` (the owed hand back, the stream buffer and pump)
 - Notifier: `notifier/screen_lock.py` (the hold file, conduit-screen.json in the bot's home), `notifier/work_tool.py` (`screen_block`, `screen_turn_ended`, `_watch_screen`, `SCREEN_BRIEF`, the `screen` ask in `work_progress`, `app_list`'s `screen`), `notifier/__init__.py` (`_pre_tool_call`, `_on_session_end`, `_subagent_start`), `notifier/tests/test_screen_lock.py`
@@ -4079,6 +4238,8 @@ list over the field, slash commands and mentions in chats, mentions in rooms
 (done, #1938: the arrows, Tab, Escape and a highlighted Return are the
 list's) · ⌘Return, which sends whatever the setting says (done, #2224; see
 Keyboard shortcuts) and the Keyboard section's line on it
+
+**Desktop app:** has it: Enter sends (`desktop/src/renderer/src/components/Composer.tsx`).
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey), `Conduit/Views/Components/ComposerSuggestionKeys.swift` (a suggestion list's keys)
@@ -4138,6 +4299,8 @@ system's Paste) · not needed: group rooms' ⌘. (a room has no Stop
 of its own), the model picker's, image gallery's and suggestion list's own
 keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
+**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25).
+
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
 - Tabs and the sheet: `Conduit/Views/V2/V2Shell.swift` (tabRequests; isChatCovered and chatTakesKeys for a chat's own keys), `Conduit/Views/RootView.swift` (MainView: the drawer shell's ⌘,, the sheet on shortcutListRequests)
@@ -4188,6 +4351,8 @@ reloads" caption (not needed: it already says Hermes asks first, which
 `/reload-mcp always` turns off on `hermes dashboard`) · README's "slash
 commands" (not needed, still true)
 
+**Desktop app:** has it: slash commands (`desktop/src/renderer/src/state/slash.ts`, desktop#17).
+
 **Code**
 - Catalog, hidden list, routes: `Conduit/Services/AppState+SlashCommands.swift` (normalizedSlashCatalog, slashCommandsWithoutConduitRoute, builtInSlashCommands, conduitSlashSubcommands, executeSlashCommand, reloadMCPServers, mcpReloadNote, reloadSkills, runRollback, checkpointList, restoreNote, undoRollbackHint)
 - Verbs: `Conduit/Services/HermesClient.swift` (commandsCatalog, executeSlash, reloadMCP, reloadSkills, MCPReloadOutcome, rollback, RollbackRequest, SessionRewindSnapshot.Turn's timestamp)
@@ -4225,6 +4390,8 @@ reference) · not needed: group rooms (no slash commands), voice modes, Watch
 and CarPlay (no composer), the notifier (Hermes' own verbs) · Text: the
 dock's captions and confirmations in every language (done); README names no
 such state
+
+**Desktop app:** has it: the goal, loop and heartbeat dock (`desktop/src/renderer/src/components/ControlDock.tsx`, desktop#25).
 
 **Code**
 - State: `Conduit/Models/SessionControl.swift` (SessionControlSnapshot, SessionControlAction, SessionControlStore)
@@ -4275,6 +4442,8 @@ when no mic stands beside it, #2657) · the voice message bar's 36 pt
 stop and send (a gap: issue 2525 named only the composers' rows, left for
 Eric) · voice modes (not needed: no placeholder of their own) · the Watch
 and CarPlay (not needed: no composer)
+
+**Desktop app:** not applicable: desktop's composer is always expanded.
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.staysExpanded, expandedMinimumWidth, composerStaysExpanded, composerLayoutFromWidth)
@@ -4374,6 +4543,8 @@ something waits on) · ⌘V in a chat's or a room's transcript on a Mac (done,
 Paste, not one of Conduit's keys) · iPhone, iPad and Mac · README.md's
 keyboard line (done, #2270) · no Settings caption describes it
 
+**Desktop app:** has it: the composer keeps focus after a send (`desktop/src/renderer/src/components/Composer.tsx`).
+
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus while the field takes text: isTyping), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField, onFocusTakenWhileOff and putAwayFocus: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
@@ -4469,6 +4640,8 @@ transcript or else its saved history.
 **Siblings:** the Send to Hermes Shortcut ("Wait for Answer") · live voice
 calls reading a job's chat · the Watch's answer to a call from Hermes
 
+**Desktop app:** has it: live calls read a chat's latest messages (`desktop/src/renderer/src/state/chatFinder.ts`, desktop#51).
+
 **Code**
 - Reader: `Conduit/Services/AppState+Voice.swift` (latestLiveVoiceThreadReply, latestLiveVoiceThreadReplyRead, latestLiveVoiceThreadReplyMessage, latestSavedThreadReply, latestReplyTurn, latestAssistantTurn), `Conduit/Services/AppState+TranscriptHistory.swift` (voiceHistoryRead), `Conduit/Services/HermesClient.swift` (MessageNormalizer's queuedPromptMetadataKey, ChatMessage.isQueuedPrompt in `Conduit/Models/Models.swift`)
 - Shortcut: `Conduit/Intents/SendToHermesIntent.swift` (ShortcutReply.mayBe), `Conduit/Services/AppState+ShortcutSend.swift`
@@ -4499,6 +4672,8 @@ much history an open transcript keeps · opening a chat with an unread reply ·
 opening a chat at a waiting question, approval, input or connect card ·
 Settings > Chat's Long replies switch and captions (shared by Sync across
 devices)
+
+**Desktop app:** has it: the transcript follows the latest message (`desktop/src/renderer/src/components/Transcript.tsx`).
 
 **Code**
 - Chats: `Conduit/Services/TranscriptScroller.swift` (following, browsing on the reader's row, and restoring: pin; keepAnchor, which moves a browsing reader's offset in the pass that lands rows growing, arriving or going above them, see Cards drawn in web pages; pinOwed and insetAtDragStart, for a bar changing under a finger; replyHoldOffset, refreshReplyRoom, dropReplyRoomOutOfSight and relatchAfterReplyRoomDrop, noteLatestUserRow and transcriptChanged's arming of the hold, replyStartLandingRequested, landAtReplyStartIfPending, ChatReplyStartPreference; renderedSessionChanged, userWillToggleRow, restorationRequested and its deadline, resolveRestorationDestination (the waiting-card predicate shared with ChatResumeCoordinator), explicitLatestRequested and showsJumpToLatest, explicitTopRequested (the title tap), replyStartPreferenceChanged (Long replies switched, here or from another device), notificationHandoffBegan and notificationHandoffFinished (a notification opening a chat); write; TranscriptScrollSurface, what it reads of the collection view), `Conduit/Views/TranscriptView.swift` (TranscriptView and TranscriptViewController: the collection view under the bars and the keyboard, whose heights it takes as its insets, in SwiftUI's animation when it animates them; TranscriptCollectionView; TranscriptCell's updateEnvironment, and its preferredLayoutAttributesFitting, which goes by drawnSize, the height its row reported drawing at, once there is one, and else by knowsHeight, the layout's hasCurrentMeasurement; rowResized, which asks at once for the pass after a row grows on its own, a streaming reply's text or a picture, rather than leave it for whatever next wakes the main thread), `Conduit/Views/TranscriptCellEnvironment.swift` (TranscriptCellEnvironment: what the rows read of the chat's environment, handed to each row's hosting controller; setInsideRows, the keys the rows set themselves, where they read them; measuresLike, whether a change leaves the rows' measured heights current; measurementChange and TranscriptMeasurementChange, which rows a change reaches), `scripts/check-transcript-environment.py` (in CI: fails a key Conduit declares that's neither copied there nor listed, and a listed one nothing sets), `Conduit/Views/TranscriptLayout.swift` (the rows' frames, measured or estimated, each row's estimate made once per width and scope from its text's characters, and again when setRows names it changed; noteHeight, the content's height a row's change brings, since a pass for some rows never asks for it again; the room under a sent message, reserveContentHeight, and rowsHeight, the rows' own height as the last pass laid them out, without it; TranscriptHeights, the heights kept per conversation and width; measuredSinceChange and hasCurrentMeasurement, the rows measured at this width since they last changed, which their cells don't measure again, and forgetCurrentMeasurements, which TranscriptViewController's update calls when the chat's environment changes, or forgetMeasurements(of:) for the rows a row-state change reaches; rowResized and invalidationContext(forPreferredLayoutAttributes:) name the row that changed height and every row under it, since UIKit asks again only for the items a context names), `Conduit/Views/ChatView.swift` (chatTranscript; ChatJumpControls and requestLatest; the send arming the hold; the unread landing observer, takeReplyStartLanding; installScrollerCallbacks and ChatScrollEventRouter; the live rows, through ChatView.liveTurn, the rule `Conduit/Views/TranscriptModel.swift` draws them by, TranscriptModel.LiveTurn)
@@ -4557,6 +4732,8 @@ CarPlay and the Watch (they hear the stream through the voice observers,
 not the drawn text), the Live Activity (it reads the stream events), the
 chat's saved copy and the reply's notification (the settled message)
 
+**Desktop app:** not applicable: the iOS background rules don't apply on a computer.
+
 **Code**
 - Pausing and resuming: `Conduit/Services/AppState+UIState.swift` (liveRowsHidden, pauseLivePublishes, resumeLivePublishesIfShown), `Conduit/Services/AppState.swift` (sceneHidesLiveRows; showSidebar's didSet; handleScenePhase's .inactive, .background and .active, in `Conduit/Services/AppState+ConnectionTimeline.swift`), `Conduit/Services/AppState+StreamingText.swift` (scheduleStreamingPublish and scheduleReasoningPublish); the projection, LiveTurnProjection
 - The live rows: `Conduit/Views/ChatView.swift` (ChatLiveStreamingRow, ChatLiveThinkingRow)
@@ -4589,6 +4766,8 @@ it reconnects · a tapped Reconnect · a Siri voice launch waiting on the
 connection · a Send to Hermes run with Conduit in the background (Siri's
 "Ask ‹chat› in Conduit" included) · the backoff
 itself · the hidden dashboard page's failed load
+
+**Desktop app:** has it: the connection retries with backoff (`desktop/src/main/connection.ts`).
 
 **Code**
 - Reconnects: `Conduit/Services/AppState+Connection.swift` (handleDisconnect, scheduleReconnect, scheduleReconnectAfterFailedSync, reconnectForRetry's failed ticket, quietReconnectAttempts, isRecoveringConnection), `Conduit/Services/AppState+Persistence.swift` (networkPathChanged), `Conduit/Services/AppState+SendMessage.swift` (keepComposerSendForReconnect's drop found by a send), `Conduit/Services/AppState+VoiceConversation.swift` (reconnectNowForWaitingVoice, recoverTransportForCarPlayIfNeeded, handleCarPlaySceneWillEnterForeground, checkQuietTransportOffScreen, clientForVoiceRequest)
@@ -4630,6 +4809,8 @@ Repair's Sign In to Reconnect · Settings' Sign In Again · the saved
 dashboards screen · the switch's captions in 13 languages · the embedded
 browser sign-in (AuthWebView, a different flow) · the bot MCP sign-in
 browser (separate)
+
+**Desktop app:** not applicable: desktop signs in with a password, token or proxy headers; no embedded OAuth browser.
 
 **Code**
 - Browser and setting: `Conduit/Services/NativeOAuth.swift` (NativeOAuthBrowserPreference, NativeOAuthSignInSheet, WebAuthenticationPresenterViewController, NativeOAuthLoginModel.run)
@@ -4676,6 +4857,8 @@ notifications and the Watch go to the relay) · the Private sign-in page
 switch (not needed: it still shows where a native sign-in may start and the
 token's form doesn't read it)
 
+**Desktop app:** has it: session token sign-in (`desktop/src/main/auth.ts`).
+
 **Code**
 - The token as a sign-in: `Conduit/Services/NativeOAuth.swift` (NativeOAuthTokenSet.sessionToken, requestHeader, authorize, sentAccessToken(in:); NativeOAuthAPIClient.requestJSON and mintTicket's asSessionToken; NativeOAuthSession.authorizedRequest, authorizeUpgrade; NativeOAuthLoginModel.signIn(sessionToken:))
 - The form and when it opens: `Conduit/Services/NativeOAuth.swift` (NativeOAuthSignInSheet.step, SessionTokenSignInForm), `Conduit/Services/CustomHeaders.swift` (CustomHeaderStore.sendsAuthorization)
@@ -4710,6 +4893,8 @@ the certificate check (each invalidates a session of its own, in a defer) ·
 location's host pass (a copy of the access token, taken again on each
 rotation; see Maps lookups)
 
+**Desktop app:** not applicable: no native OAuth sign-in on desktop.
+
 **Code**
 - `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
 - Owner: `Conduit/Services/DashboardRequestAuthorizer.swift` (invalidate)
@@ -4735,6 +4920,8 @@ a Cloudflare Access gate) sends a dashboard request to sign in instead.
 with a session cookie, see A connection's first reads) · the background session's
 redirect rule · the dashboard socket's handshake · the login screen's
 signed-in check
+
+**Desktop app:** has it: sign-in and its redirects in the main process (`desktop/src/main/auth.ts`).
 
 **Code**
 - The decision: `Conduit/Services/DashboardSignInRedirect.swift` (isSignIn, redirectIsSignIn, isSignInPath)
@@ -4790,6 +4977,8 @@ prompt), finished on the next foreground: done, its bots read beside its
 sync too · the reconnect tail (not needed yet: it still reads the roster
 first, see Open gaps)
 
+**Desktop app:** has it: the connection's first reads (`desktop/src/main/connection.ts`).
+
 **Code**
 - Reads and the ticket without the page: `Conduit/Services/DashboardTicketBridge.swift` (readsWithoutThePageFirst, mintCookieTicket, sendJSON, writesSent), `Conduit/Services/DashboardBackgroundRequests.swift` (requestJSONWithoutPage and parsedOffMain, readWithoutPage, cookiesForRequestsWithoutPage, requestEncodedJSON)
 - Sent as the connection starts: `Conduit/Services/StartupReads.swift`, `Conduit/Services/AppState+ProfileConfig.swift` (sendStartupReads and startupReadFence, called from mintChatResumeTicket (`Conduit/Services/AppState+ConnectionTimeline.swift`) and connect (`Conduit/Services/AppState+Connection.swift`); taken in readProfiles (`Conduit/Services/AppState+Profiles.swift`), dashboardSessions (`Conduit/Services/AppState+SessionCatalog.swift`) and loadProfileDisplayPreferences)
@@ -4843,6 +5032,8 @@ and the Bot workstreams' `work_*` tools) · live calls' host tools, which
 read the same descriptions from `/voice-tools` · the skills the descriptions
 point to and the notifier README
 
+**Desktop app:** not applicable: the catalog is the notifier's; desktop draws what Hermes sends.
+
 **Code**
 - Descriptions: `notifier/call_tool.py`, `notifier/call_watches.py`, `notifier/phone_tool.py`, `notifier/health_tool.py`, `notifier/location_tool.py` (voice_description too), `notifier/maps_tool.py`, `notifier/inbox_tool.py`, `notifier/notify_tool.py`, `notifier/present_tool.py`, `notifier/show_tool.py`, `notifier/settings_tool.py`, `notifier/room_tool.py`, `notifier/room_asks.py`, `notifier/room_free_busy.py`, `notifier/link_ask_tool.py`, `notifier/work_tool.py`
 - Where the call tools' text continues: `notifier/skills/calling-the-user/SKILL.md`, `notifier/README.md` (Calls from Hermes)
@@ -4874,6 +5065,8 @@ sign-in (the phone's callback, shared with Edit Bot's) and a catalog
 connector's key on its page (Edit Bot's MCP keys stay on `mcp.servers.set_api_key`) · Edit Bot's kept MCP page (a sign-in here opens it signed in) · the Connectors tab's Apps, above the servers (see Apps signed in through Nous Portal) · the Skills tab's Skill Hub (see Skill Hub: browse and install, whose skills come off from their page) · the Capabilities
 captions ("Changes apply to new sessions."; the editor's footers) ·
 README.md's Capabilities line
+
+**Desktop app:** has it: skill and tool switches in Capabilities (`desktop/src/renderer/src/components/CapabilitiesPage.tsx`, desktop#24).
 
 **Code**
 - Installed lists and switches: `Conduit/Services/AppState+Capabilities.swift` (loadCapabilities, toggleSkill, toggleToolset, keepFlip, showKeptCapabilities, currentCapabilitiesOwner, capabilitiesAreCurrent, capabilityRowsAreCurrent, retireCapabilitySnapshot), `Conduit/Services/BotState.swift` (capabilitiesAreKept, capabilityLoadGeneration, capabilitiesOwner: the bot on screen's, which AppState forwards), `Conduit/Services/AppState+HelperModels.swift` (canChangeCapabilities), `Conduit/Services/CapabilityLoadPolicy.swift` (CapabilitySnapshotOwner, CapabilityDetailScope, CapabilityLoadPolicy), `Conduit/Services/CapabilityToggleWrites.swift` (Outcome's taken)
@@ -4936,6 +5129,8 @@ marketplace) · its search field (done: under the title, see Search on a page
 under the tabs) · Check for Updates in the Skills tab's options (done, #2364: Hermes' `/api/skills/hub/updates`, the hub skills a source has a newer version of, listed above the installed skills, then Update Hub Skills) · Text: the page's captions and README.md's Capabilities line
 (done)
 
+**Desktop app:** has it: the Skill Hub (`desktop/src/renderer/src/components/SkillHub.tsx`, desktop#24).
+
 **Code**
 - Models: `Conduit/Models/SkillHub.swift` (HubSkill and repoURL, SkillHubSource, SkillHubSnapshot, SkillHubResults, SkillHubScan)
 - Store: `Conduit/Services/CapabilitiesStore.swift` (loadSkillHub, searchSkillHub, scanHubSkill, installSkill(identifier:name:), which keeps the catalog's name so Remove clears the badge, removeHubSkill, updateHubSkills, isMissingRoute, KeptRoute.skillHub)
@@ -4983,6 +5178,8 @@ search field (done: under the title, see Search on a page under the tabs) · Wat
 needed: no settings) · the notifier (not needed: Hermes' own routes) · Text:
 the pages' captions and README.md's Capabilities line (done)
 
+**Desktop app:** has it: the plugin catalog (`desktop/src/renderer/src/components/PluginsTab.tsx`, desktop#41).
+
 **Code**
 - Models: `Conduit/Models/CapabilityCatalogModels.swift` (PluginCatalogEntry's fields, imageURL, webURL, normalizedTier; CapabilityPluginFilter's tierRank, tiers and categories (keeping a selection a refresh took away, in its place), browse, curatedFeatured, featured)
 - Views: `Conduit/Views/Capabilities/PluginCatalogViews.swift` (PluginCatalogShelf, PluginCatalogBrowsePage, PluginCatalogDetailPage and its openedOn fence, PluginCatalogArtwork, PluginCatalogStyle), `Conduit/Views/RootView.swift` (the Settings sheet closing on a dashboard switch), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the shelf in place of the full list, a search's rows opening the page, PluginStyle.tierPill)
@@ -5027,6 +5224,8 @@ secrets go to `.env` outside it) · Watch, CarPlay and group rooms (not
 needed: no settings) · the notifier (not needed: Hermes' own gateway call) · Text: the form's captions and README.md's
 Capabilities line (done)
 
+**Desktop app:** has it: a plugin's settings form (`desktop/src/renderer/src/components/PluginSettingsForm.tsx`, desktop#45).
+
 **Code**
 - Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
 - Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given in ProfileConfigWriteQueue, fenced by the store's generation; PluginSettings.PartialSave names the keys that landed)
@@ -5055,6 +5254,8 @@ state · a call's background jobs (follow-up, status, session) · Local Live's
 writing-again · the writing haptic · Classic speech (phone, CarPlay and calls
 from Hermes: commentary is said, see Acknowledging work handed to Hermes) ·
 saved chat history (the shared message normalizer)
+
+**Desktop app:** partly: the working line and steps (`desktop/src/renderer/src/components/Transcript.tsx`); the Live Activity and haptics are not applicable.
 
 **Code**
 - Events: `Conduit/Services/StreamEventParser.swift`, `Conduit/Services/AppState+StreamEvents.swift` (handleStreamEvent, the compaction release)
@@ -5088,6 +5289,8 @@ the Lock Screen · a tap on the card, which opens the chat · the plugin's
 CHANGELOG · Conduit on a Mac, which has none of it · a message from a kept
 chat's box (A chat beside the open one), its card kept current from that
 chat's events
+
+**Desktop app:** not applicable: Live Activities are iOS-only.
 
 **Code**
 - App: `Conduit/Services/LiveTurnActivities.swift` (turnStarted, observe, reconcile, register, registerUnregistered), `Conduit/Services/PushNotificationService.swift` (registerLiveActivity), `Conduit/Services/AppState+SendMessage.swift` (the turnStarted call), `Conduit/Services/AppState+KeptChatSend.swift` (sendInKeptChat's turnStarted; its events observed in AppState+BackgroundChats.swift's applyBackgroundChatEvent), `Conduit/Services/AppState.swift` (liveTurnActivitiesRegistrySnapshot; a tap's open), `Conduit/Services/AppState+AppLinks.swift` (`openLinkedSession` and `linkedSessionFailureMessage`, shared with app links and the transcript link of a call kept in a session of its own), `Conduit/Services/AppState+Voice.swift` (one stored with the chat is fetched by `openVoiceCallTranscript`)
@@ -5123,6 +5326,8 @@ count and the expanded block.
 **Siblings:** the collapsed preview · "Show all N lines" · the expanded
 block, drawn in slices · Copy
 
+**Desktop app:** has it: long code blocks fold with Show all (`desktop/src/renderer/src/components/Transcript.tsx`).
+
 **Code**
 - Slicing: `Conduit/Views/Components/MarkdownLargeDocument.swift` (MarkdownCodeSlicer)
 - The block: `Conduit/Views/Components/MarkdownLargeDocumentView.swift` (the code block view, lineStats)
@@ -5150,6 +5355,8 @@ Settings > Pulse's model picker · the Kanban model override's catalog (in the
 task composer and on a task's page) · Delegate fallback models (done: the
 Fallback models editor, #1979) · Subagent routing's route sheet (done: with
 no models yet it says so, and keeps a route's own provider and model, #1979)
+
+**Desktop app:** unchecked: how the model panel shows a catalog that failed.
 
 **Code**
 - The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's catalogStateRows, quickPicksSection, modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
@@ -5191,6 +5398,8 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 (not needed: it picks from the catalog the section reads each time it loads)
 · Text (not needed: no README, docs or Settings caption describes the lists)
 
+**Desktop app:** unchecked: how the model panel shows a catalog still loading.
+
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState+HelperModels.swift` (loadModelProviders' refresh)
 - Bots: `Conduit/Views/BotModelPicker.swift` (load, refreshModels), `Conduit/Views/ModelChooserPage.swift` (the toolbar's Refresh models)
@@ -5222,6 +5431,8 @@ or the profile, not live session settings) · the notifier's session route
 Pulse putting its chat on its model (`notifier/pulse_host.py` _use_model, the same
 `config.set model`) · Text (not needed: no Settings caption or README line
 describes how a pick is saved)
+
+**Desktop app:** has it: the model panel's model, reasoning, Fast mode and YOLO (`desktop/src/renderer/src/components/ModelPicker.tsx`, desktop#18).
 
 **Code**
 - Sheet: `Conduit/Views/ModelPickerView.swift` (currentModelSection, switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
@@ -5259,6 +5470,8 @@ job, voice reply, Helper and Pulse models' (done: one page, #1992) · Edit's
 name) · Text (not needed: no README, docs or Settings caption describes the
 pickers)
 
+**Desktop app:** has it: the model picker's search (`desktop/src/renderer/src/components/ModelPicker.tsx`).
+
 **Code**
 - Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
@@ -5290,6 +5503,8 @@ override's disclosures) · Searching for a model (every match still lists,
 whatever is closed) · Provider logos and quota on provider rows (each
 provider row shows its logo and quota left, #2161) · Text (not needed: no
 caption describes the lists)
+
+**Desktop app:** has it: models grouped by provider (`desktop/src/renderer/src/components/ModelPicker.tsx`).
 
 **Code**
 - Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (providerRow, expandedProviders, openPickedProvider)
@@ -5325,6 +5540,8 @@ on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
 Models & providers line)
 
+**Desktop app:** partly: provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23); no logos on provider rows.
+
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
 - Quota: `Conduit/Models/UsageReport.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
@@ -5354,6 +5571,8 @@ Fallback editors, the subagent route sheet, the Helper, voice job, voice
 reply and Pulse models, the Kanban model override and a custom endpoint's
 model (done: they open the same Model page, #1992) · Text (not needed: no
 caption describes them)
+
+**Desktop app:** gap: no pinned or recent models.
 
 **Code**
 - Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/AppState.swift` (modelQuickPicks), `Conduit/Services/AppState+Dashboards.swift` (updateModelQuickPicks)
@@ -5396,6 +5615,8 @@ Watch, CarPlay and group rooms (not needed: no model settings) · Text
 (done: the Default and Delegate model captions no longer describe two
 menus)
 
+**Desktop app:** partly: the model picker serves the chat, bots and fallbacks (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/components/FallbackModels.tsx`); not one page for every setting.
+
 **Code**
 - Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
 - Hidden models: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible and isHidden, ModelVisibilityEditor, ModelVisibilityEditorPage), shared with `Conduit/Views/ModelPickerView.swift`
@@ -5429,6 +5650,8 @@ folder's Add menu (done, see Workspace files) · the Kanban board's New task
 same look together) · the classic drawer's New Chat and New project (not
 needed: the drawer keeps its own style) · menus' "New …" items (not needed:
 menu rows)
+
+**Desktop app:** partly: New Bot and New Project (`desktop/src/renderer/src/components/NewBot.tsx`, `desktop/src/renderer/src/components/ProjectsPane.tsx`); desktop draws its own buttons.
 
 **Code**
 - The button: `Conduit/Theme.swift` (V2AddGlyph, V2AddButton)
@@ -5479,6 +5702,8 @@ approval's sheet, Group Info and an agent's choices page (done, Eric
 2026-11-07: they didn't match Bots Home's sheets) · lists that already draw their own backdrop, such as Chats, Tasks, Needs you
 and Bots Home (not needed: already in V2's look)
 
+**Desktop app:** not applicable: the iOS Settings look; desktop's settings grid is its own.
+
 **Code**
 - The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings`, `.settingsPrimary` and `.settingsDestructive`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
 - Settings pages brought back to it (#1985): `Conduit/Views/AuxiliaryViews.swift` (AppearanceSettingsDetail's Chat voice button, ChatSettingsDetail's title through ProfileConfigSettingsPage, the connection page's Diagnostics & logs), `Conduit/Views/VoiceSettingsView.swift` (chatVoiceButtonSection, chatVoiceButtonChoices), `Conduit/Views/PredictiveSettingsView.swift`, `Conduit/Views/PulseSettingsViews.swift` (What Pulse remembers), `Conduit/Views/ProviderSettingsViews.swift` (Custom endpoint, Edit endpoint), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (Status)
@@ -5517,6 +5742,8 @@ writes and Pulse's report reads · the Send to Hermes shortcut · the sheet's
 and the instructions' translations · the Watch and CarPlay (not needed: no
 share sheet)
 
+**Desktop app:** not applicable: the iOS share extension; desktop takes drops and pastes (Attaching files).
+
 **Code**
 - Reading the share: `Shared/ShareDraft/ShareDraftCollector.swift` (kind, fileType, offersImageObjectOnly, stageFile)
 - A picture as an image object, and its PNG: `Shared/ShareDraft/ProviderPicture.swift` (loadImage, pngData), used by the share sheet, paste and drop
@@ -5554,6 +5781,8 @@ names.
 composer · the share extension · Ask Hermes About Screen · a recorded voice
 message · the group room composer · the Settings caption for the limit
 
+**Desktop app:** unchecked: what desktop says for a file over the size limit.
+
 **Code**
 - The limit and its message: `Conduit/Views/Components/ComposerAttachments.swift` (AttachmentSizeLimit, tooLargeMessage)
 - Chat composer: `Conduit/Views/Components/ComposerBar.swift`
@@ -5587,6 +5816,8 @@ the socket's keepalive, the network path change's probe and the foreground
 connection check · Settings captions, briefings, the notifier's tool text and
 README (none describes upload size or timing) · the notifier (the upload is
 Hermes' own RPC)
+
+**Desktop app:** has it: files sent in chats (`desktop/src/renderer/src/state/attachments.ts`, desktop#12).
 
 **Code**
 - The send: `Conduit/Services/AppState+SendMessage.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file; a long paste's `title_preview`, `Conduit/Services/HermesClient.swift` sendPrompt, from `Conduit/Views/Components/PastedTextAttachment.swift` titlePreview)
@@ -5626,6 +5857,8 @@ Watch, CarPlay and voice modes (not needed: their own cancel paths, see
 Classic's turn stops) · Text (not needed: no caption or briefing describes
 it)
 
+**Desktop app:** unchecked: whether a read cancelled under a page stays quiet.
+
 **Code**
 - The check: `Conduit/Services/UserFacingError.swift` (isCancellation)
 - Page reads: `Conduit/Services/AppState+ProfileConfig.swift` (loadProfileSettings, loadProfileModelDefaults, loadProfileFallbackModels, loadDelegateFallbackModels), `Conduit/Services/AppState+OneChatTwoDevices.swift` (loadArchivedSessions), `Conduit/Services/AppState+ScheduledJobs.swift` (the jobs and loadCronRuns), `Conduit/Services/AppState+Capabilities.swift` (loadCapabilities), `Conduit/Services/AppState+Projects.swift` (loadProjects, loadProjectSessions)
@@ -5651,6 +5884,8 @@ by Hermes through the notifier (its result note) · the phone sync status line
 · alarms and timers · the wording the notifier's tools give models · Pulse
 (the `pulse_turn` refusal, and a suggestion's Add or Undo the phone store
 refuses)
+
+**Desktop app:** not applicable: phone changes run on the phone.
 
 **Code**
 - Calendar and reminder errors: `Conduit/Phone/EventKitPhoneSource.swift` (PhoneCalendarSourceError, apply, moveDestination)
@@ -5679,6 +5914,8 @@ can't use or hold text without end.
 
 **Siblings:** Gemini Live · Qwen Live (its socket goes through the same writer) · Grok Live · Local Live · GPT-Live (WebRTC) ·
 Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; GPT-Live over the host's audio bridge)
+
+**Desktop app:** unchecked: how live calls send on a slow connection.
 
 **Code**
 - The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift` (maxQueuedAudio, maxQueuedOther, Backlogged); what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
@@ -5717,6 +5954,8 @@ iPhone voice, Hermes speech, the speech server and the standalone playback
 note into it; Classic and the speech test share those and take no steps) ·
 docs/VOICE_SETTINGS.md
 
+**Desktop app:** gap: no live call trace.
+
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
 - Steps: `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`, `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift` (onTrace), `Shared/GrokLive/LiveTurnTrace.swift`, `Shared/GrokLive/GrokLiveProtocol.swift` (turnDetectionSummary), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (traceName, traceInputRoute)
@@ -5752,6 +5991,8 @@ Local Live (Hermes' words, streamed) · Gemini Live, Qwen Live, Grok Live and
 GPT-Live, and Local Live's agent mode, with the Hermes personality (told not to say actions) · the chat
 transcript (never filtered)
 
+**Desktop app:** has it: narrated actions left out of speech (`desktop/src/renderer/src/state/liveCall.ts`).
+
 **Code**
 - The filter: `Conduit/Voice/SpokenTextFilter.swift` (firstActionMarker, closingMarker, speakable)
 - Classic voice: `Conduit/Voice/VoiceConversationController.swift` (spokenTextFilter)
@@ -5782,6 +6023,8 @@ the one-shot fallback a Hermes stream falls back to before any audio, and
 this iPhone's voice it falls back to (see iPhone voice) · the speech-server
 transcription stream (listening, not speaking)
 
+**Desktop app:** unchecked: what desktop does when a speech stream fails.
+
 **Code**
 - Hermes speech: `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream: pathLostError, armFinishIdleTimeout, socketWentSilent, the fallback)
 - Speech server: `Conduit/Voice/SpeechServerSpeech.swift` (SpeechServerSpeechStream)
@@ -5809,6 +6052,8 @@ phone's audio) · Read Aloud, in chats and group rooms · the Hermes speech
 fallback (see Speech stream failures) · Settings' speaking test · Assistant
 speech's captions · docs/VOICE_SETTINGS.md. Not the Apple Watch: it has no
 Classic voice, and its calls speak with their live voices.
+
+**Desktop app:** not applicable: the iPhone's own voice; desktop speaks through Hermes.
 
 **Code**
 - Picking the voice: `Conduit/Voice/IPhoneVoices.swift` (best, pick, installed, the pick per language)
@@ -5853,6 +6098,8 @@ the notifier (not needed: none shows provider settings) · README's
 Notifications and control list and the Settings captions (done) · Helper
 models (their own entry; their pickers read Hermes' catalog as they open) ·
 Profile config saves (the key order, a profile setting)
+
+**Desktop app:** has it: providers and keys in Settings > Models (`desktop/src/renderer/src/components/ProvidersSection.tsx`, desktop#26).
 
 **Code**
 - Service: `Conduit/Services/ProviderSettings.swift` (ProviderEntry and its KeyAccess states, its Settings, keysInUse and signInsInUse, ProviderCatalog.entries, credentialCounts and summary, ProviderSettingsService: share, unshare, override, useShared, removeRows, removeCopies, sign-ins and endpoints)
@@ -5912,6 +6159,8 @@ kept slots) · Providers and keys (the pickers read Hermes' catalog as they
 open; done: a removal names the helpers pinned to the provider) · Watch, CarPlay and group rooms (not needed: no model settings) · the
 notifier's README and CHANGELOG (done) · README's Settings list (done)
 
+**Desktop app:** has it: helper models in Settings > Models (`desktop/src/renderer/src/components/ModelsPage.tsx`, desktop#24).
+
 **Code**
 - Model: `Conduit/Views/HelperModelViews.swift` (HelperModelSlot, HelperModelsSettingsSection, HelperModelsPage, HelperModelPage), `Conduit/Views/GeminiLiveViews.swift` (VoiceReplyModelSetting with its task, providerOnly, baseURL and endpointHost, HelperModelSaveResult, VoiceReplyModelPicks' confirmAsked, chosen and endpointCaption, VoiceJobModelSettingsSection.providerDefaultTitle, VoiceReplyModelPicks' shown, VoiceReplyModelSettingsSection's helper and pickersWait), `Conduit/Views/Components/ModifierHost.swift` (keeps the section's reads running while it shows nothing)
 - App: `Conduit/Services/AppState+HelperModels.swift` (loadHelperModels, keptHelperModels, loadHelperModel, setHelperModel, keepHelperModelWrite, setVoiceReplyModel), `Conduit/Views/PredictiveSettingsView.swift` (predictionsSlotListed), wired in `Conduit/Views/AuxiliaryViews.swift` (helperModelSettings, the `.model` page's trailing section)
@@ -5969,6 +6218,8 @@ not this transcript), Watch, CarPlay and voice calls (no transcript) · Text:
 the line's and the finished notice's words in every language (done); README and docs name no such
 state, and the notifier's README says how a workstream waits (done)
 
+**Desktop app:** has it: the chat's delegate agents above the composer (`desktop/src/renderer/src/components/AgentsDock.tsx`, desktop#25).
+
 **Code**
 - The cards: `Conduit/Models/Models.swift` (DelegateAgentActivity: `merged`, `reconciled`, `adopting`, `activeCount`, `init(rosterRow:)`), `Conduit/Services/StreamEventParser.swift` (the `subagent.*` frames), `Conduit/Services/AppState+DelegateAgents.swift` (the `.delegateAgent` event, `refreshDelegateAgents`, `adoptDelegateRoster` after a resume, tried once more after a failed read, `refusalEndsDelegateAgent` before a refused Steer or Stop ends a card, `keepDelegateAgents`, `backgroundAgentsAwaited`), `Conduit/Services/HermesClient.swift` (`subagentRoster`, steer, interrupt, tail)
 - The waiting line: `Conduit/Views/TranscriptModel.swift` (LiveTurn's `agentsAwaited` and the `.awaitingAgents` row), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine), `Conduit/Views/ChatView.swift` (liveTurn, transcriptRow, the 15 s roster read's task), `Conduit/Views/TranscriptLayout.swift` (estimatedHeight's row)
@@ -6024,6 +6275,8 @@ Bots (not needed: a bot's profile opens the same page) · Watch, CarPlay and
 group rooms (not needed: no settings) · Text: each row's caption and the
 routing's lines (done); README and docs don't describe these settings
 
+**Desktop app:** has it: delegation settings (`desktop/src/renderer/src/components/MemoryPage.tsx`, desktop#27).
+
 **Code**
 - Rows: `Conduit/Views/AuxiliaryViews.swift` (memorySections' Delegation section), saved by ProfileConfigSettingsPage
 - Delegate model and Pause delegation: `Conduit/Views/AuxiliaryViews.swift` (DelegationModelSettings, DelegationPauseSettings)
@@ -6056,6 +6309,8 @@ hermes-conduit-desktop #27) · Profile config saves (the main profile's go
 through `/api/dashboard/plugin-providers`, in the queue) · Watch, CarPlay,
 group rooms and the notifier (not needed: no settings) · Text: the rows'
 captions (unchanged); README and docs don't describe them
+
+**Desktop app:** has it: memory provider and context engine (`desktop/src/renderer/src/components/MemoryPage.tsx`, desktop#27).
 
 **Code**
 - Rows: `Conduit/Views/AuxiliaryViews.swift` (memorySections, MemorySettingsDetail's optionOverrides)
@@ -6098,6 +6353,8 @@ config, in the queue, #1979) · a plugin's own settings (done: `plugins.manage`
 `settings`, Hermes writes the config, in the queue; its secrets go to `.env`
 outside it, see Plugin settings, #2011)
 
+**Desktop app:** has it: profile config saves (`desktop/src/renderer/src/state/profileConfig.ts`, desktop#27).
+
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
 - Voice: `Conduit/Voice/HermesVoiceConfigurationService.swift` (save, saveLiveTranscription, saveSpeechServerDrivesTurns, saveSpeechServerOwnModel, saveSpeechServer, saveVendorSelection, saveProviderSelection; putConfig keeps what it wrote), used by `Conduit/Views/VoiceSettingsView.swift`, `Conduit/Views/SpeechServerSettingsView.swift`, `Conduit/Views/LocalLiveViews.swift`
@@ -6134,6 +6391,8 @@ other ways to start, in Starting a call) · Start a new conversation, the
 chat a live call joins (Starting a call) · the Sherpa wake service (not
 wired into the app, so not needed)
 
+**Desktop app:** gap: no wake phrase.
+
 **Code**
 - Listener: `Conduit/Voice/Wake/AppleSpeechWakeWordService.swift` (makeRecognizers, watchInterruption), `Conduit/Voice/Wake/WakeSpeechLocale.swift`, `Conduit/Voice/Wake/WakePhraseMatcher.swift`
 - When it listens: `Conduit/Services/AppState+WakePhrase.swift`, `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
@@ -6163,6 +6422,8 @@ audio is kept for them.
 rooms; Apple, Apple's new model and Hermes engines) · voice messages ·
 Classic voice utterances
 
+**Desktop app:** has it: composer dictation (`desktop/src/renderer/src/state/voice.ts`, desktop#23); not checked against the phone's length limits.
+
 **Code**
 - Dictation: `Conduit/Voice/ComposerDictationService.swift` (maximumDuration), `Conduit/Voice/DictationRecognizers.swift` (HermesDictationRecognizer.maximumRecordedBytes)
 - Voice messages: `Conduit/Voice/VoiceMessageRecorder.swift` (maximumDuration)
@@ -6190,6 +6451,8 @@ voice_message.engine) · Settings > Voice > Dictation caption (done) ·
 docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · group rooms,
 Watch and CarPlay (not needed, no voice messages) · agent settings catalog
 (not needed, dictation's engine isn't there either)
+
+**Desktop app:** partly: voice messages and dictation share one recorder (`desktop/src/renderer/src/state/useRecorder.ts`); no engine choice.
 
 **Code**
 - Choice: `Conduit/Voice/DictationEngine.swift` (VoiceMessageEngine)
@@ -6222,6 +6485,8 @@ path) · docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · strings (n
 needed, Stop, Cancel, Transcribing and the dictation labels are already
 translated) · Watch and CarPlay (not needed, no composer dictation) · the
 notifier (not needed, dictation is app-side)
+
+**Desktop app:** gap: no Send while dictating.
 
 **Code**
 - Policy: `Conduit/Voice/ComposerDictationService.swift` (ComposerDictation.holdsSendSlot, slotFace, slotTap; the service's settleGrace, settleCanEnd, slotFace and tapSlot; reserveStart and startToken, which let Cancel call off a start; receive clears isTranscribing once words land)
@@ -6257,6 +6522,8 @@ it) · Classic utterances (not needed, not dictation) · Apple and Apple's
 new model (not needed, on the iPhone) · docs/VOICE_SETTINGS.md "Dictate
 into the composer" (done) · Watch and CarPlay (not needed, no composer
 dictation)
+
+**Desktop app:** gap: Hermes dictation isn't kept until transcribed.
 
 **Code**
 - Store and retry policy: `Conduit/Voice/DictationClipStore.swift` (DictationClipStore, DictationUploadRetry; its isTransient, which defers to DashboardTicketBridgeError.isTransient in `Conduit/Services/DashboardTicketBridge.swift` (shared with Tasks' first load), also decides which reconnect renewals retry quietly, see Reconnecting to Hermes, and which Predictive follow-up checks are asked again, see Predictions)
@@ -6296,6 +6563,8 @@ at the switch) · the chat socket (the new profile's client takes over the
 open one) · the notifier's release of an idle chat's claim (#1123) ·
 Sync across devices (the four Sessions bar preferences, as
 `app.main_button_new_chat` does) · the Settings caption (Sessions bar)
+
+**Desktop app:** partly: the chat list's search (`desktop/src/renderer/src/components/ChatList.tsx`); no In messages search.
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles; never reported wider than offered, see A split window's columns fill the window)
@@ -6351,6 +6620,8 @@ the chat pickers that read the same catalog (CarPlay's chat list, the Home
 Screen widget's and the Share extension's pickers, the home voice button's
 Recent menu) · the Archived sheet · README.md
 
+**Desktop app:** has it: project chats in the chat list and Projects (`desktop/src/renderer/src/components/ProjectsPane.tsx`, desktop#40).
+
 **Code**
 - Setting, its default and hidden projects: `Conduit/Models/ChatListSections.swift` (ProjectChatsInChats, retiredDeviceDefaultKey, HiddenChatProjects, kept per dashboard and profile: owner, adoptingUnscoped)
 - The retired older-install Off, cleared at launch: `Conduit/Services/AppState.swift` (init, after the dashboard registry loads)
@@ -6392,6 +6663,8 @@ chat's row on the iPad and Mac (same view) · unread dots (another profile's
 replies) · a project's page, which gathers the same profiles' chats in its
 folder (Whose project page) · VoiceOver · README.md
 
+**Desktop app:** partly: the profile strip picks one profile or every one (`desktop/src/renderer/src/components/ChatList.tsx`); no grouping by profile.
+
 **Code**
 - Settings, merge and groups: `Conduit/Models/AllProfilesChats.swift` (AllProfilesChatsSettings, rows, groups, preview, groupPreviewCount, holdsOpen), `Conduit/Models/ChatListSections.swift` (latestActivity)
 - State and other profiles' rows: `Conduit/Services/AppState+AllProfilesChats.swift` (rowProfile, isOtherProfileRow, isAllProfilesChatsOn, allProfilesIncluded, allProfilesGroupsByProfile, refreshAllProfilesCatalog, runAllProfilesCatalogPolling, listAllProfilesCatalog, startNewChat(inProfile:))
@@ -6428,6 +6701,8 @@ dots on its chats) · the Running line on the same row · Mark as read and
 unread · VoiceOver · the profile strip's dot, the same signal a level up ·
 README.md
 
+**Desktop app:** partly: unread dots on chats (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); not checked on projects.
+
 **Code**
 - Which projects: `Conduit/Services/AppState+V2Shell.swift` (projectsWithUnread), `Conduit/Services/AppState+Projects.swift` (catalogRow: a chat's catalog copy, its own ids before the ids it shares, cached per catalog change)
 - Rows: `Conduit/Views/V2/V2ChatsView.swift` (projectsList, projectRow, V2ProjectRow), `Conduit/Views/SidebarView.swift` (the Projects section, ProjectRow)
@@ -6462,6 +6737,8 @@ row actions; no Projects there) · the Projects list and the Chats list,
 which keep the profile row above them · each chat's composer ("Message
 Atlas…") · unread dots and the Running signal on the rows · the open chat's
 row beside the list · VoiceOver · README.md
+
+**Desktop app:** has it: a project's page (`desktop/src/renderer/src/components/ProjectsPane.tsx`, desktop#40).
 
 **Code**
 - Matching and merging: `Conduit/Models/ProjectAcrossProfiles.swift` (ProjectAcrossProfiles.match, folderKey, lanes, profilesWithChats; ProjectProfileLanes)
@@ -6506,6 +6783,8 @@ Unread dot on projects (the new project's row takes the dot like any
 other) · The + that makes something new (the heading's + is Bots Home's
 glass one) · README.md
 
+**Desktop app:** has it: New Project (`desktop/src/renderer/src/components/ProjectsPane.tsx`, desktop#40).
+
 **Code**
 - Buttons: `Conduit/Views/V2/V2ChatsView.swift` (projectsHeader, canCreateProject, projectsList's empty state, filterMenu), `Conduit/Views/SidebarView.swift` (the drawer's New project button and menu item)
 - Sheet and picker: `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, ProjectFolderPickerSheet: open's count of folders opened, afterFailedNewFolder and its openedSince)
@@ -6542,6 +6821,8 @@ row's swipes and touch-and-hold menu, which a drag must not take over ·
 VoiceOver · pin sync with Hermes (#555) · Sync across devices and its
 Settings caption · CarPlay's chat list · the chat pickers (the Home Screen
 widget's and the Share extension's) · README.md
+
+**Desktop app:** partly: Pin on chat rows (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19); no reordering.
 
 **Code**
 - Order: `Conduit/Models/PinnedChatOrder.swift` (arrange, interleave, orders, mixedOrder, movableOffsets), `Conduit/Services/AppState+PinnedChatOrder.swift` (arrangePinned, movePinnedChats, pinnedChatsForOrdering, pinnedChatOrderSlot), `Conduit/Services/AppState+PinnedChatOrder.swift` (setPinnedChatOrder, setPinnedChatMixedOrder, dropFromPinnedChatOrder), `Conduit/Services/AppState+PinSync.swift` (storePins and removePinnedState call dropFromPinnedChatOrder), `Conduit/Services/AppState.swift` (pinnedChatOrder; deleting a profile clears its own, in the mix too), `Conduit/Services/AppState+PinnedChatOrder.swift` (loadDashboardLists, forgetDashboardLists: per dashboard, Sign Out and Remove clear that dashboard's; adoptLegacyDashboardLists, also from registerDashboard and `Conduit/Services/AppState+SignIn.swift`'s retrySignInFromBackground)
@@ -6580,6 +6861,8 @@ phone.
 (each row's own profile) · the iPad and Mac list (same view) · a deleted
 profile or bot · a dashboard switch
 
+**Desktop app:** has it: starred chats and the Starred filter (`desktop/src/renderer/src/state/chatMarks.ts`, desktop#20).
+
 **Code**
 - Stars: `Conduit/Models/SessionStars.swift` (storageKey(scope:), per profile under the chat's lineage id), `Conduit/Services/AppState+ChatList.swift` (isSessionStarred, setSessionStarred)
 - Per dashboard: `Conduit/Services/AppState+PinnedChatOrder.swift` (loadDashboardLists, forgetDashboardLists, adoptLegacyDashboardLists)
@@ -6605,6 +6888,8 @@ project's chats sheet) · the Bots list · Tasks' scheduled jobs · each row's
 context menu Delete · pinned replies' Unpin (acts at once, no confirmation) ·
 the iPad and Mac list beside the open chat (same views) · text: no Settings
 caption or doc describes it
+
+**Desktop app:** has it: Delete in the row menus (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#19).
 
 **Code**
 - V2 rows: `Conduit/Views/V2/V2ChatsView.swift` (V2SessionActions and V2SessionTrailingSwipes, which holds the Delete swipe; projectRow's swipe actions, the Delete alerts)
@@ -6636,6 +6921,8 @@ reading of the line and its new-plan announcement · iPhone, iPad and Mac
 (the keyboard rule differs on a Mac and with a hardware keyboard) · the
 classic shell (never reports the composer's focus, so the line never
 keeps to itself there)
+
+**Desktop app:** has it: the plan line (`desktop/src/renderer/src/components/PlanDock.tsx`, desktop#25).
 
 **Code**
 - Model: `Conduit/Services/ChatCardsModel.swift` (present, announcement, planRetired), `Conduit/Services/AgentPlan.swift` (AgentPlanTranscript, AgentPlanWindow)
@@ -6672,6 +6959,8 @@ step number · marks picked by `markColor(on:)` (text selection on a sent
 bubble, the accent swatch check) · the primary buttons (the sign-in flow's
 Continue and Sign in, Settings' Save and Apply), white only in light mode
 
+**Desktop app:** has it: the accent color kept readable in light and dark (`desktop/src/renderer/src/state/appearance.ts`, desktop#29).
+
 **Code**
 - Fill: `Conduit/Theme.swift` (conduitUserBubble, ConduitAccentChoice.markColor)
 - Surfaces: `Conduit/Cards/RichInfoCardViews.swift` (RichOptionColumn, RichStepTimer), `Conduit/Cards/RichCardViews.swift` (the place row marker), `Conduit/Views/AuxiliaryViews.swift` (NotificationSetupCommand), `Conduit/Views/LiveVoiceSetupSheet.swift` (the Gemini and Qwen steps)
@@ -6706,6 +6995,8 @@ runs `conduit_maps` itself, so navigate's Go button shows where the user is;
 see Bot workstreams) · the push extension's own App Transport Security block (the
 app's, word for word) and its host pass (kept current at each connect and each
 native sign-in refresh)
+
+**Desktop app:** not applicable: maps lookups are answered by the phone's Location Push extension.
 
 **Code**
 - Engine: `Shared/Location/MapsEngine.swift` (MapsRun, MapsDistance, MapsKit, MapsDeadline)
@@ -6765,6 +7056,8 @@ approved picture ride the same sealed upload) · conduit_phone's `fresh` status
 "A fresh reading" and the using-calendar skill) · the phone's state with each
 message (`sharing.turn_status`; see Where a message was sent)
 
+**Desktop app:** not applicable: phone data comes from the phone.
+
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass; approveFromCard, for Pulse; sendStatusOnNextPass), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause), `Conduit/Services/AppState+PhoneSync.swift` (handlePhoneChangesPush asks for the status)
 - A fresh status: `notifier/phone_tool.py` (_refresh, FRESH_WAIT_S, FRESH_SETTLE_S; PHONE_SCHEMA's `fresh`), `notifier/phone_store.py` (last_contact)
@@ -6822,6 +7115,8 @@ with Settings > Pulse's Deadlines from Shortcuts switch (pulse_report,
 pulse_brief, pulse_followup, pulse_memory) · the plugin's
 README and CHANGELOG · the privacy policy (notifier docs/privacy) · the phone
 features' sealing and 409 handling (Phone data sync with the host)
+
+**Desktop app:** not applicable: Shortcuts is iOS-only.
 
 **Code**
 - Action: `Conduit/Intents/LogToHermesIntent.swift`, `Conduit/Services/AppState+ShortcutInbox.swift`; a removed or signed-out dashboard's inboxes: `Conduit/Services/AppState+Dashboards.swift` (removeDashboard, signOutDashboard, ShortcutInboxQueue.forgetDashboard), `Conduit/Services/AppState+Connection.swift` (disconnect)
@@ -6881,6 +7176,8 @@ own chat list) · Chat sources (Kanban
 workers and hidden sources stay out, as the snapshot already leaves them) ·
 README.md
 
+**Desktop app:** not applicable: Siri, Spotlight and Shortcuts are iOS-only.
+
 **Code**
 - Entities: `Conduit/Intents/ConduitChatEntity.swift` (ConduitChatEntity, IndexedEntity on iOS 18; ConduitChatCatalog; ConduitChatEntityQuery; OpenConduitChatIntent; ConduitChatSpotlight)
 - Phrases: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), `Conduit/AppShortcuts.xcstrings`
@@ -6918,6 +7215,8 @@ or dismisses them out loud like other changes) · Phone data sync with the host
 delete actions and description, the `phone-contact-edits` capability, README,
 CHANGELOG and privacy policy · Pulse's birthdays (read the picked people; no
 change needed)
+
+**Desktop app:** not applicable: the phone's contacts.
 
 **Code**
 - Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPreferences.contactsEdit; PhoneChange.Kind.addContact, updateContact, deleteContact; PhoneChange.contactID; PhoneChangeFields.contact, personName)
@@ -6958,6 +7257,8 @@ hour a run waits), the conduit_phone tool's description and results, the
 `phone-shortcuts` capability, README, CHANGELOG and privacy policy · Phone
 data sync with the host (the same sealed upload and exchange) · Phone change
 errors (a run's failures reach Hermes as the change's note)
+
+**Desktop app:** not applicable: Shortcuts is iOS-only.
 
 **Code**
 - Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneShortcut; PhoneSyncPreferences.shortcuts, shortcutsRunWithoutAsking, shortcutList, listedShortcut; PhoneChange.Kind.runShortcut; PhoneChangeResult.result)
@@ -7002,6 +7303,8 @@ notifier's phone store (`photos`, `photo_files`, `send_photo`, the files kept
 a week), the conduit_photos tool and its description, the `phone-photos`
 capability, conduit_first's line, README, CHANGELOG and privacy policy
 
+**Desktop app:** not applicable: the phone's photo library.
+
 **Code**
 - Library and captions: `Conduit/Phone/PhonePhotoLibrary.swift` (PhonePhotoSource, SystemPhotoLibrary: Vision labels and text, places, thumbnail, jpeg; PhonePhotoAlbum)
 - Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPreferences.photos; PhoneChange.Kind.sendPhoto, photoID; PhoneChangeFields.taken, place; PhoneSyncLimits.photosPerPass, photoFileBytes)
@@ -7039,6 +7342,8 @@ line ("Home · Searching the web") · the Live Activity's tool line · the
 notifier's twin category list · Settings > Chat's Tool cards and Keep tool cards expanded switches (they show, hide and open rows; their words follow the row) ·
 the run's summary, its Explain these steps menu (and a lone step's Explain this step), and its switch, step limit and captions in Settings > Chat · /btw ·
 Show thinking in the run's menu and in its reply's ⋯, and Settings > Chat's Thinking choice (Show in every chat, On request, Off) and its caption
+
+**Desktop app:** has it: steps, their runs and summaries (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#28, desktop#29).
 
 **Code**
 - Rows and words: `Conduit/Views/ChatActivityRows.swift` (ChatStepStyle, ChatStepLabel, ChatStepSubject, ChatStepGroupHeader, ChatWorkingLine), `Conduit/Views/ChatView.swift` (ToolCard, SettledToolCardContent), `Conduit/Views/TranscriptModel.swift` (rows: a step folded into its run draws no row; the working line's tool and timer, TranscriptWorkingLine)
@@ -7088,6 +7393,8 @@ screen card cut to its limit · a call turn cut to the plugin's limit · group
 room mention links · Bot Chat mention routing · Local Live's spoken and shown
 split · Read Aloud and live read-back · chat list previews and quotes
 
+**Desktop app:** has it: code fences (`desktop/src/renderer/src/components/Markdown.tsx`).
+
 **Code**
 - The rule: `Conduit/Views/Components/MarkdownText.swift` (MarkdownFence, MarkdownParser)
 - Long replies: `Conduit/Views/Components/MarkdownLargeDocument.swift`
@@ -7119,6 +7426,8 @@ copy goes and when it is removed.
 Artifacts page's opener · the gateway media resolver · the Folder's Quick Look
 and Share or Save · the Markdown reader's Open In and Share copy
 
+**Desktop app:** unchecked: how files are prepared for preview and saving.
+
 **Code**
 - Media previews: `Conduit/Views/Components/MediaPreviewPresenter.swift` (stage, stagingRoot, removeDirectory), `Conduit/Views/Components/MarkdownText.swift`, `Conduit/Views/Components/GatewayMediaDataURLResolver.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
 - Folder: `Conduit/Views/V2/V2WorkspaceViews.swift` (quickLook), through the media preview presenter
@@ -7145,6 +7454,8 @@ its author, `waiting on Eric` once the author has answered.
 **Siblings:** this repo's label workflow · the notifier's copy of it ·
 CONTRIBUTING.md's Review labels section here and in the notifier · docs/CI.md's
 workflow table
+
+**Desktop app:** not applicable: repository process.
 
 **Code**
 - Workflow: `.github/workflows/contributor-label.yml`
@@ -7174,6 +7485,8 @@ HTTPS & certificates action on a certificate failure ·
 docs/OWN_VOICE_SERVER.md (names Tailscale only as a way to reach the speech
 server, never Tailscale SSH)
 
+**Desktop app:** not applicable: the phone's setup guide; desktop's README covers its own.
+
 **Code**
 - Assistant: `Conduit/Services/ConnectionSetupFlow.swift`, `Conduit/Views/ConnectionSetupView.swift`, `Conduit/Views/ConnectionSetupForm.swift`, `Conduit/Views/Login/LoginScreens.swift`
 - Docs: `README.md`
@@ -7199,6 +7512,8 @@ Install this server's certificate step (the check, the saved profile, the
 Ask Hermes fingerprint prompt) · the
 website's setup page (When it doesn't connect, in scripts/build_site.py in
 hermes-conduit-website)
+
+**Desktop app:** unchecked: desktop's sign-in failure messages against the phone's.
 
 **Code**
 - Classification and copy: `Conduit/Services/ConnectionFailure.swift` (ConnectionFailureClassifier, TLSTrustDiagnosis, userTitle, userMessage, helpDestination)
@@ -7227,6 +7542,8 @@ the models they call.
 
 **Siblings:** this repo's reviewer workflow and opencode config · the
 notifier's copies of both · CONTRIBUTING.md's Fork PRs section in both repos
+
+**Desktop app:** not applicable: repository process.
 
 **Code**
 - Workflow: `.github/workflows/opencode-review.yml` (the reviewer matrix, secrets and prompt)
@@ -7274,6 +7591,8 @@ reboot.
 the overnight timer on the Hermes host (`scripts/nightly-timer/README.md`) · docs/CI.md's workflow table and the Nightly paragraph · docs/RELEASE_WORKFLOW.md's
 rule that every job of a candidate's dispatched Nightly passes
 
+**Desktop app:** not applicable: the iOS CI.
+
 **Code**
 - Rerun: `.github/workflows/nightly-rerun.yml`, `scripts/tests/test_nightly_rerun.py` (the decision against fixture job lists, and that it still follows Nightly's name and `fail-fast: false` matrices)
 - Nightly: `.github/workflows/nightly.yml`, `scripts/tests/test_nightly_rerun.py` (NightlyOvernightTests: the backup cron's skip, the title, the cron after the timer)
@@ -7303,6 +7622,8 @@ nightly partition, which runs everything Smoke leaves out · how a PR's newer
 run supersedes its older ones (the concurrency group and the plan job's
 cancel step; the reviews supersede their own way, in opencode-review.yml) ·
 docs/CI.md, its Budget section included
+
+**Desktop app:** not applicable: the iOS CI.
 
 **Code**
 - Lists and caps: `scripts/smoke-suite.json`; validation and the change's own classes: `scripts/plan-tests.py` (`smoke`); the per-class times it charges against `changed_budget_s`: `scripts/test-timings.json`, refreshed from a nightly's unit shard logs by `scripts/refresh-test-timings.py` (its tests `scripts/tests/test_refresh_test_timings.py`)
@@ -7349,6 +7670,8 @@ sheet from the sign-in screen (first launch and the saved dashboards list) ·
 README.md (Cloudflare Access) · the notifier's support page · the website's
 setup page (setup/index.html in hermes-conduit-website) · the Hermes section (done, #2364: the host's version, whether it's behind and what's new, Check for Updates and Update Hermes, Hermes Desktop's updater) · the plugin update (not needed: the plugin's own notice and update) · Pair a Computer (its own entry, Pairing a computer)
 
+**Desktop app:** not applicable: desktop's Settings lists its hosts in the title bar and sign-in.
+
 **Code**
 - Rows and page: `Conduit/Views/AuxiliaryViews.swift` (SettingsHome: v2Groups, classicGroups and their row views, GatewaySettingsDetail and its title)
 - Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState+ChatSupport.swift` (refreshGatewayDiagnostics), `Conduit/Services/AppState+GatewayRestart.swift`
@@ -7390,6 +7713,8 @@ describes it (the page's captions, README.md's feature list, the desktop
 app's pairing panel) · Watch, CarPlay, widgets and the notifier (not needed:
 nothing there signs a computer in)
 
+**Desktop app:** has it: the computer shows the QR code the phone scans (`desktop/src/main/pairing.ts`, desktop#8).
+
 **Code**
 - `Conduit/Services/ComputerPairing.swift` (ComputerPairingLink: the QR code's `conduit://pair?v=1&m&i&t&k&e`; ComputerPairing: payload, seal, words, send, and proxyHeaders(extra:access:), which merges a dashboard's extra headers with its Cloudflare token), `Conduit/Services/BIP39Words.swift`
 - `Conduit/Services/AppState+ComputerPairing.swift` (ComputerPairingChoice.choices: which saved dashboards go and how, with their proxy's headers; routeComputerPairingLink), `Conduit/Services/AppState.swift` (pendingComputerPairing), `Conduit/ConduitApp.swift` (onOpenURL and the openURL action), `Conduit/Views/RootView.swift`
@@ -7418,6 +7743,8 @@ saved as another.
 (Reconnect Now) · Repair's sign-in (browser and native OAuth) · Settings'
 Sign In Again · the two alerts' text (no Settings caption, README or doc
 describes this case)
+
+**Desktop app:** partly: several hosts (`desktop/src/main/hosts.ts`); not checked how another saved host's address is edited.
 
 **Code**
 - Edit Connection: `Conduit/Services/ConnectionSetupApplication.swift` (perform, addressBelongsToDashboard), `Conduit/Views/AuxiliaryViews.swift` (the Settings not applied alert)
@@ -7454,6 +7781,8 @@ the lock only) · Combine Dashboards (the launch's unlock signs the other combin
 dashboards in quietly once the one on screen has connected; a combined one the
 unlock doesn't cover waits for a tap, see Combined dashboards)
 
+**Desktop app:** gap: no Windows Hello or Touch ID lock; the sign-in is encrypted by the system keychain.
+
 **Code**
 - `Conduit/Services/AppState+SignIn.swift` (restoreSavedCredentials, faceIDUnlockHolds, relockFaceID, clearSavedPassword), `Conduit/Services/AppState.swift` (faceIDUnlockedDashboards, faceIDUnlockedThisLaunch, faceIDRelockedDashboards), `Conduit/Services/AppState+Connection.swift` (disconnect, through clearSavedPassword)
 - Tests: `ConduitTests/OfflineChatCacheTests.swift` (testOneFaceIDUnlockHoldsWhileTheServerCantBeReached, testOneFaceIDUnlockOpensEverySavedDashboardForTheLaunch)
@@ -7483,6 +7812,8 @@ shortcuts · Log to Hermes (not needed: it queues offline and drains on connect)
 the background (Health, places, phone sync, pushes) · the on-screen retry of a
 sign-in that failed off screen · the combined group (one row on the list) ·
 README.md
+
+**Desktop app:** unchecked: which host a launch signs in to.
 
 **Code**
 - Launch: `Conduit/Services/AppState+Connection.swift` (beginLaunchSignIn, releaseLaunchDashboardChoice, holdLaunchDashboardChoiceOnScreen), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch), `Conduit/Services/AppState+WatchCalls.swift` (setWatchVoiceCallActive), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase)
@@ -7527,6 +7858,8 @@ covers the group) · a push from a combined dashboard (opens through its kept
 connection: the notification's switch takes it up) · the Combine Dashboards caption · Artifacts (done: the page lists every combined dashboard's through its kept connection, All on or off, a chip each; see Artifacts) · New Bot (done: its sheet picks the dashboard it's made on) · README.md · the
 Watch, CarPlay, calls and Siri (not needed: they act on the dashboard on
 screen, and a switch is unchanged for them)
+
+**Desktop app:** gap: no combined dashboards.
 
 **Code**
 - `Conduit/Services/AppState+CombinedDashboards.swift` (KeptDashboardRuntime, setDashboardCombined, signInCombinedGroupNow, letGoKeptRuntimesOutsideTheGroup, keepOutgoingDashboardRuntimeIfCombined, keep, takeKeptDashboardRuntime, keptClient, letGoCombinedDashboard, dropAllKeptDashboardRuntimes, dropKeptDashboardRuntimesAfterGrace, connectOtherCombinedDashboards, combinedDashboardSignsInQuietly, signInCombinedDashboardQuietly, combinedDashboardStatus, troubleAfterCombinedSignIn, noteCombinedDashboardFailed, combinedDashboardsCanConnect, standDownCombinedDashboardRetry, clearCombinedDashboardTrouble), `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.combined, combinedGroupIDs), `Conduit/Services/AppState+Dashboards.swift` (runDashboardSwitch, signOutDashboard, removeDashboard, stageDashboardMove, DashboardRuntimeOwner), `Conduit/Services/AppState+Connection.swift` (connect reusing a kept client, then the rest of the group), `Conduit/Services/AppState+SignIn.swift` (attachClientEvents, makeDashboardBridge, unlockCombinedDashboardWithFaceID), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase), `Conduit/Views/SavedDashboardsView.swift` (combineDashboards, the row status), `Conduit/Views/V2/V2TopBar.swift` (DashboardSwitchMenu), `Conduit/Services/AppState+OpenChat.swift` (openNotificationTargetOutcomeRouted's switch), `Conduit/Services/AppState+NeedsYou.swift` (readOtherCombinedDashboardsNeedsYou, combinedDashboardBadge), `Conduit/Services/NeedsYou.swift` (NeedsYouItem.hostKey, NeedsYouStore.everyItem and applyOther's heldElsewhere: one wait listed once), `Conduit/Views/NeedsYouViews.swift` (the banner's count of the rest), `Conduit/Views/CombinedDashboardBadge.swift` (and its Mark), `Conduit/Services/AppState+CombinedChats.swift` (CombinedDashboardChats, readOtherCombinedDashboardsChats (and its cron ids: CombinedDashboardChats.cronIDs, cronSessionsPath's limit), otherCombinedDashboardsChats, chatListCombinedChats, CombinedProfileChip, combinedProfileStrip, combinedHermesGroups, oneChipPerHermes, otherCombinedDashboardProfiles, switchForCombinedProfile, combinedProfileStillListed, read by `Conduit/Views/V2/V2TopBar.swift`'s V2ProfileStrip groupChips and otherChip, combinedChatDashboard, combinedChatBadge, openCombinedChat, combinedChatTarget), `Conduit/Models/Models.swift` (SessionSummary.combinedDashboardID), `Conduit/Views/V2/V2ChatsView.swift` (listed, combinedDashboardGroups and combinedDashboardSection, the row's badge, hint and actions, sessionMatches, the pull), `Conduit/Views/V2/V2SessionRow.swift` (V2DashboardBadge), `Conduit/Services/AppState+CombinedBots.swift` (CombinedDashboardBots, CombinedDashboardBotsSection, CombinedBotsHomeItem, CombinedBotsHomeOrder, combinedBotsHomeItems, oneCopyPerHermes, combinedHermesEvidence (a kept dashboard's cronIDs, issue 2761), oneHermesGroups, settleCombinedBotsHomeOrder, moveCombinedBot, readOtherCombinedDashboardsBots, seedCombinedDashboardBots, otherCombinedDashboardsBots, openCombinedBot, switchToCombinedDashboardUntilSettled, combinedDashboardGlows, refreshCombinedDashboardBotWork, combinedBotStatus, combinedBotChatWaits, combinedBotChatWaitThePillOpens, combinedBotsHomeBot, ownHermesBot, openCombinedBotOverview), `Conduit/Views/V2/CombinedDashboardBotsView.swift` (CombinedDashboardBotPortrait, a cell of `Conduit/Views/V2/V2BotsHome.swift`'s BotPortraitGrid, whose BotPortraitCell carries dashboardBadge, in `Conduit/Views/BotRosterView.swift` mixedGrid), `Conduit/Services/AppState+CombinedPulse.swift` (CombinedDashboardPulse, PulseDashboardChip, readOtherCombinedDashboardsPulse, pulseDashboardChips, openCombinedPulse), `Conduit/Views/V2/PulseDashboardChips.swift` (on top of `Conduit/Views/V2/V2PulsePage.swift`'s pageScaffold, read in its minute loop), `Conduit/Views/Login/LoginScreens.swift` (LoginDashboardsScreen.listedRows, groupRow, rowFrame)
@@ -7580,6 +7913,8 @@ cut · the demo videos run (its scenes, the dashboards' scripts, the
 director and the scene cut) · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
+**Desktop app:** not applicable: App Store assets.
+
 **Code**
 - Workflow: `.github/workflows/app-store-screenshots.yml` (both jobs run on `xcode-27` and select Xcode through `scripts/ci-select-xcode.sh`, see Smoke selection; their own device lookups keep only the runtime a fallback Xcode pins in `SIMULATOR_OS` and `WATCH_SIMULATOR_OS`)
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
@@ -7616,6 +7951,8 @@ room message is the room's own text, not a Hermes row) · Hermes Desktop
 (upstream) · a turn the model's safety filter refused (Hermes keeps the message,
 greyed, out of the model's context: done, #2353; Pulse needs nothing, as it
 reads only active rows) · text that describes it (none)
+
+**Desktop app:** has it: a sent message's text, pictures and "Replying to" card (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#16).
 
 **Code**
 - A refused turn's message: `Conduit/Services/HermesClient.swift` (normalizeMessages' isRefusedRow), `Conduit/Models/Models.swift` (ChatMessage.contentRefusedDisplayKind, isContentRefused), `Conduit/Views/ChatView.swift` (ContentRefusedBubble, ContentRefusedMessageContent, and UserAttachmentPreviews, shared with the sent bubble)
@@ -7655,6 +7992,8 @@ show no message pictures) · the cards drawn in web pages, which share the
 memo and the transcript's rule for rows growing above the reader (see Cards
 drawn in web pages) · text that describes it (none today: no Settings
 caption, briefing or doc says how pictures load)
+
+**Desktop app:** has it: pictures in messages (`desktop/src/renderer/src/components/Picture.tsx`, desktop#15).
 
 **Code**
 - Attachments: `Conduit/Views/ChatView.swift` (UserImageAttachmentPreview and its isTile and onAccent; UserMessageContent.attachmentViews, which grids two or more), and a room's in `Conduit/Views/GroupChatView.swift` (GroupMessageFiles, the roomFilePictures and roomFileReads environment, GroupRoomImageGallery's `files`), read by `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (Source.roomFiles)
@@ -7697,6 +8036,8 @@ same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
 opens videos, audio and documents · Share's Save to Hermes Album (see Photos
 Hermes can search) · README.md · text that describes it (the
 pictures' VoiceOver hint "Opens full screen with save and share")
+
+**Desktop app:** has it: pictures open larger (`desktop/src/renderer/src/components/Picture.tsx`, desktop#15).
 
 **Code**
 - Viewer and presenting it: `Conduit/Views/Components/ImageGalleryViewer.swift` (ImageGalleryViewController, ImageGalleryPageController, ImageGalleryDecoder, ImageGalleryItem, ImageGallery, ImageGallerySource, the `imageGallery` environment value), `Conduit/Views/Components/MediaPreviewPresenter.swift` (presentGallery)
@@ -7787,6 +8128,8 @@ for review cards, the review sheet, the kept rounds route (`/boards/reviews`),
 the marks' tap and its note, the chat's open-reviews note, the drawing-boards
 skill's Showing options recipe, and Bot workstreams (the marks go to the
 review's workstream through work_send's path)
+
+**Desktop app:** has it: conduit_show boards and show_on_screen cards (`desktop/src/renderer/src/components/BoardView.tsx`, desktop#22, desktop#50).
 
 **Code**
 - Schema, shared byte for byte: `notifier/cards/card-schema.json`, `notifier/cards/card-vectors.json`, copied to `Conduit/Cards/card-schema.json` and `ConduitTests/Fixtures/card-vectors.json` (`scripts/check-card-schema.py`); normalized the same way in `notifier/card_schema.py` (normalize_cards with notes, normalize_next, normalize_layout, the Markdown) and `Conduit/Cards/RichCardSchema.swift` (prepared, cell, followUps)
@@ -7884,6 +8227,8 @@ Artifacts and the Folder · text that describes it (README.md's Chat list: the
 since Conduit sends no prompt from a page; the stand-in `window.hermes` only
 keeps a Desktop widget's buttons from throwing)
 
+**Desktop app:** has it: pages Hermes draws (`desktop/src/renderer/src/components/PagePreview.tsx`, `desktop/src/main/pages.ts`, desktop#38).
+
 **Code**
 - HTML previews: `Conduit/Views/Components/HTMLPreviewBlock.swift` (HTMLPreviewBlock, heightKey, HTMLPreviewPage.inlineViewportHeight and inlineLayoutHeight, HTMLPreviewDocuments and removeAll, wiped with the saved chats in `Conduit/Services/AppState+ChatList.swift` wipeOfflineChatCache (that dashboard's pages only) and deleteSavedChats; a read's outcome: `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` GatewayMediaRead, isRefusal and read(for:), from AppState.gatewayMediaRead; test in `ConduitTests/HTMLPreviewDocumentsTests.swift`, sheetPage, HTMLPreviewPage.placeholderHeight, SheetPage, clampedInlineHeight, maximumInlineHeight: the 900 pt a preview draws to in a message, full screen showing the rest, since previews shipped; isCutInline, CutFootFade, bridgeScript); full screen from Artifacts and the Folder: `Conduit/Views/V2/V2ArtifactsViews.swift`, `Conduit/Views/V2/V2WorkspaceViews.swift` (OpenPage); the `::preview` grammar, shared with Desktop cards: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, isHTML)
 - Diagrams and formulas: `Conduit/Views/Components/MarkupBlock.swift` (MarkupBlock, heightKey(for:), placeholderHeight(for:))
@@ -7934,6 +8279,8 @@ notifier's push text and the README line that describes it · `::preview`
 (the same grammar, see Cards drawn in web pages) · the plugin's own
 `::conduit-board` (see Cards Hermes shows)
 
+**Desktop app:** unchecked: how desktop draws cards made for Hermes Desktop.
+
 **Code**
 - The grammar: `Conduit/Views/Components/TranscriptDirectives.swift` (segments, rewriting, naming, DesktopCardDirective; also built into the Watch app, `project.yml`)
 - The card, its details sheet and the read of hermes-rich-ui's card: `Conduit/Views/Components/DesktopCardBlock.swift` (DesktopCardBlock, DesktopCardSheet, DesktopCardContents, DesktopCardContent, PluginRead, TranscriptDirectives.readable), through `Conduit/Views/Components/GatewayMediaDataURLResolver.swift` (connectedDashboardBridge, pluginRead)
@@ -7969,6 +8316,8 @@ memory or a skill, and the Chat setting that shows or hides them
 chat, live and in the offline copy · chats, project chats, Bot Chat and group
 rooms (all the dashboard's chats) · Hermes' messaging platforms · the
 notifier's live read of the setting for chats already open
+
+**Desktop app:** has it: review cards in the chat (`desktop/src/renderer/src/components/Transcript.tsx`, desktop#28).
 
 **Code**
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail fields, `display.memory_notifications`), `Conduit/Models/Models.swift` (ProfileDisplayPreferences.showReviews), `Conduit/Services/AppState+ProfileConfig.swift` (loadProfileDisplayPreferences, setProfileSetting)
@@ -8007,6 +8356,8 @@ Linked Rooms) · Settings and its pages · the Profiles and All
 profiles sheets · the Live Activity's color · Settings captions and
 model-facing text (none describe the glow)
 
+**Desktop app:** gap: no profile glow color.
+
 **Code**
 - Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState+ProfileSettings.swift` (profileGlowColors, setProfileGlowColor), `Conduit/Services/AppState+OpenChat.swift` (conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
 - Backdrop: `Conduit/Theme.swift` (ConduitBackdrop; its drift, see Backdrop drift), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
@@ -8038,6 +8389,8 @@ the same view) · the working line's breathing (same pause rules) · the Setting
 sheets, pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
 backdrop drift; its call bars run their own timeline) · Settings captions and
 model-facing text (none describe it)
+
+**Desktop app:** not applicable: the phone's moving backdrop.
 
 **Code**
 - `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropGlows, ConduitBackdropMotionPolicy, ConduitBackdropMotionClock), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, V2LegacyEdgeBar), `Conduit/Views/ChatView.swift` (ConduitBreathing)
@@ -8072,6 +8425,8 @@ named by the notifier's `bot_name` in the same order, the main bot's by its Cond
 name (`mainProfileNamesByDashboard`) · the text that describes them (the
 rename sheet's message, the Profiles row caption in Settings, README.md's
 profiles line)
+
+**Desktop app:** gap: profiles can't be renamed from desktop.
 
 **Code**
 - Names: `Conduit/Services/AppState+ProfileSettings.swift` (profileDisplayName, adoptProfileBotTitles, adoptProfileHermesNames, renameProfile, saveDefaultProfileName), `Conduit/Services/AppState+BotMode.swift` (updateBot), `Conduit/Services/ProfileAppearanceStore.swift` (the main profile's name, device names, and each dashboard's remembered titles and display names)
@@ -8123,6 +8478,8 @@ text that describes it (none: no caption or doc mentions the motion) ·
 not needed: the live voice modes' Use switches, which Voice never shows (its
 mode picker shows a mode's section only once that mode is picked)
 
+**Desktop app:** not applicable: iOS Settings rows.
+
 **Code**
 - Motion: `Conduit/Theme.swift` (ConduitMotion.ease)
 - Enable voice on this device shows the saved switch, not the live state that reads off while reconnecting: `Conduit/Services/AppState+VoiceConversation.swift` (activeProfileVoiceSwitch), `Conduit/Views/AuxiliaryViews.swift` (VoiceSettingsRoute)
@@ -8150,6 +8507,8 @@ summaries' `/side-question` (the hidden /btw on older plugins) · the composer's
 route, its README section and the CHANGELOG · the Predictive page's captions ·
 Helper models (the fast model is the Conduit predictions slot) · a board's
 follow-ups (the same chip, see Cards Hermes shows)
+
+**Desktop app:** has it: Predictive replies and follow-ups (`desktop/src/renderer/src/components/PredictiveSettings.tsx`, desktop#46, desktop#48, desktop#49).
 
 **Code**
 - Model and store: `Conduit/Services/Predictive.swift` (Predictive, PredictiveStore, PredictiveComposerRequest, PredictiveFollowUpState)
@@ -8210,6 +8569,8 @@ not needed: Watch and CarPlay (no group rooms there), Linked Rooms (its rooms us
 this view, so the branch takes it with main) · text: no caption or doc gives
 the width or the color
 
+**Desktop app:** has it: bot messages in group rooms (`desktop/src/renderer/src/components/RoomView.tsx`).
+
 **Code**
 - `Conduit/Views/GroupChatView.swift` (GroupMemberBubble: avatarSize, trailingRoom, groupMemberBubbleSurface, mediaResolver; GroupMemberHeaderAvatar; GroupRespondingRow; GroupUserBubble; DesktopGroupChatView's shortened caption)
 - A job's post: `Conduit/Services/GroupChatModels.swift` (GroupEvent.isScheduledPost, workUpdateText), `Conduit/Views/GroupChatView.swift` (GroupEventRow, sameSpeaker); tests `ConduitTests/GroupChatModelsTests.swift` (testAScheduledPostIsNotTheUsersAndAWorkUpdateShowsItsLines)
@@ -8246,6 +8607,8 @@ Rooms: a linked person's post opens a thread of its own on the home
 (the notifier's room posts, its post key as the thread), so a routed room
 routes each (notifier #579) · a reply from the room's Reply button,
 sent in the thread it answers
+
+**Desktop app:** gap: no Who answers choice in a room.
 
 **Code**
 - Wire: `Conduit/Services/HermesClient.swift` (groupsState's context, groupsContext, groupsContinue), `Conduit/Services/GroupChatModels.swift` (GroupRoomContext with newerRouting, GroupRouting, GroupDriverStatus maxContinues, routingModes, roomContext, memberActivity, maxRounds, GroupMemberActivity)
@@ -8293,6 +8656,8 @@ reads nothing here), Hermes Desktop's read-only group sheet in Conduit
 (`DesktopGroupChatView`: it shows a legacy group's messages only) ·
 Linked Rooms: its rooms use this view, so the branch takes it with main ·
 Group Settings' Who answers (its Lead section's crown marks the lead's pill) · README.md's group chats line names the crown
+
+**Desktop app:** partly: room state read from groups.state (`desktop/src/renderer/src/state/groups.ts`); not checked against the phone's member statuses.
 
 **Code**
 - Statuses: `Conduit/Services/GroupChatModels.swift` (GroupMemberStatus; GroupRoomTurns.memberStatuses, currentDiscussions, latestDiscussionSettled, isVisible, leadKey)
@@ -8411,6 +8776,8 @@ and conduit_ask_linked tools' descriptions and results, the framing and block
 messages models read, Disband's warning, Group Info and the choices page's
 captions, the join card's captions, Settings captions, the invite's share
 message
+
+**Desktop app:** partly: linked rooms show and can't take attachments (`desktop/src/renderer/src/components/RoomView.tsx`); no linking people.
 
 **Code**
 - Your other Hermes' bots: `notifier/room_own_bots.py` (OwnBots: room.bots, what each side says of its bots and whether each can join a room another Hermes hosts, told again when it changes and with each hello; room.bring and join_pending, the bots a draft names joining by themselves; own_bots.json), `notifier/room_invites.py` (draft's bring and _bring, too_many and not_own; on_invite's join_pending), `notifier/dashboard/api/linked_rooms.py` (GET /rooms/own-bots, the drafts route's bring), `notifier/dashboard/api/capabilities.py` (room-own-bots), `Conduit/Services/RoomLinks.swift` (OwnHermesBot, RoomLinksClient.ownBots and parseOwnBots, AppState.canBringOwnBots), `Conduit/Services/RoomDrafts.swift` (LinkedRoomDrafts.ownBots, GroupCreateLimits.canCreate(bots:far:people:), RoomDraftsClient.create's bring, invitableOwnBots, invitableLinkedPeople leaving out own Links with bots, createLinkedRoomDraft's farBots), `Conduit/Views/BotRosterView.swift` (canStartGroups counting far bots), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet's farToggleRow, its On caption, canPickFar and the one-Hermes caption, GroupCreateLimits.farText; the bubble's owner chip, none with RoomLooks.ownHermes; Disband's ownHermes), `Conduit/Services/GroupChatModels.swift` (GroupRoomTurns.shownOwner and ownerLine with ownHermes, GroupRoomDisband.warning's ownHermes), `Conduit/Services/RoomLeave.swift` (RoomLeaveText.takeOutOwnMessage, leaveOwnMessage), `Conduit/Services/RoomLooks.swift` (RoomLooks.ownHermes, activeRoomLooksShown), `Conduit/Views/GroupRoomInfoView.swift` (GroupRoomMemberRow's ownHermes, Take Out and Leave messages), `Conduit/Views/V2/V2ConversationScreen.swift` (Disband's ownHermes), `ConduitTests/GroupChatModelsTests+Copies.swift`, `ConduitTests/GroupChatModelsTests+LinkedRooms.swift`, `notifier/tests/test_room_invites.py`, `ConduitTests/GroupChatModelsTests+Drafts.swift`, `ConduitTests/GroupChatModelsTests+People.swift`
@@ -8592,6 +8959,8 @@ list (a speech bubble for every messaging source) · the notifier's messaging
 group for reply notifications (`notifier/reply_sources.py`, the same Hermes
 platform list) · the chat header (shows no source)
 
+**Desktop app:** gap: no chat source icons or Sources filter.
+
 **Code**
 - Sources and their names, icons and colors: `Conduit/Models/Models.swift` (SessionSource, gatewayPlatforms)
 - Filing a row: `Conduit/Services/HermesClient.swift` (MessageNormalizer.classifySource), `Conduit/Services/AppState+Voice.swift` (sessionCategory)
@@ -8638,6 +9007,8 @@ link or notification (the message shown) · a Pulse card drawn from a
 worker's session (it links the task, and Do it starts a new chat) · the Kanban task's Worker Log ·
 Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 
+**Desktop app:** partly: kanban workers' chats found by live calls (`desktop/src/renderer/src/state/chatFinder.ts`); not checked in the chat list.
+
 **Code**
 - Sources: `Conduit/Models/Models.swift` (SessionSource.hermesKanbanSource, hermesInternalSources, nonChatExcludedSources, chatListExcludedSources, isLegacyKanbanWorker)
 - Lists: `Conduit/Services/AppState+SessionCatalog.swift` (profileSessionsPath, archivedSessionsPath), `Conduit/Models/AllProfilesChats.swift` (sessionsPath), `Conduit/Services/HermesClient.swift` (MessageNormalizer.normalizeSessions drops `kanban`, `tool` and `oneshot` rows and legacy workers from every list it builds: the `session.list` fallback, project lanes and previews)
@@ -8666,7 +9037,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - Hermes' `session_search` (Classic voice, Hermes-run turns, every Hermes channel) can recall a legacy worker's transcript: it hides workers by the `kanban` source, which Hermes' retag never gave these. It's Hermes' recall, not a list Conduit draws; filtering it in the plugin (`transform_tool_result`) for every channel is the maintainer's call (#1464 review).
 - A legacy worker saved as the last chat (picked before #1461) still reopens on a return: Hermes resumes it, so nothing retires the saved pointer until another chat is opened. It opens as a readable chat, not an error (#1461 review).
 
-**Checked:** 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2419 (reconciliationWasKanbanWorker, moved into ChatState by #2417, named at its new path; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-10, #2163 (Siri, Spotlight and Send to Hermes' chat picker added to the pickers that read the widget snapshot, which leaves workers out; nothing else changed); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479 (a Pulse card drawn from a worker links its task and Do it starts a new chat, #1473 on the `pulse` branch and notifier #458); 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2419 (reconciliationWasKanbanWorker, moved into ChatState by #2417, named at its new path; nothing else changed); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-10, #2163 (Siri, Spotlight and Send to Hermes' chat picker added to the pickers that read the widget snapshot, which leaves workers out; nothing else changed); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479 (a Pulse card drawn from a worker links its task and Do it starts a new chat, #1473 on the `pulse` branch and notifier #458); 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
@@ -8678,6 +9049,8 @@ rooms' composer bar · the tab bar's clearance under the Chats, Bots and Tasks
 lists and Settings' pages (none while the tabs stand in a Duo's status strip) · the Chats, Bots, Tasks and Capabilities headers and Settings' home header · a chat's and a group room's header (the navigation bar), which the transcript fades under ·
 iPhone, iPad and Mac · iOS 26 and earlier · text: no Settings caption or doc
 describes them
+
+**Desktop app:** not applicable: iOS bars.
 
 **Code**
 - Bar and fade: `Conduit/Views/V2/V2TopBar.swift` (v2EdgeBar, V2SystemScrollEdge, V2LegacyEdgeBar); a screen's backdrop under the fade: `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropBehindFade)
@@ -8717,6 +9090,8 @@ sizes have to grow by point size, the app's text styles through
 `scaledFont`) · the check that keeps text styles on `scaledFont` · text: no Settings caption or doc gives a
 width, and Chat text size's caption is about its slider, which still applies
 on top
+
+**Desktop app:** unchecked: whether the chat keeps a readable width on a wide window.
 
 **Code**
 - Widths and the modifier: `Conduit/Views/Components/ReadableContentWidth.swift` (ReadableWidth.chat(available:systemGrowsTextStyles:), chatMax, chatShare, settings(available:systemGrowsTextStyles:), settingsMax, macLineGrowth, macMaxTextScale, macShare, textSteps(column:base:), textSteps(column:base:from:), chatTextGrowth, columnText(column:base:scalesChatText:size:systemGrowsTextStyles:): the Dynamic Type size, transcript steps and ColumnText a column sets, readableChatColumn, readableSettingsColumn)
@@ -8758,6 +9133,8 @@ phone) · every tab's screens in one column (Chats, Bots and the pages they
 push, a chat, Tasks, Settings and its pages) and the drawer shell's chat: the
 side safe area they take (#1900)
 
+**Desktop app:** not applicable: iPad split windows.
+
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (splitColumns, v2ClippedToColumn, leadingColumnContent)
 - Drawer shell: `Conduit/Views/RootView.swift` (sidebarLayoutContent), `Conduit/Views/SidebarView.swift` (PersistentColumnContent)
@@ -8795,6 +9172,8 @@ width comes back with the list) · Settings > Appearance > Layout's caption
 in both shells (the drawer shell's only while its persistent sidebar is
 on) · not needed: README.md (it doesn't describe the split
 layout)
+
+**Desktop app:** gap: no resizable columns.
 
 **Code**
 - Widths and the line: `Conduit/Views/Components/ColumnDivider.swift` (ColumnWidth: resolved, dragged; ColumnDivider)
@@ -8845,6 +9224,8 @@ the server over plain HTTP), Hermes calls, chat on screen and the other routes
 kept in the profile's home (plain HTTP and files, which work in the host), and the turn surface (sent without a
 profile, so it already reaches the dashboard)
 
+**Desktop app:** unchecked: voice on a profile the dashboard didn't start with.
+
 **Code**
 - App: `Conduit/Services/DashboardPath.swift` (conduitProfileParameter), `Conduit/Services/NotifierPluginStatus.swift` (dashboardProfileParameter, usedCapabilities), `Conduit/Voice/LocalLive/LocalLiveClient.swift`, `Conduit/Voice/GrokLive/GrokLiveClient.swift`, `Conduit/Voice/HermesVoiceGateway.swift` (profileParameter, rebuilt by AppState's read-aloud currency check when it changes), `Conduit/Voice/SpeechServerTranscription.swift`, `Conduit/Voice/SpeechServerSpeech.swift`, `Conduit/Voice/HermesVoiceConfigurationService.swift`, `Conduit/Watch/WatchToolGrantClient.swift`, `Conduit/Services/ChatTakeover.swift`, `Conduit/Services/AppState+Predictive.swift`, `Conduit/Services/AppState.swift` (the Desktop views read), `Shared/LocalLive/LocalLiveProtocol.swift`
 - Notifier: `notifier/dashboard/api/core.py` (_conduit_route_profile), `notifier/dashboard/api/local_live.py` (LOCAL_LIVE_PLUGIN_HOST_REASON), `notifier/dashboard/api/capabilities.py` (ROUTE_CAPABILITIES), `notifier/dashboard/api/chats.py` (post_side_question), `Conduit/Services/AppState+StepSummaries.swift` (askStepSummaryOfPlugin), `notifier/dashboard/api/linked_rooms.py` (post_room_draft, get_room_setup, post_room_setup and _restart_room_gateway's plugin host guard), `notifier/README.md`, `notifier/CHANGELOG.md`, `notifier/upstream/contract.yml` (the notes on these routes and the plugin host flag)
@@ -8880,6 +9261,8 @@ the Lock Screen's Live Activity, settled from the same reads (Reply progress
 signals) · Bots Home's portraits, which count each bot's running and waiting
 chats from its profile's read (see Bots Home) · not needed: CarPlay's
 and the widget's pickers (no status), and no Settings caption or doc names it
+
+**Desktop app:** partly: the Running filter (`desktop/src/renderer/src/components/ChatList.tsx`, desktop#20); no Needs approval on rows.
 
 **Code**
 - Status: `Conduit/Services/AppState+OneChatTwoDevices.swift` (chatListPollTick), `Conduit/Services/AppState+ChatList.swift` (sessionLiveStatus, refreshLiveSessionStatuses, readOwnLiveSessionStatuses), `Conduit/Services/AppState.swift` (chatListCatalogGeneration's wake; inactiveSceneStaysInView and, in `Conduit/Services/AppState+UIState.swift`, sceneIsInView, for a Mac window behind another app), `Conduit/Services/AppState+Lifecycle.swift` (recordActiveListEvidence), `Conduit/Services/SessionLiveStatusIndex.swift` (SessionLiveStatusIndex and its busyRows, isProfileScoped and counts; BotLiveChats; OtherProfilesLiveStatus), `Conduit/Services/HermesClient.swift` (LiveSessionStatus.isProfileScoped, activeSessions(inProfile:)), `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, its inactiveFor, chatListInactiveAfter and chatListInactiveFloor; PollCadence.chatListSteps and chatListStepsFollowingChanges)
@@ -8923,6 +9306,8 @@ have no refresh of their own), the notifier (it serves no part of the
 catalog) · text: the shared "Updating…" key, already in every shipped
 language; no Settings caption or doc describes it
 
+**Desktop app:** unchecked: what the chat list shows while it refreshes.
+
 **Code**
 - When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, isReadingStaleChatList, showsChatListUpdating(overProjects:hidesPulseHomeChat:), noteStaleChatListRead; loadSessions counts a read over a stale list in and out, by the scope it reads), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (staleChatListReads by SessionCatalogOwner, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
 - The capsule: `Conduit/Views/Components/ChatListUpdatingPill.swift` (shows after 0.4 s, leaves 0.3 s after, takes no taps); placed in `Conduit/Views/V2/V2ChatsView.swift` (over both presentations, inside v2ProfileSwitchContent's fade) and `Conduit/Views/SidebarView.swift` (over the list)
@@ -8960,6 +9345,8 @@ profile through the plugin, since Hermes watches only the profiles this
 socket has named), Watch, CarPlay and the widget (they show the list the
 app already holds), the notifier (it serves no part of the catalog) · text:
 none (no Settings caption or doc gives the cadence)
+
+**Desktop app:** has it: the chat list follows changes from elsewhere (`desktop/src/renderer/src/state/useChatList.ts`).
 
 **Code**
 - Signal: `Conduit/Services/HermesClient.swift` (sendsChangeEvents from `gateway.ready`'s `change_events`, carried over a socket handoff; the `sessions.changed` event), `Conduit/Services/StreamEventParser.swift` (sessionsChanged)
@@ -9000,6 +9387,8 @@ covers it) · Bots Home (gap: it redraws on every publish, see its entry) ·
 the voice buttons kept under a chat (the tabs', the Chats bar's, a project
 page's, and the chat's own: each redraws only when what it shows changes,
 #2541) · text: none (no caption or doc describes it)
+
+**Desktop app:** not applicable: iOS navigation.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2ListVisibility and isPop; V2ShownUpdates: follow, isShown, revealDelay and popSlide, coalescing beside a chat, the scroll hold), `Conduit/Views/V2/V2ProjectPage.swift` (the page's updates and visibility; V2ProjectSessionRow and its content), `Conduit/Views/V2/V2ChatsView.swift` (the list's visibility; V2ChatsRow and V2ChatsRowContent, compared on its item; V2SessionActions and the menu and swipe views it reads when they show), `Conduit/Views/V2/V2VoiceButton.swift` (V2VoiceButtonInputs, read once per publish; V2VoiceButtonContent behind `.equatable()`)
@@ -9046,6 +9435,8 @@ Overview's talking-rooms and live status reads (a sheet: no tab changes under it
 CarPlay (no tabs), the notifier (it answers what it's asked) · text: none (no
 Settings caption or doc gives the cadence)
 
+**Desktop app:** unchecked: how often open screens read Hermes.
+
 **Code**
 - Tab visibility: `Conduit/Views/V2/V2Shell.swift` (v2Shell's isTabActive and showsChatRows per tab)
 - Project page: `Conduit/Views/V2/V2ProjectPage.swift` (pageShows, missedReads)
@@ -9091,6 +9482,8 @@ iPhone, iPad and Mac · not needed: CarPlay's
 and the Watch's short titles (`VoiceSetupIssue.carPlayTitleVariants`), which
 only show beside an iPhone
 
+**Desktop app:** not applicable: iOS permissions.
+
 **Code**
 - Words and links: `Conduit/Services/SystemSettings.swift` (worded, notificationsOffText, open, macURL)
 - Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep, the Apple speech captions and selectProvider's testStatus, the iPhone voice caption), `Conduit/Services/AppState+VoiceConversation.swift` (setVoiceTranscriptionMode's denial), `Conduit/Views/IPhoneVoiceSettingsView.swift` (the download hints), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
@@ -9128,6 +9521,8 @@ page's rows in V2, the drawer sidebar's chat, project and project-sheet rows,
 Bots, Tasks' scheduled jobs (V2), the drawer sidebar's scheduled-jobs list, pinned replies, the Pulse page's cards and brief
 items, Pulse memory) · each row's right-click menu · not needed: iPhone and
 iPad (swipes unchanged) · text: no Settings caption or doc describes it
+
+**Desktop app:** not applicable: desktop uses right-click menus.
 
 **Code**
 - Guard and Mac-only menu: `Conduit/Services/MacWheelSwipeGuard.swift` (MacWheelSwipeGuardProbe, MacWheelSwipeGuardRecognizer, macSwipeActionsMenu), installed by `Conduit/ConduitApp.swift`
@@ -9170,6 +9565,8 @@ and it draws no transcript), the widgets and the share extension (they don't
 keep MetricKit reports or draw a transcript), a delegate agent's tail sheet
 and a call's transcript sheet (short logs with lists of their own), Desktop's
 read-only legacy groups (no transcript to watch)
+
+**Desktop app:** gap: no crash or freeze reports.
 
 **Code**
 - Offer and upload: `Conduit/Services/CrashReportOffer.swift` (CrashReportUpload: what a report sends; CrashReportQueue; CrashReportOffer)
@@ -9214,6 +9611,8 @@ worker's task (see Pulse; it opens this screen) · Hermes' own board drawer
 (upstream) · Hermes' kanban tools that block a task (`kanban_create`'s
 `initial_status`, `kanban_block`'s reason; upstream, nothing in the notifier)
 
+**Desktop app:** has it: blocked tasks on the board (`desktop/src/renderer/src/components/KanbanBoard.tsx`, desktop#19).
+
 **Code**
 - What it waits on: `Conduit/Views/Kanban/KanbanV2Support.swift` (KanbanBlockedQuestion: wait, reason, createdBlockedReason)
 - The screen: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (blockedWait, blockedQuestion, blockedCallout, commentButtons, replyAndUnblock)
@@ -9243,6 +9642,8 @@ background (no poll) · Tasks' scheduled runs and the drawer's Cron list
 (opening the V2 tab reads only the jobs and their notifications, see What
 opening Tasks reads; the drawer's Cron list reads the newest chat page and
 the cron rows when shown, the full replace on a pull)
+
+**Desktop app:** unchecked: how often Tasks reads Hermes.
 
 **Code**
 - Scheduled runs on show, the drawer's Cron list: `Conduit/Services/AppState+OneChatTwoDevices.swift` (refreshCronContent), `Conduit/Services/AppState+Session.swift` (refreshNewestSessionCatalogPage), `Conduit/Views/SidebarView.swift` (the drawer's Cron list), test in `ConduitTests/SessionCatalogLoadTests.swift` (testShowingTasksReadsTheNewestRowsOverTheCatalog, which now pins this path; the V2 tab's show read is pinned by `scripts/tests/test_scheduled_tab_reads_source_contract.py`)
@@ -9284,6 +9685,8 @@ sheet: unchanged, and it reads its own runs and notifications (its own entry, A
 cron job's Run history) · not needed: Project pages, Pulse, Bots Home and Needs
 you (their own reads, already gated on what shows) · text: none (no Settings
 caption or doc gives this cadence)
+
+**Desktop app:** unchecked: what opening Tasks reads.
 
 **Code**
 - The read: `Conduit/Services/AppState+OneChatTwoDevices.swift` (refreshScheduledContent), `Conduit/Services/AppState+ScheduledJobs.swift` (loadCronJobs), `Conduit/Services/AppState+CronNotifications.swift` (refreshCronNotifications, refreshCronNotificationsAfterSave), `Conduit/Services/BotState.swift` (cronNotificationsReadDeferred, cronNotificationsGeneration: the bot on screen's, read through `shownBot`), `Conduit/Views/V2/V2TasksView.swift` (the tab's task, keyed on the read scope, whether the page shows and whether the Tasks tab is up (readScopeNow; shell.isTabActive, which the page narrows to its own visibility; isTabShown), with hiddenByPageSlide deciding whether a page slide waits, its readScope and pageSlideWait, and the notification read repeated when the capability lands; its refreshable is the kept full repair, see the sibling and the ruling below)
@@ -9332,6 +9735,8 @@ below), and not needed: chat takeover and idle claims (nobody holds a chat
 on the authority) and self-improvement updates (the gateway reads the
 setting every turn) · the notifier's CHANGELOG ·
 README (Connecting, Architecture) · the website's FAQ
+
+**Desktop app:** unchecked: on a Hermes with the Webapp server.
 
 **Code**
 - A Bot Chat's profile on its requests: `Conduit/Services/HermesClient.swift` (sessionProfiles, noteSessionProfile, sessionProfile(for:), scopeParams, adoptSocket, inheritSessionProfiles; noted by resumeSessionObject, createSession, createBotChatSession, authorityBranch), `Conduit/Services/AppState+Connection.swift` and `Conduit/Services/AppState+Profiles.swift` (the reconnect, connect(with:) on the same dashboard (a silent re-auth's) and the profile switch hand it to the fresh client; tested in `ConduitTests/BotModeTests.swift`, testAReconnectAndAProfileSwitchKeepTheBotChatProfileMap)
@@ -9408,6 +9813,8 @@ call's Local Live chat), which let go of their own cut-off turns · group
 rooms (not needed: rooms run on the gateway's groups API, not a chat's
 queue) · the notifier's CHANGELOG
 
+**Desktop app:** gap: no chat queue on the Webapp.
+
 **Code**
 - The queue and its rows: `Conduit/Models/AuthorityQueue.swift` (QueuedPrompt, QueuedPromptReceipt, AuthorityQueueStore)
 - Reading it and its verbs: `Conduit/Services/HermesClient.swift` (SessionRuntimeSnapshot.queuedPrompts from the resume's and `session.info`'s `pending`; chatIsHeldByLostTurn, which the off-screen voice and Shortcut sends in `Conduit/Services/AppState.swift` read (submitLiveVoiceThreadTurn, sendShortcutPrompt, Local Live's submit, and the open-chat send in `Conduit/Services/AppState+ShortcutSend.swift`; the composer's own send reads it too for its idle stamp, `sendMessage`'s idleIfHeldByLostTurn); cancelQueuedPrompt, replaceQueuedPrompt, sendQueuedPromptNow, discardLostPrompt, queuedPrompts, unansweredSubmissionID, admittedAdmissionID, deliveringEventAdmissionID)
@@ -9457,6 +9864,8 @@ with each message (its switch and caption in Settings, `sharing.turn_status`,
 `notifier/phone_tool.py` turn_note, the README's "With each message", the
 using-calendar skill; see Phone data sync with the host)
 
+**Desktop app:** unchecked: what a sent message tells Hermes about where it came from.
+
 **Code**
 - The report and discard: `Conduit/Services/TurnSurface.swift` (discardRetryDelays, discardMayGoLater), `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
 - Send sites: `Conduit/Services/AppState+Composer.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat, the voice job backend's reportTurnSurface), `Conduit/Voice/VoiceBackgroundJobs.swift` (startJob and sendContinuedJob report before their submit and drop the report when it fails or is overtaken), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send; makeShortcutSendBackend's surface), `Conduit/Services/AppState+PulseWidget.swift` (Do it sends as `.widget`), `Conduit/Services/AppState+KeptChatSend.swift` (sendInKeptChat reports before its send and drops the report when it fails)
@@ -9491,6 +9900,8 @@ itself) · CI's two checks (project.yml's targets on Linux, the smoke build's
 binaries on macOS) · not needed: the test bundles and UI test runners (they
 don't ship; `@testable import Conduit` resolves to Foundation's)
 
+**Desktop app:** not applicable: Swift availability.
+
 **Code**
 - `Shared/DateOrder/DateOrder.swift` (Date's `<=` and `>=`, internal and `@_disfavoredOverload`)
 - `project.yml` (each shipped target's sources)
@@ -9514,7 +9925,11 @@ current with nobody tending it.
 **Siblings:** CONTRIBUTING.md (the full rules) · this map's intro · the PR
 template · the reviewer prompt · the notifier's CONTRIBUTING.md, PR template
 and reviewer prompt · the map check in CI · README.md and docs/CI.md, which
-point at the map and its check
+point at the map and its check · each entry's Desktop app line · the PR's
+Desktop section and its check, here and in the notifier · hermes-conduit-desktop's
+CONTRIBUTING.md, PR template (Feature map section) and its check
+
+**Desktop app:** has it: the PR template's Feature map section and its check (`desktop/.github/pull_request_template.md`, `desktop/scripts/check-pr-feature-map.mjs`).
 
 **Code**
 - Rules: `CONTRIBUTING.md`, `docs/FEATURE_MAP.md` (the intro and the sibling sets), `.github/pull_request_template.md` (Siblings)
@@ -9522,6 +9937,7 @@ point at the map and its check
 - Notifier: `notifier/CONTRIBUTING.md`, `notifier/.github/pull_request_template.md`, `notifier/.github/workflows/opencode-review.yml`
 - Map check: `scripts/check-feature-map.py` (paths, entry shape, and on a PR the Checked line of each entry it edits; on a PR into `pulse`, `linked-rooms` or `all-live` that merges main, main's maps where the PR and its base meet main tell which entries came from main), `scripts/tests/test_check_feature_map.py`, run by `.github/workflows/ci.yml` (Feature map paths exist; a PR into `pulse`, `linked-rooms` or `all-live` runs that branch's copy, whose trigger lists it), its PR number, base map and main's maps pinned by `scripts/tests/test_ci_workflow_contract.py`
 - Pointers: `README.md` (Architecture), `docs/CI.md` (the self-test job under Jobs)
+- Desktop section: `scripts/check-pr-desktop.py`, `scripts/tests/test_check_pr_desktop.py`, run by `.github/workflows/pr-desktop.yml` (again when the description is edited); the notifier's copy `notifier/.github/scripts/check_pr_desktop.py`, run by `notifier/.github/workflows/pr-desktop.yml`
 
 **Rulings**
 - A checked-in map, a Siblings section in every PR, and rulings in each entry; a sibling left out without a reason is a major review finding (2026-10-23, #1167, Eric). Since 2026-11-09 that means a sibling left behaving differently; one the code handles that the Siblings section or entry doesn't record is minor (Eric, #2069; see Review bots).
@@ -9531,12 +9947,15 @@ point at the map and its check
 - An entry a PR adds or edits names that PR on its Checked line, and CI fails one that doesn't; a commit is only for an entry seeded from main. A carry PR names both, like "#1188, carried in #1200". The PR template asks for a Siblings line for every sibling the entry lists, Settings and model-facing text included (2026-10-24, #1209, Eric).
 - On a PR into `pulse`, `linked-rooms` or `all-live` that merges main, an entry main changed between where that branch last met main and where the PR meets it, and that matches main's copy there, came in with main and keeps main's Checked line, so bringing main into the branch doesn't name the merge on every entry main changed. A PR into any of them that doesn't merge main gets no such pass, and neither does an entry main didn't change (2026-10-25, #1248; the first such merge after #1209 failed the check on 48 entries). `linked-rooms` gets the pass as `pulse` does, since Eric asked for the Linked Rooms app side on a branch like `pulse` (2026-10-26, #1287).
 - A refactor that changes no behavior and no user-facing or model-facing text (moving code, or changing how state is stored or observed) has no siblings: its PR says "No mapped feature" and adds no new entry, and reviewers don't ask for one. If it moves code an entry's Code lists, it updates those paths and the Checked line (2026-10-25, #1271, Eric; reviewer prompts and notifier copies in #1273 and notifier #377).
+- Conduit for desktop is a sibling of every feature it draws. Each entry has a Desktop app line (has it, partly, not applicable, gap or unchecked), and every PR here and in the notifier has a Desktop section (Done with the desktop PR, Not needed and why, or Follow-up and where) that CI checks; a desktop PR names the entries it touches. Phone-only features (Watch, CarPlay, widgets, Siri and Shortcuts, phone data) are not applicable. The desktop is kept compatible where it's cheap, and a Conduit feature is never held or narrowed for it (Eric, 2026-11-11 and 2026-11-19, #2806). The line is left out of the Checked rule: it carries its own reference, and a desktop PR that catches a feature up changes only that line.
 
 **Open gaps**
 - A connection nobody has noticed yet isn't caught by any check; it goes in the first time a fix turns it up.
 - A notifier PR that moves a file listed here fails the next hermes-conduit PR's map check, not its own.
 - A PR that changes a mapped feature's behavior without touching its entry isn't caught by CI; a reviewer flags it (minor). A refactor that changes no behavior is exempt unless it moves a listed path.
+- CI checks that the Desktop section answers, not that the answer is right: a Not needed for a feature the desktop has is a reviewer's catch (minor). The 21 entries backfilled as unchecked wait for someone to look.
+- The Desktop section's check runs the PR's own copy of the script and workflow (`pull_request`), so a PR that edits them could pass itself; running main's copy needs `pull_request_target`, which GitHub blocks in public repos from 2026-12-02. A reviewer catches such an edit.
 - On a merge of main into `pulse`, `linked-rooms` or `all-live`, an entry both sides changed that the merge settles on main's copy keeps main's Checked line, so CI doesn't flag dropping the branch's edit; a reviewer checks that choice. CI only sees content, and that copy is main's word for word.
 - If GitHub can't say whether a PR into `pulse`, `linked-rooms` or `all-live` merges main, or can't give main's maps, the step warns and checks without them, so a merge of main fails on the entries it brings in until a re-run.
 
-**Checked:** 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2417 (the map check's Code line names `all-live`, #2413's review); 2026-11-14, #2413 (`all-live`, the all-live rework's branch, takes the merge-of-main rule `linked-rooms` has); 2026-11-09, #2069 (a sibling the code handles but the record misses is a minor review finding; see Review bots); 2026-11-02, #1642 (docs/CI.md names the self-test job for the map check); #1314.
+**Checked:** 2026-11-19, #2806 (the Desktop app line on every entry, backfilled from hermes-conduit-desktop main, and the PR's Desktop section and its check); 2026-11-14, #2476 (`all-live` merged into main, as its PRs left this entry); 2026-11-14, #2417 (the map check's Code line names `all-live`, #2413's review); 2026-11-14, #2413 (`all-live`, the all-live rework's branch, takes the merge-of-main rule `linked-rooms` has); 2026-11-09, #2069 (a sibling the code handles but the record misses is a minor review finding; see Review bots); 2026-11-02, #1642 (docs/CI.md names the self-test job for the map check); #1314.
