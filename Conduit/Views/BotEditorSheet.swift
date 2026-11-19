@@ -204,7 +204,9 @@ struct BotEditorSheet: View {
         .task { canGeneratePictures = await appState.refreshPictureGeneration() }
         .task { await seed() }
         .task(id: capabilitySource) { await loadStartFromCapabilities() }
-        .task {
+        .task(id: appState.servesBotPlugin) {
+            // Read again once the plugin reports, so a sheet opened before
+            // its capabilities arrive still offers Turn On.
             if let bot = editedBot { pluginState = await appState.botPluginState(profile: bot.name) }
         }
         .task {

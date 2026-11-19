@@ -70,7 +70,8 @@ extension AppState {
     var servesBotPlugin: Bool { notifierPlugin.reports(BotPlugin.capability) }
 
     /// The bot's plugin on this dashboard; nil when it can't be told (an
-    /// older plugin, no connection, a failed read, the main profile).
+    /// older plugin, no connection, a failed read). Callers ask only for
+    /// bots: the route refuses the main profile.
     func botPluginState(profile: String) async -> BotPlugin.State? {
         guard servesBotPlugin, let bridge = dashboardTicketBridge,
               let path = BotPlugin.route(profile: profile) else { return nil }

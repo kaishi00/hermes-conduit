@@ -50489,6 +50489,88 @@
         }
       }
     },
+    "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin wurde für diesen Bot nicht aktiviert. Bearbeite den Bot, um es zu aktivieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se activó el plugin de Conduit para este bot. Edita el bot para activarlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit n’a pas été activé pour ce bot. Modifiez le bot pour l’activer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit tidak diaktifkan untuk bot ini. Edit bot untuk mengaktifkannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di Conduit non è stato attivato per questo bot. Modifica il bot per attivarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このボットで Conduit プラグインがオンになっていません。ボットを編集してオンにしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 봇의 Conduit 플러그인이 켜지지 않았습니다. 봇을 편집해 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie włączono wtyczki Conduit dla tego bota. Edytuj bota, aby ją włączyć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit não foi ativado para este bot. Edite o bot para ativá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit не был включён для этого бота. Измените бота, чтобы включить его."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu bot için Conduit eklentisi açılmadı. Açmak için botu düzenleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未为这个机器人打开 Conduit 插件。请编辑机器人将其打开。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未為這個機器人開啟 Conduit 外掛。請編輯機器人將其開啟。"
+          }
+        }
+      }
+    },
     "The Conduit plugin wasn't turned on for this bot: %@ Edit the bot to try again." : {
       "localizations" : {
         "de" : {

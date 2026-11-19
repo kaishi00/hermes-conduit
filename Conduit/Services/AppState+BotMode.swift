@@ -1408,6 +1408,13 @@ extension AppState {
                 slug,
                 startsFresh: draft.cloneFrom.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             )
+        } else if servesBotPlugin {
+            // Hermes changed before this step: the bot was left with the
+            // plugin as it was made, so the save says where to turn it on.
+            pluginWarning = AppLocalization.string(
+                "The Conduit plugin wasn't turned on for this bot. Edit the bot to turn it on.",
+                table: .bots
+            )
         }
         // The introduction is a real model turn: a bot whose profile has no
         // usable model skips it and says so, instead of a failed first turn.
