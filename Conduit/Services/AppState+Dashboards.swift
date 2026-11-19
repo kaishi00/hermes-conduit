@@ -987,6 +987,8 @@ extension AppState {
     /// other saved dashboard is auto-connected.
     func removeDashboard(_ id: UUID) {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
+        // Read before the sign-out below, which forgets them.
+        let reportedGatewayIDs = relayGatewayIDs(of: id)
         dropKeptDashboardRuntime(id)
         let wasActive = id == activeDashboardID
         if wasActive {
@@ -1018,7 +1020,7 @@ extension AppState {
         // Its host's pairings with this iPhone are dropped at the relay
         // (endSharingWithRemovedDashboards, below): kept until the relay
         // took them, since the host can't be told and may never be reachable.
-        rememberRemovedRelayGatewayIDs(relayGatewayIDs(of: id))
+        rememberRemovedRelayGatewayIDs(reportedGatewayIDs)
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a
         // moved entry's new host says for itself. Signing out keeps them
