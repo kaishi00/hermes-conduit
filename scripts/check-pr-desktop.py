@@ -27,16 +27,22 @@ SECTION = re.compile(r"^##\s+Desktop\s*$", re.IGNORECASE | re.MULTILINE)
 NEXT_SECTION = re.compile(r"^##\s", re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 # A fenced block, such as the template quoted in a PR that changes it.
-# Its closing line repeats the opening run (or a longer one), so a ```` block
-# that quotes a ``` block goes as a whole. One never closed runs to the end,
-# as GitHub draws it.
-FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,}).*?(?:^[ \t]*\1[`~]*[ \t]*$|\Z)", re.DOTALL | re.MULTILINE)
+# It opens with up to three spaces of indent (four is an indented code
+# block, which GitHub draws without treating the ticks as a fence), and its
+# closing line, also within three spaces, repeats the opening run or a
+# longer run of the same character, so a ```` block that quotes a ``` block
+# goes as a whole. One opened after a list marker closes on an indented
+# line, inside the item. One never closed runs to the end, as GitHub draws it.
+CLOSE = r"(?:(?<=`)`*|(?<=~)~*)[ \t]*$|\Z)"
+FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,}).*?(?:^ {0,3}\1" + CLOSE + "|"
+                   r"^ {0,3}(?:[-*+]|\d{1,9}[.)])[ \t]+(`{3,}|~{3,}).*?(?:^[ \t]+\2" + CLOSE,
+                   re.DOTALL | re.MULTILINE)
 # A Follow-up that names nothing yet.
 PLACEHOLDER = re.compile(r"^(later|tbd|todo|none|n/?a|soon|maybe)\W*$", re.IGNORECASE)
 ANSWER = re.compile(r"^[\s>*_-]*(done|not needed|follow-up|follow up)\b[ \t:.,;()*_-]*(.*)",
                     re.IGNORECASE | re.DOTALL)
 DESKTOP_PR = re.compile(r"\b(?:hermes-conduit-)?desktop#\d+|"
-                        r"github\.com/kaishi00/hermes-conduit-desktop/(?:pull|issues)/\d+",
+                        r"github\.com/kaishi00/hermes-conduit-desktop/pull/\d+",
                         re.IGNORECASE)
 
 HOW = ("Fill in the Desktop section of the PR description: \"Done: desktop#58\", "
@@ -46,8 +52,12 @@ HOW = ("Fill in the Desktop section of the PR description: \"Done: desktop#58\",
 
 def problem(body):
     """What's wrong with a PR description's Desktop section, or None."""
-    body = FENCE.sub("", COMMENT.sub("", (body or "").replace("\r\n", "\n")))
+    body = COMMENT.sub("", (body or "").replace("\r\n", "\n"))
+    fenced, body = body, FENCE.sub("", body)
     found = SECTION.search(body)
+    if not found and SECTION.search(fenced):
+        return ("The Desktop section is inside a code fence, which shows it as code: close "
+                "the fence above it.")
     if not found:
         return f"The PR description has no \"## Desktop\" section. {HOW}"
     rest = body[found.end():]
@@ -64,7 +74,8 @@ def problem(body):
     detail = detail.strip()
     if said == "done" and not DESKTOP_PR.search(first_line):
         return ("The Desktop section says Done, so it names the desktop PR on the Done line "
-                "(hermes-conduit-desktop#58, desktop#58 or its link).")
+                "(hermes-conduit-desktop#58, desktop#58 or its link). An issue goes under "
+                "Follow-up.")
     if said == "not needed" and not detail:
         return "The Desktop section says Not needed, so it says why."
     if said == "follow-up" and (not detail or PLACEHOLDER.match(detail)):
