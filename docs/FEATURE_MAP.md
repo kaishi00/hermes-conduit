@@ -2482,7 +2482,9 @@ takes one tap, so it opens what its Small size opens picks.
 actions for every size) · the app's widget snapshot (the chats the picker and
 the large list offer) · the Pulse widget (same bundle, App Group and app
 language; not needed) · Which dashboard a launch signs in to (a widget tap
-switches as before; not needed) · the Share extension's chat picker and the
+switches as before; not needed) · the New Chat shortcut (the same launch,
+with the keyboard up; see New Chat from Siri, Shortcuts and the Action
+Button) · the Share extension's chat picker and the
 chats in Spotlight and Siri (read the same snapshot; not needed) · a Lock
 Screen size (gap) · the Mac (gap) · the Watch's widgets (their own app; not
 needed) · Apple HomeView (a tap can't open Conduit there, so the launchers
@@ -2509,7 +2511,7 @@ buttons) · docs/WIDGETS.md · README.md
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
 - Not tried on a device: the small and large layouts on the smallest and largest phones and iPad, and the vibrant artwork in StandBy at night and on HomeView.
 
-**Checked:** 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
+**Checked:** 2026-11-19, #PRNUM (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
 
 ## Pulse widget
 
@@ -3820,7 +3822,7 @@ what waited (An empty new chat Hermes lost)
 
 **Rulings**
 - What waits on a new chat goes in only when the chat createNewSession returned is still the one open. Another chat opened or created meanwhile (a voice action, a screen question, a notification) gets nothing. The message stays in the composer, the screenshot goes back or waits, and the user is told (2026-10-24, #941's review, #1191).
-- New Chat focuses the composer only on the chat it made. (On a Mac every chat that opens now focuses its own composer, see Composer focus after a send, #2270.) A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
+- New Chat focuses the composer only on the chat it made: the app's own on a Mac, the New Chat shortcut on every device (#PRNUM), a widget's never. (On a Mac every chat that opens now focuses its own composer, see Composer focus after a send, #2270.) A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
 - Pulse's Do it on an item from no chat (and, since #1473, on one from a Kanban task's worker, which Hermes won't reopen as a chat) starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
 - Pulse's Ask (#2058, with notifier 0.150.0) goes the same way: on a card from no chat it starts a chat only as Do it does and puts the pick's words in the composer of the chat its own create returned, to edit before sending; it never sends them.
 - When Settings > Pulse or Do it's long press picks a bot (#2211, with notifier 0.164.0), Do it and Ask on a card from no chat open that bot's Bot Chat instead of starting a chat, as its Bots row opens it, and leave their words only while that open still owns the screen; none of this entry's new-chat rules apply to it (see Pulse).
@@ -3828,7 +3830,7 @@ what waited (An empty new chat Hermes lost)
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2270 (on a Mac every chat that opens focuses its composer, so New Chat's is one case of it); 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-11-19, #PRNUM (the New Chat shortcut's New Chat focuses its own chat's composer on every device; see New Chat from Siri, Shortcuts and the Action Button); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2270 (on a Mac every chat that opens focuses its composer, so New Chat's is one case of it); 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## Chat usage and Compress Now
 
@@ -7290,6 +7292,41 @@ change needed)
 - Not tried on a device: a write under limited access, and a linked (unified) contact's update (#2165).
 
 **Checked:** 2026-11-11, #2168 (a live call names the contact as the phone has them; the card's name tested); 2026-11-10, #2165 (added with the notifier's contact changes).
+
+## New Chat from Siri, Shortcuts and the Action Button
+
+The New Chat App Intent (issue 2860): Siri, a shortcut or the iPhone's
+Action Button opens Conduit on a fresh chat with the keyboard up, ready to
+type, in the profile picked (the one on screen when none is). It is listed
+as an App Shortcut, so Settings > Action Button > Shortcut offers it
+without building a shortcut.
+
+**Siblings:** a widget's New Chat (the same launch: it switches profile,
+waits for the connection and says when it can't; done) · the app's own New
+Chat and its focus (done: one launch origin now says whose launch it is, see
+A new chat that something waits on) · Talk to Conduit (the same Profile
+parameter and its Siri phrases; not needed) · Open Chat and Send to Hermes
+(other App Shortcuts; not needed) · a Control Center or Lock Screen control
+(gap) · the Watch's shortcuts (not needed: the Watch has no composer) ·
+CarPlay (not needed: no keyboard) · Conduit/AppShortcuts.xcstrings and the
+intent's title and description · README.md
+
+**Desktop app:** not applicable: Siri, Shortcuts and the Action Button are iOS-only.
+
+**Code**
+- Intent: `Conduit/Intents/NewChatIntent.swift` (NewChatIntent), listed in `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), phrases in `Conduit/AppShortcuts.xcstrings`
+- Launch: `Conduit/Services/AppState+WidgetLaunch.swift` (startNewChatFromShortcut, routeWidgetLaunchURL's origin), `Conduit/Services/WidgetLaunchCoordinator.swift` (NewChatLaunchOrigin), `Conduit/Services/AppState.swift` (the coordinator's finish, which focuses the composer), `Conduit/Services/AppState+Session.swift` (focusNewChatComposer)
+- Tests: `ConduitTests/AppStateWidgetLaunchTests.swift` (testNewChatShortcutFocusesItsComposerOnEveryDevice, testNewChatShortcutWithNoDashboardStartsNothing)
+
+**Rulings**
+- It starts on the dashboard in use, never another: the Profile parameter picks a profile there, as Talk to Conduit's does. With no dashboard signed in it starts nothing and Conduit opens on its sign-in (2026-11-19, #PRNUM, issue 2860).
+- It brings the keyboard up on every device, unlike the app's New Chat, which does only on a Mac, and a widget's, which never does: running it is asking to type. Only the chat it made takes the focus (2026-11-19, #PRNUM).
+
+**Open gaps**
+- No Control Center or Lock Screen control (iOS 18 ControlWidget) for it yet; the issue named it as a follow-up.
+- Not tried on a device yet: the Action Button, a cold launch and Siri's phrases.
+
+**Checked:** 2026-11-19, #PRNUM (added, issue 2860).
 
 ## Shortcuts Hermes can run
 

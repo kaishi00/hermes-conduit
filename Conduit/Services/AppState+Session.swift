@@ -903,17 +903,18 @@ extension AppState {
         // As for a widget's link: the automatic resume would otherwise take
         // the screen the new chat is on.
         cancelChatResumeRestoration()
-        newChatLaunchStartedInApp = true
+        newChatLaunchOrigin = .app
         widgetLaunchCoordinator.receive(link)
     }
 
     /// On a Mac the app's own New Chat opens ready to type. A phone or
     /// iPad keeps the keyboard down until the field is tapped, so it
-    /// doesn't cover the new chat. Only the chat New Chat made takes the
+    /// doesn't cover the new chat, unless the New Chat shortcut asked for
+    /// it (`onEveryDevice`). Only the chat New Chat made takes the
     /// focus: a notification or another chat opened while it was created
     /// is left alone.
-    func focusNewChatComposer() {
-        guard newChatFocusesComposer, let created = shownChat.newChatOpenedSessionID,
+    func focusNewChatComposer(onEveryDevice: Bool = false) {
+        guard newChatFocusesComposer || onEveryDevice, let created = shownChat.newChatOpenedSessionID,
               activeSessionId == created else { return }
         requestComposerFocus(on: created)
     }

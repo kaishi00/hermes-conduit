@@ -1116,6 +1116,58 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         }
     }
 
+    /// The New Chat shortcut (Siri, Shortcuts, the Action Button; issue
+    /// 2860) opens with the keyboard up on a phone too, waiting for the
+    /// connection as a widget's New Chat does; a widget's keeps it down.
+    func testNewChatShortcutFocusesItsComposerOnEveryDevice() async throws {
+        let suite = "AppStateWidgetLaunchTests.shortcut-new-chat.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c6")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.newChatFocusesComposer = false
+        appState.widgetSessionCreatorOverride = { _, _ in ("shortcut-new", "shortcut-new", "default") }
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.isConnecting = true
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        appState.isConnecting = false
+        appState.isConnected = true
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "shortcut-new")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "shortcut-new")
+        XCTAssertEqual(appState.newChatLaunchOrigin, .widget, "the next launch starts as a widget's")
+
+        appState.composerFocusRequest = nil
+        appState.widgetSessionCreatorOverride = { _, _ in ("widget-new", "widget-new", "default") }
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "default"), reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(link.url))
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "widget-new")
+        XCTAssertNil(appState.composerFocusRequest, "a widget's New Chat keeps the keyboard down")
+    }
+
+    /// With no dashboard signed in there's nothing to start it on; Conduit
+    /// opens on its sign-in.
+    func testNewChatShortcutWithNoDashboardStartsNothing() throws {
+        let suite = "AppStateWidgetLaunchTests.shortcut-no-dashboard.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c7")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.savedDashboardRegistry.activeDashboardID = nil
+
+        XCTAssertFalse(appState.startNewChatFromShortcut(profile: "work"))
+        XCTAssertFalse(appState.widgetLaunchCoordinator.hasPendingRequest)
+    }
+
     /// A chat that came on screen while New Chat was being created (a
     /// notification, a list tap) isn't the new chat, and keeps its keyboard
     /// down even though the open chat changed.

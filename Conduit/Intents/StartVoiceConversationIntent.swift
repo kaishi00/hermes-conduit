@@ -127,6 +127,19 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             shortTitle: "Ask Hermes",
             systemImageName: "paperplane.fill"
         )
+        // Opens on a new chat with the keyboard up: the Action Button's
+        // "just let me type" (issue 2860).
+        AppShortcut(
+            intent: NewChatIntent(),
+            phrases: [
+                "New chat in \(.applicationName)",
+                "Start a new chat in \(.applicationName)",
+                "New \(.applicationName) chat",
+                "New \(\.$profile) chat in \(.applicationName)"
+            ],
+            shortTitle: "New Chat",
+            systemImageName: "square.and.pencil"
+        )
         AppShortcut(
             intent: OpenConduitChatIntent(),
             phrases: [

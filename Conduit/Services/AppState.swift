@@ -367,13 +367,22 @@ final class AppState: ObservableObject {
                 guard let self else { return }
                 if self.sharedDraftLaunchOwnsFinish {
                     self.sharedDraftLaunchOwnsFinish = false
-                    self.newChatLaunchStartedInApp = false
+                    self.newChatLaunchOrigin = .widget
                     if case .failed = outcome { self.widgetAwaitingInteractiveAuthenticationDashboardID = nil }
                     return
                 }
-                let startedInApp = self.newChatLaunchStartedInApp
-                self.newChatLaunchStartedInApp = false
-                if startedInApp, outcome == .handled { self.focusNewChatComposer() }
+                let origin = self.newChatLaunchOrigin
+                self.newChatLaunchOrigin = .widget
+                let startedInApp = origin == .app
+                if outcome == .handled {
+                    switch origin {
+                    case .app: self.focusNewChatComposer()
+                    // Asked for to type (the Action Button, issue 2860):
+                    // the keyboard comes up on a phone too.
+                    case .shortcut: self.focusNewChatComposer(onEveryDevice: true)
+                    case .widget: break
+                    }
+                }
                 guard case .failed(let widgetMessage) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
                 // The widget's words send someone back to the widget.
@@ -395,8 +404,9 @@ final class AppState: ObservableObject {
             }
         )
     }()
-    /// The app's own New Chat, not a widget, sent the pending launch.
-    var newChatLaunchStartedInApp = false
+    /// What sent the pending launch: a widget (or a shared draft), the
+    /// app's own New Chat, or the New Chat shortcut.
+    var newChatLaunchOrigin: NewChatLaunchOrigin = .widget
     /// A Mac has a keyboard at hand, so the app's own New Chat opens ready
     /// to type. Tests stand in for a Mac.
     var newChatFocusesComposer = ProcessInfo.processInfo.isiOSAppOnMac

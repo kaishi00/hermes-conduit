@@ -4,7 +4,7 @@ extension AppState {
     /// Widget URLs have their own strict parser. A malformed URL in this
     /// namespace is still consumed so it cannot fall through to permissive
     /// app-link parsing.
-    func routeWidgetLaunchURL(_ url: URL) -> Bool {
+    func routeWidgetLaunchURL(_ url: URL, origin: NewChatLaunchOrigin = .widget) -> Bool {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme?.lowercased() == "conduit",
               components.host?.lowercased() == "widget" else { return false }
@@ -15,12 +15,29 @@ extension AppState {
         }
         guard let link = WidgetLaunchLink(url: url) else { return true }
         cancelChatResumeRestoration()
-        newChatLaunchStartedInApp = false
+        newChatLaunchOrigin = origin
         widgetLaunchCoordinator.receive(link)
         // A New Chat's chat shows straight away, empty, while it waits for
         // what its launch needs.
         if showsPendingNewChat { revealChatForWidgetLaunch() }
         return true
+    }
+
+    /// The New Chat shortcut (Siri, Shortcuts, the Action Button; issue
+    /// 2860): a widget's New Chat on the dashboard in use, for the profile
+    /// asked for or the one on screen, that opens with the keyboard up.
+    /// False when there's no dashboard to start it on (Conduit shows its
+    /// sign-in instead).
+    @discardableResult
+    func startNewChatFromShortcut(profile: String?) -> Bool {
+        let asked = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let dashboardID = activeDashboardID,
+              let link = WidgetLaunchLink(
+                  action: .newChat,
+                  workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: asked.isEmpty ? activeProfile : asked),
+                  reference: nil
+              ) else { return false }
+        return routeWidgetLaunchURL(link.url, origin: .shortcut)
     }
 
     func prepareWidgetLaunch(_ link: WidgetLaunchLink, lease: WidgetLaunchLease) async -> WidgetLaunchOutcome {
