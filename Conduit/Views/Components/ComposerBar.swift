@@ -2818,8 +2818,8 @@ struct ComposerBar: View {
         if let loadedDraftKey = keptKey, appState.composerDraftKeysAreSameChat(loadedDraftKey, destinationKey) {
             // The chat the words go on in owns them from here: a fresh chat
             // replacing a lost one is another stored id (#2794 review).
-            loadedDraftOwner = destinationKey.isNewConversation
-                ? nil : (appState.composerDraftOwner(for: destinationKey) ?? loadedDraftOwner)
+            // Unknown until its row is listed: each save resolves it then.
+            loadedDraftOwner = destinationKey.isNewConversation ? nil : appState.composerDraftOwner(for: destinationKey)
             saveDraft(for: destinationKey)
             draftStore.removeDraft(for: loadedDraftKey)
             self.loadedDraftKey = destinationKey

@@ -304,14 +304,19 @@ extension AppState {
             }
             // A list read that started after this sync's read already
             // listed newer rows; the sync still resumes its chat.
+            var identityRows = allSessions
             if claimSessionListListing(readTicket) {
+                sessionListListedCronFromCache = catalogLoad.cronFromCache
                 let listedSessions = allSessions.filter { $0.source != .cron }
+                // A cron run that started during the read is kept too (issue 2763).
+                let keptCron = [retainedActiveTurn, activeTurnCatalogSession(), awaitingListing].compactMap { $0 }
                 let listedCron = cronRowsToList(
                     allSessions.filter { $0.source == .cron },
-                    keeping: [retainedActiveTurn, awaitingListing].compactMap { $0 },
+                    keeping: keptCron,
                     profile: profile,
                     fromCache: catalogLoad.cronFromCache
                 )
+                identityRows = Self.identityRows(listedSessions: allSessions, listedCron: listedCron, kept: keptCron, read: loadedSessions)
                 // A project's page beside the chat follows this list too.
                 if listedSessions != sessions || listedCron != cronSessions {
                     chatListCatalogGeneration &+= 1
@@ -341,7 +346,7 @@ extension AppState {
             publishedCatalog = true
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
-            conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
+            conversationIdentityIndex.recordCatalogIdentity(identityRows, profile: profile)
             publishWidgetSnapshot()
             // A chat tapped in the saved list before this list landed wins
             // over the automatic resume, the same way a notification does.

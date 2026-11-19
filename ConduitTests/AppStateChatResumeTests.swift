@@ -7076,9 +7076,10 @@ final class AppStateChatResumeTests: XCTestCase {
             try await Task.sleep(for: .milliseconds(10))
         }
         XCTAssertEqual(appState.newestCatalogPageRead?.waitingReads, 2)
-        // Not joined: release what's held so the test fails rather than hangs.
+        // Not joined: release what's held, and refuse what comes after, so
+        // the test fails rather than hangs.
         guard appState.newestCatalogPageRead?.waitingReads == 2 else {
-            held.releaseAll()
+            held.shutdown()
             _ = await joiner.value
             _ = await cronList.value
             return
@@ -7105,6 +7106,54 @@ final class AppStateChatResumeTests: XCTestCase {
             ["cron_new", "cron_old"]
         )
         XCTAssertEqual(Set(appState.cronSessions.map(\.id)), ["cron_new", "cron_old"], "the fresh run is listed")
+    }
+
+    /// Issue 2763 (#2759 review): the cache's cron rows relist only over a
+    /// listing that took its cron rows from the cache (a gateway listing
+    /// fills none); a cron run restored or retitled here reaches the cached
+    /// rows; the identity index records the cron rows listed, not those
+    /// kept here whatever the host says.
+    func testCachedCronRelistsOnlyOverACachedListingAndKeepsLocalChanges() {
+        let harness = makeHarness(configureDefaults: { $0.set("default", forKey: "conduit.activeProfile") })
+        let appState = harness.appState
+        func row(_ id: String, _ source: SessionSource = .cron) -> SessionSummary {
+            SessionSummary(id: id, alternateIds: [], title: id, model: "Hermes", updatedLabel: "now", profile: "default",
+                           source: source, isActive: false, isArchived: false, lineageRootId: nil)
+        }
+        appState.sessionCatalogCache.commit(
+            liveSessions: [], liveKey: "default", cronSessions: [row("cached")], cronKey: "default:cron",
+            historyMarkers: [:], at: appState.sessionCatalogCache.mutationGeneration
+        )
+        appState.cronSessions = [row("gateway")]
+        let load = AppState.ProfileCatalogLoad(sessions: [], olderPagesDeferred: false, cronFromCache: true, fetchedCron: true)
+        appState.sessionListListedCronFromCache = false
+        appState.relistCachedCron(after: load, profile: "default")
+        XCTAssertEqual(appState.cronSessions.map(\.id), ["gateway"], "a gateway listing's cron rows stand")
+        appState.sessionListListedCronFromCache = true
+        appState.relistCachedCron(after: load, profile: "default")
+        XCTAssertEqual(appState.cronSessions.map(\.id), ["cached"])
+
+        var cache = appState.sessionCatalogCache
+        let generation = cache.mutationGeneration
+        cache.keepCronRow(row("restored"), forKey: "default:cron") { $0.id == "restored" }
+        XCTAssertEqual(cache.cachedSessions(forKey: "default:cron")?.map(\.id), ["restored", "cached"])
+        XCTAssertGreaterThan(cache.mutationGeneration, generation, "a read in flight from before doesn't commit over it")
+        cache.updateRows(forKey: "default:cron") { cached in
+            var cached = cached
+            if cached.id == "cached" { cached.title = "Renamed" }
+            return cached
+        }
+        XCTAssertEqual(cache.cachedSessions(forKey: "default:cron")?.last?.title, "Renamed")
+        cache.keepCronRow(row("elsewhere"), forKey: "other:cron") { _ in false }
+        XCTAssertNil(cache.cachedSessions(forKey: "other:cron"), "only rows already cached")
+
+        let recorded = AppState.identityRows(
+            listedSessions: [row("chat", .chat), row("read-cron")],
+            listedCron: [row("cached"), row("running"), row("listed-running")],
+            kept: [row("running"), row("listed-running")],
+            read: [row("listed-running")]
+        )
+        XCTAssertEqual(recorded.map(\.id), ["chat", "cached", "listed-running"])
     }
 
     /// A chat already on screen is the list's to keep or replace.
