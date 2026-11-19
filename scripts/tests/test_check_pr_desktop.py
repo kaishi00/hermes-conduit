@@ -50,6 +50,8 @@ class CheckPrDesktopTests(unittest.TestCase):
         self.assertIsNone(check.problem(quoted + "## Desktop\nNot needed: template only.\n"))
         nested = "## Summary\n````markdown\n```markdown\n## Desktop\nDone: desktop#58.\n```\n````\n"
         self.assertIn("no \"## Desktop\" section", check.problem(nested))
+        unclosed = "## Summary\n```\n## Desktop\nDone: desktop#58.\n"
+        self.assertIn("no \"## Desktop\" section", check.problem(unclosed))
 
     def test_a_follow_up_names_something(self):
         for placeholder in ("Follow-up: later", "Follow-up: TBD.", "Follow-up: none"):

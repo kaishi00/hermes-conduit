@@ -28,8 +28,9 @@ NEXT_SECTION = re.compile(r"^##\s", re.MULTILINE)
 COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 # A fenced block, such as the template quoted in a PR that changes it.
 # Its closing line repeats the opening run (or a longer one), so a ```` block
-# that quotes a ``` block goes as a whole.
-FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,}).*?^[ \t]*\1[`~]*[ \t]*$", re.DOTALL | re.MULTILINE)
+# that quotes a ``` block goes as a whole. One never closed runs to the end,
+# as GitHub draws it.
+FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,}).*?(?:^[ \t]*\1[`~]*[ \t]*$|\Z)", re.DOTALL | re.MULTILINE)
 # A Follow-up that names nothing yet.
 PLACEHOLDER = re.compile(r"^(later|tbd|todo|none|n/?a|soon|maybe)\W*$", re.IGNORECASE)
 ANSWER = re.compile(r"^[\s>*_-]*(done|not needed|follow-up|follow up)\b[ \t:.,;()*_-]*(.*)",
