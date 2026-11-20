@@ -129,6 +129,13 @@ struct HermesUpdater {
         "/api/actions/\(DashboardPath.encodedQueryComponent(action) ?? action)/status?lines=40"
     }
 
+    /// How long a request may take: an update's own answer and its status
+    /// come at once, while the check probes the checkout's git remotes first,
+    /// which took 40 s on a real host.
+    static func timeoutMilliseconds(forPath path: String) -> Int {
+        path.hasPrefix(checkPath) ? 90_000 : 30_000
+    }
+
     /// Hermes Desktop's limits: an update (backups, dependency installs,
     /// builds) may take minutes, and the restart after it a few more.
     static let updateLimit: TimeInterval = 360

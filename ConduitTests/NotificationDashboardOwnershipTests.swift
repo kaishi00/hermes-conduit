@@ -849,6 +849,27 @@ extension NotificationDashboardOwnershipTests {
                        "either the later row is read or the list says it was cut short")
     }
 
+    /// Issue 2878: which waiting removed pairings a sweep forgets, from a
+    /// complete list and from one cut short by a row that isn't an object.
+    func testASweepForgetsOnlyTheRemovedPairingsTheListShowsGone() {
+        let gone = UUID().uuidString.lowercased()
+        let stillListed = UUID().uuidString.lowercased()
+        let undecoded = UUID().uuidString.lowercased()
+        let notTheRelays = "gw-removed"
+        let removed: Set<String> = [gone, stillListed, undecoded, notTheRelays]
+
+        XCTAssertEqual(
+            RemovedDashboardPairings.forgotten(removed: removed, toDrop: [stillListed], undecoded: [undecoded], listPartial: false),
+            [gone, notTheRelays],
+            "a complete list: the one it doesn't have is gone; one to drop and one that didn't decode wait"
+        )
+        XCTAssertEqual(
+            RemovedDashboardPairings.forgotten(removed: removed, toDrop: [stillListed], undecoded: [undecoded], listPartial: true),
+            [notTheRelays],
+            "a list cut short shows nothing gone, so a pairing listed after the bad row isn't forgotten undropped"
+        )
+    }
+
     func testRemovingADashboardKeepsItsPairingsUntilTheRelayDropsThem() {
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [
             SavedDashboard(id: dashboardA, label: "A", normalizedURL: "https://a.example"),

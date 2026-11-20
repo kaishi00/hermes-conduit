@@ -354,14 +354,13 @@ extension AppState {
             removedGatewayIDs: removed
         )
         // The rest of the waiting ones are gone already, or a saved
-        // dashboard's after all. A row the list had but that didn't decode
-        // is neither: it waits for the next sweep (issue 2811).
-        // An id that isn't the relay's own could never be dropped, and would
-        // keep every sweep reading the list again (#2864 review).
-        // A list cut short by a row that isn't an object shows nothing gone.
-        let gone = meta.gatewayListIsPartial
-            ? Set<String>() : removed.subtracting(toDrop).subtracting(meta.undecodedGatewayIDs)
-        forgetRemovedRelayGatewayIDs(gone.union(removed.filter { !RemovedDashboardPairings.isRelayGatewayID($0) }))
+        // dashboard's after all.
+        forgetRemovedRelayGatewayIDs(RemovedDashboardPairings.forgotten(
+            removed: removed,
+            toDrop: toDrop,
+            undecoded: meta.undecodedGatewayIDs,
+            listPartial: meta.gatewayListIsPartial
+        ))
         // An older relay keeps them waiting for its update.
         guard meta.supportsDeviceGatewayRemoval, !toDrop.isEmpty else { return }
         let listed = Dictionary(meta.gateways.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
