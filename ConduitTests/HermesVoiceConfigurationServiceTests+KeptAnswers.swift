@@ -434,6 +434,28 @@ extension HermesVoiceConfigurationServiceTests {
     /// 2905);
     /// the MCP slot says it answers sampling requests, not tool choice
     /// (issue 2877).
+    /// Hermes reads `group_router` from the default profile for every
+    /// auto-routed room, so only that profile lists it (issue 2909); the
+    /// provider checks still see it.
+    func testGroupRouterIsNamedAndListedOnlyForTheDefaultProfile() throws {
+        let answer: [String: Any] = ["tasks": [
+            ["task": "vision", "provider": "auto", "model": ""],
+            ["task": "group_router", "provider": "openrouter", "model": "fast/router"],
+        ]]
+        let slots = HelperModelSlot.slots(in: answer)
+        XCTAssertEqual(slots.map(\.id), ["vision", HelperModelSlot.groupRouter])
+        XCTAssertEqual(slots[1].title, AppLocalization.string("Group router", table: .bots))
+        XCTAssertEqual(slots[1].symbol, "arrow.triangle.branch")
+        XCTAssertEqual(slots[1].value, "fast/router")
+        XCTAssertNil(HelperModelSlot.onOff(task: HelperModelSlot.groupRouter))
+        XCTAssertEqual(HelperModelSlot.slots(in: answer, inDefaultProfile: false).map(\.id), ["vision"])
+        XCTAssertEqual(HelperModelSlot.slots(in: answer, includingSetElsewhere: true, inDefaultProfile: false).map(\.id),
+                       ["vision", HelperModelSlot.groupRouter])
+        XCTAssertEqual(GroupRouterModelRow.router(in: slots)?.value, "fast/router")
+        XCTAssertNil(GroupRouterModelRow.router(in: HelperModelSlot.slots(in: ["tasks": [["task": "vision", "provider": "auto", "model": ""]]])),
+                     "A plugin before 0.187.0 doesn't list it, so Group Settings shows no row")
+    }
+
     func testBackgroundReviewHasItsSwitchAndMCPSaysSampling() throws {
         let slots = HelperModelSlot.slots(in: ["tasks": [
             ["task": "mcp", "provider": "auto", "model": ""],

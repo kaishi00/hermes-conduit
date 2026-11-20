@@ -39,6 +39,19 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// counters decide when it runs while on.
     static let backgroundReview = "background_review"
 
+    /// Hermes' group router: who answers in a group chat set to pick
+    /// automatically. Hermes reads it from the install's default profile for
+    /// every room, so only that profile lists it (issue 2909).
+    static let groupRouter = "group_router"
+
+    /// Slots Hermes reads only from the default profile: another profile's
+    /// would change nothing, so its list leaves them out.
+    static let defaultProfileOnly: Set<String> = [groupRouter]
+
+    /// The default profile's name in Hermes' routes, where those slots are
+    /// read and set.
+    static let defaultProfile = "default"
+
     /// A helper's own on/off switch, in its `auxiliary.<task>` block, and
     /// the intervals that decide when it runs while it's on.
     struct OnOff {
@@ -146,8 +159,9 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// The slots of a `/api/model/auxiliary` answer, in Hermes' order:
     /// built-ins, then the plugins'.
     /// `includingSetElsewhere` keeps Pulse's too, for the checks that ask
-    /// what runs on a provider.
-    static func slots(in response: [String: Any], includingSetElsewhere: Bool = false) -> [HelperModelSlot] {
+    /// what runs on a provider; `inDefaultProfile` false leaves out the
+    /// slots only the default profile's config sets.
+    static func slots(in response: [String: Any], includingSetElsewhere: Bool = false, inDefaultProfile: Bool = true) -> [HelperModelSlot] {
         let rows = response["tasks"] as? [[String: Any]] ?? []
         let titles = Dictionary(
             rows.compactMap { row -> (String, String)? in
@@ -158,7 +172,8 @@ struct HelperModelSlot: Identifiable, Equatable {
         )
         return rows.compactMap { row in
             guard let setting = VoiceReplyModelSetting(row: row),
-                  includingSetElsewhere || !setElsewhere.contains(setting.task) else { return nil }
+                  includingSetElsewhere || !setElsewhere.contains(setting.task),
+                  includingSetElsewhere || inDefaultProfile || !defaultProfileOnly.contains(setting.task) else { return nil }
             let task = setting.task
             let inherits = (row["inherit_from"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             return HelperModelSlot(
@@ -248,6 +263,12 @@ struct HelperModelSlot: Identifiable, Equatable {
         backgroundReview: Words(title: { AppLocalization.string("Background review", table: .bots) },
                                 caption: { AppLocalization.string("Every few turns, looks back over a chat to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache.", table: .bots) },
                                 symbol: "brain.head.profile"),
+        // Listed by the Conduit plugin from 0.187.0 until Hermes lists it
+        // (issue 2909); Group Settings links here under Pick who answers
+        // automatically.
+        groupRouter: Words(title: { AppLocalization.string("Group router", table: .bots) },
+                           caption: { AppLocalization.string("Picks who answers a message that names nobody, in group chats set to pick automatically. Hermes uses this profile’s choice for every group chat on this Hermes.", table: .bots) },
+                           symbol: "arrow.triangle.branch"),
         predictions: Words(title: { AppLocalization.string("Conduit predictions", table: .bots) },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.", table: .bots) },
                                  symbol: "wand.and.stars"),

@@ -109,13 +109,17 @@ extension AppState {
     /// profile, as Models & providers lists them; throws when Hermes didn't
     /// answer. Kept, with Voice replies' read, for the page to open on.
     func loadHelperModels() async throws -> [HelperModelSlot] {
-        HelperModelSlot.slots(in: try await readHelperModels())
+        let inDefault = BotManagement.isDefaultProfile(activeProfile)
+        return HelperModelSlot.slots(in: try await readHelperModels(), inDefaultProfile: inDefault)
     }
 
     /// The helper models as Hermes gave them last, kept on the phone;
     /// Pulse's too with `includingSetElsewhere`.
     func keptHelperModels(includingSetElsewhere: Bool = false) -> [HelperModelSlot]? {
-        keptAnswer(KeptRoute.modelAuxiliary).map { HelperModelSlot.slots(in: $0, includingSetElsewhere: includingSetElsewhere) }
+        let inDefault = BotManagement.isDefaultProfile(activeProfile)
+        return keptAnswer(KeptRoute.modelAuxiliary).map {
+            HelperModelSlot.slots(in: $0, includingSetElsewhere: includingSetElsewhere, inDefaultProfile: inDefault)
+        }
     }
 
     /// One helper model slot, or nil when this Hermes has no such slot.
@@ -138,12 +142,29 @@ extension AppState {
     /// share its read; another's come from the dashboard's route for it,
     /// kept as Models & providers keeps them.
     func loadHelperModels(inProfile profile: String) async throws -> [HelperModelSlot] {
-        HelperModelSlot.slots(in: try await readHelperModels(inProfile: profile))
+        HelperModelSlot.slots(in: try await readHelperModels(inProfile: profile), inDefaultProfile: BotManagement.isDefaultProfile(profile))
     }
 
     func keptHelperModels(inProfile profile: String) -> [HelperModelSlot]? {
         if profilesMatch(profile, activeProfile) { return keptHelperModels() }
-        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).map { HelperModelSlot.slots(in: $0) }
+        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).map {
+            HelperModelSlot.slots(in: $0, inDefaultProfile: BotManagement.isDefaultProfile(profile))
+        }
+    }
+
+    /// One helper's page for `profile`, which may not be the open one:
+    /// Edit Bot > Work's watch model in its bot's profile, Group Settings'
+    /// router in the default profile. Read and saved there.
+    func helperModelSettings(task: String, inProfile profile: String) -> VoiceReplyModelSettingsModel {
+        VoiceReplyModelSettingsModel(
+            kept: { self.keptHelperModel(task: task, inProfile: profile) },
+            keptProviders: { self.keptModelProviders(inProfile: profile) },
+            load: { try await self.loadHelperModel(task: task, inProfile: profile) },
+            loadProviders: { await self.loadModelProviders(inProfile: profile) },
+            save: { await self.setHelperModel($0, confirmed: $1, profile: profile) },
+            // Refresh models asks the open profile's Hermes.
+            offersRefresh: profilesMatch(profile, activeProfile)
+        )
     }
 
     func loadHelperModel(task: String, inProfile profile: String) async throws -> VoiceReplyModelSetting? {
