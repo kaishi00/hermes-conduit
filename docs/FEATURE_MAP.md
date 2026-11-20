@@ -616,9 +616,11 @@ during the call.
 
 **Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live (the start only,
 no recall tool) · the Apple Watch's calls (the phone reads the memory when it
-prepares the call) · CarPlay and a call from Hermes (the phone's call) · Local
-Live's agent mode (a gap, below) · Classic (not needed: Hermes answers) · the notifier's memory routes ·
-Settings captions · notifier/README.md (Memory for voice)
+prepares the call, and the model can recall during it, through the relay when
+the phone is out of reach) · CarPlay and a call from Hermes (the phone's call) ·
+Local Live's agent mode (a gap, below) · Local Live, Hermes turns, and Classic
+(not needed: Hermes answers with its own memory) · the notifier's memory routes ·
+Settings captions · docs/VOICE_SETTINGS.md · notifier/README.md (Memory for voice)
 
 **Desktop app:** gap: live calls on a computer send no Hermes memory and offer no recall.
 
@@ -626,6 +628,7 @@ Settings captions · notifier/README.md (Memory for voice)
 - The routes: `notifier/dashboard/api/memory.py` (memory_context, _provider_voice_context, _complete_memory_lines, run_memory_recall)
 - The client: `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift` (memoryContext, memoryContextPath)
 - Reading it at the start: `Conduit/Services/AppState+GeminiQwenLive.swift` (Gemini, Qwen), `Conduit/Services/AppState.swift` (GPT-Live, Grok), `Conduit/Services/AppState+WatchCalls.swift` (the Watch's calls)
+- The Watch's recall: `Shared/WatchVoice/WatchToolRelay.swift` (through the relay, memoryRecallLimit), `Conduit/Watch/WatchToolGrantClient.swift`, `ConduitWatch/WatchDirectCallModel.swift` (whenIdleTools)
 - Instructions and the recall tool: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (recall_memory), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing)
 - The switches: `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`
 - Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testGeminiLiveMemoryClientReadsTheProfilesContextAndRecall, testGeminiLiveMemoryShapesTheInstructionsAndTools, testGeminiLiveMemoryPreferenceIsOffUntilTurnedOn), `ConduitTests/GPTLiveVoiceTests.swift` (testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole), `notifier/tests/test_memory.py`
