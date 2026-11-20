@@ -1641,88 +1641,6 @@
         }
       }
     },
-    "%@ brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ bringt eigenes Zuhören und Sprechen mit, daher gelten die Schritte für Spracherkennung und Assistentenstimme nicht. Wähle unter „Sprachmodus“ die Option „Klassisch“, um sie zu nutzen."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ tiene su propia escucha y habla, así que los pasos de voz a texto y voz del asistente no se aplican. Elige Clásico en Modo de voz para usarlos."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ gère lui-même l'écoute et la parole : les étapes de transcription vocale et de voix de l'assistant ne s'appliquent pas. Choisissez Classique sous Mode vocal pour les utiliser."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ memiliki fitur mendengar dan berbicara sendiri, sehingga langkah ucapan ke teks dan suara asisten tidak berlaku. Pilih Klasik di Mode suara untuk menggunakannya."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ascolta e parla da sé, quindi i passaggi di trascrizione vocale e voce dell'assistente non si applicano. Scegli Classica in Modalità vocale per usarli."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@は独自の聞き取りと発話の機能を備えているため、音声認識とアシスタントの音声の手順は適用されません。これらを使うには、「音声モード」で「クラシック」を選択してください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@에는 자체 듣기와 말하기 기능이 있어서 음성 텍스트 변환과 어시스턴트 목소리 단계는 적용되지 않아요. 이 단계를 사용하려면 ‘음성 모드’에서 ‘클래식’을 선택하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ ma własne rozpoznawanie i syntezę mowy, więc kroki „Mowa na tekst” i „Głos asystenta” nie mają zastosowania. Aby z nich korzystać, wybierz „Klasyczny” w sekcji „Tryb głosowy”."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ tem a própria escuta e fala, então as etapas de fala para texto e voz do assistente não se aplicam. Escolha Clássico em Modo de voz para usá-las."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Режим %@ сам слушает и говорит, поэтому шаги распознавания речи и голоса ассистента к нему не относятся. Чтобы использовать их, выберите «Классический» в разделе «Голосовой режим»."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ kendi dinleme ve konuşma özelliğiyle gelir; bu nedenle konuşmadan metne ve asistan sesi adımları geçerli değildir. Bunları kullanmak için Ses modu altında Klasik'i seçin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 自带收听和说话功能，因此语音转文字和助手语音这两步不适用。要使用它们，请在“语音模式”中选择“经典”。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "%@ 自帶聆聽與說話功能，因此語音轉文字和助理聲音這兩個步驟不適用。若要使用這些步驟，請在「語音模式」中選擇「經典」。"
-          }
-        }
-      }
-    },
     "%@ failed. Open it in Conduit for details." : {
       "localizations" : {
         "de" : {
@@ -50807,6 +50725,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的 Apple Watch 在為另一部 iPhone 上的 Conduit 響鈴，因此在手錶上接聽的來電會轉到那部 iPhone。如果手錶現在與這部 iPhone 配對，請在「設定」>「通知」中從你的每個設定檔移除另一部 iPhone，即可移到這裡。"
+          }
+        }
+      }
+    },
+    "Classic voice speaks with this voice too. Pick the voice itself, its model and its key under Assistant speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Modus „Klassisch“ spricht ebenfalls mit dieser Stimme. Die Stimme selbst, ihr Modell und ihren Schlüssel wählst du unter „Sprachausgabe“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El modo Clásico también habla con esta voz. Elige la voz en sí, su modelo y su clave en «Voz del asistente»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le mode Classique parle aussi avec cette voix. Choisis la voix elle-même, son modèle et sa clé dans « Parole de l'assistant »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mode Klasik juga berbicara dengan suara ini. Pilih suaranya, modelnya, dan kuncinya di Ucapan asisten."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche la modalità Classica parla con questa voce. Scegli la voce, il suo modello e la sua chiave in «Voce dell'assistente»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クラシック音声もこの声で話します。声そのもの、モデル、キーは「アシスタントの音声」で選びます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클래식 음성도 이 목소리로 말합니다. 목소리, 모델, 키는 어시스턴트 음성에서 고르세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tryb Klasyczny też mówi tym głosem. Sam głos, jego model i klucz wybierzesz w sekcji „Mowa asystenta”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O modo Clássico também fala com esta voz. Escolha a voz, o modelo e a chave em “Fala do assistente”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Режим «Классический» тоже говорит этим голосом. Сам голос, его модель и ключ выбираются в разделе «Речь ассистента»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klasik mod da bu sesle konuşur. Sesin kendisini, modelini ve anahtarını Asistan konuşması bölümünden seç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经典语音也使用这个声音。声音本身、模型和密钥在“助手语音”中选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經典語音也使用這個聲音。聲音本身、模型和金鑰在「助理語音」中選擇。"
+          }
+        }
+      }
+    },
+    "%@ brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them. Read Aloud still speaks with the assistant voice: pick it under Read Aloud." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ bringt eigenes Zuhören und Sprechen mit, daher gelten die Schritte für Spracherkennung und Assistentenstimme nicht. Wähle unter „Sprachmodus“ die Option „Klassisch“, um sie zu nutzen. Vorlesen spricht trotzdem mit der Assistentenstimme: Wähle sie unter „Vorlesen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tiene su propia escucha y habla, así que los pasos de voz a texto y voz del asistente no se aplican. Elige Clásico en Modo de voz para usarlos. Leer en voz alta sigue usando la voz del asistente: elígela en Leer en voz alta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ gère lui-même l'écoute et la parole : les étapes de transcription vocale et de voix de l'assistant ne s'appliquent pas. Choisissez Classique sous Mode vocal pour les utiliser. La lecture à voix haute parle toujours avec la voix de l'assistant : choisissez-la sous Lecture à voix haute."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ memiliki fitur mendengar dan berbicara sendiri, sehingga langkah ucapan ke teks dan suara asisten tidak berlaku. Pilih Klasik di Mode suara untuk menggunakannya. Bacakan tetap memakai suara asisten: pilih di bagian Bacakan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ascolta e parla da sé, quindi i passaggi di trascrizione vocale e voce dell'assistente non si applicano. Scegli Classica in Modalità vocale per usarli. Lettura ad alta voce usa comunque la voce dell'assistente: sceglila in Lettura ad alta voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@は独自の聞き取りと発話の機能を備えているため、音声認識とアシスタントの音声の手順は適用されません。これらを使うには、「音声モード」で「クラシック」を選択してください。読み上げは引き続きアシスタントの音声で話します。「読み上げ」で選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에는 자체 듣기와 말하기 기능이 있어서 음성 텍스트 변환과 어시스턴트 목소리 단계는 적용되지 않아요. 이 단계를 사용하려면 ‘음성 모드’에서 ‘클래식’을 선택하세요. 소리 내어 읽기는 계속 어시스턴트 목소리로 말해요. 소리 내어 읽기에서 고르세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ma własne rozpoznawanie i syntezę mowy, więc kroki „Mowa na tekst” i „Głos asystenta” nie mają zastosowania. Aby z nich korzystać, wybierz „Klasyczny” w sekcji „Tryb głosowy”. Czytanie na głos nadal używa głosu asystenta: wybierz go w sekcji „Czytanie na głos”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tem a própria escuta e fala, então as etapas de fala para texto e voz do assistente não se aplicam. Escolha Clássico em Modo de voz para usá-las. Ler em voz alta continua usando a voz do assistente: escolha-a em Ler em Voz Alta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Режим %@ сам слушает и говорит, поэтому шаги распознавания речи и голоса ассистента к нему не относятся. Чтобы использовать их, выберите «Классический» в разделе «Голосовой режим». Чтение вслух по-прежнему звучит голосом ассистента: выберите его в разделе «Чтение вслух»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kendi dinleme ve konuşma özelliğiyle gelir; bu nedenle konuşmadan metne ve asistan sesi adımları geçerli değildir. Bunları kullanmak için Ses modu altında Klasik'i seçin. Sesli okuma yine asistan sesiyle konuşur: bunu Sesli Okuma altında seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 自带收听和说话功能，因此语音转文字和助手语音这两步不适用。要使用它们，请在“语音模式”中选择“经典”。朗读仍使用助手语音：请在“朗读”中选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 自帶聆聽與說話功能，因此語音轉文字和助理聲音這兩個步驟不適用。若要使用這些步驟，請在「語音模式」中選擇「經典」。朗讀仍使用助理聲音：請在「朗讀」中選擇。"
+          }
+        }
+      }
+    },
+    "Speaking voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechstimme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz de lectura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voix de lecture"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara pembaca"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voce di lettura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み上げの声"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽어 주는 목소리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos czytania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz de leitura"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голос чтения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okuma sesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀聲音"
           }
         }
       }
