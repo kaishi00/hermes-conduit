@@ -187,7 +187,7 @@ private struct UsageWidgetView: View {
                 Text(verbatim: window.label)
                     .lineLimit(1)
                 Spacer(minLength: 4)
-                Text(verbatim: String(format: string("%@ used"), percent(window.fraction)))
+                Text(verbatim: String(format: string("%@ used"), percent(window.usedPercent / 100)))
                     .monospacedDigit()
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

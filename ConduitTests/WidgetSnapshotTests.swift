@@ -525,8 +525,8 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(snapshot.with(needsConduit: true).needsConduit)
         XCTAssertEqual(snapshot.with(needsConduit: true).providers, snapshot.providers)
 
-        XCTAssertEqual(UsageWidgetFeed.path(profile: "default"), "/api/model/options")
-        XCTAssertEqual(UsageWidgetFeed.path(profile: "work"), "/api/model/options?profile=work")
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "default"), "/api/model/options?explicit_only=true")
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "work"), "/api/model/options?explicit_only=true&profile=work")
 
         XCTAssertTrue(store.remove())
         XCTAssertNil(store.read())
@@ -565,7 +565,7 @@ final class WidgetSnapshotTests: XCTestCase {
         func read(_ outcome: Result<[String: Any], LocationHostError>, current: UsageWidgetAccess?) async -> UsageWidgetSnapshot? {
             await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { current }) { pass, path in
                 XCTAssertEqual(pass, kept.pass)
-                XCTAssertEqual(path, "/api/model/options?profile=work")
+                XCTAssertEqual(path, "/api/model/options?explicit_only=true&profile=work")
                 return try outcome.get()
             }
         }

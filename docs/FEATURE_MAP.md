@@ -2614,12 +2614,12 @@ limited (issue 2796). The widget reads Hermes itself, so the numbers stay
 current without Conduit running.
 
 **Siblings:** Settings > Usage's Provider quota (done: the same
-`model.options` rows, through its REST twin `/api/model/options`, read by
+`model.options` rows, through its REST twin `/api/model/options?explicit_only=true` (only the providers the profile set up, as the page asks), read by
 the same ProviderQuota, and a quota read there reloads the widget) ·
 provider rows' quota line (not needed: one line per provider in a list; the
 widget shows each window) · the Pulse widget (done: the same kind of host
 pass, made the same way and kept under its own account in the same Keychain
-group) · the launcher widgets (same App Group and app language) · a profile
+group) · the launcher widgets (done: same App Group and app language, the Plan limits widget is in their bundle) · a profile
 or dashboard switch, sign-out and a removed dashboard (done: the pass names
 the dashboard and profile in use, and goes with them) · Lock Screen and
 StandBy sizes, the Watch and CarPlay (not needed: no quota screen there) ·

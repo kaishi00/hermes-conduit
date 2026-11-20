@@ -92,7 +92,8 @@ struct UsageWidgetSnapshot: Codable, Equatable {
 /// the `model.options` call Settings > Usage reads: the same quota, so the
 /// widget and the page never disagree.
 enum UsageWidgetFeed {
-    static let path = "/api/model/options"
+    /// Only the providers the profile set up, as Settings > Usage asks.
+    static let path = "/api/model/options?explicit_only=true"
 
     static func path(profile: String) -> String {
         LocationHostClient.withProfile(path, profile: profile)
