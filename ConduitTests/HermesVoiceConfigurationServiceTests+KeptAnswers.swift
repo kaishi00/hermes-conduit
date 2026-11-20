@@ -453,7 +453,7 @@ extension HermesVoiceConfigurationServiceTests {
                        ["vision", HelperModelSlot.groupRouter])
         XCTAssertEqual(GroupRouterModelRow.router(in: slots)?.value, "fast/router")
         XCTAssertNil(GroupRouterModelRow.router(in: HelperModelSlot.slots(in: ["tasks": [["task": "vision", "provider": "auto", "model": ""]]])),
-                     "A plugin before 0.186.0 doesn't list it, so Group Settings shows no row")
+                     "A plugin before 0.187.0 doesn't list it, so Group Settings shows no row")
     }
 
     func testBackgroundReviewHasItsSwitchAndMCPSaysSampling() throws {

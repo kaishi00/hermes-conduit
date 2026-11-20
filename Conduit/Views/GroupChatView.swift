@@ -2449,7 +2449,7 @@ struct GroupCreateSheet: View {
 /// default profile's Group router helper, which Hermes uses for every
 /// auto-routed room on this Hermes whichever bot is open (issue 2909). It
 /// opens that helper's page, read and saved in the default profile. Shown
-/// once Hermes lists the slot (the plugin adds it from 0.186.0).
+/// once Hermes lists the slot (the plugin adds it from 0.187.0).
 struct GroupRouterModelRow: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared

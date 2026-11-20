@@ -259,7 +259,7 @@ struct HelperModelSlot: Identifiable, Equatable {
         backgroundReview: Words(title: { AppLocalization.string("Background review", table: .bots) },
                                 caption: { AppLocalization.string("Every few turns, looks back over a chat to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache.", table: .bots) },
                                 symbol: "brain.head.profile"),
-        // Listed by the Conduit plugin from 0.186.0 until Hermes lists it
+        // Listed by the Conduit plugin from 0.187.0 until Hermes lists it
         // (issue 2909); Group Settings links here under Pick who answers
         // automatically.
         groupRouter: Words(title: { AppLocalization.string("Group router", table: .bots) },
