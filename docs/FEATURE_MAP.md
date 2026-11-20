@@ -2602,7 +2602,7 @@ docs/WIDGETS.md · README.md
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-20, #PR (its Keychain item kept through WidgetAccessKeychain, shared with the Plan limits widget's; unchanged otherwise); 2026-11-15, #2587 (the small size's Not now and Done, for Apple HomeView; issue 2561); 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-20, #2892 (its Keychain item kept through WidgetAccessKeychain, shared with the Plan limits widget's; unchanged otherwise); 2026-11-15, #2587 (the small size's Not now and Done, for Apple HomeView; issue 2561); 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Plan limits widget
 
@@ -2634,15 +2634,15 @@ README.md
 - Tests: `ConduitTests/WidgetSnapshotTests.swift` (testPlanLimitsWidgetRowsReadTheSameQuotaAsSettingsUsage, testPlanLimitsWidgetKeepsItsReadForTheDashboardAndProfileItWasFor)
 
 **Rulings**
-- Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's); an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#PR).
-- The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read (#PR).
-- Small shows the first provider's first two windows; medium two providers side by side, or one provider's first three windows (#PR).
-- A tap opens Conduit; the widget has no buttons (#PR).
+- Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's); an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#2892).
+- The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read (#2892).
+- Small shows the first provider's first two windows; medium two providers side by side, or one provider's first three windows (#2892).
+- A tap opens Conduit; the widget has no buttons (#2892).
 
 **Open gaps**
 - Not tried on a device: the read with Conduit not running, a token that expires, the medium size with long window names.
 
-**Checked:** 2026-11-20, #PR (entry added: issue 2796)
+**Checked:** 2026-11-20, #2892 (entry added: issue 2796)
 
 ## Artifacts
 
@@ -5655,7 +5655,7 @@ Models & providers line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-20, #PR (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
+**Checked:** 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
