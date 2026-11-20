@@ -635,7 +635,7 @@ Settings captions · docs/VOICE_SETTINGS.md · notifier/README.md (Memory for vo
 
 **Rulings**
 - Each mode's switch is off until the user turns it on: the memory goes to that mode's company with the call (testGeminiLiveMemoryPreferenceIsOffUntilTurnedOn).
-- The start gets Hermes' built-in MEMORY.md and USER.md snapshot, at most 8,000 characters. An external provider (Honcho, Mem0, Holographic and the rest) is reached through recall, never through its own prompt block, which mostly describes tools the voice model can't call, and never through a recall Conduit runs at the start (Eric 2026-11-20: not worth the latency).
+- The start gets Hermes' built-in MEMORY.md and USER.md snapshot, at most 8,000 characters. An external provider (Honcho, Mem0, Holographic and the rest) is reached through recall, never through its standard prompt block (system_prompt_block(), which mostly describes tools the voice model can't call), and never through a recall Conduit runs at the start (Eric 2026-11-20: not worth the latency).
 - A provider with the optional `voice_prompt_block()` method (not Hermes' interface; Nyx 7.24.1 has it) adds its own facts at the start, ahead of whole lines of the built-in notes in the same 8,000 characters. If it fails, answers something other than text or takes over 3 seconds, the start gets the built-in snapshot alone (Eric 2026-11-20, carrying notifier #937 by sixgodgit).
 - The routes never write to memory; a saved call is written once it ends, as a chat is (see Ending a call and what gets saved).
 
