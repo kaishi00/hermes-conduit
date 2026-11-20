@@ -3108,13 +3108,15 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.showWaitingQuestionCards()
         XCTAssertEqual(Set(appState.messages.compactMap(\.clarify?.requestId)), ["conduit-push-gone", "conduit-push-kept"])
 
-        // Still listed: nothing goes.
+        // Still listed: nothing goes, under any spelling of the profile.
         appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        appState.takeBackQuestionCardsNoLongerListed(profile: "DEFAULT")
         XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId).count, 2)
 
+        // A read under another spelling of the profile still takes it back.
         appState.needsYou.apply([wait("w2", request: "conduit-push-kept")],
                                 profile: "default", dashboardID: dashboard) { _ in false }
-        appState.takeBackQuestionCardsNoLongerListed(profile: "default")
+        appState.takeBackQuestionCardsNoLongerListed(profile: "Default")
         XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["conduit-push-kept"])
         let reopened = harness.appState.sessionPresentationCache.merge(
             [], profile: appState.presentationProfile(for: "runtime-a"),
