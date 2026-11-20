@@ -1150,7 +1150,9 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working, .agents, .inRooms, .replying: return .conduitAccent
+        // Running work is blue, as on its work cards (Eric 2026-11-20, design D).
+        case .working: return .blue
+        case .helping, .agents, .inRooms, .replying: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
