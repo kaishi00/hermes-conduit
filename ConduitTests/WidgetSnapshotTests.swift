@@ -542,6 +542,71 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(UsageWidgetFeed.nextRead(after: now, snapshot: nil, refresh: 1800), now.addingTimeInterval(1800))
     }
 
+    /// A read keeps its answer only while Conduit still keeps a pass for
+    /// the dashboard and profile it was made for, on success and on both
+    /// error paths; a failed read keeps the last good one; an expired
+    /// sign-in asks for Conduit unless Conduit already saved a new one.
+    func testPlanLimitsWidgetReadKeepsOnlyAnAnswerForThePassInUse() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetStore(directory: directory)
+        let dashboard = UUID()
+        func access(_ profile: String = "work", token: String = "a") -> UsageWidgetAccess {
+            UsageWidgetAccess(dashboardID: dashboard, profile: profile,
+                              pass: LocationHostPass(dashboardID: dashboard, baseURL: "https://hermes.example",
+                                                     headers: ["Authorization": "Bearer \(token)"], expiresAt: nil, savedAt: Date()))
+        }
+        let options: [String: Any] = ["providers": [
+            ["slug": "openai-codex", "name": "ChatGPT", "usage": ["windows": [
+                ["label": "Weekly", "used_percent": 40, "scope": "account"] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+        ] as [[String: Any]]]
+        let kept = access()
+        func read(_ outcome: Result<[String: Any], LocationHostError>, current: UsageWidgetAccess?) async -> UsageWidgetSnapshot? {
+            await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { current }) { pass, path in
+                XCTAssertEqual(pass, kept.pass)
+                XCTAssertEqual(path, "/api/model/options?profile=work")
+                return try outcome.get()
+            }
+        }
+
+        // A Hermes without the route, before any good read: none reported.
+        let none = await read(.failure(.http(status: 404, detail: "")), current: kept)
+        XCTAssertEqual(none?.providers, [])
+        // A good read, with the pass saved again meanwhile: kept.
+        let good = await read(.success(options), current: access(token: "a"))
+        XCTAssertEqual(good?.providers.map(\.slug), ["openai-codex"])
+        XCTAssertEqual(store.read(), good)
+        // A 404 or another failure after it keeps that read.
+        let after404 = await read(.failure(.http(status: 404, detail: "")), current: kept)
+        XCTAssertEqual(after404, good)
+        let afterError = await read(.failure(.http(status: 502, detail: "")), current: kept)
+        XCTAssertEqual(afterError, good)
+        // An expired sign-in shows the last read under Open Conduit...
+        let expired = await read(.failure(.signInRequired), current: kept)
+        XCTAssertEqual(expired?.needsConduit, true)
+        XCTAssertEqual(expired?.providers, good?.providers)
+        // ...unless Conduit saved a new sign-in while the read was out.
+        let rotated = await read(.failure(.signInRequired), current: access(token: "b"))
+        XCTAssertEqual(rotated, good)
+
+        // Conduit moved to another profile or took the pass away meanwhile:
+        // nothing of the old one's, whichever way the read ended.
+        for current in [access("default"), nil] {
+            let outcomes: [Result<[String: Any], LocationHostError>] = [.success(options), .failure(.signInRequired), .failure(.http(status: 502, detail: ""))]
+            for outcome in outcomes {
+                let answer = await read(outcome, current: current)
+                XCTAssertNil(answer)
+            }
+        }
+        XCTAssertEqual(store.read(), good)
+
+        // No pass at all: what the widget kept goes.
+        let gone = await UsageWidgetFeed.read(access: nil, store: store, language: "de", currentAccess: { nil }) { _, _ in options }
+        XCTAssertNil(gone)
+        XCTAssertNil(store.read())
+    }
+
     /// A pool whose usable accounts report no windows never shows a
     /// signed-out account's last numbers (Settings > Usage counts neither),
     /// nor a limited one's while the pool isn't all limited.

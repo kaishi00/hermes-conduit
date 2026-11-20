@@ -49,62 +49,15 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
         }
     }
 
-    /// Hermes' plan limits for the profile in use, read with the pass
-    /// Conduit keeps for the widget and kept as the last good read; that
-    /// read when the host can't be reached, and nothing when Conduit hasn't
-    /// given the widget a pass (not opened since the widget was added).
-    static func read(store: UsageWidgetStore? = UsageWidgetStore.production,
-                     access: UsageWidgetAccess? = UsageWidgetKeychain.load(),
-                     currentAccess: () -> UsageWidgetAccess? = UsageWidgetKeychain.load) async -> UsageWidgetSnapshot? {
-        guard let access else {
-            // Conduit took the pass away: nothing of it stays on disk.
-            store?.remove()
-            return nil
-        }
-        let previous = store?.read().flatMap { $0.showing(access) ? $0 : nil }
-        let language = WidgetSnapshotStore.production?.read()?.appLanguage ?? "system"
-        let providers: [UsageWidgetProvider]
-        do {
-            let options = try await LocationHostClient.requestJSON(
-                pass: access.pass, path: UsageWidgetFeed.path(profile: access.profile),
-                method: "GET", body: nil, timeout: 20)
-            providers = UsageWidgetFeed.providers(from: ProviderQuota.list(from: options))
-        } catch LocationHostError.signInRequired {
-            let current = currentAccess()
-            guard stillShows(access, current) else { return nil }
-            // Conduit gave the widget a new sign-in meanwhile (a native
-            // token rotated) and reloads it: the old pass's refusal isn't
-            // a reason to ask for Conduit.
-            if let current, current.pass.headers != access.pass.headers { return previous }
-            return previous?.with(needsConduit: true)
-                ?? UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile, appLanguage: language,
-                                       providers: [], readAt: Date(), needsConduit: true)
-        } catch LocationHostError.http(status: 404, detail: _) where previous == nil {
-            // A Hermes without the route reports no plan limits to read. A
-            // 404 after a good read (a proxy or a restart) keeps that read.
-            providers = []
-        } catch {
-            guard stillShows(access, currentAccess()) else { return nil }
-            return previous
-        }
-        // Conduit took the pass away or moved to another dashboard or
-        // profile meanwhile: this answer is no longer the widget's to show.
-        // A pass saved again for the same dashboard and profile (each
-        // return to the screen stamps a new one) leaves the answer the widget's.
-        guard stillShows(access, currentAccess()) else { return nil }
-        let snapshot = UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile,
-                                           appLanguage: language, providers: providers, readAt: Date())
-        try? store?.write(snapshot)
-        return snapshot
+    /// Hermes' plan limits for the profile in use (UsageWidgetFeed.read).
+    static func read() async -> UsageWidgetSnapshot? {
+        await UsageWidgetFeed.read(
+            access: UsageWidgetKeychain.load(), store: UsageWidgetStore.production,
+            language: WidgetSnapshotStore.production?.read()?.appLanguage ?? "system",
+            currentAccess: UsageWidgetKeychain.load) { pass, path in
+                try await LocationHostClient.requestJSON(pass: pass, path: path, method: "GET", body: nil, timeout: 20)
+            }
     }
-}
-
-/// Conduit still keeps a pass for the dashboard and profile a read was
-/// made for: one saved again for them (each return to the screen stamps a
-/// new one) leaves the read the widget's; another dashboard, another
-/// profile or none doesn't.
-private func stillShows(_ access: UsageWidgetAccess, _ current: UsageWidgetAccess?) -> Bool {
-    current?.dashboardID == access.dashboardID && current?.profile == access.profile
 }
 
 private struct UsageWidgetView: View {
