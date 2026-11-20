@@ -608,6 +608,40 @@ instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
 **Checked:** 2026-11-18, #2776 (a Bot Chat's call reads the bot's SOUL.md and memory, issue 2768); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2296 (the code it lists moved out of AppState.swift, issue 828); 2026-11-06, #1896 (added: Local Live's personality and Your instructions, issue 583).
 
+## Hermes memory in a live call
+
+"Use Hermes memory" in each live mode: what the profile's Hermes remembers,
+put in the call's instructions at the start, and a recall the model can ask for
+during the call.
+
+**Siblings:** Gemini Live · Qwen Live · Grok Live · GPT-Live (the start only,
+no recall tool) · the Apple Watch's calls (the phone reads the memory when it
+prepares the call) · CarPlay and a call from Hermes (the phone's call) · Local
+Live's agent mode (a gap, below) · Classic (not needed: Hermes answers) · the notifier's memory routes ·
+Settings captions · notifier/README.md (Memory for voice)
+
+**Desktop app:** gap: live calls on a computer send no Hermes memory and offer no recall.
+
+**Code**
+- The routes: `notifier/dashboard/api/memory.py` (memory_context, _provider_voice_context, _complete_memory_lines, run_memory_recall)
+- The client: `Conduit/Voice/GeminiLive/GeminiLiveTokenClient.swift` (memoryContext, memoryContextPath)
+- Reading it at the start: `Conduit/Services/AppState+GeminiQwenLive.swift` (Gemini, Qwen), `Conduit/Services/AppState.swift` (GPT-Live, Grok), `Conduit/Services/AppState+WatchCalls.swift` (the Watch's calls)
+- Instructions and the recall tool: `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (recall_memory), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing)
+- The switches: `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GrokLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`
+- Tests: `ConduitTests/GeminiLiveVoiceTests.swift` (testGeminiLiveMemoryClientReadsTheProfilesContextAndRecall, testGeminiLiveMemoryShapesTheInstructionsAndTools, testGeminiLiveMemoryPreferenceIsOffUntilTurnedOn), `ConduitTests/GPTLiveVoiceTests.swift` (testALongMemoryIsCutSoTheBriefingFitsAndTheRulesStayWhole), `notifier/tests/test_memory.py`
+
+**Rulings**
+- Each mode's switch is off until the user turns it on: the memory goes to that mode's company with the call (testGeminiLiveMemoryPreferenceIsOffUntilTurnedOn).
+- The start gets Hermes' built-in MEMORY.md and USER.md snapshot, at most 8,000 characters. An external provider (Honcho, Mem0, Holographic and the rest) is reached through recall, never through its own prompt block, which mostly describes tools the voice model can't call, and never through a recall Conduit runs at the start (Eric 2026-11-20: not worth the latency).
+- A provider with the optional `voice_prompt_block()` method (not Hermes' interface; Nyx 7.24.1 has it) adds its own facts at the start, ahead of whole lines of the built-in notes in the same 8,000 characters. If it fails, answers something other than text or takes over 3 seconds, the start gets the built-in snapshot alone (Eric 2026-11-20, carrying notifier #937 by sixgodgit).
+- The routes never write to memory; a saved call is written once it ends, as a chat is (see Ending a call and what gets saved).
+
+**Open gaps**
+- GPT-Live has no recall tool, so with a provider that has no voice facts it starts without that provider's memory.
+- Local Live's agent mode has no memory switch: its fast model gets no Hermes memory.
+
+**Checked:** 2026-11-20, #PRNUM (added: the routes, the modes that read them, and a provider's own voice facts, notifier #940).
+
 ## What a GPT-Live call is told
 
 Conduit's briefing for a GPT-Live call (its rules, the persona, what Hermes
