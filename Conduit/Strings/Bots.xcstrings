@@ -51390,6 +51390,170 @@
           }
         }
       }
+    },
+    "Group router" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gruppen-Router"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enrutador de grupo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Routeur de groupe"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Router grup"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Router di gruppo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グループルーター"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그룹 라우터"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Router grupowy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Roteador de grupo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Маршрутизатор группы"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Grup yönlendirici"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群组路由"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組路由"
+          }
+        }
+      }
+    },
+    "Picks who answers a message that names nobody, in group chats set to pick automatically. Hermes uses this profile’s choice for every group chat on this Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wählt aus, wer auf eine Nachricht antwortet, die niemanden nennt, in Gruppenchats mit automatischer Auswahl. Hermes nutzt die Wahl dieses Profils für jeden Gruppenchat auf diesem Hermes."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige quién responde a un mensaje que no nombra a nadie, en los chats de grupo configurados para elegir automáticamente. Hermes usa la elección de este perfil para todos los chats de grupo de este Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisit qui répond à un message qui ne nomme personne, dans les discussions de groupe réglées sur le choix automatique. Hermes utilise le choix de ce profil pour toutes les discussions de groupe de ce Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Memilih siapa yang menjawab pesan yang tidak menyebut siapa pun, di obrolan grup yang diatur untuk memilih otomatis. Hermes memakai pilihan profil ini untuk setiap obrolan grup di Hermes ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sceglie chi risponde a un messaggio che non nomina nessuno, nelle chat di gruppo impostate sulla scelta automatica. Hermes usa la scelta di questo profilo per ogni chat di gruppo su questo Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "誰も指名していないメッセージに誰が答えるかを、自動で選ぶ設定のグループチャットで選びます。Hermes はこの Hermes のすべてのグループチャットでこのプロフィールの選択を使います。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아무도 지목하지 않은 메시지에 누가 답할지, 자동으로 고르도록 설정된 그룹 채팅에서 고릅니다. Hermes는 이 Hermes의 모든 그룹 채팅에 이 프로필의 선택을 사용합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybiera, kto odpowie na wiadomość, która nikogo nie wskazuje, w czatach grupowych z automatycznym wyborem. Hermes używa wyboru tego profilu dla każdego czatu grupowego na tym Hermesie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolhe quem responde a uma mensagem que não cita ninguém, nos chats em grupo configurados para escolher automaticamente. O Hermes usa a escolha deste perfil para todos os chats em grupo deste Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выбирает, кто ответит на сообщение, где никто не назван, в групповых чатах с автоматическим выбором. Hermes использует выбор этого профиля для всех групповых чатов на этом Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otomatik seçecek şekilde ayarlanan grup sohbetlerinde, kimseyi anmayan bir mesajı kimin yanıtlayacağını seçer. Hermes, bu Hermes'teki her grup sohbeti için bu profilin seçimini kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在设为自动选择的群聊中，决定谁回答没有点名任何人的消息。Hermes 在这台 Hermes 的所有群聊中使用此配置文件的选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在設為自動選擇的群組聊天中，決定誰回答沒有點名任何人的訊息。Hermes 在這台 Hermes 的所有群組聊天中使用此設定檔的選擇。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

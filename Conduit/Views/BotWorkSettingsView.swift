@@ -332,17 +332,7 @@ struct BotWorkSettingsView: View {
     /// The work watch's slot in this bot's profile, as the Helper models
     /// pages set it.
     private var watchModelSettings: VoiceReplyModelSettingsModel {
-        let profile = profile
-        let appState = appState
-        return VoiceReplyModelSettingsModel(
-            kept: { appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
-            keptProviders: { appState.keptModelProviders(inProfile: profile) },
-            load: { try await appState.loadHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
-            loadProviders: { await appState.loadModelProviders(inProfile: profile) },
-            save: { await appState.setHelperModel($0, confirmed: $1, profile: profile) },
-            // Refresh models asks the open profile's Hermes.
-            offersRefresh: appState.profilesMatch(profile, appState.activeProfile)
-        )
+        appState.helperModelSettings(task: HelperModelSlot.workWatch, inProfile: profile)
     }
 
     /// Kept first, then Hermes, tried as often as the settings' read. A

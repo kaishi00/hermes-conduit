@@ -2445,6 +2445,58 @@ struct GroupCreateSheet: View {
 /// The open room's settings (`groups.context`): its purpose and shared notes,
 /// which every member reads with each message, and who answers a message
 /// that names nobody, where the host routes (Hermes 0.23).
+/// Who answers > Pick who answers automatically: the model that picks, the
+/// default profile's Group router helper, which Hermes uses for every
+/// auto-routed room on this Hermes whichever bot is open (issue 2909). It
+/// opens that helper's page, read and saved in the default profile. Shown
+/// once Hermes lists the slot (the plugin adds it from 0.186.0).
+struct GroupRouterModelRow: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+    @State private var slot: HelperModelSlot?
+    /// Names the newest read: an older one that answers later is dropped.
+    @State private var reads = 0
+
+    static let profile = "default"
+
+    var body: some View {
+        Group {
+            if let slot {
+                NavigationLink {
+                    HelperModelPage(slot: slot, settings: appState.helperModelSettings(task: slot.id, inProfile: Self.profile))
+                } label: {
+                    ModelChooserLinkRow(title: AppLocalization.string("Model"), value: slot.value)
+                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("room.settings.routerModel")
+                Text(AppLocalization.string(
+                    "This is \(appState.defaultProfileName)’s Group router helper. It picks for every group chat on this Hermes that answers automatically.", table: .rooms
+                ))
+                .settingsCaption()
+            }
+        }
+        .onAppear { Task { await read() } }
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
+            Task { await read() }
+        }
+    }
+
+    /// Kept first, then Hermes; a read that fails keeps what was shown.
+    private func read() async {
+        reads += 1
+        let read = reads
+        if let kept = Self.router(in: appState.keptHelperModels(inProfile: Self.profile)) {
+            slot = kept
+        }
+        guard let loaded = try? await appState.loadHelperModels(inProfile: Self.profile), read == reads else { return }
+        slot = Self.router(in: loaded)
+    }
+
+    static func router(in slots: [HelperModelSlot]?) -> HelperModelSlot? {
+        slots?.first { $0.id == HelperModelSlot.groupRouter }
+    }
+}
+
 struct GroupRoomSettingsSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
@@ -2537,6 +2589,9 @@ struct GroupRoomSettingsSheet: View {
                         }
                         Text(modeCaption)
                             .settingsCaption()
+                        if draft.routing == .auto && draft.newerRouting.isEmpty {
+                            GroupRouterModelRow()
+                        }
                     }
                     if draft.routing == .lead {
                         ConduitSettingsSection(title: AppLocalization.string("Lead", table: .rooms), symbol: "crown", tint: .yellow) {
