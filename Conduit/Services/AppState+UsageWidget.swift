@@ -26,9 +26,11 @@ extension AppState {
     func saveUsageWidgetAccess() async {
         guard let dashboardID = activeDashboardID else { return }
         let profile = activeProfile
-        // Another dashboard is in use now: the widget stops reading the old
-        // one's before this one has connected.
-        if let kept = UsageWidgetKeychain.load(), kept.dashboardID != dashboardID {
+        // A sign-out while the pass is made leaves it unsaved.
+        let generation = dashboardSwitchGeneration
+        // Another dashboard or profile is in use now: the widget stops
+        // reading the old one's before this one's pass is ready.
+        if let kept = UsageWidgetKeychain.load(), kept.dashboardID != dashboardID || kept.profile != profile {
             removeUsageWidget(dashboardID: kept.dashboardID)
         }
         guard let bridge = dashboardTicketBridge else { return }
@@ -39,6 +41,7 @@ extension AppState {
             return
         }
         guard let pass = await dashboardHostPass(bridge: bridge, dashboardID: dashboardID),
+              dashboardSwitchGeneration == generation,
               activeDashboardID == dashboardID, activeProfile == profile else { return }
         let access = UsageWidgetAccess(dashboardID: dashboardID, profile: profile, pass: pass)
         let before = UsageWidgetKeychain.load()

@@ -113,18 +113,20 @@ enum UsageWidgetFeed {
             var windows = quota.windows
             var account: String?
             if windows.isEmpty, !quota.accounts.isEmpty {
+                let signedIn = quota.accounts.filter { $0.state != .unavailable }
+                let allLimited = !signedIn.isEmpty && signedIn.allSatisfy { $0.state == .limited }
                 let usable = quota.accounts.filter { ($0.state == .ready || $0.state == .unknown) && !$0.windows.isEmpty }
-                // A limited account's windows when every usable one has none
-                // (its full window is why); never a signed-out account's
-                // last numbers, which Settings > Usage doesn't count either.
+                // A limited account's windows only when the whole pool is
+                // limited (its full window is why); never a signed-out
+                // account's last numbers, which Settings > Usage doesn't
+                // count either.
                 let best = usable.max { mostLeft($0.windows) < mostLeft($1.windows) }
-                    ?? quota.accounts.first { $0.state == .limited && !$0.windows.isEmpty }
+                    ?? (allLimited ? signedIn.first { !$0.windows.isEmpty } : nil)
                 if let best {
                     windows = best.windows
                     account = best.label.isEmpty ? nil : best.label
                 }
-                let signedIn = quota.accounts.filter { $0.state != .unavailable }
-                if !isLimited, !signedIn.isEmpty, signedIn.allSatisfy({ $0.state == .limited }) {
+                if !isLimited, allLimited {
                     isLimited = true
                     limitedUntil = signedIn.compactMap(\.resetsAt).min()
                 }

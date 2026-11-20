@@ -72,6 +72,9 @@ extension AppState {
         // Connected, so the saved dashboards were read: sharing bound to one
         // removed earlier ends first, whatever the status read says.
         endSharingWithRemovedDashboards()
+        // The Plan limits widget reads Hermes, not the plugin, so it gets
+        // its pass whatever the status read says (issue 2796).
+        Task { await saveUsageWidgetAccess() }
         notifierPluginStatusGeneration += 1
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
@@ -132,10 +135,8 @@ extension AppState {
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
-        // The Pulse widget reads Pulse with its own pass (issue 2190), and
-        // the Plan limits widget Hermes' plan limits (issue 2796).
+        // The Pulse widget reads Pulse with its own pass (issue 2190).
         Task { await savePulseWidgetAccess() }
-        Task { await saveUsageWidgetAccess() }
         Task { await runPhoneSync(reason: .connected) }
         // Log to Hermes events that waited for this host.
         Task { await drainShortcutInbox() }

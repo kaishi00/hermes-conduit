@@ -543,12 +543,21 @@ final class WidgetSnapshotTests: XCTestCase {
     }
 
     /// A pool whose usable accounts report no windows never shows a
-    /// signed-out account's last numbers (Settings > Usage counts neither).
-    func testPlanLimitsWidgetNeverShowsASignedOutAccountsNumbers() throws {
+    /// signed-out account's last numbers (Settings > Usage counts neither),
+    /// nor a limited one's while the pool isn't all limited.
+    func testPlanLimitsWidgetShowsOnlyAnAccountHermesWouldUse() throws {
         let quota = try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
             ["id": "a", "label": "Old", "state": "unavailable", "windows": [["label": "Weekly", "used_percent": 12] as [String: Any]]] as [String: Any],
             ["id": "b", "state": "ready", "windows": [] as [[String: Any]]] as [String: Any],
         ] as [[String: Any]]] as [String: Any]]))
         XCTAssertEqual(UsageWidgetFeed.providers(from: [quota]), [])
+
+        // Nor a limited account's while another can still be used: its full
+        // window would show without Limited.
+        let mixed = try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "state": "limited", "windows": [["label": "Weekly", "used_percent": 100] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "ready", "windows": [] as [[String: Any]]] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))
+        XCTAssertEqual(UsageWidgetFeed.providers(from: [mixed]), [])
     }
 }

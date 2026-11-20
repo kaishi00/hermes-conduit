@@ -70,6 +70,7 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
                 method: "GET", body: nil, timeout: 20)
             providers = UsageWidgetFeed.providers(from: ProviderQuota.list(from: options))
         } catch LocationHostError.signInRequired {
+            guard stillShows(access, currentAccess()) else { return nil }
             return previous?.with(needsConduit: true)
                 ?? UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile, appLanguage: language,
                                        providers: [], readAt: Date(), needsConduit: true)
@@ -78,19 +79,27 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
             // 404 after a good read (a proxy or a restart) keeps that read.
             providers = []
         } catch {
+            guard stillShows(access, currentAccess()) else { return nil }
             return previous
         }
         // Conduit took the pass away or moved to another dashboard or
         // profile meanwhile: this answer is no longer the widget's to show.
         // A pass saved again for the same dashboard and profile (each
         // return to the screen stamps a new one) leaves the answer the widget's.
-        guard let current = currentAccess(), current.dashboardID == access.dashboardID,
-              current.profile == access.profile else { return nil }
+        guard stillShows(access, currentAccess()) else { return nil }
         let snapshot = UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile,
                                            appLanguage: language, providers: providers, readAt: Date())
         try? store?.write(snapshot)
         return snapshot
     }
+}
+
+/// Conduit still keeps a pass for the dashboard and profile a read was
+/// made for: one saved again for them (each return to the screen stamps a
+/// new one) leaves the read the widget's; another dashboard, another
+/// profile or none doesn't.
+private func stillShows(_ access: UsageWidgetAccess, _ current: UsageWidgetAccess?) -> Bool {
+    current?.dashboardID == access.dashboardID && current?.profile == access.profile
 }
 
 private struct UsageWidgetView: View {
