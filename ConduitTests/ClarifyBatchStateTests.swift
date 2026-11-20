@@ -1471,6 +1471,20 @@ final class ClarifyBatchStateTests: XCTestCase {
         // A longer question that only starts with the same words isn't it.
         let longer = ClarifyActivity(requestId: "b1", question: "Which environment? And which region?", choices: [])
         XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: longer))
+        // Nor is one with another line of its own below the same words.
+        let another = ClarifyActivity(requestId: "c1", question: "Which environment?\nExclude production?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: another))
+        let batch = ClarifyActivity(
+            requestId: "conduit-push-batch2",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ]
+        )
+        XCTAssertFalse(AppState.pushCardSupersededBy(batch, live: another))
+        // The hint in another language still names "skip".
+        let korean = ClarifyActivity(requestId: "d1", question: "Which environment?\n이 질문을 건너뛰려면 \"skip\"이라고 답장하세요.", choices: [])
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: korean))
     }
 
 

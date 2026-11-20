@@ -1182,7 +1182,8 @@ extension AppState {
     ///
     /// A messaging chat's card ends its question with Hermes' typed-"skip"
     /// hint on a line of its own, so a live question that is the pushed one
-    /// plus lines below it still matches (issue: duplicated question cards,
+    /// plus that one line (it names "skip" in every language) still matches;
+    /// any other line below it is another question (issue: duplicated question cards,
     /// 2026-11-20).
     static func pushCardSupersededBy(_ pushed: ClarifyActivity, live: ClarifyActivity) -> Bool {
         func normalized(_ text: String) -> String {
@@ -1193,7 +1194,14 @@ extension AppState {
         func asked(_ text: String) -> Bool {
             let pushedText = normalized(text)
             guard !pushedText.isEmpty else { return false }
-            return liveTexts.contains { $0 == pushedText || $0.hasPrefix(pushedText + "\n") }
+            return liveTexts.contains { live in
+                guard live != pushedText else { return true }
+                // Only Hermes' skip hint below it: one more line, which
+                // names the typed "skip" in every language Hermes writes it.
+                guard live.hasPrefix(pushedText + "\n") else { return false }
+                let trailer = live.dropFirst(pushedText.count + 1)
+                return !trailer.contains("\n") && trailer.contains("skip")
+            }
         }
         if pushed.questions.contains(where: \.isSyntheticID) {
             return asked(pushed.correlationQuestion)
