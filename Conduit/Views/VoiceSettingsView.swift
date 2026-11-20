@@ -512,7 +512,7 @@ struct VoiceSettingsView: View {
                 speechToTextStep
                 assistantVoiceStep
             } else {
-                Text(verbatim: AppLocalization.string("\(voiceMode.title) brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them.", table: .voice))
+                Text(verbatim: AppLocalization.string("\(voiceMode.title) brings its own listening and speaking, so the speech-to-text and assistant voice steps don't apply. Pick Classic under Voice mode to use them. Read Aloud still speaks with the assistant voice: pick it under Read Aloud.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
