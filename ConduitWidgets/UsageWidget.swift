@@ -70,7 +70,12 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
                 method: "GET", body: nil, timeout: 20)
             providers = UsageWidgetFeed.providers(from: ProviderQuota.list(from: options))
         } catch LocationHostError.signInRequired {
-            guard stillShows(access, currentAccess()) else { return nil }
+            let current = currentAccess()
+            guard stillShows(access, current) else { return nil }
+            // Conduit gave the widget a new sign-in meanwhile (a native
+            // token rotated) and reloads it: the old pass's refusal isn't
+            // a reason to ask for Conduit.
+            if let current, current.pass.headers != access.pass.headers { return previous }
             return previous?.with(needsConduit: true)
                 ?? UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile, appLanguage: language,
                                        providers: [], readAt: Date(), needsConduit: true)
