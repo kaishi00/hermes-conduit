@@ -34493,84 +34493,84 @@
         }
       }
     },
-    "This is %@’s Group router helper. It picks for every group chat on this Hermes that answers automatically." : {
+    "This is %@’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das ist der Gruppen-Router-Helfer von %@. Er wählt für jeden Gruppenchat auf diesem Hermes, der automatisch antwortet."
+            "value" : "Das ist der Gruppen-Router-Helfer von %@. Er wählt, wer in jedem Gruppenchat auf diesem Hermes antwortet, der automatisch auswählt."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Es el ayudante Enrutador de grupo de %@. Elige en todos los chats de grupo de este Hermes que responden automáticamente."
+            "value" : "Es el ayudante Enrutador de grupo de %@. Elige quién responde en todos los chats de grupo de este Hermes configurados para elegir automáticamente."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "C’est l’assistant Routeur de groupe de %@. Il choisit pour toutes les discussions de groupe de ce Hermes qui répondent automatiquement."
+            "value" : "C’est l’assistant Routeur de groupe de %@. Il choisit qui répond dans toutes les discussions de groupe de ce Hermes réglées sur le choix automatique."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ini adalah helper Router grup milik %@. Ia memilih untuk setiap obrolan grup di Hermes ini yang menjawab otomatis."
+            "value" : "Ini adalah helper Router grup milik %@. Ia memilih siapa yang menjawab di setiap obrolan grup di Hermes ini yang diatur untuk memilih otomatis."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "È l’assistente Router di gruppo di %@. Sceglie per ogni chat di gruppo su questo Hermes che risponde automaticamente."
+            "value" : "È l’assistente Router di gruppo di %@. Sceglie chi risponde in ogni chat di gruppo su questo Hermes impostata sulla scelta automatica."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "これは %@ のグループルーターヘルパーです。この Hermes で自動で答えるすべてのグループチャットで選びます。"
+            "value" : "これは %@ のグループルーターヘルパーです。この Hermes で自動で選ぶ設定のすべてのグループチャットで、誰が答えるかを選びます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@의 그룹 라우터 도우미입니다. 이 Hermes에서 자동으로 답하는 모든 그룹 채팅에서 고릅니다."
+            "value" : "%@의 그룹 라우터 도우미입니다. 이 Hermes에서 자동으로 고르도록 설정된 모든 그룹 채팅에서 누가 답할지 고릅니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "To pomocnik Router grupowy profilu %@. Wybiera dla każdego czatu grupowego na tym Hermesie, który odpowiada automatycznie."
+            "value" : "To pomocnik Router grupowy profilu %@. Wybiera, kto odpowiada w każdym czacie grupowym na tym Hermesie z automatycznym wyborem."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Este é o ajudante Roteador de grupo de %@. Ele escolhe em todos os chats em grupo deste Hermes que respondem automaticamente."
+            "value" : "Este é o ajudante Roteador de grupo de %@. Ele escolhe quem responde em todos os chats em grupo deste Hermes configurados para escolher automaticamente."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Это помощник «Маршрутизатор группы» профиля %@. Он выбирает во всех групповых чатах на этом Hermes, где ответ выбирается автоматически."
+            "value" : "Это помощник «Маршрутизатор группы» профиля %@. Он выбирает, кто ответит, во всех групповых чатах на этом Hermes с автоматическим выбором."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu, %@ profilinin Grup yönlendirici yardımcısı. Bu Hermes'te otomatik yanıtlayan her grup sohbeti için seçer."
+            "value" : "Bu, %@ profilinin Grup yönlendirici yardımcısı. Bu Hermes'te otomatik seçecek şekilde ayarlanan her grup sohbetinde kimin yanıtlayacağını seçer."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "这是 %@ 的群组路由辅助模型。它为这台 Hermes 上所有自动选择回答者的群聊做选择。"
+            "value" : "这是 %@ 的群组路由辅助模型。它为这台 Hermes 上所有设为自动选择的群聊决定谁来回答。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "這是 %@ 的群組路由輔助模型。它為這台 Hermes 上所有自動選擇回答者的群組聊天做選擇。"
+            "value" : "這是 %@ 的群組路由輔助模型。它為這台 Hermes 上所有設為自動選擇的群組聊天決定誰來回答。"
           }
         }
       }

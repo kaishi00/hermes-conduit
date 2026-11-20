@@ -2457,25 +2457,31 @@ struct GroupRouterModelRow: View {
     /// Names the newest read: an older one that answers later is dropped.
     @State private var reads = 0
 
-    static let profile = "default"
+    static let profile = HelperModelSlot.defaultProfile
 
     var body: some View {
-        Group {
+        // Held, so the read runs while nothing shows: it's what shows the
+        // row, and the saved notice can bring it back (a Group that shows
+        // nothing runs no onAppear or onReceive).
+        ModifierHost {
             if let slot {
-                NavigationLink {
-                    HelperModelPage(slot: slot, settings: appState.helperModelSettings(task: slot.id, inProfile: Self.profile))
-                } label: {
-                    ModelChooserLinkRow(title: AppLocalization.string("Model"), value: slot.value)
+                // The section's own spacing between the row and its caption.
+                VStack(alignment: .leading, spacing: 14) {
+                    NavigationLink {
+                        HelperModelPage(slot: slot, settings: appState.helperModelSettings(task: slot.id, inProfile: Self.profile))
+                    } label: {
+                        ModelChooserLinkRow(title: AppLocalization.string("Model"), value: slot.value)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("room.settings.routerModel")
+                    Text(AppLocalization.string(
+                        "This is \(appState.defaultProfileName)’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically.", table: .rooms
+                    ))
+                    .settingsCaption()
                 }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("room.settings.routerModel")
-                Text(AppLocalization.string(
-                    "This is \(appState.defaultProfileName)’s Group router helper. It picks for every group chat on this Hermes that answers automatically.", table: .rooms
-                ))
-                .settingsCaption()
             }
         }
-        .onAppear { Task { await read() } }
+        .task { await read() }
         .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
             Task { await read() }
         }

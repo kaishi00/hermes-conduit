@@ -48,6 +48,10 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// would change nothing, so its list leaves them out.
     static let defaultProfileOnly: Set<String> = [groupRouter]
 
+    /// The default profile's name in Hermes' routes, where those slots are
+    /// read and set.
+    static let defaultProfile = "default"
+
     /// A helper's own on/off switch, in its `auxiliary.<task>` block, and
     /// the intervals that decide when it runs while it's on.
     struct OnOff {
