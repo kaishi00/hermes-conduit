@@ -143,7 +143,8 @@ final class DemoVideoTests: XCTestCase {
                 let panel = app.descendants(matching: .any)["botWork.panel"].firstMatch
                 XCTAssertTrue(app.descendants(matching: .any)["botWork.row.W1"].firstMatch.waitForExistence(timeout: 30),
                               "The Work panel never listed W1")
-                settle(10)
+                // Both still working when it opens; W1 finishes while it's up.
+                settle(16)
                 // The panel is a sheet on a phone: pulled down from its top.
                 if panel.exists {
                     panel.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.02))
