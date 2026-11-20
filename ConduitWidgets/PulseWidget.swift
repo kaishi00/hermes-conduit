@@ -51,9 +51,13 @@ struct PulseWidgetProvider: TimelineProvider {
     /// as the last good read; that read when the host can't be reached, and
     /// nothing when Conduit hasn't given the widget a pass (no Pulse on the
     /// dashboard in use, or Conduit not opened since the widget was added).
+    /// A pass refused as signed out after Conduit saved a renewed one for
+    /// the same dashboard reads once more with it, as the Plan limits
+    /// widget does (issue 2902), so the two widgets agree.
     static func read(store: PulseWidgetStore? = PulseWidgetStore.production,
                      access: PulseWidgetAccess? = PulseWidgetKeychain.load(),
-                     currentAccess: () -> PulseWidgetAccess? = PulseWidgetKeychain.load) async -> PulseWidgetSnapshot? {
+                     currentAccess: () -> PulseWidgetAccess? = PulseWidgetKeychain.load,
+                     retried: Bool = false) async -> PulseWidgetSnapshot? {
         guard let access else {
             // Conduit took the pass away: nothing of it stays on disk, even
             // a read that finished just as it went.
@@ -100,6 +104,13 @@ struct PulseWidgetProvider: TimelineProvider {
             }
             return merged
         } catch LocationHostError.signInRequired {
+            if let current = currentAccess(), current.dashboardID == access.dashboardID,
+               current.pass.headers != access.pass.headers {
+                // A token that rotated while the read was out isn't a
+                // reason to ask for Conduit: once more with the new pass.
+                guard !retried else { return previous }
+                return await read(store: store, access: current, currentAccess: currentAccess, retried: true)
+            }
             let note = WidgetLocalization.string(PulseWidgetNote.openConduit, language: language)
             return previous?.with(note: .some(note), answeredByRead: true)
         } catch {

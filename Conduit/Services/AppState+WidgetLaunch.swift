@@ -26,11 +26,16 @@ extension AppState {
     /// already being carried out goes on as the launch that sent it first,
     /// with that launch's origin: a widget's New Chat that a shortcut repeats
     /// keeps its keyboard down, and the shortcut's keeps it up the other way
-    /// round (#2863's review).
-    func receiveLaunch(_ link: WidgetLaunchLink, origin: NewChatLaunchOrigin) {
+    /// round (#2863's review). False when it went on as that earlier launch.
+    @discardableResult
+    func receiveLaunch(_ link: WidgetLaunchLink, origin: NewChatLaunchOrigin) -> Bool {
         let previous = newChatLaunchOrigin
         newChatLaunchOrigin = origin
-        if !widgetLaunchCoordinator.receive(link) { newChatLaunchOrigin = previous }
+        guard widgetLaunchCoordinator.receive(link) else {
+            newChatLaunchOrigin = previous
+            return false
+        }
+        return true
     }
 
     /// The New Chat shortcut (Siri, Shortcuts, the Action Button; issue

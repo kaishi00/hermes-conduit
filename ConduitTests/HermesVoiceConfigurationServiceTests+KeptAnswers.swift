@@ -492,6 +492,77 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertNil(HelperModelSlot.Interval.parse("1,000"), "never read as 1")
     }
 
+    /// Issue 2912 and 2886: the Background review switch's save and read
+    /// turns, as HelperModelSwitchState holds them for the section.
+    func testBackgroundReviewSwitchKeepsSavesAgainstLateReadsAndFailedSaves() throws {
+        let words = try XCTUnwrap(HelperModelSlot.onOff(task: HelperModelSlot.backgroundReview))
+        let memory = words.intervals[0]
+        let skills = words.intervals[1]
+        var state = HelperModelSwitchState()
+
+        // A failed read with nothing kept offers Try Again; a config
+        // without the key reads as Hermes' default, on.
+        state.readAnswered(state.readAsked(), nil)
+        XCTAssertTrue(state.showsReadFailure)
+        state.showKept([:])
+        XCTAssertFalse(state.showsReadFailure, "a kept config shows instead")
+        XCTAssertTrue(state.isOn(words))
+        state.readAnswered(state.readAsked(), [memory.key: .number(10), skills.key: .number(10)])
+        XCTAssertTrue(state.isOn(words))
+
+        // A failed interval save keeps the draft, says so and re-enables Save.
+        state.edit(memory.key, to: "20")
+        XCTAssertNil(state.intervalSaveStarted(memory, raw: "2.5"))
+        XCTAssertNotNil(state.errors[memory.key], "a number it can't take is said under the field")
+        let refused = try XCTUnwrap(state.intervalSaveStarted(memory, raw: "20"))
+        XCTAssertEqual(state.savingKey, memory.key)
+        XCTAssertEqual(state.shown(memory), "20", "shown at once")
+        XCTAssertFalse(state.saveLanded(refused, saved: false), "nothing to read again")
+        XCTAssertNil(state.savingKey)
+        XCTAssertEqual(state.draft(memory), "20", "kept for Try Again")
+        XCTAssertEqual(state.shown(memory), "10", "rolled back")
+        XCTAssertEqual(state.errors[memory.key], AppLocalization.string("Couldn’t save that change. Try again.", table: .bots))
+
+        // A read asked before the save lands after it: dropped, so it
+        // doesn't undo the save.
+        let early = state.readAsked()
+        let taken = try XCTUnwrap(state.intervalSaveStarted(memory, raw: "20"))
+        state.edit(memory.key, to: "25")  // typed on while it was on its way
+        XCTAssertTrue(state.saveLanded(taken, saved: true), "a save reads the other keys again")
+        state.readAnswered(early, [memory.key: .number(10), skills.key: .number(10)])
+        XCTAssertEqual(state.shown(memory), "20")
+        XCTAssertEqual(state.draft(memory), "25", "a draft cleared only while it still matches what was saved")
+        state.readAnswered(state.readAsked(), [memory.key: .number(20), skills.key: .number(15)])
+        XCTAssertEqual(state.shown(skills), "15", "the read after a save brings the other keys")
+
+        // A read asked while a save is on its way, answering before it
+        // lands, may hold the config before it: dropped too.
+        let saving = try XCTUnwrap(state.intervalSaveStarted(memory, raw: "30"))
+        let during = state.readAsked()
+        state.readAnswered(during, [memory.key: .number(20), skills.key: .number(15)])
+        XCTAssertEqual(state.shown(memory), "30", "the save stays shown")
+        XCTAssertTrue(state.saveLanded(saving, saved: true))
+        XCTAssertEqual(state.shown(memory), "30")
+
+        // Two reads (two Try Agains) answering out of order: the newer stays.
+        let older = state.readAsked()
+        let newer = state.readAsked()
+        state.readAnswered(newer, [memory.key: .number(30), skills.key: .number(40)])
+        state.readAnswered(older, [memory.key: .number(30), skills.key: .number(15)])
+        XCTAssertEqual(state.shown(skills), "40", "an older read answering later is dropped")
+
+        // A refused switch save reverts it, with no line under an interval.
+        let off = try XCTUnwrap(state.saveStarted(words.key, .bool(false), switchKey: words.key))
+        XCTAssertFalse(state.isOn(words))
+        // An interval save while the switch saves doesn't start: one at a time.
+        XCTAssertNil(state.intervalSaveStarted(memory, raw: "35"))
+        XCTAssertEqual(state.shown(memory), "30")
+        XCTAssertEqual(state.savingKey, words.key)
+        XCTAssertFalse(state.saveLanded(off, saved: false))
+        XCTAssertTrue(state.isOn(words))
+        XCTAssertNil(state.errors[words.key])
+    }
+
     /// A provider pinned without a model is a choice of its own, named
     /// as its default model; "Same as chats" unpins it. A slot on an
     /// endpoint of its own names its host and keeps it while its provider

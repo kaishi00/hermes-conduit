@@ -1227,6 +1227,43 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertNil(appState.composerFocusRequest, "the widget's launch keeps the keyboard down")
     }
 
+    /// The mirror (issue 2870): a widget's New Chat tapped while the
+    /// shortcut's is being created goes on as the shortcut's, keyboard up.
+    func testAWidgetRepeatingAShortcutsNewChatKeepsTheShortcutsOrigin() async throws {
+        let suite = "AppStateWidgetLaunchTests.widget-coalesce.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000cb")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.newChatFocusesComposer = false
+        let createEntered = WidgetLaunchTestGate()
+        let createRelease = WidgetLaunchTestGate()
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await createEntered.signal()
+            await createRelease.wait()
+            return ("shortcut-new", "shortcut-new", "default")
+        }
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.isConnected = true
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        guard await waitForGate(createEntered, "the shortcut's New Chat never reached session creation", retryReadinessIn: appState) else { return }
+
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "default"), reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(link.url))
+        XCTAssertEqual(appState.newChatLaunchOrigin, .shortcut)
+        await createRelease.signal()
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "shortcut-new")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "shortcut-new", "the shortcut's launch brings the keyboard up")
+    }
+
     /// During a call the shortcut's New Chat is refused, as a widget's is,
     /// in words about the call rather than another workspace or a widget.
     func testNewChatShortcutDuringACallSaysToEndTheCall() async throws {
@@ -1246,6 +1283,8 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         guard await waitForLaunchCompletion(appState) else { return }
 
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to start a new chat."))
+        XCTAssertEqual(appState.pinSyncNotice?.message, AppLocalization.string("End the call to start a new chat."),
+                       "a notice says it over the call's screen too")
         XCTAssertNil(appState.composerFocusRequest)
     }
 
@@ -1334,7 +1373,8 @@ private final class SuspendedWidgetVoiceConfigurationRequester: VoiceConfigurati
 }
 
 @MainActor
-private final class WidgetLaunchTestGate {
+/// Holds a test step until signaled; shared with the shared-draft tests.
+final class WidgetLaunchTestGate {
     private var isOpen = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
     var isSignaled: Bool { isOpen }

@@ -281,6 +281,38 @@ extension ShareDraftTests {
         XCTAssertEqual(appState.sharedDraftLaunch?.envelopeID, next.id)
     }
 
+    /// Issue 2870: a draft whose New Chat repeats the shortcut's, already
+    /// being created, doesn't ride it and take over its finish: it waits in
+    /// the inbox, and the shortcut's chat opens with the keyboard up.
+    @MainActor
+    func testADraftRepeatingAShortcutsNewChatLeavesItsFinishAlone() async throws {
+        let appState = try makeAppState(active: home, dashboards: [home])
+        let entered = WidgetLaunchTestGate()
+        let release = WidgetLaunchTestGate()
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await entered.signal()
+            await release.wait()
+            return ("shortcut-new", "shortcut-new", "default")
+        }
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        guard await waitUntil({
+            appState.widgetLaunchCoordinator.readinessChanged()
+            return entered.isSignaled
+        }, "the shortcut's New Chat never reached session creation") else { return }
+
+        let envelope = try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"))
+        appState.pickUpSharedDrafts()
+        XCTAssertNil(appState.sharedDraftLaunch, "it went on as the shortcut's launch, not the draft's")
+        XCTAssertEqual(appState.newChatLaunchOrigin, .shortcut)
+
+        await release.signal()
+        guard await waitUntil({ !appState.widgetLaunchCoordinator.hasPendingRequest }, "the shortcut's New Chat never finished") else { return }
+        XCTAssertEqual(appState.activeSessionId, "shortcut-new")
+        XCTAssertEqual(appState.composerFocusRequest?.sessionID, "shortcut-new", "the shortcut's finish keeps its keyboard")
+        XCTAssertFalse(appState.sharedDraftLaunchOwnsFinish)
+        XCTAssertEqual(inbox.pending().map(\.envelope.id), [envelope.id], "kept for the next pick-up")
+    }
+
     @MainActor
     func testANewerLaunchLeavesTheDraftForNextTime() throws {
         let appState = try makeAppState(active: home, dashboards: [home])

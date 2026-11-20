@@ -408,7 +408,7 @@ final class DashboardProxySignOutTests: XCTestCase {
             bridge.webView(
                 bridge.webView,
                 didFailProvisionalNavigation: nil,
-                withError: NSError(domain: "WebKitErrorDomain", code: 999)
+                withError: NSError(domain: "WebKitErrorDomain", code: 999 + attempt)
             )
             held[attempt].signal()
         }
@@ -421,7 +421,7 @@ final class DashboardProxySignOutTests: XCTestCase {
         } catch {
             let failure = error as NSError
             XCTAssertEqual(failure.domain, "WebKitErrorDomain")
-            XCTAssertEqual(failure.code, 999)
+            XCTAssertEqual(failure.code, 1001, "the third attempt's error, not an earlier one")
         }
         XCTAssertEqual(tickets.next(), 4, "three ticket requests, no fourth")
     }

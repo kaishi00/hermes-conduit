@@ -625,6 +625,19 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(renewedTwice?.providers, good?.providers)
         let latest = store.read()
         XCTAssertEqual(latest?.providers, good?.providers)
+        // The retry with the new sign-in failing otherwise (a 502, a 404):
+        // two tries, the last read back, no Open Conduit (issue 2902).
+        for status in [502, 404] {
+            var statuses: [String] = []
+            let retryFailed = await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { renewed }) { pass, _ in
+                statuses.append(pass.headers["Authorization"] ?? "")
+                if pass == kept.pass { throw LocationHostError.signInRequired }
+                throw LocationHostError.http(status: status, detail: "")
+            }
+            XCTAssertEqual(statuses, ["Bearer a", "Bearer b"], "\(status)")
+            XCTAssertEqual(retryFailed?.needsConduit, false, "\(status)")
+            XCTAssertEqual(retryFailed?.providers, good?.providers, "\(status)")
+        }
 
         // Conduit moved to another profile or took the pass away meanwhile:
         // nothing of the old one's, whichever way the read ended.
