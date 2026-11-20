@@ -25,8 +25,9 @@ final class PrivacyManifestTests: XCTestCase {
             fileTimestamp: ["C617.1"],
             bootTime: ["35F9.1"],
         ],
-        // NotificationSharedSettings reads the App Group defaults.
-        "ConduitNotificationService": [userDefaults: ["1C8F.1"]],
+        // NotificationSharedSettings reads the App Group defaults; the
+        // avatar copies' file dates (NotificationAvatars.needsCopy).
+        "ConduitNotificationService": [userDefaults: ["1C8F.1"], fileTimestamp: ["C617.1"]],
         "ConduitLocationPush": [userDefaults: ["1C8F.1"]],
         // The composer limit the app publishes in the App Group defaults,
         // and the age of share inbox folders in the App Group container.

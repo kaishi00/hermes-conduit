@@ -93,6 +93,9 @@ enum NotificationAvatars {
 
     /// Whether the copy is missing or older than the photo it came from, for
     /// the launch pass that fills in photos saved before this existed.
+    /// A just-written copy may carry the writer's clock rather than the
+    /// photo's, so the staleness test is one-sided: it never calls a fresh
+    /// copy stale, only a missing or genuinely older one.
     static func needsCopy(of source: URL, profile: String?, dashboardID: String?, root: URL? = sharedRoot) -> Bool {
         guard let copy = url(profile: profile, dashboardID: dashboardID, root: root) else { return false }
         func modified(_ url: URL) -> Date? {
@@ -138,7 +141,13 @@ enum NotificationAvatars {
         let groupName: String?
     }
 
-    /// nil when the push names no profile: it has no bot to show.
+    /// nil when the push names no profile: it has no bot to show. The
+    /// conversation is the chat's (a room thread, else a session id),
+    /// scoped to the dashboard and shared by every bot in the chat, so two
+    /// bots' pushes for one room join one conversation (Apple requires
+    /// messages of a conversation to share an identifier); the sender's
+    /// `handle`, which carries its face, is the fallback when the push
+    /// names no chat.
     static func sender(
         profile: String?, dashboardID: String?, botName: String, title: String, conversation: String?
     ) -> Sender? {
@@ -149,7 +158,7 @@ enum NotificationAvatars {
         return Sender(
             handle: handle,
             displayName: botName,
-            conversationID: chat.isEmpty ? handle : "\(handle)/\(chat)",
+            conversationID: chat.isEmpty ? handle : "conduit:\(bucket(dashboardID))/\(chat)",
             groupName: heading.isEmpty || heading == botName ? nil : heading
         )
     }

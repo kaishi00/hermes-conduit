@@ -203,28 +203,66 @@ final class ProfileAppearanceStore {
 
     /// Copies, once a launch, every saved dashboard's photos that have no
     /// notification copy yet or a stale one (photos saved before the
-    /// copies existed, or by a build without them), off the main actor.
+    /// copies existed, or by a build without them). The heavy file reads
+    /// run off the main actor; the commit runs on the main actor,
+    /// serialized with `saveAvatar`, `saveMirroredAvatar`, `removeAvatar`
+    /// and `removeAll` (which are all main-actor), so a pass's write can
+    /// never land after a newer save or recreate a removed copy.
     func shareAvatarsWithNotificationsOnce() {
         guard !Self.sharedWithNotificationsThisLaunch, let root = notificationAvatarsRoot,
               let avatarsRoot = avatarsRoot(create: false) else { return }
         Self.sharedWithNotificationsThisLaunch = true
         Task.detached(priority: .utility) {
-            Self.shareAvatars(under: avatarsRoot, with: root)
+            let work = Self.copyWork(under: avatarsRoot, with: root)
+            await MainActor.run {
+                Self.commit(work, with: root)
+            }
         }
     }
 
-    /// The pass itself: each dashboard folder's photos into `root`.
-    nonisolated static func shareAvatars(under avatarsRoot: URL, with root: URL) {
+    /// The pass's heavy half: which photos look stale, their bytes and the
+    /// photo's modification date at that moment, read off the main actor.
+    /// Each entry is committed by the main-actor half.
+    nonisolated static func copyWork(
+        under avatarsRoot: URL, with root: URL
+    ) -> [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)] {
         let folders = (try? FileManager.default.contentsOfDirectory(
             at: avatarsRoot, includingPropertiesForKeys: [.isDirectoryKey]
         )) ?? []
+        var work: [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)] = []
         for folder in folders where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
             let dashboardID = UUID(uuidString: folder.lastPathComponent)?.uuidString
             for file in avatarFiles(in: folder)
             where NotificationAvatars.needsCopy(of: file.url, profile: file.profile, dashboardID: dashboardID, root: root) {
+                // The date first: a photo saved between this read and the
+                // bytes' must leave a newer date than the entry carries, so
+                // the commit skips it instead of storing stale bytes.
+                let modified = (try? file.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
                 guard let data = try? Data(contentsOf: file.url) else { continue }
-                NotificationAvatars.store(data, profile: file.profile, dashboardID: dashboardID, root: root)
+                work.append((file.url, file.profile, dashboardID, data, modified))
             }
+        }
+        return work
+    }
+
+    /// The whole pass on the calling context: the launch pass runs only the
+    /// commit half on the main actor (see `shareAvatarsWithNotificationsOnce`),
+    /// serialized with the photo saves and removals; tests run this directly.
+    nonisolated static func shareAvatars(under avatarsRoot: URL, with root: URL) {
+        commit(copyWork(under: avatarsRoot, with: root), with: root)
+    }
+
+    /// The pass's commit half: writes each stale entry's copy unless the
+    /// photo changed while the pass ran (saved again, removed, or removed
+    /// and re-saved — its modification date moved), whose own write already
+    /// left the right copy. Runs on the main actor in production.
+    nonisolated static func commit(
+        _ work: [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)], with root: URL
+    ) {
+        for (source, profile, dashboardID, data, modified) in work {
+            let current = (try? source.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? nil
+            guard current == modified else { continue }
+            NotificationAvatars.store(data, profile: profile, dashboardID: dashboardID, root: root)
         }
     }
 

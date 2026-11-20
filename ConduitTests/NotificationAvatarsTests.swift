@@ -31,8 +31,12 @@ extension BotModeTests {
         let small = try XCTUnwrap(NotificationAvatars.stillPNG(notificationPicture(.red, width: 64, height: 64)))
         XCTAssertEqual(try pixelSize(small).width, 64)
         // A moving picture leaves its first frame.
-        let frame = { (color: UIColor) in AnimatedAvatar.Frame(image: UIImage(data: self.notificationPicture(color, width: 120, height: 120))!.cgImage!, delay: 0.1) }
-        let apng = try AnimatedAvatar.encode([frame(.red), frame(.blue)]).get()
+        let frame: (UIColor) throws -> AnimatedAvatar.Frame = { (color: UIColor) in
+            let image = try XCTUnwrap(UIImage(data: self.notificationPicture(color, width: 120, height: 120)))
+            let cgImage = try XCTUnwrap(image.cgImage)
+            return AnimatedAvatar.Frame(image: cgImage, delay: 0.1)
+        }
+        let apng = try AnimatedAvatar.encode([try frame(.red), try frame(.blue)]).get()
         let first = try XCTUnwrap(NotificationAvatars.stillPNG(apng))
         let source = try XCTUnwrap(CGImageSourceCreateWithData(first as CFData, nil))
         XCTAssertEqual(CGImageSourceGetCount(source), 1)
@@ -99,9 +103,17 @@ extension BotModeTests {
         ))
         XCTAssertEqual(sender.handle, "conduit:\(dashboard.uppercased())/angelos")
         XCTAssertEqual(sender.displayName, "Angelos")
-        XCTAssertEqual(sender.conversationID, "conduit:\(dashboard.uppercased())/angelos/session-1")
+        XCTAssertEqual(sender.conversationID, "conduit:\(dashboard.uppercased())/session-1")
         // The push keeps its own title above the bot's name.
         XCTAssertEqual(sender.groupName, "Response ready")
+
+        // Two bots' pushes for one chat join one conversation.
+        let second = try XCTUnwrap(NotificationAvatars.sender(
+            profile: "Kaleb", dashboardID: dashboard.lowercased(), botName: "Kaleb",
+            title: "Response ready", conversation: "session-1"
+        ))
+        XCTAssertEqual(second.conversationID, sender.conversationID)
+        XCTAssertNotEqual(second.handle, sender.handle)
 
         let call = try XCTUnwrap(NotificationAvatars.sender(
             profile: "kaleb", dashboardID: nil, botName: "Kaleb", title: "Kaleb", conversation: nil
@@ -109,5 +121,47 @@ extension BotModeTests {
         XCTAssertNil(call.groupName, "a title that is only the bot's name")
         XCTAssertEqual(call.conversationID, "conduit:unscoped/kaleb")
         XCTAssertNil(NotificationAvatars.sender(profile: "  ", dashboardID: dashboard, botName: "Hermes", title: "x", conversation: nil))
+    }
+
+    func testTheLaunchPassNeverOverwritesAFreshCopyWithStaleBytes() throws {
+        let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: base) }
+        let photos = base.appendingPathComponent("photos")
+        let shared = base.appendingPathComponent("shared")
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "notification-avatars-\(UUID().uuidString)"))
+        let dashboard = UUID()
+        let profile = "jarvis"
+        let store = ProfileAppearanceStore(defaults: defaults, avatarsRoot: photos, legacyAvatarDirectories: [])
+        _ = try store.saveAvatar(notificationPicture(.orange, width: 300, height: 300), for: profile, dashboardID: dashboard)
+        // The pass's premise: a photo with no copy (one deleted, or saved by
+        // a build without the copies).
+        NotificationAvatars.remove(profile: profile, dashboardID: dashboard.uuidString, root: shared)
+        // The pass reads the photo here, and a newer photo (with its own
+        // fresh copy) lands before the pass commits.
+        let work = ProfileAppearanceStore.copyWork(under: photos, with: shared)
+        _ = try store.saveAvatar(notificationPicture(.blue, width: 300, height: 300), for: profile, dashboardID: dashboard)
+        ProfileAppearanceStore.commit(work, with: shared)
+        XCTAssertEqual(
+            NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared),
+            NotificationAvatars.stillPNG(notificationPicture(.blue, width: 300, height: 300)),
+            "the pass's stale read must not overwrite the newer copy"
+        )
+
+        // A photo removed while the pass ran gets no copy back.
+        NotificationAvatars.remove(profile: profile, dashboardID: dashboard.uuidString, root: shared)
+        let stale = ProfileAppearanceStore.copyWork(under: photos, with: shared)
+        XCTAssertFalse(stale.isEmpty, "the pass saw the photo before its removal")
+        store.removeAvatar(for: profile, dashboardID: dashboard)
+        ProfileAppearanceStore.commit(stale, with: shared)
+        XCTAssertNil(NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared))
+
+        // The whole pass still fills in a copy when nothing changed under it.
+        _ = try store.saveAvatar(notificationPicture(.green, width: 300, height: 300), for: profile, dashboardID: dashboard)
+        NotificationAvatars.remove(profile: profile, dashboardID: dashboard.uuidString, root: shared)
+        ProfileAppearanceStore.shareAvatars(under: photos, with: shared)
+        XCTAssertEqual(
+            NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared),
+            NotificationAvatars.stillPNG(notificationPicture(.green, width: 300, height: 300))
+        )
     }
 }
