@@ -435,7 +435,9 @@ final class DemoVideoTests: XCTestCase {
     }
 
     private func tapBot(_ title: String) {
-        let bot = named(title)
+        // The portrait on screen: the Tasks tab stays mounted, and its board
+        // names the same bots as assignees (Mira, Piko), whose labels match too.
+        let bot = portrait(title)
         guard bot.waitForExistence(timeout: 20) else {
             XCTFail("No \(title) on Bots Home")
             return
@@ -623,7 +625,7 @@ final class DemoVideoTests: XCTestCase {
         // A chat's composer is a text view; wait for it, since a chat just
         // opened may still be loading and a tab left earlier keeps its
         // search field (Tasks' 搜索任务) in the tree, off screen.
-        let composer = app.textViews.firstMatch.waitForExistence(timeout: 10)
+        let composer = app.textViews.firstMatch.waitForExistence(timeout: 20)
             ? app.textViews.firstMatch : app.textFields.firstMatch
         guard composer.waitForExistence(timeout: 20) else {
             XCTFail("No composer to send \(text)")
