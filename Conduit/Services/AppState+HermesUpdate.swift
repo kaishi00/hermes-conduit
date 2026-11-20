@@ -38,10 +38,11 @@ extension AppState {
                 throw DashboardTicketBridgeError.notReady
             }
             if let request = self.hermesUpdateRequest { return try await request(path, method) }
-            // An update's own answer comes at once; the check may fetch from
-            // the update source first.
+            // An update's own answer comes at once; the check probes the
+            // checkout's git remotes first, which took 40 s on a real host.
+            let timeout = path.hasPrefix(HermesUpdater.checkPath) ? 90_000 : 30_000
             do {
-                return try await bridge.requestJSON(path: path, method: method, timeoutMilliseconds: 30_000)
+                return try await bridge.requestJSON(path: path, method: method, timeoutMilliseconds: timeout)
             } catch DashboardTicketBridgeError.signInRequired {
                 // The dashboard that came back on the new version started a
                 // new sign-in session: sign in again, as the plugin update does.
@@ -49,7 +50,7 @@ extension AppState {
                       self.activeDashboardID == dashboardID, let renewed = self.dashboardTicketBridge else {
                     throw DashboardTicketBridgeError.signInRequired
                 }
-                return try await renewed.requestJSON(path: path, method: method, timeoutMilliseconds: 30_000)
+                return try await renewed.requestJSON(path: path, method: method, timeoutMilliseconds: timeout)
             }
         })
     }
