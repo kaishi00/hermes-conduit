@@ -7,6 +7,8 @@ enum ConduitWidgetKind {
     static let character = "com.milim.relay.widgets.character"
     /// Pulse's open cards, with Done, Do it and Not now (issue 2190).
     static let pulse = "com.milim.relay.widgets.pulse"
+    /// The New Chat control (issue 2860).
+    static let newChatControl = "com.milim.relay.widgets.newchat.control"
 }
 
 struct WidgetWorkspaceID: Codable, Hashable {

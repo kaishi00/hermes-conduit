@@ -903,8 +903,7 @@ extension AppState {
         // As for a widget's link: the automatic resume would otherwise take
         // the screen the new chat is on.
         cancelChatResumeRestoration()
-        newChatLaunchOrigin = .app
-        widgetLaunchCoordinator.receive(link)
+        receiveLaunch(link, origin: .app)
     }
 
     /// On a Mac the app's own New Chat opens ready to type. A phone or
