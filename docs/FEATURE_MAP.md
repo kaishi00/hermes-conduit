@@ -5842,7 +5842,7 @@ chat, a room or the composer field · Ask Hermes About Screen · Files over the
 size limit (its own entry) · README.md (the share sheet line) · the phone
 tool's add_event and add_reminder and their approvals, which Sort it out
 leads to (Phone change errors) · Hermes' memory files, which Remember it
-writes and Pulse's report reads · the Send to Hermes shortcut · the sheet's
+writes and Pulse's report reads · the Send to Hermes shortcut · New Chat from Siri, Shortcuts and the Action Button (a draft whose launch repeats one in flight waits in the inbox, #2928) · the sheet's
 and the instructions' translations · the Watch and CarPlay (not needed: no
 share sheet)
 
@@ -5853,7 +5853,7 @@ share sheet)
 - A picture as an image object, and its PNG: `Shared/ShareDraft/ProviderPicture.swift` (loadImage, pngData), used by the share sheet, paste and drop
 - The sheet: `ConduitShareExtension/ShareDraftModel.swift` (collect, save, ShareDraftProblem.message), `ConduitShareExtension/ShareDraftSheet.swift` (the What should Hermes do? section, title and symbol for an action)
 - The choice: `Shared/ShareDraft/ShareDraftEnvelope.swift` (ShareDraftAction, the envelope's `action`)
-- Pickup and the send: `Conduit/Services/AppState+ShareDraft.swift` (deliverSharedDraft, sharedDraftPrompt), tests in `ConduitTests/ShareDraftTests+AppState.swift`
+- Pickup and the send: `Conduit/Services/AppState+ShareDraft.swift` (deliverSharedDraft, sharedDraftPrompt, launchSharedDraft: recorded only when receiveLaunch started the launch), tests in `ConduitTests/ShareDraftTests+AppState.swift`
 - Paste: `Conduit/Views/Components/ComposerPasteTextView.swift` (canLoadImageProvider, loadImageObject)
 - Drop: `Conduit/Views/Components/AttachmentDrop.swift` (stage, stageImageObject), `Conduit/Views/Components/ReturnKeyTextView.swift` (fieldDrop)
 - Tests: `ConduitTests/ShareDraftTests.swift`
@@ -5867,6 +5867,7 @@ share sheet)
 - The share sheet asks what Hermes should do: Chat about it (the default) puts the draft in the composer and sends nothing; Sort it out and Remember it always start a new chat (the chat list hides) and are sent there once Conduit picks them up, the instruction first and what was shared after it, as the user's own message in the App Language (Eric 2026-11-13, the decision card: they send on their own). Sort it out asks Hermes to add dated things as calendar events and to-dos as reminders, through the phone tool, so each one still takes the approval its calendar sharing asks for; Remember it asks Hermes to keep what's worth knowing in its memory, briefly and not word for word, since its memory files are small; the full text stays in the chat. Pulse gets no input of its own: Pulse memory reads the chat and its report reads Hermes' memory files, as for any chat (Pulse quality over quantity, 2026-11-10).
 - A Sort it out or Remember it whose new chat couldn't open lands in the composer of the chat on screen with its instruction, unsent, with the share's "couldn't open the chat you picked" line; one whose send was refused lands in the new chat's composer, ready to send, and says it couldn't be sent; refused after the user moved to another chat, it goes back to the new chat's draft and the chat on screen says "Your message to … wasn't sent. It's back in that chat's draft.", as a refused message does, with no word about files left out (2026-11-13, #2367 reviews).
 - When nothing could be added, the sheet shows the Left out list a draft has, each thing with why (too large, unreadable), scrolling however many there are; the general "nothing here" line is only for a share that offered nothing Conduit reads (2026-11-04, #1750, issue 1747).
+- A draft whose launch repeats one already in flight (a shortcut's New Chat for the same workspace) doesn't take that launch's finish: it stays in the inbox and is picked up next time, so the other launch keeps its own origin and focus (2026-11-20, #2928, issue 2870).
 
 **Open gaps**
 - A drop decides from the dragged item's listed types alone, so a drag that offers only UIKit's image object isn't taken by a chat, a room or the composer field (no source is known to send one; pasting one works).
@@ -5874,7 +5875,7 @@ share sheet)
 - Sort it out and Remember it send when Conduit next comes to the front (the notification takes the user there); the extension can't hold a connection to send on its own.
 - The Send to Hermes shortcut has no Sort it out or Remember it option: a shortcut writes its own words, so "Sort this out: …" already works there.
 
-**Checked:** 2026-11-16, #2630 (the moved-on refused send's test stages a file that fails and matches its warning in the App Language, issue 2396); 2026-11-13, #2384 (test: the moved-on refused send names its chat and shows no file warning, issue 2377); 2026-11-13, #2371 (#2367's review leftovers: the moved-on refused send's notice names the chat holding it, the sheet's footer, the Watch, CarPlay and translations in Siblings); 2026-11-13, #2367 (What should Hermes do?: Chat about it, Sort it out, Remember it; the two that send go in a new chat on pickup; the phone tool, Hermes' memory, Pulse and the notifier needed no change; README's share sheet line); 2026-11-05, #1821 (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
+**Checked:** 2026-11-20, #2931 (#2928 changed launchSharedDraft without this entry: the in-flight launch ruling, the New Chat sibling and the Code line, from DeepSeek on #2928); 2026-11-16, #2630 (the moved-on refused send's test stages a file that fails and matches its warning in the App Language, issue 2396); 2026-11-13, #2384 (test: the moved-on refused send names its chat and shows no file warning, issue 2377); 2026-11-13, #2371 (#2367's review leftovers: the moved-on refused send's notice names the chat holding it, the sheet's footer, the Watch, CarPlay and translations in Siblings); 2026-11-13, #2367 (What should Hermes do?: Chat about it, Sort it out, Remember it; the two that send go in a new chat on pickup; the phone tool, Hermes' memory, Pulse and the notifier needed no change; README's share sheet line); 2026-11-05, #1821 (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
 
 ## Files over the size limit
 
