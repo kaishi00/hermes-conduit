@@ -643,7 +643,7 @@ Settings captions · docs/VOICE_SETTINGS.md · notifier/README.md (Memory for vo
 - GPT-Live has no recall tool, so with a provider that has no voice facts it starts without that provider's memory.
 - Local Live's agent mode has no memory switch: its fast model gets no Hermes memory.
 
-**Checked:** 2026-11-20, #2881 (added: the routes, the modes that read them, and a provider's own voice facts, notifier #940).
+**Checked:** 2026-11-20, #2883 (the ruling names system_prompt_block() as the prompt block left out); 2026-11-20, #2881 (added: the routes, the modes that read them, and a provider's own voice facts, notifier #940).
 
 ## What a GPT-Live call is told
 
