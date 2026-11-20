@@ -177,6 +177,9 @@ extension BotModeTests {
         XCTAssertEqual(BotWorkLook.tint(try item("failed")), .red)
         XCTAssertEqual(BotWorkLook.tint(try item("needs_you")), .orange)
         XCTAssertEqual(BotWorkLook.tint(try item("done")), .secondary)
+        XCTAssertEqual(BotWorkLook.tint(try item("waiting")), .blue)
+        XCTAssertEqual(BotWorkLook.tint(try item("interrupted")), .orange)
+        XCTAssertEqual(BotWorkLook.tint(try item("stopped")), .secondary)
         XCTAssertEqual(BotPortraitStatus.working(2).tint, .blue)
     }
 

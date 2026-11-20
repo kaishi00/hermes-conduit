@@ -1122,8 +1122,9 @@ private struct BotWorkRow: View {
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.primary)
                     .lineLimit(expanded ? nil : 2)
-                // The chip says where it stands; the line says more only when there is more.
-                if subtitle != item.statusText {
+                // The chip says where it stands; the line says more only when there is
+                // more, or when the card is opened, where a chip cut short reads whole.
+                if expanded || subtitle != item.statusText {
                     Text(subtitle)
                         .scaledFont(.footnote)
                         .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
