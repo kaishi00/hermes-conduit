@@ -1168,6 +1168,87 @@ final class AppStateWidgetLaunchTests: XCTestCase {
         XCTAssertFalse(appState.widgetLaunchCoordinator.hasPendingRequest)
     }
 
+    /// The Profile parameter names the profile its New Chat starts in, on
+    /// the dashboard in use (the launch's own switch takes it there); left
+    /// empty, it's the profile on screen.
+    func testNewChatShortcutStartsInTheProfileItNames() throws {
+        let suite = "AppStateWidgetLaunchTests.shortcut-profile.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c8")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: " work "))
+        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink?.action, .newChat)
+        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink?.workspace,
+                       WidgetWorkspaceID(dashboardID: current.id, profile: "work"))
+        XCTAssertEqual(appState.newChatLaunchOrigin, .shortcut)
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: ""))
+        XCTAssertEqual(appState.widgetLaunchCoordinator.pendingLink?.workspace,
+                       WidgetWorkspaceID(dashboardID: current.id, profile: appState.activeProfile))
+    }
+
+    /// A shortcut run while a widget's New Chat for the same workspace is
+    /// being created adds nothing to it: that launch keeps its own origin,
+    /// so its keyboard stays down (#2863's review).
+    func testNewChatShortcutRepeatingAWidgetsLaunchKeepsTheWidgetsOrigin() async throws {
+        let suite = "AppStateWidgetLaunchTests.shortcut-coalesce.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000ca")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        appState.newChatFocusesComposer = false
+        let createEntered = WidgetLaunchTestGate()
+        let createRelease = WidgetLaunchTestGate()
+        appState.widgetSessionCreatorOverride = { _, _ in
+            await createEntered.signal()
+            await createRelease.wait()
+            return ("widget-new", "widget-new", "default")
+        }
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        let connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: current.id, profile: "default")
+        appState.isConnected = true
+
+        let link = try XCTUnwrap(WidgetLaunchLink(action: .newChat, workspace: WidgetWorkspaceID(dashboardID: current.id, profile: "default"), reference: nil))
+        XCTAssertTrue(appState.routeWidgetLaunchURL(link.url))
+        guard await waitForGate(createEntered, "the widget's New Chat never reached session creation", retryReadinessIn: appState) else { return }
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        XCTAssertEqual(appState.newChatLaunchOrigin, .widget)
+        await createRelease.signal()
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.activeSessionId, "widget-new")
+        XCTAssertNil(appState.composerFocusRequest, "the widget's launch keeps the keyboard down")
+    }
+
+    /// During a call the shortcut's New Chat is refused, as a widget's is,
+    /// in words about the call rather than another workspace or a widget.
+    func testNewChatShortcutDuringACallSaysToEndTheCall() async throws {
+        let suite = "AppStateWidgetLaunchTests.shortcut-call.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let current = dashboard("Current", id: "00000000-0000-0000-0000-0000000000c9")
+        let appState = makeAppState(defaults: defaults, active: current, dashboards: [current])
+        _ = appState.handleScenePhase(.active)
+        appState.showLogin = false
+        appState.connection = HermesConnection(baseUrl: current.normalizedURL, ticket: "test")
+        appState.isConnected = true
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+
+        XCTAssertTrue(appState.startNewChatFromShortcut(profile: nil))
+        guard await waitForLaunchCompletion(appState) else { return }
+
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("End the call to start a new chat."))
+        XCTAssertNil(appState.composerFocusRequest)
+    }
+
     /// A chat that came on screen while New Chat was being created (a
     /// notification, a list tap) isn't the new chat, and keeps its keyboard
     /// down even though the open chat changed.

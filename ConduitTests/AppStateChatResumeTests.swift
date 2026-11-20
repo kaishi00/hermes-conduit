@@ -3086,6 +3086,52 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(ids.contains("native-1"))
     }
 
+    /// A batch question on Hermes' gateway listener: Hermes asks it one
+    /// question per card, and the row's batch card stays out beside each,
+    /// and goes when Hermes' card comes after it (duplicated question
+    /// cards, 2026-11-20).
+    func testAListedBatchStaysOutBesideHermesOneQuestionCards() {
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        )
+        let appState = harness.appState
+        appState.activeSessionId = "runtime-a"
+        let dashboard = appState.activeDashboardID
+        let batch = NeedsYouItem(
+            waitID: "w1", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+            card: .clarifyBatch(requestId: "conduit-push-batch", questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ])
+        )
+        appState.needsYou.apply([batch], profile: "default", dashboardID: dashboard) { _ in false }
+        // Hermes' first card is already there: the batch stays out.
+        appState.messages = [ChatMessage(
+            id: "clarify-a1", role: .clarify, content: "Which environment?", timestamp: "1",
+            clarify: ClarifyActivity(requestId: "a1", question: "Which environment?", choices: [])
+        )]
+        appState.showWaitingQuestionCards()
+        XCTAssertEqual(appState.messages.compactMap(\.clarify?.requestId), ["a1"])
+
+        // The batch drawn first (Hermes' card was still on its way) goes
+        // when Hermes' card arrives.
+        let fresh = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+            )
+        ).appState
+        fresh.activeSessionId = "runtime-a"
+        fresh.needsYou.apply([batch], profile: "default", dashboardID: fresh.activeDashboardID) { _ in false }
+        fresh.showWaitingQuestionCards()
+        XCTAssertEqual(fresh.messages.compactMap(\.clarify?.requestId), ["conduit-push-batch"])
+        fresh.removePushCardsSuperseded(by: ClarifyActivity(requestId: "a1", question: "Which environment?", choices: []))
+        XCTAssertTrue(fresh.messages.compactMap(\.clarify?.requestId).isEmpty)
+        fresh.showWaitingQuestionCards()
+        XCTAssertTrue(fresh.messages.compactMap(\.clarify?.requestId).isEmpty, "nor does the row draw it again")
+    }
+
     /// Issue 2828: a card drawn from its row goes once the list no longer
     /// names the wait (the plugin gave the question up, and the relay would
     /// refuse an answer), from the chat and its saved copy. One this iPhone

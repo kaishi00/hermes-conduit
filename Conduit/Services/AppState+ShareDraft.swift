@@ -168,8 +168,7 @@ extension AppState {
             return
         }
         cancelChatResumeRestoration()
-        newChatLaunchOrigin = .widget
-        widgetLaunchCoordinator.receive(link)
+        receiveLaunch(link, origin: .widget)
         // Recorded after receive: a launch for the same link that receive
         // supersedes isn't this one.
         sharedDraftLaunch = SharedDraftLaunch(envelopeID: envelope.id, link: link)
