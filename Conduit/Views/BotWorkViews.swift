@@ -1129,6 +1129,8 @@ private struct BotWorkRow: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
                         .lineLimit(expanded ? nil : 1)
+                        // The chip already says it to VoiceOver; once is enough.
+                        .accessibilityHidden(subtitle == item.statusText)
                 }
                 if !item.call.isEmpty {
                     fromCallLine
