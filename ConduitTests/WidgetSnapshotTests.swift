@@ -449,4 +449,180 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(unconfigured.smallLink(.talk), unconfigured.resumeLink)
         XCTAssertEqual(LauncherWidgetConfigurationIntent().smallTapAction, .conversation)
     }
+
+    // MARK: Plan limits widget (issue 2796)
+
+    /// The widget's rows come from the same `model.options` rows as
+    /// Settings > Usage: a provider's own windows, a pool's usable account
+    /// with the most left, an account-wide limit, and nothing for a
+    /// provider that reports none.
+    func testPlanLimitsWidgetRowsReadTheSameQuotaAsSettingsUsage() throws {
+        let reset = "2026-11-20T08:00:00+00:00"
+        let options: [String: Any] = ["providers": [
+            ["slug": "openai-codex", "name": "ChatGPT", "usage": ["windows": [
+                ["label": "5 hours", "used_percent": 42.4, "resets_at": reset, "scope": "account"] as [String: Any],
+                ["label": "Weekly", "used_percent": 81, "resets_at": "2026-11-24T00:00:00+00:00", "scope": "account"] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+            ["slug": "anthropic", "name": "Anthropic", "usage": ["accounts": [
+                ["id": "a", "label": "Work", "state": "limited", "windows": [["label": "Session", "used_percent": 100] as [String: Any]]] as [String: Any],
+                ["id": "b", "label": "Home", "state": "ready", "windows": [["label": "Session", "used_percent": 70] as [String: Any]]] as [String: Any],
+                ["id": "c", "label": "", "state": "ready", "windows": [["label": "Session", "used_percent": 30] as [String: Any]]] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+            ["slug": "nous", "name": "Nous", "limit": ["scope": "account", "resets_at": reset] as [String: Any]] as [String: Any],
+            ["slug": "zai", "name": "Z.ai", "models": ["glm-5"]] as [String: Any],
+        ] as [[String: Any]]]
+
+        let rows = UsageWidgetFeed.providers(from: ProviderQuota.list(from: options))
+
+        XCTAssertEqual(rows.map(\.slug), ["openai-codex", "anthropic", "nous"])
+        let codex = rows[0]
+        XCTAssertEqual(codex.title, "ChatGPT")
+        XCTAssertNil(codex.account)
+        XCTAssertEqual(codex.windows.map(\.label), ["5 hours", "Weekly"])
+        XCTAssertEqual(codex.windows[0].usedPercent, 42.4, accuracy: 0.0001)
+        XCTAssertEqual(codex.windows[0].resetsAt, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertFalse(codex.isLimited)
+        // The pool's usable account with the most left; it has no name.
+        XCTAssertEqual(rows[1].windows.map(\.usedPercent), [30])
+        XCTAssertNil(rows[1].account)
+        XCTAssertFalse(rows[1].isLimited)
+        XCTAssertTrue(rows[2].isLimited)
+        XCTAssertEqual(rows[2].limitedUntil, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertTrue(rows[2].windows.isEmpty)
+
+        // Every signed-in account limited: the pool is, until the first frees.
+        let spent = UsageWidgetFeed.providers(from: [try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "label": "Work", "state": "limited", "resets_at": "2026-11-21T00:00:00+00:00",
+             "windows": [["label": "Weekly", "used_percent": 100] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "limited", "resets_at": reset] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))])
+        XCTAssertEqual(spent.first?.isLimited, true)
+        XCTAssertEqual(spent.first?.limitedUntil, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertEqual(spent.first?.account, "Work")
+    }
+
+    /// The widget's last read is kept per dashboard and profile, and a
+    /// pass for another profile doesn't show it.
+    func testPlanLimitsWidgetKeepsItsReadForTheDashboardAndProfileItWasFor() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetStore(directory: directory)
+        let dashboard = UUID()
+        let window = UsageWidgetWindow(label: "Weekly", usedPercent: 20, resetsAt: Date(timeIntervalSince1970: 1_800_000_000))
+        let providers = (0..<4).map {
+            UsageWidgetProvider(slug: "p\($0)", title: "P\($0)", account: nil, windows: [window], isLimited: false, limitedUntil: nil)
+        }
+        let snapshot = UsageWidgetSnapshot(dashboardID: dashboard, profile: "work", appLanguage: "de",
+                                           providers: providers, readAt: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(snapshot.providers.count, UsageWidgetSnapshot.maximumProviders)
+
+        try store.write(snapshot)
+        XCTAssertEqual(store.read(), snapshot)
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://hermes.example", headers: [:], expiresAt: nil, savedAt: Date())
+        XCTAssertTrue(snapshot.showing(UsageWidgetAccess(dashboardID: dashboard, profile: "work", pass: pass)))
+        XCTAssertFalse(snapshot.showing(UsageWidgetAccess(dashboardID: dashboard, profile: "default", pass: pass)))
+        XCTAssertFalse(snapshot.showing(UsageWidgetAccess(dashboardID: UUID(), profile: "work", pass: pass)))
+        XCTAssertTrue(snapshot.with(needsConduit: true).needsConduit)
+        XCTAssertEqual(snapshot.with(needsConduit: true).providers, snapshot.providers)
+
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "default"), "/api/model/options?explicit_only=true")
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "work"), "/api/model/options?explicit_only=true&profile=work")
+
+        XCTAssertTrue(store.remove())
+        XCTAssertNil(store.read())
+        XCTAssertFalse(store.remove())
+
+        // It reads again in half an hour, or a minute after the next reset if sooner.
+        let now = Date(timeIntervalSince1970: 1_800_000_000 - 600)
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now, snapshot: snapshot, refresh: 1800), now.addingTimeInterval(660))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now.addingTimeInterval(-7200), snapshot: snapshot, refresh: 1800),
+                       now.addingTimeInterval(-7200 + 1800))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now.addingTimeInterval(1200), snapshot: snapshot, refresh: 1800),
+                       now.addingTimeInterval(1200 + 1800))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now, snapshot: nil, refresh: 1800), now.addingTimeInterval(1800))
+    }
+
+    /// A read keeps its answer only while Conduit still keeps a pass for
+    /// the dashboard and profile it was made for, on success and on both
+    /// error paths; a failed read keeps the last good one; an expired
+    /// sign-in asks for Conduit unless Conduit already saved a new one.
+    func testPlanLimitsWidgetReadKeepsOnlyAnAnswerForThePassInUse() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetStore(directory: directory)
+        let dashboard = UUID()
+        func access(_ profile: String = "work", token: String = "a") -> UsageWidgetAccess {
+            UsageWidgetAccess(dashboardID: dashboard, profile: profile,
+                              pass: LocationHostPass(dashboardID: dashboard, baseURL: "https://hermes.example",
+                                                     headers: ["Authorization": "Bearer \(token)"], expiresAt: nil, savedAt: Date()))
+        }
+        let options: [String: Any] = ["providers": [
+            ["slug": "openai-codex", "name": "ChatGPT", "usage": ["windows": [
+                ["label": "Weekly", "used_percent": 40, "scope": "account"] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+        ] as [[String: Any]]]
+        let kept = access()
+        func read(_ outcome: Result<[String: Any], LocationHostError>, current: UsageWidgetAccess?) async -> UsageWidgetSnapshot? {
+            await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { current }) { pass, path in
+                XCTAssertEqual(pass, kept.pass)
+                XCTAssertEqual(path, "/api/model/options?explicit_only=true&profile=work")
+                return try outcome.get()
+            }
+        }
+
+        // A Hermes without the route, before any good read: none reported.
+        let none = await read(.failure(.http(status: 404, detail: "")), current: kept)
+        XCTAssertEqual(none?.providers, [])
+        // A good read, with the pass saved again meanwhile: kept.
+        let good = await read(.success(options), current: access(token: "a"))
+        XCTAssertEqual(good?.providers.map(\.slug), ["openai-codex"])
+        XCTAssertEqual(store.read(), good)
+        // A 404 or another failure after it keeps that read.
+        let after404 = await read(.failure(.http(status: 404, detail: "")), current: kept)
+        XCTAssertEqual(after404, good)
+        let afterError = await read(.failure(.http(status: 502, detail: "")), current: kept)
+        XCTAssertEqual(afterError, good)
+        // An expired sign-in shows the last read under Open Conduit...
+        let expired = await read(.failure(.signInRequired), current: kept)
+        XCTAssertEqual(expired?.needsConduit, true)
+        XCTAssertEqual(expired?.providers, good?.providers)
+        // ...unless Conduit saved a new sign-in while the read was out.
+        let rotated = await read(.failure(.signInRequired), current: access(token: "b"))
+        XCTAssertEqual(rotated, good)
+
+        // Conduit moved to another profile or took the pass away meanwhile:
+        // nothing of the old one's, whichever way the read ended.
+        for current in [access("default"), nil] {
+            let outcomes: [Result<[String: Any], LocationHostError>] = [.success(options), .failure(.signInRequired), .failure(.http(status: 502, detail: ""))]
+            for outcome in outcomes {
+                let answer = await read(outcome, current: current)
+                XCTAssertNil(answer)
+            }
+        }
+        XCTAssertEqual(store.read(), good)
+
+        // No pass at all: what the widget kept goes.
+        let gone = await UsageWidgetFeed.read(access: nil, store: store, language: "de", currentAccess: { nil }) { _, _ in options }
+        XCTAssertNil(gone)
+        XCTAssertNil(store.read())
+    }
+
+    /// A pool whose usable accounts report no windows never shows a
+    /// signed-out account's last numbers (Settings > Usage counts neither),
+    /// nor a limited one's while the pool isn't all limited.
+    func testPlanLimitsWidgetShowsOnlyAnAccountHermesWouldUse() throws {
+        let quota = try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "label": "Old", "state": "unavailable", "windows": [["label": "Weekly", "used_percent": 12] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "ready", "windows": [] as [[String: Any]]] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))
+        XCTAssertEqual(UsageWidgetFeed.providers(from: [quota]), [])
+
+        // Nor a limited account's while another can still be used: its full
+        // window would show without Limited.
+        let mixed = try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "state": "limited", "windows": [["label": "Weekly", "used_percent": 100] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "ready", "windows": [] as [[String: Any]]] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))
+        XCTAssertEqual(UsageWidgetFeed.providers(from: [mixed]), [])
+    }
 }

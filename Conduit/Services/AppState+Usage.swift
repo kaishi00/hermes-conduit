@@ -61,6 +61,9 @@ extension AppState {
         let answer = try? await keepingAnswer(profile: activeProfile, owner: owner, keptAs: { _ in KeptRoute.providerQuotas }) {
             try await client.modelOptionsAnswer()
         }
+        // The Plan limits widget reads the same numbers: it catches up with
+        // what the page now shows (issue 2796).
+        if answer != nil { reloadUsageWidget() }
         return answer.map(ProviderQuota.list(from:))
     }
 

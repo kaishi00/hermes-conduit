@@ -72,6 +72,9 @@ extension AppState {
         // Connected, so the saved dashboards were read: sharing bound to one
         // removed earlier ends first, whatever the status read says.
         endSharingWithRemovedDashboards()
+        // The Plan limits widget reads Hermes, not the plugin, so it gets
+        // its pass whatever the status read says (issue 2796).
+        Task { await saveUsageWidgetAccess() }
         notifierPluginStatusGeneration += 1
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State

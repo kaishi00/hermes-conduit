@@ -31,11 +31,28 @@ struct PulseWidgetAccess: Codable, Equatable {
 /// Group's Keychain: readable after first unlock, never synced.
 enum PulseWidgetKeychain {
     /// NotificationE2E.appGroup, which the widget doesn't compile.
-    static let accessGroup = "group.com.milim.relay.notifications"
-    static let service = "com.milim.relay.pulse-widget"
+    static let accessGroup = WidgetAccessKeychain.accessGroup
+    static let service = WidgetAccessKeychain.service
     static let account = "access.v1"
 
-    private static var query: [String: Any] {
+    static func load() -> PulseWidgetAccess? { WidgetAccessKeychain.load(account: account) }
+
+    /// Whether the Keychain took it.
+    @discardableResult
+    static func save(_ access: PulseWidgetAccess) -> Bool { WidgetAccessKeychain.save(access, account: account) }
+
+    static func clear() { WidgetAccessKeychain.clear(account: account) }
+}
+
+/// A Home Screen widget's access item (the Pulse widget's, the Plan limits
+/// widget's), each under its own account in the notifications App Group's
+/// Keychain: readable after first unlock, never synced.
+enum WidgetAccessKeychain {
+    /// NotificationE2E.appGroup, which the widget doesn't compile.
+    static let accessGroup = "group.com.milim.relay.notifications"
+    static let service = "com.milim.relay.pulse-widget"
+
+    private static func query(account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -44,22 +61,23 @@ enum PulseWidgetKeychain {
         ]
     }
 
-    static func load() -> PulseWidgetAccess? {
-        var query = query
+    static func load<Item: Decodable>(account: String) -> Item? {
+        var query = query(account: account)
         query[kSecReturnData as String] = true
         query[kSecMatchLimit as String] = kSecMatchLimitOne
         var result: CFTypeRef?
         guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else {
             return nil
         }
-        return try? JSONDecoder().decode(PulseWidgetAccess.self, from: data)
+        return try? JSONDecoder().decode(Item.self, from: data)
     }
 
     /// Whether the Keychain took it.
     @discardableResult
-    static func save(_ access: PulseWidgetAccess) -> Bool {
-        guard let data = try? JSONEncoder().encode(access) else { return false }
-        if load() == access { return true }
+    static func save<Item: Codable & Equatable>(_ item: Item, account: String) -> Bool {
+        guard let data = try? JSONEncoder().encode(item) else { return false }
+        if (load(account: account) as Item?) == item { return true }
+        let query = query(account: account)
         var status = SecItemUpdate(query as CFDictionary, [kSecValueData as String: data] as CFDictionary)
         if status == errSecItemNotFound {
             var insert = query
@@ -70,8 +88,8 @@ enum PulseWidgetKeychain {
         return status == errSecSuccess
     }
 
-    static func clear() {
-        SecItemDelete(query as CFDictionary)
+    static func clear(account: String) {
+        SecItemDelete(query(account: account) as CFDictionary)
     }
 }
 

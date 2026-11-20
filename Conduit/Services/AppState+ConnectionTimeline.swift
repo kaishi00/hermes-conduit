@@ -202,8 +202,9 @@ extension AppState {
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
             widgetLaunchCoordinator.readinessChanged()
-            // A Pulse widget added since gets what it reads Pulse with.
+            // A Pulse or Plan limits widget added since gets what it reads with.
             Task { await savePulseWidgetAccess() }
+            Task { await saveUsageWidgetAccess() }
             // A sign-out that couldn't reach Hermes tries again.
             serverSignOutQueue.retryPending()
             // A draft shared from another app opens its chat (#812).

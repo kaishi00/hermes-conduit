@@ -229,6 +229,7 @@ targets:
           - "Widgets/**"
           - "Location/**"
           - "ShareDraft/**"
+          - "Usage/**"
       # Notifications in the App Language (#1144): the app's catalog,
       # resolved through NotificationLocalization.swift.
       - path: Conduit/Localizable.xcstrings
@@ -274,6 +275,7 @@ targets:
           - "ShareDraft/**"
           - "Notifications/**"
           - "Approvals/**"
+          - "Usage/**"
     # Maps lookups the host asks this iPhone for run on MapKit
     # (Shared/Location/MapsEngine.swift, designs/maps-v1-contract.md).
     dependencies:
@@ -305,6 +307,9 @@ targets:
       # The Pulse widget reads Pulse with a host pass, as the Location Push
       # extension sends with one (issue 2190).
       - path: Shared/Location/LocationHostClient.swift
+      # The Plan limits widget reads Hermes' quota as Settings > Usage does
+      # (issue 2796).
+      - path: Shared/Usage
       - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources

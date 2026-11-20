@@ -39,6 +39,7 @@ struct ConduitWidgets: WidgetBundle {
         NativeLauncherWidget()
         CharacterLauncherWidget()
         PulseWidget()
+        UsageWidget()
         HermesTurnLiveActivity()
         if #available(iOS 18.0, *) {
             NewChatControl()

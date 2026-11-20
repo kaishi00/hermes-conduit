@@ -6,6 +6,8 @@ The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. 
 
 The small Pulse widget shows the top card with **Not now** and **Done** under it; **Do it** is on the medium and large sizes only.
 
+The **Plan limits** widget (small and medium) shows the plan limits Hermes reports for the profile in use, the same numbers as Settings > Usage > Provider quota: how much of each window is used (a 5-hour session, a weekly cap), when it resets, and **Limited** when a sign-in is rate limited. Small shows the first provider's first two windows; medium shows two providers, or one provider's first three windows. It needs no configuration, and it reads Hermes on its own about every 30 minutes, and just after a window resets (issue 2796).
+
 ## New Chat control
 
 On iOS 18 and later, the **New Chat** control opens Conduit on a fresh chat with the keyboard up, in the profile on screen. Add it in Control Center (touch and hold, **Add a Control**, search for Conduit), on the Lock Screen (**Customize**, then a control slot), or under Settings > Action Button > Controls. The **New Chat** shortcut does the same and can pick a profile: Settings > Action Button > Shortcut lists it under Conduit, and Siri and Shortcuts run it ("New chat in Conduit"; issue 2860).
@@ -39,9 +41,9 @@ Conversation titles can be hidden in the widget configuration. Visible titles ar
 
 ## App Group and signing prerequisites
 
-The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.launcher`. It stores the launcher widgets' snapshot and the Pulse widget's last read.
+The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.launcher`. It stores the launcher widgets' snapshot and the Pulse and Plan limits widgets' last reads.
 
-The widget extension is also in the notifications App Group, `group.com.milim.relay.notifications`, for one Keychain item: what the Pulse widget reads Pulse with (the dashboard in use, a host pass for it, and the Pulse features its plugin serves). Conduit keeps it only while a Pulse widget is on the Home Screen and the plugin serves Pulse, and removes it otherwise, at sign-out and when the dashboard is removed. The pass is made like Location sharing's (the session cookies or a native sign-in's access token, plus proxy headers); the widget never refreshes a sign-in, so one that expires shows **Open Conduit to refresh** until Conduit next connects. A Pulse push reloads the widget from the Notification Service Extension, and WidgetKit reloads it about every 30 minutes.
+The widget extension is also in the notifications App Group, `group.com.milim.relay.notifications`, for one Keychain item: what the Pulse widget reads Pulse with (the dashboard in use, a host pass for it, and the Pulse features its plugin serves). Conduit keeps it only while a Pulse widget is on the Home Screen and the plugin serves Pulse, and removes it otherwise, at sign-out and when the dashboard is removed. The Plan limits widget has an item of its own there, the same kind of pass plus the profile in use, kept only while a Plan limits widget is on the Home Screen, and removed the same way. The pass is made like Location sharing's (the session cookies or a native sign-in's access token, plus proxy headers); the widget never refreshes a sign-in, so one that expires shows **Open Conduit to refresh** until Conduit next connects. A Pulse push reloads the widget from the Notification Service Extension, and WidgetKit reloads it about every 30 minutes.
 
 Device installation or archive signing requires the `com.milim.relay.widgets` extension App ID, a provisioning profile matching the configured **Conduit Widgets App Store** profile name, the launcher App Group enabled for both the app and extension identifiers, and the notifications App Group enabled for the extension identifier (a profile made before that group was enabled must be regenerated). Simulator builds can use the established unsigned simulator configuration. Do not copy signing credentials into project files or this document.
 

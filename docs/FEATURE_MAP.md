@@ -2520,7 +2520,8 @@ takes one tap, so it opens what its Small size opens picks.
 
 **Siblings:** the widget tap's route (`conduit://widget/`, the same three
 actions for every size) · the app's widget snapshot (the chats the picker and
-the large list offer) · the Pulse widget (same bundle, App Group and app
+the large list offer) · the Plan limits widget (same bundle, App Group and app
+language, issue 2796) · the Pulse widget (same bundle, App Group and app
 language; not needed) · Which dashboard a launch signs in to (a widget tap
 switches as before; not needed) · the New Chat shortcut (the same launch,
 with the keyboard up; see New Chat from Siri, Shortcuts and the Action
@@ -2551,7 +2552,7 @@ buttons) · docs/WIDGETS.md · README.md
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
 - Not tried on a device: the small and large layouts on the smallest and largest phones and iPad, and the vibrant artwork in StandBy at night and on HomeView.
 
-**Checked:** 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
+**Checked:** 2026-11-20, #2892 (the bundle adds the Plan limits widget; the launchers unchanged); 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
 
 ## Pulse widget
 
@@ -2569,7 +2570,8 @@ predicates in the tests) · a Pulse push (reloads the widget) · Send to Hermes
 · the turn surface line (Do it tells Hermes it came from a widget's button;
 see Where a message was sent) · the launcher widgets (same App Group, the tap's `conduit://widget/` route
 and the app language) · Location sharing's host pass (the widget reads with
-one of its own, made the same way) · Settings > Pulse (Next look, quiet, and the bot Do it goes to for a card from no chat) ·
+one of its own, made the same way) · the Plan limits widget (the same kind
+of pass, under its own Keychain account) · Settings > Pulse (Next look, quiet, and the bot Do it goes to for a card from no chat) ·
 Hide private reminders on the Lock Screen (not needed: no Lock Screen size;
 card words are privacy-sensitive, so a locked StandBy redacts them) · the
 Watch and CarPlay (not needed: no Pulse screen there) · Apple HomeView (done:
@@ -2580,7 +2582,7 @@ docs/WIDGETS.md · README.md
 
 **Code**
 - Widget: `ConduitWidgets/PulseWidget.swift` (the view and its reads: the feed with `looks=1` where served, Next look from Pulse's state when nothing is open, every 30 minutes and on each reload), `ConduitWidgets/PulseWidgetRunner.swift` (the widget's stand-in for Do it's runner), `ConduitWidgets/Info.plist` (ATS as the app's, for http Tailscale hosts), `ConduitWidgets/ConduitWidgets.entitlements` (both App Groups)
-- Shared: `Shared/Widgets/PulseWidgetFeed.swift` (PulseWidgetAccess, its Keychain item in the notifications group, and the rows from the feed), `Shared/Widgets/PulseWidgetSnapshot.swift` (the last good read with sent rows and a button's note, the store, the tap's link), `Shared/Widgets/PulseWidgetIntents.swift` (Done and Not now from the widget to the host; Do it as a LiveActivityIntent, run in the app), `Shared/Location/LocationHostClient.swift` (requests with a host pass)
+- Shared: `Shared/Widgets/PulseWidgetFeed.swift` (PulseWidgetAccess, its Keychain item in the notifications group, kept through WidgetAccessKeychain, which the Plan limits widget's item uses too, and the rows from the feed), `Shared/Widgets/PulseWidgetSnapshot.swift` (the last good read with sent rows and a button's note, the store, the tap's link), `Shared/Widgets/PulseWidgetIntents.swift` (Done and Not now from the widget to the host; Do it as a LiveActivityIntent, run in the app), `Shared/Location/LocationHostClient.swift` (requests with a host pass)
 - App: `Conduit/Services/AppState+PulseWidget.swift` (savePulseWidgetAccess at each connect, return to the screen and token rotation, only while a Pulse widget is on the Home Screen; Do it's send; the tap), `Conduit/Services/AppState+Location.swift` (dashboardHostPass), `Conduit/Services/AppState+ShortcutSend.swift` (connectForBackgroundRun; makeShortcutSendBackend(onlyOn:), which binds Do it to its dashboard), `Conduit/Services/PulseFeed.swift` and `Conduit/Views/V2/V2PulsePage.swift` (a change of open cards reloads the widget), `Conduit/Services/AppState+WidgetLaunch.swift` (the tap's route)
 - Push: `ConduitNotificationService/NotificationService.swift` and `Shared/Notifications/PulseNotifications.swift` (a verified Pulse push reloads the widget)
 - Tests: `ConduitTests/PulseFeedTests.swift` (rows and buttons against the screen's, capability names, a new chat's title), `ConduitTests/WidgetSnapshotTests.swift` (the link, sent rows and notes, a button with no pass, a sent mark kept through a read that started before it)
@@ -2601,7 +2603,48 @@ docs/WIDGETS.md · README.md
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-15, #2587 (the small size's Not now and Done, for Apple HomeView; issue 2561); 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-20, #2892 (its Keychain item kept through WidgetAccessKeychain, shared with the Plan limits widget's; unchanged otherwise); 2026-11-15, #2587 (the small size's Not now and Done, for Apple HomeView; issue 2561); 2026-11-14, #2450 (its host pass carries a session-token sign-in's token in `X-Hermes-Session-Token`, beside a proxy's Authorization extra header, see Session token sign-in; a native or cookie pass unchanged); 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+
+## Plan limits widget
+
+A Home Screen widget (small and medium) with the plan limits Hermes reports
+for the profile in use: each subscription window's share used (a 5-hour
+session, a weekly cap) and when it resets, and a sign-in that's rate
+limited (issue 2796). The widget reads Hermes itself, so the numbers stay
+current without Conduit running.
+
+**Siblings:** Settings > Usage's Provider quota (done: the same
+`model.options` rows, through its REST twin `/api/model/options?explicit_only=true` (only the providers the profile set up, as the page asks), read by
+the same ProviderQuota, and a quota read there reloads the widget) ·
+provider rows' quota line (not needed: one line per provider in a list; the
+widget shows each window) · the Pulse widget (done: the same kind of host
+pass, made the same way and kept under its own account in the same Keychain
+group) · the launcher widgets (done: same App Group and app language, the Plan limits widget is in their bundle) · a profile
+or dashboard switch, sign-out and a removed dashboard (done: the pass names
+the dashboard and profile in use, and goes with them) · Lock Screen and
+StandBy sizes, the Watch and CarPlay (not needed: no quota screen there) ·
+the notifier (not needed: Hermes serves the route) · docs/WIDGETS.md ·
+README.md
+
+**Desktop app:** not applicable: iOS widgets are phone-only (the desktop shows the quota in Settings > Usage, desktop#23).
+
+**Code**
+- Widget: `ConduitWidgets/UsageWidget.swift` (reads every 30 minutes or just after a window resets; the small and medium views), `ConduitWidgets/LauncherWidgets.swift` (in the bundle)
+- Shared: `Shared/Widgets/UsageWidgetFeed.swift` (UsageWidgetAccess and its Keychain item, the read with the pass and what it keeps of a failed one, the rows from the quota, the snapshot and its store), `Shared/Widgets/PulseWidgetFeed.swift` (WidgetAccessKeychain, both widgets' items), `Shared/Usage/ProviderQuota.swift` and `Shared/Usage/HermesTimestamp.swift` (the quota and its times, as the app reads them), `project.yml` (Shared/Usage in the widget)
+- App: `Conduit/Services/AppState+UsageWidget.swift` (saveUsageWidgetAccess at each connect, return to the screen, profile change and token rotation, only while a Plan limits widget is on the Home Screen; removeUsageWidget), `Conduit/Services/AppState+Usage.swift` (a quota read reloads it), `Conduit/Services/AppState+Dashboards.swift` and `Conduit/Services/AppState+Widgets.swift` (a switch, sign-out or removed dashboard takes its pass away)
+- Tests: `ConduitTests/WidgetSnapshotTests.swift` (testPlanLimitsWidgetRowsReadTheSameQuotaAsSettingsUsage, testPlanLimitsWidgetKeepsItsReadForTheDashboardAndProfileItWasFor, testPlanLimitsWidgetShowsOnlyAnAccountHermesWouldUse, testPlanLimitsWidgetReadKeepsOnlyAnAnswerForThePassInUse)
+
+**Rulings**
+- Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's), or a limited account's only when every signed-in account is limited, never a signed-out account's; an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#2892).
+- The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read, unless Conduit saved a new sign-in while that read was out (it reloads the widget with it) (#2892).
+- Small shows the first provider's first two windows; medium two providers side by side, or one provider's first three windows (#2892).
+- A failed read keeps the last good one; a 404 (a Hermes without the route) reads as none reported only when nothing was read before, so a proxy's or a restart's 404 doesn't wipe it. A pass saved again for the same dashboard and profile, as each return to the screen does, leaves a read in flight the widget's; a read that fails after Conduit moved to another dashboard or profile shows nothing of the old one's. A profile change takes the old profile's pass away at once, a sign-out while a pass is made leaves it unsaved, and a connect saves it whatever the plugin's status read says (#2892, reviews).
+- A tap opens Conduit; the widget has no buttons (#2892).
+
+**Open gaps**
+- Not tried on a device: the read with Conduit not running, a token that expires, the medium size with long window names.
+
+**Checked:** 2026-11-20, #2892 (entry added: issue 2796)
 
 ## Artifacts
 
@@ -5593,7 +5636,8 @@ name; no quota, as it shows and hides rather than picks) · Models & providers' 
 orange badge) · Settings > Usage (done: logo beside each quota; its full
 windows stay there) · search matches and Quick picks (not needed: the
 provider is a caption under a model) · a per-model rate limit (not needed
-on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
+on a provider row: it stays on Settings > Usage) · the Plan limits widget
+(done: it reads the same rows with the same ProviderQuota) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
 Models & providers line)
 
@@ -5601,7 +5645,7 @@ Models & providers line)
 
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
-- Quota: `Conduit/Models/UsageReport.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
+- Quota: `Shared/Usage/ProviderQuota.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary; in Shared/ for the Plan limits widget), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
 - Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible keeps the quota, visibilityProviderCard), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
 - Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled), `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
 
@@ -5613,7 +5657,7 @@ Models & providers line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
+**Checked:** 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 

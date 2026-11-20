@@ -111,8 +111,9 @@ extension AppState {
         do { try publisher.updateLanguage(AppLanguageStore.shared.selection.rawValue) }
         catch { /* Retain the last valid snapshot if the cache cannot be written. */ }
         publishWidgetSnapshot()
-        // The Pulse widget words its cards in the app's language.
+        // The Pulse and Plan limits widgets word what they show in the app's language.
         reloadPulseWidget()
+        reloadUsageWidget()
     }
 
     func publishWidgetCurrentWorkspace(dashboardID: UUID?, profile: String) {
@@ -129,6 +130,7 @@ extension AppState {
         do { try publisher.remove(dashboardID: dashboardID) }
         catch { /* Keep the previous valid cache if atomic replacement fails. */ }
         removePulseWidget(dashboardID: dashboardID)
+        removeUsageWidget(dashboardID: dashboardID)
     }
 
     func retainWidgetProfiles(_ profiles: Set<String>, dashboardID: UUID) {
