@@ -498,7 +498,8 @@ private struct HelperModelSwitchSection: View {
     @State private var values: [String: ProfileSettingValue]?
     /// The setting being saved: one at a time, as the profile pages do.
     @State private var savingKey: String?
-    /// Counts saves, so a read asked before one doesn't undo it on landing.
+    /// Counts saves as they start and land, so a read asked before or
+    /// during one doesn't undo it on landing.
     @State private var saves = 0
     /// Hermes didn't answer and nothing is kept: Try Again.
     @State private var failed = false
@@ -584,11 +585,14 @@ private struct HelperModelSwitchSection: View {
             errors[interval.key] = AppLocalization.string("Enter a whole number, 0 or more.", table: .bots)
             return
         }
-        drafts[interval.key] = nil
-        save(interval.key, .number(Double(number)))
+        // The draft stays until Hermes took it, so a failed save keeps what
+        // was typed for Try Again.
+        save(interval.key, .number(Double(number))) { saved in
+            if saved, drafts[interval.key] == raw { drafts[interval.key] = nil }
+        }
     }
 
-    private func save(_ key: String, _ value: ProfileSettingValue) {
+    private func save(_ key: String, _ value: ProfileSettingValue, then done: @escaping (Bool) -> Void = { _ in }) {
         let before = values
         values = (values ?? [:]).merging([key: value]) { _, new in new }
         savingKey = key
@@ -596,11 +600,15 @@ private struct HelperModelSwitchSection: View {
         errors[key] = nil
         Task {
             let saved = await settings.save(key, value)
+            // A read asked while this save was on its way may answer with
+            // the config before it: counting again drops it.
+            saves += 1
             savingKey = nil
             if !saved {
                 values = before
                 if key != words.key { errors[key] = AppLocalization.string("Couldn’t save that change. Try again.", table: .bots) }
             }
+            done(saved)
         }
     }
 }
