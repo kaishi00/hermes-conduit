@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  The Plan limits widget (issue 2796). The widget reads Hermes' plan
-//  limits itself (`/api/model/options`, the REST twin of the call
+//  limits itself (`/api/model/options?explicit_only=true`, the REST twin of the call
 //  Settings > Usage makes), with a host pass Conduit keeps for it while one
 //  is on the Home Screen (UsageWidgetAccess), so its numbers stay current
 //  without Conduit running. The pass names the profile in use, since each
