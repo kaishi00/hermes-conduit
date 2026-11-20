@@ -992,7 +992,7 @@ under the list key on the tab, not its place), the drawer shell (no tabs;
 its own "Open to"), Watch and CarPlay (no tabs), the notifier (its prefs
 store takes any key)
 
-**Desktop app:** partly: no tab bar to order, but a launch opens on the first tab the phone's synced layout shows, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160).
+**Desktop app:** partly: no tab bar to order, but a launch opens on the first tab of the synced layout, read as `app.tabs` and kept per dashboard (`desktop/src/renderer/src/state/launchTab.ts`, desktop#160), and Settings > Appearance > Open on picks that tab on the desktop with no phone needed, moving it to the front of the same `app.tabs` and hiding past five shown as the phone does (`desktop/src/renderer/src/components/AppearancePage.tsx`, desktop#164).
 
 **Code**
 - The layout and its store: `Conduit/Views/V2/V2TabLayout.swift` (V2TabLayout: stored, shown, first(without:), bar(selected:without:), madeAtLaunch, alwaysShown, optional, mostShown, canShow; V2TabLayoutStore with tabs, unavailable and setAvailable; V2TabsOrderSheet)
@@ -3619,7 +3619,7 @@ When returning to Conduit caption · Settings > Appearance > Tabs, which picks
 the first tab (The tabs' order and the tab Conduit opens on) · Watch and CarPlay (not needed: no chat
 list to land on)
 
-**Desktop app:** has it: a launch opens on the first tab the phone's synced layout (`app.tabs`) shows, Bots until it's reordered, with no chat open; the layout is read once per connection and kept per dashboard for the next launch, and a language change's reload keeps Settings open (`desktop/src/renderer/src/state/launchTab.ts`, `desktop/src/renderer/src/App.tsx` reopenedSection, desktop#160); the OS doesn't end the app in the background, so there is no chat to reopen.
+**Desktop app:** has it: a launch opens on the first tab the synced layout (`app.tabs`) shows, Bots until it's reordered on the phone or in the desktop's Settings > Appearance > Open on (desktop#164), with no chat open; the layout is read once per connection and kept per dashboard for the next launch, and a language change's reload keeps Settings open (`desktop/src/renderer/src/state/launchTab.ts`, `desktop/src/renderer/src/App.tsx` reopenedSection, desktop#160); the OS doesn't end the app in the background, so there is no chat to reopen.
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (V2ReopenedConversation: record, launch; init(conversationOnLeave:reopening:) seeds the tab's path, conversationToReopen keeps the window's record, reopenRoomIfWaiting, giveUpRoomIfLeft, Launch.roomStep), `Conduit/Views/RootView.swift` (MainView's SceneStorage conversationOnLeave, conversationToReopen)
