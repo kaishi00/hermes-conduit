@@ -6011,7 +6011,7 @@ iPhone voice, Hermes speech, the speech server and the standalone playback
 note into it; Classic and the speech test share those and take no steps) ·
 docs/VOICE_SETTINGS.md
 
-**Desktop app:** has it: Settings > Last live call keeps and copies the last Grok Live, Qwen Live, Local Live or GPT-Live call's steps (`desktop/src/renderer/src/state/callTrace.ts`, desktop#72), and Settings > Last Read Aloud the last reading's: how much was spoken, Hermes speech's answer, the clip's length, playback and how it ended (`desktop/src/renderer/src/state/readAloud.ts`, desktop#79). Desktop reads a reply as one clip, so it has no sentence, fallback or route steps.
+**Desktop app:** has it: Settings > Last live call keeps and copies the last Grok Live, Qwen Live, Local Live or GPT-Live call's steps (`desktop/src/renderer/src/state/callTrace.ts`, desktop#72), and Settings > Last Read Aloud the last reading's: how much was spoken, Hermes speech's answer, the clip's length, playback and how it ended (`desktop/src/renderer/src/state/readAloud.ts`, desktop#79). A reading with this computer's voice or Your speech server names which speaks, and a speech server that can't read the reply names why before the computer's voice takes it (desktop#172); Hermes speech is read as one clip, so it has no sentence or route steps.
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
