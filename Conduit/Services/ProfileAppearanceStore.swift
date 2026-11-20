@@ -52,17 +52,26 @@ final class ProfileAppearanceStore {
     private let defaults: UserDefaults
     private let avatarsRootOverride: URL?
     private let legacyAvatarDirectoriesOverride: [URL]?
+    /// Where the notifications' still copies go (NotificationAvatars); nil
+    /// writes none.
+    private let notificationAvatarsRoot: URL?
+    /// Photos saved before the copies existed are copied once a launch.
+    private static var sharedWithNotificationsThisLaunch = false
 
-    /// `avatarsRoot` and `legacyAvatarDirectories` are test seams; nil uses
-    /// Documents/profile-avatars and the pre-scoping locations.
+    /// `avatarsRoot`, `legacyAvatarDirectories` and `notificationAvatars`
+    /// are test seams; nil uses Documents/profile-avatars, the pre-scoping
+    /// locations and the app group (none when `avatarsRoot` is given, so a
+    /// test never writes into the app group).
     init(
         defaults: UserDefaults = .standard,
         avatarsRoot: URL? = nil,
-        legacyAvatarDirectories: [URL]? = nil
+        legacyAvatarDirectories: [URL]? = nil,
+        notificationAvatars: URL? = nil
     ) {
         self.defaults = defaults
         self.avatarsRootOverride = avatarsRoot
         self.legacyAvatarDirectoriesOverride = legacyAvatarDirectories
+        self.notificationAvatarsRoot = notificationAvatars ?? (avatarsRoot == nil ? NotificationAvatars.sharedRoot : nil)
     }
 
     // MARK: Default profile name
@@ -129,6 +138,7 @@ final class ProfileAppearanceStore {
         try stored.write(to: url, options: .atomic)
         ProfileAvatarImageCache.forget(url)
         setMirrored(false, profile: profile, dashboardID: dashboardID)
+        shareWithNotifications(stored, profile: profile, dashboardID: dashboardID)
         return url
     }
 
@@ -146,6 +156,9 @@ final class ProfileAppearanceStore {
         if changed {
             try data.write(to: url, options: .atomic)
             ProfileAvatarImageCache.forget(url)
+        }
+        if changed || needsNotificationCopy(of: url, profile: profile, dashboardID: dashboardID) {
+            shareWithNotifications(data, profile: profile, dashboardID: dashboardID)
         }
         setMirrored(true, profile: profile, dashboardID: dashboardID)
         return (url, changed)
@@ -173,6 +186,88 @@ final class ProfileAppearanceStore {
            FileManager.default.fileExists(atPath: url.path) { return }
         setMirrored(false, profile: profile, dashboardID: dashboardID)
         ProfileAvatarImageCache.forget(url)
+        NotificationAvatars.remove(profile: profile, dashboardID: dashboardID?.uuidString, root: notificationAvatarsRoot)
+    }
+
+    // MARK: Pictures on notifications
+
+    private func shareWithNotifications(_ data: Data, profile: String, dashboardID: UUID?) {
+        guard let root = notificationAvatarsRoot else { return }
+        NotificationAvatars.store(data, profile: profile, dashboardID: dashboardID?.uuidString, root: root)
+    }
+
+    private func needsNotificationCopy(of url: URL, profile: String, dashboardID: UUID?) -> Bool {
+        guard let root = notificationAvatarsRoot else { return false }
+        return NotificationAvatars.needsCopy(of: url, profile: profile, dashboardID: dashboardID?.uuidString, root: root)
+    }
+
+    /// Copies, once a launch, every saved dashboard's photos that have no
+    /// notification copy yet or a stale one (photos saved before the
+    /// copies existed, or by a build without them). The heavy file reads
+    /// run off the main actor; the commit runs on the main actor,
+    /// serialized with `saveAvatar`, `saveMirroredAvatar`, `removeAvatar`
+    /// and `removeAll` (which are all main-actor), so a pass's write can
+    /// never land after a newer save or recreate a removed copy.
+    func shareAvatarsWithNotificationsOnce() {
+        guard !Self.sharedWithNotificationsThisLaunch, let root = notificationAvatarsRoot,
+              let avatarsRoot = avatarsRoot(create: false) else { return }
+        Self.sharedWithNotificationsThisLaunch = true
+        Task.detached(priority: .utility) {
+            let work = Self.copyWork(under: avatarsRoot, with: root)
+            await MainActor.run {
+                Self.commit(work, with: root)
+            }
+        }
+    }
+
+    /// The pass's heavy half: which photos look stale, their bytes and the
+    /// photo's modification date at that moment, read off the main actor.
+    /// Each entry is committed by the main-actor half.
+    nonisolated static func copyWork(
+        under avatarsRoot: URL, with root: URL
+    ) -> [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)] {
+        let folders = (try? FileManager.default.contentsOfDirectory(
+            at: avatarsRoot, includingPropertiesForKeys: [.isDirectoryKey]
+        )) ?? []
+        var work: [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)] = []
+        for folder in folders where (try? folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+            let dashboardID = UUID(uuidString: folder.lastPathComponent)?.uuidString
+            for file in avatarFiles(in: folder)
+            where NotificationAvatars.needsCopy(of: file.url, profile: file.profile, dashboardID: dashboardID, root: root) {
+                // The date first: a photo saved between this read and the
+                // bytes' must leave a newer date than the entry carries, so
+                // the commit skips it instead of storing stale bytes.
+                let modified = (try? file.url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast
+                guard let data = try? Data(contentsOf: file.url) else { continue }
+                work.append((file.url, file.profile, dashboardID, data, modified))
+            }
+        }
+        return work
+    }
+
+    /// The whole pass on the calling context: the launch pass runs only the
+    /// commit half on the main actor (see `shareAvatarsWithNotificationsOnce`),
+    /// serialized with the photo saves and removals; tests run this directly.
+    nonisolated static func shareAvatars(under avatarsRoot: URL, with root: URL) {
+        commit(copyWork(under: avatarsRoot, with: root), with: root)
+    }
+
+    /// The pass's commit half: writes each stale entry's copy unless the
+    /// photo changed while the pass ran (saved again, removed, or removed
+    /// and re-saved — its modification date moved), whose own write already
+    /// left the right copy. Runs on the main actor in production.
+    nonisolated static func commit(
+        _ work: [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)], with root: URL
+    ) {
+        for (source, profile, dashboardID, data, modified) in work {
+            // A fresh URL instance, not the one the work entry retained:
+            // resource values cache on the URL, and the retained one carries
+            // the date its read already saw.
+            let probe = URL(fileURLWithPath: source.path)
+            let current = try? probe.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+            guard current == modified else { continue }
+            NotificationAvatars.store(data, profile: profile, dashboardID: dashboardID, root: root)
+        }
     }
 
     private func mirroredProfiles() -> [String: [String]] {
@@ -286,6 +381,7 @@ final class ProfileAppearanceStore {
         if let directory = avatarsDirectory(dashboardID: dashboardID, create: false) {
             try? FileManager.default.removeItem(at: directory)
         }
+        NotificationAvatars.removeAll(dashboardID: dashboardID.uuidString, root: notificationAvatarsRoot)
         ProfileAvatarImageCache.forgetAll()
     }
 
@@ -376,7 +472,7 @@ final class ProfileAppearanceStore {
         return directories
     }
 
-    private static func avatarFiles(in directory: URL) -> [(profile: String, url: URL)] {
+    nonisolated private static func avatarFiles(in directory: URL) -> [(profile: String, url: URL)] {
         let urls = (try? FileManager.default.contentsOfDirectory(
             at: directory,
             includingPropertiesForKeys: [.isRegularFileKey]
@@ -400,7 +496,7 @@ final class ProfileAppearanceStore {
         return "profile-\(safe).jpg"
     }
 
-    private static func profileName(from url: URL) -> String? {
+    nonisolated private static func profileName(from url: URL) -> String? {
         let stem = url.deletingPathExtension().lastPathComponent
         guard stem.hasPrefix("profile-") else { return nil }
         var encoded = String(stem.dropFirst("profile-".count))
