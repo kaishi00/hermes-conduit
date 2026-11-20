@@ -1860,7 +1860,7 @@ during a call) · the plugin's turn line (a typed message whose reply is read
 aloud is heard) · Hermes changing Conduit's settings · Sync across devices ·
 the Voice settings caption · the voice it speaks with (Assistant speech, which Classic voice shares; picked under Speaking voice in Settings > Voice > Read Aloud and under Advanced > Assistant speech) · docs/VOICE_SETTINGS.md · the notifier README and changelog
 
-**Desktop app:** partly: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23), and Settings > Voice's Read Aloud voice picks Hermes' speech or This computer's voice, kept per profile on the computer (`desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, desktop#167); gap: no Your speech server choice.
+**Desktop app:** has it: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23), and Settings > Voice's Read Aloud voice picks Hermes' speech, This computer's voice or Your speech server (read back over the plugin's speak socket, a reply it can't read going to the computer's voice), kept per profile on the computer (`desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, `desktop/src/renderer/src/state/speechServerSpeech.ts`, desktop#167, desktop#172).
 
 **Code**
 - Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection, readAloudVoice, assistantSpeechSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
