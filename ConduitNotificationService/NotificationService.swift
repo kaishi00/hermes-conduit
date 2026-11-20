@@ -12,7 +12,8 @@ import WidgetKit
 /// verify, is a replay, or is plaintext for a pairing that has a key shows
 /// only the generic copy and loses its routing data, so tapping it routes
 /// nowhere. A group room's replies replace each other (one notification per
-/// room, issue 2064). Conduit itself re-verifies the envelope on tap; nothing this
+/// room, issue 2064). A verified push from a bot with a picture shows that
+/// picture instead of Conduit's icon (NotificationSenderPicture). Conduit itself re-verifies the envelope on tap; nothing this
 /// extension writes into the notification is trusted on its own.
 final class NotificationService: UNNotificationServiceExtension {
     // didReceive and serviceExtensionTimeWillExpire may run on different
@@ -113,11 +114,29 @@ final class NotificationService: UNNotificationServiceExtension {
             if PulseNotifications.isPulse(titleLabel: verified.content["title_label"] as? String) {
                 WidgetCenter.shared.reloadTimelines(ofKind: PulseNotifications.widgetKind)
             }
-            if let thread = ReadChatHint.roomThread(note) {
-                deliverInRoom(content, note: note, thread: thread, request: request)
-                return
+            // The bot's face instead of Conduit's icon, from the picture
+            // Conduit left in the app group; none there keeps the icon.
+            let thread = ReadChatHint.roomThread(note)
+            let profile = (named["profile"] as? String) ?? verified.record.profile
+            let sender = NotificationAvatars.sender(
+                profile: profile,
+                dashboardID: verified.record.dashboardID,
+                botName: NotificationCopy.botName(named),
+                title: content.title,
+                conversation: thread ?? verified.routingPayload["session_id"] as? String
+            )
+            NotificationSenderPicture.apply(
+                to: content,
+                sender: sender,
+                picture: NotificationAvatars.picture(profile: profile, dashboardID: verified.record.dashboardID)
+            ) { [weak self] content in
+                guard let self else { return }
+                if let thread {
+                    self.deliverInRoom(content, note: note, thread: thread, request: request)
+                    return
+                }
+                self.deliver(content)
             }
-            deliver(content)
         }
     }
 

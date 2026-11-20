@@ -270,6 +270,8 @@ extension AppState {
         if NotificationSharedSettings.mainProfileNames != names { NotificationSharedSettings.mainProfileNames = names }
         let active = activeDashboardID?.uuidString
         if NotificationSharedSettings.activeDashboardID != active { NotificationSharedSettings.activeDashboardID = active }
+        // And puts each bot's face on its pushes, from the photos on disk.
+        profileAppearanceStore.shareAvatarsWithNotificationsOnce()
     }
 
     /// The Watch's word for a dashboard's notifications encryption: nil
