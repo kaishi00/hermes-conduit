@@ -268,6 +268,9 @@ struct RelayMetaInfo: Decodable, Equatable {
     /// paired, so a removed dashboard's pairing waiting to go isn't taken
     /// for gone (issue 2811).
     var undecodedGatewayIDs: Set<String> = []
+    /// A row that isn't an object stops the read, so the rows after it are
+    /// unknown: nothing is taken for gone from a list cut short.
+    var gatewayListIsPartial = false
 
     var supportsDecisionCards: Bool { capabilities.contains("decisions") }
     /// The relay sends the agent's on-demand locate to a location push token.
@@ -284,6 +287,7 @@ struct RelayMetaInfo: Decodable, Equatable {
         capabilities = try container.decode([String].self, forKey: .capabilities)
         var gateways: [Gateway] = []
         var undecoded: Set<String> = []
+        var partial = false
         var array = try container.nestedUnkeyedContainer(forKey: .gateways)
         while !array.isAtEnd {
             if let gateway = try? array.decode(Gateway.self) {
@@ -293,11 +297,13 @@ struct RelayMetaInfo: Decodable, Equatable {
             } else if (try? array.decode(Empty.self)) == nil {
                 // Not an object at all: a failed decode doesn't move past
                 // it, so the rest can't be read (#2864 review).
+                partial = true
                 break
             }
         }
         self.gateways = gateways
         undecodedGatewayIDs = undecoded
+        gatewayListIsPartial = partial
     }
 
     private struct Empty: Decodable {}
