@@ -309,7 +309,7 @@ struct UsageSettingsDetail: View {
                 Text(verbatim: window.label)
                     .scaledFont(.footnote)
                 Spacer(minLength: 8)
-                Text(AppLocalization.string("\(percent(window.usedPercent / 100)) used", table: .settings))
+                Text(AppLocalization.string("\(percent(window.usedPercent / 100)) used"))
                     .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
@@ -348,7 +348,7 @@ struct UsageSettingsDetail: View {
         case .ready:
             return nil
         case .limited:
-            guard let resetsAt = account.resetsAt else { return AppLocalization.string("Limited", table: .settings) }
+            guard let resetsAt = account.resetsAt else { return AppLocalization.string("Limited") }
             return AppLocalization.string("Limited until \(absolute(resetsAt))", table: .settings)
         case .unknown:
             return account.windows.isEmpty ? AppLocalization.string("Not reported yet", table: .settings) : nil

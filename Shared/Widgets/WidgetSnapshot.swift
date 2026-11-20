@@ -7,6 +7,8 @@ enum ConduitWidgetKind {
     static let character = "com.milim.relay.widgets.character"
     /// Pulse's open cards, with Done, Do it and Not now (issue 2190).
     static let pulse = "com.milim.relay.widgets.pulse"
+    /// The plan limits Hermes reports, and when they reset (issue 2796).
+    static let usage = "com.milim.relay.widgets.usage"
     /// The New Chat control (issue 2860).
     static let newChatControl = "com.milim.relay.widgets.newchat.control"
 }

@@ -761,7 +761,10 @@ extension AppState {
         pulseHomeChatID = nil
         // The Pulse widget stops reading the outgoing dashboard's feed; this
         // one's pass comes once it has connected.
-        if let previousDashboardID, previousDashboardID != id { removePulseWidget(dashboardID: previousDashboardID) }
+        if let previousDashboardID, previousDashboardID != id {
+            removePulseWidget(dashboardID: previousDashboardID)
+            removeUsageWidget(dashboardID: previousDashboardID)
+        }
         rememberDashboardURL(dashboard.normalizedURL)
         let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
         // A combined dashboard left while connected stays connected, so a

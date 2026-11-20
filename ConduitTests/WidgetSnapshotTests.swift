@@ -449,4 +449,87 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertEqual(unconfigured.smallLink(.talk), unconfigured.resumeLink)
         XCTAssertEqual(LauncherWidgetConfigurationIntent().smallTapAction, .conversation)
     }
+
+    // MARK: Plan limits widget (issue 2796)
+
+    /// The widget's rows come from the same `model.options` rows as
+    /// Settings > Usage: a provider's own windows, a pool's usable account
+    /// with the most left, an account-wide limit, and nothing for a
+    /// provider that reports none.
+    func testPlanLimitsWidgetRowsReadTheSameQuotaAsSettingsUsage() throws {
+        let reset = "2026-11-20T08:00:00+00:00"
+        let options: [String: Any] = ["providers": [
+            ["slug": "openai-codex", "name": "ChatGPT", "usage": ["windows": [
+                ["label": "5 hours", "used_percent": 42.4, "resets_at": reset, "scope": "account"] as [String: Any],
+                ["label": "Weekly", "used_percent": 81, "resets_at": "2026-11-24T00:00:00+00:00", "scope": "account"] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+            ["slug": "anthropic", "name": "Anthropic", "usage": ["accounts": [
+                ["id": "a", "label": "Work", "state": "limited", "windows": [["label": "Session", "used_percent": 100] as [String: Any]]] as [String: Any],
+                ["id": "b", "label": "Home", "state": "ready", "windows": [["label": "Session", "used_percent": 70] as [String: Any]]] as [String: Any],
+                ["id": "c", "label": "", "state": "ready", "windows": [["label": "Session", "used_percent": 30] as [String: Any]]] as [String: Any],
+            ] as [[String: Any]]] as [String: Any]] as [String: Any],
+            ["slug": "nous", "name": "Nous", "limit": ["scope": "account", "resets_at": reset] as [String: Any]] as [String: Any],
+            ["slug": "zai", "name": "Z.ai", "models": ["glm-5"]] as [String: Any],
+        ] as [[String: Any]]]
+
+        let rows = UsageWidgetFeed.providers(from: ProviderQuota.list(from: options))
+
+        XCTAssertEqual(rows.map(\.slug), ["openai-codex", "anthropic", "nous"])
+        let codex = rows[0]
+        XCTAssertEqual(codex.title, "ChatGPT")
+        XCTAssertNil(codex.account)
+        XCTAssertEqual(codex.windows.map(\.label), ["5 hours", "Weekly"])
+        XCTAssertEqual(codex.windows[0].usedPercent, 42.4, accuracy: 0.0001)
+        XCTAssertEqual(codex.windows[0].resetsAt, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertFalse(codex.isLimited)
+        // The pool's usable account with the most left; it has no name.
+        XCTAssertEqual(rows[1].windows.map(\.usedPercent), [30])
+        XCTAssertNil(rows[1].account)
+        XCTAssertFalse(rows[1].isLimited)
+        XCTAssertTrue(rows[2].isLimited)
+        XCTAssertEqual(rows[2].limitedUntil, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertTrue(rows[2].windows.isEmpty)
+
+        // Every signed-in account limited: the pool is, until the first frees.
+        let spent = UsageWidgetFeed.providers(from: [try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "label": "Work", "state": "limited", "resets_at": "2026-11-21T00:00:00+00:00",
+             "windows": [["label": "Weekly", "used_percent": 100] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "limited", "resets_at": reset] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))])
+        XCTAssertEqual(spent.first?.isLimited, true)
+        XCTAssertEqual(spent.first?.limitedUntil, ISO8601DateFormatter().date(from: "2026-11-20T08:00:00Z"))
+        XCTAssertEqual(spent.first?.account, "Work")
+    }
+
+    /// The widget's last read is kept per dashboard and profile, and a
+    /// pass for another profile doesn't show it.
+    func testPlanLimitsWidgetKeepsItsReadForTheDashboardAndProfileItWasFor() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = UsageWidgetStore(directory: directory)
+        let dashboard = UUID()
+        let window = UsageWidgetWindow(label: "Weekly", usedPercent: 20, resetsAt: Date(timeIntervalSince1970: 1_800_000_000))
+        let providers = (0..<5).map {
+            UsageWidgetProvider(slug: "p\($0)", title: "P\($0)", account: nil, windows: [window], isLimited: false, limitedUntil: nil)
+        }
+        let snapshot = UsageWidgetSnapshot(dashboardID: dashboard, profile: "work", appLanguage: "de",
+                                           providers: providers, readAt: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(snapshot.providers.count, UsageWidgetSnapshot.maximumProviders)
+
+        try store.write(snapshot)
+        XCTAssertEqual(store.read(), snapshot)
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://hermes.example", headers: [:], expiresAt: nil, savedAt: Date())
+        XCTAssertTrue(snapshot.showing(UsageWidgetAccess(dashboardID: dashboard, profile: "work", pass: pass)))
+        XCTAssertFalse(snapshot.showing(UsageWidgetAccess(dashboardID: dashboard, profile: "default", pass: pass)))
+        XCTAssertFalse(snapshot.showing(UsageWidgetAccess(dashboardID: UUID(), profile: "work", pass: pass)))
+        XCTAssertTrue(snapshot.with(needsConduit: true).needsConduit)
+        XCTAssertEqual(snapshot.with(needsConduit: true).providers, snapshot.providers)
+
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "default"), "/api/model/options")
+        XCTAssertEqual(UsageWidgetFeed.path(profile: "work"), "/api/model/options?profile=work")
+
+        XCTAssertTrue(store.remove())
+        XCTAssertNil(store.read())
+        XCTAssertFalse(store.remove())
+    }
 }

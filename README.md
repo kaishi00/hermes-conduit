@@ -85,7 +85,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 
 - Approve tools and answer questions straight from a notification, end-to-end encrypted between your host and your phone
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
-- Home Screen widgets in three sizes to resume a chat, start one or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit (its small size, with Done and Not now, is made for Apple HomeView too, not yet tried on one)
+- Home Screen widgets in three sizes to resume a chat, start one or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit (its small size, with Done and Not now, is made for Apple HomeView too, not yet tried on one), and a Plan limits widget with how much of your subscription's limits you've used and when they reset
 - Provider, model and reasoning effort switching mid-conversation
 - Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again. Each provider shows its logo, and one that reports a quota (a subscription sign-in, OpenRouter, OpenCode Go) shows how much is left and when it resets, there and in every model list
 - Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, the background review Hermes runs after each turn, with its switch, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page

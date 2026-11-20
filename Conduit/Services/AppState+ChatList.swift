@@ -787,6 +787,8 @@ extension AppState {
         widgetSettledCatalogOwner = nil
         keepDelegateAgents(of: [])
         publishWidgetCurrentWorkspace(dashboardID: activeDashboardID, profile: newValue)
+        // The Plan limits widget shows the profile in use's providers.
+        Task { await saveUsageWidgetAccess() }
         presentationCacheProfileEpoch &+= 1
         // The saved copy and list belong to the outgoing profile's scope.
         dismissOfflineChatPresentation()

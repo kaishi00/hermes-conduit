@@ -132,8 +132,10 @@ extension AppState {
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
-        // The Pulse widget reads Pulse with its own pass (issue 2190).
+        // The Pulse widget reads Pulse with its own pass (issue 2190), and
+        // the Plan limits widget Hermes' plan limits (issue 2796).
         Task { await savePulseWidgetAccess() }
+        Task { await saveUsageWidgetAccess() }
         Task { await runPhoneSync(reason: .connected) }
         // Log to Hermes events that waited for this host.
         Task { await drainShortcutInbox() }

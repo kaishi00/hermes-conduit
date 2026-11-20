@@ -41,12 +41,7 @@ extension AppState {
     /// Whether a Pulse widget is on the Home Screen; nil when WidgetKit
     /// couldn't say.
     private func hasPulseWidget() async -> Bool? {
-        await withCheckedContinuation { continuation in
-            WidgetCenter.shared.getCurrentConfigurations { result in
-                let kinds = (try? result.get())?.map(\.kind)
-                continuation.resume(returning: kinds?.contains(ConduitWidgetKind.pulse))
-            }
-        }
+        await installedWidgetKinds()?.contains(ConduitWidgetKind.pulse)
     }
 
     /// Keeps what the widget reads Pulse with current: the dashboard in

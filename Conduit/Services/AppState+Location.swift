@@ -55,8 +55,11 @@ extension AppState {
             guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
             Task { @MainActor in
                 await self?.locationHostTokensRotated(dashboardID: dashboardID)
-                // The Pulse widget's pass carries the same token.
-                if self?.activeDashboardID == dashboardID { await self?.savePulseWidgetAccess() }
+                // The Pulse and Plan limits widgets' passes carry the same token.
+                if self?.activeDashboardID == dashboardID {
+                    await self?.savePulseWidgetAccess()
+                    await self?.saveUsageWidgetAccess()
+                }
             }
         }
         controller.activateAtLaunch()
