@@ -63,8 +63,10 @@ enum BotWorkLook {
         switch item.status {
         case "needs_you", "interrupted": return .orange
         case "failed": return .red
-        case "ready", "done": return .green
-        case "starting", "running", "waiting": return .conduitAccent
+        // Each status its own color, gold left for buttons (Eric 2026-11-20,
+        // the desktop's card D): ready green, working blue, done grey.
+        case "ready": return .green
+        case "starting", "running", "waiting": return .blue
         default: return .secondary
         }
     }
@@ -930,6 +932,31 @@ struct BotWorkMark: View {
     }
 }
 
+/// Where a piece of work stands, as a chip at the end of its card's top
+/// line: filled orange while it needs the user, else tinted with its color.
+struct BotWorkStatusChip: View {
+    let item: BotWorkItem
+
+    var body: some View {
+        let tint = BotWorkLook.tint(item)
+        let needs = item.needsYou && !item.isClosed
+        HStack(spacing: 5) {
+            if tint != .secondary {
+                Circle().fill(needs ? Color.black.opacity(0.85) : tint).frame(width: 6, height: 6)
+            }
+            Text(item.statusText)
+                .scaledFont(.caption.weight(.semibold))
+                .lineLimit(1)
+        }
+        .foregroundStyle(needs ? Color.black.opacity(0.85) : (tint == .secondary ? Color.secondary : tint))
+        .padding(.horizontal, 9)
+        .padding(.vertical, 3)
+        .background(Capsule().fill(needs ? Color.orange : tint.opacity(tint == .secondary ? 0.12 : 0.15)))
+        .fixedSize()
+        .accessibilityLabel(item.statusText)
+    }
+}
+
 /// One piece of work as a card: its mark, title and where it is, its last
 /// result, and its checklist and actions once opened.
 private struct BotWorkRow: View {
@@ -1064,15 +1091,16 @@ private struct BotWorkRow: View {
         HStack(alignment: .top, spacing: 12) {
             BotWorkMark(item: item)
             VStack(alignment: .leading, spacing: 3) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                // The ref, when, and the status chip at the end (Eric
+                // 2026-11-20: status at a glance); the title under them.
+                HStack(alignment: .center, spacing: 6) {
                     Text(item.ref)
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(.secondary)
-                    Text(item.shownTitle)
-                        .scaledFont(.subheadline.weight(.semibold))
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(expanded ? nil : 1)
-                    Spacer(minLength: 4)
+                    Text(item.closedAt ?? item.updatedAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                     if item.isLeftAlone {
                         Image(systemName: "hand.raised.fill")
                             .scaledFont(.caption2)
@@ -1085,15 +1113,20 @@ private struct BotWorkRow: View {
                             .foregroundStyle(.orange)
                             .accessibilityLabel(AppLocalization.string("Pinned"))
                     }
-                    Text(item.closedAt ?? item.updatedAt, format: .relative(presentation: .numeric, unitsStyle: .narrow))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(1)
+                    Spacer(minLength: 4)
+                    BotWorkStatusChip(item: item)
                 }
-                Text(subtitle)
-                    .scaledFont(.footnote)
-                    .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
-                    .lineLimit(expanded ? nil : 1)
+                Text(item.shownTitle)
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(Color.primary)
+                    .lineLimit(expanded ? nil : 2)
+                // The chip says where it stands; the line says more only when there is more.
+                if subtitle != item.statusText {
+                    Text(subtitle)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(item.needsYou ? Color.orange : Color.secondary)
+                        .lineLimit(expanded ? nil : 1)
+                }
                 if !item.call.isEmpty {
                     fromCallLine
                 }
