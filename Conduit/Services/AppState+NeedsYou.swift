@@ -253,6 +253,24 @@ extension AppState {
         }
     }
 
+    /// Hermes' own card `answered` took this iPhone's answer: a listed
+    /// question it asks is that card's, so the row's copy stays out, and one
+    /// already drawn, unanswered, goes. The plugin names the wait until its
+    /// clarify call returns, so a read just after the answer would otherwise
+    /// draw the answered question again, and a read made while Hermes' card
+    /// was still waiting may never have noted it (one made while the chat
+    /// was being restored, notifier#965).
+    func keepQuestionCopiesOut(answeredOn answered: ClarifyActivity) {
+        guard !answered.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
+        for item in needsYou.items where item.roomID == nil {
+            guard let card = item.card,
+                  let pushed = Self.notificationClarifyActivity(for: card),
+                  Self.pushCardSupersededBy(pushed, live: answered) else { continue }
+            needsYou.noteHermesDrewCard(for: pushed.requestId)
+        }
+        removePushCardsSuperseded(by: answered)
+    }
+
     /// Takes back the question cards drawn from `profile`'s rows whose
     /// waits its list no longer names (issue 2828): the plugin forgets a
     /// wait it gives up, the question run out or answered elsewhere, and

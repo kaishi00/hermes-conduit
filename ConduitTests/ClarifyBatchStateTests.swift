@@ -1562,7 +1562,27 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.questions[0].status, .expired)
         XCTAssertEqual(settled.questions[1].status, .expired)
         XCTAssertEqual(settled.questions[2].status, .expired)
-        XCTAssertFalse((settled.error ?? "").isEmpty, "The card explains the teardown")
+        // Hermes' own card was answered: never "Hermes timed them out"
+        // (notifier#965).
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+    }
+
+    func testRelayQuestionNoLongerActiveDoesNotClaimATimeout() async throws {
+        // A gone decision may have timed out or been answered elsewhere:
+        // the card says only that it's no longer active (notifier#965).
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.noLongerActive
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: "staging")
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions are no longer active."))
     }
 
     func testRelayAnswerWithOmittedRemainingSettlesOnlyTheSubmittedQuestion() async throws {
