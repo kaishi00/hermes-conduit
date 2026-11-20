@@ -256,8 +256,11 @@ extension AppState {
     /// Takes back the question cards drawn from `profile`'s rows whose
     /// waits its list no longer names (issue 2828): the plugin forgets a
     /// wait it gives up, the question run out or answered elsewhere, and
-    /// the relay refuses a late answer, so the card left answerable in the
-    /// chat would only say it expired. Still unanswered only: a card this
+    /// the relay refuses a late answer. The question isn't lost: its clarify
+    /// call ends with the wait, and Hermes' own record of it comes into the
+    /// chat as a finished card (`ClarifyActivity.historyRecord`), with its
+    /// choices and Answer in a message once it ran out (issue 2850), so
+    /// keeping this copy would draw it twice. Still unanswered only: a card this
     /// iPhone answered keeps its answer. Its saved copy goes too, so a
     /// reopen within the day doesn't bring it back over Hermes' own record.
     func takeBackQuestionCardsNoLongerListed(profile: String) {
