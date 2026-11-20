@@ -203,6 +203,8 @@ extension GroupChatModelsTests {
                 draftsDraft("conduit-5", status: "ended", reason: "lapsed"),
                 // A disbanded one was a room.
                 draftsDraft("conduit-6", status: "ended", reason: "disbanded"),
+                // One taken back on another device: that device removed it.
+                draftsDraft("conduit-8", status: "ended", reason: "withdrawn"),
                 // A status a newer plugin adds isn't listed.
                 draftsDraft("conduit-7", status: "paused"),
             ],
