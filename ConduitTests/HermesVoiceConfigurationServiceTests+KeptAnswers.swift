@@ -428,6 +428,26 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(slots[6].value, "fast/watch")
     }
 
+    /// Background review, listed as a built-in row by the plugin until
+    /// Hermes lists it (issue 2871), is named and has its on/off switch;
+    /// the MCP slot says it answers sampling requests, not tool choice
+    /// (issue 2877).
+    func testBackgroundReviewHasItsSwitchAndMCPSaysSampling() throws {
+        let slots = HelperModelSlot.slots(in: ["tasks": [
+            ["task": "mcp", "provider": "auto", "model": ""],
+            ["task": "background_review", "provider": "openrouter", "model": "fast/review"],
+        ]])
+        XCTAssertEqual(slots.map(\.id), ["mcp", HelperModelSlot.backgroundReview])
+        XCTAssertEqual(slots[0].title, AppLocalization.string("MCP sampling", table: .bots))
+        XCTAssertNil(HelperModelSlot.onOff(task: "mcp"))
+        XCTAssertEqual(slots[1].title, AppLocalization.string("Background review", table: .bots))
+        XCTAssertEqual(slots[1].symbol, "brain.head.profile")
+        XCTAssertEqual(slots[1].value, "fast/review")
+        let onOff = try XCTUnwrap(HelperModelSlot.onOff(task: slots[1].id))
+        XCTAssertEqual(onOff.key, "auxiliary.background_review.enabled")
+        XCTAssertTrue(onOff.defaultValue, "Hermes runs it when config doesn't say")
+    }
+
     /// A provider pinned without a model is a choice of its own, named
     /// as its default model; "Same as chats" unpins it. A slot on an
     /// endpoint of its own names its host and keeps it while its provider

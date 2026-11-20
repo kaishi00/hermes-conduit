@@ -722,6 +722,16 @@ struct SettingsView: View {
                     loadProviders: { await appState.loadModelProviders() },
                     save: { await appState.setHelperModel($0, confirmed: $1) }
                 )
+            },
+            onOff: { slot in
+                guard let words = HelperModelSlot.onOff(task: slot.id) else { return nil }
+                let key = words.key
+                // Unset in config, Hermes runs it.
+                return HelperModelSwitchModel(
+                    kept: { appState.keptProfileSettings(keys: [key]).map { $0[key]?.boolValue ?? words.defaultValue } },
+                    load: { await appState.readProfileSettings(keys: [key]).map { $0[key]?.boolValue ?? words.defaultValue } },
+                    save: { await appState.setProfileSetting(key, value: .bool($0)) }
+                )
             }
         )
     }

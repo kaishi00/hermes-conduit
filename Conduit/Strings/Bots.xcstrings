@@ -83,6 +83,334 @@
         }
       }
     },
+    "After every turn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nach jedem Zug"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Después de cada turno"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Après chaque tour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setelah setiap giliran"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dopo ogni turno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "毎ターンの後"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "매 턴 후"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po każdej turze"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Depois de cada turno"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После каждого хода"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her turdan sonra"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每轮之后"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每輪之後"
+          }
+        }
+      }
+    },
+    "Answers when an MCP server asks Hermes’ model to write something. It doesn’t choose tools." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antwortet, wenn ein MCP-Server Hermes’ Modell bittet, etwas zu schreiben. Werkzeuge wählt es nicht aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde cuando un servidor MCP pide al modelo de Hermes que escriba algo. No elige herramientas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Répond quand un serveur MCP demande au modèle de Hermes d’écrire quelque chose. Il ne choisit pas les outils."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Menjawab saat server MCP meminta model Hermes menulis sesuatu. Tidak memilih alat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Risponde quando un server MCP chiede al modello di Hermes di scrivere qualcosa. Non sceglie gli strumenti."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCPサーバーがHermesのモデルに文章の生成を求めたときに応答します。ツールは選びません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 서버가 Hermes의 모델에 무언가를 작성해 달라고 요청할 때 답합니다. 도구를 고르지는 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odpowiada, gdy serwer MCP prosi model Hermesa o napisanie czegoś. Nie wybiera narzędzi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Responde quando um servidor MCP pede ao modelo do Hermes que escreva algo. Não escolhe ferramentas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отвечает, когда сервер MCP просит модель Hermes что-то написать. Инструменты не выбирает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir MCP sunucusu Hermes’in modelinden bir şey yazmasını istediğinde yanıt verir. Araç seçmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 MCP 服务器请求 Hermes 的模型生成内容时作答。不负责挑选工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 MCP 伺服器請求 Hermes 的模型產生內容時作答。不負責挑選工具。"
+          }
+        }
+      }
+    },
+    "Automatic review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatische Prüfung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisión automática"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revue automatique"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tinjauan otomatis"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisione automatica"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動レビュー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "자동 검토"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Automatyczny przegląd"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisão automática"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Автоматический разбор"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otomatik inceleme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自动复盘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自動複盤"
+          }
+        }
+      }
+    },
+    "Background review" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hintergrundprüfung"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisión en segundo plano"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revue en arrière-plan"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tinjauan latar belakang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisione in background"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バックグラウンドレビュー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "백그라운드 검토"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przegląd w tle"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revisão em segundo plano"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фоновый разбор"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Arka plan incelemesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "后台复盘"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "背景複盤"
+          }
+        }
+      }
+    },
     "Face" : {
       "localizations" : {
         "de" : {
@@ -243,6 +571,252 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "灰色"
+          }
+        }
+      }
+    },
+    "Looks back over a chat after each turn to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sieht sich einen Chat nach jedem Zug noch einmal an und entscheidet, was ins Gedächtnis kommt und welche Skills verbessert werden. Das Nachdenken gilt nur mit einem eigenen Modell, das ohne den Prompt-Cache des Chats beginnt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Repasa un chat después de cada turno para decidir qué va a la memoria y qué habilidades mejorar. Su razonamiento solo se aplica con un modelo propio, que empieza sin la caché de prompts del chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Relit une discussion après chaque tour pour décider ce qui va en mémoire et quelles compétences améliorer. Son raisonnement ne s’applique qu’avec un modèle à lui, qui démarre sans le cache de prompt de la discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Meninjau ulang obrolan setelah tiap giliran untuk memutuskan apa yang masuk ke memori dan skill mana yang diperbaiki. Penalarannya hanya berlaku pada model tersendiri, yang mulai tanpa cache prompt obrolan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ripercorre una chat dopo ogni turno per decidere cosa va in memoria e quali skill migliorare. Il suo ragionamento vale solo con un modello proprio, che parte senza la cache del prompt della chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各ターンの後にチャットを振り返り、何を記憶に残し、どのスキルを改善するかを決めます。推論の設定は専用のモデルでのみ有効で、そのモデルはチャットのプロンプトキャッシュなしで始まります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "매 턴 후 채팅을 되돌아보며 무엇을 메모리에 남기고 어떤 스킬을 개선할지 정합니다. 추론 설정은 별도 모델에서만 적용되며, 그 모델은 채팅의 프롬프트 캐시 없이 시작합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po każdej turze przegląda czat i decyduje, co trafi do pamięci i które umiejętności poprawić. Rozumowanie działa tylko na osobnym modelu, który zaczyna bez pamięci podręcznej promptu czatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Revê a conversa depois de cada turno para decidir o que vai para a memória e quais habilidades melhorar. O raciocínio só vale com um modelo próprio, que começa sem o cache de prompt da conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "После каждого хода просматривает чат и решает, что сохранить в памяти и какие навыки улучшить. Настройка рассуждений действует только на отдельной модели, которая начинает без кэша промпта чата."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her turdan sonra sohbete dönüp bakar; neyin belleğe gireceğine ve hangi becerilerin iyileştirileceğine karar verir. Akıl yürütme ayarı yalnızca ayrı bir modelde geçerlidir; o model sohbetin istem önbelleği olmadan başlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每轮结束后回顾对话，决定哪些内容写入记忆、改进哪些技能。推理设置只在单独的模型上生效，该模型不带对话的提示缓存。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每輪結束後回顧對話，決定哪些內容寫入記憶、改進哪些技能。推理設定只在單獨的模型上生效，該模型不帶對話的提示快取。"
+          }
+        }
+      }
+    },
+    "MCP sampling" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP-Sampling"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Muestreo MCP"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Échantillonnage MCP"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sampling MCP"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Campionamento MCP"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCPサンプリング"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 샘플링"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Próbkowanie MCP"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Amostragem MCP"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сэмплинг MCP"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP örnekleme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 采样"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 取樣"
+          }
+        }
+      }
+    },
+    "Off, Hermes reviews a chat only when you ask with /refine. It’s the helper that runs most, so turning it off saves the most." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aus prüft Hermes einen Chat nur, wenn du mit /refine darum bittest. Sie ist das Hilfsmodell, das am häufigsten läuft, also spart Ausschalten am meisten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desactivada, Hermes revisa un chat solo cuando lo pides con /refine. Es el modelo auxiliar que más se ejecuta, así que desactivarla es lo que más ahorra."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Désactivée, Hermes ne relit une discussion que si vous le demandez avec /refine. C’est le modèle auxiliaire qui tourne le plus, donc la désactiver économise le plus."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika mati, Hermes meninjau obrolan hanya saat Anda memintanya dengan /refine. Ini model pembantu yang paling sering berjalan, jadi mematikannya paling menghemat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se disattivata, Hermes rivede una chat solo quando lo chiedi con /refine. È il modello ausiliario che gira di più, quindi disattivarla fa risparmiare di più."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オフにすると、Hermesは /refine で頼んだときだけチャットを振り返ります。最も頻繁に動くヘルパーなので、オフにすると最も節約になります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "끄면 Hermes는 /refine으로 요청할 때만 채팅을 검토합니다. 가장 자주 실행되는 도우미 모델이라 끄면 가장 많이 절약됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Po wyłączeniu Hermes przegląda czat tylko, gdy poprosisz o to poleceniem /refine. To model pomocniczy, który działa najczęściej, więc jego wyłączenie oszczędza najwięcej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Desligada, o Hermes revê uma conversa só quando você pede com /refine. É o modelo auxiliar que mais roda, então desligá-la é o que mais economiza."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Если выключить, Hermes разбирает чат, только когда вы просите об этом командой /refine. Это вспомогательная модель, которая запускается чаще всех, поэтому её отключение экономит больше всего."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kapalıyken Hermes bir sohbeti yalnızca /refine ile istediğinizde inceler. En sık çalışan yardımcı model bu olduğundan kapatmak en çok tasarrufu sağlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关闭后，Hermes 只在你用 /refine 要求时才复盘对话。它是运行最频繁的辅助模型，关闭它最省钱。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關閉後，Hermes 只在你用 /refine 要求時才複盤對話。它是執行最頻繁的輔助模型，關閉它最省錢。"
           }
         }
       }
@@ -23399,88 +23973,6 @@
         }
       }
     },
-    "MCP tool routing" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP-Werkzeugauswahl"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Selección de herramientas MCP"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choix des outils MCP"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pemilihan alat MCP"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Scelta degli strumenti MCP"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCPツールの振り分け"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP 도구 선택"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wybór narzędzi MCP"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escolha de ferramentas MCP"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Выбор инструментов MCP"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP araç seçimi"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP 工具路由"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MCP 工具路由"
-          }
-        }
-      }
-    },
     "Names new chats." : {
       "localizations" : {
         "de" : {
@@ -23559,88 +24051,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "為新聊天命名。"
-          }
-        }
-      }
-    },
-    "Picks which MCP tools a turn needs." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wählt aus, welche MCP-Werkzeuge ein Zug braucht."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Elige qué herramientas MCP necesita un turno."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Choisit les outils MCP dont un tour a besoin."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Memilih alat MCP yang dibutuhkan satu giliran."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sceglie quali strumenti MCP servono a un turno."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "各ターンに必要なMCPツールを選びます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "한 턴에 필요한 MCP 도구를 고릅니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wybiera narzędzia MCP potrzebne w danej turze."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Escolhe quais ferramentas MCP um turno precisa."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Выбирает, какие инструменты MCP нужны ходу."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bir turun hangi MCP araçlarına ihtiyacı olduğunu seçer."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "挑选每轮需要的 MCP 工具。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "挑選每輪需要的 MCP 工具。"
           }
         }
       }
