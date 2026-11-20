@@ -67,15 +67,16 @@ struct RoomDraftsList: Equatable {
 
     /// What Group Chats lists: the drafts waiting or starting, and those
     /// that ended until they're removed. A started one is its room's row, a
-    /// disbanded one was a room, and a status a newer plugin adds isn't
-    /// listed.
+    /// disbanded one was a room, one you took back was your own doing (Take
+    /// Back removes it on its device, so your other devices leave it out
+    /// too), and a status a newer plugin adds isn't listed.
     func rows(dismissed: Set<String>) -> [RoomDraft] {
         drafts.filter { draft in
             switch draft.status {
             case "waiting", "starting":
                 return true
             case "ended":
-                return draft.reason != "disbanded" && !dismissed.contains(draft.id)
+                return draft.reason != "disbanded" && draft.reason != "withdrawn" && !dismissed.contains(draft.id)
             default:
                 return false
             }
