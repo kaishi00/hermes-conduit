@@ -1437,7 +1437,7 @@ struct VoiceSettingsView: View {
                 choices: providerChoices(kind: .tts, providers: service.snapshot.ttsProviders),
                 onSelect: { selectProvider($0, kind: .tts) }
             ) {
-                Text("Voice").foregroundStyle(.secondary)
+                Text(verbatim: AppLocalization.string("Speaking voice", table: .voice)).foregroundStyle(.secondary)
             }
             .disabled(service.answered != true || service.isLoading || savingField != nil)
             .accessibilityIdentifier("voice.readAloudVoice")

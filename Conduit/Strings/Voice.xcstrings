@@ -50734,31 +50734,31 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Classic-Sprache spricht ebenfalls mit dieser Stimme. Die Stimme selbst, ihr Modell und ihren Schlüssel wählst du unter „Sprachausgabe“."
+            "value" : "Der Modus „Klassisch“ spricht ebenfalls mit dieser Stimme. Die Stimme selbst, ihr Modell und ihren Schlüssel wählst du unter „Sprachausgabe“."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La voz clásica también habla con esta voz. Elige la voz en sí, su modelo y su clave en «Voz del asistente»."
+            "value" : "El modo Clásico también habla con esta voz. Elige la voz en sí, su modelo y su clave en «Voz del asistente»."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La voix Classic parle aussi avec cette voix. Choisis la voix elle-même, son modèle et sa clé dans « Parole de l'assistant »."
+            "value" : "Le mode Classique parle aussi avec cette voix. Choisis la voix elle-même, son modèle et sa clé dans « Parole de l'assistant »."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Suara Classic juga berbicara dengan suara ini. Pilih suaranya, modelnya, dan kuncinya di Ucapan asisten."
+            "value" : "Mode Klasik juga berbicara dengan suara ini. Pilih suaranya, modelnya, dan kuncinya di Ucapan asisten."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anche la voce Classic parla con questa voce. Scegli la voce, il suo modello e la sua chiave in «Voce dell'assistente»."
+            "value" : "Anche la modalità Classica parla con questa voce. Scegli la voce, il suo modello e la sua chiave in «Voce dell'assistente»."
           }
         },
         "ja" : {
@@ -50776,25 +50776,25 @@
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Głos Classic też mówi tym głosem. Sam głos, jego model i klucz wybierzesz w sekcji „Mowa asystenta”."
+            "value" : "Tryb Klasyczny też mówi tym głosem. Sam głos, jego model i klucz wybierzesz w sekcji „Mowa asystenta”."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A voz Classic também fala com esta voz. Escolha a voz, o modelo e a chave em “Fala do assistente”."
+            "value" : "O modo Clássico também fala com esta voz. Escolha a voz, o modelo e a chave em “Fala do assistente”."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Классический голос тоже говорит этим голосом. Сам голос, его модель и ключ выбираются в разделе «Речь ассистента»."
+            "value" : "Режим «Классический» тоже говорит этим голосом. Сам голос, его модель и ключ выбираются в разделе «Речь ассистента»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Klasik ses de bu sesle konuşur. Sesin kendisini, modelini ve anahtarını Asistan konuşması bölümünden seç."
+            "value" : "Klasik mod da bu sesle konuşur. Sesin kendisini, modelini ve anahtarını Asistan konuşması bölümünden seç."
           }
         },
         "zh-Hans" : {
@@ -50889,6 +50889,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 自帶聆聽與說話功能，因此語音轉文字和助理聲音這兩個步驟不適用。若要使用這些步驟，請在「語音模式」中選擇「經典」。朗讀仍使用助理聲音：請在「朗讀」中選擇。"
+          }
+        }
+      }
+    },
+    "Speaking voice" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sprechstimme"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz de lectura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voix de lecture"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara pembaca"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voce di lettura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "読み上げの声"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "읽어 주는 목소리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos czytania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Voz de leitura"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Голос чтения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Okuma sesi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读声音"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀聲音"
           }
         }
       }
