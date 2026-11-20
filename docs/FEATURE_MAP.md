@@ -4118,7 +4118,7 @@ its work to delegate agents (it stays Working while they run, "Waiting for 2
 background agents" on its card and `waiting_for` in `work_list`; see Delegate
 agents a chat started)
 
-**Desktop app:** has it: workstreams in the Work panel on the right, opened from the Bot Chat's Workstreams button with the needs-you count (`desktop/src/renderer/src/components/WorkPanel.tsx`, desktop#24, desktop#47, desktop#209); a reply that is only a silence marker shows nothing in the transcript, the Bots tiles and chat previews, live or on reload, and a closing marker line is cut, by the same rule (`desktop/src/renderer/src/state/silence.ts`, desktop#173).
+**Desktop app:** has it: workstreams in the Work panel on the right, the side panel's Work tab with the needs-you count, opened from the header's panel button, which carries a dot in the work's status colour while the tab is closed (`desktop/src/renderer/src/components/WorkPanel.tsx`, desktop#24, desktop#47, desktop#209, desktop#224); a reply that is only a silence marker shows nothing in the transcript, the Bots tiles and chat previews, live or on reload, and a closing marker line is cut, by the same rule (`desktop/src/renderer/src/state/silence.ts`, desktop#173).
 
 **Code**
 - Notifier: `notifier/work_store.py` (the registry, conduit/workstreams.db in the bot's home), `notifier/work_broker.py` (Hermes' session API in the process that serves Conduit's chats: the dashboard's TUI gateway, or where the gateway's listener runs, its session authority through `notifier/gateway_chats.py`'s `session_api`, every request naming the bot's profile; `server`, `on_authority`, `Broker.live` and `approvals` read the authority's snapshot), `notifier/gateway_chats.py` (`authority_for_home`, `authority_session_ids`; a link names a chat's profile on its own reads and answers a snapshot's waiting approval), `notifier/upstream/test_gateway_listener.py` (test_a_workstream_runs_on_the_authority_so_the_phone_opens_it, on the launch profile and a sibling), `notifier/work_tool.py` (the tools, the policy, the hooks' work, the note and the updates; the restart sweep, `_sweep_once`, which leaves another live process's work to it by `_host_stamp` and `_hosted_elsewhere`), `notifier/__init__.py` (the hook calls), `notifier/cli.py` (`work`), `notifier/tests/test_work.py`, `notifier/upstream/test_bot_work.py`
@@ -4390,7 +4390,7 @@ system's Paste) · not needed: group rooms' ⌘. (a room has no Stop
 of its own), the model picker's, image gallery's and suggestion list's own
 keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
-**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25).
+**Desktop app:** has it: keyboard shortcuts and their sheet (`desktop/src/renderer/src/components/ShortcutsSheet.tsx`, desktop#25); ⌘\ or Ctrl+\ also shows or hides the chat list, desktop only (desktop#224).
 
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
