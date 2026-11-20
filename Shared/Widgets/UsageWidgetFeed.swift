@@ -158,7 +158,12 @@ enum UsageWidgetFeed {
     /// Conduit keeps for the widget and kept as the last good read; that
     /// read when the host can't be reached, and nothing when Conduit hasn't
     /// given the widget a pass (not opened since the widget was added).
-    /// `request` reads `path` with a pass.
+    /// A pass refused as signed out after Conduit saved a renewed one is
+    /// read once more with the renewed pass (`retried`), so a token that
+    /// rotated during the read doesn't ask for Conduit; renewed again during
+    /// that retry, the last read stays (with nothing read yet, the widget
+    /// says to open Conduit until its next read). `request` reads `path`
+    /// with a pass.
     static func read(access: UsageWidgetAccess?, store: UsageWidgetStore?, language: String,
                      currentAccess: () -> UsageWidgetAccess?,
                      retried: Bool = false,

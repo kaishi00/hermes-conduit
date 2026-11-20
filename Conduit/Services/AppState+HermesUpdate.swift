@@ -38,9 +38,7 @@ extension AppState {
                 throw DashboardTicketBridgeError.notReady
             }
             if let request = self.hermesUpdateRequest { return try await request(path, method) }
-            // An update's own answer comes at once; the check probes the
-            // checkout's git remotes first, which took 40 s on a real host.
-            let timeout = path.hasPrefix(HermesUpdater.checkPath) ? 90_000 : 30_000
+            let timeout = HermesUpdater.timeoutMilliseconds(forPath: path)
             do {
                 return try await bridge.requestJSON(path: path, method: method, timeoutMilliseconds: timeout)
             } catch DashboardTicketBridgeError.signInRequired {

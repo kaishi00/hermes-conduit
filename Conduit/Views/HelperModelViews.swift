@@ -313,6 +313,135 @@ struct HelperModelSwitchModel {
     var save: (String, ProfileSettingValue) async -> Bool
 }
 
+/// The Background review switch's state (HelperModelSwitchSection): what
+/// Hermes holds as last read or saved, the save on its way, and each
+/// interval's draft and error. A value, so its races are tested
+/// (issue 2912), as VoiceReplyModelPicks' are.
+struct HelperModelSwitchState {
+    /// Nil until read, kept or from Hermes.
+    private(set) var values: [String: ProfileSettingValue]?
+    /// The setting being saved: one at a time, as the profile pages do.
+    private(set) var savingKey: String?
+    /// Hermes didn't answer a read.
+    private(set) var failed = false
+    /// What's typed in an interval's field, until saved.
+    private(set) var drafts: [String: String] = [:]
+    /// Under an interval's field: a number it can't take, or a failed save.
+    private(set) var errors: [String: String] = [:]
+    /// Counts saves as they start and land, so a read asked before or
+    /// during one doesn't undo it on landing.
+    private var saves = 0
+    /// Numbers reads as they're asked; `answered` is the newest one taken,
+    /// so an older read that answers later (two Try Agains) is dropped.
+    private var reads = 0
+    private var answered = 0
+
+    /// A read, as it was asked.
+    struct Read {
+        fileprivate let saves: Int
+        fileprivate let number: Int
+        /// Asked while a save was on its way: it may answer with the config
+        /// before that save, even ahead of it landing.
+        fileprivate let duringSave: Bool
+    }
+
+    /// A save on its way.
+    struct Save {
+        let key: String
+        let value: ProfileSettingValue
+        fileprivate let before: [String: ProfileSettingValue]?
+        /// The interval's draft it saves, cleared once Hermes took it.
+        fileprivate let draft: String?
+        /// The switch itself: a failed save reverts it with no error line.
+        fileprivate let isSwitch: Bool
+    }
+
+    /// Nothing read yet, or Hermes didn't answer and nothing is kept: Try Again.
+    var showsReadFailure: Bool { failed && values == nil }
+
+    func isOn(_ words: HelperModelSlot.OnOff) -> Bool { values.map(words.isOn(in:)) ?? words.defaultValue }
+
+    func shown(_ interval: HelperModelSlot.Interval) -> String {
+        values.map { String(interval.value(in: $0)) } ?? ""
+    }
+
+    func draft(_ interval: HelperModelSlot.Interval) -> String { drafts[interval.key] ?? shown(interval) }
+
+    /// The config kept on the phone, until Hermes answers.
+    mutating func showKept(_ kept: [String: ProfileSettingValue]?) {
+        if values == nil { values = kept }
+    }
+
+    mutating func readAsked() -> Read {
+        reads += 1
+        return Read(saves: saves, number: reads, duringSave: savingKey != nil)
+    }
+
+    /// Hermes' answer to `read`, nil when it didn't answer. Dropped when a
+    /// save started or landed since it was asked, or was on its way when it
+    /// was asked (it may predate the save; the save's landing reads again),
+    /// or a newer read already answered.
+    mutating func readAnswered(_ read: Read, _ answer: [String: ProfileSettingValue]?) {
+        guard read.saves == saves, !read.duringSave, read.number > answered else { return }
+        answered = read.number
+        guard let answer else {
+            failed = true
+            return
+        }
+        failed = false
+        values = answer
+    }
+
+    mutating func edit(_ key: String, to raw: String) {
+        drafts[key] = raw
+        errors[key] = nil
+    }
+
+    /// Starts saving `raw` as the interval, or says under it why it can't.
+    mutating func intervalSaveStarted(_ interval: HelperModelSlot.Interval, raw: String) -> Save? {
+        guard let number = HelperModelSlot.Interval.parse(raw) else {
+            errors[interval.key] = AppLocalization.string("Enter a whole number, 0 or more.", table: .bots)
+            return nil
+        }
+        // The draft stays until Hermes took it, so a failed save keeps what
+        // was typed for Try Again.
+        return start(interval.key, .number(Double(number)), draft: raw, isSwitch: false)
+    }
+
+    /// Nil while another save is on its way: one at a time.
+    mutating func saveStarted(_ key: String, _ value: ProfileSettingValue, switchKey: String) -> Save? {
+        start(key, value, draft: nil, isSwitch: key == switchKey)
+    }
+
+    private mutating func start(_ key: String, _ value: ProfileSettingValue, draft: String?, isSwitch: Bool) -> Save? {
+        // The page disables its controls while one saves; held here too, so
+        // a second can't clear the first's mark or revert over it.
+        guard savingKey == nil else { return nil }
+        let save = Save(key: key, value: value, before: values, draft: draft, isSwitch: isSwitch)
+        values = (values ?? [:]).merging([key: value]) { _, new in new }
+        savingKey = key
+        saves += 1
+        errors[key] = nil
+        return save
+    }
+
+    /// The save landed. True when the other keys should be read again: a
+    /// read dropped for this save may have held their values.
+    mutating func saveLanded(_ save: Save, saved: Bool) -> Bool {
+        // A read asked while this save was on its way may answer with the
+        // config before it: counting again drops it.
+        saves += 1
+        savingKey = nil
+        if saved {
+            if let draft = save.draft, drafts[save.key] == draft { drafts[save.key] = nil }
+        } else {
+            values = save.before
+            if !save.isSwitch { errors[save.key] = AppLocalization.string("Couldn’t save that change. Try again.", table: .bots) }
+        }
+        return saved
+    }
+}
+
 /// The Helper models row on Models & providers.
 struct HelperModelsSettingsSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -516,27 +645,15 @@ private struct HelperModelSwitchSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let words: HelperModelSlot.OnOff
     let settings: HelperModelSwitchModel
-    /// Nil until read, kept or from Hermes.
-    @State private var values: [String: ProfileSettingValue]?
-    /// The setting being saved: one at a time, as the profile pages do.
-    @State private var savingKey: String?
-    /// Counts saves as they start and land, so a read asked before or
-    /// during one doesn't undo it on landing.
-    @State private var saves = 0
-    /// Hermes didn't answer and nothing is kept: Try Again.
-    @State private var failed = false
-    /// What's typed in an interval's field, until saved.
-    @State private var drafts: [String: String] = [:]
-    /// Under an interval's field: a number it can't take, or a failed save.
-    @State private var errors: [String: String] = [:]
+    @State private var state = HelperModelSwitchState()
 
-    private var isOn: Bool { values.map(words.isOn(in:)) ?? words.defaultValue }
+    private var isOn: Bool { state.isOn(words) }
 
     var body: some View {
         ConduitSettingsSection(title: words.title(), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
             Toggle(words.label(), isOn: Binding(get: { isOn }, set: { save(words.key, .bool($0)) }))
                 .tint(.conduitAccent)
-                .disabled(values == nil || savingKey != nil)
+                .disabled(state.values == nil || state.savingKey != nil)
                 .accessibilityLabel(Text(verbatim: words.title()))
                 .accessibilityIdentifier("settings.models.helpers.onOff")
             Text(verbatim: words.caption())
@@ -546,29 +663,30 @@ private struct HelperModelSwitchSection: View {
             ForEach(words.intervals) { interval in
                 intervalRow(interval)
             }
-            if failed && values == nil {
-                ModelCatalogPlaceholder(state: .failed) { Task { await read() } }
+            if state.showsReadFailure {
+                // The profile's config didn't load, not a model list.
+                Text(AppLocalization.string("Couldn't read this profile's settings.", table: .bots))
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                Button(AppLocalization.string("Try Again")) { Task { await read() } }
+                    .buttonStyle(.settings)
             }
         }
-        .onAppear { if values == nil { values = settings.kept() } }
+        .onAppear { state.showKept(settings.kept()) }
         .task { await read() }
     }
 
     private func intervalRow(_ interval: HelperModelSlot.Interval) -> some View {
-        let shown = values.map { String(interval.value(in: $0)) } ?? ""
-        let draft = drafts[interval.key] ?? shown
+        let shown = state.shown(interval)
+        let draft = state.draft(interval)
         return VStack(alignment: .leading, spacing: 6) {
             Text(verbatim: interval.label())
                 .scaledFont(.subheadline.weight(.semibold))
             AdaptiveStack(spacing: 8) {
                 // No placeholder until a value is known: "10" would read as
                 // the setting.
-                TextField(values == nil ? "" : String(interval.defaultValue), text: Binding(
+                TextField(state.values == nil ? "" : String(interval.defaultValue), text: Binding(
                     get: { draft },
-                    set: {
-                        drafts[interval.key] = $0
-                        errors[interval.key] = nil
-                    }
+                    set: { state.edit(interval.key, to: $0) }
                 ))
                 .keyboardType(.numberPad)
                 .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44).conduitGlassSurface(cornerRadius: 14)
@@ -576,67 +694,42 @@ private struct HelperModelSwitchSection: View {
                 .accessibilityIdentifier("settings.models.helpers.interval.\(interval.key)")
                 Button(AppLocalization.string("Save")) { saveInterval(interval, raw: draft) }
                     .buttonStyle(.settingsPrimary)
-                    .disabled(savingKey != nil || draft == shown)
+                    .disabled(state.savingKey != nil || draft == shown)
                     .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Save")): \(interval.label())"))
             }
             Text(verbatim: interval.caption())
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if let error = errors[interval.key] {
+            if let error = state.errors[interval.key] {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .scaledFont(.footnote)
                     .foregroundStyle(.red)
             }
         }
-        .disabled(values == nil || !isOn)
+        .disabled(state.values == nil || !isOn)
         .opacity(isOn ? 1 : 0.5)
     }
 
     private func read() async {
-        let asked = saves
-        let answer = await settings.load()
-        guard asked == saves else { return }
-        guard let answer else {
-            failed = true
-            return
-        }
-        failed = false
-        values = answer
+        let asked = state.readAsked()
+        state.readAnswered(asked, await settings.load())
     }
 
     private func saveInterval(_ interval: HelperModelSlot.Interval, raw: String) {
-        guard let number = HelperModelSlot.Interval.parse(raw) else {
-            errors[interval.key] = AppLocalization.string("Enter a whole number, 0 or more.", table: .bots)
-            return
-        }
-        // The draft stays until Hermes took it, so a failed save keeps what
-        // was typed for Try Again.
-        save(interval.key, .number(Double(number))) { saved in
-            if saved, drafts[interval.key] == raw { drafts[interval.key] = nil }
-        }
+        guard let started = state.intervalSaveStarted(interval, raw: raw) else { return }
+        finish(started)
     }
 
-    private func save(_ key: String, _ value: ProfileSettingValue, then done: @escaping (Bool) -> Void = { _ in }) {
-        let before = values
-        values = (values ?? [:]).merging([key: value]) { _, new in new }
-        savingKey = key
-        saves += 1
-        errors[key] = nil
+    private func save(_ key: String, _ value: ProfileSettingValue) {
+        guard let started = state.saveStarted(key, value, switchKey: words.key) else { return }
+        finish(started)
+    }
+
+    private func finish(_ started: HelperModelSwitchState.Save) {
         Task {
-            let saved = await settings.save(key, value)
-            // A read asked while this save was on its way may answer with
-            // the config before it: counting again drops it.
-            saves += 1
-            savingKey = nil
-            if !saved {
-                values = before
-                if key != words.key { errors[key] = AppLocalization.string("Couldn’t save that change. Try again.", table: .bots) }
-            }
-            done(saved)
-            // A read dropped for this save may have held the other keys'
-            // values: read them all again.
-            if saved { await read() }
+            let saved = await settings.save(started.key, started.value)
+            if state.saveLanded(started, saved: saved) { await read() }
         }
     }
 }

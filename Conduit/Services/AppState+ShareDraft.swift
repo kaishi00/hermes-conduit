@@ -168,7 +168,11 @@ extension AppState {
             return
         }
         cancelChatResumeRestoration()
-        receiveLaunch(link, origin: .widget)
+        // The same link already on its way (a shortcut's New Chat) goes on
+        // as that launch, with its own finish and focus: the draft stays in
+        // the inbox for the next pick-up rather than take that finish over
+        // (#2867's review, issue 2870).
+        guard receiveLaunch(link, origin: .widget) else { return }
         // Recorded after receive: a launch for the same link that receive
         // supersedes isn't this one.
         sharedDraftLaunch = SharedDraftLaunch(envelopeID: envelope.id, link: link)

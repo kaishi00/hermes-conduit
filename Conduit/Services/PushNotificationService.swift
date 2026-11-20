@@ -415,6 +415,22 @@ enum RemovedDashboardPairings {
                 savedGatewayIDs: savedGatewayIDs, removedGatewayIDs: removedGatewayIDs).isEmpty
     }
 
+    /// The waiting removed pairings a sweep forgets: the ones gone from the
+    /// relay's list, and any id that isn't the relay's own, which could never
+    /// be dropped and would keep every sweep reading the list again (#2864
+    /// review). One still listed for dropping is kept, and so is a row the
+    /// list had but that didn't decode (issue 2811). A list cut short by a
+    /// row that isn't an object shows nothing gone (#2875, issue 2878).
+    static func forgotten(
+        removed: Set<String>,
+        toDrop: [String],
+        undecoded: Set<String>,
+        listPartial: Bool
+    ) -> Set<String> {
+        let gone = listPartial ? Set<String>() : removed.subtracting(toDrop).subtracting(undecoded)
+        return gone.union(removed.filter { !isRelayGatewayID($0) })
+    }
+
     /// An id the relay gives a gateway: a UUID's characters only, so it's
     /// one path segment and never `.` or `..` (issue 2811).
     static func isRelayGatewayID(_ id: String) -> Bool {
