@@ -1210,8 +1210,7 @@ struct VoiceSettingsView: View {
                 if service.snapshot.capability.isGatewayConnected {
                     providerSection(title: AppLocalization.string("Speech to text", table: .voice), symbol: "waveform", kind: .stt, providers: service.snapshot.sttProviders)
                         .id(Self.sttSectionID)
-                    providerSection(title: AppLocalization.string("Assistant speech", table: .voice), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
-                        .id(Self.ttsSectionID)
+                    assistantSpeechSection
                     credentialsSection
                 } else if service.isLoading {
                     ProgressView("Loading profile voice settings…")
@@ -1221,12 +1220,21 @@ struct VoiceSettingsView: View {
                 if let voiceReplies {
                     VoiceReplyModelSettingsSection(settings: voiceReplies, pageIsChecking: service.isLoading)
                 }
+            } else if service.snapshot.capability.isGatewayConnected {
+                // A live mode speaks its own replies; Read Aloud still
+                // speaks with this voice.
+                assistantSpeechSection
             }
             if let voiceJobs {
                 VoiceJobModelSettingsSection(settings: voiceJobs)
             }
             speakerAndCallScreenSection
         }
+    }
+
+    private var assistantSpeechSection: some View {
+        providerSection(title: AppLocalization.string("Assistant speech", table: .voice), symbol: "speaker.wave.3", kind: .tts, providers: service.snapshot.ttsProviders)
+            .id(Self.ttsSectionID)
     }
 
     /// A Classic step the provider sections below fix.
@@ -1413,6 +1421,34 @@ struct VoiceSettingsView: View {
             Text("How fast a reply is read aloud, without changing the voice's pitch. Applies from the next reply read, on this device. Voice conversations always play at normal speed.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            readAloudVoice
+        }
+    }
+
+    /// The voice Read Aloud speaks with: the profile's Assistant speech,
+    /// which Classic voice speaks with too. Picked here in every voice
+    /// mode, so a live mode's user needn't switch to Classic to change it;
+    /// the voice itself, its model and its key stay under Assistant speech.
+    @ViewBuilder
+    private var readAloudVoice: some View {
+        if service.snapshot.capability.isGatewayConnected {
+            ConduitMenuPicker(
+                value: selectedProviderChoice(.tts),
+                choices: providerChoices(kind: .tts, providers: service.snapshot.ttsProviders),
+                onSelect: { selectProvider($0, kind: .tts) }
+            ) {
+                Text("Voice").foregroundStyle(.secondary)
+            }
+            .disabled(service.answered != true || service.isLoading || savingField != nil)
+            .accessibilityIdentifier("voice.readAloudVoice")
+            Text(AppLocalization.string("Classic voice speaks with this voice too. Pick the voice itself, its model and its key under Assistant speech.", table: .voice))
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Button(AppLocalization.string("Assistant speech", table: .voice)) {
+                openProviderSection(.tts)
+            }
+            .scaledFont(.subheadline.weight(.semibold))
+            .accessibilityIdentifier("voice.readAloudVoiceOptions")
         }
     }
 

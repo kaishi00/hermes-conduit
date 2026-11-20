@@ -50810,6 +50810,88 @@
           }
         }
       }
+    },
+    "Classic voice speaks with this voice too. Pick the voice itself, its model and its key under Assistant speech." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Classic-Sprache spricht ebenfalls mit dieser Stimme. Die Stimme selbst, ihr Modell und ihren Schlüssel wählst du unter „Sprachausgabe“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voz clásica también habla con esta voz. Elige la voz en sí, su modelo y su clave en «Voz del asistente»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La voix Classic parle aussi avec cette voix. Choisis la voix elle-même, son modèle et sa clé dans « Parole de l'assistant »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suara Classic juga berbicara dengan suara ini. Pilih suaranya, modelnya, dan kuncinya di Ucapan asisten."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche la voce Classic parla con questa voce. Scegli la voce, il suo modello e la sua chiave in «Voce dell'assistente»."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "クラシック音声もこの声で話します。声そのもの、モデル、キーは「アシスタントの音声」で選びます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "클래식 음성도 이 목소리로 말합니다. 목소리, 모델, 키는 어시스턴트 음성에서 고르세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Głos Classic też mówi tym głosem. Sam głos, jego model i klucz wybierzesz w sekcji „Mowa asystenta”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A voz Classic também fala com esta voz. Escolha a voz, o modelo e a chave em “Fala do assistente”."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Классический голос тоже говорит этим голосом. Сам голос, его модель и ключ выбираются в разделе «Речь ассистента»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klasik ses de bu sesle konuşur. Sesin kendisini, modelini ve anahtarını Asistan konuşması bölümünden seç."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经典语音也使用这个声音。声音本身、模型和密钥在“助手语音”中选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經典語音也使用這個聲音。聲音本身、模型和金鑰在「助理語音」中選擇。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
