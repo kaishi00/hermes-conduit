@@ -535,6 +535,22 @@ extension HermesVoiceConfigurationServiceTests {
         state.readAnswered(state.readAsked(), [memory.key: .number(20), skills.key: .number(15)])
         XCTAssertEqual(state.shown(skills), "15", "the read after a save brings the other keys")
 
+        // A read asked while a save is on its way, answering before it
+        // lands, may hold the config before it: dropped too.
+        let saving = try XCTUnwrap(state.intervalSaveStarted(memory, raw: "30"))
+        let during = state.readAsked()
+        state.readAnswered(during, [memory.key: .number(20), skills.key: .number(15)])
+        XCTAssertEqual(state.shown(memory), "30", "the save stays shown")
+        XCTAssertTrue(state.saveLanded(saving, saved: true))
+        XCTAssertEqual(state.shown(memory), "30")
+
+        // Two reads (two Try Agains) answering out of order: the newer stays.
+        let older = state.readAsked()
+        let newer = state.readAsked()
+        state.readAnswered(newer, [memory.key: .number(30), skills.key: .number(40)])
+        state.readAnswered(older, [memory.key: .number(30), skills.key: .number(15)])
+        XCTAssertEqual(state.shown(skills), "40", "an older read answering later is dropped")
+
         // A refused switch save reverts it, with no line under an interval.
         let off = state.saveStarted(words.key, .bool(false), switchKey: words.key)
         XCTAssertFalse(state.isOn(words))

@@ -331,10 +331,18 @@ struct HelperModelSwitchState {
     /// Counts saves as they start and land, so a read asked before or
     /// during one doesn't undo it on landing.
     private var saves = 0
+    /// Numbers reads as they're asked; `answered` is the newest one taken,
+    /// so an older read that answers later (two Try Agains) is dropped.
+    private var reads = 0
+    private var answered = 0
 
     /// A read, as it was asked.
     struct Read {
         fileprivate let saves: Int
+        fileprivate let number: Int
+        /// Asked while a save was on its way: it may answer with the config
+        /// before that save, even ahead of it landing.
+        fileprivate let duringSave: Bool
     }
 
     /// A save on its way.
@@ -364,12 +372,18 @@ struct HelperModelSwitchState {
         if values == nil { values = kept }
     }
 
-    mutating func readAsked() -> Read { Read(saves: saves) }
+    mutating func readAsked() -> Read {
+        reads += 1
+        return Read(saves: saves, number: reads, duringSave: savingKey != nil)
+    }
 
     /// Hermes' answer to `read`, nil when it didn't answer. Dropped when a
-    /// save started or landed since it was asked: it may predate the save.
+    /// save started or landed since it was asked, or was on its way when it
+    /// was asked (it may predate the save; the save's landing reads again),
+    /// or a newer read already answered.
     mutating func readAnswered(_ read: Read, _ answer: [String: ProfileSettingValue]?) {
-        guard read.saves == saves else { return }
+        guard read.saves == saves, !read.duringSave, read.number > answered else { return }
+        answered = read.number
         guard let answer else {
             failed = true
             return
