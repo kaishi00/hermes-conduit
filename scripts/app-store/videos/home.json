@@ -137,7 +137,7 @@
           "steps": [
             {
               "reasoning": "Thinking it through: the changelog has fourteen entries for 2.4. Group chats get six of them (rooms across dashboards, approvals in rooms, multiplayer with other people's bots), Bot Mode five, voice three. Writing one line each, in the order people will meet them.",
-              "delay": 0.82,
+              "delay": 0.56,
               "tool_calls": [
                 {
                   "name": "work_progress",
