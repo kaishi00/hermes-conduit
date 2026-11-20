@@ -649,10 +649,13 @@ extension AppState {
         guard let activeSessionId, leftID != activeSessionId else { return true }
         if reconciliation?.movedOnSessionIDs.contains(leftID) == true { return false }
         let rows = composerDraftRows(profile: activeProfile)
-        if let left = Self.composerDraftOwningRow(of: leftID, in: rows).row,
-           let open = Self.composerDraftOwningRow(of: activeSessionId, in: rows).row,
-           left.durableKey != open.durableKey {
-            return false
+        let left = Self.composerDraftOwningRow(of: leftID, in: rows)
+        let open = Self.composerDraftOwningRow(of: activeSessionId, in: rows)
+        // As drafts decide it: an id two rows claim is neither's, so a listed
+        // id with no single owner isn't the same chat (#2864 review).
+        if left.isListed || open.isListed {
+            guard let leftRow = left.row, let openRow = open.row else { return false }
+            return leftRow.durableKey == openRow.durableKey
         }
         return true
     }
