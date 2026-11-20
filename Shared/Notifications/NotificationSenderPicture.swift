@@ -56,14 +56,39 @@ enum NotificationSenderPicture {
         }
     }
 
+    /// `apply` for Conduit's own posts, which have no extension deadline to
+    /// fall back on: a donation that hasn't answered within `timeout` (the
+    /// app suspended before the Intents daemon replied) posts the content
+    /// unchanged, so the face can never cost a notice.
     static func applied(
         to content: UNMutableNotificationContent,
         sender: NotificationAvatars.Sender?,
-        picture: Data?
+        picture: Data?,
+        timeout: TimeInterval = 1.5
     ) async -> UNMutableNotificationContent {
         guard sender != nil, picture != nil else { return content }
         return await withCheckedContinuation { continuation in
-            apply(to: content, sender: sender, picture: picture) { continuation.resume(returning: $0) }
+            let once = ResumeOnce(continuation)
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once.resume(content) }
+            apply(to: content, sender: sender, picture: picture) { once.resume($0) }
+        }
+    }
+
+    /// Resumes its continuation with the first answer only.
+    private final class ResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<UNMutableNotificationContent, Never>?
+
+        init(_ continuation: CheckedContinuation<UNMutableNotificationContent, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume(_ content: UNMutableNotificationContent) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: content)
         }
     }
 }
