@@ -15,12 +15,22 @@ extension AppState {
         }
         guard let link = WidgetLaunchLink(url: url) else { return true }
         cancelChatResumeRestoration()
-        newChatLaunchOrigin = origin
-        widgetLaunchCoordinator.receive(link)
+        receiveLaunch(link, origin: origin)
         // A New Chat's chat shows straight away, empty, while it waits for
         // what its launch needs.
         if showsPendingNewChat { revealChatForWidgetLaunch() }
         return true
+    }
+
+    /// Hands `link` to the launch coordinator, sent from `origin`. A link
+    /// already being carried out goes on as the launch that sent it first,
+    /// with that launch's origin: a widget's New Chat that a shortcut repeats
+    /// keeps its keyboard down, and the shortcut's keeps it up the other way
+    /// round (#2863's review).
+    func receiveLaunch(_ link: WidgetLaunchLink, origin: NewChatLaunchOrigin) {
+        let previous = newChatLaunchOrigin
+        newChatLaunchOrigin = origin
+        if !widgetLaunchCoordinator.receive(link) { newChatLaunchOrigin = previous }
     }
 
     /// The New Chat shortcut (Siri, Shortcuts, the Action Button; issue

@@ -290,8 +290,10 @@ struct RelayMetaInfo: Decodable, Equatable {
                 gateways.append(gateway)
             } else if let row = try? array.decode(GatewayID.self) {
                 undecoded.insert(row.id)
-            } else {
-                _ = try? array.decode(Empty.self)
+            } else if (try? array.decode(Empty.self)) == nil {
+                // Not an object at all: a failed decode doesn't move past
+                // it, so the rest can't be read (#2864 review).
+                break
             }
         }
         self.gateways = gateways

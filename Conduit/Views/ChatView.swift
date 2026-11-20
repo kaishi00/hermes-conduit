@@ -4378,12 +4378,13 @@ struct ClarifyQuestionRow: View {
                         onAnswerInMessage(choice.label.isEmpty ? choice.value : choice.label)
                     } label: {
                         HStack {
-                            Text(choice.label)
+                            Text(verbatim: choice.label.isEmpty ? choice.value : choice.label)
                                 .scaledFont(.body)
                                 .multilineTextAlignment(.leading)
                             Spacer()
                             Image(systemName: "text.bubble")
                                 .scaledFont(.caption)
+                                .accessibilityHidden(true)
                         }
                         .padding(.horizontal, 14)
                         .padding(.vertical, 10)
@@ -4398,7 +4399,7 @@ struct ClarifyQuestionRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(question.choices) { choice in
                     // A plain list, nothing here to pick.
-                    Text(verbatim: "• \(choice.label)")
+                    Text(verbatim: "• \(choice.label.isEmpty ? choice.value : choice.label)")
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
