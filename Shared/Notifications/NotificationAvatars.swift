@@ -71,7 +71,14 @@ enum NotificationAvatars {
             try FileManager.default.createDirectory(
                 at: url.deletingLastPathComponent(), withIntermediateDirectories: true
             )
-            if (try? Data(contentsOf: url)) != still { try still.write(to: url, options: .atomic) }
+            if (try? Data(contentsOf: url)) != still {
+                try still.write(to: url, options: .atomic)
+            } else {
+                // Same still (a photo saved again, re-encoded): the copy is
+                // current, so its date moves too, or `needsCopy` would call
+                // it stale and the launch pass reread the photo every launch.
+                try? FileManager.default.setAttributes([.modificationDate: Date()], ofItemAtPath: url.path)
+            }
             return true
         } catch {
             return false

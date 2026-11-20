@@ -93,6 +93,16 @@ extension BotModeTests {
         let source = photos.appendingPathComponent(dashboard.uuidString).appendingPathComponent(ProfileAppearanceStore.fileName(for: "jarvis"))
         XCTAssertFalse(NotificationAvatars.needsCopy(of: source, profile: "jarvis", dashboardID: dashboard.uuidString, root: shared))
         XCTAssertTrue(FileManager.default.fileExists(atPath: copy.path))
+
+        // A photo saved again with the same picture leaves the same still;
+        // the copy still counts as current, so the next launch skips it.
+        let store = ProfileAppearanceStore(
+            defaults: defaults, avatarsRoot: photos, legacyAvatarDirectories: [], notificationAvatars: shared
+        )
+        let past = Date(timeIntervalSinceNow: -3600)
+        try FileManager.default.setAttributes([.modificationDate: past], ofItemAtPath: copy.path)
+        _ = try store.saveAvatar(notificationPicture(.orange, width: 300, height: 300), for: "jarvis", dashboardID: dashboard)
+        XCTAssertFalse(NotificationAvatars.needsCopy(of: source, profile: "jarvis", dashboardID: dashboard.uuidString, root: shared))
     }
 
     func testANotificationIsFromItsBotInAConversationPerChat() throws {
