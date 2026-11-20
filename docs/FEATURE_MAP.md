@@ -2520,7 +2520,8 @@ takes one tap, so it opens what its Small size opens picks.
 
 **Siblings:** the widget tap's route (`conduit://widget/`, the same three
 actions for every size) · the app's widget snapshot (the chats the picker and
-the large list offer) · the Pulse widget (same bundle, App Group and app
+the large list offer) · the Plan limits widget (same bundle, App Group and app
+language, issue 2796) · the Pulse widget (same bundle, App Group and app
 language; not needed) · Which dashboard a launch signs in to (a widget tap
 switches as before; not needed) · the New Chat shortcut (the same launch,
 with the keyboard up; see New Chat from Siri, Shortcuts and the Action
@@ -2551,7 +2552,7 @@ buttons) · docs/WIDGETS.md · README.md
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
 - Not tried on a device: the small and large layouts on the smallest and largest phones and iPad, and the vibrant artwork in StandBy at night and on HomeView.
 
-**Checked:** 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
+**Checked:** 2026-11-20, #2892 (the bundle adds the Plan limits widget; the launchers unchanged); 2026-11-19, #2863 (the New Chat shortcut goes through the New Chat launch, with its own origin; a widget's still keeps the keyboard down, tested); 2026-11-15, #2587 (vibrant artwork; HomeView, issue 2561); 2026-11-12, #2264.
 
 ## Pulse widget
 
@@ -2634,9 +2635,10 @@ README.md
 - Tests: `ConduitTests/WidgetSnapshotTests.swift` (testPlanLimitsWidgetRowsReadTheSameQuotaAsSettingsUsage, testPlanLimitsWidgetKeepsItsReadForTheDashboardAndProfileItWasFor)
 
 **Rulings**
-- Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's); an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#2892).
+- Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's), or a limited account's when no usable one has any, never a signed-out account's; an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#2892).
 - The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read (#2892).
 - Small shows the first provider's first two windows; medium two providers side by side, or one provider's first three windows (#2892).
+- A failed read keeps the last good one; a 404 (a Hermes without the route) reads as none reported only when nothing was read before, so a proxy's or a restart's 404 doesn't wipe it. A pass saved again for the same dashboard and profile, as each return to the screen does, leaves a read in flight the widget's (#2892, GLM review).
 - A tap opens Conduit; the widget has no buttons (#2892).
 
 **Open gaps**

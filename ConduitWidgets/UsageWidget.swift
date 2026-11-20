@@ -45,17 +45,8 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
         Task {
             let snapshot = await Self.read()
             completion(Timeline(entries: [UsageWidgetEntry(date: Date(), snapshot: snapshot)],
-                                policy: .after(Self.nextRead(after: Date(), snapshot: snapshot))))
+                                policy: .after(UsageWidgetFeed.nextRead(after: Date(), snapshot: snapshot, refresh: Self.refresh))))
         }
-    }
-
-    /// In half an hour, or just after a window resets if one does sooner,
-    /// so a reset window doesn't stay up as full.
-    static func nextRead(after now: Date, snapshot: UsageWidgetSnapshot?) -> Date {
-        let regular = now.addingTimeInterval(refresh)
-        let resets = (snapshot?.providers ?? []).flatMap { $0.windows.compactMap(\.resetsAt) + [$0.limitedUntil].compactMap { $0 } }
-        guard let soonest = resets.filter({ $0 > now }).min() else { return regular }
-        return min(regular, soonest.addingTimeInterval(60))
     }
 
     /// Hermes' plan limits for the profile in use, read with the pass
@@ -82,15 +73,19 @@ struct UsageWidgetTimelineProvider: TimelineProvider {
             return previous?.with(needsConduit: true)
                 ?? UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile, appLanguage: language,
                                        providers: [], readAt: Date(), needsConduit: true)
-        } catch LocationHostError.http(status: 404, detail: _) {
-            // A Hermes without the route reports no plan limits to read.
+        } catch LocationHostError.http(status: 404, detail: _) where previous == nil {
+            // A Hermes without the route reports no plan limits to read. A
+            // 404 after a good read (a proxy or a restart) keeps that read.
             providers = []
         } catch {
             return previous
         }
         // Conduit took the pass away or moved to another dashboard or
         // profile meanwhile: this answer is no longer the widget's to show.
-        guard currentAccess() == access else { return nil }
+        // A pass saved again for the same dashboard and profile (each
+        // return to the screen stamps a new one) leaves the answer the widget's.
+        guard let current = currentAccess(), current.dashboardID == access.dashboardID,
+              current.profile == access.profile else { return nil }
         let snapshot = UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile,
                                            appLanguage: language, providers: providers, readAt: Date())
         try? store?.write(snapshot)

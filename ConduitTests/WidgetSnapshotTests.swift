@@ -509,7 +509,7 @@ final class WidgetSnapshotTests: XCTestCase {
         let store = UsageWidgetStore(directory: directory)
         let dashboard = UUID()
         let window = UsageWidgetWindow(label: "Weekly", usedPercent: 20, resetsAt: Date(timeIntervalSince1970: 1_800_000_000))
-        let providers = (0..<5).map {
+        let providers = (0..<4).map {
             UsageWidgetProvider(slug: "p\($0)", title: "P\($0)", account: nil, windows: [window], isLimited: false, limitedUntil: nil)
         }
         let snapshot = UsageWidgetSnapshot(dashboardID: dashboard, profile: "work", appLanguage: "de",
@@ -531,5 +531,24 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(store.remove())
         XCTAssertNil(store.read())
         XCTAssertFalse(store.remove())
+
+        // It reads again in half an hour, or a minute after the next reset if sooner.
+        let now = Date(timeIntervalSince1970: 1_800_000_000 - 600)
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now, snapshot: snapshot, refresh: 1800), now.addingTimeInterval(660))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now.addingTimeInterval(-7200), snapshot: snapshot, refresh: 1800),
+                       now.addingTimeInterval(-7200 + 1800))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now.addingTimeInterval(1200), snapshot: snapshot, refresh: 1800),
+                       now.addingTimeInterval(1200 + 1800))
+        XCTAssertEqual(UsageWidgetFeed.nextRead(after: now, snapshot: nil, refresh: 1800), now.addingTimeInterval(1800))
+    }
+
+    /// A pool whose usable accounts report no windows never shows a
+    /// signed-out account's last numbers (Settings > Usage counts neither).
+    func testPlanLimitsWidgetNeverShowsASignedOutAccountsNumbers() throws {
+        let quota = try XCTUnwrap(ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "label": "Old", "state": "unavailable", "windows": [["label": "Weekly", "used_percent": 12] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "ready", "windows": [] as [[String: Any]]] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]]))
+        XCTAssertEqual(UsageWidgetFeed.providers(from: [quota]), [])
     }
 }

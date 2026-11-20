@@ -55,7 +55,7 @@ struct UsageWidgetProvider: Codable, Equatable, Identifiable {
 struct UsageWidgetSnapshot: Codable, Equatable {
     static let currentSchemaVersion = 1
     /// The most a medium widget shows.
-    static let maximumProviders = 3
+    static let maximumProviders = 2
 
     let schemaVersion: Int
     let dashboardID: UUID
@@ -114,8 +114,11 @@ enum UsageWidgetFeed {
             var account: String?
             if windows.isEmpty, !quota.accounts.isEmpty {
                 let usable = quota.accounts.filter { ($0.state == .ready || $0.state == .unknown) && !$0.windows.isEmpty }
+                // A limited account's windows when every usable one has none
+                // (its full window is why); never a signed-out account's
+                // last numbers, which Settings > Usage doesn't count either.
                 let best = usable.max { mostLeft($0.windows) < mostLeft($1.windows) }
-                    ?? quota.accounts.first { !$0.windows.isEmpty }
+                    ?? quota.accounts.first { $0.state == .limited && !$0.windows.isEmpty }
                 if let best {
                     windows = best.windows
                     account = best.label.isEmpty ? nil : best.label
@@ -136,6 +139,16 @@ enum UsageWidgetFeed {
                 limitedUntil: limitedUntil
             )
         }
+    }
+
+    /// When the widget reads again: in `refresh`, or a minute after a
+    /// window resets or a limit lifts if one does sooner, so a reset window
+    /// doesn't stay up as full.
+    static func nextRead(after now: Date, snapshot: UsageWidgetSnapshot?, refresh: TimeInterval) -> Date {
+        let regular = now.addingTimeInterval(refresh)
+        let resets = (snapshot?.providers ?? []).flatMap { $0.windows.compactMap(\.resetsAt) + [$0.limitedUntil].compactMap { $0 } }
+        guard let soonest = resets.filter({ $0 > now }).min() else { return regular }
+        return min(regular, soonest.addingTimeInterval(60))
     }
 
     /// What's left of the fullest account-wide window (a model's when it has
