@@ -438,12 +438,15 @@ private struct HelperModelSwitchSection: View {
     /// Nil until read, kept or from Hermes.
     @State private var isOn: Bool?
     @State private var saving = false
+    /// Counts saves, so a read asked before one doesn't undo it on landing.
+    @State private var saves = 0
 
     var body: some View {
         ConduitSettingsSection(title: words.title(), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
             Toggle(words.label(), isOn: Binding(get: { isOn ?? words.defaultValue }, set: { save($0) }))
                 .tint(.conduitAccent)
                 .disabled(isOn == nil || saving)
+                .accessibilityLabel(Text(verbatim: "\(words.title()): \(words.label())"))
                 .accessibilityIdentifier("settings.models.helpers.onOff")
             Text(verbatim: words.caption())
                 .scaledFont(.caption)
@@ -452,8 +455,9 @@ private struct HelperModelSwitchSection: View {
         }
         .onAppear { if isOn == nil { isOn = settings.kept() } }
         .task {
+            let asked = saves
             let read = await settings.load()
-            guard !saving, let read else { return }
+            guard asked == saves, let read else { return }
             isOn = read
         }
     }
@@ -462,6 +466,7 @@ private struct HelperModelSwitchSection: View {
         let before = isOn
         isOn = on
         saving = true
+        saves += 1
         Task {
             let saved = await settings.save(on)
             saving = false
