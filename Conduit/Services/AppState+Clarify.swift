@@ -1191,17 +1191,20 @@ extension AppState {
         }
         let liveTexts = live.questions.map { normalized($0.question) }.filter { !$0.isEmpty }
         guard !liveTexts.isEmpty else { return false }
+        func sameQuestion(_ live: String, _ pushedText: String) -> Bool {
+            guard live != pushedText else { return true }
+            // Only Hermes' skip hint below it: one more line naming the
+            // typed command in quotes, as every language Hermes writes it
+            // does ("skip", „skip“, « skip », «skip», 「skip」, “skip”).
+            guard live.hasPrefix(pushedText + "\n") else { return false }
+            let trailer = String(live.dropFirst(pushedText.count + 1))
+            return !trailer.contains("\n")
+                && trailer.range(of: Self.skipHintPattern, options: .regularExpression) != nil
+        }
         func asked(_ text: String) -> Bool {
             let pushedText = normalized(text)
             guard !pushedText.isEmpty else { return false }
-            return liveTexts.contains { live in
-                guard live != pushedText else { return true }
-                // Only Hermes' skip hint below it: one more line, which
-                // names the typed "skip" in every language Hermes writes it.
-                guard live.hasPrefix(pushedText + "\n") else { return false }
-                let trailer = live.dropFirst(pushedText.count + 1)
-                return !trailer.contains("\n") && trailer.contains("skip")
-            }
+            return liveTexts.contains { sameQuestion($0, pushedText) }
         }
         if pushed.questions.contains(where: \.isSyntheticID) {
             return asked(pushed.correlationQuestion)
@@ -1209,9 +1212,24 @@ extension AppState {
         if live.questions.count == 1, live.questions[0].isSyntheticID, pushed.questions.count > 1 {
             return pushed.questions.contains { asked($0.question) }
         }
-        return pushed.questions.count == live.questions.count
-            && pushed.questions.allSatisfy { asked($0.question) }
+        guard pushed.questions.count == live.questions.count else { return false }
+        // Each pushed question is a live one of its own: two never match
+        // the same live question.
+        var unmatched = liveTexts
+        guard unmatched.count == pushed.questions.count else { return false }
+        for question in pushed.questions {
+            let pushedText = normalized(question.question)
+            guard !pushedText.isEmpty,
+                  let index = unmatched.firstIndex(where: { $0 == pushedText })
+                    ?? unmatched.firstIndex(where: { sameQuestion($0, pushedText) }) else { return false }
+            unmatched.remove(at: index)
+        }
+        return true
     }
+
+    /// Hermes' typed-"skip" hint names the command in quotes in every
+    /// language (`gateway.clarify.skip_hint`); matched lowercased.
+    static let skipHintPattern = #"["“„«「]\s*skip\s*["”“»」]"#
 
     /// Applies the typed `clarify.respond` outcome to the matching card. The
     /// gateway's `remaining` list is the authority on whether one sub-question

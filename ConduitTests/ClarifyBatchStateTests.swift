@@ -1482,6 +1482,25 @@ final class ClarifyBatchStateTests: XCTestCase {
             ]
         )
         XCTAssertFalse(AppState.pushCardSupersededBy(batch, live: another))
+        // A line of its own that merely says skip, unquoted, isn't the hint.
+        let skipWord = ClarifyActivity(requestId: "e1", question: "Which environment?\nDon't skip production?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(batch, live: skipWord))
+        // Two pushed questions never both match one live question.
+        let doubled = ClarifyActivity(
+            requestId: "conduit-push-batch3",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which environment?", choices: [])
+            ]
+        )
+        let liveBatch = ClarifyActivity(
+            requestId: "f1",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ]
+        )
+        XCTAssertFalse(AppState.pushCardSupersededBy(doubled, live: liveBatch))
         // The hint in another language still names "skip".
         let korean = ClarifyActivity(requestId: "d1", question: "Which environment?\n이 질문을 건너뛰려면 \"skip\"이라고 답장하세요.", choices: [])
         XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: korean))
