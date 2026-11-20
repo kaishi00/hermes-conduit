@@ -28,6 +28,17 @@ extension ChatTextSelectionTests {
         XCTAssertEqual(ChatQuote.inserting("", into: "unchanged"), "unchanged")
     }
 
+    func testAnExpiredQuestionIsAnsweredUnderItsQuote() {
+        // Issue 2850: Hermes stopped waiting, so the tapped choice goes out as a message.
+        XCTAssertEqual(ChatQuote.answering("Run the fix?\nOne more cycle.", with: " Yes, run it "),
+                       "> Run the fix?\n> One more cycle.\n\nYes, run it")
+        XCTAssertEqual(ChatQuote.answering("Which branch?", with: nil), "> Which branch?", "an open question leaves the reply to the user")
+        XCTAssertEqual(ChatQuote.answering("Which branch?", with: "  "), "> Which branch?")
+        XCTAssertEqual(ChatQuote.answering(" \n", with: "Yes"), "", "nothing to quote, nothing to put in the draft")
+        XCTAssertEqual(ChatQuote.inserting(ChatQuote.answering("Run it?", with: "Yes"), into: "Draft"),
+                       "Draft\n\n> Run it?\n\nYes\n\n", "it joins what's already typed like any quote")
+    }
+
     func testOwnWordsLeaveOutQuotedLines() {
         XCTAssertEqual(
             ChatQuote.removingQuotedLines(from: "> Ask @researcher\n>\n  > nested\n\nWhat did they mean?"),

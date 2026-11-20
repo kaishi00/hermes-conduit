@@ -32,6 +32,17 @@ extension AppState {
         composerQuoteRequest = ComposerQuoteRequest(content: .text(quote))
     }
 
+    /// A question Hermes stopped waiting for, answered in a message
+    /// (issue 2850): the question goes into the draft as a `>` quote with
+    /// the tapped choice under it, for the user to send or change. An open
+    /// question (no `answer`) leaves the line under the quote for them.
+    func answerInComposer(expiredQuestion question: String, answer: String?) {
+        guard canQuoteIntoComposer() else { return }
+        let text = ChatQuote.answering(question, with: answer)
+        guard !text.isEmpty else { return }
+        composerQuoteRequest = ComposerQuoteRequest(content: .text(text))
+    }
+
     /// A reply's Quote button: the whole reply rides along with the next
     /// message, shown in the composer as a removable "Replying to…" chip.
     func replyInComposer(to message: ChatMessage) {
