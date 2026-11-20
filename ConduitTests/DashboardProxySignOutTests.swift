@@ -323,6 +323,16 @@ final class DashboardProxySignOutTests: XCTestCase {
         }
         let tickets = Count()
         let firstTicketArrived = expectation(description: "the first ticket request reached the dashboard")
+        // Holds the first answer until the page's failure has been heard, so
+        // a slow runner can't let it land first; released on any exit.
+        let failureInjected = DispatchSemaphore(value: 0)
+        var released = false
+        func releaseFirstAnswer() {
+            guard !released else { return }
+            released = true
+            failureInjected.signal()
+        }
+        defer { releaseFirstAnswer() }
         let dashboard = try LoopbackHTTPServer.start { request in
             let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
             switch (request.method, path) {
@@ -333,7 +343,7 @@ final class DashboardProxySignOutTests: XCTestCase {
                 if number == 1 {
                     firstTicketArrived.fulfill()
                     // Held while the page's load fails under it.
-                    Thread.sleep(forTimeInterval: 2)
+                    _ = failureInjected.wait(timeout: .now() + 60)
                 }
                 return .json(status: 200, body: #"{"ticket":"ticket-\#(number)"}"#)
             default:
@@ -350,6 +360,7 @@ final class DashboardProxySignOutTests: XCTestCase {
             didFailProvisionalNavigation: nil,
             withError: NSError(domain: "WebKitErrorDomain", code: 999)
         )
+        releaseFirstAnswer()
         let ticket = try await mint.value
 
         XCTAssertEqual(ticket, "ticket-2", "minted on the reloaded page")

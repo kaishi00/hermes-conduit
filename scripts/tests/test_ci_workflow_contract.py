@@ -1062,6 +1062,7 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("run: xcodegen generate\n", ui)
         self.assertIn("kind=full", ui)
         self.assertIn("uses: actions/cache/restore@v5", ui)
+        self.assertIn(CACHE_PATH, ui, "the path list smoke saves; another is another cache")
         self.assertNotIn("actions/cache/save", ui)
         self.assertLess(ui.index("actions/cache/restore@v5"),
                         ui.index("bash scripts/ci-hosted-build.sh"),
@@ -1071,6 +1072,7 @@ class NightlyWorkflowTests(unittest.TestCase):
                       "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", ui)
         smoke = _job_text(WORKFLOW, "smoke")
         self.assertIn("kind=full", smoke)
+        self.assertIn(CACHE_PATH, smoke)
         self.assertIn("xcodegen generate --spec project.yml", smoke)
 
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
