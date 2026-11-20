@@ -1859,7 +1859,7 @@ during a call) · the plugin's turn line (a typed message whose reply is read
 aloud is heard) · Hermes changing Conduit's settings · Sync across devices ·
 the Voice settings caption · the voice it speaks with (Assistant speech, which Classic voice shares; picked under Speaking voice in Settings > Voice > Read Aloud and under Advanced > Assistant speech) · docs/VOICE_SETTINGS.md · the notifier README and changelog
 
-**Desktop app:** partly: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23); gap: it always speaks with Hermes' voice and has no voice picker.
+**Desktop app:** partly: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23), and Settings > Voice's Read Aloud voice picks Hermes' speech or This computer's voice, kept per profile on the computer (`desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, desktop#167); gap: no Your speech server choice.
 
 **Code**
 - Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection, readAloudVoice, assistantSpeechSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
@@ -5671,7 +5671,7 @@ Watch, CarPlay and group rooms (not needed: no model settings) · Text
 (done: the Default and Delegate model captions no longer describe two
 menus)
 
-**Desktop app:** partly: the model picker serves the chat, bots and fallbacks (`desktop/src/renderer/src/components/ModelPicker.tsx`, `desktop/src/renderer/src/components/FallbackModels.tsx`); not one page for every setting.
+**Desktop app:** partly (desktop#170): every model setting it has (a bot's Model and Workstream Model, fallback and delegate fallback models, the delegate model, helper models, a scheduled job's Model, a custom endpoint's model after Find models) is a row naming its model and provider that opens this page, its default first, search, Quick picks, every provider closed and a typed id (`desktop/src/renderer/src/components/ModelChooser.tsx`); the composer keeps its own panel (`desktop/src/renderer/src/components/ModelPicker.tsx`). Gap: a setting's reasoning isn't in the page's top card, it stays beside the row.
 
 **Code**
 - Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
