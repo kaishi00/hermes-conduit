@@ -429,7 +429,9 @@ extension HermesVoiceConfigurationServiceTests {
     }
 
     /// Background review, listed as a built-in row by the plugin until
-    /// Hermes lists it (issue 2871), is named and has its on/off switch;
+    /// Hermes lists it (issue 2871), is named and has its on/off switch
+    /// with the memory and skill intervals that decide when it runs (issue
+    /// 2905);
     /// the MCP slot says it answers sampling requests, not tool choice
     /// (issue 2877).
     func testBackgroundReviewHasItsSwitchAndMCPSaysSampling() throws {
@@ -446,6 +448,25 @@ extension HermesVoiceConfigurationServiceTests {
         let onOff = try XCTUnwrap(HelperModelSlot.onOff(task: slots[1].id))
         XCTAssertEqual(onOff.key, "auxiliary.background_review.enabled")
         XCTAssertTrue(onOff.defaultValue, "Hermes runs it when config doesn't say")
+        XCTAssertTrue(onOff.isOn(in: [:]))
+        XCTAssertFalse(onOff.isOn(in: [onOff.key: .bool(false)]))
+
+        // It runs when a counter reaches its interval, not after every
+        // turn, so both intervals show under the switch (issue 2905).
+        XCTAssertEqual(onOff.label(), AppLocalization.string("On"))
+        XCTAssertEqual(onOff.intervals.map(\.key), ["memory.nudge_interval", "skills.creation_nudge_interval"])
+        XCTAssertEqual(onOff.keys, [onOff.key, "memory.nudge_interval", "skills.creation_nudge_interval"])
+        let memory = onOff.intervals[0]
+        XCTAssertEqual(memory.value(in: [:]), 10, "Hermes' default when config doesn't set it")
+        XCTAssertEqual(memory.value(in: [memory.key: .number(20)]), 20)
+        XCTAssertEqual(memory.value(in: [memory.key: .number(0)]), 0, "0 turns that review off")
+        XCTAssertEqual(memory.value(in: [memory.key: .text("30")]), 30, "Hermes reads it with int()")
+        XCTAssertEqual(memory.value(in: [memory.key: .text("often")]), 10)
+        XCTAssertEqual(HelperModelSlot.Interval.parse(" 25 "), 25)
+        XCTAssertEqual(HelperModelSlot.Interval.parse("0"), 0)
+        XCTAssertNil(HelperModelSlot.Interval.parse("-1"))
+        XCTAssertNil(HelperModelSlot.Interval.parse("2.5"))
+        XCTAssertNil(HelperModelSlot.Interval.parse(""))
     }
 
     /// A provider pinned without a model is a choice of its own, named

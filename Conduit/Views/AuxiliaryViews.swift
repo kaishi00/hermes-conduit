@@ -725,12 +725,12 @@ struct SettingsView: View {
             },
             onOff: { slot in
                 guard let words = HelperModelSlot.onOff(task: slot.id) else { return nil }
-                let key = words.key
-                // Unset in config, Hermes runs it.
+                // Unset in config, the section shows Hermes' defaults.
+                let keys = words.keys
                 return HelperModelSwitchModel(
-                    kept: { appState.keptProfileSettings(keys: [key]).map { $0[key]?.boolValue ?? words.defaultValue } },
-                    load: { await appState.readProfileSettings(keys: [key]).map { $0[key]?.boolValue ?? words.defaultValue } },
-                    save: { await appState.setProfileSetting(key, value: .bool($0)) }
+                    kept: { appState.keptProfileSettings(keys: keys) },
+                    load: { await appState.readProfileSettings(keys: keys) },
+                    save: { await appState.setProfileSetting($0, value: $1) }
                 )
             }
         )

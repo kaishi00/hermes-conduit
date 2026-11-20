@@ -34,29 +34,86 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// as they work; Edit Bot > Work sets it too.
     static let workWatch = "conduit_work_watch"
 
-    /// Hermes' review after each turn (what goes into memory, which skills
-    /// to patch); `enabled` in its block turns the automatic one off.
+    /// Hermes' background review (what goes into memory, which skills to
+    /// patch): `enabled` in its block turns the automatic one off, and two
+    /// counters decide when it runs while on.
     static let backgroundReview = "background_review"
 
-    /// A helper's own on/off switch, in its `auxiliary.<task>` block.
+    /// A helper's own on/off switch, in its `auxiliary.<task>` block, and
+    /// the intervals that decide when it runs while it's on.
     struct OnOff {
         let key: String
         let defaultValue: Bool
         let title: () -> String
         let label: () -> String
         let caption: () -> String
+        var intervals: [Interval] = []
+
+        /// Every config key the section reads: the switch's, then each
+        /// interval's.
+        var keys: [String] { [key] + intervals.map(\.key) }
+
+        /// The switch as config holds it; unset, Hermes' default.
+        func isOn(in values: [String: ProfileSettingValue]) -> Bool {
+            values[key]?.boolValue ?? defaultValue
+        }
+    }
+
+    /// A counter in the profile's config: the helper runs each time it
+    /// reaches this many, and 0 turns that kind of run off.
+    struct Interval: Identifiable {
+        var id: String { key }
+        let key: String
+        let defaultValue: Int
+        let label: () -> String
+        let caption: () -> String
+
+        /// As Hermes reads it (`int()` of the value); unset or unreadable,
+        /// Hermes' default.
+        func value(in values: [String: ProfileSettingValue]) -> Int {
+            switch values[key] {
+            case .number(let number) where number.isFinite && abs(number) < 1e9: return Int(number)
+            case .text(let text): return Int(text.trimmingCharacters(in: .whitespaces)) ?? defaultValue
+            default: return defaultValue
+            }
+        }
+
+        /// What someone typed: a whole number, 0 or more; nil otherwise.
+        static func parse(_ raw: String) -> Int? {
+            guard let number = ProfileSettingValue.parseNumber(raw),
+                  number >= 0, number.rounded() == number, number < 1e9 else { return nil }
+            return Int(number)
+        }
     }
 
     /// The helpers with an on/off switch of their own: Background review's,
-    /// its biggest cost lever (issue 2871).
+    /// its biggest cost lever (issue 2871). Hermes checks two counters after
+    /// each turn and reviews only when one reaches its interval
+    /// (`memory.nudge_interval`, user turns, for memory;
+    /// `skills.creation_nudge_interval`, tool-calling steps, for skills;
+    /// both 10 by default, 0 off), so they show under it (issue 2905).
     static func onOff(task: String) -> OnOff? {
         guard task == backgroundReview else { return nil }
         return OnOff(
             key: "auxiliary.background_review.enabled",
             defaultValue: true,
             title: { AppLocalization.string("Automatic review", table: .bots) },
-            label: { AppLocalization.string("After every turn", table: .bots) },
-            caption: { AppLocalization.string("Off, Hermes reviews a chat only when you ask with /refine. It’s the helper that runs most, so turning it off saves the most.", table: .bots) }
+            label: { AppLocalization.string("On") },
+            caption: { AppLocalization.string("Runs when the memory or skill interval below is reached. Off, Hermes reviews a chat only when you ask with /refine.", table: .bots) },
+            intervals: [
+                Interval(
+                    key: "memory.nudge_interval",
+                    defaultValue: 10,
+                    label: { AppLocalization.string("Messages between memory reviews", table: .bots) },
+                    caption: { AppLocalization.string("How many of your messages before Hermes looks for what to remember about you. 0 turns memory review off.", table: .bots) }
+                ),
+                Interval(
+                    key: "skills.creation_nudge_interval",
+                    defaultValue: 10,
+                    label: { AppLocalization.string("Tool steps between skill reviews", table: .bots) },
+                    caption: { AppLocalization.string("How many tool-using steps before Hermes looks for a skill to create or improve. 0 turns skill review off.", table: .bots) }
+                ),
+            ]
         )
     }
 
@@ -188,7 +245,7 @@ struct HelperModelSlot: Identifiable, Equatable {
         // (issue 2871). Hermes ignores its reasoning while it runs on the
         // chat's model, which keeps the chat's prompt cache.
         backgroundReview: Words(title: { AppLocalization.string("Background review", table: .bots) },
-                                caption: { AppLocalization.string("Looks back over a chat after each turn to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache.", table: .bots) },
+                                caption: { AppLocalization.string("Every few turns, looks back over a chat to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache.", table: .bots) },
                                 symbol: "brain.head.profile"),
         predictions: Words(title: { AppLocalization.string("Conduit predictions", table: .bots) },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.", table: .bots) },
@@ -220,17 +277,18 @@ struct HelperModelsSettingsModel {
     var load: () async throws -> [HelperModelSlot]
     /// A slot's page: Voice replies' section, for that slot.
     var slot: (HelperModelSlot) -> VoiceReplyModelSettingsModel
-    /// Its on/off switch, for a helper that has one.
+    /// Its on/off switch and intervals, for a helper that has one.
     var onOff: (HelperModelSlot) -> HelperModelSwitchModel? = { _ in nil }
 }
 
-/// A helper's on/off switch, read and saved in the profile's config.
+/// A helper's on/off switch and its intervals, read and saved in the
+/// profile's config, by key (HelperModelSlot.OnOff.keys).
 struct HelperModelSwitchModel {
     /// As last read, kept on the phone; nil when no config is kept.
-    var kept: () -> Bool?
+    var kept: () -> [String: ProfileSettingValue]?
     /// Nil when Hermes didn't answer.
-    var load: () async -> Bool?
-    var save: (Bool) async -> Bool
+    var load: () async -> [String: ProfileSettingValue]?
+    var save: (String, ProfileSettingValue) async -> Bool
 }
 
 /// The Helper models row on Models & providers.
@@ -429,37 +487,85 @@ struct HelperModelPage: View {
     }
 }
 
-/// A helper's on/off switch: it opens on the kept config, then Hermes'
-/// answer, and goes back if a save fails.
+/// A helper's on/off switch and its intervals: they open on the kept
+/// config, then Hermes' answer, and go back if a save fails. The intervals
+/// rest while the switch is off.
 private struct HelperModelSwitchSection: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let words: HelperModelSlot.OnOff
     let settings: HelperModelSwitchModel
     /// Nil until read, kept or from Hermes.
-    @State private var isOn: Bool?
-    @State private var saving = false
-    /// Counts saves, so a read asked before one doesn't undo it on landing.
+    @State private var values: [String: ProfileSettingValue]?
+    /// The setting being saved: one at a time, as the profile pages do.
+    @State private var savingKey: String?
+    /// Counts saves as they start and land, so a read asked before or
+    /// during one doesn't undo it on landing.
     @State private var saves = 0
     /// Hermes didn't answer and nothing is kept: Try Again.
     @State private var failed = false
+    /// What's typed in an interval's field, until saved.
+    @State private var drafts: [String: String] = [:]
+    /// Under an interval's field: a number it can't take, or a failed save.
+    @State private var errors: [String: String] = [:]
+
+    private var isOn: Bool { values.map(words.isOn(in:)) ?? words.defaultValue }
 
     var body: some View {
         ConduitSettingsSection(title: words.title(), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
-            Toggle(words.label(), isOn: Binding(get: { isOn ?? words.defaultValue }, set: { save($0) }))
+            Toggle(words.label(), isOn: Binding(get: { isOn }, set: { save(words.key, .bool($0)) }))
                 .tint(.conduitAccent)
-                .disabled(isOn == nil || saving)
-                .accessibilityLabel(Text(verbatim: "\(words.title()): \(words.label())"))
+                .disabled(values == nil || savingKey != nil)
+                .accessibilityLabel(Text(verbatim: words.title()))
                 .accessibilityIdentifier("settings.models.helpers.onOff")
             Text(verbatim: words.caption())
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            if failed && isOn == nil {
+            ForEach(words.intervals) { interval in
+                intervalRow(interval)
+            }
+            if failed && values == nil {
                 ModelCatalogPlaceholder(state: .failed) { Task { await read() } }
             }
         }
-        .onAppear { if isOn == nil { isOn = settings.kept() } }
+        .onAppear { if values == nil { values = settings.kept() } }
         .task { await read() }
+    }
+
+    private func intervalRow(_ interval: HelperModelSlot.Interval) -> some View {
+        let shown = values.map { String(interval.value(in: $0)) } ?? ""
+        let draft = drafts[interval.key] ?? shown
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(verbatim: interval.label())
+                .scaledFont(.subheadline.weight(.semibold))
+            AdaptiveStack(spacing: 8) {
+                TextField(String(interval.defaultValue), text: Binding(
+                    get: { draft },
+                    set: {
+                        drafts[interval.key] = $0
+                        errors[interval.key] = nil
+                    }
+                ))
+                .keyboardType(.numberPad)
+                .padding(.horizontal, 12).padding(.vertical, 6).frame(minHeight: 44).conduitGlassSurface(cornerRadius: 14)
+                .accessibilityLabel(Text(verbatim: interval.label()))
+                .accessibilityIdentifier("settings.models.helpers.interval.\(interval.key)")
+                Button(AppLocalization.string("Save")) { saveInterval(interval, raw: draft) }
+                    .buttonStyle(.settingsPrimary)
+                    .disabled(savingKey != nil || draft == shown)
+            }
+            Text(verbatim: interval.caption())
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            if let error = errors[interval.key] {
+                Label(error, systemImage: "exclamationmark.triangle.fill")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .disabled(values == nil || !isOn)
+        .opacity(isOn ? 1 : 0.5)
     }
 
     private func read() async {
@@ -471,18 +577,38 @@ private struct HelperModelSwitchSection: View {
             return
         }
         failed = false
-        isOn = answer
+        values = answer
     }
 
-    private func save(_ on: Bool) {
-        let before = isOn
-        isOn = on
-        saving = true
+    private func saveInterval(_ interval: HelperModelSlot.Interval, raw: String) {
+        guard let number = HelperModelSlot.Interval.parse(raw) else {
+            errors[interval.key] = AppLocalization.string("Enter a whole number, 0 or more.", table: .bots)
+            return
+        }
+        // The draft stays until Hermes took it, so a failed save keeps what
+        // was typed for Try Again.
+        save(interval.key, .number(Double(number))) { saved in
+            if saved, drafts[interval.key] == raw { drafts[interval.key] = nil }
+        }
+    }
+
+    private func save(_ key: String, _ value: ProfileSettingValue, then done: @escaping (Bool) -> Void = { _ in }) {
+        let before = values
+        values = (values ?? [:]).merging([key: value]) { _, new in new }
+        savingKey = key
         saves += 1
+        errors[key] = nil
         Task {
-            let saved = await settings.save(on)
-            saving = false
-            if !saved { isOn = before }
+            let saved = await settings.save(key, value)
+            // A read asked while this save was on its way may answer with
+            // the config before it: counting again drops it.
+            saves += 1
+            savingKey = nil
+            if !saved {
+                values = before
+                if key != words.key { errors[key] = AppLocalization.string("Couldn’t save that change. Try again.", table: .bots) }
+            }
+            done(saved)
         }
     }
 }

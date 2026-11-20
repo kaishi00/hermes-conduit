@@ -83,88 +83,6 @@
         }
       }
     },
-    "After every turn" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Nach jedem Zug"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Después de cada turno"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Après chaque tour"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Setelah setiap giliran"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dopo ogni turno"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "毎ターンの後"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "매 턴 후"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Po każdej turze"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Depois de cada turno"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "После каждого хода"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Her turdan sonra"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每轮之后"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "每輪之後"
-          }
-        }
-      }
-    },
     "Answers when an MCP server asks Hermes’ model to write something. It doesn’t choose tools." : {
       "localizations" : {
         "de" : {
@@ -575,84 +493,84 @@
         }
       }
     },
-    "Looks back over a chat after each turn to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache." : {
+    "Every few turns, looks back over a chat to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sieht sich einen Chat nach jedem Zug noch einmal an und entscheidet, was ins Gedächtnis kommt und welche Skills verbessert werden. Das Nachdenken gilt nur mit einem eigenen Modell, das ohne den Prompt-Cache des Chats beginnt."
+            "value" : "Sieht sich einen Chat alle paar Züge noch einmal an und entscheidet, was ins Gedächtnis kommt und welche Skills verbessert werden. Das Nachdenken gilt nur mit einem eigenen Modell, das ohne den Prompt-Cache des Chats beginnt."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Repasa un chat después de cada turno para decidir qué va a la memoria y qué habilidades mejorar. Su razonamiento solo se aplica con un modelo propio, que empieza sin la caché de prompts del chat."
+            "value" : "Cada pocos turnos repasa un chat para decidir qué va a la memoria y qué habilidades mejorar. Su razonamiento solo se aplica con un modelo propio, que empieza sin la caché de prompts del chat."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Relit une discussion après chaque tour pour décider ce qui va en mémoire et quelles compétences améliorer. Son raisonnement ne s’applique qu’avec un modèle à lui, qui démarre sans le cache de prompt de la discussion."
+            "value" : "Tous les quelques tours, relit une discussion pour décider ce qui va en mémoire et quelles compétences améliorer. Son raisonnement ne s’applique qu’avec un modèle à lui, qui démarre sans le cache de prompt de la discussion."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Meninjau ulang obrolan setelah tiap giliran untuk memutuskan apa yang masuk ke memori dan skill mana yang diperbaiki. Penalarannya hanya berlaku pada model tersendiri, yang mulai tanpa cache prompt obrolan."
+            "value" : "Setiap beberapa giliran, meninjau ulang obrolan untuk memutuskan apa yang masuk ke memori dan skill mana yang diperbaiki. Penalarannya hanya berlaku pada model tersendiri, yang mulai tanpa cache prompt obrolan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ripercorre una chat dopo ogni turno per decidere cosa va in memoria e quali skill migliorare. Il suo ragionamento vale solo con un modello proprio, che parte senza la cache del prompt della chat."
+            "value" : "Ogni pochi turni ripercorre una chat per decidere cosa va in memoria e quali skill migliorare. Il suo ragionamento vale solo con un modello proprio, che parte senza la cache del prompt della chat."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "各ターンの後にチャットを振り返り、何を記憶に残し、どのスキルを改善するかを決めます。推論の設定は専用のモデルでのみ有効で、そのモデルはチャットのプロンプトキャッシュなしで始まります。"
+            "value" : "数ターンごとにチャットを振り返り、何を記憶に残し、どのスキルを改善するかを決めます。推論の設定は専用のモデルでのみ有効で、そのモデルはチャットのプロンプトキャッシュなしで始まります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "매 턴 후 채팅을 되돌아보며 무엇을 메모리에 남기고 어떤 스킬을 개선할지 정합니다. 추론 설정은 별도 모델에서만 적용되며, 그 모델은 채팅의 프롬프트 캐시 없이 시작합니다."
+            "value" : "몇 턴마다 채팅을 되돌아보며 무엇을 메모리에 남기고 어떤 스킬을 개선할지 정합니다. 추론 설정은 별도 모델에서만 적용되며, 그 모델은 채팅의 프롬프트 캐시 없이 시작합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Po każdej turze przegląda czat i decyduje, co trafi do pamięci i które umiejętności poprawić. Rozumowanie działa tylko na osobnym modelu, który zaczyna bez pamięci podręcznej promptu czatu."
+            "value" : "Co kilka tur przegląda czat i decyduje, co trafi do pamięci i które umiejętności poprawić. Rozumowanie działa tylko na osobnym modelu, który zaczyna bez pamięci podręcznej promptu czatu."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Revê a conversa depois de cada turno para decidir o que vai para a memória e quais habilidades melhorar. O raciocínio só vale com um modelo próprio, que começa sem o cache de prompt da conversa."
+            "value" : "A cada poucos turnos, revê a conversa para decidir o que vai para a memória e quais habilidades melhorar. O raciocínio só vale com um modelo próprio, que começa sem o cache de prompt da conversa."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "После каждого хода просматривает чат и решает, что сохранить в памяти и какие навыки улучшить. Настройка рассуждений действует только на отдельной модели, которая начинает без кэша промпта чата."
+            "value" : "Раз в несколько ходов просматривает чат и решает, что сохранить в памяти и какие навыки улучшить. Настройка рассуждений действует только на отдельной модели, которая начинает без кэша промпта чата."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Her turdan sonra sohbete dönüp bakar; neyin belleğe gireceğine ve hangi becerilerin iyileştirileceğine karar verir. Akıl yürütme ayarı yalnızca ayrı bir modelde geçerlidir; o model sohbetin istem önbelleği olmadan başlar."
+            "value" : "Birkaç turda bir sohbete dönüp bakar; neyin belleğe gireceğine ve hangi becerilerin iyileştirileceğine karar verir. Akıl yürütme ayarı yalnızca ayrı bir modelde geçerlidir; o model sohbetin istem önbelleği olmadan başlar."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每轮结束后回顾对话，决定哪些内容写入记忆、改进哪些技能。推理设置只在单独的模型上生效，该模型不带对话的提示缓存。"
+            "value" : "每隔几轮回顾一次对话，决定哪些内容写入记忆、改进哪些技能。推理设置只在单独的模型上生效，该模型不带对话的提示缓存。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "每輪結束後回顧對話，決定哪些內容寫入記憶、改進哪些技能。推理設定只在單獨的模型上生效，該模型不帶對話的提示快取。"
+            "value" : "每隔幾輪回顧一次對話，決定哪些內容寫入記憶、改進哪些技能。推理設定只在單獨的模型上生效，該模型不帶對話的提示快取。"
           }
         }
       }
@@ -739,84 +657,494 @@
         }
       }
     },
-    "Off, Hermes reviews a chat only when you ask with /refine. It’s the helper that runs most, so turning it off saves the most." : {
+    "Runs when the memory or skill interval below is reached. Off, Hermes reviews a chat only when you ask with /refine." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aus prüft Hermes einen Chat nur, wenn du mit /refine darum bittest. Sie ist das Hilfsmodell, das am häufigsten läuft, also spart Ausschalten am meisten."
+            "value" : "Läuft, sobald das Gedächtnis- oder Skill-Intervall unten erreicht ist. Aus prüft Hermes einen Chat nur, wenn du mit /refine darum bittest."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desactivada, Hermes revisa un chat solo cuando lo pides con /refine. Es el modelo auxiliar que más se ejecuta, así que desactivarla es lo que más ahorra."
+            "value" : "Se ejecuta cuando se alcanza el intervalo de memoria o de habilidades de abajo. Desactivada, Hermes revisa un chat solo cuando lo pides con /refine."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Désactivée, Hermes ne relit une discussion que si vous le demandez avec /refine. C’est le modèle auxiliaire qui tourne le plus, donc la désactiver économise le plus."
+            "value" : "S’exécute quand l’intervalle de mémoire ou de compétences ci-dessous est atteint. Désactivée, Hermes ne relit une discussion que si vous le demandez avec /refine."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jika mati, Hermes meninjau obrolan hanya saat Anda memintanya dengan /refine. Ini model pembantu yang paling sering berjalan, jadi mematikannya paling menghemat."
+            "value" : "Berjalan saat interval memori atau skill di bawah tercapai. Jika mati, Hermes meninjau obrolan hanya saat Anda memintanya dengan /refine."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Se disattivata, Hermes rivede una chat solo quando lo chiedi con /refine. È il modello ausiliario che gira di più, quindi disattivarla fa risparmiare di più."
+            "value" : "Viene eseguita quando si raggiunge l’intervallo di memoria o di skill qui sotto. Se disattivata, Hermes rivede una chat solo quando lo chiedi con /refine."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "オフにすると、Hermesは /refine で頼んだときだけチャットを振り返ります。最も頻繁に動くヘルパーなので、オフにすると最も節約になります。"
+            "value" : "下のメモリまたはスキルの間隔に達したときに実行されます。オフにすると、Hermesは /refine で頼んだときだけチャットを振り返ります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "끄면 Hermes는 /refine으로 요청할 때만 채팅을 검토합니다. 가장 자주 실행되는 도우미 모델이라 끄면 가장 많이 절약됩니다."
+            "value" : "아래의 메모리 또는 스킬 간격에 도달하면 실행됩니다. 끄면 Hermes는 /refine으로 요청할 때만 채팅을 검토합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Po wyłączeniu Hermes przegląda czat tylko, gdy poprosisz o to poleceniem /refine. To model pomocniczy, który działa najczęściej, więc jego wyłączenie oszczędza najwięcej."
+            "value" : "Działa, gdy zostanie osiągnięty interwał pamięci lub umiejętności poniżej. Wyłączony: Hermes przegląda czat tylko na prośbę /refine."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Desligada, o Hermes revê uma conversa só quando você pede com /refine. É o modelo auxiliar que mais roda, então desligá-la é o que mais economiza."
+            "value" : "É executada quando o intervalo de memória ou de habilidades abaixo é atingido. Desativada, o Hermes revisa uma conversa só quando você pede com /refine."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Если выключить, Hermes разбирает чат, только когда вы просите об этом командой /refine. Это вспомогательная модель, которая запускается чаще всех, поэтому её отключение экономит больше всего."
+            "value" : "Запускается, когда достигнут интервал памяти или навыков ниже. Если выключено, Hermes разбирает чат, только когда вы просите через /refine."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kapalıyken Hermes bir sohbeti yalnızca /refine ile istediğinizde inceler. En sık çalışan yardımcı model bu olduğundan kapatmak en çok tasarrufu sağlar."
+            "value" : "Aşağıdaki bellek veya beceri aralığına ulaşıldığında çalışır. Kapalıyken Hermes bir sohbeti yalnızca /refine ile istediğinde inceler."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "关闭后，Hermes 只在你用 /refine 要求时才复盘对话。它是运行最频繁的辅助模型，关闭它最省钱。"
+            "value" : "达到下方的记忆或技能间隔时运行。关闭后，Hermes 只在你用 /refine 要求时回顾对话。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "關閉後，Hermes 只在你用 /refine 要求時才複盤對話。它是執行最頻繁的輔助模型，關閉它最省錢。"
+            "value" : "達到下方的記憶或技能間隔時執行。關閉後，Hermes 只在你用 /refine 要求時回顧對話。"
+          }
+        }
+      }
+    },
+    "Messages between memory reviews" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nachrichten zwischen Gedächtnisprüfungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensajes entre revisiones de memoria"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messages entre les revues de mémoire"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan di antara tinjauan memori"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Messaggi tra una revisione della memoria e l’altra"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メモリレビューの間隔（メッセージ数）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메모리 검토 사이의 메시지 수"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomości między przeglądami pamięci"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mensagens entre revisões de memória"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщений между разборами памяти"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bellek incelemeleri arasındaki mesaj sayısı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记忆复盘间隔（消息数）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記憶複盤間隔（訊息數）"
+          }
+        }
+      }
+    },
+    "How many of your messages before Hermes looks for what to remember about you. 0 turns memory review off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie viele deiner Nachrichten vergehen, bevor Hermes schaut, was es sich über dich merken soll. 0 schaltet die Gedächtnisprüfung aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuántos mensajes tuyos pasan antes de que Hermes busque qué recordar sobre ti. 0 desactiva la revisión de memoria."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Combien de vos messages avant que Hermes cherche ce qu’il doit retenir de vous. 0 désactive la revue de mémoire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berapa banyak pesan Anda sebelum Hermes mencari apa yang perlu diingat tentang Anda. 0 mematikan tinjauan memori."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quanti tuoi messaggi prima che Hermes cerchi cosa ricordare di te. 0 disattiva la revisione della memoria."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがあなたについて覚えておくことを探すまでの、あなたのメッセージ数です。0にするとメモリレビューはオフになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 당신에 대해 기억할 것을 찾기 전까지의 메시지 수입니다. 0이면 메모리 검토가 꺼집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ile Twoich wiadomości, zanim Hermes poszuka, co zapamiętać o Tobie. 0 wyłącza przegląd pamięci."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quantas mensagens suas antes de o Hermes procurar o que lembrar sobre você. 0 desativa a revisão de memória."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сколько ваших сообщений пройдёт, прежде чем Hermes поищет, что запомнить о вас. 0 выключает разбор памяти."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in senin hakkında neyi hatırlayacağına bakmadan önceki mesaj sayın. 0, bellek incelemesini kapatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你发送多少条消息后，Hermes 会查看有哪些关于你的内容值得记住。设为 0 则关闭记忆复盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你傳送多少則訊息後，Hermes 會查看有哪些關於你的內容值得記住。設為 0 則關閉記憶複盤。"
+          }
+        }
+      }
+    },
+    "Tool steps between skill reviews" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Werkzeugschritte zwischen Skill-Prüfungen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasos con herramientas entre revisiones de habilidades"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étapes d’outils entre les revues de compétences"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah alat di antara tinjauan skill"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passi con strumenti tra una revisione delle skill e l’altra"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "スキルレビューの間隔（ツールのステップ数）"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "스킬 검토 사이의 도구 단계 수"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kroki narzędzi między przeglądami umiejętności"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etapas com ferramentas entre revisões de habilidades"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шагов с инструментами между разборами навыков"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beceri incelemeleri arasındaki araç adımı sayısı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能复盘间隔（工具步数）"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "技能複盤間隔（工具步數）"
+          }
+        }
+      }
+    },
+    "How many tool-using steps before Hermes looks for a skill to create or improve. 0 turns skill review off." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie viele Schritte mit Werkzeugen vergehen, bevor Hermes nach einem Skill sucht, den es anlegen oder verbessern kann. 0 schaltet die Skill-Prüfung aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuántos pasos con herramientas pasan antes de que Hermes busque una habilidad que crear o mejorar. 0 desactiva la revisión de habilidades."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Combien d’étapes avec des outils avant que Hermes cherche une compétence à créer ou à améliorer. 0 désactive la revue de compétences."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Berapa banyak langkah yang memakai alat sebelum Hermes mencari skill untuk dibuat atau diperbaiki. 0 mematikan tinjauan skill."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quanti passi con strumenti prima che Hermes cerchi una skill da creare o migliorare. 0 disattiva la revisione delle skill."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが作成または改善するスキルを探すまでの、ツールを使うステップ数です。0にするとスキルレビューはオフになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 만들거나 개선할 스킬을 찾기 전까지 도구를 쓰는 단계 수입니다. 0이면 스킬 검토가 꺼집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ile kroków z użyciem narzędzi, zanim Hermes poszuka umiejętności do utworzenia lub poprawienia. 0 wyłącza przegląd umiejętności."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quantas etapas com ferramentas antes de o Hermes procurar uma habilidade para criar ou melhorar. 0 desativa a revisão de habilidades."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сколько шагов с инструментами пройдёт, прежде чем Hermes поищет навык, который стоит создать или улучшить. 0 выключает разбор навыков."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in oluşturacak veya iyileştirecek bir beceri aramadan önceki araç kullanan adım sayısı. 0, beceri incelemesini kapatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "经过多少个使用工具的步骤后，Hermes 会寻找可以创建或改进的技能。设为 0 则关闭技能复盘。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "經過多少個使用工具的步驟後，Hermes 會尋找可以建立或改進的技能。設為 0 則關閉技能複盤。"
+          }
+        }
+      }
+    },
+    "Enter a whole number, 0 or more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gib eine ganze Zahl ein, 0 oder größer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escribe un número entero, 0 o mayor."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saisissez un nombre entier, 0 ou plus."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masukkan bilangan bulat, 0 atau lebih."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inserisci un numero intero, 0 o maggiore."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "0以上の整数を入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "0 이상의 정수를 입력하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wpisz liczbę całkowitą, 0 lub większą."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Digite um número inteiro, 0 ou maior."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Введите целое число, 0 или больше."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "0 veya daha büyük bir tam sayı gir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请输入 0 或更大的整数。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請輸入 0 或更大的整數。"
           }
         }
       }
