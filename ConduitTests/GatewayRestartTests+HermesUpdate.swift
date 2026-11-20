@@ -8,6 +8,15 @@ import XCTest
 extension GatewayRestartTests {
     // MARK: - Update Hermes
 
+    /// The check probes the checkout's git remotes before it answers, so it
+    /// gets 90 s; the update and its status answer at once (issue 2913).
+    func testHermesUpdateCheckWaitsLongerThanTheUpdateAndItsStatus() {
+        XCTAssertEqual(HermesUpdater.timeoutMilliseconds(forPath: HermesUpdater.checkPath), 90_000)
+        XCTAssertEqual(HermesUpdater.timeoutMilliseconds(forPath: HermesUpdater.checkPath + "?force=true"), 90_000)
+        XCTAssertEqual(HermesUpdater.timeoutMilliseconds(forPath: HermesUpdater.updatePath), 30_000)
+        XCTAssertEqual(HermesUpdater.timeoutMilliseconds(forPath: HermesUpdater.statusPath("update")), 30_000)
+    }
+
     func testHermesUpdateCheckReadsWhatTheDashboardSays() throws {
         let check = try XCTUnwrap(HermesUpdateCheck(json: [
             "install_method": "git", "current_version": "0.23.1", "behind": 12,
