@@ -1354,7 +1354,7 @@ CarPlay, Classic, the Watch's relay and the iPhone's jobs for a Watch call)
 · the chat an unattached call took · `docs/VOICE_BACKGROUND_JOBS.md` · the
 notifier's README
 
-**Desktop app:** partly (desktop#93): the Sources filter's Voice and Voice Jobs read the plugin's tags, Voice lists every chat a call was kept with, a call's row names its engine and a job's the chat it came from, the rows the plugin archived for voice are listed again, voice jobs send the phone's job prompt and a Classic call's fresh chat is tagged and archived as the call ends (`desktop/src/renderer/src/state/voiceList.ts`), call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); no nests of voice rows under their call.
+**Desktop app:** has it (desktop#93, desktop#180): the Sources filter's Voice and Voice Jobs read the plugin's tags, Voice lists every chat a call was kept with, a call's row names its engine and a job's the chat it came from, the rows the plugin archived for voice are listed again, voice jobs send the phone's job prompt and a Classic call's fresh chat is tagged and archived as the call ends (`desktop/src/renderer/src/state/voiceList.ts`), call cards in their chat (`desktop/src/renderer/src/components/CallCards.tsx`); a job nests under the call or chat it came from, with the phone's summary line, open nests kept on the computer, the open chat's parents opened and a closed nest's unread on its parent, flat under a search or a filter (`desktop/src/renderer/src/state/chatNesting.ts`, desktop#180). A call kept with a chat is stored in that chat, with no row to nest.
 
 **Code**
 - Filing and listing: `Conduit/Services/AppState+Voice.swift` (sessionCategory, refreshVoiceSessionTags), `Conduit/Services/AppState+Persistence.swift` (voiceCallChatFilter, adoptHostChatCalls), `Conduit/Services/AppState+SessionCatalog.swift` (isArchivedVoiceChat), `Conduit/Voice/VoiceHistory.swift` (VoiceSessionTag, VoiceHostChatCall, VoiceCallChatLinks adopt and chatIDs)
@@ -10061,7 +10061,7 @@ with each message (its switch and caption in Settings, `sharing.turn_status`,
 `notifier/phone_tool.py` turn_note, the README's "With each message", the
 using-calendar skill; see Phone data sync with the host)
 
-**Desktop app:** partly (desktop#98): the chat's sends report the Mac, or a Windows PC to a plugin listing `turn-surface-windows` (notifier #930), typed or spoken (a call's request) with whether replies are read aloud, waiting at most 600 ms, and a refused send drops its report, tried again after 1, 3 and 9 seconds on the dashboard it was made on (`desktop/src/renderer/src/state/turnSurface.ts`). Rooms, quick ask and a call's background jobs don't report.
+**Desktop app:** partly (desktop#98): the chat's sends report the Mac, or a Windows PC to a plugin listing `turn-surface-windows` (notifier #930), typed or spoken (a call's request) with whether replies are read aloud, waiting at most 600 ms, and a refused send drops its report, tried again after 1, 3 and 9 seconds on the dashboard it was made on (`desktop/src/renderer/src/state/turnSurface.ts`). Quick ask reports as the chat does, on the dashboard its window shows, and a call's background job reports its own prompt as spoken, dropped when Hermes refuses it (`desktop/src/renderer/src/state/voiceJobs.ts`, desktop#179). Rooms don't, as on the phone.
 
 **Code**
 - The report and discard: `Conduit/Services/TurnSurface.swift` (discardRetryDelays, discardMayGoLater), `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
