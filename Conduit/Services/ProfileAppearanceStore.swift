@@ -260,7 +260,11 @@ final class ProfileAppearanceStore {
         _ work: [(source: URL, profile: String, dashboardID: String?, data: Data, modified: Date)], with root: URL
     ) {
         for (source, profile, dashboardID, data, modified) in work {
-            let current = (try? source.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? nil
+            // A fresh URL instance, not the one the work entry retained:
+            // resource values cache on the URL, and the retained one carries
+            // the date its read already saw.
+            let probe = URL(fileURLWithPath: source.path)
+            let current = try? probe.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
             guard current == modified else { continue }
             NotificationAvatars.store(data, profile: profile, dashboardID: dashboardID, root: root)
         }

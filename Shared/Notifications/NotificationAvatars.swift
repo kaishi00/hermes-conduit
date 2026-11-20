@@ -145,9 +145,10 @@ enum NotificationAvatars {
     /// conversation is the chat's (a room thread, else a session id),
     /// scoped to the dashboard and shared by every bot in the chat, so two
     /// bots' pushes for one room join one conversation (Apple requires
-    /// messages of a conversation to share an identifier); the sender's
-    /// `handle`, which carries its face, is the fallback when the push
-    /// names no chat.
+    /// messages of a conversation to share an identifier); the `chat/`
+    /// segment keeps a chat id from ever colliding with a profile id, which
+    /// the chatless fallback (`handle`) keys by. The sender's `handle`,
+    /// which carries its face, is the fallback when the push names no chat.
     static func sender(
         profile: String?, dashboardID: String?, botName: String, title: String, conversation: String?
     ) -> Sender? {
@@ -158,7 +159,7 @@ enum NotificationAvatars {
         return Sender(
             handle: handle,
             displayName: botName,
-            conversationID: chat.isEmpty ? handle : "conduit:\(bucket(dashboardID))/\(chat)",
+            conversationID: chat.isEmpty ? handle : "conduit:\(bucket(dashboardID))/chat/\(chat)",
             groupName: heading.isEmpty || heading == botName ? nil : heading
         )
     }

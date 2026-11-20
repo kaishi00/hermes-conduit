@@ -103,7 +103,7 @@ extension BotModeTests {
         ))
         XCTAssertEqual(sender.handle, "conduit:\(dashboard.uppercased())/angelos")
         XCTAssertEqual(sender.displayName, "Angelos")
-        XCTAssertEqual(sender.conversationID, "conduit:\(dashboard.uppercased())/session-1")
+        XCTAssertEqual(sender.conversationID, "conduit:\(dashboard.uppercased())/chat/session-1")
         // The push keeps its own title above the bot's name.
         XCTAssertEqual(sender.groupName, "Response ready")
 
@@ -131,7 +131,9 @@ extension BotModeTests {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "notification-avatars-\(UUID().uuidString)"))
         let dashboard = UUID()
         let profile = "jarvis"
-        let store = ProfileAppearanceStore(defaults: defaults, avatarsRoot: photos, legacyAvatarDirectories: [])
+        let store = ProfileAppearanceStore(
+            defaults: defaults, avatarsRoot: photos, legacyAvatarDirectories: [], notificationAvatars: shared
+        )
         _ = try store.saveAvatar(notificationPicture(.orange, width: 300, height: 300), for: profile, dashboardID: dashboard)
         // The pass's premise: a photo with no copy (one deleted, or saved by
         // a build without the copies).
