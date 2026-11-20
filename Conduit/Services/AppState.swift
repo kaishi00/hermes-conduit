@@ -266,6 +266,9 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's bots (all-live stage 4c), read
     /// through its kept client.
     @Published var combinedDashboardBots: [UUID: CombinedDashboardBots] = [:]
+    /// Each other combined dashboard's group chats (the rooms its Hermes
+    /// hosts and its copies), read through its kept connection.
+    @Published var combinedDashboardRooms: [UUID: CombinedDashboardRooms] = [:]
     /// Another combined dashboard's bots' work, as their pills show it on
     /// Bots Home: read through its kept connection, by bot (Eric,
     /// 2026-11-16: the far bots showed no "Needs you" or work status).
@@ -282,6 +285,9 @@ final class AppState: ObservableObject {
     @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
     /// Reads a kept dashboard's bot roster through its client. Tests set it.
     var keptDashboardBotRosterReader: ((HermesClient) async throws -> BotRosterSnapshot)?
+    /// Reads the rooms a kept dashboard's Hermes hosts through its client.
+    /// Tests set it.
+    var keptDashboardRoomsReader: ((HermesClient) async throws -> [GroupRoom])?
     /// Reads a kept dashboard's JSON route through its bridge. Tests set it.
     var keptDashboardJSONReader: ((DashboardTicketBridge, String) async throws -> [String: Any])?
     /// Lets the kept connections go once Conduit has been off screen for

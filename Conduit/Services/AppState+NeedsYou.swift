@@ -37,14 +37,16 @@ extension AppState {
         await others.value
     }
 
-    /// The other combined dashboards' waits, chats (less often, stage 4b)
-    /// and bots (every few minutes, stage 4c), read through their kept
-    /// connections, coalesced apart from this dashboard's reads.
+    /// The other combined dashboards' waits, chats (less often, stage 4b),
+    /// bots (every few minutes, stage 4c) and group chats (once a minute),
+    /// read through their kept connections, coalesced apart from this
+    /// dashboard's reads.
     func refreshOtherCombinedDashboards() async {
         await otherCombinedReads.coalescing { [weak self] in
             await self?.readOtherCombinedDashboardsNeedsYou()
             await self?.readOtherCombinedDashboardsChats()
             await self?.readOtherCombinedDashboardsBots()
+            await self?.readOtherCombinedDashboardsRooms()
         }
     }
 

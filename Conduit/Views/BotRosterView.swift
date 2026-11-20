@@ -104,6 +104,7 @@ struct BotRosterView: View {
                     .task(id: "\(createRequest != nil && botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
                         guard createRequest != nil, botsHomeShowsLiveStatus else { return }
                         await appState.readOtherCombinedDashboardsBots()
+                        await appState.readOtherCombinedDashboardsRooms()
                     }
             } else {
                 rosterList
@@ -351,13 +352,14 @@ struct BotRosterView: View {
 
     private var hasGroupRows: Bool {
         !appState.shownGroupRooms.isEmpty || !appState.shownDesktopGroupChats.isEmpty || hasLinkedRoomRows
+            || !appState.otherCombinedDashboardsRoomTiles.isEmpty
     }
 
     /// The rooms with people you've linked that haven't started, the
     /// invites to theirs, the approvals your agents wait for in them and
     /// the rooms they host your agents in (Linked Rooms).
     private var hasLinkedRoomRows: Bool {
-        hasLinkedPendingRows || (hostedGroupsAvailable && !appState.linkedRoomCopyRows.isEmpty)
+        hasLinkedPendingRows || (hostedGroupsAvailable && !appState.shownLinkedRoomCopyRows.isEmpty)
     }
 
     /// Linked Rooms' rows that wait on someone: approvals, drafts and
@@ -1183,6 +1185,7 @@ struct BotRosterView: View {
         .refreshable {
             await appState.reloadBotRoster()
             await appState.refreshGroupChatSupport()
+            await appState.readOtherCombinedDashboardsRooms(force: true)
         }
         .sheet(isPresented: $showingGroupCreateSheet) {
             GroupCreateSheet()
@@ -1269,6 +1272,8 @@ struct BotRosterView: View {
         .task(id: "\(botsHomeShowsLiveStatus)|\(appState.keptDashboardRuntimes.count)") {
             guard botsHomeShowsLiveStatus else { return }
             await appState.readOtherCombinedDashboardsBots()
+            // Their group chats too, under Group Chats (Eric, 2026-11-20).
+            await appState.readOtherCombinedDashboardsRooms()
         }
         .task(id: "\(botsHomeShowsLiveStatus)|\(appState.isConnected)|\(visibleBotNames)") {
             guard botsHomeShowsLiveStatus, appState.isConnected else { return }
@@ -1362,6 +1367,10 @@ struct BotRosterView: View {
             GroupRosterRow(room: room)
         }
         linkedRoomRows
+        // The other combined dashboards' group chats (Eric, 2026-11-20).
+        ForEach(appState.otherCombinedDashboardsRoomTiles) { tile in
+            CombinedRoomRosterRow(tile: tile)
+        }
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupRosterRow(group: group) {
                 presentedDesktopGroup = group
@@ -1387,7 +1396,7 @@ struct BotRosterView: View {
     @ViewBuilder
     private var linkedRoomRows: some View {
         if hostedGroupsAvailable {
-            ForEach(appState.linkedRoomCopyRows) { copy in
+            ForEach(appState.shownLinkedRoomCopyRows) { copy in
                 RoomCopyRosterRow(copy: copy)
             }
             linkedPendingRows
@@ -1525,6 +1534,7 @@ struct BotRosterView: View {
     private var showsRoomHint: Bool {
         !BotsHomeGesturesTip.hiddenForTesting && showsNewGroup && groupProbeFailure == nil && homeRooms.isEmpty
             && appState.shownDesktopGroupChats.isEmpty && !hasLinkedRoomRows && newRoom.isEmpty && visibleBots.count >= 2
+            && appState.otherCombinedDashboardsRoomTiles.isEmpty
     }
 
     /// Bots Home's rooms as small portraits: the hosted rooms, Desktop's,
@@ -1538,9 +1548,15 @@ struct BotRosterView: View {
         }
         // Rooms others host your agents in, among yours (Eric, 2026-11-08).
         if hostedGroupsAvailable {
-            ForEach(appState.linkedRoomCopyRows) { copy in
+            ForEach(appState.shownLinkedRoomCopyRows) { copy in
                 RoomCopyPortrait(copy: copy)
             }
+        }
+        // The other combined dashboards' group chats, after this one's: a
+        // room shows once, under the dashboard you talk in it from (Eric,
+        // 2026-11-20).
+        ForEach(appState.otherCombinedDashboardsRoomTiles) { tile in
+            CombinedRoomPortrait(tile: tile)
         }
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupPortrait(group: group) {
