@@ -49,7 +49,9 @@ Results:
 4. `ConduitScreenshots/AppStoreScreenshotTests.swift` signs in, walks the
    screens and saves each as a named attachment. Live voice screens use the
    DEBUG-only `-conduitScreenshotCall listening|speaking` fixture
-   (`Conduit/Services/ScreenshotCallFixture.swift`); the Watch job launches the
+   (`Conduit/Services/ScreenshotCallFixture.swift`;
+   `-conduitScreenshotCallProvider qwen|gpt|grok` retitles it, Gemini Live
+   otherwise); the Watch job launches the
    Watch app with the same argument (`home|speaking|listening|approval`;
    `ended` and `approvalDenyOnly` also exist).
 5. `testRecordPreview` runs while `simctl io recordVideo` records; its
@@ -111,9 +113,12 @@ to packet times that lag by up to 44 s, so the cut reads it with
 start and end (`scene-<name>-start.png`, `-end.png`) are there to check it
 against.
 
-The scenes: `bots-home-layouts`, `mixed-bots-home`, `chats-strip`,
-`two-replying`, `reorder`, `room-across`, `room-approval`, `multiplayer`,
-`needs-you`.
+The scenes: `onboarding` (the sign-in screen's Connection Setup guide, then
+signing in to Home), `chat`, `tasks`, `bots-home-layouts`, `bot-work` (Mira's
+Bot Chat starts two workstreams, the Work panel shows them, and their reports
+come back), `mixed-bots-home`, `chats-strip`, `two-replying`, `reorder`,
+`room-across`, `room-approval`, `multiplayer`, `needs-you`, `voice` (the call
+screen, titled Qwen Live by `-conduitScreenshotCallProvider qwen`).
 
 The multiplayer scene adds a third dashboard, **Sam**
 (`http://sam.tail-demo.ts.net:9139`, `videos/sam.json`): another person's
@@ -130,6 +135,10 @@ stills at the start and end of each scene in `stills/`), and the git ref
 over 90 MB, past what git takes), for
 sessions that can't download artifacts.
 Each run makes its own ref; delete old ones with `git push --delete`.
+Its `locale` input picks the language: `zh-Hans` runs the app in
+Simplified Chinese against `videos/zh-Hans/`, the same dashboards and scenes
+in Chinese (a line the test types or waits for is in DemoVideoTests' L(_:)
+table too, so a change to one goes into both).
 The workflow's steps also run by hand on a Mac of your own, which takes
 about 25 minutes with a warm Xcode build, against about two hours hosted.
 
@@ -139,4 +148,6 @@ Conduit gives their Hermes; for Sam's Nori the director gives it before she
 joins, from `avatars/<avatar>.look.jpg` (96 px, at most 8 KB) and the bot's
 `"look_color"`. A turn sent live rather than seeded goes under `"replies"`, and
 `"system_has"` picks which bot answers when several hear the same words in a
-room. A script can borrow chats from another with `"include_chats"`.
+room, and `"also"` lists more words the message must hold, for turns whose
+match words are shared: each workstream's task starts with the plugin's same
+brief, so a workstream's turn matches that and its own instructions. A script can borrow chats from another with `"include_chats"`.

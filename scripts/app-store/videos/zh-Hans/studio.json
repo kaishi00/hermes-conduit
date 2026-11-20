@@ -1,0 +1,156 @@
+{
+  "fallback": "好了，还有别的吗？",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Kael",
+    "avatar": "kael",
+    "color": "yellow",
+    "turns": [
+      {
+        "match": "夜间构建",
+        "prompt": "昨晚的夜间构建怎么样？",
+        "steps": [
+          {
+            "content": "全部通过：1,284 个测试，用时 6 分 12 秒。昨天修好之后，那个不稳定的上传测试重跑 50 次都过了。"
+          }
+        ]
+      }
+    ]
+  },
+  "bots": [
+    {
+      "name": "lucien",
+      "title": "Lucien",
+      "avatar": "lucien",
+      "color": "blue",
+      "description": "写版本说明、帖子和文档。",
+      "soul": "你是 Lucien，一位文字精准、喜欢简短的写作者。",
+      "turns": [
+        {
+          "match": "更新日志的语气",
+          "prompt": "更新日志的语气友好一点、简短一点，好吗？",
+          "steps": [
+            {
+              "content": "收到：语气友好，每条改动一行，不用术语。以后的版本说明都按这个来。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "chibi-conduit",
+      "title": "Chibi",
+      "avatar": "chibi-conduit",
+      "color": "orange",
+      "description": "设计界面、图标和发布配图。",
+      "soul": "你是 Chibi，一位活泼的设计师。",
+      "turns": [
+        {
+          "match": "应用图标",
+          "prompt": "能试试深色一点的应用图标吗？",
+          "steps": [
+            {
+              "content": "好啦！三个深色版本放在 Figma 里了：午夜蓝、炭灰，还有一个黑底金色的。我最喜欢金色那个。"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pulse-chan",
+      "title": "Pulse-chan",
+      "avatar": "pulse-chan",
+      "color": "pink",
+      "description": "盯着服务器和数据。",
+      "soul": "你是 Pulse-chan，负责关注服务可用性和用量。",
+      "turns": [
+        {
+          "match": "可用性",
+          "prompt": "这周服务可用性怎么样？",
+          "steps": [
+            {
+              "content": "本周 99.98%。周二数据库重启时中断了 40 秒，没人发现。"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "replies": [
+    {
+      "turns": [
+        {
+          "match": "2.4 的版本说明",
+          "system_has": "你是 Lucien",
+          "steps": [
+            {
+              "delay": 0.2,
+              "reasoning": "友好、简短，每条一行，按约定来。",
+              "content": "**Conduit 2.4**\n\n- **合并仪表板：** 所有 Hermes 服务器的机器人都在同一个主页。\n- **跨服务器群聊：** 把不同 Hermes 上的机器人拉进同一个聊天。\n- **需要你处理** 现在会显示所有仪表板的等待事项。\n- 切换更快，还有大量小修复。\n\n要不要也发到 V2EX？"
+            }
+          ]
+        },
+        {
+          "match": "清理一下旧的设计稿",
+          "system_has": "你是 Chibi",
+          "steps": [
+            {
+              "content": "好的，正在删除去年的设计稿。",
+              "tool_calls": [
+                {
+                  "name": "terminal",
+                  "arguments": {
+                    "command": "rm -rf mockups/2025-old"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "已清理 `mockups/2025-old`。现在的设计都没动。"
+            }
+          ]
+        },
+        {
+          "match": "规划一下周五的发布帖",
+          "system_has": "你是 Lucien",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "文案我来写。标题草拟为 **「Conduit 2.4：你所有的 Hermes，一个地方搞定」**。简短介绍、一张合并后机器人主页的动图、三条要点，再附上 TestFlight 链接。周五上午 9 点发，那时候看的人最多。"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "chats": [
+    {
+      "title": "2.4 发布清单",
+      "turns": [
+        {
+          "match": "发布清单",
+          "prompt": "帮我列一个 2.4 的发布清单。",
+          "steps": [
+            {
+              "content": "2.4 发布清单：\n\n1. 冻结 main，打标签 `v2.4.0-rc1`\n2. TestFlight 构建发给测试组\n3. 观察两天崩溃报告\n4. App Store 截图和更新说明\n5. 提交审核\n6. 在博客和 V2EX 发布更新说明"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "周二的数据库重启",
+      "turns": [
+        {
+          "match": "数据库重启",
+          "prompt": "周二的数据库重启是怎么回事？",
+          "steps": [
+            {
+              "content": "托管的 Postgres 在 03:12 打了一个小版本更新并重启。请求失败了大约 40 秒，应用全部自动重试了，没有丢数据。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

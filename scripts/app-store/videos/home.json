@@ -131,6 +131,98 @@
               "content": "Kirk Creek has two sites open on the 22nd, both on the bluff with ocean views. $35 a night, and it books out by noon most Fridays, so I'd grab one now."
             }
           ]
+        },
+        {
+          "match": "you're working on a task for",
+          "steps": [
+            {
+              "reasoning": "Thinking it through: the changelog has fourteen entries for 2.4. Group chats get six of them (rooms across dashboards, approvals in rooms, multiplayer with other people's bots), Bot Mode five, voice three. Writing one line each, in the order people will meet them.",
+              "delay": 0.56,
+              "tool_calls": [
+                {
+                  "name": "work_progress",
+                  "arguments": {
+                    "found": "14 changes: group chats 6, Bot Mode 5, voice 3"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "The release notes are written: 14 lines in three groups, group chats first."
+            }
+          ],
+          "also": [
+            "grouped by group chats, bot mode and voice, one line per change"
+          ]
+        },
+        {
+          "match": "you're working on a task for",
+          "steps": [
+            {
+              "reasoning": "Reading the threads: most comments are about the multiplayer rooms, then live voice, then setup. Several people ask for a step-by-step guide to reaching Hermes from outside the home network. Counting mentions across the threads and replies to rank them.",
+              "delay": 1.55,
+              "tool_calls": [
+                {
+                  "name": "work_progress",
+                  "arguments": {
+                    "found": "Top three: multiplayer rooms, live voice, a clearer connection guide"
+                  }
+                }
+              ]
+            },
+            {
+              "content": "The three things people bring up most: multiplayer rooms, live voice, and a clearer guide to connecting."
+            }
+          ],
+          "also": [
+            "sum up the three things people bring up most"
+          ]
+        },
+        {
+          "match": "tidy up the 2.4 release notes",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "content": "On it: two things at once.",
+              "tool_calls": [
+                {
+                  "name": "work_start",
+                  "arguments": {
+                    "title": "2.4 release notes",
+                    "instructions": "Write the 2.4 release notes from the changelog, grouped by group chats, Bot Mode and voice, one line per change."
+                  }
+                },
+                {
+                  "name": "work_start",
+                  "arguments": {
+                    "title": "Reddit feedback",
+                    "instructions": "Read the r/hermesagent threads and comments about Conduit 2.4 and sum up the three things people bring up most."
+                  }
+                }
+              ]
+            },
+            {
+              "content": "Started two workstreams: W1 writes the release notes, W2 reads the Reddit feedback. I'll tell you when they're back; carry on meanwhile."
+            }
+          ]
+        },
+        {
+          "match": "a clearer guide to connecting",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "content": "W2 is back too. What people mention most often: multiplayer rooms, live voice, and a clearer connection guide. Want me to add a setup section to the notes?"
+            }
+          ]
+        },
+        {
+          "match": "group chats first",
+          "system_has": "You are Mira",
+          "steps": [
+            {
+              "content": "W1 is back: the release notes are done, 14 lines in three groups."
+            }
+          ]
         }
       ]
     }
@@ -144,5 +236,75 @@
       "Espresso machine shortlist",
       "Weekend trip to Big Sur"
     ]
-  }
+  },
+  "kanban": [
+    {
+      "title": "Compare flights to Tokyo",
+      "body": "Early December, under $700 round trip from SFO.",
+      "assignee": "mira",
+      "status": "running"
+    },
+    {
+      "title": "Book campsite for Big Sur",
+      "body": "Pfeiffer Big Sur, Saturday night, redwood loop #112 or #148.",
+      "status": "ready"
+    },
+    {
+      "title": "Send the landlord follow-up",
+      "body": "Use the draft from the landlord chat.",
+      "status": "ready"
+    },
+    {
+      "title": "Pick an espresso machine",
+      "body": "Shortlist is in the espresso chat.",
+      "status": "ready",
+      "id": "espresso"
+    },
+    {
+      "title": "Order a grinder",
+      "body": "Baratza Encore ESP once the machine is picked.",
+      "parent": "espresso"
+    },
+    {
+      "title": "Renew passport",
+      "body": "Needed before the Tokyo trip.",
+      "status": "blocked",
+      "reason": "Waiting on new passport photos"
+    },
+    {
+      "title": "Weekly meal plan",
+      "body": "Three dinners, use up the lemons.",
+      "assignee": "piko",
+      "status": "done",
+      "result": "Planned Monday, Wednesday and Friday dinners."
+    },
+    {
+      "title": "Q3 spending summary",
+      "status": "done",
+      "result": "Q3 was $72 over budget, all from dining out."
+    }
+  ],
+  "cron": [
+    {
+      "name": "Morning briefing",
+      "schedule": "0 7 * * *",
+      "prompt": "Summarise my calendar, the weather and anything urgent in my inbox."
+    },
+    {
+      "name": "Inbox digest",
+      "schedule": "every 4h",
+      "prompt": "Digest new email and flag anything that needs a reply today."
+    },
+    {
+      "name": "Weekly review",
+      "schedule": "0 18 * * 0",
+      "prompt": "Review this week's notes and tasks and draft next week's priorities."
+    },
+    {
+      "name": "Flight price watch",
+      "schedule": "every 6h",
+      "prompt": "Check SFO to Tokyo fares for early December and tell me if any drop under $700.",
+      "paused": true
+    }
+  ]
 }

@@ -1,0 +1,52 @@
+{
+  "fallback": "这就办。",
+  "stream_delay": 0.0,
+  "default_bot": {
+    "title": "Nori",
+    "color": "green",
+    "avatar": "nori",
+    "look_color": "#2FBF71",
+    "turns": [
+      {
+        "match": "打包清单",
+        "prompt": "帮我开一个露营打包清单",
+        "steps": [
+          {
+            "content": "开好了：帐篷、两个睡袋、炉头、头灯和蓝色保温箱。"
+          }
+        ]
+      }
+    ]
+  },
+  "replies": [
+    {
+      "turns": [
+        {
+          "match": "开过去要多久",
+          "steps": [
+            {
+              "delay": 0.12,
+              "content": "从上海走高速大约 3 小时，9 点前出发的话，中午可以在德清吃饭：老街上的面馆八点就开门，后面有停车场。帐篷和炉头我来带。"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "chats": [
+    {
+      "title": "露营装备清单",
+      "turns": [
+        {
+          "match": "露营装备",
+          "prompt": "我们还缺哪些露营装备？",
+          "steps": [
+            {
+              "content": "还缺一个防潮垫、一盏营地灯和炉头的气罐。其他的都在车库的箱子里。"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
