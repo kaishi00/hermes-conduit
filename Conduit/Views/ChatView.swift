@@ -579,7 +579,13 @@ struct ChatView: View {
         case .savedCopyStatus(let isOpening):
             savedCopyStatus(isOpening: isOpening)
         case .empty:
-            EmptyChatState().padding(.top, 60)
+            // Room under the card as over it: the cell clips its row at the
+            // top and bottom (TranscriptCell's rowContainer), and the glass
+            // card's glow, cut off at its bottom edge, drew a hard line
+            // across the chat.
+            EmptyChatState()
+                .padding(.top, 60)
+                .padding(.bottom, 60)
         case .message(let target):
             messageRow(target)
         // The running turn's live rows observe only the live projection
