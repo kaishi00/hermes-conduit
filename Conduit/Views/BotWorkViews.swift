@@ -151,7 +151,7 @@ struct BotWorkTitleLine: View {
                 } label: {
                     HStack(spacing: 5) {
                         Circle()
-                            .fill(needsYou ? Color.orange : snapshot.workingCount > 0 ? Color.conduitAccent : Color.secondary)
+                            .fill(needsYou ? Color.orange : snapshot.workingCount > 0 ? Color.blue : Color.secondary)
                             .frame(width: 7, height: 7)
                             .accessibilityHidden(true)
                         Text(text)
@@ -478,7 +478,7 @@ struct BotWorkPanel: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             countChip(AppLocalization.string("Needs you"), snapshot.needsYouCount, tint: .orange)
-                            countChip(AppLocalization.string("Working"), snapshot.workingCount, tint: .conduitAccent)
+                            countChip(AppLocalization.string("Working"), snapshot.workingCount, tint: .blue)
                             countChip(AppLocalization.string("Ready"), snapshot.readyCount, tint: .green)
                         }
                     }
