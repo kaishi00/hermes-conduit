@@ -6154,11 +6154,12 @@ Profile config saves (the key order, a profile setting)
 ## Helper models
 
 The smaller jobs Hermes runs beside a profile's chats (image reading,
-compaction, skill search, smart approvals, MCP tool routing, chat titles,
+compaction, skill search, smart approvals, MCP sampling, chat titles,
 code review, voice replies, the Kanban helpers, profile descriptions, the
-skill curator, and plugins' own, such as Conduit predictions), each on the
-chat model unless it has one of its own. Settings > Models & providers >
-Helper models, a page per helper.
+skill curator, background review, and plugins' own, such as Conduit
+predictions), each on the chat model unless it has one of its own. Settings >
+Models & providers > Helper models, a page per helper; Background review's
+page also has its on/off switch.
 
 **Siblings:** Voice settings' Voice replies (the same `voice_chat` slot and
 section, kept route and writes; done: it gets Use It Anyway too) · Settings >
@@ -6175,16 +6176,22 @@ Hermes Desktop and Hermes' Models page (the same slots; not needed) · Screens
 that open on their last answer (done: the list and each page open on the
 kept slots) · Providers and keys (the pickers read Hermes' catalog as they
 open; done: a removal names the helpers pinned to the provider) · Watch, CarPlay and group rooms (not needed: no model settings) · the
-notifier's README and CHANGELOG (done) · README's Settings list (done)
+notifier's README and CHANGELOG (done) · README's Settings list (done) ·
+Background review (`background_review`, done, issue 2871: Hermes runs it after
+each turn but its dashboard's slot list leaves it out,
+NousResearch/hermes-agent#157839, so the plugin adds it to that list from
+0.184.0 and Hermes' routes list and set it as a built-in row; its `enabled`
+switch is saved through `/api/config`) · Hermes' `hermes model` picker (not
+needed: Hermes' own menu, which doesn't list background review either)
 
 **Desktop app:** has it: helper models in Settings > Models (`desktop/src/renderer/src/components/ModelsPage.tsx`, desktop#24).
 
 **Code**
-- Model: `Conduit/Views/HelperModelViews.swift` (HelperModelSlot, HelperModelsSettingsSection, HelperModelsPage, HelperModelPage), `Conduit/Views/GeminiLiveViews.swift` (VoiceReplyModelSetting with its task, providerOnly, baseURL and endpointHost, HelperModelSaveResult, VoiceReplyModelPicks' confirmAsked, chosen and endpointCaption, VoiceJobModelSettingsSection.providerDefaultTitle, VoiceReplyModelPicks' shown, VoiceReplyModelSettingsSection's helper and pickersWait), `Conduit/Views/Components/ModifierHost.swift` (keeps the section's reads running while it shows nothing)
-- App: `Conduit/Services/AppState+HelperModels.swift` (loadHelperModels, keptHelperModels, loadHelperModel, setHelperModel, keepHelperModelWrite, setVoiceReplyModel), `Conduit/Views/PredictiveSettingsView.swift` (predictionsSlotListed), wired in `Conduit/Views/AuxiliaryViews.swift` (helperModelSettings, the `.model` page's trailing section)
+- Model: `Conduit/Views/HelperModelViews.swift` (HelperModelSlot with onOff, HelperModelsSettingsSection, HelperModelsPage, HelperModelPage, HelperModelSwitchModel and its section), `Conduit/Views/GeminiLiveViews.swift` (VoiceReplyModelSetting with its task, providerOnly, baseURL and endpointHost, HelperModelSaveResult, VoiceReplyModelPicks' confirmAsked, chosen and endpointCaption, VoiceJobModelSettingsSection.providerDefaultTitle, VoiceReplyModelPicks' shown, VoiceReplyModelSettingsSection's helper and pickersWait), `Conduit/Views/Components/ModifierHost.swift` (keeps the section's reads running while it shows nothing)
+- App: `Conduit/Services/AppState+HelperModels.swift` (loadHelperModels, keptHelperModels, loadHelperModel, setHelperModel, keepHelperModelWrite, setVoiceReplyModel), `Conduit/Views/PredictiveSettingsView.swift` (predictionsSlotListed), wired in `Conduit/Views/AuxiliaryViews.swift` (helperModelSettings with the on/off switch's config reads and saves, the `.model` page's trailing section)
 - Other readers: `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders reads the slots for Remove's names, #1636; readers asking together share one read, AppState.readHelperModels, #1638)
-- Notifier: `notifier/__init__.py` (_register_predict_task), tested in `notifier/tests/test_calls.py` and `notifier/upstream/test_helper_models.py`
-- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (slots, Use It Anyway, testAPinnedProviderAndAnEndpointAreShownAndKept), `ConduitTests/AppStateMultiDashboardTests.swift` (testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick, the kept slots after a save)
+- Notifier: `notifier/__init__.py` (_register_predict_task), `notifier/dashboard/api/helper_models.py` (adds `background_review` to Hermes' dashboard slot list), tested in `notifier/tests/test_calls.py`, `notifier/tests/test_helper_models.py` and `notifier/upstream/test_helper_models.py`
+- Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (slots, Use It Anyway, testAPinnedProviderAndAnEndpointAreShownAndKept, testBackgroundReviewHasItsSwitchAndMCPSaysSampling), `ConduitTests/AppStateMultiDashboardTests.swift` (testHelperModelsShareTheSlotsAndAskBeforeAnExpensivePick, the kept slots after a save)
 
 **Rulings**
 - One Helper models row on Models & providers, a list page, and a page per helper, so Settings doesn't grow a row per slot (Eric's no-bloat ask, 2026-11-01, #1625).
@@ -6193,6 +6200,9 @@ notifier's README and CHANGELOG (done) · README's Settings list (done)
 - A provider pinned without a model is its own choice, "Default · provider", and "Same as chats" unpins the provider too (#1632).
 - A slot on an endpoint of its own (`base_url`) names its host (never its path or credentials; the phone keeps only its scheme, host and port, as a provider's endpoint does, an inheriting plugin slot's effective route included) and keeps the endpoint while its provider stays (Hermes keeps it then, so a save never sends one); a model from another provider moves it off, as Hermes does, and the page says so. A named custom endpoint is picked from the catalog as `custom:<name>` (#1632).
 - A save Hermes takes rewrites that slot in the kept answer at once, so the pages open on it even if the read after it never lands (#1632).
+- A slot Hermes' runtime uses but its dashboard doesn't list is added to that list by the plugin until Hermes lists it, so it is a built-in row Conduit names, never a slot of Conduit's own (Background review, issue 2871).
+- A helper with an on/off switch in its block (Background review's `enabled`) shows it on its page below the model, saved in the profile's config; it opens on the kept config, goes back if the save fails, and reads on when config doesn't say, as Hermes does (issue 2871).
+- Each helper's caption says what Hermes uses it for, as Hermes' code does: the `mcp` slot answers MCP servers' sampling requests and doesn't choose tools (issue 2877).
 - A helper's page opens on its kept slot; with none kept it shows a loader (VoiceReplyModelPicks.shown), then Try Again if the read fails, and says the Hermes no longer has the helper when it answers without the slot, never a blank page. Its reads sit on a `ModifierHost`, as a `Group` with nothing in it runs no `onAppear` or `task` (#1956).
 
 **Open gaps**

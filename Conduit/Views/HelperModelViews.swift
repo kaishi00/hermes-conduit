@@ -34,6 +34,32 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// as they work; Edit Bot > Work sets it too.
     static let workWatch = "conduit_work_watch"
 
+    /// Hermes' review after each turn (what goes into memory, which skills
+    /// to patch); `enabled` in its block turns the automatic one off.
+    static let backgroundReview = "background_review"
+
+    /// A helper's own on/off switch, in its `auxiliary.<task>` block.
+    struct OnOff {
+        let key: String
+        let defaultValue: Bool
+        let title: () -> String
+        let label: () -> String
+        let caption: () -> String
+    }
+
+    /// The helpers with an on/off switch of their own: Background review's,
+    /// its biggest cost lever (issue 2871).
+    static func onOff(task: String) -> OnOff? {
+        guard task == backgroundReview else { return nil }
+        return OnOff(
+            key: "auxiliary.background_review.enabled",
+            defaultValue: true,
+            title: { AppLocalization.string("Automatic review", table: .bots) },
+            label: { AppLocalization.string("After every turn", table: .bots) },
+            caption: { AppLocalization.string("Off, Hermes reviews a chat only when you ask with /refine. It’s the helper that runs most, so turning it off saves the most.", table: .bots) }
+        )
+    }
+
     /// `/api/model/auxiliary`'s answer as the phone keeps it: each slot's
     /// endpoint as its scheme, host and port only, since a path can carry a
     /// token and the page shows only the host.
@@ -130,8 +156,10 @@ struct HelperModelSlot: Identifiable, Equatable {
         "approval": Words(title: { AppLocalization.string("Smart approvals", table: .bots) },
                           caption: { AppLocalization.string("Decides which commands are safe to run without asking you, when smart approvals are on.", table: .bots) },
                           symbol: "checkmark.shield"),
-        "mcp": Words(title: { AppLocalization.string("MCP tool routing", table: .bots) },
-                     caption: { AppLocalization.string("Picks which MCP tools a turn needs.", table: .bots) },
+        // Hermes runs it only when an MCP server asks for a completion
+        // (sampling/createMessage); the chat model picks tools (issue 2877).
+        "mcp": Words(title: { AppLocalization.string("MCP sampling", table: .bots) },
+                     caption: { AppLocalization.string("Answers when an MCP server asks Hermes’ model to write something. It doesn’t choose tools.", table: .bots) },
                      symbol: "point.3.connected.trianglepath.dotted"),
         "title_generation": Words(title: { AppLocalization.string("Chat titles", table: .bots) },
                                   caption: { AppLocalization.string("Names new chats.", table: .bots) },
@@ -156,6 +184,12 @@ struct HelperModelSlot: Identifiable, Equatable {
         "curator": Words(title: { AppLocalization.string("Skill curator", table: .bots) },
                          caption: { AppLocalization.string("Reviews how skills are used and suggests improvements.", table: .bots) },
                          symbol: "sparkles"),
+        // Listed by the Conduit plugin from 0.184.0 until Hermes lists it
+        // (issue 2871). Hermes ignores its reasoning while it runs on the
+        // chat's model, which keeps the chat's prompt cache.
+        backgroundReview: Words(title: { AppLocalization.string("Background review", table: .bots) },
+                                caption: { AppLocalization.string("Looks back over a chat after each turn to decide what goes into memory and which skills to improve. Its reasoning applies only on a model of its own, which starts without the chat’s prompt cache.", table: .bots) },
+                                symbol: "brain.head.profile"),
         predictions: Words(title: { AppLocalization.string("Conduit predictions", table: .bots) },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.", table: .bots) },
                                  symbol: "wand.and.stars"),
@@ -186,6 +220,17 @@ struct HelperModelsSettingsModel {
     var load: () async throws -> [HelperModelSlot]
     /// A slot's page: Voice replies' section, for that slot.
     var slot: (HelperModelSlot) -> VoiceReplyModelSettingsModel
+    /// Its on/off switch, for a helper that has one.
+    var onOff: (HelperModelSlot) -> HelperModelSwitchModel? = { _ in nil }
+}
+
+/// A helper's on/off switch, read and saved in the profile's config.
+struct HelperModelSwitchModel {
+    /// As last read, kept on the phone; nil when no config is kept.
+    var kept: () -> Bool?
+    /// Nil when Hermes didn't answer.
+    var load: () async -> Bool?
+    var save: (Bool) async -> Bool
 }
 
 /// The Helper models row on Models & providers.
@@ -293,7 +338,7 @@ struct HelperModelsPage: View {
                     }
                     ForEach(slots) { slot in
                         NavigationLink {
-                            HelperModelPage(slot: slot, settings: settings.slot(slot))
+                            HelperModelPage(slot: slot, settings: settings.slot(slot), onOff: settings.onOff(slot))
                                 .v2TabBarClearance()
                         } label: {
                             HelperModelRow(slot: slot)
@@ -367,15 +412,60 @@ private struct HelperModelRow: View {
     }
 }
 
-/// One helper's model and reasoning.
+/// One helper's model and reasoning, and its on/off switch when it has one.
 struct HelperModelPage: View {
     let slot: HelperModelSlot
     let settings: VoiceReplyModelSettingsModel
+    var onOff: HelperModelSwitchModel? = nil
 
     var body: some View {
         SettingsDetailContainer {
             VoiceReplyModelSettingsSection(settings: settings, helper: slot)
+            if let onOff, let words = HelperModelSlot.onOff(task: slot.id) {
+                HelperModelSwitchSection(words: words, settings: onOff)
+            }
         }
         .navigationTitle(slot.title)
+    }
+}
+
+/// A helper's on/off switch: it opens on the kept config, then Hermes'
+/// answer, and goes back if a save fails.
+private struct HelperModelSwitchSection: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let words: HelperModelSlot.OnOff
+    let settings: HelperModelSwitchModel
+    /// Nil until read, kept or from Hermes.
+    @State private var isOn: Bool?
+    @State private var saving = false
+
+    var body: some View {
+        ConduitSettingsSection(title: words.title(), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
+            Toggle(words.label(), isOn: Binding(get: { isOn ?? words.defaultValue }, set: { save($0) }))
+                .tint(.conduitAccent)
+                .disabled(isOn == nil || saving)
+                .accessibilityIdentifier("settings.models.helpers.onOff")
+            Text(verbatim: words.caption())
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .onAppear { if isOn == nil { isOn = settings.kept() } }
+        .task {
+            let read = await settings.load()
+            guard !saving, let read else { return }
+            isOn = read
+        }
+    }
+
+    private func save(_ on: Bool) {
+        let before = isOn
+        isOn = on
+        saving = true
+        Task {
+            let saved = await settings.save(on)
+            saving = false
+            if !saved { isOn = before }
+        }
     }
 }
