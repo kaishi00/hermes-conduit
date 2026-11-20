@@ -3135,7 +3135,7 @@ final class AppStateChatResumeTests: XCTestCase {
     /// notifier#965: Hermes' card answered on this iPhone keeps the row's
     /// copy of its question out, though the list read just after the answer
     /// still names the wait and no read noted Hermes' card while it waited.
-    func testAQuestionAnsweredOnHermesCardStaysOutOfTheChat() {
+    func testAQuestionAnsweredOnHermesCardStaysOutOfTheChat() throws {
         func appState() -> AppState {
             let appState = makeHarness(
                 lifecycleOperations: ChatResumeLifecycleOperations(
@@ -3166,12 +3166,12 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1", "conduit-push-q"])
 
         let guarded = appState()
-        guarded.keepQuestionCopiesOut(answeredOn: guarded.messages[0].clarify!)
+        guarded.keepQuestionCopiesOut(answeredOn: try XCTUnwrap(guarded.messages[0].clarify))
         guarded.showWaitingQuestionCards()
         XCTAssertEqual(guarded.messages.compactMap(\.clarify?.requestId), ["a1"])
 
         // One already drawn goes.
-        unguarded.keepQuestionCopiesOut(answeredOn: unguarded.messages[0].clarify!)
+        unguarded.keepQuestionCopiesOut(answeredOn: try XCTUnwrap(unguarded.messages[0].clarify))
         XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1"])
         unguarded.showWaitingQuestionCards()
         XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1"])

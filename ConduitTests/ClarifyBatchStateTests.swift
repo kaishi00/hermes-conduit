@@ -771,6 +771,40 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.questions[2].status, .pending, "Still listed in remaining ⇒ stays answerable")
     }
 
+    func testAcceptedAnswerLandsOnHermesCardWhenACopyAboveItGoes() async throws {
+        // notifier#965: Hermes taking the answer takes away the plugin's copy
+        // of the question (here one whose relay answer failed) sitting above
+        // Hermes' card; the answer still lands on Hermes' card, and the row
+        // below it is untouched.
+        let (appState, _) = makeAppState()
+        var copy = makeBatchActivity(requestId: "conduit-push-copy")
+        copy.questions[0].status = .error
+        copy.questions[0].error = "Couldn't send"
+        appState.messages = [
+            ChatMessage(id: "clarify-conduit-push-copy", role: .clarify, content: "copy", timestamp: "1", clarify: copy),
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity()),
+            ChatMessage(id: "after", role: .assistant, content: "after", timestamp: "3")
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-batch",
+            questionId: "environment",
+            answer: "staging",
+            result: ["status": "ok", "remaining": ["tests", "notes"]]
+        )
+
+        XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch", "after"])
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
+        XCTAssertNil(appState.messages[1].clarify)
+    }
+
     func testAcceptedOutcomeCannotResurrectAnExpiredRequest() async throws {
         // Expire lands while the respond RPC is in flight (reconnect race);
         // the accepted response that arrives afterwards must not flip the

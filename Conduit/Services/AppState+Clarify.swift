@@ -1287,13 +1287,16 @@ extension AppState {
                     activity.questions[index].answer = nil
                 }
             }
+        }
+        messages[index].clarify = activity
+        if case .accepted = outcome, !activity.isExpired {
             // Hermes took this answer: the question's copy on the Needs you
             // list, which the plugin may still name for a moment, is this
             // card's and never comes into the chat as a second one
-            // (notifier#965).
+            // (notifier#965). After the write: it may remove a copy above
+            // this card, which moves `index`.
             keepQuestionCopiesOut(answeredOn: activity)
         }
-        messages[index].clarify = activity
         cacheMessagePresentation()
     }
 }

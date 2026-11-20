@@ -262,7 +262,9 @@ extension AppState {
     /// was being restored, notifier#965).
     func keepQuestionCopiesOut(answeredOn answered: ClarifyActivity) {
         guard !answered.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
-        for item in needsYou.items where item.roomID == nil {
+        // Only the open chat's waits: the answered card is in it, and the
+        // same words asked in another chat are another question.
+        for item in needsYou.items where item.roomID == nil && isOpenChat(item) {
             guard let card = item.card,
                   let pushed = Self.notificationClarifyActivity(for: card),
                   Self.pushCardSupersededBy(pushed, live: answered) else { continue }
