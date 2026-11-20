@@ -5671,7 +5671,7 @@ Watch, CarPlay and group rooms (not needed: no model settings) · Text
 (done: the Default and Delegate model captions no longer describe two
 menus)
 
-**Desktop app:** partly (desktop#170): every model setting it has (a bot's Model and Workstream Model, fallback and delegate fallback models, the delegate model, helper models, a scheduled job's Model, a custom endpoint's model after Find models) is a row naming its model and provider that opens this page, its default first, search, Quick picks, every provider closed and a typed id (`desktop/src/renderer/src/components/ModelChooser.tsx`); the composer keeps its own panel (`desktop/src/renderer/src/components/ModelPicker.tsx`). Gap: a setting's reasoning isn't in the page's top card, it stays beside the row.
+**Desktop app:** has it (desktop#170, desktop#171): every model setting it has (a bot's Model and Workstream Model, fallback and delegate fallback models, the delegate model, helper models, a scheduled job's Model, a custom endpoint's model after Find models) is a row naming its model and provider that opens this page, its default first, search, Quick picks, every provider closed and a typed id, with the delegate's and a scheduled job's reasoning in the top card at their own levels (`desktop/src/renderer/src/components/ModelChooser.tsx`); the composer keeps its own panel (`desktop/src/renderer/src/components/ModelPicker.tsx`).
 
 **Code**
 - Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
