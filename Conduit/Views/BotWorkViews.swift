@@ -939,7 +939,7 @@ struct BotWorkStatusChip: View {
 
     var body: some View {
         let tint = BotWorkLook.tint(item)
-        let needs = item.needsYou && !item.isClosed
+        let needs = item.needsYou
         HStack(spacing: 5) {
             if tint != .secondary {
                 Circle().fill(needs ? Color.black.opacity(0.85) : tint).frame(width: 6, height: 6)
@@ -952,7 +952,9 @@ struct BotWorkStatusChip: View {
         .padding(.horizontal, 9)
         .padding(.vertical, 3)
         .background(Capsule().fill(needs ? Color.orange : tint.opacity(tint == .secondary ? 0.12 : 0.15)))
-        .fixedSize()
+        // A long status ("Waiting on" a bot) truncates rather than pushing
+        // the card's top line past its edge; the chip still yields last.
+        .layoutPriority(1)
         .accessibilityLabel(item.statusText)
     }
 }

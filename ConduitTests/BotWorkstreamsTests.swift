@@ -165,6 +165,21 @@ extension BotModeTests {
                                                      "model": ["model": "gpt-5.5"]])).model)
     }
 
+    /// Design D (Eric 2026-11-20): each status its own color on the work
+    /// card's mark and chip, and the Bots Home pill's working in blue too.
+    func testAWorkCardsStatusHasItsOwnColor() throws {
+        func item(_ status: String) throws -> BotWorkItem {
+            try XCTUnwrap(BotWorkItem(row: ["ref": "W1", "kind": "workstream", "status": status]))
+        }
+        XCTAssertEqual(BotWorkLook.tint(try item("running")), .blue)
+        XCTAssertEqual(BotWorkLook.tint(try item("starting")), .blue)
+        XCTAssertEqual(BotWorkLook.tint(try item("ready")), .green)
+        XCTAssertEqual(BotWorkLook.tint(try item("failed")), .red)
+        XCTAssertEqual(BotWorkLook.tint(try item("needs_you")), .orange)
+        XCTAssertEqual(BotWorkLook.tint(try item("done")), .secondary)
+        XCTAssertEqual(BotPortraitStatus.working(2).tint, .blue)
+    }
+
     /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
