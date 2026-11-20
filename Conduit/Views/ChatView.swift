@@ -4142,6 +4142,13 @@ struct ClarifyCard: View {
                     .accessibilityHint("Fill in what you know, and leave the rest blank.")
                 }
 
+                if layout.rowsShowTitles, rowState.canQuoteIntoComposer,
+                   clarify.questions.contains(where: { $0.status == .expired && !$0.choices.isEmpty }) {
+                    Text(AppLocalization.string("Tap one to answer in a message.", table: .chat))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+
                 if let error = clarify.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
                         .scaledFont(.caption)
@@ -4359,12 +4366,16 @@ struct ClarifyQuestionRow: View {
                 }
                 .buttonStyle(.borderless)
             } else {
-                Text(AppLocalization.string("Tap one to answer in a message.", table: .chat))
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
+                // A batch says it once, under its rows (ClarifyCard).
+                if !showsTitle {
+                    Text(AppLocalization.string("Tap one to answer in a message.", table: .chat))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 ForEach(question.choices) { choice in
                     Button {
-                        onAnswerInMessage(choice.value)
+                        // Words the user reads and Hermes reads as theirs: the label the card showed.
+                        onAnswerInMessage(choice.label.isEmpty ? choice.value : choice.label)
                     } label: {
                         HStack {
                             Text(choice.label)
@@ -4386,7 +4397,8 @@ struct ClarifyQuestionRow: View {
         } else if !question.choices.isEmpty {
             VStack(alignment: .leading, spacing: 4) {
                 ForEach(question.choices) { choice in
-                    Label(choice.label, systemImage: "circle")
+                    // A plain list, nothing here to pick.
+                    Text(verbatim: "• \(choice.label)")
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
