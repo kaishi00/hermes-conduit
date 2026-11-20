@@ -1520,7 +1520,7 @@ live model is told when the host won't keep the watch · Conduit on a computer
 (hermes-conduit-desktop rings beside the iPhone and its Answer opens the call
 in its chat) and the plugin's `call-rings` capability it reads
 
-**Desktop app:** has it: rings on the computer and Answer opens the call (desktop#58), Settings > Calls from Hermes (`desktop/src/renderer/src/components/HermesCallSettings.tsx`, desktop#56); the entry's Open gaps list what's left.
+**Desktop app:** has it: rings on the computer and Answer opens the call (desktop#58), Settings > Calls from Hermes (`desktop/src/renderer/src/components/HermesCallSettings.tsx`, desktop#56) with Try a test call and Have Hermes watch for this, each opening a new chat with its request ready to send (desktop#175); the entry's Open gaps list what's left.
 
 **Code**
 - The missed call's buttons: `Conduit/Voice/HermesCalls.swift` (HermesCallNotifications: missedCategory, openChatActionIdentifier, isCallCategory, localTarget's `opensChatOnly`), `Conduit/Voice/HermesNativeCalls.swift` (HermesNativeCallPlan's `.busy`), `Conduit/Services/NotificationCategories.swift`, `Conduit/ConduitApp.swift` (the Open Chat answer), `Conduit/Services/PushNotificationService.swift` (receiveLocalCallNotification)
@@ -3851,7 +3851,7 @@ its Ask (0.150.0), which leaves the pick's words instead
 · the fresh chat that stands in for an empty one Hermes lost, which takes
 what waited (An empty new chat Hermes lost)
 
-**Desktop app:** partly: a first send or command from the new chat's canvas goes in only while the chat its `session.create` made is still the one open; when another chat opened meanwhile nothing is sent and the words go back to the composer (`desktop/src/renderer/src/state/useChat.ts`, desktop#97), and a Classic call tags only its own fresh chat (desktop#93). The desktop has no screen question, Hermes call setup or Pulse Do it that starts a chat.
+**Desktop app:** partly: a first send or command from the new chat's canvas goes in only while the chat its `session.create` made is still the one open; when another chat opened meanwhile nothing is sent and the words go back to the composer (`desktop/src/renderer/src/state/useChat.ts`, desktop#97), and a Classic call tags only its own fresh chat (desktop#93). Settings' Try a test call and Have Hermes watch for this, and Pulse's Do it on an item from no chat, open a new chat's canvas with their words in the composer, so the send goes through that same guard (`desktop/src/renderer/src/components/HermesCallSettings.tsx`, desktop#175). The desktop has no screen question (Ask Hermes About Screen).
 
 **Code**
 - Creating the chat: `Conduit/Services/AppState+Session.swift` (createNewSession returns the chat it opened; startNewChat and focusNewChatComposer), `Conduit/Services/AppState+Composer.swift` (startChatForComposerSubmission), `Conduit/Services/AppState+VoiceConversation.swift` (prepareVoiceConversation), `Conduit/Services/AppState+Reconciliation.swift` (createAndReconcileSession, which returns it too)
