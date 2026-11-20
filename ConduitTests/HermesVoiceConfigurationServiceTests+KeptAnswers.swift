@@ -552,8 +552,12 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(state.shown(skills), "40", "an older read answering later is dropped")
 
         // A refused switch save reverts it, with no line under an interval.
-        let off = state.saveStarted(words.key, .bool(false), switchKey: words.key)
+        let off = try XCTUnwrap(state.saveStarted(words.key, .bool(false), switchKey: words.key))
         XCTAssertFalse(state.isOn(words))
+        // An interval save while the switch saves doesn't start: one at a time.
+        XCTAssertNil(state.intervalSaveStarted(memory, raw: "35"))
+        XCTAssertEqual(state.shown(memory), "30")
+        XCTAssertEqual(state.savingKey, words.key)
         XCTAssertFalse(state.saveLanded(off, saved: false))
         XCTAssertTrue(state.isOn(words))
         XCTAssertNil(state.errors[words.key])

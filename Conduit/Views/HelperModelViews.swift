@@ -408,11 +408,15 @@ struct HelperModelSwitchState {
         return start(interval.key, .number(Double(number)), draft: raw, isSwitch: false)
     }
 
-    mutating func saveStarted(_ key: String, _ value: ProfileSettingValue, switchKey: String) -> Save {
+    /// Nil while another save is on its way: one at a time.
+    mutating func saveStarted(_ key: String, _ value: ProfileSettingValue, switchKey: String) -> Save? {
         start(key, value, draft: nil, isSwitch: key == switchKey)
     }
 
-    private mutating func start(_ key: String, _ value: ProfileSettingValue, draft: String?, isSwitch: Bool) -> Save {
+    private mutating func start(_ key: String, _ value: ProfileSettingValue, draft: String?, isSwitch: Bool) -> Save? {
+        // The page disables its controls while one saves; held here too, so
+        // a second can't clear the first's mark or revert over it.
+        guard savingKey == nil else { return nil }
         let save = Save(key: key, value: value, before: values, draft: draft, isSwitch: isSwitch)
         values = (values ?? [:]).merging([key: value]) { _, new in new }
         savingKey = key
@@ -718,7 +722,8 @@ private struct HelperModelSwitchSection: View {
     }
 
     private func save(_ key: String, _ value: ProfileSettingValue) {
-        finish(state.saveStarted(key, value, switchKey: words.key))
+        guard let started = state.saveStarted(key, value, switchKey: words.key) else { return }
+        finish(started)
     }
 
     private func finish(_ started: HelperModelSwitchState.Save) {
