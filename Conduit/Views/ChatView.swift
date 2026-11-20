@@ -4049,6 +4049,7 @@ struct ClarifyCard: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let message: ChatMessage
     @Environment(\.chatRowActions) private var rowActions
+    @Environment(\.chatRowState) private var rowState
     /// Acted on, not observed (`ChatRowState`).
     private var appState: AppState { rowActions.required }
     // Per-question draft state, keyed by the gateway qid: typed custom text
@@ -4113,7 +4114,10 @@ struct ClarifyCard: View {
                         selection: bindingForSelection(question),
                         typesOwnAnswer: bindingForOwnAnswer(question),
                         onSend: { answer in send(answer, for: question, in: clarify) },
-                        onConfirmMultiSelect: { confirmMultiSelect(for: question, in: clarify) }
+                        onConfirmMultiSelect: { confirmMultiSelect(for: question, in: clarify) },
+                        onAnswerInMessage: rowState.canQuoteIntoComposer
+                            ? { answer in appState.answerInComposer(expiredQuestion: question.question, answer: answer) }
+                            : nil
                     )
                 }
 
@@ -4261,6 +4265,11 @@ struct ClarifyQuestionRow: View {
     var typesOwnAnswer: Binding<Bool> = .constant(false)
     let onSend: (String) -> Void
     let onConfirmMultiSelect: () -> Void
+    /// A question Hermes stopped waiting for: a choice tapped (nil for an
+    /// open question) goes to the composer under the quoted question, to
+    /// send as an ordinary message (issue 2850). Nil where the composer
+    /// takes nothing (a saved copy, a reconnecting chat).
+    var onAnswerInMessage: ((String?) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -4285,6 +4294,7 @@ struct ClarifyQuestionRow: View {
                 Text("No longer active")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
+                expiredChoices
             case .submitting:
                 HStack(spacing: 6) {
                     ProgressView().controlSize(.small)
@@ -4330,6 +4340,57 @@ struct ClarifyQuestionRow: View {
                 .foregroundStyle(.secondary)
         case .pending, .submitting:
             EmptyView()
+        }
+    }
+
+    /// What the question offered, kept once Hermes stops waiting so the
+    /// user still sees what was asked (issue 2850). With a composer to fill,
+    /// each choice (or, for an open question, one button) answers in a
+    /// message instead.
+    @ViewBuilder
+    private var expiredChoices: some View {
+        if let onAnswerInMessage {
+            if question.choices.isEmpty {
+                Button {
+                    onAnswerInMessage(nil)
+                } label: {
+                    Label(AppLocalization.string("Answer in a message", table: .chat), systemImage: "text.bubble")
+                        .scaledFont(.subheadline)
+                }
+                .buttonStyle(.borderless)
+            } else {
+                Text(AppLocalization.string("Tap one to answer in a message.", table: .chat))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(question.choices) { choice in
+                    Button {
+                        onAnswerInMessage(choice.value)
+                    } label: {
+                        HStack {
+                            Text(choice.label)
+                                .scaledFont(.body)
+                                .multilineTextAlignment(.leading)
+                            Spacer()
+                            Image(systemName: "text.bubble")
+                                .scaledFont(.caption)
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(AppLocalization.string("Answer in a message", table: .chat))
+                }
+            }
+        } else if !question.choices.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                ForEach(question.choices) { choice in
+                    Label(choice.label, systemImage: "circle")
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 

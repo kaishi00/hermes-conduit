@@ -24,6 +24,17 @@ enum ChatQuote {
             .joined(separator: "\n")
     }
 
+    /// A question Hermes stopped waiting for, answered in a message (issue
+    /// 2850): the question as a quote, with `answer` under it. An open
+    /// question (no answer) is the quote alone, the reply left to the user.
+    /// "" when there is no question to quote.
+    static func answering(_ question: String, with answer: String?) -> String {
+        let quote = blockquote(question)
+        guard !quote.isEmpty else { return "" }
+        let answer = answer?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return answer.isEmpty ? quote : "\(quote)\n\n\(answer)"
+    }
+
     /// The draft with `quote` added after whatever is already typed, then an
     /// empty line so the reply starts underneath it.
     static func inserting(_ quote: String, into draft: String) -> String {
