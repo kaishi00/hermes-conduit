@@ -312,9 +312,9 @@ final class DashboardProxySignOutTests: XCTestCase {
 
     /// A ticket asked through the page while its load fails hears WebKit's
     /// own error from the navigation callback. That page is reloadable, as
-    /// a notReady one is: the ticket is minted on the reloaded page, never
-    /// handed back as an untyped error (Nightly 2026-11-20, where a content
-    /// process took 33 s to launch).
+    /// a notReady one is: after one such failure the ticket is minted on the
+    /// reloaded page rather than handed back as an untyped error (Nightly
+    /// 2026-11-20, where a content process took 33 s to launch).
     func testATicketWhosePageFailsUnderItIsMintedOnTheReloadedPage() async throws {
         final class Count: @unchecked Sendable {
             private let lock = NSLock()
@@ -365,6 +365,65 @@ final class DashboardProxySignOutTests: XCTestCase {
 
         XCTAssertEqual(ticket, "ticket-2", "minted on the reloaded page")
         XCTAssertTrue(bridge.isReady)
+    }
+
+    /// The page failing under all three ticket requests: the first two are
+    /// retried on the reloaded page and the last one's WebKit error comes
+    /// out as it is, as the last notReady does, not as `.notReady`
+    /// (Reconnecting to Hermes ruling, issue 2908).
+    func testATicketWhosePageFailsUnderEveryAttemptHandsBackTheLastWebKitError() async throws {
+        final class Count: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func next() -> Int { lock.lock(); defer { lock.unlock() }; value += 1; return value }
+        }
+        let tickets = Count()
+        let arrived = (1...3).map { expectation(description: "ticket request \($0) reached the dashboard") }
+        // Each answer is held until the page's failure under it has been
+        // heard; all are released on any exit.
+        let held = (1...3).map { _ in DispatchSemaphore(value: 0) }
+        defer { held.forEach { $0.signal() } }
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch (request.method, path) {
+            case ("GET", "/api/status"):
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case ("POST", "/api/auth/ws-ticket"):
+                let number = tickets.next()
+                if number <= 3 {
+                    arrived[number - 1].fulfill()
+                    _ = held[number - 1].wait(timeout: .now() + 60)
+                }
+                return .json(status: 200, body: #"{"ticket":"ticket-\#(number)"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not Found"}"#)
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        let mint = Task { try await bridge.mintTicket() }
+        for attempt in 0..<3 {
+            await fulfillment(of: [arrived[attempt]], timeout: 60)
+            bridge.webView(
+                bridge.webView,
+                didFailProvisionalNavigation: nil,
+                withError: NSError(domain: "WebKitErrorDomain", code: 999)
+            )
+            held[attempt].signal()
+        }
+
+        do {
+            let ticket = try await mint.value
+            XCTFail("minted \(ticket) although the page failed under every attempt")
+        } catch let error as DashboardTicketBridgeError {
+            XCTFail("the last attempt's WebKit error was replaced by \(error)")
+        } catch {
+            let failure = error as NSError
+            XCTAssertEqual(failure.domain, "WebKitErrorDomain")
+            XCTAssertEqual(failure.code, 999)
+        }
+        XCTAssertEqual(tickets.next(), 4, "three ticket requests, no fourth")
     }
 
     // MARK: - The ready page's own requests
