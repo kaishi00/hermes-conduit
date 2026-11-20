@@ -586,9 +586,31 @@ final class WidgetSnapshotTests: XCTestCase {
         let expired = await read(.failure(.signInRequired), current: kept)
         XCTAssertEqual(expired?.needsConduit, true)
         XCTAssertEqual(expired?.providers, good?.providers)
-        // ...unless Conduit saved a new sign-in while the read was out.
-        let rotated = await read(.failure(.signInRequired), current: access(token: "b"))
-        XCTAssertEqual(rotated, good)
+        // ...unless Conduit saved a new sign-in while the read was out:
+        // it reads once more with that one, kept read or not.
+        let renewed = access(token: "b")
+        for keptBefore in [true, false] {
+            if !keptBefore { store.remove() }
+            var passes: [String] = []
+            let rotated = await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { renewed }) { pass, _ in
+                passes.append(pass.headers["Authorization"] ?? "")
+                if pass == kept.pass { throw LocationHostError.signInRequired }
+                return options
+            }
+            XCTAssertEqual(passes, ["Bearer a", "Bearer b"])
+            XCTAssertEqual(rotated?.needsConduit, false)
+            XCTAssertEqual(rotated?.providers, good?.providers)
+        }
+        // A new sign-in refused too asks for Conduit, after one more read.
+        var tries = 0
+        let refused = await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { renewed }) { _, _ in
+            tries += 1
+            throw LocationHostError.signInRequired
+        }
+        XCTAssertEqual(tries, 2)
+        XCTAssertEqual(refused?.needsConduit, true)
+        let latest = store.read()
+        XCTAssertEqual(latest?.providers, good?.providers)
 
         // Conduit moved to another profile or took the pass away meanwhile:
         // nothing of the old one's, whichever way the read ended.
@@ -599,7 +621,7 @@ final class WidgetSnapshotTests: XCTestCase {
                 XCTAssertNil(answer)
             }
         }
-        XCTAssertEqual(store.read(), good)
+        XCTAssertEqual(store.read(), latest)
 
         // No pass at all: what the widget kept goes.
         let gone = await UsageWidgetFeed.read(access: nil, store: store, language: "de", currentAccess: { nil }) { _, _ in options }

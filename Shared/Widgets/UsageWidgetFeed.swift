@@ -161,6 +161,7 @@ enum UsageWidgetFeed {
     /// `request` reads `path` with a pass.
     static func read(access: UsageWidgetAccess?, store: UsageWidgetStore?, language: String,
                      currentAccess: () -> UsageWidgetAccess?,
+                     retried: Bool = false,
                      request: (LocationHostPass, String) async throws -> [String: Any]) async -> UsageWidgetSnapshot? {
         guard let access else {
             // Conduit took the pass away: nothing of it stays on disk.
@@ -176,9 +177,12 @@ enum UsageWidgetFeed {
             let current = currentAccess()
             guard stillShows(access, current) else { return nil }
             // Conduit gave the widget a new sign-in meanwhile (a native
-            // token rotated) and reloads it: the old pass's refusal isn't
-            // a reason to ask for Conduit.
-            if let current, current.pass.headers != access.pass.headers { return previous }
+            // token rotated): the old pass's refusal isn't a reason to ask
+            // for Conduit, so it reads once more with the new one.
+            if let current, current.pass.headers != access.pass.headers, !retried {
+                return await read(access: current, store: store, language: language,
+                                  currentAccess: currentAccess, retried: true, request: request)
+            }
             return previous?.with(needsConduit: true)
                 ?? UsageWidgetSnapshot(dashboardID: access.dashboardID, profile: access.profile, appLanguage: language,
                                        providers: [], readAt: Date(), needsConduit: true)

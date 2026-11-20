@@ -2636,7 +2636,7 @@ README.md
 
 **Rulings**
 - Hermes' numbers only, as Settings > Usage shows them: a provider's own windows, or for a pool the usable account with the most left (its name beside the provider's), or a limited account's only when every signed-in account is limited, never a signed-out account's; an account-wide limit, or every signed-in account limited, reads Limited until the first frees. A provider that reports none isn't listed (#2892).
-- The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read, unless Conduit saved a new sign-in while that read was out (it reloads the widget with it) (#2892).
+- The widget holds a pass for the dashboard and profile in use while a Plan limits widget is on the Home Screen, and none otherwise, as the Pulse widget does; it never refreshes a sign-in, so an expired one says Open Conduit to refresh over the last numbers it read, unless Conduit saved a new sign-in while that read was out: it reads once more with that one, nothing read before included, and asks for Conduit only if that's refused too (#2892, #PRNUM).
 - Small shows the first provider's first two windows; medium two providers side by side, or one provider's first three windows (#2892).
 - A failed read keeps the last good one; a 404 (a Hermes without the route) reads as none reported only when nothing was read before, so a proxy's or a restart's 404 doesn't wipe it. A pass saved again for the same dashboard and profile, as each return to the screen does, leaves a read in flight the widget's; a read that fails after Conduit moved to another dashboard or profile shows nothing of the old one's. A profile change takes the old profile's pass away at once, a sign-out while a pass is made leaves it unsaved, and a connect saves it whatever the plugin's status read says (#2892, reviews).
 - A tap opens Conduit; the widget has no buttons (#2892).
@@ -2644,7 +2644,7 @@ README.md
 **Open gaps**
 - Not tried on a device: the read with Conduit not running, a token that expires, the medium size with long window names.
 
-**Checked:** 2026-11-20, #2892 (entry added: issue 2796)
+**Checked:** 2026-11-20, #PRNUM (a renewed sign-in read once more; #2892 added the entry: issue 2796)
 
 ## Artifacts
 
