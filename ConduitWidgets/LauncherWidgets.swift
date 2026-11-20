@@ -52,7 +52,7 @@ struct ConduitWidgets: WidgetBundle {
 @available(iOS 18.0, *)
 struct NewChatControl: ControlWidget {
     var body: some ControlWidgetConfiguration {
-        StaticControlConfiguration(kind: "com.milim.relay.widgets.newchat.control") {
+        StaticControlConfiguration(kind: ConduitWidgetKind.newChatControl) {
             ControlWidgetButton(action: OpenNewChatIntent()) {
                 Label("New Chat", systemImage: "square.and.pencil")
             }

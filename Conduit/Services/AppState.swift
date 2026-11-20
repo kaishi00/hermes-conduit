@@ -373,7 +373,6 @@ final class AppState: ObservableObject {
                 }
                 let origin = self.newChatLaunchOrigin
                 self.newChatLaunchOrigin = .widget
-                let startedInApp = origin == .app
                 if outcome == .handled {
                     switch origin {
                     case .app: self.focusNewChatComposer()
@@ -385,10 +384,17 @@ final class AppState: ObservableObject {
                 }
                 guard case .failed(let widgetMessage) = outcome else { return }
                 self.widgetAwaitingInteractiveAuthenticationDashboardID = nil
-                // The widget's words send someone back to the widget.
-                let message = startedInApp
-                    ? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
-                    : widgetMessage
+                // The widget's words send someone back to the widget, which
+                // the app's New Chat and the shortcut don't have.
+                let message: String
+                switch origin {
+                case .widget:
+                    message = widgetMessage
+                case .shortcut where self.isVoiceCallInProgress:
+                    message = AppLocalization.string("End the call to start a new chat.")
+                case .app, .shortcut:
+                    message = AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+                }
                 self.errorMessage = message
                 // The composer shows errorMessage only while it's locked,
                 // and the V2 lists or a call's screen cover it, so a notice
