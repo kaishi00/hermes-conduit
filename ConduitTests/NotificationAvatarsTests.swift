@@ -142,10 +142,14 @@ extension BotModeTests {
         // fresh copy) lands before the pass commits.
         let work = ProfileAppearanceStore.copyWork(under: photos, with: shared)
         _ = try store.saveAvatar(notificationPicture(.blue, width: 300, height: 300), for: profile, dashboardID: dashboard)
+        // The blue save's own copy, as it must stay: a save's copy is a
+        // still of the JPEG the store keeps, so the expectation is the
+        // copy itself, not a still of the raw picture.
+        let freshCopy = try XCTUnwrap(NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared))
         ProfileAppearanceStore.commit(work, with: shared)
         XCTAssertEqual(
             NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared),
-            NotificationAvatars.stillPNG(notificationPicture(.blue, width: 300, height: 300)),
+            freshCopy,
             "the pass's stale read must not overwrite the newer copy"
         )
 
@@ -161,9 +165,12 @@ extension BotModeTests {
         _ = try store.saveAvatar(notificationPicture(.green, width: 300, height: 300), for: profile, dashboardID: dashboard)
         NotificationAvatars.remove(profile: profile, dashboardID: dashboard.uuidString, root: shared)
         ProfileAppearanceStore.shareAvatars(under: photos, with: shared)
+        // A copy is a still of the JPEG the store keeps, not of the raw
+        // picture, so the expectation comes from the photo's own bytes.
+        let photo = try XCTUnwrap(try? Data(contentsOf: XCTUnwrap(store.loadAvatarURLs(dashboardID: dashboard)[profile])))
         XCTAssertEqual(
             NotificationAvatars.picture(profile: profile, dashboardID: dashboard.uuidString, root: shared),
-            NotificationAvatars.stillPNG(notificationPicture(.green, width: 300, height: 300))
+            NotificationAvatars.stillPNG(photo)
         )
     }
 }
