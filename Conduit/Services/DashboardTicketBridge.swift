@@ -1164,6 +1164,14 @@ final class DashboardTicketBridge: NSObject {
                 // A silently hung load is eventually failed by the system
                 // request timeout and becomes reloadable.
                 try await Task.sleep(for: .milliseconds(350))
+            } catch where attempt < 2 && !isInvalidated
+                && !(error is DashboardTicketBridgeError) && !(error is CancellationError) {
+                // The page's load failed under the request, which hears
+                // WebKit's own error from the navigation callback (a content
+                // process that took 33 s to launch failed it on a stalled
+                // runner, Nightly 2026-11-20). The page is reloadable, as
+                // after notReady: waitUntilReady reloads it.
+                try await Task.sleep(for: .milliseconds(350))
             }
         }
         // Unreachable in practice: on the final attempt neither catch

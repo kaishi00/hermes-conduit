@@ -310,6 +310,52 @@ final class DashboardProxySignOutTests: XCTestCase {
         XCTAssertEqual(bridge.cancelledSignInNavigationCount, 0)
     }
 
+    /// A ticket asked through the page while its load fails hears WebKit's
+    /// own error from the navigation callback. That page is reloadable, as
+    /// a notReady one is: the ticket is minted on the reloaded page, never
+    /// handed back as an untyped error (Nightly 2026-11-20, where a content
+    /// process took 33 s to launch).
+    func testATicketWhosePageFailsUnderItIsMintedOnTheReloadedPage() async throws {
+        final class Count: @unchecked Sendable {
+            private let lock = NSLock()
+            private var value = 0
+            func next() -> Int { lock.lock(); defer { lock.unlock() }; value += 1; return value }
+        }
+        let tickets = Count()
+        let firstTicketArrived = expectation(description: "the first ticket request reached the dashboard")
+        let dashboard = try LoopbackHTTPServer.start { request in
+            let path = request.path.split(separator: "?").first.map(String.init) ?? request.path
+            switch (request.method, path) {
+            case ("GET", "/api/status"):
+                return .json(status: 200, body: #"{"version":"fixture"}"#)
+            case ("POST", "/api/auth/ws-ticket"):
+                let number = tickets.next()
+                if number == 1 {
+                    firstTicketArrived.fulfill()
+                    // Held while the page's load fails under it.
+                    Thread.sleep(forTimeInterval: 2)
+                }
+                return .json(status: 200, body: #"{"ticket":"ticket-\#(number)"}"#)
+            default:
+                return .json(status: 404, body: #"{"detail":"Not Found"}"#)
+            }
+        }
+        defer { dashboard.stop() }
+        let bridge = try await readyPageBridge(port: dashboard.port)
+
+        let mint = Task { try await bridge.mintTicket() }
+        await fulfillment(of: [firstTicketArrived], timeout: 60)
+        bridge.webView(
+            bridge.webView,
+            didFailProvisionalNavigation: nil,
+            withError: NSError(domain: "WebKitErrorDomain", code: 999)
+        )
+        let ticket = try await mint.value
+
+        XCTAssertEqual(ticket, "ticket-2", "minted on the reloaded page")
+        XCTAssertTrue(bridge.isReady)
+    }
+
     // MARK: - The ready page's own requests
 
     /// The live case: the page loaded while the proxy still had a session,

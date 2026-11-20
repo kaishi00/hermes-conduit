@@ -174,10 +174,10 @@ class WorkflowContractTests(unittest.TestCase):
 
     def test_a_clean_build_gets_the_longer_budget(self):
         """The first Xcode 27 build had no cache and outran 1200 s (#2319):
-        a build that restored no cache gets 1800 s, and the nightly UI shards,
-        which never restore one, always do. The unit shards and timing repeats
-        always do too: their restored cache is a day behind and still outran
-        1200 s on Xcode 27 (2026-11-13). A cached Smoke build gets 1500 s:
+        a build that restored no cache gets 1800 s. Every nightly build
+        always does: the unit shards' and timing repeats' restored cache is a
+        day behind and still outran 1200 s on Xcode 27 (2026-11-13), and a UI
+        shard builds clean on a night with no smoke build from its Xcode. A cached Smoke build gets 1500 s:
         a near-full rebuild from main's cache outran 1200 s (#2830)."""
         expr = "BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1500' || '1800' }}"
         self.assertIn(expr, self._job_text("smoke"))
@@ -1052,6 +1052,26 @@ class NightlyWorkflowTests(unittest.TestCase):
                         "the cache is restored before the build")
         self.assertIn("            ${{ steps.cache-key.outputs.prefix }}-\n"
                       "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", timing)
+
+    def test_ui_shards_restore_the_full_build_smoke_saves(self):
+        """The UI shards build the full app (project.yml), which ci.yml's
+        smoke job saves on every push to main, so they restore it and never
+        save. Clean, two of three outran the 1800 s budget beside the other
+        nightly jobs (2026-11-20)."""
+        ui = _job_text(NIGHTLY, "ui")
+        self.assertIn("run: xcodegen generate\n", ui)
+        self.assertIn("kind=full", ui)
+        self.assertIn("uses: actions/cache/restore@v5", ui)
+        self.assertNotIn("actions/cache/save", ui)
+        self.assertLess(ui.index("actions/cache/restore@v5"),
+                        ui.index("bash scripts/ci-hosted-build.sh"),
+                        "the cache is restored before the build")
+        self.assertIn("key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}", ui)
+        self.assertIn("            ${{ steps.cache-key.outputs.prefix }}-\n"
+                      "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", ui)
+        smoke = _job_text(WORKFLOW, "smoke")
+        self.assertIn("kind=full", smoke)
+        self.assertIn("xcodegen generate --spec project.yml", smoke)
 
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
         """The nightly unit shards build project-tests.yml and restore the
