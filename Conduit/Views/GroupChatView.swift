@@ -2475,7 +2475,7 @@ struct GroupRouterModelRow: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("room.settings.routerModel")
                     Text(AppLocalization.string(
-                        "This is \(appState.defaultProfileName)’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically.", table: .rooms
+                        "This is \(appState.profileDisplayName(Self.profile))’s Group router helper. It picks who answers in every group chat on this Hermes set to pick automatically.", table: .rooms
                     ))
                     .settingsCaption()
                 }
