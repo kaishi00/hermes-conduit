@@ -440,6 +440,8 @@ private struct HelperModelSwitchSection: View {
     @State private var saving = false
     /// Counts saves, so a read asked before one doesn't undo it on landing.
     @State private var saves = 0
+    /// Hermes didn't answer and nothing is kept: Try Again.
+    @State private var failed = false
 
     var body: some View {
         ConduitSettingsSection(title: words.title(), symbol: "clock.arrow.circlepath", tint: .conduitAura) {
@@ -452,14 +454,24 @@ private struct HelperModelSwitchSection: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
+            if failed && isOn == nil {
+                ModelCatalogPlaceholder(state: .failed) { Task { await read() } }
+            }
         }
         .onAppear { if isOn == nil { isOn = settings.kept() } }
-        .task {
-            let asked = saves
-            let read = await settings.load()
-            guard asked == saves, let read else { return }
-            isOn = read
+        .task { await read() }
+    }
+
+    private func read() async {
+        let asked = saves
+        let answer = await settings.load()
+        guard asked == saves else { return }
+        guard let answer else {
+            failed = true
+            return
         }
+        failed = false
+        isOn = answer
     }
 
     private func save(_ on: Bool) {
