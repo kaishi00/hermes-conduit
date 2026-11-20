@@ -467,6 +467,7 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertNil(HelperModelSlot.Interval.parse("-1"))
         XCTAssertNil(HelperModelSlot.Interval.parse("2.5"))
         XCTAssertNil(HelperModelSlot.Interval.parse(""))
+        XCTAssertNil(HelperModelSlot.Interval.parse("1,000"), "never read as 1")
     }
 
     /// A provider pinned without a model is a choice of its own, named

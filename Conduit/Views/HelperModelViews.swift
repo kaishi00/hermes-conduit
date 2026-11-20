@@ -78,11 +78,12 @@ struct HelperModelSlot: Identifiable, Equatable {
             }
         }
 
-        /// What someone typed: a whole number, 0 or more; nil otherwise.
+        /// What someone typed: a whole number, 0 or more, digits only (a
+        /// pasted "1,000" is refused rather than read as 1); nil otherwise.
         static func parse(_ raw: String) -> Int? {
-            guard let number = ProfileSettingValue.parseNumber(raw),
-                  number >= 0, number.rounded() == number, number < 1e9 else { return nil }
-            return Int(number)
+            let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard (1...9).contains(trimmed.count), trimmed.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+            return Int(trimmed)
         }
     }
 
@@ -539,7 +540,9 @@ private struct HelperModelSwitchSection: View {
             Text(verbatim: interval.label())
                 .scaledFont(.subheadline.weight(.semibold))
             AdaptiveStack(spacing: 8) {
-                TextField(String(interval.defaultValue), text: Binding(
+                // No placeholder until a value is known: "10" would read as
+                // the setting.
+                TextField(values == nil ? "" : String(interval.defaultValue), text: Binding(
                     get: { draft },
                     set: {
                         drafts[interval.key] = $0
@@ -553,6 +556,7 @@ private struct HelperModelSwitchSection: View {
                 Button(AppLocalization.string("Save")) { saveInterval(interval, raw: draft) }
                     .buttonStyle(.settingsPrimary)
                     .disabled(savingKey != nil || draft == shown)
+                    .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Save")): \(interval.label())"))
             }
             Text(verbatim: interval.caption())
                 .scaledFont(.caption)
@@ -609,6 +613,9 @@ private struct HelperModelSwitchSection: View {
                 if key != words.key { errors[key] = AppLocalization.string("Couldn’t save that change. Try again.", table: .bots) }
             }
             done(saved)
+            // A read dropped for this save may have held the other keys'
+            // values: read them all again.
+            if saved { await read() }
         }
     }
 }
