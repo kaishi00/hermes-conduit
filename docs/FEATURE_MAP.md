@@ -6016,7 +6016,7 @@ can't use or hold text without end.
 **Siblings:** Gemini Live · Qwen Live (its socket goes through the same writer) · Grok Live · Local Live · GPT-Live (WebRTC) ·
 Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; GPT-Live over the host's audio bridge)
 
-**Desktop app:** partly (desktop#101): Gemini, Qwen, Grok and Local Live drop audio once their socket holds 192 KB unsent, and at 2 MB the socket stopped taking frames, so it closes and the call ends saying so (`desktop/src/main/liveBacklog.ts`). Capped by bytes, not frames, and a stalled call ends rather than reconnecting.
+**Desktop app:** partly (desktop#101): Gemini, Qwen, Grok and Local Live drop audio once their socket holds 192 KB unsent, and at 2 MB the socket stopped taking frames, so it closes (`desktop/src/main/liveBacklog.ts`). Gemini Live then continues its session on a new connection with its resumption handle, as it does after a GoAway or a dropped socket, three tries in a row at most (`desktop/src/renderer/src/components/GeminiLiveCall.tsx`, desktop#181); Qwen, Grok and Local Live end saying so. Capped by bytes, not frames, and Gemini's switch drops the audio sent meanwhile rather than handing off.
 
 **Code**
 - The writer: `Shared/GeminiLive/LiveVoiceSocketWriter.swift` (maxQueuedAudio, maxQueuedOther, Backlogged); what counts as audio: `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.isAudio)
