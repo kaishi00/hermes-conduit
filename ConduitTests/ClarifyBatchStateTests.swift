@@ -1430,6 +1430,82 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: makeBatchActivity()))
     }
 
+    func testSessionAuthorityOneQuestionCardSupersedesThePushedBatch() {
+        // Hermes' gateway listener (the session authority) asks a batch one
+        // question per card, each a scalar prompt with its own id, so the
+        // plugin's batch copy meets one-question cards in turn: each is the
+        // batch's card, or every question shows twice.
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-batch1",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ]
+        )
+        let first = ClarifyActivity(requestId: "a1b2c3d4e5", question: "Which environment?", choices: [])
+        let second = ClarifyActivity(requestId: "f6a7b8c9d0", question: "Which tests?", choices: [])
+        XCTAssertTrue(first.questions[0].isSyntheticID)
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: first))
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: second))
+        XCTAssertTrue(AppState.hermesCardHoldsQuestion(pushed, in: [ChatMessage(
+            id: "clarify-f6a7b8c9d0", role: .clarify, content: "Which tests?", timestamp: "1", clarify: second
+        )]))
+        // A question the batch doesn't ask is another request's card.
+        let other = ClarifyActivity(requestId: "0000000000", question: "Which branch?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: other))
+    }
+
+    func testMessagingSkipHintStillMatchesThePushedQuestion() {
+        // A messaging chat's card ends with Hermes' typed-"skip" hint on a
+        // line of its own; the question above it is still the pushed one.
+        let pushed = ClarifyActivity(
+            requestId: "conduit-push-one",
+            questions: [ClarifyQuestion(id: "q0", question: "Which environment?", choices: [])]
+        )
+        let live = ClarifyActivity(
+            requestId: "a1b2c3d4e5",
+            question: "Which environment?\nReply \"skip\" to skip this question.",
+            choices: []
+        )
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: live))
+        // A longer question that only starts with the same words isn't it.
+        let longer = ClarifyActivity(requestId: "b1", question: "Which environment? And which region?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: longer))
+        // Nor is one with another line of its own below the same words.
+        let another = ClarifyActivity(requestId: "c1", question: "Which environment?\nExclude production?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(pushed, live: another))
+        let batch = ClarifyActivity(
+            requestId: "conduit-push-batch2",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ]
+        )
+        XCTAssertFalse(AppState.pushCardSupersededBy(batch, live: another))
+        // A line of its own that merely says skip, unquoted, isn't the hint.
+        let skipWord = ClarifyActivity(requestId: "e1", question: "Which environment?\nDon't skip production?", choices: [])
+        XCTAssertFalse(AppState.pushCardSupersededBy(batch, live: skipWord))
+        // Two pushed questions never both match one live question.
+        let doubled = ClarifyActivity(
+            requestId: "conduit-push-batch3",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which environment?", choices: [])
+            ]
+        )
+        let liveBatch = ClarifyActivity(
+            requestId: "f1",
+            questions: [
+                ClarifyQuestion(id: "q0", question: "Which environment?", choices: []),
+                ClarifyQuestion(id: "q1", question: "Which tests?", choices: [])
+            ]
+        )
+        XCTAssertFalse(AppState.pushCardSupersededBy(doubled, live: liveBatch))
+        // The hint in another language still names "skip".
+        let korean = ClarifyActivity(requestId: "d1", question: "Which environment?\n이 질문을 건너뛰려면 \"skip\"이라고 답장하세요.", choices: [])
+        XCTAssertTrue(AppState.pushCardSupersededBy(pushed, live: korean))
+    }
+
 
     // MARK: - Relay per-question outcomes (push transport)
 
