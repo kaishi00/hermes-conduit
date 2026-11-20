@@ -609,6 +609,20 @@ final class WidgetSnapshotTests: XCTestCase {
         }
         XCTAssertEqual(tries, 2)
         XCTAssertEqual(refused?.needsConduit, true)
+        // Renewed again while the retry was out (a, then b, then c): the
+        // last read stays, no Open Conduit, and no third read.
+        final class Saved { var access: UsageWidgetAccess; init(_ access: UsageWidgetAccess) { self.access = access } }
+        let saved = Saved(access(token: "b"))
+        let third = access(token: "c")
+        tries = 0
+        let renewedTwice = await UsageWidgetFeed.read(access: kept, store: store, language: "de", currentAccess: { saved.access }) { _, _ in
+            tries += 1
+            if tries == 2 { saved.access = third }
+            throw LocationHostError.signInRequired
+        }
+        XCTAssertEqual(tries, 2)
+        XCTAssertEqual(renewedTwice?.needsConduit, false)
+        XCTAssertEqual(renewedTwice?.providers, good?.providers)
         let latest = store.read()
         XCTAssertEqual(latest?.providers, good?.providers)
 

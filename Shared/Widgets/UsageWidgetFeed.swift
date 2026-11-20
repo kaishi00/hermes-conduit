@@ -178,8 +178,10 @@ enum UsageWidgetFeed {
             guard stillShows(access, current) else { return nil }
             // Conduit gave the widget a new sign-in meanwhile (a native
             // token rotated): the old pass's refusal isn't a reason to ask
-            // for Conduit, so it reads once more with the new one.
-            if let current, current.pass.headers != access.pass.headers, !retried {
+            // for Conduit, so it reads once more with the new one (once:
+            // a pass renewed again meanwhile keeps the last read).
+            if let current, current.pass.headers != access.pass.headers {
+                guard !retried else { return previous }
                 return await read(access: current, store: store, language: language,
                                   currentAccess: currentAccess, retried: true, request: request)
             }
