@@ -133,6 +133,28 @@ extension BotModeTests {
         XCTAssertNil(NotificationAvatars.sender(profile: "  ", dashboardID: dashboard, botName: "Hermes", title: "x", conversation: nil))
     }
 
+    func testACallNoticeConduitPostsIsFromItsBotInTheCallsChat() throws {
+        let dashboard = UUID()
+        let target = VoiceCallbackTarget(
+            title: "Trip", sessionIDs: ["session-1"], runtimeSessionID: "session-1",
+            storedSessionID: nil, profile: "Kaleb"
+        )
+        let missed = HermesCallNotifications.localRequest(
+            for: target, kind: nil, profile: "Kaleb", dashboardID: dashboard, missed: true, callerName: "Kaleb"
+        )
+        let from = try XCTUnwrap(HermesCallNotifications.sender(of: missed.content))
+        XCTAssertEqual(from.profile, "Kaleb")
+        XCTAssertEqual(from.dashboardID, dashboard.uuidString)
+        XCTAssertEqual(from.sender.displayName, "Kaleb")
+        XCTAssertEqual(from.sender.handle, "conduit:\(dashboard.uuidString)/kaleb")
+        // The same conversation as the ringing push for that chat.
+        XCTAssertEqual(from.sender.conversationID, "conduit:\(dashboard.uuidString)/chat/session-1")
+        XCTAssertEqual(from.sender.groupName, missed.content.title)
+
+        // A call Conduit couldn't read names no bot and keeps the icon.
+        XCTAssertNil(HermesCallNotifications.sender(of: HermesCallNotifications.unreadableMissedCallRequest().content))
+    }
+
     func testTheLaunchPassNeverOverwritesAFreshCopyWithStaleBytes() throws {
         let base = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: base) }

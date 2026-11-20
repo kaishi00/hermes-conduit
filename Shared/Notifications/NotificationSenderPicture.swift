@@ -1,11 +1,13 @@
 import Intents
 import UserNotifications
 
-/// Puts the bot's face on a verified push (Communication Notifications):
-/// the push becomes a message from the bot, an `INSendMessageIntent`
-/// whose sender carries the picture Conduit left in the app group
-/// (NotificationAvatars). A push whose bot has no picture there, or that
-/// iOS won't update, keeps Conduit's icon and its words unchanged.
+/// Puts the bot's face on a notification (Communication Notifications):
+/// the notification becomes a message from the bot, an
+/// `INSendMessageIntent` whose sender carries the picture Conduit left in
+/// the app group (NotificationAvatars). The extension applies it to a
+/// verified push, and Conduit to a call notice it posts itself
+/// (HermesCallNotifications.post). One whose bot has no picture there, or
+/// that iOS won't update, keeps Conduit's icon and its words unchanged.
 ///
 /// Needs the Communication Notifications capability
 /// (`com.apple.developer.usernotifications.communication`) on the app's
@@ -51,6 +53,17 @@ enum NotificationSenderPicture {
                   let mutable = updated.mutableCopy() as? UNMutableNotificationContent
             else { return completion(content) }
             completion(mutable)
+        }
+    }
+
+    static func applied(
+        to content: UNMutableNotificationContent,
+        sender: NotificationAvatars.Sender?,
+        picture: Data?
+    ) async -> UNMutableNotificationContent {
+        guard sender != nil, picture != nil else { return content }
+        return await withCheckedContinuation { continuation in
+            apply(to: content, sender: sender, picture: picture) { continuation.resume(returning: $0) }
         }
     }
 }
