@@ -1123,7 +1123,23 @@ final class ComposerPasteTextViewTests: XCTestCase {
     }
 
     /// Lets the focus change queued after an update run.
+    /// Lets the field's focus and typing changes run: they hop to the main
+    /// queue just after the asking update, and a hop may queue another. A
+    /// fixed 50 ms spin wasn't enough on a stalled runner: when the main
+    /// thread was held for 9 s inside the spin, `run(until:)` returned past
+    /// its date before the queued hop ran (Nightly 2026-11-20). Markers
+    /// queued behind the hops run only once they have, however slow the
+    /// runner, then the old short settle lets UIKit's own follow-ups land.
     private func settleFocus() {
+        final class Marker { var ran = false }
+        for _ in 0..<2 {
+            let marker = Marker()
+            DispatchQueue.main.async { marker.ran = true }
+            let deadline = Date().addingTimeInterval(30)
+            while !marker.ran, Date() < deadline {
+                RunLoop.main.run(mode: .default, before: Date().addingTimeInterval(0.05))
+            }
+        }
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
 

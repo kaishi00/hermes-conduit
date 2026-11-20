@@ -513,6 +513,34 @@ jobs:
       - name: Select Xcode
         run: sudo --preserve-env=GITHUB_ENV bash scripts/ci-select-xcode.sh
 
+      - name: Pick the build cache
+        # The full app (project.yml), as ci.yml's smoke job builds and saves
+        # it on every push to main, so the night's main is usually an exact
+        # hit (restore only: smoke saves it). Clean, three UI shards building
+        # beside the unit shards and timing repeats took 1650-2100 s on Xcode
+        # 27, and two outran the 1800 s budget (2026-11-20).
+        id: cache-key
+        run: |
+          set -euo pipefail
+          kind=full
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
+          echo "build cache: $prefix (runner image ${ImageOS:-?} ${ImageVersion:-?})"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
+
       - name: Install xcodegen
         run: brew install xcodegen
 
@@ -521,9 +549,12 @@ jobs:
 
       - name: Build and boot the simulator in parallel
         env:
-          # The UI shards never restore a cache, so every build is clean: the
-          # clean-build budget, as in PR CI (#2319).
+          # 1800 either way: a cached build is usually a no-op, and a clean
+          # one (no smoke build from this Xcode yet) gets the clean-build
+          # budget, as in PR CI (#2319).
           BUILD_TIMEOUT_SECS: "1800"
+          # Named in the build's timing notice, to explain a clean build.
+          BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes

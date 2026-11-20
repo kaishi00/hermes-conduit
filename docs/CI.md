@@ -108,7 +108,9 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   not the PR again on top of main's (or its base branch's) build; it costs about half a minute of upload
   per run and more churn under the repository's cache limit, where main's
   newest entry, which every run can fall back to, stays. A failed save only warns. The
-  smoke job and the nightly unit shards restore the newest matching entry before
+  smoke job, the nightly unit shards and the nightly UI shards (the full app
+  smoke saves, restore only, since 2026-11-20: clean, two of three UI shards
+  outran 1800 s beside the other nightly jobs) restore the newest matching entry before
   building (from the same runner
   image if there is one, otherwise from any image with the same Xcode build,
   which happens while GitHub rolls out a new image), so a PR recompiles only
@@ -121,8 +123,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   no error in a source file is retried once from scratch. The build's notice
   and log line name how many Swift files each target compiled, so a slow
   incremental build shows what it rebuilt. A new Xcode build
-  misses the cache and builds clean, and a build that restored no cache (the
-  nightly UI shards' every build) gets 1800 s instead of 1500 s: the first
+  misses the cache and builds clean, and a build that restored no cache gets 1800 s instead of 1500 s: the first
   Xcode 27 build outran 1200 s (#2319), and a PR's near-full rebuild from
   main's cache outran 1200 s (#2830, 2026-11-19). Every nightly build gets 1800 s: the unit
   shards' and timing repeats' restored cache is the last Nightly's, and builds
@@ -135,8 +136,7 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
   shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
   new Xcode build has no slim cache yet, so its timing repeats still build
-  clean, now without the Watch app and extensions; the nightly UI jobs never
-  restore one.
+  clean, now without the Watch app and extensions.
 - **Packages from the restored checkout.** When the restored DerivedData
   holds the WebRTC checkout (the only package), the build passes
   `-skipPackageUpdates` and resolves from it instead of the network. A new
