@@ -1174,17 +1174,35 @@ extension AppState {
     ///   set. Two unrelated requests that merely share a first question —
     ///   or a genuine single-question push against a bigger live batch —
     ///   never cross-supersede.
+    /// - Except the session authority's cards: Hermes' gateway listener
+    ///   asks a batch one question per card (a scalar prompt each, with its
+    ///   own prompt id), so a pushed batch of N meets N one-question cards in
+    ///   turn, never an N-question one. Its live card (one question, minted
+    ///   id) matching one of the batch's questions is that batch's card.
+    ///
+    /// A messaging chat's card ends its question with Hermes' typed-"skip"
+    /// hint on a line of its own, so a live question that is the pushed one
+    /// plus lines below it still matches (issue: duplicated question cards,
+    /// 2026-11-20).
     static func pushCardSupersededBy(_ pushed: ClarifyActivity, live: ClarifyActivity) -> Bool {
         func normalized(_ text: String) -> String {
             text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         }
-        let liveTexts = Set(live.questions.map { normalized($0.question) })
+        let liveTexts = live.questions.map { normalized($0.question) }.filter { !$0.isEmpty }
         guard !liveTexts.isEmpty else { return false }
+        func asked(_ text: String) -> Bool {
+            let pushedText = normalized(text)
+            guard !pushedText.isEmpty else { return false }
+            return liveTexts.contains { $0 == pushedText || $0.hasPrefix(pushedText + "\n") }
+        }
         if pushed.questions.contains(where: \.isSyntheticID) {
-            return liveTexts.contains(normalized(pushed.correlationQuestion))
+            return asked(pushed.correlationQuestion)
+        }
+        if live.questions.count == 1, live.questions[0].isSyntheticID, pushed.questions.count > 1 {
+            return pushed.questions.contains { asked($0.question) }
         }
         return pushed.questions.count == live.questions.count
-            && pushed.questions.allSatisfy { liveTexts.contains(normalized($0.question)) }
+            && pushed.questions.allSatisfy { asked($0.question) }
     }
 
     /// Applies the typed `clarify.respond` outcome to the matching card. The
