@@ -836,6 +836,17 @@ extension NotificationDashboardOwnershipTests {
         let meta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(json.utf8))
         XCTAssertEqual(meta.gateways.map(\.id), ["abc-1"])
         XCTAssertEqual(meta.undecodedGatewayIDs, ["abc-2"])
+        XCTAssertFalse(meta.gatewayListIsPartial)
+
+        // A row that isn't an object never spins the read. A decoder that
+        // moves past it reads the rest; one that can't stops there and marks
+        // the list cut short, so the rows after it aren't taken for gone.
+        let cut = #"{"version": "0.28.0", "capabilities": [], "gateways": [{"id": "abc-1", "name": "Hermes", "plugin_capabilities": []}, "not-an-object", {"id": "abc-3", "name": "Later", "plugin_capabilities": []}]}"#
+        let cutMeta = try JSONDecoder().decode(RelayMetaInfo.self, from: Data(cut.utf8))
+        XCTAssertEqual(cutMeta.gateways.first?.id, "abc-1")
+        XCTAssertTrue(cutMeta.undecodedGatewayIDs.isEmpty)
+        XCTAssertEqual(cutMeta.gatewayListIsPartial, !cutMeta.gateways.map(\.id).contains("abc-3"),
+                       "either the later row is read or the list says it was cut short")
     }
 
     func testRemovingADashboardKeepsItsPairingsUntilTheRelayDropsThem() {
