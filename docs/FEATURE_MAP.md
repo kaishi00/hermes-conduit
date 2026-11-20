@@ -622,7 +622,7 @@ Local Live's agent mode (a gap, below) · Local Live, Hermes turns, and Classic
 (not needed: Hermes answers with its own memory) · the notifier's memory routes ·
 Settings captions · docs/VOICE_SETTINGS.md · notifier/README.md (Memory for voice)
 
-**Desktop app:** gap: live calls on a computer send no Hermes memory and offer no recall.
+**Desktop app:** has it: the switch in each live mode (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`), the start memory in Gemini, Qwen, Grok and GPT-Live, and recall in Gemini and Qwen (`desktop/src/renderer/src/components/GeminiLiveCall.tsx`) and Grok (`desktop/src/renderer/src/components/GrokLiveCall.tsx`, desktop#169); GPT-Live gets the start only, as here.
 
 **Code**
 - The routes: `notifier/dashboard/api/memory.py` (memory_context, _provider_voice_context, _complete_memory_lines, run_memory_recall)
