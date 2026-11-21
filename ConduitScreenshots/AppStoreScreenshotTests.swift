@@ -332,17 +332,32 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     private func dismissFinishSetupCard() {
-        let notNow = app.buttons["finish-setup.not-now"]
-        if notNow.waitForExistence(timeout: 10) {
+        // Chats and Bots each draw the card, and both tabs stay in the
+        // hierarchy. Answer the copy that's on screen; if a tap misses,
+        // try the next copy rather than a point where no button is.
+        let cards = app.buttons.matching(identifier: "finish-setup.not-now")
+        if cards.firstMatch.waitForExistence(timeout: 10) {
             snap("debug-finish-setup")
-            // Beside the empty chat column on an iPad, accessibility's hit
-            // test misses the button though a touch lands; tap its point.
-            if notNow.isHittable {
-                notNow.tap()
-            } else {
-                notNow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            let screen = app.windows.firstMatch.frame
+            var tried = Set<Int>()
+            while cards.firstMatch.exists {
+                let copies = cards.allElementsBoundByIndex.enumerated().filter {
+                    !tried.contains($0.offset) && $0.element.exists && !$0.element.frame.isEmpty
+                        && screen.contains(CGPoint(x: $0.element.frame.midX, y: $0.element.frame.midY))
+                }
+                guard let pick = copies.first(where: { $0.element.isHittable }) ?? copies.first else { break }
+                tried.insert(pick.offset)
+                let notNow = pick.element
+                // Beside the empty chat column on an iPad, accessibility's hit
+                // test misses the button though a touch lands; tap its point.
+                if notNow.isHittable {
+                    notNow.tap()
+                } else {
+                    notNow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+                }
+                if cards.firstMatch.waitForNonExistence(timeout: 5) { break }
             }
-            if !notNow.waitForNonExistence(timeout: 5) {
+            if cards.firstMatch.exists {
                 snap("debug-finish-setup-stayed")
             }
         }
