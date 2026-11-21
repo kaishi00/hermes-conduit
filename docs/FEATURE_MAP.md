@@ -9028,13 +9028,13 @@ and Remove's warning; README.md doesn't name Desktop's groups
 
 **Rulings**
 - Gateway-hosted rooms (`groups.*`) are the default and new groups are made there; Desktop's groups are legacy, shown read-only with no composer, since sending would need Desktop's round orchestrator (Eric, 2026-09-26, #207).
-- Remove is offered while connected: in the row's and the portrait's long-press menu and as the sheet's Remove, each asking first. It reads the copy fresh, takes the room out of `rooms` and tombstones it in the envelope's own version (v3: its room key and `id:<roomId>` at the room's revision; v2: its name at that revision; v1: its name at the time in milliseconds), keeps everything else, and writes it back compare-and-swap, reading again once if another client wrote meanwhile. A room already gone is success; one Desktop re-keyed since the list was read (v2 to v3, or a name key that gained a `roomId`) is found by its `roomId` and tombstoned under both keys (2026-11-21, #2994, #2998). A failure after a switch to another Hermes shows no notice there.
+- Remove is offered while connected: in the row's and the portrait's long-press menu and as the sheet's Remove, each asking first. It reads the copy fresh, takes the room out of `rooms` and tombstones it in the envelope's own version (v3: its room key and `id:<roomId>` at the room's revision; v2: its name at that revision; v1: its name at the time in milliseconds), keeps everything else, and writes it back compare-and-swap, reading again once if another client wrote meanwhile. A room already gone is success; one Desktop re-keyed since the list was read (v2 to v3, or a name key that gained a `roomId`) is found by its `roomId` and tombstoned under both keys, and the id wins over a stale key that now names another room, which is left alone (2026-11-21, #2994, #2998, #3001). A failure after a switch to another Hermes shows no notice there.
 - It removes the group for everyone on that Hermes, Hermes Desktop included, and says so; nothing on the gateway's hosted rooms changes.
 
 **Open gaps**
 - Not yet tried on a device or simulator; the removal was tried by hand on the App Review host.
 
-**Checked:** 2026-11-21, #2998 (a re-keyed room found by its roomId; exact CAS revision; the notice stays on its own Hermes); 2026-11-21, #2994 (added)
+**Checked:** 2026-11-21, #3001 (the room's id wins over a stale key; no haptic after a switch); 2026-11-21, #2998 (a re-keyed room found by its roomId; exact CAS revision; the notice stays on its own Hermes); 2026-11-21, #2994 (added)
 
 ## Linked Rooms
 

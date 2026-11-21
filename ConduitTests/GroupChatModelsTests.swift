@@ -331,6 +331,19 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual((moved["deleted"] as? [String: Any])?["name:Council"] as? Double, 6)
         XCTAssertEqual((moved["deleted"] as? [String: Any])?["id:r9"] as? Double, 6)
         XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(moved)).isEmpty)
+        // A stale key now naming another room: that room stays, and the
+        // wanted one is found by its id, here only in its `id:` key.
+        let reused: [String: Any] = [
+            "version": 3,
+            "rooms": [
+                "name:Council": desktopRoom(name: "Council", roomId: "r11", revision: 2),
+                "id:r9": desktopRoom(name: "Council (old)", revision: 8),
+            ],
+        ]
+        let wanted = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "name:Council", roomID: "r9", from: any(reused)))
+        XCTAssertNotNil((wanted["rooms"] as? [String: Any])?["name:Council"])
+        XCTAssertEqual((wanted["deleted"] as? [String: Any])?["id:r9"] as? Double, 8)
+        XCTAssertNil(DesktopGroupChatDecoder.removing(key: "name:Council", roomID: "r404", from: any(reused)))
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))

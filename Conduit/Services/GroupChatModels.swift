@@ -2329,12 +2329,21 @@ extension DesktopGroupChatDecoder {
         let version = object["version"]?.doubleValue ?? 0
         var rooms = object["rooms"]?.objectValue ?? [:]
         var rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        // The room's id wins over the key: a stale key may now name
+        // another room, which must not be the one removed.
         let wantedID = roomID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if rooms[rawKey] == nil, !wantedID.isEmpty,
-           let moved = rooms.first(where: {
-               $0.value.objectValue?["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) == wantedID
-           })?.key {
-            rawKey = moved
+        if !wantedID.isEmpty {
+            func id(of key: String) -> String {
+                guard rooms[key] != nil else { return "" }
+                let own = rooms[key]?.objectValue?["roomId"]?.stringValue?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !own.isEmpty { return own }
+                return version >= 3 && key.hasPrefix("id:") ? String(key.dropFirst(3)) : ""
+            }
+            if id(of: rawKey) != wantedID {
+                guard let moved = rooms.keys.sorted().first(where: { id(of: $0) == wantedID }) else { return nil }
+                rawKey = moved
+            }
         }
         guard let room = rooms.removeValue(forKey: rawKey)?.objectValue else { return nil }
 
