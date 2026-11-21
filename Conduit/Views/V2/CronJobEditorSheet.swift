@@ -402,8 +402,9 @@ private struct CronIntervalField: View {
             .multilineTextAlignment(.center)
             .monospacedDigit()
             .textFieldStyle(.roundedBorder)
-            // Three digits need no more, at any text size.
-            .frame(width: min(fieldWidth, 120))
+            // Four digits (a job read in past the range) need no more, at
+            // any text size, and the stepper keeps its room.
+            .frame(width: min(fieldWidth, 150))
             .focused($focused)
             .accessibilityValue(Text(spoken))
             .accessibilityIdentifier("cron.editor.interval.field")
