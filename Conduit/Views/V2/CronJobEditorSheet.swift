@@ -407,7 +407,9 @@ private struct CronIntervalField: View {
             .accessibilityValue(Text(spoken))
             .accessibilityIdentifier("cron.editor.interval.field")
             Spacer()
-            Stepper(value: $value, in: CronScheduleDraft.intervalRange) {
+            // A step shows its number in the field at once, even while the
+            // field is focused on a seeded number past the range.
+            Stepper(value: Binding(get: { value }, set: { value = $0; text = String($0) }), in: CronScheduleDraft.intervalRange) {
                 Text(AppLocalization.string("Every…", table: .tasks))
             }
             .labelsHidden()
