@@ -3099,7 +3099,11 @@ final class HermesClient: ObservableObject {
             $0.objectValue?["name"]?.stringValue == DesktopGroupChatDecoder.profileName
         }?.objectValue
         let key = DesktopGroupChatDecoder.metaKey
-        let revision = row?["ui_meta_revisions"]?.objectValue.map { $0[key]?.intValue ?? 0 }
+        // A revision that isn't a whole number reads as none: no CAS
+        // rather than a wrong one.
+        let revision = row?["ui_meta_revisions"]?.objectValue.flatMap { revisions in
+            revisions[key] == nil ? 0 : HermesClient.exactIntValue(revisions[key])
+        }
         return (row?["ui_meta"]?.objectValue?[key], revision)
     }
 

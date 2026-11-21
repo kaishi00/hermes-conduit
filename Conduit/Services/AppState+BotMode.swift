@@ -1792,7 +1792,7 @@ extension AppState {
             let outcome: BotMetaWriteOutcome
             do {
                 let current = try await client.desktopGroupProjection()
-                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, from: current.snapshot) else {
+                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, roomID: group.roomID, from: current.snapshot) else {
                     // Already gone (removed elsewhere meanwhile).
                     desktopGroupChats.removeAll { $0.key == group.key }
                     await refreshBotRosterAfterWrite()

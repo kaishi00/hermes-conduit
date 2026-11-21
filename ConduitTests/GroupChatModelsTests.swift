@@ -321,6 +321,16 @@ final class GroupChatModelsTests: XCTestCase {
         let byName = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "name:Legacy", from: any(v3)))
         XCTAssertEqual((byName["deleted"] as? [String: Any])?["name:Legacy"] as? Double, 2)
         XCTAssertEqual(DesktopGroupChatDecoder.decode(snapshot: any(byName)).map(\.name).sorted(), ["Archon Council", "Kept"])
+        // Re-keyed since the list was read: found by its roomId, and a
+        // name-keyed room with one is tombstoned by both keys.
+        let rekeyed: [String: Any] = [
+            "version": 3,
+            "rooms": ["name:Council": desktopRoom(name: "Council", roomId: "r9", revision: 6)],
+        ]
+        let moved = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "id:r9", roomID: "r9", from: any(rekeyed)))
+        XCTAssertEqual((moved["deleted"] as? [String: Any])?["name:Council"] as? Double, 6)
+        XCTAssertEqual((moved["deleted"] as? [String: Any])?["id:r9"] as? Double, 6)
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(moved)).isEmpty)
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))
