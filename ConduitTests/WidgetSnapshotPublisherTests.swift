@@ -64,18 +64,21 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
 
     func testARenamedDashboardIsRelabelledInEveryWorkspaceOfIt() throws {
         let first = workspace(dashboard: dashboardA, profile: "work", title: "A")
+        let firstHome = workspace(dashboard: dashboardA, profile: "home", title: "A home")
         let second = workspace(dashboard: dashboardB, profile: "work", title: "B")
         try publisher.publish(first, current: first.id, language: "en")
+        try publisher.publish(firstHome, current: firstHome.id, language: "en")
         try publisher.publish(second, current: second.id, language: "en")
 
         try publisher.relabel(dashboardID: dashboardA, label: "Studio")
         let saved = try XCTUnwrap(store.read())
         XCTAssertEqual(saved.workspaces.first { $0.id == first.id }?.dashboardLabel, "Studio")
+        XCTAssertEqual(saved.workspaces.first { $0.id == firstHome.id }?.dashboardLabel, "Studio")
         XCTAssertEqual(saved.workspaces.first { $0.id == second.id }?.dashboardLabel, second.dashboardLabel)
         XCTAssertEqual(saved.workspaces.first { $0.id == first.id }?.choices, first.choices)
-        XCTAssertEqual(reloadCount, 3)
+        XCTAssertEqual(reloadCount, 4)
         try publisher.relabel(dashboardID: dashboardA, label: "Studio")
-        XCTAssertEqual(reloadCount, 3, "the same name writes nothing")
+        XCTAssertEqual(reloadCount, 4, "the same name writes nothing")
     }
 
     func testAuthoritativeProfileRemovalPrunesButRefreshFailureDoesNot() throws {
