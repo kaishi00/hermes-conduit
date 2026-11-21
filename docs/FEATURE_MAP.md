@@ -9919,6 +9919,36 @@ read-only legacy groups (no transcript to watch)
 
 **Checked:** 2026-11-16, #2630 (#2628's review: the give-up flag clears as the list is covered, so each stay traces once); 2026-11-16, #2628 (the list bar keeper's trace goes once per stay and a found stack is traced too, issue 2592); 2026-11-15, #2585 (the give-up line counts its retries, not its looks); 2026-11-15, #2582 (the Sessions list's bar keeper logs a line when it finds no page in a stack); 2026-11-11, #2174 (from #2169's reviews: the blank watch's checks tested through the save, the count started over off screen without a "drawn again" line, row ids cut to their last 10 characters so a line keeps its rows; Tests, Rulings); 2026-11-11, #2169 (a blank-screen watch saves a `blank` trace; chats, project chats, Bot Chat, Kanban workers and group rooms alike, one TranscriptViewController; the relay's reasons, README and test in notifier #699; the Chat traces caption names it; the card, privacy policy and manifest not needed, no new data kind; Code, Rulings, Tests, gaps); 2026-11-06, #1892 (NavigationBarKeeper logs a line when it shows a chat's bar again); 2026-11-05, #1840 (Diagnostics & logs, and so Chat traces and Device reports, open while disconnected and from the sign-in screen; Siblings); 2026-11-05, #1783 (issue #1687: a finger on a chat's or room's transcript, where it landed, what it hit and the gestures that took it, a drag's start and end, and the system's swipe back go in the recorder; Code, Rulings); 2026-10-31, #1590 (a group room's transcript feeds the recorder as a chat's does, through its own TranscriptScroller and collection view; the blank-screen rebuild and its trace are gone, the reason kept so a trace an older build saved still lists and sends; Siblings, Code, Rulings); 2026-10-31, #1577 (the chat's transcript feeds the recorder: TranscriptScroller's writes and passes, the collection view's size, insets and content height, a row changing height by id, but for the live turn's thinking and reply, whose growth would push out the moves a trace is for; a chat has no blank-screen rebuild; Code, Rulings); 2026-10-31, #1566 (TranscriptScroller writes through the same recorder: the engine's write, mode, transcript and room lines, plus its own for the reply hold armed or disarmed, a switch, a landing at the reply start and a restoration placed or given up; not called yet; traces unchanged; Code); 2026-10-31, #1565 (the recorder logs each change of the chat's rows by id; a stall the app was suspended in no longer reports an end counting the time away, and a stall's end goes only in its own trace; Code, Rulings); 2026-10-31, #1554 (chat traces: the recorder in every build, its watchers in chats and group rooms, the stall trace riding with a freeze's report, Diagnostics & logs' Chat traces, the privacy manifest's Other Diagnostic Data; notifier #481, relay 0.25.0); 2026-10-29, #1505.
 
+## Tasks board lanes
+
+Tasks › Board shows every lane of the board side by side, wider than the
+screen, so getting to a lane and moving a card into one each have their own
+way in: a bar of lane chips above the board, and a card menu that moves a
+card to any lane a person may move it to.
+
+**Siblings:** the V2 column board's jump bar and its card context menu
+(iPhone, iPad and Mac share one view) · the drawer's lane board (one lane
+behind chips, the same card menu) · Conduit for desktop's board (chips, wheel
+and grab scrolling, drag and drop, the right-click card menu) · Hermes' own
+board (upstream)
+
+**Desktop app:** has it (desktop#286): lane chips with counts that bring a lane to the board's leading edge and mark the lanes on screen, a lock on locked lanes, the wheel and a grab on empty board space scrolling sideways, a dragged card rolling the board on at its edge, cards dragged between the lanes a person may move them to, and the phone's card menu on a right-click (Open, Move to each lane, Copy Task ID, Copy Task Title, Archive, Delete…).
+
+**Code**
+- The column board and its jump bar: `Conduit/Views/KanbanViews.swift` (columnBoard, columnJumpBar, columnJumpChip, boardColumn), `Conduit/Views/Kanban/KanbanV2Support.swift` (KanbanColumnBoardPolicy: summaries, currentColumn)
+- The card menu: `Conduit/Views/KanbanViews.swift` (KanbanCardView's contextMenu, statusOptions)
+- Tests: `ConduitTests/KanbanColumnBoardTests.swift` (testJumpBarMarksTheScrolledColumnOrTheFirst, testHostedBoardReachesEveryColumnAndScrollsOnlySideways)
+
+**Rulings**
+- Every lane the server reports gets a chip with its count, Blocked and Done included, and a lane only Hermes moves tasks into shows a lock on its chip and its header. The phone marks the column it's scrolled to; the desktop, which shows several lanes at once, marks every lane at least half on screen (2026-11-21, desktop#286).
+- On the desktop the wheel scrolls a lane whose cards scroll and moves the board sideways everywhere else, and a press on empty board space pans it; neither starts on a card, so dragging a card is unchanged. A card dragged into the board's outer 60 px rolls it on, so a card can reach any lane in one drag (Eric picked these with the chips, 2026-11-21, desktop#286).
+- The card menu offers the same actions on each app: Open, Move to each lane a person may move a task to (not its own), Copy Task ID, Copy Task Title, Archive (not for an archived task) and Delete…, which asks first (2026-11-21, desktop#286).
+
+**Open gaps**
+- The phone has no drag and drop between lanes; it moves a card through its menu or the task's Status.
+
+**Checked:** 2026-11-21, #PRNUM (seeded with desktop#286: the desktop's lane chips, sideways scrolling and right-click card menu).
+
 ## A blocked Kanban task
 
 A Kanban task in Blocked waits on the operator. Its screen says what it
