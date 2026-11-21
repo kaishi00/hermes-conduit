@@ -3017,6 +3017,14 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.isNativeHermesCallActive = false
         appState.openNeedsYou(NeedsYouItem(waitID: "w3", profile: "default", kind: .approval, sessionIDs: ["stored-c"]))
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
+        // A question asked past its turn has no card in its chat: the chat
+        // opens, and an earlier reveal doesn't scroll it to another card (#2969).
+        var asked = NeedsYouItem(waitID: "asked-P7", profile: "default", kind: .question, sessionIDs: ["stored-c"])
+        asked.asked = BotWorkCoordination.Item(row: ["id": "P7", "kind": "proposal", "at": 1.0, "text": "Roll back?",
+                                                     "status": "open", "actions": ["approve", "decline"]])
+        XCTAssertNotNil(asked.asked)
+        appState.openNeedsYou(asked)
+        XCTAssertNil(appState.pendingNeedsYouReveal, "no card to land at")
     }
 
     /// Issue 2556: a question Hermes drew no card for (the turn ran in
@@ -5573,6 +5581,16 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertEqual(appState.sessionLiveStatus(theirs), .needsInput)
         XCTAssertEqual(appState.botLiveChats("work"), BotLiveChats(working: 0, waiting: 1))
         XCTAssertEqual(appState.newestBotChatWait("work")?.waitID, "w1")
+
+        // A question the bot asked past its turn is its work's to count
+        // (counts.questions), never a chat wait as well (#2969).
+        var question = NeedsYouItem(waitID: "asked-P7", profile: "work", kind: .question, sessionIDs: ["asking"])
+        question.asked = BotWorkCoordination.Item(row: ["id": "P7", "kind": "proposal", "at": 1.0, "text": "Roll back?",
+                                                        "status": "open", "actions": ["approve", "decline"]])
+        XCTAssertNotNil(question.asked)
+        appState.needsYou.apply([question], profile: "work", dashboardID: appState.activeDashboardID) { _ in false }
+        XCTAssertEqual(appState.botLiveChats("work") ?? BotLiveChats(), BotLiveChats(), "counted once, by its work")
+        XCTAssertNil(appState.newestBotChatWait("work"), "its pill opens the overview, where its card is")
 
         // The page closed: its read goes at once, and work isn't read any more.
         appState.endLiveStatusAsk("project", token: token)
