@@ -35,7 +35,15 @@ struct CombinedRoomTile: Identifiable, Equatable {
     let dashboardID: UUID
     let kind: Kind
 
-    var id: String { "\(dashboardID.uuidString)|\(roomID)" }
+    /// Its kind too: a room id is unique only on its host, so one
+    /// dashboard can hold a room it hosts and a copy of another with the
+    /// same id.
+    var id: String {
+        switch kind {
+        case .hosted(let room): return "\(dashboardID.uuidString)|hosted|\(room.roomID)"
+        case .copy(let copy): return "\(dashboardID.uuidString)|copy|\(copy.id)"
+        }
+    }
 
     var roomID: String {
         switch kind {
@@ -85,10 +93,18 @@ extension AppState {
     /// and a dashboard let go or opened says nothing more.
     func readOtherCombinedDashboardsRooms(force: Bool = false, now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
-        // One that dropped by itself keeps its last list until it's back;
-        // out of the group or opened here, it goes.
-        if combinedDashboardRooms.keys.contains(where: { !isInCombinedGroup($0) || $0 == activeDashboardID }) {
-            combinedDashboardRooms = combinedDashboardRooms.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
+        // One that dropped by itself keeps its last list until it's back,
+        // and so does the one on screen (its own lists show while it is), so
+        // leaving it shows its rooms at once; out of the group, it goes.
+        if combinedDashboardRooms.keys.contains(where: { !isInCombinedGroup($0) }) {
+            combinedDashboardRooms = combinedDashboardRooms.filter { isInCombinedGroup($0.key) }
+        }
+        // The one on screen's rooms as it shows them, for when it's left,
+        // as its chats and bots are: read anew there on the next pass.
+        if let active = activeDashboardID, isInCombinedGroup(active), let client, groupRoomsListed {
+            let seed = CombinedDashboardRooms(client: ObjectIdentifier(client), rooms: shownGroupRooms.filter { !$0.isDisbanded },
+                                              copies: linkedRoomCopyRows, at: .distantPast)
+            if seed != combinedDashboardRooms[active] { combinedDashboardRooms[active] = seed }
         }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
@@ -230,6 +246,12 @@ extension AppState {
                 errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             }
         case .copy(let copy):
+            // The switch reads the plugin's routes after its sync settles:
+            // its copies can be read once they're known.
+            if !canReadRoomCopies {
+                await refreshNotifierPluginStatusOnce()
+                guard !Task.isCancelled, activeDashboardID == tile.dashboardID else { return }
+            }
             var found = linkedRoomCopyRows.first { $0.id == copy.id }
             if found == nil, let read = await readLinkedRoomCopies(), activeDashboardID == tile.dashboardID {
                 found = read.first { $0.id == copy.id }
