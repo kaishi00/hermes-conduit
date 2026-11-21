@@ -689,12 +689,19 @@ struct ModelPickerView: View {
         let model = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
         return ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
             HStack(spacing: 12) {
-                Image(systemName: "cube.transparent")
-                    .scaledFont(.body.weight(.semibold))
-                    .foregroundStyle(.conduitAccent)
-                    .frame(width: 36, height: 36)
-                    .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .accessibilityHidden(true)
+                // The provider's logo, as on All providers; a cube for a model on no listed provider.
+                Group {
+                    if let provider {
+                        ProviderLogoView(provider: provider, size: 22)
+                    } else {
+                        Image(systemName: "cube.transparent")
+                            .scaledFont(.body.weight(.semibold))
+                            .foregroundStyle(.conduitAccent)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: model.isEmpty ? AppLocalization.string("Default") : model)
                         .scaledFont(.headline)
@@ -1066,7 +1073,7 @@ struct ModelPickerView: View {
         } label: {
             HStack(spacing: 10) {
                 if showsProvider {
-                    ModelSearchResultText(title: model.id, detail: model.label, provider: provider.title)
+                    ModelSearchResultText(title: model.id, detail: model.label, provider: provider.title, logo: provider)
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         Text(model.id)
