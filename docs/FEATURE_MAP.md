@@ -8012,12 +8012,12 @@ README (Capabilities) and CHANGELOG · the Watch, CarPlay, Siri and calls
 - A name the person gives stays until they clear it; an empty Rename goes back to the automatic name. Two dashboards may share a name the person gave; automatic names stay unique ("Furina 2") (2026-11-21, Eric asked for user-editable names; the rest taken while he was away, #2940).
 - Hermes' own name replaces only an address that names nothing (an IP literal or localhost): a DNS name already says which Hermes it is, so "Furina" stays Furina whatever its main bot is called (#2940).
 - The plugin's name is the main bot's, whatever profile asks, so every profile's answer is the same; a main bot named only "Hermes" names no Hermes apart, so the host's name follows, and neither a Docker container's id nor localhost counts (notifier #972).
-- Badges in a group never read the same: where two names start alike, each of those is its place in the group (1, 2, 3) on its color (#2940).
+- Badges in a group never read the same: where two names start alike, each of those is its place in the group (1, 2, 3) on its color, and should a place number match another's first character (a name starting "2"), every badge is its place (#2940, its review).
 
 **Open gaps**
 - A rename stays on the device it's made on: the phone and the desktop each keep their own names (pairing carries the phone's once).
 
-**Checked:** 2026-11-21, #2940 (new entry: Rename, Hermes' name for an IP address, distinct badges; notifier #972, desktop#230).
+**Checked:** 2026-11-21, #2940 (review: a place number never repeats another's letter, a kept dashboard's name read on the Needs you pass, an update's report brings it, Rename capped at 40 on screen); 2026-11-21, #2940 (new entry: Rename, Hermes' name for an IP address, distinct badges; notifier #972, desktop#230).
 
 ## Face ID for saved dashboards
 

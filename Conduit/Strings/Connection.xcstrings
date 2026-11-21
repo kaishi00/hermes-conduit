@@ -12505,84 +12505,84 @@
         }
       }
     },
-    "Its badge shows the name's first letter. Leave it empty to go back to the name Conduit picked." : {
+    "Its badge shows the name's first letter. Leave it empty to go back to the automatic name." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sein Abzeichen zeigt den ersten Buchstaben des Namens. Lass das Feld leer, um zum Namen zurückzukehren, den Conduit gewählt hat."
+            "value" : "Sein Abzeichen zeigt den ersten Buchstaben des Namens. Lass das Feld leer, um zum automatischen Namen zurückzukehren."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Su insignia muestra la primera letra del nombre. Déjalo vacío para volver al nombre que eligió Conduit."
+            "value" : "Su insignia muestra la primera letra del nombre. Déjalo vacío para volver al nombre automático."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son badge affiche la première lettre du nom. Laissez le champ vide pour revenir au nom choisi par Conduit."
+            "value" : "Son badge affiche la première lettre du nom. Laissez le champ vide pour revenir au nom automatique."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lencananya menampilkan huruf pertama nama. Kosongkan untuk kembali ke nama yang dipilih Conduit."
+            "value" : "Lencananya menampilkan huruf pertama nama. Kosongkan untuk kembali ke nama otomatis."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il suo badge mostra la prima lettera del nome. Lascia vuoto per tornare al nome scelto da Conduit."
+            "value" : "Il suo badge mostra la prima lettera del nome. Lascia vuoto per tornare al nome automatico."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "バッジには名前の最初の文字が表示されます。空欄にすると Conduit が付けた名前に戻ります。"
+            "value" : "バッジには名前の最初の文字が表示されます。空欄にすると自動の名前に戻ります。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "배지에는 이름의 첫 글자가 표시됩니다. 비워 두면 Conduit이 정한 이름으로 돌아갑니다."
+            "value" : "배지에는 이름의 첫 글자가 표시됩니다. 비워 두면 자동 이름으로 돌아갑니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jego plakietka pokazuje pierwszą literę nazwy. Zostaw puste, aby wrócić do nazwy wybranej przez Conduit."
+            "value" : "Jego plakietka pokazuje pierwszą literę nazwy. Zostaw puste, aby wrócić do nazwy automatycznej."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O selo mostra a primeira letra do nome. Deixe em branco para voltar ao nome que o Conduit escolheu."
+            "value" : "O selo mostra a primeira letra do nome. Deixe em branco para voltar ao nome automático."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "На значке — первая буква названия. Оставьте поле пустым, чтобы вернуть название, выбранное Conduit."
+            "value" : "На значке — первая буква названия. Оставьте поле пустым, чтобы вернуть автоматическое название."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Rozeti adın ilk harfini gösterir. Conduit’in seçtiği ada dönmek için boş bırakın."
+            "value" : "Rozeti adın ilk harfini gösterir. Otomatik ada dönmek için boş bırakın."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "徽章显示名称的首字母。留空即可恢复 Conduit 选的名称。"
+            "value" : "徽章显示名称的首字母。留空即可恢复自动名称。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "徽章顯示名稱的首字母。留空即可恢復 Conduit 選的名稱。"
+            "value" : "徽章顯示名稱的首字母。留空即可恢復自動名稱。"
           }
         }
       }

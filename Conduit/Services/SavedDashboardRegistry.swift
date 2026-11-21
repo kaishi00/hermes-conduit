@@ -153,14 +153,17 @@ enum SavedDashboardLabel {
 
     /// A badge's mark for each dashboard of a group, in order: the first
     /// letter of its name, or, where two names start alike, its place in
-    /// the group (1, 2, 3), so no two badges read the same.
+    /// the group (1, 2, 3). Should a place number match another's letter
+    /// (a name starting "2"), every badge is its place, so no two read the
+    /// same.
     static func badgeLetters(_ names: [String]) -> [String] {
         let letters = names.map { name in
             name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "?"
         }
-        return letters.enumerated().map { index, letter in
+        let marks = letters.enumerated().map { index, letter in
             letters.filter { $0 == letter }.count > 1 ? String(index + 1) : letter
         }
+        return Set(marks).count == marks.count ? marks : names.indices.map { String($0 + 1) }
     }
 
     private static func unique(_ base: String, among existingLabels: [String]) -> String {

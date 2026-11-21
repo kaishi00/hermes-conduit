@@ -141,6 +141,8 @@ final class SavedDashboardRegistryTests: XCTestCase {
         // Two names starting alike: each its place in the group.
         XCTAssertEqual(SavedDashboardLabel.badgeLetters(["192.168.1.5", "192.168.1.6", "Studio"]), ["1", "2", "S"])
         XCTAssertEqual(SavedDashboardLabel.badgeLetters(["Studio", " ", "Lab"]), ["S", "?", "L"])
+        // A place number that would match another's letter: every badge its place.
+        XCTAssertEqual(SavedDashboardLabel.badgeLetters(["192.168.1.5", "192.168.1.6", "2nd home"]), ["1", "2", "3"])
     }
 
     // MARK: - Migration decision (pure)

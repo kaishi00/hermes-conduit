@@ -101,6 +101,10 @@ struct SavedDashboardsSettingsDetail: View {
         ) {
             TextField(AppLocalization.string("Name"), text: $newName)
                 .accessibilityIdentifier("settings.dashboard.name")
+                // As long as Rename keeps, so what's typed is what's saved.
+                .onChange(of: newName) { _, name in
+                    if name.count > SavedDashboardLabel.maxLength { newName = String(name.prefix(SavedDashboardLabel.maxLength)) }
+                }
             Button(AppLocalization.string("Save")) {
                 if let row = renaming { appState.renameDashboard(row.dashboard.id, to: newName) }
                 renaming = nil
@@ -109,7 +113,7 @@ struct SavedDashboardsSettingsDetail: View {
                 renaming = nil
             }
         } message: {
-            Text(AppLocalization.string("Its badge shows the name's first letter. Leave it empty to go back to the name Conduit picked.", table: .connection))
+            Text(AppLocalization.string("Its badge shows the name's first letter. Leave it empty to go back to the automatic name.", table: .connection))
         }
         .callEndingSwitchConfirmation($pendingCallEndingSwitch)
         // Adding a dashboard is a sheet over this page: Cancel leaves the

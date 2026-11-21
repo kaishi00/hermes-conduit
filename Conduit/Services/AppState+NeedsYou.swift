@@ -67,6 +67,10 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
+            // Its plugin's capabilities, read once per kept connection, so a
+            // dashboard on an IP address takes its Hermes' name with no bots
+            // shown (Dashboard names).
+            _ = await combinedDashboardCapabilities(id, runtime)
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
             // dashboard of this one's Hermes (issue 2631), bots or none

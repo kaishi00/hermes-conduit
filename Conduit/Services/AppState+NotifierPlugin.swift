@@ -163,6 +163,8 @@ extension AppState {
         notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
+        // An update that brings the name lands it with the report.
+        noteDashboardHermesName(activeDashboardID, NotifierPluginStatus.hermesName(from: json))
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }
