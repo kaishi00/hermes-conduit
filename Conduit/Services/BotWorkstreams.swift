@@ -1069,9 +1069,10 @@ enum BotWorkLinks {
         var offset = 0
         for line in text.components(separatedBy: "\n") {
             let length = (line as NSString).length
+            // A CRLF line's \r is counted in its length but closes like a bare line, as MarkdownText reads it.
             let trimmed = line
                 .replacingOccurrences(of: "^\\s*(?:>\\s?)*", with: "", options: .regularExpression)
-                .trimmingCharacters(in: .whitespaces)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
             if let open = fence {
                 if open.closes(trimmed) {
                     ranges.append(NSRange(location: fenceStart, length: offset + length - fenceStart))
@@ -1111,8 +1112,9 @@ enum BotWorkLinks {
         if text.contains("@session:") {
             let quoted = codeRanges(text)
             let ns = NSMutableString(string: text)
+            // The reference goes only when neither the link nor the reference itself is quoted in code.
             for match in desktopRef.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed()
-            where !inCode(quoted, match.range) {
+            where !quoted.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
                 ns.replaceCharacters(in: match.range, with: (text as NSString).substring(with: match.range(at: 1)))
             }
             text = ns as String

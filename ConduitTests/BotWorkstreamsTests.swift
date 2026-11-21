@@ -658,6 +658,11 @@ extension BotModeTests {
         // A code span in a link's own title leaves it a card.
         let codeTitled = try XCTUnwrap(BotWorkLinks.split("Done: [W7: fix the `nil` crash](conduit://session/w7)."))
         XCTAssertEqual(codeTitled.links.map(\.ref), ["W7"])
+        // A CRLF fence closes, and a reference quoted after a link in prose stays, with the card.
+        let crlf = try XCTUnwrap(BotWorkLinks.split("```\r\ncode\r\n```\r\n[Open W3](conduit://session/c)"))
+        XCTAssertEqual(crlf.links.map(\.ref), ["W3"])
+        let quotedRef = try XCTUnwrap(BotWorkLinks.split("[Open W3](conduit://session/c) `@session:p/c` more"))
+        XCTAssertEqual(quotedRef.text, "`@session:p/c` more")
     }
 
     /// A read asked for after an action, while one was under way, makes
