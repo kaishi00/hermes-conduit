@@ -1056,7 +1056,7 @@ enum BotWorkLinks {
     /// it within its paragraph (so ``a ` b`` is one span), as the desktop's
     /// work links read it (desktop#228).
     private static let inlineCode = try! NSRegularExpression(
-        pattern: #"(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\1(?!`)"#)
+        pattern: #"(?<!`)(`+)(?!`)(?:(?!\r?\n[ \t]*\r?\n)[\s\S])*?(?<!`)\1(?!`)"#)
 
     /// Where a reply has code, in UTF-16 offsets: its fenced blocks, read as
     /// MarkdownText reads them (MarkdownFence, a fence in a quote included;
@@ -1112,9 +1112,12 @@ enum BotWorkLinks {
         if text.contains("@session:") {
             let quoted = codeRanges(text)
             let ns = NSMutableString(string: text)
-            // The reference goes only when neither the link nor the reference itself is quoted in code.
-            for match in desktopRef.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed()
-            where !quoted.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) {
+            // The reference goes only when neither the link starts in code nor the reference after it is quoted
+            // (a code span in the link's own title doesn't count).
+            for match in desktopRef.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+                let link = match.range(at: 1)
+                let after = NSRange(location: NSMaxRange(link), length: NSMaxRange(match.range) - NSMaxRange(link))
+                if inCode(quoted, link) || quoted.contains(where: { NSIntersectionRange($0, after).length > 0 }) { continue }
                 ns.replaceCharacters(in: match.range, with: (text as NSString).substring(with: match.range(at: 1)))
             }
             text = ns as String
