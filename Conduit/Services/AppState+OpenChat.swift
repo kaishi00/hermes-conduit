@@ -154,7 +154,7 @@ extension AppState {
         return await withTaskGroup(of: Bool.self) { group in
             group.addTask { @MainActor [weak self] in
                 guard let self else { return false }
-                for await connected in self.$isConnected.values where connected { return true }
+                for await connected in self.isConnectedValues.values where connected { return true }
                 return false
             }
             group.addTask {

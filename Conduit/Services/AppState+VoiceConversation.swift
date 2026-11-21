@@ -1331,7 +1331,7 @@ extension AppState {
         guard isConnected else { return }
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                for await connected in self.$isConnected.values where !connected { return }
+                for await connected in self.isConnectedValues.values where !connected { return }
             }
             group.addTask { try? await Task.sleep(for: timeout) }
             await group.next()
@@ -1358,7 +1358,7 @@ extension AppState {
     private func awaitTransportForVoiceRequest(timeout: Duration) async {
         await withTaskGroup(of: Void.self) { group in
             group.addTask { @MainActor in
-                let states = self.$isConnected.combineLatest(self.$isConnecting, self.shownChat.$turnState).values
+                let states = self.isConnectedValues.combineLatest(self.isConnectingValues, self.shownChat.$turnState).values
                 for await (connected, connecting, turn) in states {
                     if connected, turn != .reconnecting, turn != .synchronizing { return }
                     // Signed out, or sign-in needed: no reconnect is coming.

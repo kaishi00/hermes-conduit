@@ -1177,7 +1177,7 @@ final class CarPlayVoiceCoordinator {
             appState.$sessions.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$pinnedSessionIDs.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$pinnedChatOrder.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.$isConnected.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.isConnectedValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
             appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
@@ -2179,7 +2179,7 @@ final class CarPlayVoiceCoordinator {
         if appState.isConnected { return true }
         return await withTaskGroup(of: Bool.self) { group in
             group.addTask { @MainActor in
-                let states = appState.$isConnected.combineLatest(appState.$isConnecting).values
+                let states = appState.isConnectedValues.combineLatest(appState.isConnectingValues).values
                 for await (connected, connecting) in states {
                     if connected { return true }
                     // Neither connected nor connecting — including on the

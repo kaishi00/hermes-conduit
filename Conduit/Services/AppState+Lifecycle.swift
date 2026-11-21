@@ -198,7 +198,7 @@ extension AppState {
         shortcutConnectHeld = true
         Task { @MainActor [weak self] in
             guard let self else { return }
-            for await connecting in self.$isConnecting.values where !connecting { break }
+            for await connecting in self.isConnectingValues.values where !connecting { break }
             self.shortcutConnectHeld = false
         }
     }

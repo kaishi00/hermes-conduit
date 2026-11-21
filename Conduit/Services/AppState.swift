@@ -31,24 +31,50 @@ final class AppState: ObservableObject {
 
     // MARK: - Connection
 
-    @Published var connection: HermesConnection? {
-        didSet {
+    /// The dashboard on screen's live state (`DashboardRuntime`): its
+    /// connection so far. Its changes publish as AppState's
+    /// (`runtimeOnScreenChanges`).
+    @Published private(set) var runtimeOnScreen = DashboardRuntime()
+    /// The runtime the app acts on: the one on screen, except while another
+    /// dashboard's answer or event applies to its own (`act(onRuntime:)`).
+    var shownRuntime: DashboardRuntime { runtimeInScope ?? runtimeOnScreen }
+    /// Another dashboard's runtime while its answer or event applies.
+    var runtimeInScope: DashboardRuntime?
+    /// Whether the app acts on the dashboard on screen: what reacts on
+    /// screen (the forwarders' side effects) runs only then.
+    var actingOnRuntimeOnScreen: Bool { runtimeInScope == nil || runtimeInScope === runtimeOnScreen }
+    var runtimeOnScreenChanges: AnyCancellable?
+
+    var connection: HermesConnection? {
+        get { shownRuntime.connection }
+        set {
+            let oldValue = shownRuntime.connection
+            shownRuntime.connection = newValue
+            guard actingOnRuntimeOnScreen else { return }
             if oldValue?.baseUrl != connection?.baseUrl {
                 agentSettings.leave(scope: agentSettingsScope)
                 presentedScreens.leave()
             }
         }
     }
-    @Published var client: HermesClient? {
-        didSet {
+    var client: HermesClient? {
+        get { shownRuntime.client }
+        set {
+            let oldValue = shownRuntime.client
+            shownRuntime.client = newValue
+            guard actingOnRuntimeOnScreen else { return }
             // Jobs restored before this client existed name their profiles
             // on it, so a cancel or submit about one reaches its profile
             // (#2626's review).
             if client != nil, client !== oldValue, voiceJobLedgerRestoredKey != nil { noteVoiceJobProfiles() }
         }
     }
-    @Published var isConnected = false {
-        didSet {
+    var isConnected: Bool {
+        get { shownRuntime.isConnected }
+        set {
+            let oldValue = shownRuntime.isConnected
+            shownRuntime.isConnected = newValue
+            guard actingOnRuntimeOnScreen else { return }
             if isConnected {
                 if widgetAwaitingInteractiveAuthenticationDashboardID == activeDashboardID {
                     widgetAwaitingInteractiveAuthenticationDashboardID = nil
@@ -69,7 +95,23 @@ final class AppState: ObservableObject {
             if oldValue, !isConnected { backgroundConnectionGrace.end() }
         }
     }
-    @Published var isConnecting = false
+    var isConnecting: Bool {
+        get { shownRuntime.isConnecting }
+        set { shownRuntime.isConnecting = newValue }
+    }
+    /// The dashboard on screen's `isConnected` as it changes, following the
+    /// runtime on screen (as `$isConnected` did).
+    var isConnectedValues: AnyPublisher<Bool, Never> {
+        $runtimeOnScreen.map { $0.$isConnected }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// What the dashboard on screen's plugin serves, as it changes.
+    var notifierPluginValues: AnyPublisher<NotifierPluginStatus, Never> {
+        $runtimeOnScreen.map { $0.$notifierPlugin }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's `isConnecting` as it changes.
+    var isConnectingValues: AnyPublisher<Bool, Never> {
+        $runtimeOnScreen.map { $0.$isConnecting }.switchToLatest().eraseToAnyPublisher()
+    }
     /// A failed sign-in refresh or ticket kept quiet during those retries,
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
@@ -216,7 +258,10 @@ final class AppState: ObservableObject {
     var profileSwitchSlideIn: Task<Void, Never>?
     var profileSwitchEndWaiters: [CheckedContinuation<Void, Never>] = []
     @Published var appIconChoice: AppIconChoice
-    @Published var dashboardTicketBridge: DashboardTicketBridge?
+    var dashboardTicketBridge: DashboardTicketBridge? {
+        get { shownRuntime.dashboardTicketBridge }
+        set { shownRuntime.dashboardTicketBridge = newValue }
+    }
     /// Combined dashboards left while connected, each still holding its
     /// socket and bridge so a switch back takes it up at once
     /// (AppState+CombinedDashboards.swift).
@@ -2648,7 +2693,10 @@ final class AppState: ObservableObject {
         get { shownChat.reconciliation }
         set { shownChat.reconciliation = newValue }
     }
-    var activeClientEpoch = UUID()
+    var activeClientEpoch: UUID {
+        get { shownRuntime.clientEpoch }
+        set { shownRuntime.clientEpoch = newValue }
+    }
     var responseHapticConclusionTask: Task<Void, Never>?
     var responseHaptics = ResponseHapticState()
     var scenePhaseTask: Task<Void, Never>?
@@ -2756,7 +2804,10 @@ final class AppState: ObservableObject {
     /// later run would wait on it in vain.
     var shortcutConnectHeld = false
     var owedPostConnectBootstrap: OwedPostConnectBootstrap?
-    var connectedAt: Date?
+    var connectedAt: Date? {
+        get { shownRuntime.connectedAt }
+        set { shownRuntime.connectedAt = newValue }
+    }
     var sessionCatalogCache = SessionCatalogCache()
     /// Counts catalog reads as they start, so the slow read a chat sync left
     /// for later can tell that a newer read began while it was paging.
@@ -2966,10 +3017,10 @@ final class AppState: ObservableObject {
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
-        self._notifierPlugin = Published(wrappedValue: NotifierPluginStatus(
+        self._runtimeOnScreen = Published(wrappedValue: DashboardRuntime(notifierPlugin: NotifierPluginStatus(
             followsMain: noticeChannel.followsMain,
             asksToUpdate: noticeChannel.asksToUpdate
-        ))
+        )))
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
@@ -3072,6 +3123,11 @@ final class AppState: ObservableObject {
         shownChatChanges = chatOnScreen.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
+        // The runtime on screen's, whichever it is.
+        runtimeOnScreenChanges = $runtimeOnScreen
+            .map { $0.objectWillChange }
+            .switchToLatest()
+            .sink { [weak self] _ in self?.objectWillChange.send() }
         shownBotChanges = shownBot.objectWillChange.sink { [weak self] _ in
             self?.objectWillChange.send()
         }
@@ -3700,11 +3756,15 @@ final class AppState: ObservableObject {
     }()
 
     /// What the host's notifier plugin serves; Settings nudges an update.
-    @Published var notifierPlugin = NotifierPluginStatus() {
+    var notifierPlugin: NotifierPluginStatus {
+        get { shownRuntime.notifierPlugin }
         // A plugin that just said it takes on-screen reports gets the turn
         // already running; one that answered without Pulse ends the Pulse
         // this dashboard remembered.
-        didSet {
+        set {
+            let oldValue = shownRuntime.notifierPlugin
+            shownRuntime.notifierPlugin = newValue
+            guard actingOnRuntimeOnScreen else { return }
             // Before the host has answered, the manager it last reported.
             let askedBefore = PluginUpdateAsk.managedAsk
             PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy ?? (notifierPlugin.state == .unknown
