@@ -1985,12 +1985,14 @@ extension CrossProfilePresentationCacheTests {
         let around = appState.combinedRoomTilesAroundThisDashboard
         XCTAssertEqual(around.before.map(\.roomID), ["plans", "trip", "zoo"])
         XCTAssertTrue(around.after.isEmpty)
-        // Saved after VPS, Mac's go after VPS' own instead.
+        // Saved after VPS, Mac's go after VPS' own instead; Sam's "zoo"
+        // now shows from VPS' copy, VPS being the first with one.
         let savedOrder = appState.savedDashboardRegistry
         appState.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: vps.id, dashboards: Array(savedOrder.dashboards.reversed()))
         let aroundAfter = appState.combinedRoomTilesAroundThisDashboard
         XCTAssertTrue(aroundAfter.before.isEmpty)
-        XCTAssertEqual(aroundAfter.after.map(\.roomID), ["plans", "trip", "zoo"])
+        XCTAssertEqual(aroundAfter.after.map(\.roomID), ["plans", "trip"])
+        XCTAssertEqual(appState.shownLinkedRoomCopyRows.map(\.roomID), ["zoo", "solo"])
         appState.savedDashboardRegistry = savedOrder
         appState.defaults.removeObject(forKey: macOrderKey)
         // A room id another Hermes uses for another room (no member shared)
