@@ -5595,7 +5595,7 @@ caption describes the pickers)
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-11-21, #PRNUM (#2949 checked here: a match's provider caption leads with its logo, see Provider logos and quota on provider rows); 2026-11-19, #2852 (the model sheet's typed-id menu keeps out an id hidden with Edit whose row left the catalog); 2026-11-19, #2847 (a typed model id, issue 2841: "Use “…” as a model ID" under the matches in the model sheet and every Model page, desktop#145 in the desktop panel); 2026-11-11, #2185 (the page's search sits under its title, the Kanban model sheet's too; see Search on a page under the tabs); 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-21, #2951 (#2949 checked here: a match's provider caption leads with its logo, see Provider logos and quota on provider rows); 2026-11-19, #2852 (the model sheet's typed-id menu keeps out an id hidden with Edit whose row left the catalog); 2026-11-19, #2847 (a typed model id, issue 2841: "Use “…” as a model ID" under the matches in the model sheet and every Model page, desktop#145 in the desktop panel); 2026-11-11, #2185 (the page's search sits under its title, the Kanban model sheet's too; see Search on a page under the tabs); 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Model lists grouped by provider
 
@@ -5646,7 +5646,7 @@ windows stay there) · search matches and Quick picks (done, #2949: the
 provider caption under a model leads with its logo) · the Model sheet's
 model card (done, #2949: the provider's logo in place of the cube) · a
 setting's Model page's top card (done, #2949: a logo tile added beside its
-lines; #PRNUM: a cube there for a model on no listed provider, as in the sheet) · a per-model rate limit (not needed
+lines; #2951: a cube there for a model on no listed provider, as in the sheet) · a per-model rate limit (not needed
 on a provider row: it stays on Settings > Usage) · the Plan limits widget
 (done: it reads the same rows with the same ProviderQuota) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
@@ -5669,7 +5669,7 @@ Models & providers line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-21, #PRNUM (the Model page's top card keeps a cube for a model on no listed provider, as the sheet's does; siblings say which card changed how); 2026-11-21, #2949 (logos on the first screen too: the model card, Quick picks and search matches, and the Model page's top card); 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
+**Checked:** 2026-11-21, #2951 (the Model page's top card keeps a cube for a model on no listed provider, as the sheet's does; siblings say which card changed how); 2026-11-21, #2949 (logos on the first screen too: the model card, Quick picks and search matches, and the Model page's top card); 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
