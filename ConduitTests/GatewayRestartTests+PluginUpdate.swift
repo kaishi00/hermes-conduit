@@ -1200,6 +1200,43 @@ extension GatewayRestartTests {
         XCTAssertEqual(reports.count, 1)
     }
 
+    func testAScanTheHostHeldIsShownAndUpdateAnywayRetriesWithForce() async throws {
+        let held: [String: Any] = [
+            "id": "j1", "step": "failed", "failed_step": "downloading", "code": "scan_blocked",
+            "scan_verdict": "caution", "scan_finding_count": 9, "detail": "BLOCKED: caution verdict",
+            "scan_findings": [["severity": "high", "category": "exec", "file": "tests/x.py", "line": 7, "description": "subprocess"]],
+        ]
+        let host = PluginHost()
+        host.selfUpdateJobs = [held]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.profile = "coder"
+        let outcome = await updater.run { _ in }
+        guard case .scanHeld(let hold) = outcome else { return XCTFail("\(outcome)") }
+        XCTAssertEqual(hold.findingCount, 9)
+        XCTAssertEqual(hold.findingLines, ["high · exec · tests/x.py:7: subprocess"])
+        XCTAssertFalse(host.selfUpdatePaths.contains { $0.contains("force=") })
+        let row = try XCTUnwrap(NotifierPluginUpdateStatusView.row(for: outcome, plugin: NotifierPluginStatus()))
+        XCTAssertTrue(row.detail?.contains("• high · exec · tests/x.py:7: subprocess") == true)
+
+        // Update Anyway: the same job route, with force.
+        let again = PluginHost()
+        again.selfUpdateJobs = [["id": "j2", "step": "done", "loaded_version": "0.192.0"]]
+        var accepting = again.updater()
+        accepting.onHost = true
+        accepting.profile = "coder"
+        accepting.acceptScan = true
+        _ = await accepting.run { _ in }
+        XCTAssertEqual(again.selfUpdatePaths.first.map { $0.contains("profile=coder") && $0.hasSuffix("&force=true") }, true)
+
+        // A dangerous verdict can't be accepted: a plain failure.
+        var dangerous = held
+        dangerous["scan_verdict"] = "dangerous"
+        XCTAssertEqual(NotifierPluginUpdater.hostOutcome(dangerous), .failed(detail: "BLOCKED: caution verdict"))
+        XCTAssertEqual(NotifierPluginUpdater.selfUpdateRequestPath(profile: nil, acceptScan: true),
+                       NotifierPluginUpdater.selfUpdatePath + "?force=true")
+    }
+
     func testAHostThatCantRunTheUpdateLeavesTheStepsToConduit() async {
         let host = PluginHost()
         host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 501, detail: "This Hermes can't run the plugin update on its own")

@@ -25,6 +25,9 @@ enum NotifierPluginUpdateState: Equatable {
     /// Hermes refused it). `detail` is Hermes' own words when it gave any.
     case needsDashboardRestart(detail: String?)
     case failed(detail: String?)
+    /// Hermes' install scan held the update for confirmation (a caution
+    /// verdict, plugin 0.192.0+): Update Anyway runs it again accepting it.
+    case scanHeld(NotifierPluginScanHold)
     /// Conduit stopped following an update the host still runs; the
     /// host's notification says how it ends.
     case runningOnHost
@@ -34,6 +37,46 @@ enum NotifierPluginUpdateState: Equatable {
     var isInProgress: Bool {
         if case .updating = self { return true }
         return false
+    }
+}
+
+/// What Hermes' install scan found when it held an update for confirmation:
+/// the worst few findings the plugin kept, and how many there were.
+struct NotifierPluginScanHold: Equatable {
+    struct Finding: Equatable {
+        var severity: String
+        var category: String?
+        var file: String?
+        var line: Int?
+        var description: String?
+    }
+
+    var findings: [Finding]
+    var findingCount: Int
+    /// Hermes' own words.
+    var detail: String?
+
+    /// A failed job's scan refusal, when it can be accepted: only a caution
+    /// verdict. A dangerous one Hermes refuses even when accepted.
+    init?(job: [String: Any]) {
+        guard job["code"] as? String == "scan_blocked", job["scan_verdict"] as? String == "caution" else { return nil }
+        findings = (job["scan_findings"] as? [[String: Any]] ?? []).map {
+            Finding(severity: $0["severity"] as? String ?? "", category: $0["category"] as? String,
+                    file: $0["file"] as? String, line: $0["line"] as? Int, description: $0["description"] as? String)
+        }
+        findingCount = max(job["scan_finding_count"] as? Int ?? 0, findings.count)
+        detail = (job["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
+    /// One line per finding: "high · exec · tools/run.py:12: runs a subprocess".
+    var findingLines: [String] {
+        findings.map { finding in
+            let place = finding.file.map { file in finding.line.map { "\(file):\($0)" } ?? file }
+            let head = [finding.severity.isEmpty ? nil : finding.severity, finding.category, place]
+                .compactMap { $0 }.joined(separator: " · ")
+            guard let description = finding.description, !description.isEmpty else { return head }
+            return head.isEmpty ? description : "\(head): \(description)"
+        }
     }
 }
 
@@ -162,6 +205,9 @@ struct NotifierPluginUpdater {
     /// Only the restarts: a host that manages the plugin (`managedBy`) has
     /// put the new plugin on disk itself, and refuses a pull from Conduit.
     var restartOnly = false
+    /// The user accepted Hermes' install scan's caution verdict
+    /// (`.scanHeld`): the host's job pulls with force.
+    var acceptScan = false
     /// The run's first step: a restart-only run downloads nothing.
     private var firstStep: NotifierPluginUpdateStep { restartOnly ? .restartingGateway(nil) : .downloading }
     var profile: String?
@@ -378,7 +424,7 @@ struct NotifierPluginUpdater {
     private func runOnHost(request: Request, progress: (NotifierPluginUpdateState) -> Void,
                            restartedForHermes: Bool = false) async -> NotifierPluginUpdateState? {
         progress(.updating(firstStep))
-        let path = profile.map { DashboardPath.withProfile(Self.selfUpdatePath, profile: $0) } ?? Self.selfUpdatePath
+        let path = Self.selfUpdateRequestPath(profile: profile, acceptScan: acceptScan)
         var job: [String: Any]
         do {
             let started = try await request(path, "POST", nil)
@@ -550,13 +596,24 @@ struct NotifierPluginUpdater {
         }
     }
 
+    /// The host's update route, for `profile`; `acceptScan` adds `force`,
+    /// which only Hermes' pull reads (a dangerous verdict it refuses even so).
+    static func selfUpdateRequestPath(profile: String?, acceptScan: Bool) -> String {
+        let path = profile.map { DashboardPath.withProfile(selfUpdatePath, profile: $0) } ?? selfUpdatePath
+        guard acceptScan else { return path }
+        return path + (path.contains("?") ? "&" : "?") + "force=true"
+    }
+
     /// How an ended job went; nil while it runs.
     static func hostOutcome(_ job: [String: Any]) -> NotifierPluginUpdateState? {
         let detail = (job["detail"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         switch job["step"] as? String ?? "" {
         case "done": return .updated(version: job["loaded_version"] as? String ?? job["version"] as? String)
         case "failed" where job["code"] as? String == "restart_needed": return .needsDashboardRestart(detail: detail)
-        case "failed": return .failed(detail: detail)
+        case "failed":
+            // Only a caution verdict can be accepted; a dangerous one stays a failure.
+            if let hold = NotifierPluginScanHold(job: job) { return .scanHeld(hold) }
+            return .failed(detail: detail)
         default: return nil
         }
     }

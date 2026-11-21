@@ -9670,6 +9670,416 @@
           }
         }
       }
+    },
+    "Hermes held the update for your OK" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes wartet vor dem Update auf dein OK"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes retuvo la actualización hasta que la apruebes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes attend ton accord pour la mise à jour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes menahan pembaruan sampai kamu setuju"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes attende il tuo OK per l’aggiornamento"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes は更新の承認を待っています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 업데이트 승인을 기다리고 있어요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes czeka na Twoją zgodę na aktualizację"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes aguarda sua aprovação para atualizar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ждёт вашего согласия на обновление"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes güncelleme için onayını bekliyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 正在等你确认此更新"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 正在等你確認此更新"
+          }
+        }
+      }
+    },
+    "Hermes' install scan on the host asks you to confirm this update." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Installationsprüfung von Hermes auf dem Host möchte, dass du dieses Update bestätigst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El análisis de instalación de Hermes en el host te pide que confirmes esta actualización."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’analyse d’installation de Hermes sur l’hôte te demande de confirmer cette mise à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemindaian instalasi Hermes di host meminta kamu mengonfirmasi pembaruan ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La scansione di installazione di Hermes sull’host ti chiede di confermare questo aggiornamento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの Hermes のインストールスキャンが、この更新の確認を求めています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트의 Hermes 설치 검사가 이 업데이트를 확인해 달라고 요청해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skan instalacji Hermesa na hoście prosi o potwierdzenie tej aktualizacji."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A verificação de instalação do Hermes no host pede que você confirme esta atualização."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка установки Hermes на хосте просит подтвердить это обновление."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana makinedeki Hermes kurulum taraması bu güncellemeyi onaylamanı istiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上 Hermes 的安装扫描要求你确认此更新。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上 Hermes 的安裝掃描要求你確認此更新。"
+          }
+        }
+      }
+    },
+    "Hermes' install scan on the host asks you to confirm this update. Findings: %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Installationsprüfung von Hermes auf dem Host möchte, dass du dieses Update bestätigst. Funde: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El análisis de instalación de Hermes en el host te pide que confirmes esta actualización. Hallazgos: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’analyse d’installation de Hermes sur l’hôte te demande de confirmer cette mise à jour. Signalements : %lld"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemindaian instalasi Hermes di host meminta kamu mengonfirmasi pembaruan ini. Temuan: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La scansione di installazione di Hermes sull’host ti chiede di confermare questo aggiornamento. Rilevamenti: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ホストの Hermes のインストールスキャンが、この更新の確認を求めています。検出数: %lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "호스트의 Hermes 설치 검사가 이 업데이트를 확인해 달라고 요청해요. 발견 항목: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skan instalacji Hermesa na hoście prosi o potwierdzenie tej aktualizacji. Wykryte: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A verificação de instalação do Hermes no host pede que você confirme esta atualização. Ocorrências: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка установки Hermes на хосте просит подтвердить это обновление. Находок: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ana makinedeki Hermes kurulum taraması bu güncellemeyi onaylamanı istiyor. Bulgular: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主机上 Hermes 的安装扫描要求你确认此更新。发现项：%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "主機上 Hermes 的安裝掃描要求你確認此更新。發現項目：%lld"
+          }
+        }
+      }
+    },
+    "Not shown here: %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hier nicht angezeigt: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No se muestran aquí: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non affichés ici : %lld"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ditampilkan di sini: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non mostrati qui: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここに表示されていないもの: %lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기에 표시되지 않은 항목: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Niewyświetlone tutaj: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não mostradas aqui: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не показано здесь: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Burada gösterilmeyen: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处未显示：%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此處未顯示：%lld"
+          }
+        }
+      }
+    },
+    "An older Hermes' scan often flags the plugin's own tests. Update Anyway accepts the scan for this update only; updating Hermes clears it for good." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Prüfung eines älteren Hermes meldet oft die eigenen Tests des Plugins. „Trotzdem aktualisieren“ akzeptiert die Prüfung nur für dieses Update; ein Hermes-Update behebt es dauerhaft."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El análisis de un Hermes antiguo suele marcar las pruebas del propio plugin. Actualizar igualmente acepta el análisis solo para esta actualización; actualizar Hermes lo resuelve para siempre."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L’analyse d’un ancien Hermes signale souvent les propres tests du plugin. Mettre à jour quand même accepte l’analyse pour cette mise à jour seulement ; mettre Hermes à jour règle le problème pour de bon."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemindaian Hermes versi lama sering menandai tes milik plugin itu sendiri. Perbarui Saja menerima pemindaian hanya untuk pembaruan ini; memperbarui Hermes menyelesaikannya untuk seterusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La scansione di un Hermes meno recente segnala spesso i test del plugin stesso. Aggiorna comunque accetta la scansione solo per questo aggiornamento; aggiornare Hermes risolve per sempre."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "古い Hermes のスキャンは、プラグイン自身のテストを検出することがよくあります。「このまま更新」は今回の更新に限りスキャン結果を受け入れます。Hermes を更新すれば今後は出なくなります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "오래된 Hermes의 검사는 플러그인 자체 테스트를 자주 표시해요. 그래도 업데이트는 이번 업데이트에 한해 검사를 받아들여요. Hermes를 업데이트하면 다시 나타나지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Skan starszego Hermesa często oznacza własne testy wtyczki. Aktualizuj mimo to akceptuje skan tylko dla tej aktualizacji; aktualizacja Hermesa rozwiązuje to na stałe."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A verificação de um Hermes antigo costuma marcar os próprios testes do plugin. Atualizar Mesmo Assim aceita a verificação só para esta atualização; atualizar o Hermes resolve de vez."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Проверка старого Hermes часто помечает собственные тесты плагина. «Всё равно обновить» принимает проверку только для этого обновления; обновление Hermes решает это навсегда."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eski bir Hermes'in taraması çoğu zaman eklentinin kendi testlerini işaretler. Yine de Güncelle taramayı yalnızca bu güncelleme için kabul eder; Hermes'i güncellemek sorunu kalıcı olarak çözer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "旧版 Hermes 的扫描常会标出插件自带的测试。“仍然更新”只为这一次更新接受扫描结果；更新 Hermes 可彻底解决。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "舊版 Hermes 的掃描常會標出外掛自帶的測試。「仍要更新」只為這一次更新接受掃描結果；更新 Hermes 可徹底解決。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
