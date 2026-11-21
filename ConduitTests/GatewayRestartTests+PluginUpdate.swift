@@ -107,6 +107,11 @@ extension GatewayRestartTests {
         stillOld.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "b")
         XCTAssertFalse(stillOld.settles(waiting))
         XCTAssertFalse(stillOld.settles(.failed(detail: nil)))
+        // A held scan pulled nothing: it settles only once the offered version runs.
+        let held = NotifierPluginScanHold(job: ["code": "scan_blocked", "scan_verdict": "caution"]).map { NotifierPluginUpdateState.scanHeld($0) }
+        XCTAssertEqual(held.map(served.settles), true)
+        XCTAssertEqual(held.map(stillOld.settles), false)
+        XCTAssertEqual(held?.endedWithoutUpdating, true)
     }
 
     func testTheNoticeOffersNothingBeforeTheHostAnswers() {

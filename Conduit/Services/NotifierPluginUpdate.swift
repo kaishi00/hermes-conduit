@@ -38,6 +38,14 @@ enum NotifierPluginUpdateState: Equatable {
         if case .updating = self { return true }
         return false
     }
+
+    /// A failure, or a held scan: nothing the update pulled can be running.
+    var endedWithoutUpdating: Bool {
+        switch self {
+        case .failed, .scanHeld: return true
+        default: return false
+        }
+    }
 }
 
 /// What Hermes' install scan found when it held an update for confirmation:
@@ -71,12 +79,20 @@ struct NotifierPluginScanHold: Equatable {
     /// One line per finding: "high · exec · tools/run.py:12: runs a subprocess".
     var findingLines: [String] {
         findings.map { finding in
-            let place = finding.file.map { file in finding.line.map { "\(file):\($0)" } ?? file }
-            let head = [finding.severity.isEmpty ? nil : finding.severity, finding.category, place]
-                .compactMap { $0 }.joined(separator: " · ")
-            guard let description = finding.description, !description.isEmpty else { return head }
-            return head.isEmpty ? description : "\(head): \(description)"
+            Self.oneLine(line(for: finding))
         }
+    }
+
+    private static func oneLine(_ text: String) -> String {
+        text.split(whereSeparator: \.isNewline).joined(separator: " ")
+    }
+
+    private func line(for finding: Finding) -> String {
+        let place = finding.file.map { file in finding.line.map { "\(file):\($0)" } ?? file }
+        let head = [finding.severity.isEmpty ? nil : finding.severity, finding.category, place]
+            .compactMap { $0 }.joined(separator: " · ")
+        guard let description = finding.description, !description.isEmpty else { return head }
+        return head.isEmpty ? description : "\(head): \(description)"
     }
 }
 
