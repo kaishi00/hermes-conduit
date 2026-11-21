@@ -105,8 +105,10 @@ final class AppStoreScreenshotTests: XCTestCase {
                 if capabilities.waitForExistence(timeout: 5) {
                     capabilities.tap()
                     // The skills load from the dashboard; wait them out.
+                    if !app.textFields["capabilities.search"].waitForExistence(timeout: 10) {
+                        XCTFail("The Capabilities screen never opened")
+                    }
                     let loading = app.staticTexts["Loading capabilities…"]
-                    _ = loading.waitForExistence(timeout: 3)
                     if !loading.waitForNonExistence(timeout: 30) {
                         XCTFail("Capabilities never finished loading")
                     }
