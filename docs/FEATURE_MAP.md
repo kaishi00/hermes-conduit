@@ -5814,7 +5814,7 @@ approval's sheet, Group Info and an agent's choices page (done, Eric
 2026-11-07: they didn't match Bots Home's sheets) · lists that already draw their own backdrop, such as Chats, Tasks, Needs you
 and Bots Home (not needed: already in V2's look)
 
-**Desktop app:** not applicable: the iOS Settings look; desktop's settings grid is its own.
+**Desktop app:** partly: desktop's settings grid is its own, but its choices follow this entry's rule, a rounded menu picker for a choice and segmented buttons for two or three short ones (desktop#244).
 
 **Code**
 - The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings`, `.settingsPrimary` and `.settingsDestructive`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
