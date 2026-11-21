@@ -344,6 +344,10 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertNotNil((wanted["rooms"] as? [String: Any])?["name:Council"])
         XCTAssertEqual((wanted["deleted"] as? [String: Any])?["id:r9"] as? Double, 8)
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "name:Council", roomID: "r404", from: any(reused)))
+        // The list drops the removed room by its id, not the reused key.
+        let shown = DesktopGroupChatDecoder.decode(snapshot: any(reused))
+        let asked = DesktopGroupChat(key: "name:Council", name: "Council", members: [], messages: [], omitted: 0, roomID: "r9")
+        XCTAssertEqual(shown.filter { $0.isSameRoom(as: asked) }.map(\.key), ["id:r9"])
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))

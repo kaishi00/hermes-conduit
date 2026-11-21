@@ -2222,6 +2222,13 @@ struct DesktopGroupChat: Equatable, Identifiable, Codable {
         }
     }
     var lastActivity: Double { messages.last?.timestamp ?? 0 }
+
+    /// The same room as `other`: by its id when it has one (a key can be
+    /// reused by another room), else by its key.
+    func isSameRoom(as other: DesktopGroupChat) -> Bool {
+        if let id = other.roomID, !id.isEmpty { return roomID == id }
+        return key == other.key
+    }
 }
 
 enum DesktopGroupChatDecoder {
@@ -2338,7 +2345,8 @@ extension DesktopGroupChatDecoder {
                 let own = rooms[key]?.objectValue?["roomId"]?.stringValue?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
                 if !own.isEmpty { return own }
-                return version >= 3 && key.hasPrefix("id:") ? String(key.dropFirst(3)) : ""
+                return version >= 3 && key.hasPrefix("id:")
+                    ? String(key.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines) : ""
             }
             if id(of: rawKey) != wantedID {
                 guard let moved = rooms.keys.sorted().first(where: { id(of: $0) == wantedID }) else { return nil }
