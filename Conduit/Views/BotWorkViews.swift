@@ -1021,7 +1021,8 @@ private struct BotWorkRow: View {
                             .scaledFont(.footnote.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .frame(width: 28, height: 28)
-                            .contentShape(Rectangle())
+                            // A 44 pt target without widening the card's top line.
+                            .contentShape(Rectangle().inset(by: -8))
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(AppLocalization.string("Details"))
