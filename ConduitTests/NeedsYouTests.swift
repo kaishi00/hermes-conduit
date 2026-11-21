@@ -476,4 +476,26 @@ extension ChatOnScreenTests {
         }
         XCTAssertEqual(reads, 2)
     }
+
+    /// Stage 2 of questions that don't pause the turn: a live call hears the
+    /// questions the bot asked that wait past their turn, oldest first, with
+    /// their choices, and is told to hand the answer to Hermes by its id.
+    func testALiveCallIsToldTheQuestionsThatWaitPastTheirTurn() throws {
+        func question(_ row: [String: Any]) throws -> BotWorkCoordination.Item {
+            try XCTUnwrap(BotWorkCoordination.Item(row: row.merging(["kind": "proposal", "status": "open"]) { a, _ in a }))
+        }
+        let newer = try question(["id": "P9", "at": 3.0, "text": "Tag it now?", "actions": ["approve", "decline"]])
+        let older = try question(["id": "P7", "at": 1.0, "text": " Which branch? ", "choices": ["main", "release/2.4"],
+                                  "recommended": "release/2.4", "actions": ["answer"]])
+        let words = try question(["id": "P8", "at": 2.0, "text": "What should it be called?", "actions": ["answer"],
+                                  "source": "clarify"])
+        let block = AppState.askedQuestionsBlock([newer, older, words])
+        XCTAssertTrue(block.contains("- P7: «Which branch?» Choices: «main», «release/2.4». Hermes recommends «release/2.4»."))
+        XCTAssertTrue(block.contains("- P9: «Tag it now?» A yes or no."))
+        XCTAssertTrue(block.contains("- P8: «What should it be called?»\n"), "answered in words: no yes or no")
+        let order = ["P7", "P8", "P9"].map { block.range(of: "- \($0):")!.lowerBound }
+        XCTAssertEqual(order, order.sorted(), "oldest first")
+        XCTAssertTrue(block.contains("My answer to P7"))
+        XCTAssertEqual(AppState.askedQuestionsBlock([]), "")
+    }
 }

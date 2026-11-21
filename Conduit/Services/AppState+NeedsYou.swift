@@ -466,3 +466,41 @@ extension AppState {
         return active == opening || chatOwnSessionIDs(for: active).contains(opening)
     }
 }
+
+extension AppState {
+    /// What a live call is told about the questions its bot asked that
+    /// wait past their turn (plugin 0.189.0+), from the Needs you list:
+    /// the user hears them when they ask what waits on them, and answers by
+    /// voice. The answer goes to Hermes as a request, whose spoken turn
+    /// records it for the chat that asked (plugin 0.190.0+). Empty when
+    /// none waits for `profile`.
+    func liveAskedQuestionsInstructions(profile: String? = nil) -> String {
+        let bot = profile ?? conversationIdentityProfile
+        return Self.askedQuestionsBlock(
+            needsYou.items.filter { Self.profilesMatch($0.profile, bot) }.compactMap(\.asked)
+        )
+    }
+
+    /// The block itself, oldest first; at most `askedQuestionsSpoken` of them.
+    nonisolated static func askedQuestionsBlock(_ asked: [BotWorkCoordination.Item]) -> String {
+        let open = asked.filter { $0.status == "open" }.sorted { $0.at < $1.at }.prefix(askedQuestionsSpoken)
+        guard !open.isEmpty else { return "" }
+        let lines = open.map { question -> String in
+            var line = "- \(question.id): «\(question.text.trimmingCharacters(in: .whitespacesAndNewlines))»"
+            if !question.choices.isEmpty {
+                line += " Choices: «" + question.choices.joined(separator: "», «") + "»."
+            } else if !question.answersInWords {
+                line += " A yes or no."
+            }
+            if !question.recommended.isEmpty { line += " Hermes recommends «\(question.recommended)»." }
+            return line
+        }
+        return "\n\nQuestions Hermes asked the user that still wait on their answer (on their Needs you list):\n"
+            + lines.joined(separator: "\n")
+            + "\nSay them when the user asks what's waiting on them, reading the choices out. When they answer one, "
+            + "send their answer to Hermes as a request that names its id, like \"My answer to P7: <what they said>\": "
+            + "Hermes records it, and the chat that asked acts on it."
+    }
+
+    nonisolated static let askedQuestionsSpoken = 5
+}

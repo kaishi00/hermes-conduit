@@ -124,6 +124,7 @@ extension AppState {
                 asksFirst: false,
                 onWatch: true,
                 followedBy: (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
+                    + liveAskedQuestionsInstructions(profile: profile)
                     + style.instructions + hostToolsBriefing
             )
         }
@@ -232,7 +233,8 @@ extension AppState {
                 // and has no phone to fall back on: briefed only once the host
                 // has reported them.
                 watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability),
-                followedBy: (hermesCall?.instructionBlock(delegation: true, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "") + style.instructions
+                followedBy: (hermesCall?.instructionBlock(delegation: true, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
+                    + liveAskedQuestionsInstructions(profile: profile) + style.instructions
             ),
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
@@ -335,6 +337,7 @@ extension AppState {
                 acknowledgesOnceStarted: true,
                 followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                     + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
+                    + liveAskedQuestionsInstructions(profile: profile)
                     + style.instructions + hostToolsBriefing
             )
         }

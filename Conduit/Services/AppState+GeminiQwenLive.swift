@@ -249,6 +249,7 @@ extension AppState {
                         answerLength: self?.liveCallStyle.answerLength ?? .standard,
                         followedBy: (self?.liveVoiceResumeContext?.instructionBlock ?? "")
                             + (self?.liveHermesCallInstructions(delegation: false) ?? "")
+                            + (self?.liveAskedQuestionsInstructions() ?? "")
                             + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
                             + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
                             + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)

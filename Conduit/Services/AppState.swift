@@ -1776,6 +1776,7 @@ final class AppState: ObservableObject {
                 var tail: String = GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                 tail += self?.liveVoiceResumeContext?.instructionBlock ?? ""
                 tail += self?.liveHermesCallInstructions(delegation: false) ?? ""
+                tail += self?.liveAskedQuestionsInstructions() ?? ""
                 tail += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
                 tail += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 tail += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
