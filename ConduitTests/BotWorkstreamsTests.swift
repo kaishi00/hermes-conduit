@@ -581,6 +581,12 @@ extension BotModeTests {
         let links = "See [the W50 notes](https://x.dev/a), [docs](https://x.dev/search?q=W50), "
             + "https://x.dev/?ref=W51 <https://x.dev/W50> and W50.txt."
         XCTAssertEqual(BotWorkLinks.linkingNamedRefs(links, chats: chats), links)
+        // Code as the cards read it: a span holding a shorter run, a ~~~ block; a stray backtick quotes nothing.
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("See ``W50 ` b`` and W51.", chats: chats),
+                       "See ``W50 ` b`` and [W51](conduit://session/b?profile=furina).")
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("~~~\nW50\n~~~", chats: chats), "~~~\nW50\n~~~")
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("A ` stray, then W51.", chats: chats),
+                       "A ` stray, then [W51](conduit://session/b?profile=furina).")
         // A sentence that ends on one still links it.
         XCTAssertEqual(BotWorkLinks.linkingNamedRefs("It was W51.", chats: chats),
                        "It was [W51](conduit://session/b?profile=furina).")
@@ -643,6 +649,15 @@ extension BotModeTests {
         // A fence only opens at a line's start, and a stray backtick quotes nothing.
         let stray = try XCTUnwrap(BotWorkLinks.split("Use ```lang to open a fence, or a ` alone.\n\n[Open W3](conduit://session/c)"))
         XCTAssertEqual(stray.links.map(\.ref), ["W3"])
+        // Fences as MarkdownText reads them: a ~~~ block, a ```` block showing a ``` line, a line with words after
+        // the marks that closes nothing, and a fence in a quote.
+        XCTAssertNil(BotWorkLinks.split("~~~\n[Open W3](conduit://session/c)\n~~~"))
+        XCTAssertNil(BotWorkLinks.split("````\n```\n[Open W3](conduit://session/c)\n```\n````"))
+        XCTAssertNil(BotWorkLinks.split("```\n``` not a closer\n[Open W3](conduit://session/c)\n```"))
+        XCTAssertNil(BotWorkLinks.split("> ```\n> [Open W3](conduit://session/c)\n> ```"))
+        // A code span in a link's own title leaves it a card.
+        let codeTitled = try XCTUnwrap(BotWorkLinks.split("Done: [W7: fix the `nil` crash](conduit://session/w7)."))
+        XCTAssertEqual(codeTitled.links.map(\.ref), ["W7"])
     }
 
     /// A read asked for after an action, while one was under way, makes
