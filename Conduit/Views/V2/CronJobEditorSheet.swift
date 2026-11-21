@@ -391,6 +391,7 @@ private struct CronIntervalField: View {
     let spoken: String
     @State private var text = ""
     @FocusState private var focused: Bool
+    @ScaledMetric(relativeTo: .body) private var fieldWidth: CGFloat = 80
 
     var body: some View {
         HStack {
@@ -401,7 +402,7 @@ private struct CronIntervalField: View {
             .multilineTextAlignment(.center)
             .monospacedDigit()
             .textFieldStyle(.roundedBorder)
-            .frame(width: 80)
+            .frame(width: fieldWidth)
             .focused($focused)
             .accessibilityValue(Text(spoken))
             .accessibilityIdentifier("cron.editor.interval.field")
@@ -418,7 +419,7 @@ private struct CronIntervalField: View {
             // The number shown for value (as seeded, even past the range)
             // is not an edit.
             guard typed != String(value) else { return }
-            let digits = typed.filter { $0.isASCII && $0.isNumber }
+            let digits = CronScheduleDraft.intervalDigits(typed)
             if digits != typed {
                 text = digits
                 return
@@ -428,9 +429,9 @@ private struct CronIntervalField: View {
             }
         }
         .onChange(of: value) { _, newValue in
-            // A step, or the job loading in; a typed 0 that became 1 stays
-            // as typed until the field is left.
-            if CronScheduleDraft.typedInterval(text) != newValue {
+            // A step, or the job loading in; while typing, a 0 that became
+            // 1 stays as typed until the field is left.
+            if !focused || CronScheduleDraft.typedInterval(text) != newValue {
                 text = String(newValue)
             }
         }
