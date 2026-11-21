@@ -76,7 +76,8 @@ enum NotificationCopy {
     /// a call composes its line from the call's outcome, and a room invite
     /// says who invited you to which room. Any other title or body is the
     /// host's own text (an older plugin, a tool's prompt title).
-    /// The subtitle names the profile (`profileLine`). A reply whose
+    /// The subtitle names the profile (`profileLine`), unless the title
+    /// already does: a reply outside a named chat is titled by its bot. A reply whose
     /// notification Hermes wrote shows its `headline` as the title. A
     /// private Pulse push (`private`) answers with a generic line, not the
     /// host's own words.
@@ -139,7 +140,10 @@ enum NotificationCopy {
     private static func labelTitle(_ label: String, content: [String: Any]) -> String? {
         let sessionTitle = nonEmpty(content["session_title"])
         if label == "response.ready" {
-            return sessionTitle ?? AppLocalization.string("Response ready")
+            // The most common push: a reply outside a named chat is titled by
+            // the bot that wrote it, not "Response ready" over its name, which
+            // spent a line of the preview saying what every reply says.
+            return sessionTitle ?? replyBotName(content) ?? AppLocalization.string("Response ready")
         } else if let heading = label == "call.requested" ? callTitle(name: botName(content)) : heading(for: label) {
             return sessionTitle.map { "\(heading) · \($0)" } ?? heading
         }
@@ -193,6 +197,13 @@ enum NotificationCopy {
         if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
            title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
         return name
+    }
+
+    /// The bot a push came from, as `profileLine` names it, and "Hermes"
+    /// for an unnamed main bot: nil only for a push that names no profile.
+    private static func replyBotName(_ content: [String: Any]) -> String? {
+        if let name = profileLine(content, title: nil) { return name }
+        return nonEmpty(content["profile"]) == nil ? nil : mainBotName
     }
 
     private static func heading(for label: String) -> String? {
