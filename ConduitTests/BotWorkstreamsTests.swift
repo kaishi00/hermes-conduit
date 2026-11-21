@@ -581,6 +581,12 @@ extension BotModeTests {
         let links = "See [the W50 notes](https://x.dev/a), [docs](https://x.dev/search?q=W50), "
             + "https://x.dev/?ref=W51 <https://x.dev/W50> and W50.txt."
         XCTAssertEqual(BotWorkLinks.linkingNamedRefs(links, chats: chats), links)
+        // Code as the cards read it: a span holding a shorter run, a ~~~ block; a stray backtick quotes nothing.
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("See ``W50 ` b`` and W51.", chats: chats),
+                       "See ``W50 ` b`` and [W51](conduit://session/b?profile=furina).")
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("~~~\nW50\n~~~", chats: chats), "~~~\nW50\n~~~")
+        XCTAssertEqual(BotWorkLinks.linkingNamedRefs("A ` stray, then W51.", chats: chats),
+                       "A ` stray, then [W51](conduit://session/b?profile=furina).")
         // A sentence that ends on one still links it.
         XCTAssertEqual(BotWorkLinks.linkingNamedRefs("It was W51.", chats: chats),
                        "It was [W51](conduit://session/b?profile=furina).")
@@ -636,6 +642,35 @@ extension BotModeTests {
         XCTAssertEqual(titled.links.first?.profile, "zhongli")
         XCTAssertEqual(try XCTUnwrap(BotWorkLinks.split("Done: [W8 — Rotate keys](conduit://session/w8)")).links.map(\.ref), ["W8"])
         XCTAssertNil(BotWorkLinks.split("See [the notes from W7](conduit://session/w7)"))
+        // A link quoted in code stays there as written, as on the desktop (Eric 2026-11-20).
+        XCTAssertNil(BotWorkLinks.split("The format is `[Open W3](conduit://session/c) @session:furina/c`."))
+        XCTAssertNil(BotWorkLinks.split("Like this:\n```\n[Open W3](conduit://session/c)\n```"))
+        XCTAssertNil(BotWorkLinks.split("See ``a ` [Open W3](conduit://session/c) b`` for it."))
+        // A fence only opens at a line's start, and a stray backtick quotes nothing.
+        let stray = try XCTUnwrap(BotWorkLinks.split("Use ```lang to open a fence, or a ` alone.\n\n[Open W3](conduit://session/c)"))
+        XCTAssertEqual(stray.links.map(\.ref), ["W3"])
+        // Fences as MarkdownText reads them: a ~~~ block, a ```` block showing a ``` line, a line with words after
+        // the marks that closes nothing, and a fence in a quote.
+        XCTAssertNil(BotWorkLinks.split("~~~\n[Open W3](conduit://session/c)\n~~~"))
+        XCTAssertNil(BotWorkLinks.split("````\n```\n[Open W3](conduit://session/c)\n```\n````"))
+        XCTAssertNil(BotWorkLinks.split("```\n``` not a closer\n[Open W3](conduit://session/c)\n```"))
+        XCTAssertNil(BotWorkLinks.split("> ```\n> [Open W3](conduit://session/c)\n> ```"))
+        // A code span in a link's own title leaves it a card.
+        let codeTitled = try XCTUnwrap(BotWorkLinks.split("Done: [W7: fix the `nil` crash](conduit://session/w7)."))
+        XCTAssertEqual(codeTitled.links.map(\.ref), ["W7"])
+        // A CRLF fence closes, and a reference quoted after a link in prose stays, with the card.
+        let crlf = try XCTUnwrap(BotWorkLinks.split("```\r\ncode\r\n```\r\n[Open W3](conduit://session/c)"))
+        XCTAssertEqual(crlf.links.map(\.ref), ["W3"])
+        let quotedRef = try XCTUnwrap(BotWorkLinks.split("[Open W3](conduit://session/c) `@session:p/c` more"))
+        XCTAssertEqual(quotedRef.text, "`@session:p/c` more")
+        XCTAssertEqual(quotedRef.links.map(\.ref), ["W3"])
+        // A code span in a titled link's label: the card, and Desktop's reference after it goes.
+        let titledRef = try XCTUnwrap(BotWorkLinks.split("Done: [W7: fix the `nil` crash](conduit://session/w7) @session:p/w7."))
+        XCTAssertEqual(titledRef.text, "Done:.")
+        XCTAssertEqual(titledRef.links.map(\.ref), ["W7"])
+        // A CRLF blank line ends a paragraph, so a stray backtick before it quotes nothing after.
+        let crlfSpan = try XCTUnwrap(BotWorkLinks.split("`note\r\n\r\n[Open W3](conduit://session/c)`"))
+        XCTAssertEqual(crlfSpan.links.map(\.ref), ["W3"])
     }
 
     /// A read asked for after an action, while one was under way, makes
