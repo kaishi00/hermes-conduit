@@ -1898,6 +1898,86 @@ extension CrossProfilePresentationCacheTests {
         appState.allProfilesChatsSettings[dashboard: mac.id] = AllProfilesChatsSettings.Dashboard()
     }
 
+    /// Group Chats in a combined group: another dashboard's rooms, read
+    /// through its kept connection, show beside this dashboard's, and a
+    /// room shows once, under the dashboard you talk in it from: the one
+    /// whose Hermes hosts it, else the first with a copy (Eric, 2026-11-20:
+    /// who you were in a room went with the dashboard on screen).
+    func testGroupChatsShowEveryCombinedDashboardsRoomsOnceEach() async throws {
+        final class Counts { var rooms = 0 }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        func room(_ id: String, _ members: [String], updated: Double = 1) -> GroupRoom {
+            GroupRoom(roomID: id, name: id.capitalized,
+                      members: members.map { GroupMember(memberID: $0, profile: $0, handle: $0, displayName: nil, target: [:], extra: [:]) },
+                      authorityGatewayID: "gw", authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: updated,
+                      disbandedAt: nil, latestSeq: nil)
+        }
+        func copy(_ id: String, _ members: [String]) -> [String: Any] {
+            ["room_id": id, "name": id.capitalized, "link": "lk-\(id)", "from": "Sam", "status": "started",
+             "members": members.map { ["member_id": $0, "handle": $0] }, "yours": [[String: Any]](),
+             "state": ["working": false] as [String: Any], "last_seq": 1, "updated_at": 1.0]
+        }
+        // Mac hosts "trip" (its bot and one of VPS' over the own Link) and
+        // "plans", and has a copy of Sam's "zoo"; VPS has copies of "trip"
+        // and "zoo".
+        appState.keptDashboardRoomsReader = { client in
+            XCTAssertTrue(client === outgoing, "read through the kept client")
+            counts.rooms += 1
+            return [room("trip", ["raiden", "furina"], updated: 2), room("plans", ["raiden"], updated: 3)]
+        }
+        appState.keptDashboardJSONReader = { _, path in
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [RoomCopiesClient.capability]] }
+            if path == RoomCopiesClient.path { return ["ok": true, "copies": [copy("zoo", ["sam-bot", "nahida"])]] }
+            throw URLError(.badURL)
+        }
+        await appState.readOtherCombinedDashboardsRooms()
+        XCTAssertEqual(counts.rooms, 1)
+        XCTAssertEqual(appState.combinedDashboardRooms[mac.id]?.rooms.map(\.roomID), ["trip", "plans"])
+        XCTAssertEqual(appState.combinedDashboardRooms[mac.id]?.copies.map(\.roomID), ["zoo"])
+        // Read again only past a minute; a failed read keeps what it showed.
+        await appState.readOtherCombinedDashboardsRooms()
+        XCTAssertEqual(counts.rooms, 1)
+        appState.keptDashboardRoomsReader = { _ in throw URLError(.timedOut) }
+        await appState.readOtherCombinedDashboardsRooms(force: true)
+        XCTAssertEqual(appState.combinedDashboardRooms[mac.id]?.rooms.map(\.roomID), ["trip", "plans"])
+
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [RoomCopiesClient.capability]))
+        appState.groupChatPhase = .available
+        appState.groupRoomsListed = true
+        appState.groupRooms = [room("standup", ["furina"])]
+        let vpsCopies = [copy("trip", ["raiden", "furina"]), copy("zoo", ["sam-bot", "nahida"]), copy("solo", ["sam-bot"])]
+        appState.linkedRoomCopies = LinkedRoomCopies(dashboardID: vps.id, copies: vpsCopies.compactMap(RoomCopiesClient.copy))
+        // VPS' copy of Mac's "trip" leaves for Mac's own room, and its copy
+        // of Sam's "zoo" for Mac's, which comes first in Saved Dashboards.
+        XCTAssertEqual(appState.shownLinkedRoomCopyRows.map(\.roomID), ["solo"])
+        let tiles = appState.otherCombinedDashboardsRoomTiles
+        XCTAssertEqual(tiles.map(\.roomID), ["plans", "trip", "zoo"], "Mac's, newest first")
+        XCTAssertEqual(Set(tiles.map(\.dashboardID)), [mac.id])
+        if case .hosted = tiles[1].kind {} else { XCTFail("Mac's own room opens as Mac's") }
+        if case .copy = tiles[2].kind {} else { XCTFail("Sam's room opens from Mac's copy") }
+        // A room id another Hermes uses for another room (no member shared)
+        // is not the same room.
+        appState.linkedRoomCopies = LinkedRoomCopies(dashboardID: vps.id,
+                                                     copies: [copy("plans", ["sam-bot"])].compactMap(RoomCopiesClient.copy))
+        XCTAssertEqual(appState.shownLinkedRoomCopyRows.map(\.roomID), ["plans"])
+        // One Hermes saved at two addresses: a room both list shows once,
+        // as this dashboard's.
+        appState.groupRooms = [room("plans", ["raiden"])]
+        XCTAssertFalse(appState.otherCombinedDashboardsRoomTiles.contains { $0.roomID == "plans" })
+        // Out of the group, its rooms go.
+        appState.forgetCombinedDashboardLists(mac.id)
+        XCTAssertTrue(appState.otherCombinedDashboardsRoomTiles.isEmpty)
+        appState.linkedRoomCopies = nil
+        appState.groupRooms = []
+        appState.groupRoomsListed = false
+        appState.groupChatPhase = .idle
+    }
+
     /// Bots Home shows a kept combined dashboard's bots, read through its
     /// kept client, in the same grid as Bots Home's own, mixed in the
     /// group's order; a tap opens through that dashboard (all-live stage 4c).
