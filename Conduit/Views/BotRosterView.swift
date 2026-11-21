@@ -60,6 +60,8 @@ struct BotRosterView: View {
     @State private var showingRoomReorder = false
     /// A room whose tile's Disband Group waits for its confirmation.
     @State private var pendingDisbandRoom: GroupRoom?
+    /// A Hermes Desktop group chat whose Remove waits on its confirmation.
+    @State private var pendingDesktopRemoval: DesktopGroupChat?
     /// A picture asked for from a room's tile, and the room it's for.
     @State private var roomPictureRequest: GroupRoomPictureRequest?
     @State private var pictureRoom: GroupRoom?
@@ -166,6 +168,27 @@ struct BotRosterView: View {
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
                 .environmentObject(appState)
+        }
+        .confirmationDialog(
+            AppLocalization.string("Remove this group chat?"),
+            isPresented: Binding(
+                get: { pendingDesktopRemoval != nil },
+                set: { if !$0 { pendingDesktopRemoval = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDesktopRemoval
+        ) { group in
+            Button(AppLocalization.string("Remove"), role: .destructive) {
+                pendingDesktopRemoval = nil
+                Task {
+                    let failure = await appState.removeDesktopGroupChat(group)
+                    if failure == nil { Haptics.success() } else { Haptics.warning() }
+                    managementNotice = failure
+                }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDesktopRemoval = nil }
+        } message: { _ in
+            Text(DesktopGroupChatView.removalWarning)
         }
         .sheet(item: $repairContext) { context in
             ConnectionRepairSetupSheet(context: context)
@@ -1378,10 +1401,17 @@ struct BotRosterView: View {
             CombinedRoomRosterRow(tile: tile)
         }
         ForEach(appState.shownDesktopGroupChats) { group in
-            DesktopGroupRosterRow(group: group) {
+            DesktopGroupRosterRow(group: group, onRemove: desktopRemoval(group)) {
                 presentedDesktopGroup = group
             }
         }
+    }
+
+    /// A Desktop group chat's Remove, asked first; offered while connected,
+    /// since it writes the projection Hermes holds.
+    private func desktopRemoval(_ group: DesktopGroupChat) -> (() -> Void)? {
+        guard appState.isConnected else { return nil }
+        return { pendingDesktopRemoval = group }
     }
 
     /// The approvals your agents wait for in rooms someone you've linked
@@ -1570,7 +1600,7 @@ struct BotRosterView: View {
             CombinedRoomPortrait(tile: tile)
         }
         ForEach(appState.shownDesktopGroupChats) { group in
-            DesktopGroupPortrait(group: group) {
+            DesktopGroupPortrait(group: group, onRemove: desktopRemoval(group)) {
                 presentedDesktopGroup = group
             }
         }

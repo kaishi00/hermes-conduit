@@ -9002,6 +9002,40 @@ Group Settings' Who answers (its Lead section's crown marks the lead's pill) · 
 
 **Checked:** 2026-11-12, #2291 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1977 (pills and subtitle kept for their inputs, issue 1968; kept room events capped at eight rooms, issue 1969; Linked Rooms takes it with main); 2026-11-07, #1910 (a crown on the lead's pill), #1895 (pills under the title, review follow-ups: idle driver, unknown live statuses, a message being sent, a trimmed message, a lead's routing turn, only the lead's, the trimmed-message limit; the entry added).
 
+## Hermes Desktop's group chats
+
+Group chats made in Hermes Desktop (Nous' app) aren't hosted rooms: Desktop
+runs their rounds itself and mirrors a bounded copy to the gateway, the
+`default` profile's `ui_meta['hermes-bots-groups']`. Conduit lists them,
+shows their latest messages read-only, and can remove one, since it can't
+reply there (Eric, 2026-11-21: an old "Archon Council" on the App Review host
+couldn't be got rid of).
+
+**Siblings:** the Bots list's row (V1 and V2's list) · Bots Home's small
+portrait · the group's read-only sheet (its Remove) · the kept copy the Bots
+list opens on (Screens that open on their last answer) · Hermes Desktop
+itself (reads the same tombstones, so a removed group goes there too) · not
+needed: the notifier (the gateway's own `profiles.configure` writes the
+copy), Watch and CarPlay (no group chats there) · text: the sheet's caption
+and Remove's warning; README.md doesn't name Desktop's groups
+
+**Desktop app:** gap: it doesn't list Hermes Desktop's group chats at all, so there is nothing there to read or remove; left out while they're legacy (gateway-hosted rooms are the default, 2026-09-26).
+
+**Code**
+- Reading and removing: `Conduit/Services/GroupChatModels.swift` (DesktopGroupChat, DesktopGroupChatDecoder.decode and removing), `Conduit/Services/HermesClient.swift` (botRoster, desktopGroupProjection, writeDesktopGroupProjection), `Conduit/Services/AppState+BotMode.swift` (shownDesktopGroupChats, removeDesktopGroupChat), `Conduit/Services/BotModeModels.swift` (BotRosterSnapshot.desktopGroups, KeptBotRoster)
+- Screens: `Conduit/Views/GroupChatView.swift` (DesktopGroupRosterRow, DesktopGroupChatView and its Remove), `Conduit/Views/V2/V2BotsHome.swift` (DesktopGroupPortrait), `Conduit/Views/BotRosterView.swift` (desktopRemoval, pendingDesktopRemoval's confirmation)
+- Tests: `ConduitTests/GroupChatModelsTests.swift` (testDesktopProjectionHonorsTombstones, testRemovingADesktopGroupTombstonesItInItsEnvelopesVersion)
+
+**Rulings**
+- Gateway-hosted rooms (`groups.*`) are the default and new groups are made there; Desktop's groups are legacy, shown read-only with no composer, since sending would need Desktop's round orchestrator (Eric, 2026-09-26, #207).
+- Remove is offered while connected: in the row's and the portrait's long-press menu and as the sheet's Remove, each asking first. It reads the copy fresh, takes the room out of `rooms` and tombstones it in the envelope's own version (v3: its room key and `id:<roomId>` at the room's revision; v2: its name at that revision; v1: its name at the time in milliseconds), keeps everything else, and writes it back compare-and-swap, reading again once if another client wrote meanwhile. A room already gone is success (2026-11-21, PR_NUMBER).
+- It removes the group for everyone on that Hermes, Hermes Desktop included, and says so; nothing on the gateway's hosted rooms changes.
+
+**Open gaps**
+- Not yet tried on a device or simulator; the removal was tried by hand on the App Review host.
+
+**Checked:** 2026-11-21, PR_NUMBER (added)
+
 ## Linked Rooms
 
 Group rooms with agents that belong to other people. Each agent runs on its

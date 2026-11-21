@@ -1778,6 +1778,38 @@ extension AppState {
         }
     }
 
+    /// Removes a group chat Hermes Desktop made: Conduit can't send into one
+    /// (Desktop runs its rounds), so this is how it stops showing. Reads the
+    /// projection fresh, takes the room out and tombstones it, as Desktop's
+    /// own delete does, so Desktop drops it too; a write that lost a race
+    /// with another client reads again once. Nil when it's gone.
+    func removeDesktopGroupChat(_ group: DesktopGroupChat) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        let failure = AppLocalization.string("Could not remove \(group.name).")
+        for attempt in 0..<2 {
+            let outcome: BotMetaWriteOutcome
+            do {
+                let current = try await client.desktopGroupProjection()
+                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, from: current.snapshot) else {
+                    // Already gone (removed elsewhere meanwhile).
+                    await refreshBotRosterAfterWrite()
+                    return nil
+                }
+                outcome = BotMetaWriteOutcome(configureResult: try await client.writeDesktopGroupProjection(
+                    envelope, expectedRevision: current.revision
+                ))
+            } catch {
+                return failure
+            }
+            if outcome == .conflict, attempt == 0 { continue }
+            await refreshBotRosterAfterWrite()
+            return outcome == .persisted || outcome == .unsupported ? nil : failure
+        }
+        return failure
+    }
+
     /// Duplicate (Desktop's `duplicateBot`): a full copy of the bot's profile
     /// as `<name>-2`, with its look and a "(copy)" title. Returns the notice
     /// to show: what was made, or why not.
