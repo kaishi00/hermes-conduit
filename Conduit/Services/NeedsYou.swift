@@ -132,8 +132,10 @@ struct NeedsYouItem: Identifiable, Equatable {
             item?.relayGatewayID = gatewayID
             return item
         }
-        let asked = (response["questions"] as? [[String: Any]] ?? []).compactMap {
-            NeedsYouItem(question: $0, profile: profile)
+        let asked = (response["questions"] as? [[String: Any]] ?? []).compactMap { row in
+            var item = NeedsYouItem(question: row, profile: profile)
+            item?.relayGatewayID = gatewayID
+            return item
         }
         return waits + asked
     }
@@ -142,7 +144,7 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// open or names no chat to open.
     init?(question row: [String: Any], profile: String) {
         guard let asked = BotWorkCoordination.Item(row: row), asked.kind == .proposal,
-              asked.canAnswer || asked.answersInWords else { return nil }
+              asked.canAnswer || (asked.answersInWords && asked.status == "open") else { return nil }
         let ids = (row["session_ids"] as? [String] ?? [])
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }

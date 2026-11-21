@@ -110,6 +110,9 @@ extension ChatOnScreenTests {
              "answer": "", "why": [], "actions": ["approve", "decline"], "chat": "", "session_ids": []],
             ["id": "P9", "kind": "proposal", "ref": "", "at": 1_800_000_300.0, "text": "Done?", "status": "approved",
              "answer": "", "why": [], "actions": [], "chat": "c2", "session_ids": ["c2"]],
+            // A kept clarify answered in words since: its answer action no longer makes it wait.
+            ["id": "P10", "kind": "proposal", "ref": "", "at": 1_800_000_400.0, "text": "What note?", "status": "answered",
+             "answer": "Ship it", "why": [], "actions": ["answer"], "chat": "c3", "session_ids": ["c3"], "source": "clarify"],
         ]
         let items = try XCTUnwrap(NeedsYouItem.items(listed: ["waiting": [], "questions": questions], profile: "atlas"))
         XCTAssertEqual(items.map(\.waitID), ["asked-P7"])

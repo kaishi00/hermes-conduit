@@ -537,7 +537,8 @@ extension AppState {
     func combinedBotChatWaits(_ bot: BotProfile, in id: UUID) -> [NeedsYouItem] {
         let known = combinedDashboardBotWork[id]?[bot.name.lowercased()]?.knownSessionIDs ?? []
         return (needsYou.otherDashboards[id] ?? []).filter {
-            $0.roomID == nil && Self.profilesMatch($0.profile, bot.name) && Set($0.sessionIDs).isDisjoint(with: known)
+            $0.roomID == nil && $0.asked == nil && Self.profilesMatch($0.profile, bot.name)
+                && Set($0.sessionIDs).isDisjoint(with: known)
         }
         .sorted { $0.since > $1.since }
     }

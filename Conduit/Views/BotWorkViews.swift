@@ -737,10 +737,12 @@ struct BotWorkPanel: View {
     }
 }
 
-/// A question the Bot Chat asked the user about its work and waits on, at
-/// the top of the Work panel: what it asks, and Approve or Decline, which
-/// is the user's own answer with nothing typed in the Bot Chat. On a yes
-/// the Bot Chat goes ahead. The card's words open what was behind it.
+/// A question the bot asked the user and waits on past its turn, from its
+/// Bot Chat or any of its chats, at the top of the Work panel: what it asks,
+/// and Approve or Decline or one of its choices, the user's own answer with
+/// nothing typed, which reaches the chat that asked. A kept clarify question
+/// with no choices is answered there in words. The card's words open what
+/// was behind it.
 private struct BotWorkQuestionCard: View {
     @EnvironmentObject private var appState: AppState
     let question: BotWorkCoordination.Item
@@ -811,7 +813,7 @@ private struct BotWorkQuestionCard: View {
 
 /// A question's answers on its card: Approve and Decline for a yes or no,
 /// else one button per choice, the recommended one filled (plugin
-/// 0.189.0+). The Work panel and the Needs you list draw the same.
+/// 0.189.0+). Only the Work panel draws them: Needs you rows open the chat.
 struct BotQuestionAnswerButtons: View {
     let question: BotWorkCoordination.Item
     let answer: (BotQuestionAnswer) -> Void
