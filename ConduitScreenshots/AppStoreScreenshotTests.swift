@@ -98,6 +98,21 @@ final class AppStoreScreenshotTests: XCTestCase {
                     XCTFail("No Scheduled button on the Tasks tab, so no scheduled screenshot")
                 }
             }
+            if tab == "Settings" {
+                // Skills, tools, MCP servers and plugins, for the website's tour.
+                let capabilities = app.buttons
+                    .matching(NSPredicate(format: "label BEGINSWITH 'Capabilities'")).firstMatch
+                if capabilities.waitForExistence(timeout: 5) {
+                    capabilities.tap()
+                    settle(5)
+                    snap("11-capabilities")
+                    let back = app.navigationBars.buttons.firstMatch
+                    if back.exists { back.tap() }
+                    settle(1)
+                } else {
+                    XCTFail("No Capabilities row in Settings, so no capabilities screenshot")
+                }
+            }
         }
         app.buttons["Sessions"].tap()
 
