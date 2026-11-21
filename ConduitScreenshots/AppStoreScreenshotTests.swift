@@ -104,7 +104,13 @@ final class AppStoreScreenshotTests: XCTestCase {
                     .matching(NSPredicate(format: "label BEGINSWITH 'Capabilities'")).firstMatch
                 if capabilities.waitForExistence(timeout: 5) {
                     capabilities.tap()
-                    settle(5)
+                    // The skills load from the dashboard; wait them out.
+                    let loading = app.staticTexts["Loading capabilities…"]
+                    _ = loading.waitForExistence(timeout: 3)
+                    if !loading.waitForNonExistence(timeout: 30) {
+                        XCTFail("Capabilities never finished loading")
+                    }
+                    settle(3)
                     snap("11-capabilities")
                     let back = app.navigationBars.buttons.firstMatch
                     if back.exists { back.tap() }
