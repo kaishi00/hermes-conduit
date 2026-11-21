@@ -1794,6 +1794,7 @@ extension AppState {
                 let current = try await client.desktopGroupProjection()
                 guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, from: current.snapshot) else {
                     // Already gone (removed elsewhere meanwhile).
+                    desktopGroupChats.removeAll { $0.key == group.key }
                     await refreshBotRosterAfterWrite()
                     return nil
                 }
@@ -1804,8 +1805,11 @@ extension AppState {
                 return failure
             }
             if outcome == .conflict, attempt == 0 { continue }
+            let removed = outcome == .persisted || outcome == .unsupported
+            // Gone from the list even if the read after it fails.
+            if removed { desktopGroupChats.removeAll { $0.key == group.key } }
             await refreshBotRosterAfterWrite()
-            return outcome == .persisted || outcome == .unsupported ? nil : failure
+            return removed ? nil : failure
         }
         return failure
     }

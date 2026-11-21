@@ -203,7 +203,13 @@ struct BotRosterView: View {
             managementNotice = notice
         }
         // Another dashboard's or profile's list: this one's notice isn't about it.
-        .onChange(of: appState.activeDashboardID) { _, _ in managementNotice = nil }
+        // Another Hermes: a group sheet or Remove asked about this one's
+        // group must not act on the next one's.
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            managementNotice = nil
+            presentedDesktopGroup = nil
+            pendingDesktopRemoval = nil
+        }
         .onChange(of: appState.activeProfile) { _, _ in managementNotice = nil }
         // "Connect to Hermes" is over once it's connected (Eric, 2026-11-16:
         // it stayed up over a connected Bots Home).

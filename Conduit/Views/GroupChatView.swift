@@ -2906,6 +2906,7 @@ struct DesktopGroupChatView: View {
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }
+                        .disabled(removing)
                 }
                 // Conduit can't reply here, so this is how it stops showing.
                 if appState.isConnected {
@@ -2916,6 +2917,8 @@ struct DesktopGroupChatView: View {
                     }
                 }
             }
+            // Open until a Remove answers, so a failure shows here.
+            .interactiveDismissDisabled(removing)
             .confirmationDialog(
                 AppLocalization.string("Remove this group chat?"),
                 isPresented: $confirmingRemoval,
