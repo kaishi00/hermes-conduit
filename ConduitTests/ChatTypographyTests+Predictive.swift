@@ -889,6 +889,7 @@ extension ChatTypographyTests {
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
         )
         defer { state.stopPredictiveFollowUpClock() }
+        state.predictiveSender = { _ in [:] }
         state.activeSessionId = "s1"
         state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
         let anchor = try XCTUnwrap(state.predictiveAnchor)
@@ -951,6 +952,8 @@ extension ChatTypographyTests {
         state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
         await state.checkPredictiveFollowUp(for: anchor)
         XCTAssertTrue(state.shownChat.predictiveFollowUp.stopped)
+        XCTAssertNil(state.shownChat.predictiveFollowUp.spentOn, "the old decision spent no follow-up")
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn)
     }
 
     /// Polls `condition` on the main actor for up to two seconds.
