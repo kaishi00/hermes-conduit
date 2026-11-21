@@ -1258,6 +1258,9 @@ extension CrossProfilePresentationCacheTests {
             XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
             counts.reads.append(path)
             if path == "/api/profiles" { return ["profiles": [["name": "default"], ["name": "atlas"]]] }
+            if path == NotifierPluginStatus.path {
+                return ["ok": true, "capabilities": [BotWorkstreamsClient.capability], "name": "Studio"]
+            }
             guard path.contains("profile=atlas") else { return ["waiting": []] }
             return ["waiting": [[
                 "id": "w1", "kind": "approval", "session_ids": ["session-a"],
@@ -1265,8 +1268,14 @@ extension CrossProfilePresentationCacheTests {
             ]]]
         }
 
+        // Named by the person, so its plugin's name doesn't relabel it.
+        appState.renameDashboard(mac.id, to: "Mac")
         await appState.readOtherCombinedDashboardsNeedsYou()
         let item = try XCTUnwrap(appState.needsYou.otherDashboards[mac.id]?.first)
+        // The pass reads its plugin's capabilities, so its Hermes' name lands
+        // with no bots shown (Dashboard names).
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: mac.id)?.hermesName, "Studio")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: mac.id)?.label, "Mac")
         XCTAssertEqual(item.dashboardID, mac.id)
         XCTAssertEqual(item.profile, "atlas")
         // Its bot's pill on Bots Home's mixed grid says so, and opens it
@@ -1309,6 +1318,8 @@ extension CrossProfilePresentationCacheTests {
         // The profiles are read once per kept connection.
         await appState.readOtherCombinedDashboardsNeedsYou()
         XCTAssertEqual(counts.reads.filter { $0 == "/api/profiles" }.count, 1)
+        XCTAssertEqual(counts.reads.filter { $0 == NotifierPluginStatus.path }.count, 1,
+                       "its capabilities are asked once per kept connection")
         // Every few minutes they're read again: a profile deleted there
         // takes its rows with it.
         let read = try XCTUnwrap(appState.keptDashboardProfiles[mac.id])

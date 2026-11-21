@@ -276,6 +276,10 @@ final class AppState: ObservableObject {
     /// What another combined dashboard's plugin serves, read through its
     /// kept connection (keyed by that connection's bridge).
     var combinedDashboardPluginCapabilities: [UUID: (bridge: ObjectIdentifier, capabilities: Set<String>)] = [:]
+    /// The kept connection whose plugin the Needs you pass last asked for
+    /// its Hermes' name, by dashboard: asked once per connection, so an old
+    /// plugin without the route isn't asked on every poll (Dashboard names).
+    var combinedDashboardNameReads: [UUID: ObjectIdentifier] = [:]
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).

@@ -184,6 +184,18 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.isNamed, false)
         appState.renameDashboard(web.id, to: " ")
         XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: web.id)?.label, "Furina", "and the address's")
+
+        // An edited address drops the old Hermes' name: an unnamed dashboard
+        // takes the new address's, a named one keeps the person's.
+        appState.renameDashboard(web.id, to: "Lab")
+        appState.stageDashboardMove(lan.id, toNormalizedURL: "https://atelier.example.com")
+        appState.settlePendingDashboardMove(lan.id)
+        appState.stageDashboardMove(web.id, toNormalizedURL: "https://raiden.example.com")
+        appState.settlePendingDashboardMove(web.id)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.label, "Atelier")
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: lan.id)?.hermesName)
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: web.id)?.label, "Lab")
+        XCTAssertNil(appState.savedDashboardRegistry.dashboard(with: web.id)?.hermesName)
     }
 
     func testCombinedDashboardsThatStartAlikeAreNumbered() {
@@ -684,7 +696,8 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertFalse(appState.settingsListsPluginPage(appState.canLinkRooms, capability: RoomLinksClient.capability))
 
         // Its answer decides from then on, and is kept for next time.
-        appState.applyNotifierPluginReport(["ok": true, "version": "0.170.3", "capabilities": ["hermes-calls"]])
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.170.3", "capabilities": ["hermes-calls"], "name": "Barn"])
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: farm.id)?.hermesName, "Barn", "the report brings its Hermes' name")
         XCTAssertFalse(appState.settingsListsPluginPage(appState.showsPulseSettings, capability: PulseClient.capability))
         XCTAssertTrue(appState.settingsListsPluginPage(appState.supportsHermesCalls, capability: "hermes-calls"))
         XCTAssertEqual(NotifierPluginStatus.Remembered.capabilities(for: farm.id, in: defaults), ["hermes-calls"])

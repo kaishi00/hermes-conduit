@@ -320,6 +320,7 @@ extension AppState {
         if combinedDashboardRooms[id] != nil { combinedDashboardRooms.removeValue(forKey: id) }
         if combinedDashboardBotWork[id] != nil { combinedDashboardBotWork.removeValue(forKey: id) }
         combinedDashboardPluginCapabilities.removeValue(forKey: id)
+        combinedDashboardNameReads.removeValue(forKey: id)
         if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
         // Its artifact file readers too (#2644 review).
         let prefix = "\(id.uuidString)|"
