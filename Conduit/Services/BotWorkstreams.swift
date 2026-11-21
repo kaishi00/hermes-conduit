@@ -1052,20 +1052,42 @@ enum BotWorkLinks {
         pattern: #"(\[(?:Open )?W\d+(?:(?::|\s+[—–-])[^\]\n]*)?\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
             + #"(?<![\w/`@])@session:(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}/)?\2(?![A-Za-z0-9_]|[.:-][A-Za-z0-9_])"#)
 
+    /// Code: a fenced block (``` or ~~~ at a line's start, open to the end
+    /// when unclosed) or an inline span, closed by a run of as many backticks
+    /// as opened it within its paragraph. The desktop's `CODE` (desktop#228).
+    private static let code = try! NSRegularExpression(
+        pattern: #"(?<=^|\n)[ \t]{0,3}(```|~~~)[\s\S]*?(?:\n[ \t]{0,3}\1|$)|(?<!`)(`+)(?!`)(?:(?!\n[ \t]*\n)[\s\S])*?(?<!`)\2(?!`)"#)
+
+    private static func codeRanges(_ text: String) -> [NSRange] {
+        guard text.contains("`") || text.contains("~~~") else { return [] }
+        return code.matches(in: text, range: NSRange(text.startIndex..., in: text)).map(\.range)
+    }
+
+    private static func inCode(_ ranges: [NSRange], _ range: NSRange) -> Bool {
+        ranges.contains { NSIntersectionRange($0, range).length > 0 }
+    }
+
     /// The reply's text without those links (and Desktop's references to
     /// them), and the links in order (each workstream once); nil when it has
-    /// none.
+    /// none. A link quoted in code stays there as written, a reply showing
+    /// the link's format included (Eric 2026-11-20, matching the desktop).
     static func split(_ original: String) -> (text: String, links: [Link])? {
         guard original.contains("conduit://session/") else { return nil }
         var text = original
         if text.contains("@session:") {
-            text = desktopRef.stringByReplacingMatches(
-                in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "$1")
+            let quoted = codeRanges(text)
+            let ns = NSMutableString(string: text)
+            for match in desktopRef.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed()
+            where !inCode(quoted, match.range) {
+                ns.replaceCharacters(in: match.range, with: (text as NSString).substring(with: match.range(at: 1)))
+            }
+            text = ns as String
         }
         let range = NSRange(text.startIndex..., in: text)
+        let quoted = codeRanges(text)
         var links: [Link] = []
         var kept = text
-        for match in pattern.matches(in: text, range: range).reversed() {
+        for match in pattern.matches(in: text, range: range).reversed() where !inCode(quoted, match.range) {
             guard let refRange = Range(match.range(at: 1), in: text),
                   let urlRange = Range(match.range(at: 2), in: text),
                   let whole = Range(match.range, in: kept),

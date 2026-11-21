@@ -636,6 +636,13 @@ extension BotModeTests {
         XCTAssertEqual(titled.links.first?.profile, "zhongli")
         XCTAssertEqual(try XCTUnwrap(BotWorkLinks.split("Done: [W8 — Rotate keys](conduit://session/w8)")).links.map(\.ref), ["W8"])
         XCTAssertNil(BotWorkLinks.split("See [the notes from W7](conduit://session/w7)"))
+        // A link quoted in code stays there as written, as on the desktop (Eric 2026-11-20).
+        XCTAssertNil(BotWorkLinks.split("The format is `[Open W3](conduit://session/c) @session:furina/c`."))
+        XCTAssertNil(BotWorkLinks.split("Like this:\n```\n[Open W3](conduit://session/c)\n```"))
+        XCTAssertNil(BotWorkLinks.split("See ``a ` [Open W3](conduit://session/c) b`` for it."))
+        // A fence only opens at a line's start, and a stray backtick quotes nothing.
+        let stray = try XCTUnwrap(BotWorkLinks.split("Use ```lang to open a fence, or a ` alone.\n\n[Open W3](conduit://session/c)"))
+        XCTAssertEqual(stray.links.map(\.ref), ["W3"])
     }
 
     /// A read asked for after an action, while one was under way, makes
