@@ -68,11 +68,11 @@ final class ConnectionSetupUITests: XCTestCase {
         tapVisible(username, in: app)
         username.waitForKeyboardFocus()
         username.typeText("round3-user")
-        // Dismiss the keyboard before reaching for the password field: on
-        // iOS 27 the Passwords AutoFill bar makes the keyboard tall enough
-        // that the pinned Continue sits over the password field and at the
-        // window's vertical center, where app.swipeUp() lands, so the field
-        // can never be scrolled into a hittable spot. conduit() keeps
+        // Dismiss the keyboard before reaching for the password field: a
+        // tall enough keyboard (on iOS 27, one with the Passwords AutoFill
+        // bar) can leave the pinned Continue over the password field and at
+        // the window's vertical center, where app.swipeUp() lands, so the
+        // field can never be scrolled into a hittable spot. conduit() keeps
         // Passwords AutoFill off now (`DashboardCredentialAutoFill`); the
         // dismissal stays for any tall keyboard.
         dismissKeyboard(app)
