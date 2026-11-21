@@ -1363,12 +1363,18 @@ struct BotRosterView: View {
                 .rosterListRow(divider: false)
         }
         linkedApprovalRows
+        // The other combined dashboards' group chats (Eric, 2026-11-20),
+        // each where Saved Dashboards puts its dashboard, so a tap on one,
+        // which switches there, moves nothing (Eric, 2026-11-21).
+        let combinedRooms = appState.combinedRoomTilesAroundThisDashboard
+        ForEach(combinedRooms.before) { tile in
+            CombinedRoomRosterRow(tile: tile)
+        }
         ForEach(appState.shownGroupRooms) { room in
             GroupRosterRow(room: room)
         }
         linkedRoomRows
-        // The other combined dashboards' group chats (Eric, 2026-11-20).
-        ForEach(appState.otherCombinedDashboardsRoomTiles) { tile in
+        ForEach(combinedRooms.after) { tile in
             CombinedRoomRosterRow(tile: tile)
         }
         ForEach(appState.shownDesktopGroupChats) { group in
@@ -1541,6 +1547,14 @@ struct BotRosterView: View {
     /// then the room being started, last, where the faces fly to.
     @ViewBuilder
     private var homeRoomTiles: some View {
+        // The other combined dashboards' group chats, each where Saved
+        // Dashboards puts its dashboard: a room shows once, under the
+        // dashboard you talk in it from (Eric, 2026-11-20), and a tap on
+        // one, which switches there, moves nothing (Eric, 2026-11-21).
+        let combinedRooms = appState.combinedRoomTilesAroundThisDashboard
+        ForEach(combinedRooms.before) { tile in
+            CombinedRoomPortrait(tile: tile)
+        }
         ForEach(homeRooms) { room in
             GroupRoomPortrait(room: room, actions: roomActions(room))
                 .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
@@ -1552,10 +1566,7 @@ struct BotRosterView: View {
                 RoomCopyPortrait(copy: copy)
             }
         }
-        // The other combined dashboards' group chats, after this one's: a
-        // room shows once, under the dashboard you talk in it from (Eric,
-        // 2026-11-20).
-        ForEach(appState.otherCombinedDashboardsRoomTiles) { tile in
+        ForEach(combinedRooms.after) { tile in
             CombinedRoomPortrait(tile: tile)
         }
         ForEach(appState.shownDesktopGroupChats) { group in
