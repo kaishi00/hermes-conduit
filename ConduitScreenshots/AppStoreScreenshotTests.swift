@@ -108,7 +108,7 @@ final class AppStoreScreenshotTests: XCTestCase {
                     if !app.textFields["capabilities.search"].waitForExistence(timeout: 10) {
                         XCTFail("The Capabilities screen never opened")
                     }
-                    let loading = app.staticTexts["Loading capabilities…"]
+                    let loading = app.descendants(matching: .any)["capabilities.loading"]
                     if !loading.waitForNonExistence(timeout: 30) {
                         XCTFail("Capabilities never finished loading")
                     }
