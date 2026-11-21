@@ -298,6 +298,46 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(["version": 3])).isEmpty)
     }
 
+    /// Remove takes the room out and tombstones it in the envelope's own
+    /// version, so Desktop drops it too, and leaves every other room as is.
+    func testRemovingADesktopGroupTombstonesItInItsEnvelopesVersion() throws {
+        let v3: [String: Any] = [
+            "version": 3,
+            "rooms": [
+                "id:r1": desktopRoom(name: "Archon Council", roomId: "r1", revision: 4),
+                "name:Legacy": desktopRoom(name: "Legacy", revision: 2),
+                "id:r2": desktopRoom(name: "Kept", roomId: "r2"),
+            ],
+            "deleted": ["id:old": 1],
+            "extra": "kept",
+        ]
+        let byID = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "id:r1", from: any(v3)))
+        XCTAssertEqual((byID["deleted"] as? [String: Any])?["id:r1"] as? Double, 4)
+        XCTAssertEqual((byID["deleted"] as? [String: Any])?["id:old"] as? Double, 1)
+        XCTAssertNil((byID["rooms"] as? [String: Any])?["id:r1"])
+        XCTAssertEqual(byID["extra"] as? String, "kept")
+        XCTAssertEqual(DesktopGroupChatDecoder.decode(snapshot: any(byID)).map(\.name).sorted(), ["Kept", "Legacy"])
+
+        let byName = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "name:Legacy", from: any(v3)))
+        XCTAssertEqual((byName["deleted"] as? [String: Any])?["name:Legacy"] as? Double, 2)
+        XCTAssertEqual(DesktopGroupChatDecoder.decode(snapshot: any(byName)).map(\.name).sorted(), ["Archon Council", "Kept"])
+        // Already gone: nothing to write.
+        XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
+        XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))
+
+        let v2: [String: Any] = ["version": 2, "rooms": ["Weekly": desktopRoom(name: "Weekly", revision: 3)]]
+        let older = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: "name:Weekly", from: any(v2)))
+        XCTAssertEqual((older["deleted"] as? [String: Any])?["Weekly"] as? Double, 3)
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(older)).isEmpty)
+
+        let v1: [String: Any] = ["rooms": ["Old": desktopRoom(name: "Old")]]
+        let oldest = try XCTUnwrap(DesktopGroupChatDecoder.removing(
+            key: "name:Old", from: any(v1), now: Date(timeIntervalSince1970: 1_700_000_000)
+        ))
+        XCTAssertEqual((oldest["deleted"] as? [String: Any])?["Old"] as? Double, 1_700_000_000_000)
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(oldest)).isEmpty)
+    }
+
     /// The roster answer carries the projection on the `default` profile
     /// only — the same row Desktop publishes to and reads from.
     func testRosterDecodeReadsDesktopGroupsFromTheDefaultProfile() {

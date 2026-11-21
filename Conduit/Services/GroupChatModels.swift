@@ -2313,6 +2313,44 @@ enum DesktopGroupChatDecoder {
     }
 }
 
+extension DesktopGroupChatDecoder {
+    /// The projection with the room `key` names taken out of `rooms` and
+    /// tombstoned in `deleted`, in the envelope's own version, so Hermes
+    /// Desktop drops it too on its next sync rather than writing it back:
+    /// v3 tombstones its room key (and `id:<roomId>`, which is final) at
+    /// the room's revision, v2 its name at that revision, v1 its name at
+    /// the wall-clock milliseconds v1 used. Every other room and field is
+    /// kept as it is. Nil when the projection no longer holds the room.
+    static func removing(key: String, from snapshot: AnyCodable?, now: Date = Date()) -> [String: Any]? {
+        guard let object = snapshot?.objectValue else { return nil }
+        let version = object["version"]?.doubleValue ?? 0
+        var rooms = object["rooms"]?.objectValue ?? [:]
+        let rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        guard let room = rooms.removeValue(forKey: rawKey)?.objectValue else { return nil }
+
+        var deleted = object["deleted"]?.objectValue ?? [:]
+        let revision = max(0, room["revision"]?.doubleValue ?? 0)
+        func tombstone(_ tombstoneKey: String, at value: Double) {
+            let kept = deleted[tombstoneKey]?.doubleValue ?? 0
+            deleted[tombstoneKey] = .number(max(kept, value))
+        }
+        if version >= 3 {
+            tombstone(rawKey, at: revision)
+            let roomID = room["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !roomID.isEmpty { tombstone("id:\(roomID)", at: revision) }
+        } else if version >= 2 {
+            tombstone(rawKey, at: revision)
+        } else {
+            tombstone(rawKey, at: (now.timeIntervalSince1970 * 1000).rounded())
+        }
+
+        var envelope = object
+        envelope["rooms"] = .object(rooms)
+        envelope["deleted"] = .object(deleted)
+        return AnyCodable.object(envelope).anyValue as? [String: Any]
+    }
+}
+
 /// How many bots a hosted room holds (New Group Chat's "Members (2–6)").
 enum GroupRoomLimits {
     static let maxMembers = 6

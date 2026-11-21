@@ -2791,6 +2791,8 @@ struct GroupRoomSettingsSheet: View {
 /// hosted room, with the latest mirrored message as its preview.
 struct DesktopGroupRosterRow: View {
     let group: DesktopGroupChat
+    /// Remove Group Chat in its long-press menu; nil while offline.
+    var onRemove: (() -> Void)? = nil
     let onOpen: () -> Void
 
     var body: some View {
@@ -2808,6 +2810,13 @@ struct DesktopGroupRosterRow: View {
         }
         .buttonStyle(.plain)
         .rosterListRow()
+        .contextMenu {
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Label(AppLocalization.string("Remove Group Chat"), systemImage: "trash")
+                }
+            }
+        }
         .accessibilityLabel(Text(group.name))
         .accessibilityValue(Text(subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
@@ -2827,7 +2836,18 @@ struct DesktopGroupRosterRow: View {
 /// there is no composer here — sending would need Desktop's orchestrator.
 struct DesktopGroupChatView: View {
     let group: DesktopGroupChat
+    @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    @State private var confirmingRemoval = false
+    @State private var removing = false
+    @State private var removalFailure: String?
+
+    /// What Remove asks under its title, here and in the Bots list.
+    static var removalWarning: String {
+        AppLocalization.string(
+            "It goes from Conduit and from Hermes Desktop, for everyone using this Hermes. This cannot be undone."
+        )
+    }
     @ObservedObject private var appLanguage = AppLanguageStore.shared
 
     /// Mention styling reuses the hosted-room classifier: the projection's
@@ -2886,7 +2906,49 @@ struct DesktopGroupChatView: View {
                 }
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }
+                        .disabled(removing)
                 }
+                // Conduit can't reply here, so this is how it stops showing.
+                if appState.isConnected {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(AppLocalization.string("Remove"), role: .destructive) { confirmingRemoval = true }
+                            .tint(.red)
+                            .disabled(removing)
+                    }
+                }
+            }
+            // Open until a Remove answers, so a failure shows here.
+            .interactiveDismissDisabled(removing)
+            .confirmationDialog(
+                AppLocalization.string("Remove this group chat?"),
+                isPresented: $confirmingRemoval,
+                titleVisibility: .visible
+            ) {
+                Button(AppLocalization.string("Remove"), role: .destructive) { remove() }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: {
+                Text(Self.removalWarning)
+            }
+            .alert(
+                removalFailure ?? "",
+                isPresented: Binding(get: { removalFailure != nil }, set: { if !$0 { removalFailure = nil } })
+            ) {
+                Button(AppLocalization.string("OK"), role: .cancel) {}
+            }
+        }
+    }
+
+    private func remove() {
+        removing = true
+        Task {
+            let failure = await appState.removeDesktopGroupChat(group)
+            removing = false
+            if let failure {
+                Haptics.warning()
+                removalFailure = failure
+            } else {
+                Haptics.success()
+                dismiss()
             }
         }
     }

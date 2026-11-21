@@ -471,6 +471,8 @@ struct RoomTileDrop: DropDelegate {
 /// shows its latest messages. A small computer marks it as Desktop's.
 struct DesktopGroupPortrait: View {
     let group: DesktopGroupChat
+    /// Remove Group Chat in its long-press menu; nil while offline.
+    var onRemove: (() -> Void)? = nil
     let onOpen: () -> Void
 
     var body: some View {
@@ -488,6 +490,13 @@ struct DesktopGroupPortrait: View {
             }
         }
         .buttonStyle(PressableButtonStyle())
+        .contextMenu {
+            if let onRemove {
+                Button(role: .destructive, action: onRemove) {
+                    Label(AppLocalization.string("Remove Group Chat"), systemImage: "trash")
+                }
+            }
+        }
         .accessibilityLabel(Text(group.name))
         .accessibilityValue(Text(AppLocalization.string("\(group.members.count) members")))
         .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))

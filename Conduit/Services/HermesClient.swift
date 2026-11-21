@@ -3089,6 +3089,35 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// Hermes Desktop's group projection as the gateway holds it now: the
+    /// `default` profile's `ui_meta['hermes-bots-groups']` and that key's
+    /// compare-and-swap revision (nil on a gateway without revisions).
+    func desktopGroupProjection() async throws -> (snapshot: AnyCodable?, revision: Int?) {
+        let result = try await rpc("profiles.list", params: nil, scoped: false)
+        guard let rows = result.objectValue?["profiles"]?.arrayValue else { throw HermesError.invalidResponse }
+        let row = rows.first {
+            $0.objectValue?["name"]?.stringValue == DesktopGroupChatDecoder.profileName
+        }?.objectValue
+        let key = DesktopGroupChatDecoder.metaKey
+        let revision = row?["ui_meta_revisions"]?.objectValue.map { $0[key]?.intValue ?? 0 }
+        return (row?["ui_meta"]?.objectValue?[key], revision)
+    }
+
+    /// Writes Hermes Desktop's group projection back whole
+    /// (`profiles.configure` on the `default` profile), compare-and-swap
+    /// against `expectedRevision` when the gateway gave one.
+    func writeDesktopGroupProjection(_ envelope: [String: Any], expectedRevision: Int?) async throws -> AnyCodable {
+        let key = DesktopGroupChatDecoder.metaKey
+        var params: [String: Any] = [
+            "name": DesktopGroupChatDecoder.profileName,
+            "ui_meta": [key: envelope],
+        ]
+        if let expectedRevision { params["ui_meta_expected_revisions"] = [key: expectedRevision] }
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("profiles.configure", params: params, scoped: false)
+        }
+    }
+
     /// `profiles.get_asset` for the bot's avatar. Nil when it has none.
     func botAvatar(name: String) async throws -> Data? {
         let result = try await rpc("profiles.get_asset", params: [
