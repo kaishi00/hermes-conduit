@@ -826,4 +826,139 @@ extension ChatTypographyTests {
         XCTAssertLessThanOrEqual(narrow.width, 120)
         XCTAssertGreaterThan(narrow.height, long.height, "narrower takes more lines")
     }
+
+    /// Instructions reach a request only when the plugin uses them (issue
+    /// 2970): one reporting `predict` without `predict-custom-instructions`
+    /// gets none, and the draft and follow-up questions carry their own kind.
+    @MainActor
+    func testInstructionsGoOnlyToAPluginThatUsesThemAndOnlyWithTheirKind() throws {
+        let keys = [Predictive.Kind.replies, .draft, .turn].map(Predictive.instructionsKey)
+        defer { keys.forEach { UserDefaults.standard.removeObject(forKey: $0) } }
+        UserDefaults.standard.set("Replies way.", forKey: Predictive.instructionsKey(.replies))
+        UserDefaults.standard.set("Draft way.", forKey: Predictive.instructionsKey(.draft))
+        UserDefaults.standard.set("Follow-up way.", forKey: Predictive.instructionsKey(.turn))
+        let defaults = makeScratchDefaults("PredictiveInstructionsServedTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.setNotifierPluginStateForTesting(.reported(version: "0.189.0", capabilities: [Predictive.capability]))
+        XCTAssertTrue(state.predictiveIsServed)
+        XCTAssertFalse(state.predictiveInstructionsAreServed)
+        XCTAssertNil(state.predictiveInstructions(.replies), "an older plugin would ignore them")
+        XCTAssertNil(state.predictiveInstructions(.turn))
+
+        state.setNotifierPluginStateForTesting(.reported(
+            version: "0.190.0", capabilities: [Predictive.capability, Predictive.instructionsCapability]
+        ))
+        XCTAssertTrue(state.predictiveInstructionsAreServed)
+        XCTAssertEqual(state.predictiveInstructions(.draft), "Draft way.")
+
+        state.predictiveSender = { _ in [:] }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        state.predictive.draftChanged("Can you check")
+        state.refreshPredictions()
+        let draft = try XCTUnwrap(state.shownChat.predictiveDraftAsked)
+        XCTAssertEqual(draft.draft, "Can you check")
+        let body = Predictive.body(
+            kind: .turn, sessionID: "s1", count: 1,
+            facts: Predictive.TurnFacts(lastReplySeconds: 1, onScreenSeconds: 1, check: 1, localTime: "Sunday 09:14"),
+            language: "English", model: .fast, wait: Predictive.turnWait,
+            instructions: state.predictiveInstructions(.turn)
+        )
+        XCTAssertEqual(body["custom_instructions"] as? String, "Follow-up way.")
+    }
+
+    /// Guesses asked under instructions the user edited before the answer
+    /// came are dropped: suggested replies and a draft's guesses aren't
+    /// shown, and a follow-up check is asked again with the new ones after
+    /// the shortest wait, within the reply's checks (issue 2970).
+    @MainActor
+    func testAnAnswerToEditedInstructionsIsNotUsed() async throws {
+        let keys = [Predictive.Kind.replies, .draft, .turn].map(Predictive.instructionsKey)
+            + [Predictive.repliesKey, Predictive.followUpKey]
+        defer { keys.forEach { UserDefaults.standard.removeObject(forKey: $0) } }
+        UserDefaults.standard.set(true, forKey: Predictive.repliesKey)
+        UserDefaults.standard.set(true, forKey: Predictive.followUpKey)
+        let defaults = makeScratchDefaults("PredictiveStaleInstructionsTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        defer { state.stopPredictiveFollowUpClock() }
+        state.activeSessionId = "s1"
+        state.messages = [ChatMessage(id: "a1", role: .assistant, content: "Done.", timestamp: "now")]
+        let anchor = try XCTUnwrap(state.predictiveAnchor)
+        let guesses: [String: Any] = [
+            "replies": [["text": "Thanks", "p": 0.8]],
+            "next": [["text": " it", "p": 0.7]],
+        ]
+
+        // Suggested replies: the answer lands after the edit.
+        UserDefaults.standard.set("Old.", forKey: Predictive.instructionsKey(.replies))
+        var asked = 0
+        state.predictiveSender = { body in
+            asked += 1
+            XCTAssertEqual(body["custom_instructions"] as? String, "Old.")
+            UserDefaults.standard.set("New.", forKey: Predictive.instructionsKey(.replies))
+            return guesses
+        }
+        state.requestPredictedReplies(for: anchor)
+        try await waitUntil { asked == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(state.predictive.replies.isEmpty, "made under the old instructions")
+        // Unchanged meanwhile, the same answer shows.
+        state.predictiveSender = { _ in guesses }
+        state.requestPredictedReplies(for: anchor, again: true)
+        try await waitUntil { !state.predictive.replies.isEmpty }
+
+        // A draft's guesses: the same.
+        UserDefaults.standard.set("Old.", forKey: Predictive.instructionsKey(.draft))
+        asked = 0
+        state.predictiveSender = { body in
+            asked += 1
+            XCTAssertEqual(body["custom_instructions"] as? String, "Old.")
+            UserDefaults.standard.set("New.", forKey: Predictive.instructionsKey(.draft))
+            return guesses
+        }
+        state.predictive.draftChanged("Can you check")
+        state.refreshPredictions()
+        try await waitUntil { asked == 1 }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNil(state.predictive.answeredDraft, "made under the old instructions")
+
+        // A follow-up check: asked again with the new ones, not acted on.
+        state.predictive.draftChanged("")
+        UserDefaults.standard.set("Old.", forKey: Predictive.instructionsKey(.turn))
+        state.predictiveSender = { body in
+            XCTAssertEqual(body["custom_instructions"] as? String, "Old.")
+            UserDefaults.standard.set("New.", forKey: Predictive.instructionsKey(.turn))
+            return ["take_turn": true, "nudge": "Worth a check.", "why": "A result landed."]
+        }
+        state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor)
+        let checked = Date()
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertFalse(state.shownChat.predictiveFollowUp.stopped)
+        XCTAssertNil(state.shownChat.predictiveFollowUpTurn, "no hidden turn on the old decision")
+        let next = try XCTUnwrap(state.shownChat.predictiveFollowUp.nextCheck)
+        XCTAssertEqual(next.timeIntervalSince(checked), TimeInterval(Predictive.askAgainRange.lowerBound), accuracy: 5)
+        state.stopPredictiveFollowUpClock()
+        // On the reply's last check, the checks end instead.
+        UserDefaults.standard.set("Old.", forKey: Predictive.instructionsKey(.turn))
+        state.shownChat.predictiveFollowUp = PredictiveFollowUpState(anchor: anchor, checks: Predictive.maximumChecks - 1)
+        await state.checkPredictiveFollowUp(for: anchor)
+        XCTAssertTrue(state.shownChat.predictiveFollowUp.stopped)
+    }
+
+    /// Polls `condition` on the main actor for up to two seconds.
+    @MainActor
+    private func waitUntil(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async throws {
+        for _ in 0..<200 where !condition() {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertTrue(condition(), "timed out", file: file, line: line)
+    }
 }
