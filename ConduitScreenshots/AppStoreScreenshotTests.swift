@@ -332,9 +332,15 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     private func dismissFinishSetupCard() {
-        let notNow = app.buttons["finish-setup.not-now"]
-        if notNow.waitForExistence(timeout: 10) {
+        // Chats and Bots each draw the card, and both tabs stay in the
+        // hierarchy, so take the copy that's on screen.
+        let cards = app.buttons.matching(identifier: "finish-setup.not-now")
+        if cards.firstMatch.waitForExistence(timeout: 10) {
             snap("debug-finish-setup")
+            let screen = app.windows.firstMatch.frame
+            let notNow = cards.allElementsBoundByIndex.first { $0.isHittable }
+                ?? cards.allElementsBoundByIndex.first { screen.intersects($0.frame) && !$0.frame.isEmpty }
+                ?? cards.firstMatch
             // Beside the empty chat column on an iPad, accessibility's hit
             // test misses the button though a touch lands; tap its point.
             if notNow.isHittable {
