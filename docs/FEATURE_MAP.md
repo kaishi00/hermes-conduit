@@ -3323,6 +3323,37 @@ README.md's Scheduled jobs line)
 
 **Checked:** 2026-11-08, #2047 (added)
 
+## A scheduled job's schedule
+
+New and Edit scheduled job set how a job repeats: at a time on picked days,
+every so many minutes, hours or days, once, or a custom expression, with the
+result in plain words under it. The Every… number is typed on the number pad
+or stepped with -/+ (Eric 2026-11-21: it only had the stepper, while desktop
+lets you type it).
+
+**Siblings:** the job editor, New and Edit (one `CronJobEditorSheet`, one
+`CronScheduleEditor`, done) · the blueprint form (not needed: no schedule
+controls, Hermes builds the schedule) · other steppers (not needed: bounded
+Settings counts and Kanban's Goal Mode ladder, not a free number) · Watch,
+CarPlay, group rooms and the notifier (not needed: no job editor there; the
+editor talks to the dashboard's cron routes) · Text (not needed: no caption
+describes the controls; README.md's Scheduled jobs line says edit)
+
+**Desktop app:** has it: New job and Edit job type the interval in a number field (`desktop/src/renderer/src/components/ScheduledJobs.tsx`).
+
+**Code**
+- App: `Conduit/Models/CronJobDraft.swift` (CronScheduleDraft, intervalRange, typedInterval, scheduleString), `Conduit/Views/V2/CronJobEditorSheet.swift` (CronScheduleEditor, CronIntervalField, CronWeekdayPicker)
+- Tests: `ConduitTests/CronJobDraftTests.swift` (testIntervalsPickTheLargestWholeUnit)
+
+**Rulings**
+- The interval stays in 1...999 of its unit; a typed number is clamped as it's typed (0 reads as 1, 5000 as 999), a cleared field keeps the last number, and the field shows the clamped number once it loses focus. A job read in past the range shows its own number until edited.
+- An interval is read in its largest whole unit (120 minutes as 2 hours), so saving unchanged sends the same schedule.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-21, #2962 (added)
+
 ## Links in messages
 
 A tap on a link in a reply opens it, the first time, wherever the reply is

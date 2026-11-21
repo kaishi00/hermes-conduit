@@ -336,12 +336,7 @@ private struct CronScheduleEditor: View {
                 DatePicker(AppLocalization.string("Time", table: .tasks), selection: timeBinding, displayedComponents: .hourAndMinute)
                 CronWeekdayPicker(days: $schedule.days)
             case .interval:
-                Stepper(value: $schedule.intervalValue, in: 1...999) {
-                    Text(verbatim: String(schedule.intervalValue))
-                        .monospacedDigit()
-                }
-                // "Every 2 hours" rather than a bare "2".
-                .accessibilityValue(Text(preview))
+                CronIntervalField(value: $schedule.intervalValue, spoken: preview)
                 Picker(AppLocalization.string("Unit", table: .tasks), selection: $schedule.intervalUnit) {
                     Text(AppLocalization.string("Minutes", table: .tasks)).tag(CronScheduleDraft.IntervalUnit.minutes)
                     Text(AppLocalization.string("Hours", table: .tasks)).tag(CronScheduleDraft.IntervalUnit.hours)
@@ -384,6 +379,64 @@ private struct CronScheduleEditor: View {
                 schedule.minute = parts.minute ?? schedule.minute
             }
         )
+    }
+}
+
+/// The interval's number: typed on the number pad or stepped with -/+.
+/// Typing clamps into CronScheduleDraft.intervalRange as it goes, and the
+/// field shows the clamped number once it loses focus.
+private struct CronIntervalField: View {
+    @Binding var value: Int
+    /// The schedule in words, "Every 2 hours" rather than a bare "2".
+    let spoken: String
+    @State private var text = ""
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        HStack {
+            TextField(text: $text, prompt: nil) {
+                Text(AppLocalization.string("Every…", table: .tasks))
+            }
+            .keyboardType(.numberPad)
+            .multilineTextAlignment(.center)
+            .monospacedDigit()
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 80)
+            .focused($focused)
+            .accessibilityValue(Text(spoken))
+            .accessibilityIdentifier("cron.editor.interval.field")
+            Spacer()
+            Stepper(value: $value, in: CronScheduleDraft.intervalRange) {
+                Text(AppLocalization.string("Every…", table: .tasks))
+            }
+            .labelsHidden()
+            .accessibilityValue(Text(spoken))
+        }
+        .keyboardDoneButton(isActive: focused) { focused = false }
+        .onAppear { text = String(value) }
+        .onChange(of: text) { _, typed in
+            // The number shown for value (as seeded, even past the range)
+            // is not an edit.
+            guard typed != String(value) else { return }
+            let digits = typed.filter { $0.isASCII && $0.isNumber }
+            if digits != typed {
+                text = digits
+                return
+            }
+            if let typedValue = CronScheduleDraft.typedInterval(digits), typedValue != value {
+                value = typedValue
+            }
+        }
+        .onChange(of: value) { _, newValue in
+            // A step, or the job loading in; a typed 0 that became 1 stays
+            // as typed until the field is left.
+            if CronScheduleDraft.typedInterval(text) != newValue {
+                text = String(newValue)
+            }
+        }
+        .onChange(of: focused) { _, isFocused in
+            if !isFocused { text = String(value) }
+        }
     }
 }
 

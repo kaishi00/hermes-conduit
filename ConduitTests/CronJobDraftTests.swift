@@ -47,6 +47,15 @@ extension CronScheduleTextTests {
         schedule.intervalUnit = .hours
         let preview = schedule.previewSchedule.flatMap { CronScheduleText.describe($0, zoneLabel: nil, locale: Locale(identifier: "en_US")) }
         XCTAssertEqual(preview, "Every 2 hours")
+
+        // A typed number, clamped into the stepper's range.
+        XCTAssertEqual(CronScheduleDraft.typedInterval("45"), 45)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("007"), 7)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("0"), 1)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("5000"), 999)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("99999999999999999999999"), 999)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("1 2"), 12)
+        XCTAssertNil(CronScheduleDraft.typedInterval(""), "a cleared field is no number yet")
     }
 
     func testAOneShotKeepsItsInstant() throws {

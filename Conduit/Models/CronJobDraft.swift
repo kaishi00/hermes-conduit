@@ -64,6 +64,23 @@ struct CronScheduleDraft: Equatable {
     static let weekdays: Set<Int> = Set(1...5)
     static let weekends: Set<Int> = [0, 6]
 
+    /// The interval's stepper bounds; a typed number is clamped into them.
+    static let intervalRange = 1...999
+
+    /// A typed interval as a number: digits only, clamped into
+    /// intervalRange (0 reads as 1, 5000 as 999). Nil while no digit is
+    /// typed, as when the field is cleared to type afresh.
+    static func typedInterval(_ text: String) -> Int? {
+        let digits = text.filter { $0.isASCII && $0.isNumber }
+        guard !digits.isEmpty else { return nil }
+        let significant = digits.drop { $0 == "0" }
+        let width = String(intervalRange.upperBound).count
+        guard significant.count <= width, let number = Int(significant) else {
+            return significant.isEmpty ? intervalRange.lowerBound : intervalRange.upperBound
+        }
+        return min(max(number, intervalRange.lowerBound), intervalRange.upperBound)
+    }
+
     init() {}
 
     /// A job's schedule in the editor's shapes; anything else is kept as
