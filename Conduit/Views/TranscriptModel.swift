@@ -277,6 +277,21 @@ struct TranscriptModel {
 
     private(set) var rows: [TranscriptRow] = []
     private(set) var facts = ChatRowFacts()
+
+    /// The most pages Load earlier reads by itself in one open of a chat
+    /// (`drawsOnlyLoadEarlier`): 960 rows, under the 1,000 a chat keeps
+    /// loaded before it lets go of its oldest pages.
+    static let autoEarlierPageLimit = 8
+
+    /// Whether Load earlier is all the chat draws: its rows are there, but
+    /// every one is hidden by the display settings (a bot working through
+    /// its inbox, its tool steps hidden with Tool cards off). The chat then
+    /// reads the page before by itself, up to `autoEarlierPageLimit` pages,
+    /// so it opens on words rather than a lone Load earlier.
+    var drawsOnlyLoadEarlier: Bool {
+        guard rows.count == 1, case .loadEarlier(isLoading: false) = rows[0].kind else { return false }
+        return true
+    }
     /// The chat's rows left out because an earlier row has their id. Ids
     /// are unique in practice; the trace names any that aren't.
     private(set) var repeatedIDs: [String] = []

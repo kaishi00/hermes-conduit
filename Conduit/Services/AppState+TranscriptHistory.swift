@@ -499,8 +499,9 @@ extension AppState {
     /// Fetches the next older persisted-history page for the active
     /// conversation and prepends it, keeping the user's visible position
     /// stable (ChatView anchors the prepend through the viewport controller).
-    /// Strictly user-driven and single-flight: one explicit request at a
-    /// time, owned by the window identity captured at request time, and a
+    /// Asked for by the user's tap, or by ChatView itself while a page draws
+    /// nothing but Load earlier (TranscriptModel.drawsOnlyLoadEarlier).
+    /// Single-flight: one request at a time, owned by the window identity captured at request time, and a
     /// response from a session/profile that is no longer current is
     /// discarded without touching state.
     ///

@@ -60,6 +60,10 @@ struct ChatView: View {
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
     @State private var backfillTask: Task<Void, Never>?
+    /// The pages Load earlier read by itself for the chat on screen
+    /// (TranscriptModel.drawsOnlyLoadEarlier), by the conversation they
+    /// were read for.
+    @State private var autoEarlierPages: (conversation: String, count: Int) = ("", 0)
     /// The overview of every pinned reply, from the pinned bar (#918).
     @State private var showsPinnedReplies = false
     /// The pin whose label is being edited from the bar (#1147).
@@ -455,6 +459,26 @@ struct ChatView: View {
         // Pictures' sizes from earlier launches, read once off the main
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
+        // A page of rows that all draw nothing reads the page before by
+        // itself, so the chat doesn't open on a lone Load earlier. The
+        // rows' revision and the display settings are in the id: each page
+        // that lands, or a setting that hides more, looks again. The read
+        // runs in a task of its own, as the button's does: arming its
+        // progress line redraws the chat, which would cancel it here.
+        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)") {
+            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading else { return }
+            let conversation = Self.drawnConversation(in: appState)
+            let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
+            guard read < TranscriptModel.autoEarlierPageLimit else { return }
+            ChatViewportWatch.shared.command("loadEarlier")
+            backfillTask = Task { @MainActor in
+                // Only a page that landed counts: a failed read leaves the
+                // budget, and the next change of rows tries again.
+                if await appState.loadEarlierMessages() {
+                    autoEarlierPages = (conversation, read + 1)
+                }
+            }
+        }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
         // are staged in the composer for the user to send (#1408); a file
@@ -680,6 +704,8 @@ struct ChatView: View {
                 // Reinstalled on appear; late events go nowhere meanwhile.
                 scroller.onEvent = nil
                 backfillTask?.cancel()
+                // Each visit to the chat has its own pages to read by itself.
+                autoEarlierPages = ("", 0)
                 pinnedRevealFallbackTask?.cancel()
                 pinnedRevealFallbackTask = nil
                 pinnedRevealFallbackReveal = nil
