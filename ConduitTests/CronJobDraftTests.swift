@@ -55,6 +55,7 @@ extension CronScheduleTextTests {
         XCTAssertEqual(CronScheduleDraft.typedInterval("5000"), 999)
         XCTAssertEqual(CronScheduleDraft.typedInterval("99999999999999999999999"), 999)
         XCTAssertEqual(CronScheduleDraft.typedInterval("1 2"), 12)
+        XCTAssertEqual(CronScheduleDraft.typedInterval("٤٥"), 45, "a localized number pad's digits")
         XCTAssertNil(CronScheduleDraft.typedInterval(""), "a cleared field is no number yet")
     }
 

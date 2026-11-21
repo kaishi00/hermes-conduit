@@ -71,7 +71,7 @@ struct CronScheduleDraft: Equatable {
     /// intervalRange (0 reads as 1, 5000 as 999). Nil while no digit is
     /// typed, as when the field is cleared to type afresh.
     static func typedInterval(_ text: String) -> Int? {
-        let digits = text.filter { $0.isASCII && $0.isNumber }
+        let digits = intervalDigits(text)
         guard !digits.isEmpty else { return nil }
         let significant = digits.drop { $0 == "0" }
         let width = String(intervalRange.upperBound).count
@@ -79,6 +79,15 @@ struct CronScheduleDraft: Equatable {
             return significant.isEmpty ? intervalRange.lowerBound : intervalRange.upperBound
         }
         return min(max(number, intervalRange.lowerBound), intervalRange.upperBound)
+    }
+
+    /// A typed interval's digits, in ASCII: a localized number pad's
+    /// digits (Arabic-Indic, say) are read as theirs, anything else dropped.
+    static func intervalDigits(_ text: String) -> String {
+        String(text.compactMap { character -> Character? in
+            guard character.isNumber, let digit = character.wholeNumberValue, (0...9).contains(digit) else { return nil }
+            return Character(String(digit))
+        })
     }
 
     init() {}
