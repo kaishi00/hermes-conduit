@@ -215,6 +215,109 @@ final class DashboardRuntime: ObservableObject {
     /// looks can't name, for the selected dashboard.
     @Published var profileDeviceNames: [String: String] = [:]
 
+    // MARK: Group rooms
+
+    @Published var groupChatPhase: AppState.GroupChatPhase = .idle
+    @Published var groupCapabilities: GroupCapabilities?
+    @Published var groupRooms: [GroupRoom] = []
+    /// The rooms this Hermes hosts with people you've linked that Group
+    /// Chats lists until they start, and the people New Group Chat can
+    /// invite (RoomDrafts.swift).
+    @Published var linkedRoomDrafts: LinkedRoomDrafts?
+    /// The rooms people you've linked invited this Hermes to, which Group
+    /// Chats lists with the drafts (RoomInvites.swift).
+    @Published var linkedRoomInvites: LinkedRoomInvites?
+    /// Reads the invites again for a while after a Link is made
+    /// (RoomInvites.swift followLinkedRoomInvites).
+    var linkedRoomInviteFollow: Task<Void, Never>?
+    /// What your agents' turns in rooms other people host wait for you to
+    /// approve, which Group Chats lists first (RoomApprovals.swift).
+    @Published var linkedRoomApprovals: LinkedRoomApprovals?
+    /// The approvals answered here, by id: a read already under way when
+    /// one was answered can't bring its row or card back.
+    var answeredLinkedRoomApprovalIDs: Set<String> = []
+    /// Bumped by a change made here to who and what Group Chats lists (a
+    /// copy's delete, a Block, a leave or take out), so a copies,
+    /// approvals, drafts or invites read it overtook is dropped: issued
+    /// before the change, it could list what the change took away
+    /// (issue 2347).
+    var linkedRosterGeneration: Int = 0
+    /// Your Hermes' copies of the rooms other people host that your agents
+    /// joined, which Group Chats lists after your own (RoomCopies.swift).
+    @Published var linkedRoomCopies: LinkedRoomCopies?
+    /// The hosted rooms whose bots are talking now (each room's driver is
+    /// working), read while Bots Home shows (`refreshTalkingRooms`), for
+    /// its live-rooms row and the "In <room>" pills.
+    @Published var talkingRoomIDs: Set<String> = []
+    /// `groups.list` has answered since the group state was last cleared:
+    /// until then the Bots list shows the rooms kept from its last answer on
+    /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
+    /// launch waits on opens as soon as Hermes lists it (#1597).
+    @Published var groupRoomsListed: Bool = false
+    /// The last `groups.list` answer was its last page: only then does a
+    /// room missing from `groupRooms` prove it's gone.
+    var groupRoomsComplete: Bool = false
+    var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
+    /// Hermes Desktop's group chats, read from its ui_meta projection on the
+    /// `default` profile (refreshed with the bot roster). Read-only here:
+    /// Desktop drives their rounds, and `groups.*` cannot address them.
+    @Published var desktopGroupChats: [DesktopGroupChat] = []
+    /// Hosted rooms' custom pictures (JPEG/PNG bytes) and the plugin's
+    /// revision of each, keyed by room id (`GroupRoomPictures`).
+    @Published var groupRoomPictureData: [String: Data] = [:]
+    var groupRoomPictureRevisions: [String: String] = [:]
+    /// Moves on each time a room's picture is set or removed here, so a
+    /// slower refresh or an older change can't undo a newer one. Never
+    /// reset: a reset could make a change look as if it never happened.
+    var groupRoomPictureGenerations: [String: Int] = [:]
+    /// How many set or remove requests are still on their way for each
+    /// room; a room drops out once all of them have settled.
+    var groupRoomPicturesChanging: [String: Int] = [:]
+    /// Boards replies name by line, by id, once read (LineBoards).
+    @Published var lineBoards: [String: RichBoard] = [:]
+    /// Boards replies name that the plugin no longer has (pruned: the
+    /// newest 500, a month), or answered in a shape Conduit can't draw:
+    /// not asked for again, and the reply says one was there.
+    @Published var lineBoardsGone: Set<String> = []
+    var lineBoardsAsked: Set<String> = []
+    /// The dashboard and profile `lineBoards` were read from.
+    var lineBoardsScope: String = ""
+    /// Bumped whenever `lineBoards` is forgotten, so a read from before
+    /// stores nothing (issue 2083).
+    var lineBoardsGeneration: Int = 0
+    /// How each room over Links on Bots Home looks, by dashboard and room
+    /// (RoomLooks.swift), for its tile's faces.
+    @Published var homeRoomLooksByKey: [String: RoomLooks] = [:]
+    var homeRoomLooksReadAt: [String: Date] = [:]
+    /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
+    var sharedRoomLooks: [UUID: String] = [:]
+    /// The Group Chats probe asked again after a transient failure, so its
+    /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
+    /// stayed after a reconnect the app never saw as a disconnect).
+    var groupChatProbeRetry: TransientReadRetry = TransientReadRetry()
+    /// The same for the bot roster's "Could not refresh bots".
+    var botRosterRetry: TransientReadRetry = TransientReadRetry()
+    /// Each room's reads in a row that failed.
+    var talkingRoomMisses: [String: Int] = [:]
+    /// A talking-rooms read is running.
+    var talkingRoomsReading: Bool = false
+    /// When the last talking-rooms read began.
+    var talkingRoomsReadAt: Date?
+
+    // MARK: Chat list reads, their partners
+
+    /// The full catalog read under way, for a read asked for meanwhile to
+    /// join rather than send its own (CatalogReadInFlight).
+    var catalogReadInFlight: AppState.CatalogReadInFlight?
+    /// The chat list's newest page going out, for a newest-page read asked
+    /// for meanwhile to take its answer rather than send the same requests
+    /// (NewestCatalogPageRead, issue 2604).
+    var newestCatalogPageRead: AppState.NewestCatalogPageRead?
+    /// Whether the listing that holds `sessionListListedTicket` took its
+    /// cron rows from the catalog cache: a gateway listing fills none, so a
+    /// later relist from the cache doesn't replace its rows (issue 2763).
+    var sessionListListedCronFromCache: Bool = false
+
     /// `notifierPlugin`: what it starts from before its plugin answers (the
     /// saved Update notices choice).
     init(notifierPlugin: NotifierPluginStatus = NotifierPluginStatus()) {
