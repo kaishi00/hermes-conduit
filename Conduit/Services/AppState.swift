@@ -112,6 +112,18 @@ final class AppState: ObservableObject {
     var isConnectingValues: AnyPublisher<Bool, Never> {
         $runtimeOnScreen.map { $0.$isConnecting }.switchToLatest().eraseToAnyPublisher()
     }
+    /// The dashboard on screen's Chats list rows as they change.
+    var sessionsValues: AnyPublisher<[SessionSummary], Never> {
+        $runtimeOnScreen.map { $0.$sessions }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's roster as it changes.
+    var botRosterValues: AnyPublisher<[BotProfile], Never> {
+        $runtimeOnScreen.map { $0.$botRoster }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's Bots phase as it changes.
+    var botModePhaseValues: AnyPublisher<BotModePhase, Never> {
+        $runtimeOnScreen.map { $0.$botModePhase }.switchToLatest().eraseToAnyPublisher()
+    }
     /// A failed sign-in refresh or ticket kept quiet during those retries,
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
