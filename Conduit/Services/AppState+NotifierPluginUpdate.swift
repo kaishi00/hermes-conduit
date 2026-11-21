@@ -217,7 +217,8 @@ extension AppState {
     func clearSettledNotifierPluginUpdateOutcome() {
         let outcome = activeNotifierPluginUpdate
         guard notifierPlugin.settles(outcome) else { return }
-        if case .failed = outcome {
+        // A held scan pulled nothing either: it reads as updated only once nothing is left to update.
+        if outcome.endedWithoutUpdating {
             guard !notifierPlugin.updateAvailable else { return }
             let dashboardID = activeDashboardID
             Task { [weak self] in

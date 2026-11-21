@@ -107,6 +107,11 @@ extension GatewayRestartTests {
         stillOld.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "b")
         XCTAssertFalse(stillOld.settles(waiting))
         XCTAssertFalse(stillOld.settles(.failed(detail: nil)))
+        // A held scan pulled nothing: it settles only once the offered version runs.
+        let held = NotifierPluginScanHold(job: ["code": "scan_blocked", "scan_verdict": "caution"]).map { NotifierPluginUpdateState.scanHeld($0) }
+        XCTAssertEqual(held.map(served.settles), true)
+        XCTAssertEqual(held.map(stillOld.settles), false)
+        XCTAssertEqual(held?.endedWithoutUpdating, true)
     }
 
     func testTheNoticeOffersNothingBeforeTheHostAnswers() {
@@ -1228,6 +1233,21 @@ extension GatewayRestartTests {
         accepting.acceptScan = true
         _ = await accepting.run { _ in }
         XCTAssertEqual(again.selfUpdatePaths.first.map { $0.contains("profile=coder") && $0.hasSuffix("&force=true") }, true)
+
+        // A start whose answer was lost finds the held job by asking.
+        let lost = PluginHost()
+        lost.selfUpdateStartError = DashboardTicketBridgeError.http(status: 0, detail: "")
+        lost.selfUpdateJobs = [held]
+        var asking = lost.updater()
+        asking.onHost = true
+        let lostOutcome = await asking.run { _ in }
+        if case .scanHeld = lostOutcome {} else { XCTFail("a lost start lost the held scan: \(lostOutcome)") }
+        XCTAssertFalse(lost.calls.contains("POST \(NotifierPluginUpdater.updatePath)"), "no second update after a lost start")
+
+        // A finding's description with a newline stays on one line.
+        var multiline = held
+        multiline["scan_findings"] = [["severity": "high", "category": "exec", "file": "tests/x.py", "line": 7, "description": "runs a\nsubprocess"]]
+        XCTAssertEqual(NotifierPluginScanHold(job: multiline)?.findingLines, ["high · exec · tests/x.py:7: runs a subprocess"])
 
         // A dangerous verdict can't be accepted: a plain failure.
         var dangerous = held

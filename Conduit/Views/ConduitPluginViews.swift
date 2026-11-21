@@ -267,6 +267,8 @@ struct ConduitPluginSettingsDetail: View {
     }
 
     private func showsAction(_ status: NotifierPluginStatus, update: NotifierPluginUpdateState) -> Bool {
+        // A held scan's row offers Update Anyway; a plain Update would only be held again.
+        if case .scanHeld = update { return false }
         guard !update.isInProgress else { return false }
         return status.updateAvailable || status.restartPending
     }
