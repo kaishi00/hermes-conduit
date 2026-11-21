@@ -668,6 +668,10 @@ extension BotModeTests {
         let titledRef = try XCTUnwrap(BotWorkLinks.split("Done: [W7: fix the `nil` crash](conduit://session/w7) @session:p/w7."))
         XCTAssertEqual(titledRef.text, "Done:.")
         XCTAssertEqual(titledRef.links.map(\.ref), ["W7"])
+        // A span opening in the link's title and closing after the reference quotes it: it stays as written.
+        let spanRef = try XCTUnwrap(BotWorkLinks.split("Done: [W7: `note](conduit://session/w7) @session:p/w7`"))
+        XCTAssertTrue(spanRef.text.contains("@session:p/w7`"), spanRef.text)
+        XCTAssertEqual(spanRef.links.map(\.ref), ["W7"])
         // A CRLF blank line ends a paragraph, so a stray backtick before it quotes nothing after.
         let crlfSpan = try XCTUnwrap(BotWorkLinks.split("`note\r\n\r\n[Open W3](conduit://session/c)`"))
         XCTAssertEqual(crlfSpan.links.map(\.ref), ["W3"])
