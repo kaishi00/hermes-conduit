@@ -495,6 +495,7 @@ extension AppState {
               keptDashboardRuntimes[id]?.bridge === runtime.bridge,
               case .reported(_, let capabilities) = NotifierPluginStatus.state(from: response) else { return nil }
         combinedDashboardPluginCapabilities[id] = (bridge, capabilities)
+        noteDashboardHermesName(id, NotifierPluginStatus.hermesName(from: response))
         return capabilities
     }
 

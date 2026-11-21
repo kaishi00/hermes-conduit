@@ -1052,20 +1052,81 @@ enum BotWorkLinks {
         pattern: #"(\[(?:Open )?W\d+(?:(?::|\s+[—–-])[^\]\n]*)?\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
             + #"(?<![\w/`@])@session:(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}/)?\2(?![A-Za-z0-9_]|[.:-][A-Za-z0-9_])"#)
 
+    /// An inline code span, closed by a run of as many backticks as opened
+    /// it within its paragraph (so ``a ` b`` is one span), as the desktop's
+    /// work links read it (desktop#228).
+    private static let inlineCode = try! NSRegularExpression(
+        pattern: #"(?<!`)(`+)(?!`)(?:(?!\r?\n[ \t]*\r?\n)[\s\S])*?(?<!`)\1(?!`)"#)
+
+    /// Where a reply has code, in UTF-16 offsets: its fenced blocks, read as
+    /// MarkdownText reads them (MarkdownFence, a fence in a quote included;
+    /// one left open runs to the end), and its inline spans outside them.
+    private static func codeRanges(_ text: String) -> [NSRange] {
+        guard text.contains("`") || text.contains("~~~") else { return [] }
+        var ranges: [NSRange] = []
+        var fence: MarkdownFence?
+        var fenceStart = 0
+        var offset = 0
+        for line in text.components(separatedBy: "\n") {
+            let length = (line as NSString).length
+            // A CRLF line's \r is counted in its length but closes like a bare line, as MarkdownText reads it.
+            let trimmed = line
+                .replacingOccurrences(of: "^\\s*(?:>\\s?)*", with: "", options: .regularExpression)
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let open = fence {
+                if open.closes(trimmed) {
+                    ranges.append(NSRange(location: fenceStart, length: offset + length - fenceStart))
+                    fence = nil
+                }
+            } else if let open = MarkdownFence.opening(trimmed) {
+                fence = open
+                fenceStart = offset
+            }
+            offset += length + 1
+        }
+        let total = (text as NSString).length
+        if fence != nil { ranges.append(NSRange(location: fenceStart, length: total - fenceStart)) }
+        // Inline spans in the rest: each block is blanked to line breaks,
+        // a paragraph's end, so no span pairs a backtick across it.
+        let prose = NSMutableString(string: text)
+        for block in ranges {
+            prose.replaceCharacters(in: block, with: String(repeating: "\n", count: block.length))
+        }
+        let spans = inlineCode.matches(in: prose as String, range: NSRange(location: 0, length: total)).map(\.range)
+        return ranges + spans
+    }
+
+    /// Whether a link starts in code: one quoted there stays as written,
+    /// while a code span in a link's own title still leaves it a card.
+    private static func inCode(_ ranges: [NSRange], _ range: NSRange) -> Bool {
+        ranges.contains { NSLocationInRange(range.location, $0) }
+    }
+
     /// The reply's text without those links (and Desktop's references to
     /// them), and the links in order (each workstream once); nil when it has
-    /// none.
+    /// none. A link quoted in code stays there as written, a reply showing
+    /// the link's format included (Eric 2026-11-20, matching the desktop).
     static func split(_ original: String) -> (text: String, links: [Link])? {
         guard original.contains("conduit://session/") else { return nil }
         var text = original
         if text.contains("@session:") {
-            text = desktopRef.stringByReplacingMatches(
-                in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "$1")
+            let quoted = codeRanges(text)
+            let ns = NSMutableString(string: text)
+            // The reference goes only when neither the link starts in code nor the reference after it is quoted
+            // (a code span in the link's own title doesn't count).
+            for match in desktopRef.matches(in: text, range: NSRange(location: 0, length: ns.length)).reversed() {
+                let link = match.range(at: 1)
+                let after = NSRange(location: NSMaxRange(link), length: NSMaxRange(match.range) - NSMaxRange(link))
+                if inCode(quoted, link) || quoted.contains(where: { NSIntersectionRange($0, after).length > 0 }) { continue }
+                ns.replaceCharacters(in: match.range, with: (text as NSString).substring(with: match.range(at: 1)))
+            }
+            text = ns as String
         }
         let range = NSRange(text.startIndex..., in: text)
+        let quoted = codeRanges(text)
         var links: [Link] = []
         var kept = text
-        for match in pattern.matches(in: text, range: range).reversed() {
+        for match in pattern.matches(in: text, range: range).reversed() where !inCode(quoted, match.range) {
             guard let refRange = Range(match.range(at: 1), in: text),
                   let urlRange = Range(match.range(at: 2), in: text),
                   let whole = Range(match.range, in: kept),
@@ -1110,32 +1171,21 @@ enum BotWorkLinks {
     /// written; a ref the list doesn't have stays plain.
     static func linkingNamedRefs(_ text: String, chats: (String) -> URL?) -> String {
         guard text.contains("W") else { return text }
+        // Code, by the same reading as the cards' (codeRanges), and links stay as written.
+        let ns = text as NSString
+        let whole = NSRange(location: 0, length: ns.length)
+        let skipped = codeRanges(text) + linkSpans.matches(in: text, range: whole).map(\.range)
         var out = ""
-        var inCode = false
-        // Backtick runs split code from prose: only the prose is linked.
-        for (index, piece) in text.components(separatedBy: "`").enumerated() {
-            if index > 0 { out += "`" }
-            if inCode {
-                out += piece
-            } else {
-                let ns = piece as NSString
-                var linked = ""
-                var last = 0
-                let whole = NSRange(location: 0, length: ns.length)
-                let links = linkSpans.matches(in: piece, range: whole).map(\.range)
-                for match in namedRef.matches(in: piece, range: whole) {
-                    guard !links.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
-                    let ref = ns.substring(with: match.range(at: 1))
-                    guard let url = chats(ref) else { continue }
-                    linked += ns.substring(with: NSRange(location: last, length: match.range.location - last))
-                    linked += "[\(ref)](\(url.absoluteString))"
-                    last = match.range.location + match.range.length
-                }
-                out += linked + ns.substring(from: last)
-            }
-            inCode.toggle()
+        var last = 0
+        for match in namedRef.matches(in: text, range: whole) {
+            guard !skipped.contains(where: { NSIntersectionRange($0, match.range).length > 0 }) else { continue }
+            let ref = ns.substring(with: match.range(at: 1))
+            guard let url = chats(ref) else { continue }
+            out += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+            out += "[\(ref)](\(url.absoluteString))"
+            last = match.range.location + match.range.length
         }
-        return out
+        return out + ns.substring(from: last)
     }
 
     private static func spacesBefore(_ index: String.Index, in text: String) -> String.Index {

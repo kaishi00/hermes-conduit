@@ -40,8 +40,17 @@ struct SavedDashboard: Codable, Equatable, Identifiable {
     /// Dashboards; multi-instance stage 3). Registries saved before it
     /// decode without one, which is not combined.
     var combined: Bool?
+    /// The person named it (Settings > Saved Dashboards, Rename), so
+    /// nothing renames it for them. Registries saved before it decode
+    /// without one.
+    var named: Bool?
+    /// What this dashboard's plugin calls its Hermes (the capabilities
+    /// route's `name`: the main bot's name, else the host's), kept for the
+    /// default name of a dashboard whose address names nothing.
+    var hermesName: String?
 
     var isCombined: Bool { combined == true }
+    var isNamed: Bool { named == true }
 }
 
 /// What a saved dashboard can sign in with, without typing anything.
@@ -118,6 +127,56 @@ struct SavedDashboardRegistry: Codable, Equatable {
 // MARK: - Label derivation
 
 enum SavedDashboardLabel {
+    /// The longest name Rename keeps.
+    static let maxLength = 40
+
+    /// Whether an address says nothing about which Hermes it is: an IP
+    /// literal or localhost, whose derived label is the address itself
+    /// (every dashboard on a home network starts with "1").
+    static func addressNamesNothing(_ baseURL: String) -> Bool {
+        guard let host = URL(string: baseURL)?.host?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+              !host.isEmpty else { return true }
+        if host.contains(":") || host == "localhost" { return true }
+        return host.first?.isNumber == true && host.dropFirst().allSatisfy { $0.isNumber || $0 == "." }
+    }
+
+    /// The name a dashboard the person hasn't named goes by: its Hermes'
+    /// own name when its address names nothing and the plugin gave one,
+    /// else the address's (derive), unique among `existingLabels`.
+    static func automatic(for dashboard: SavedDashboard, existingLabels: [String]) -> String {
+        let hermes = (dashboard.hermesName ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !hermes.isEmpty, addressNamesNothing(dashboard.normalizedURL) else {
+            return derive(from: dashboard.normalizedURL, existingLabels: existingLabels)
+        }
+        return unique(String(hermes.prefix(maxLength)), among: existingLabels)
+    }
+
+    /// A badge's mark for each dashboard of a group, in order: the first
+    /// letter of its name, or, where two names start alike, its place in
+    /// the group (1, 2, 3). Should a place number match another's letter
+    /// (a name starting "2"), every badge is its place, so no two read the
+    /// same.
+    static func badgeLetters(_ names: [String]) -> [String] {
+        let letters = names.map { name in
+            name.trimmingCharacters(in: .whitespacesAndNewlines).first.map { String($0).uppercased() } ?? "?"
+        }
+        let marks = letters.enumerated().map { index, letter in
+            letters.filter { $0 == letter }.count > 1 ? String(index + 1) : letter
+        }
+        return Set(marks).count == marks.count ? marks : names.indices.map { String($0 + 1) }
+    }
+
+    private static func unique(_ base: String, among existingLabels: [String]) -> String {
+        guard existingLabels.contains(base) else { return base }
+        var candidate = base
+        var counter = 2
+        while existingLabels.contains(candidate) {
+            candidate = "\(base) \(counter)"
+            counter += 1
+        }
+        return candidate
+    }
+
     /// Derives an initial display label from a dashboard address. A DNS host
     /// contributes its first label ("mac.tailnet.ts.net" → "Mac"); an IP
     /// literal stays whole ("192.168.1.5"). `existingLabels` disambiguates
@@ -145,14 +204,7 @@ enum SavedDashboardLabel {
         } else {
             base = AppLocalization.string("Dashboard")
         }
-        guard existingLabels.contains(base) else { return base }
-        var candidate = base
-        var counter = 2
-        while existingLabels.contains(candidate) {
-            candidate = "\(base) \(counter)"
-            counter += 1
-        }
-        return candidate
+        return unique(base, among: existingLabels)
     }
 }
 
