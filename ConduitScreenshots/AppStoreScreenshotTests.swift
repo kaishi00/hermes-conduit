@@ -343,9 +343,13 @@ final class AppStoreScreenshotTests: XCTestCase {
             while cards.firstMatch.exists {
                 let copies = cards.allElementsBoundByIndex.enumerated().filter {
                     !tried.contains($0.offset) && $0.element.exists && !$0.element.frame.isEmpty
-                        && screen.contains(CGPoint(x: $0.element.frame.midX, y: $0.element.frame.midY))
                 }
-                guard let pick = copies.first(where: { $0.element.isHittable }) ?? copies.first else { break }
+                // A coordinate tap lands on the centre, so only a copy whose
+                // centre is in the window can take one.
+                let tappable = copies.filter {
+                    screen.contains(CGPoint(x: $0.element.frame.midX, y: $0.element.frame.midY))
+                }
+                guard let pick = copies.first(where: { $0.element.isHittable }) ?? tappable.first else { break }
                 tried.insert(pick.offset)
                 let notNow = pick.element
                 // Beside the empty chat column on an iPad, accessibility's hit
