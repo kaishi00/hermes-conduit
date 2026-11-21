@@ -1240,7 +1240,14 @@ extension GatewayRestartTests {
         lost.selfUpdateJobs = [held]
         var asking = lost.updater()
         asking.onHost = true
-        if case .scanHeld = await asking.run({ _ in }) {} else { XCTFail("a lost start lost the held scan") }
+        let lostOutcome = await asking.run { _ in }
+        if case .scanHeld = lostOutcome {} else { XCTFail("a lost start lost the held scan: \(lostOutcome)") }
+        XCTAssertFalse(lost.calls.contains("POST \(NotifierPluginUpdater.updatePath)"), "no second update after a lost start")
+
+        // A finding's description with a newline stays on one line.
+        var multiline = held
+        multiline["scan_findings"] = [["severity": "high", "category": "exec", "file": "tests/x.py", "line": 7, "description": "runs a\nsubprocess"]]
+        XCTAssertEqual(NotifierPluginScanHold(job: multiline)?.findingLines, ["high · exec · tests/x.py:7: runs a subprocess"])
 
         // A dangerous verdict can't be accepted: a plain failure.
         var dangerous = held
