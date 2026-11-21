@@ -41,5 +41,11 @@ final class DashboardRuntime: ObservableObject {
     // MARK: Plugin
 
     /// What the host's notifier plugin serves.
-    @Published var notifierPlugin = NotifierPluginStatus()
+    @Published var notifierPlugin: NotifierPluginStatus
+
+    /// `notifierPlugin`: what it starts from before its plugin answers (the
+    /// saved Update notices choice).
+    init(notifierPlugin: NotifierPluginStatus = NotifierPluginStatus()) {
+        self.notifierPlugin = notifierPlugin
+    }
 }

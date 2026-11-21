@@ -3017,10 +3017,10 @@ final class AppState: ObservableObject {
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
-        self._notifierPlugin = Published(wrappedValue: NotifierPluginStatus(
+        self._runtimeOnScreen = Published(wrappedValue: DashboardRuntime(notifierPlugin: NotifierPluginStatus(
             followsMain: noticeChannel.followsMain,
             asksToUpdate: noticeChannel.asksToUpdate
-        ))
+        )))
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
