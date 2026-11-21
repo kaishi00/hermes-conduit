@@ -400,14 +400,19 @@ extension AppState {
                 // clarify) and timed-out/gone decisions are different relay
                 // reasons for the same card outcome: unanswered questions go
                 // inactive, answered history stays locked, and no sibling
-                // remains answerable.
+                // remains answerable. Neither says Hermes timed out: a
+                // release is Hermes' own card answered, and a gone decision
+                // may be either (notifier#965).
                 activity.isExpired = true
                 for questionIndex in activity.questions.indices
                 where activity.questions[questionIndex].status != .answered {
                     activity.questions[questionIndex].status = .expired
                     activity.questions[questionIndex].error = nil
                 }
-                activity.error = Self.clarifyExpiredNotice(for: activity.questions.count)
+                activity.error = Self.clarifyExpiredNotice(
+                    for: activity.questions.count,
+                    reason: outcome == .decisionReleased ? "answered_elsewhere" : "gone"
+                )
             }
             messages[index].clarify = activity
             cacheMessagePresentation()
@@ -1284,6 +1289,14 @@ extension AppState {
             }
         }
         messages[index].clarify = activity
+        if case .accepted = outcome, !activity.isExpired {
+            // Hermes took this answer: the question's copy on the Needs you
+            // list, which the plugin may still name for a moment, is this
+            // card's and never comes into the chat as a second one
+            // (notifier#965). After the write: it may remove a copy above
+            // this card, which moves `index`.
+            keepQuestionCopiesOut(answeredOn: activity)
+        }
         cacheMessagePresentation()
     }
 }

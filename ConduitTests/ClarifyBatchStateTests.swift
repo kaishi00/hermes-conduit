@@ -771,6 +771,40 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.questions[2].status, .pending, "Still listed in remaining ⇒ stays answerable")
     }
 
+    func testAcceptedAnswerLandsOnHermesCardWhenACopyAboveItGoes() async throws {
+        // notifier#965: Hermes taking the answer takes away the plugin's copy
+        // of the question (here one whose relay answer failed) sitting above
+        // Hermes' card; the answer still lands on Hermes' card, and the row
+        // below it is untouched.
+        let (appState, _) = makeAppState()
+        var copy = makeBatchActivity(requestId: "conduit-push-copy")
+        copy.questions[0].status = .error
+        copy.questions[0].error = "Couldn't send"
+        appState.messages = [
+            ChatMessage(id: "clarify-conduit-push-copy", role: .clarify, content: "copy", timestamp: "1", clarify: copy),
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity()),
+            ChatMessage(id: "after", role: .assistant, content: "after", timestamp: "3")
+        ]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        try await respond(
+            appState: appState,
+            socket: socket,
+            requestId: "req-batch",
+            questionId: "environment",
+            answer: "staging",
+            result: ["status": "ok", "remaining": ["tests", "notes"]]
+        )
+
+        XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch", "after"])
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(settled.questions[0].status, .answered)
+        XCTAssertEqual(settled.questions[0].answer, "staging")
+        XCTAssertNil(appState.messages[1].clarify)
+    }
+
     func testAcceptedOutcomeCannotResurrectAnExpiredRequest() async throws {
         // Expire lands while the respond RPC is in flight (reconnect race);
         // the accepted response that arrives afterwards must not flip the
@@ -1562,7 +1596,27 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(settled.questions[0].status, .expired)
         XCTAssertEqual(settled.questions[1].status, .expired)
         XCTAssertEqual(settled.questions[2].status, .expired)
-        XCTAssertFalse((settled.error ?? "").isEmpty, "The card explains the teardown")
+        // Hermes' own card was answered: never "Hermes timed them out"
+        // (notifier#965).
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+    }
+
+    func testRelayQuestionNoLongerActiveDoesNotClaimATimeout() async throws {
+        // A gone decision may have timed out or been answered elsewhere:
+        // the card says only that it's no longer active (notifier#965).
+        let (appState, _) = makeAppState()
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: makeRelayBatchCard())
+        ]
+        appState.relayQuestionResponder = { _, _, _ in
+            PushNotificationService.RelayQuestionOutcome.noLongerActive
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: "staging")
+
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertEqual(settled.status, .expired)
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions are no longer active."))
     }
 
     func testRelayAnswerWithOmittedRemainingSettlesOnlyTheSubmittedQuestion() async throws {

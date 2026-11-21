@@ -3132,6 +3132,51 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(fresh.messages.compactMap(\.clarify?.requestId).isEmpty, "nor does the row draw it again")
     }
 
+    /// notifier#965: Hermes' card answered on this iPhone keeps the row's
+    /// copy of its question out, though the list read just after the answer
+    /// still names the wait and no read noted Hermes' card while it waited.
+    func testAQuestionAnsweredOnHermesCardStaysOutOfTheChat() throws {
+        func appState() -> AppState {
+            let appState = makeHarness(
+                lifecycleOperations: ChatResumeLifecycleOperations(
+                    loadCatalog: { _, _ in throw ControlledLifecycleError.failed }
+                )
+            ).appState
+            appState.activeSessionId = "runtime-a"
+            var answered = ClarifyActivity(requestId: "a1", question: "Update these three notes?", choices: [])
+            answered.questions[0].status = .answered
+            answered.questions[0].answer = "Yes"
+            appState.messages = [ChatMessage(
+                id: "clarify-a1", role: .clarify, content: "Update these three notes?", timestamp: "1", clarify: answered
+            )]
+            let listed = NeedsYouItem(
+                waitID: "w1", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                card: .clarifyBatch(requestId: "conduit-push-q", questions: [
+                    ClarifyQuestion(id: "q0", question: "Update these three notes?", choices: [])
+                ])
+            )
+            appState.needsYou.apply([listed], profile: "default", dashboardID: appState.activeDashboardID) { _ in false }
+            return appState
+        }
+
+        // Without it, an answered card of Hermes' holds nothing: the copy
+        // comes in as a second card.
+        let unguarded = appState()
+        unguarded.showWaitingQuestionCards()
+        XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1", "conduit-push-q"])
+
+        let guarded = appState()
+        guarded.keepQuestionCopiesOut(answeredOn: try XCTUnwrap(guarded.messages[0].clarify))
+        guarded.showWaitingQuestionCards()
+        XCTAssertEqual(guarded.messages.compactMap(\.clarify?.requestId), ["a1"])
+
+        // One already drawn goes.
+        unguarded.keepQuestionCopiesOut(answeredOn: try XCTUnwrap(unguarded.messages[0].clarify))
+        XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1"])
+        unguarded.showWaitingQuestionCards()
+        XCTAssertEqual(unguarded.messages.compactMap(\.clarify?.requestId), ["a1"])
+    }
+
     /// Issue 2828: a card drawn from its row goes once the list no longer
     /// names the wait (the plugin gave the question up, and the relay would
     /// refuse an answer), from the chat and its saved copy. One this iPhone
