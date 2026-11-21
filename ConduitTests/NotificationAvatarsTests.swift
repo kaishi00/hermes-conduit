@@ -151,6 +151,17 @@ extension BotModeTests {
         XCTAssertEqual(from.sender.conversationID, "conduit:\(dashboard.uuidString)/chat/session-1")
         XCTAssertEqual(from.sender.groupName, missed.content.title)
 
+        // The face is the picture Conduit left for that bot; none there
+        // posts the notice unchanged.
+        let shared = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: shared) }
+        XCTAssertNil(HermesCallNotifications.face(for: missed.content, root: shared))
+        let photo = notificationPicture(.orange, width: 64, height: 64)
+        XCTAssertTrue(NotificationAvatars.store(photo, profile: "kaleb", dashboardID: dashboard.uuidString, root: shared))
+        let face = try XCTUnwrap(HermesCallNotifications.face(for: missed.content, root: shared))
+        XCTAssertEqual(face.picture, NotificationAvatars.stillPNG(photo))
+        XCTAssertEqual(face.sender, from.sender)
+
         // A call Conduit couldn't read names no bot and keeps the icon.
         XCTAssertNil(HermesCallNotifications.sender(of: HermesCallNotifications.unreadableMissedCallRequest().content))
     }

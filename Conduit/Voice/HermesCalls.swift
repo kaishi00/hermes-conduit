@@ -1224,14 +1224,23 @@ enum HermesCallNotifications {
         return (sender, profile, dashboardID)
     }
 
+    /// The sender and picture a call notice wears; nil (Conduit's icon, the
+    /// notice posted unchanged) when it names no bot or Conduit has no
+    /// picture of it in `root`.
+    static func face(for content: UNNotificationContent, root: URL? = NotificationAvatars.sharedRoot) -> (sender: NotificationAvatars.Sender, picture: Data)? {
+        guard let from = sender(of: content),
+              let picture = NotificationAvatars.picture(profile: from.profile, dashboardID: from.dashboardID, root: root)
+        else { return nil }
+        return (from.sender, picture)
+    }
+
     /// Posts a call notice with its bot's face when Conduit has its picture
     /// (Eric 2026-11-20: the app's own call notices get the face too).
     static func post(_ request: UNNotificationRequest, center: UNUserNotificationCenter = .current()) async {
         var request = request
-        if let from = sender(of: request.content),
-           let picture = NotificationAvatars.picture(profile: from.profile, dashboardID: from.dashboardID),
+        if let face = face(for: request.content),
            let mutable = request.content.mutableCopy() as? UNMutableNotificationContent {
-            let content = await NotificationSenderPicture.applied(to: mutable, sender: from.sender, picture: picture)
+            let content = await NotificationSenderPicture.applied(to: mutable, sender: face.sender, picture: face.picture)
             request = UNNotificationRequest(identifier: request.identifier, content: content, trigger: request.trigger)
         }
         do {
