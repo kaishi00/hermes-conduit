@@ -493,9 +493,24 @@ extension ChatOnScreenTests {
         XCTAssertTrue(block.contains("- P7: «Which branch?» Choices: «main», «release/2.4». Hermes recommends «release/2.4»."))
         XCTAssertTrue(block.contains("- P9: «Tag it now?» A yes or no."))
         XCTAssertTrue(block.contains("- P8: «What should it be called?»\n"), "answered in words: no yes or no")
-        let order = ["P7", "P8", "P9"].map { block.range(of: "- \($0):")!.lowerBound }
+        let order = try ["P7", "P8", "P9"].map { try XCTUnwrap(block.range(of: "- \($0):")).lowerBound }
         XCTAssertEqual(order, order.sorted(), "oldest first")
         XCTAssertTrue(block.contains("My answer to P7"))
         XCTAssertEqual(AppState.askedQuestionsBlock([]), "")
+    }
+
+    func testAQuestionAnsweredHereLeavesAtOnceOnlyOnItsDashboard() throws {
+        let store = NeedsYouStore()
+        let dashboard = UUID()
+        func asked(_ id: String, at: Double) throws -> NeedsYouItem {
+            try XCTUnwrap(NeedsYouItem(question: ["id": id, "kind": "proposal", "status": "open", "at": at,
+                                                  "text": "Which?", "actions": ["approve", "decline"],
+                                                  "session_ids": ["s1"]], profile: "atlas"))
+        }
+        store.apply([try asked("P7", at: 1), try asked("P8", at: 2)], profile: "atlas", dashboardID: dashboard) { _ in false }
+        store.dropAnsweredQuestion("P7", profile: "ATLAS", dashboardID: UUID())
+        XCTAssertEqual(store.items.count, 2, "another dashboard's answer leaves these alone")
+        store.dropAnsweredQuestion("P7", profile: "ATLAS", dashboardID: dashboard)
+        XCTAssertEqual(store.items.map(\.waitID), ["asked-P8"])
     }
 }

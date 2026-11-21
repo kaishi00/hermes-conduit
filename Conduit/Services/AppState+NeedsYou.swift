@@ -482,6 +482,22 @@ extension AppState {
         )
     }
 
+    /// The same for a Watch call, which can start with no phone screen, so
+    /// the waits may never have been read (the list reads only on screen):
+    /// then it reads the profile's list once itself, briefly.
+    func liveAskedQuestionsInstructionsReading(profile: String) async -> String {
+        let known = needsYou.items.contains { Self.profilesMatch($0.profile, profile) }
+        guard !known, servesNeedsYou, let bridge = dashboardTicketBridge else {
+            return liveAskedQuestionsInstructions(profile: profile)
+        }
+        let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
+        guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 3_000),
+              let read = NeedsYouItem.items(listed: response, profile: profile,
+                                            installationID: PushNotificationService.shared.installationID)
+        else { return liveAskedQuestionsInstructions(profile: profile) }
+        return Self.askedQuestionsBlock(read.compactMap(\.asked))
+    }
+
     /// The block itself, oldest first; at most `askedQuestionsSpoken` of them.
     nonisolated static func askedQuestionsBlock(_ asked: [BotWorkCoordination.Item]) -> String {
         let open = asked.filter { $0.status == "open" }.sorted { $0.at < $1.at }.prefix(askedQuestionsSpoken)

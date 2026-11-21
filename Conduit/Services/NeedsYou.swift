@@ -430,6 +430,17 @@ final class NeedsYouStore: ObservableObject {
         a.waitID == b.waitID && AppState.profilesMatch(a.profile, b.profile)
     }
 
+    /// A question the user just answered here leaves at once, so the asking
+    /// chat's card moves on to the next even when the read behind it fails.
+    /// Only on the dashboard these were read on.
+    func dropAnsweredQuestion(_ questionID: String, profile: String, dashboardID: UUID?) {
+        guard dashboardID == self.dashboardID else { return }
+        let kept = items.filter { !($0.waitID == "asked-\(questionID)" && AppState.profilesMatch($0.profile, profile)) }
+        guard kept != items else { return }
+        items = kept
+        dropBannerNoLongerListed()
+    }
+
     /// A profile no longer listed (removed, or its plugin can't be read).
     func forget(profilesOtherThan profiles: Set<String>) {
         let kept = items.filter { profiles.contains($0.profile) }

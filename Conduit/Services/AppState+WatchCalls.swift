@@ -86,6 +86,7 @@ extension AppState {
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
         async let hostToolsLookup = watchCallHostTools(for: qwen ? .qwenLive : .geminiLive, profile: profile)
+        async let askedLookup = liveAskedQuestionsInstructionsReading(profile: profile)
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
@@ -101,6 +102,7 @@ extension AppState {
         let hermesCall = await hermesCallLookup
         // With the chat's choices or command, answered through the host.
         let waiting = await waitingLookup
+        let asked = await askedLookup
         let hostTools = await hostToolsLookup
         let token = try await tokens.freshToken()
         let style = preferences.liveVoiceStyle
@@ -124,7 +126,7 @@ extension AppState {
                 asksFirst: false,
                 onWatch: true,
                 followedBy: (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
-                    + liveAskedQuestionsInstructions(profile: profile)
+                    + asked
                     + style.instructions + hostToolsBriefing
             )
         }
@@ -197,6 +199,7 @@ extension AppState {
         async let personalityLookup = wantsPersonality ? hostContext.personality() : nil
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: false)
+        async let askedLookup = liveAskedQuestionsInstructionsReading(profile: profile)
         // The host's Watch bridge only starts GPT-Live on the subscription.
         let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
@@ -212,6 +215,7 @@ extension AppState {
         let hermesCall = await hermesCallLookup
         // "Answer:", "Approve:" and "Deny:" go to the host (WatchCallAnswer).
         let waiting = await waitingLookup
+        let asked = await askedLookup
         let style = preferences.liveVoiceStyle
         let jobSession = watchCallJobSession(preferences, profile: profile)
         var jobOptions: [String: String] = [:]
@@ -234,7 +238,7 @@ extension AppState {
                 // has reported them.
                 watchChats: notifierPlugin.reports(WatchToolAnswer.chatCapability),
                 followedBy: (hermesCall?.instructionBlock(delegation: true, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
-                    + liveAskedQuestionsInstructions(profile: profile) + style.instructions
+                    + asked + style.instructions
             ),
             // A call Hermes made opens with its brief instead (#449).
             greeting: hermesCall == nil ? style.greeting : nil,
@@ -299,6 +303,7 @@ extension AppState {
         async let hermesCallLookup = watchHermesCallOpening(for: target)
         async let waitingLookup = watchHermesCallWaiting(for: target, approvals: WatchJobSettings.voiceApprovals)
         async let hostToolsLookup = watchCallHostTools(for: .grokLive, profile: profile)
+        async let askedLookup = liveAskedQuestionsInstructionsReading(profile: profile)
         let status = try await makeGrokLiveClient { profile }.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
@@ -314,6 +319,7 @@ extension AppState {
         let personality = await personalityLookup
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
+        let asked = await askedLookup
         let hostTools = await hostToolsLookup
         let style = preferences.liveVoiceStyle
         let jobSession = watchCallJobSession(preferences, profile: profile)
@@ -337,7 +343,7 @@ extension AppState {
                 acknowledgesOnceStarted: true,
                 followedBy: GrokLiveProtocol.grokInstructions(now: Date(), timeZone: .current)
                     + (hermesCall?.instructionBlock(delegation: false, canAnswer: waiting != nil, waiting: waiting?.waiting) ?? "")
-                    + liveAskedQuestionsInstructions(profile: profile)
+                    + asked
                     + style.instructions + hostToolsBriefing
             )
         }
