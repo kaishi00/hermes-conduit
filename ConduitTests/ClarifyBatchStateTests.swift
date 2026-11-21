@@ -805,6 +805,36 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertNil(appState.messages[1].clarify)
     }
 
+    func testAnswerTakenElsewhereStillTakesTheCopyAway() async throws {
+        // notifier#965 leftover: another surface answered Hermes' card
+        // first. The card no longer holds the question, so its plugin copy
+        // goes too, rather than come in beside the settled card.
+        var operations = ChatResumeLifecycleOperations.live
+        operations.respondToClarification = { _, _, _, _, _, _ in .answeredElsewhere }
+        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var copy = makeBatchActivity(requestId: "conduit-push-copy")
+        copy.questions[0].status = .error
+        appState.messages = [
+            ChatMessage(id: "clarify-conduit-push-copy", role: .clarify, content: "copy", timestamp: "1", clarify: copy),
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity())
+        ]
+        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+
+        await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
+
+        XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch"])
+        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertTrue(settled.isExpired)
+        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+    }
+
     func testAcceptedOutcomeCannotResurrectAnExpiredRequest() async throws {
         // Expire lands while the respond RPC is in flight (reconnect race);
         // the accepted response that arrives afterwards must not flip the
