@@ -1,11 +1,13 @@
 import Intents
 import UserNotifications
 
-/// Puts the bot's face on a verified push (Communication Notifications):
-/// the push becomes a message from the bot, an `INSendMessageIntent`
-/// whose sender carries the picture Conduit left in the app group
-/// (NotificationAvatars). A push whose bot has no picture there, or that
-/// iOS won't update, keeps Conduit's icon and its words unchanged.
+/// Puts the bot's face on a notification (Communication Notifications):
+/// the notification becomes a message from the bot, an
+/// `INSendMessageIntent` whose sender carries the picture Conduit left in
+/// the app group (NotificationAvatars). The extension applies it to a
+/// verified push, and Conduit to a call notice it posts itself
+/// (HermesCallNotifications.post). One whose bot has no picture there, or
+/// that iOS won't update, keeps Conduit's icon and its words unchanged.
 ///
 /// Needs the Communication Notifications capability
 /// (`com.apple.developer.usernotifications.communication`) on the app's
@@ -51,6 +53,42 @@ enum NotificationSenderPicture {
                   let mutable = updated.mutableCopy() as? UNMutableNotificationContent
             else { return completion(content) }
             completion(mutable)
+        }
+    }
+
+    /// `apply` for Conduit's own posts, which have no extension deadline to
+    /// fall back on: a donation that hasn't answered within `timeout` (the
+    /// app suspended before the Intents daemon replied) posts the content
+    /// unchanged, so the face can never cost a notice.
+    static func applied(
+        to content: UNMutableNotificationContent,
+        sender: NotificationAvatars.Sender?,
+        picture: Data?,
+        timeout: TimeInterval = 1.5
+    ) async -> UNMutableNotificationContent {
+        guard sender != nil, picture != nil else { return content }
+        return await withCheckedContinuation { continuation in
+            let once = ResumeOnce(continuation)
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once.resume(content) }
+            apply(to: content, sender: sender, picture: picture) { once.resume($0) }
+        }
+    }
+
+    /// Resumes its continuation with the first answer only.
+    private final class ResumeOnce: @unchecked Sendable {
+        private let lock = NSLock()
+        private var continuation: CheckedContinuation<UNMutableNotificationContent, Never>?
+
+        init(_ continuation: CheckedContinuation<UNMutableNotificationContent, Never>) {
+            self.continuation = continuation
+        }
+
+        func resume(_ content: UNMutableNotificationContent) {
+            lock.lock()
+            let pending = continuation
+            continuation = nil
+            lock.unlock()
+            pending?.resume(returning: content)
         }
     }
 }

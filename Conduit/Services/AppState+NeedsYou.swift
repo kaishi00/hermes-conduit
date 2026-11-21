@@ -37,14 +37,16 @@ extension AppState {
         await others.value
     }
 
-    /// The other combined dashboards' waits, chats (less often, stage 4b)
-    /// and bots (every few minutes, stage 4c), read through their kept
-    /// connections, coalesced apart from this dashboard's reads.
+    /// The other combined dashboards' waits, chats (less often, stage 4b),
+    /// bots (every few minutes, stage 4c) and group chats (once a minute),
+    /// read through their kept connections, coalesced apart from this
+    /// dashboard's reads.
     func refreshOtherCombinedDashboards() async {
         await otherCombinedReads.coalescing { [weak self] in
             await self?.readOtherCombinedDashboardsNeedsYou()
             await self?.readOtherCombinedDashboardsChats()
             await self?.readOtherCombinedDashboardsBots()
+            await self?.readOtherCombinedDashboardsRooms()
         }
     }
 
@@ -255,6 +257,26 @@ extension AppState {
                 includePendingClarifications: true
             )
         }
+    }
+
+    /// Hermes' own card `answered` took this iPhone's answer: a listed
+    /// question it asks is that card's, so the row's copy stays out, and one
+    /// already drawn, unanswered, goes. The plugin names the wait until its
+    /// clarify call returns, so a read just after the answer would otherwise
+    /// draw the answered question again, and a read made while Hermes' card
+    /// was still waiting may never have noted it (one made while the chat
+    /// was being restored, notifier#965).
+    func keepQuestionCopiesOut(answeredOn answered: ClarifyActivity) {
+        guard !answered.requestId.hasPrefix(PendingDecisionPayload.relayRequestPrefix) else { return }
+        // Only the open chat's waits: the answered card is in it, and the
+        // same words asked in another chat are another question.
+        for item in needsYou.items where item.roomID == nil && isOpenChat(item) {
+            guard let card = item.card,
+                  let pushed = Self.notificationClarifyActivity(for: card),
+                  Self.pushCardSupersededBy(pushed, live: answered) else { continue }
+            needsYou.noteHermesDrewCard(for: pushed.requestId)
+        }
+        removePushCardsSuperseded(by: answered)
     }
 
     /// Takes back the question cards drawn from `profile`'s rows whose

@@ -312,11 +312,12 @@ extension AppState {
         }
     }
 
-    /// A combined dashboard's chats in the Chats list (stage 4b), bots on
-    /// Bots Home (stage 4c) and chip on Pulse (stage 4d) go.
+    /// A combined dashboard's chats in the Chats list (stage 4b), bots and
+    /// group chats on Bots Home (stage 4c) and chip on Pulse (stage 4d) go.
     func forgetCombinedDashboardLists(_ id: UUID) {
         if combinedDashboardChats[id] != nil { combinedDashboardChats.removeValue(forKey: id) }
         if combinedDashboardBots[id] != nil { combinedDashboardBots.removeValue(forKey: id) }
+        if combinedDashboardRooms[id] != nil { combinedDashboardRooms.removeValue(forKey: id) }
         if combinedDashboardBotWork[id] != nil { combinedDashboardBotWork.removeValue(forKey: id) }
         combinedDashboardPluginCapabilities.removeValue(forKey: id)
         if combinedDashboardPulse[id] != nil { combinedDashboardPulse.removeValue(forKey: id) }
