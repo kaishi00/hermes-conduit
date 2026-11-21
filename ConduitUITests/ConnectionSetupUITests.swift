@@ -72,7 +72,9 @@ final class ConnectionSetupUITests: XCTestCase {
         // iOS 27 the Passwords AutoFill bar makes the keyboard tall enough
         // that the pinned Continue sits over the password field and at the
         // window's vertical center, where app.swipeUp() lands, so the field
-        // can never be scrolled into a hittable spot.
+        // can never be scrolled into a hittable spot. conduit() keeps
+        // Passwords AutoFill off now (`DashboardCredentialAutoFill`); the
+        // dismissal stays for any tall keyboard.
         dismissKeyboard(app)
         let password = app.secureTextFields["setup.password"]
         tapVisible(password, in: app)
@@ -83,8 +85,10 @@ final class ConnectionSetupUITests: XCTestCase {
         // stalled the app on a hosted nightly (2026-10-27): from the test
         // screen on, every action waited out XCTest's two 60 s idle waits
         // ("App animations complete notification not received") until the
-        // test hit its 10 minute allowance. Inferred from the logs: the
-        // Repair and Settings tests dismiss it here and never stalled.
+        // test hit its 10 minute allowance. That was blamed on the focused
+        // field, but the Repair test stalled the same way on 2026-11-21
+        // with the keyboard dismissed, from typing the password on: so
+        // conduit() now keeps Passwords AutoFill off (#2958).
         dismissKeyboard(app)
         tapVisible(app.buttons["setup.next"], in: app)
         XCTAssertTrue(app.buttons["setup.test.run"].waitForExistence(timeout: 5))

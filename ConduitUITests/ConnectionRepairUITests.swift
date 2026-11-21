@@ -79,7 +79,8 @@ final class ConnectionRepairUITests: XCTestCase {
         username.typeText("repair-user")
         // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
         // can leave the password field under the keyboard, out of
-        // app.swipeUp()'s reach (see ConnectionSetupUITests).
+        // app.swipeUp()'s reach (see ConnectionSetupUITests). conduit() keeps
+        // Passwords AutoFill off now; the dismissal stays for any tall keyboard.
         dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
         tapVisible(password, in: app)
@@ -236,7 +237,8 @@ final class ConnectionRepairUITests: XCTestCase {
         username.typeText("repair-user")
         // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
         // can leave the password field under the keyboard, out of
-        // app.swipeUp()'s reach (see ConnectionSetupUITests).
+        // app.swipeUp()'s reach (see ConnectionSetupUITests). conduit() keeps
+        // Passwords AutoFill off now; the dismissal stays for any tall keyboard.
         dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
         tapVisible(password, in: app)

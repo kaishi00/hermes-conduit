@@ -32,6 +32,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         // A still backdrop, so XCUITest's settle wait doesn't hang on its
         // drift and every shot shows the glows in the same place.
         app.launchEnvironment["CONDUIT_STILL_BACKDROP"] = "1"
+        // Passwords AutoFill off the sign-in fields, as in the UI tests
+        // (`DashboardCredentialAutoFill`): typing the password with it on
+        // could leave the app never settling. The sign-in isn't a shot.
+        app.launchEnvironment["CONDUIT_NO_PASSWORD_AUTOFILL"] = "1"
         app.launch()
     }
 

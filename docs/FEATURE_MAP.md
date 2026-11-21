@@ -7709,12 +7709,12 @@ server, never Tailscale SSH)
 
 **Rulings**
 - Remote access goes through Tailscale Serve, never Tailscale SSH or a port opened to the internet. The README and the setup page say Conduit doesn't need Tailscale SSH and to keep Tailscale updated (Eric, 2026-10-27, #1377, from issue #1366).
-- The assistant's and the sign-in screen's dashboard username and password fields carry `.username` / `.password` so Passwords can fill and save the login, except under UI tests: `XCUIApplication.conduit()` sets `CONDUIT_NO_PASSWORD_AUTOFILL=1` and they take `.oneTimeCode` (`dashboardCredentialContentType`), since typing the password with AutoFill on sometimes left a hosted simulator's app never idle until the test ran out of time (Nightly 2026-10-27 and 2026-11-21, #2958).
+- The assistant's and the sign-in screen's dashboard username and password fields carry `.username` / `.password` so Passwords can fill and save the login, except under UI tests: `XCUIApplication.conduit()`, the App Store screenshots and the demo videos set `CONDUIT_NO_PASSWORD_AUTOFILL=1` and they take `.oneTimeCode` (`dashboardCredentialContentType`), since typing the password with AutoFill on sometimes left a hosted simulator's app never idle until the test ran out of time (Nightly 2026-10-27 and 2026-11-21, #2958).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-21, #2958 (UI tests keep Passwords AutoFill off the credential fields; Rulings; README, the setup page and the prompts need no change, nothing users see changed); 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
+**Checked:** 2026-11-21, #2960 (the screenshots and demo videos set the flag too; #2958 review leftovers); 2026-11-21, #2958 (UI tests keep Passwords AutoFill off the credential fields; Rulings; README, the setup page and the prompts need no change, nothing users see changed); 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
 
 ## Connection failure messages
 
@@ -8668,18 +8668,18 @@ model-facing text (none describe it)
 
 **Code**
 - `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropGlows, ConduitBackdropMotionPolicy, ConduitBackdropMotionClock), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, V2LegacyEdgeBar), `Conduit/Views/ChatView.swift` (ConduitBreathing)
-- Tests: `ConduitTests/AppStateVoiceCapabilityTests.swift` (the policy, the clock, ConduitBackdropGlows); UI tests' launch: `ConduitUITests/V2NavigationHelpers.swift` (XCUIApplication.conduit), `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- Tests: `ConduitTests/AppStateVoiceCapabilityTests.swift` (the policy, the clock, ConduitBackdropGlows); UI tests' launch: `ConduitUITests/V2NavigationHelpers.swift` (XCUIApplication.conduit), `ConduitScreenshots/AppStoreScreenshotTests.swift`, `ConduitScreenshots/DemoVideoTests.swift`
 
 **Rulings**
 - Only main surfaces drift (`drifts: true`); sheets and pushed screens keep the still composition (#474).
 - The drift pauses with the app inactive, Reduce Motion, Low Power Mode, a hot device (serious or critical), or Conduit idle for a couple of minutes with no turn running, and resumes from the phase it showed, never jumping (#465, #474).
-- UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994).
+- UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994). The demo videos keep the drift. The same launches, the demo videos' too, set `CONDUIT_NO_PASSWORD_AUTOFILL=1` (Connection setup guide's ruling, #2958).
 - The glows are drawn from the timeline's tick, so they move on every frame. Drawn from a closure that only ran when something else redrew the backdrop, they sat still and then jumped across the screen in one frame whenever an input changed (the drift pausing or resuming, a color, a size), which looked like the backdrop going dark and coming back (issue 1980).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
+**Checked:** 2026-11-21, #2960 (the UI tests', screenshots' and demo videos' launches also keep Passwords AutoFill off, #2958; the drift itself unchanged); 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 

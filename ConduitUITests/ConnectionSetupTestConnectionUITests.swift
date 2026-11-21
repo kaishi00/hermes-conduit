@@ -247,7 +247,8 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
             username.typeText("round4-user")
             // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
             // can leave the password field under the keyboard, out of
-            // app.swipeUp()'s reach (see ConnectionSetupUITests).
+            // app.swipeUp()'s reach (see ConnectionSetupUITests). conduit() keeps
+        // Passwords AutoFill off now; the dismissal stays for any tall keyboard.
             dismissKeyboard(app)
             let password = app.secureTextFields["setup.password"]
             tapVisible(password, in: app)
