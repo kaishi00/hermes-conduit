@@ -1294,6 +1294,8 @@ final class AppState: ObservableObject {
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
     var notifierPluginUpdateTask: Task<Void, Never>?
+    /// Ends a run whose steps went quiet past their limit (NotifierPluginUpdater.stallLimit).
+    var notifierPluginUpdateWatchdog: Task<Void, Never>?
     /// Dashboard and profile pairs Conduit already tried to pair on its own
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.

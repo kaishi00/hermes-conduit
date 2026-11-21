@@ -53,6 +53,7 @@ extension AppState {
         let dashboardID = activeDashboardID
         let restartOnly = notifierPlugin.updateRunsOnlyRestarts(install: install)
         let runID = notifierPluginUpdate.start(on: dashboardID, first: restartOnly ? .restartingGateway(nil) : .downloading)
+        let heard = NotifierPluginUpdateHeartbeat()
         let updater = NotifierPluginUpdater(request: { [weak self] path, method, body in
             guard let self, self.activeDashboardID == dashboardID, let bridge = self.dashboardTicketBridge else {
                 throw DashboardTicketBridgeError.notReady
@@ -72,6 +73,7 @@ extension AppState {
         })
         notifierPluginUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in
+                heard.at = Date()
                 guard let self, !Task.isCancelled else { return }
                 guard self.activeDashboardID == dashboardID else {
                     // Another dashboard is in use now: stop following this one.
@@ -104,11 +106,45 @@ extension AppState {
             // The dashboard restart dropped the chat connection: the notice
             // keeps its progress until Conduit is back and has read the new
             // plugin, so "ready" means ready.
+            heard.at = Date()
             self.notifierPluginUpdate.update(.updating(.reconnecting), run: runID)
             let ended = await self.reconnectAfterNotifierPluginUpdate(outcome, dashboardID: dashboardID)
             guard !Task.isCancelled else { return }
             self.notifierPluginUpdateTask = nil
             self.notifierPluginUpdate.finish(ended, run: runID, activeDashboardID: self.activeDashboardID)
+        }
+        watchNotifierPluginUpdate(run: runID, heard: heard, dashboardID: dashboardID)
+    }
+
+    /// Ends run `runID` when its steps go quiet past their limit, so the
+    /// screen can't sit on a step for good (Eric, 2026-11-21: it stayed on
+    /// "Downloading the plugin…" with nothing started on the host). It asks
+    /// the host where the update stands and says so.
+    private func watchNotifierPluginUpdate(run runID: UUID, heard: NotifierPluginUpdateHeartbeat, dashboardID: UUID?) {
+        notifierPluginUpdateWatchdog?.cancel()
+        let runStarted = Date()
+        notifierPluginUpdateWatchdog = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, !Task.isCancelled, self.notifierPluginUpdate.isRun(runID),
+                      let limit = NotifierPluginUpdater.stallLimit(for: self.notifierPluginUpdate.state) else { return }
+                guard Date().timeIntervalSince(heard.at) > limit else { continue }
+                // The run stops here: whatever it waits on can't land on the slot any more.
+                self.notifierPluginUpdateTask?.cancel()
+                self.notifierPluginUpdateTask = nil
+                guard self.activeDashboardID == dashboardID else {
+                    self.notifierPluginUpdate.finish(.idle, run: runID, activeDashboardID: self.activeDashboardID)
+                    return
+                }
+                await self.refreshNotifierPluginStatus()
+                let path = NotifierPluginUpdater.selfUpdateRequestPath(profile: self.activeProfile, acceptScan: false)
+                let probe = try? await self.dashboardTicketBridge?.requestJSON(path: path)
+                guard !Task.isCancelled, self.notifierPluginUpdate.isRun(runID) else { return }
+                let outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
+                                                                      plugin: self.notifierPlugin, runStarted: runStarted)
+                self.notifierPluginUpdate.finish(outcome, run: runID, activeDashboardID: self.activeDashboardID)
+                return
+            }
         }
     }
 
@@ -249,6 +285,8 @@ extension AppState {
     func stopFollowingNotifierPluginUpdate() {
         notifierPluginUpdateTask?.cancel()
         notifierPluginUpdateTask = nil
+        notifierPluginUpdateWatchdog?.cancel()
+        notifierPluginUpdateWatchdog = nil
         notifierPluginUpdate = NotifierPluginUpdateSlot()
     }
 
@@ -452,4 +490,10 @@ extension NotifierPluginStatus {
             return false
         }
     }
+}
+
+/// When a plugin update's run last said where it stands, for its watchdog.
+@MainActor
+final class NotifierPluginUpdateHeartbeat {
+    var at = Date()
 }
