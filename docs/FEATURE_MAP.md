@@ -5642,9 +5642,9 @@ Model page (done) · Edit's provider list on both (done: logo and display
 name; no quota, as it shows and hides rather than picks) · Models & providers' Providers section and Add a provider
 (done: the logo replaces the status symbol, a key that needs a look keeps an
 orange badge) · Settings > Usage (done: logo beside each quota; its full
-windows stay there) · search matches and Quick picks (done, #PRNUM: the
+windows stay there) · search matches and Quick picks (done, #2949: the
 provider caption under a model leads with its logo) · the Model sheet's
-model card and a setting's Model page's top card (done, #PRNUM: the
+model card and a setting's Model page's top card (done, #2949: the
 provider's logo in place of the cube) · a per-model rate limit (not needed
 on a provider row: it stays on Settings > Usage) · the Plan limits widget
 (done: it reads the same rows with the same ProviderQuota) · Watch, CarPlay, rooms and
@@ -5663,12 +5663,12 @@ Models & providers line)
 - Logos are bundled from lobe-icons (MIT), never fetched: no request leaves the phone for them. A provider is matched by slug, then alias, then a whole word of its slug or name; one with none shows its initial (#2161).
 - A single-colour logo takes the text colour; a coloured one keeps its brand colours unless it has black parts, which vanish in Dark Mode (#2161).
 - A row's quota is its tightest account-wide window's share left (a model-scoped window only when there's no other), with that window's reset; a pool counts the usable account with the most left; an account limit, or every signed-in account limited, reads "Limited until …". Orange under a fifth left, red at none (#2161).
-- Every model named under its provider shows that provider's logo, not only the provider rows: the Model sheet's model card, Quick picks and search matches, and a Model page's top card, Quick picks and matches (Eric 2026-11-20, #PRNUM: the first screen showed a cube for every provider).
+- Every model named under its provider shows that provider's logo, not only the provider rows: the Model sheet's model card, Quick picks and search matches, and a Model page's top card, Quick picks and matches (Eric 2026-11-20, #2949: the first screen showed a cube for every provider).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-21, #PRNUM (logos on the first screen too: the model card, Quick picks and search matches, and the Model page's top card); 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
+**Checked:** 2026-11-21, #2949 (logos on the first screen too: the model card, Quick picks and search matches, and the Model page's top card); 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
