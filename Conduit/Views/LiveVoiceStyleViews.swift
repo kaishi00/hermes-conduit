@@ -191,7 +191,7 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
-            TextField(AppLocalization.string("Your instructions", table: .voice), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
+            TextField(AppLocalization.string("Your instructions"), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
                 .lineLimit(3...8)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("voice.liveStyle.extraInstructions")

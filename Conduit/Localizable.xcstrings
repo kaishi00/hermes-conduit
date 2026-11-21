@@ -198911,6 +198911,422 @@
           }
         }
       }
+    },
+    "Guides only these guesses, not your agent's usual replies. Kept on this device and sent with each of these requests to your Hermes host's model." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Steuert nur diese Vorschläge, nicht die üblichen Antworten deines Agenten. Bleibt auf diesem Gerät und wird mit jeder dieser Anfragen an das Modell deines Hermes-Hosts gesendet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo guía estas sugerencias, no las respuestas habituales de tu agente. Se guarda en este dispositivo y se envía con cada una de estas solicitudes al modelo de tu host de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guide uniquement ces suggestions, pas les réponses habituelles de ton agent. Conservé sur cet appareil et envoyé avec chacune de ces requêtes au modèle de ton hôte Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya memandu tebakan ini, bukan balasan biasa agen kamu. Disimpan di perangkat ini dan dikirim bersama setiap permintaan ini ke model host Hermes kamu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guida solo questi suggerimenti, non le solite risposte del tuo agente. Resta su questo dispositivo e viene inviato con ciascuna di queste richieste al modello del tuo host Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらの候補だけに使われ、エージェントの通常の返信には影響しません。このデバイスに保存され、これらのリクエストごとに Hermes ホストのモデルへ送信されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 추천에만 적용되며 에이전트의 평소 답장에는 영향을 주지 않습니다. 이 기기에 저장되고, 이러한 요청마다 Hermes 호스트의 모델로 함께 전송됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kierują tylko tymi podpowiedziami, nie zwykłymi odpowiedziami twojego agenta. Zostają na tym urządzeniu i są wysyłane z każdą z tych próśb do modelu twojego hosta Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Orienta só estas sugestões, não as respostas habituais do seu agente. Fica neste dispositivo e é enviado com cada uma dessas solicitações para o modelo do seu host Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Влияют только на эти подсказки, а не на обычные ответы вашего агента. Хранятся на этом устройстве и отправляются с каждым таким запросом модели вашего хоста Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca bu tahminleri yönlendirir, ajanının normal yanıtlarını değil. Bu cihazda kalır ve bu isteklerin her biriyle Hermes sunucunun modeline gönderilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只影响这些建议，不影响智能体平时的回复。保存在此设备上，并随每个此类请求发送给你的 Hermes 主机上的模型。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只影響這些建議，不影響代理平常的回覆。儲存在此裝置上，並隨每個此類請求傳送給你的 Hermes 主機上的模型。"
+          }
+        }
+      }
+    },
+    "Like: favor concrete next steps and questions about tradeoffs; skip plain thanks." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etwa: konkrete nächste Schritte und Fragen zu Abwägungen bevorzugen; kein bloßes Danke."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ejemplo: prioriza próximos pasos concretos y preguntas sobre ventajas y desventajas; evita un simple gracias."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Par exemple : privilégie les prochaines étapes concrètes et les questions sur les compromis ; évite les simples remerciements."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Misalnya: utamakan langkah berikutnya yang konkret dan pertanyaan tentang untung-rugi; hindari sekadar terima kasih."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ad esempio: privilegia passi successivi concreti e domande sui compromessi; evita i semplici grazie."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例：具体的な次の一手やトレードオフについての質問を優先し、お礼だけの返信は避ける。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예: 구체적인 다음 단계와 장단점에 대한 질문을 우선하고, 단순한 감사 인사는 피하기."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na przykład: stawiaj na konkretne kolejne kroki i pytania o kompromisy; pomijaj samo dziękuję."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por exemplo: priorize próximos passos concretos e perguntas sobre prós e contras; evite um simples obrigado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Например: предлагай конкретные следующие шаги и вопросы о компромиссах; без простого «спасибо»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Örneğin: somut sonraki adımları ve ödünleşimlerle ilgili soruları öne çıkar; sadece teşekkür etme."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：优先给出具体的下一步和关于取舍的问题；不要只说谢谢。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：優先給出具體的下一步和關於取捨的問題；不要只說謝謝。"
+          }
+        }
+      }
+    },
+    "Like: keep my meaning and tone; never add promises I didn't make." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etwa: meine Absicht und meinen Ton beibehalten; nie Zusagen hinzufügen, die ich nicht gemacht habe."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ejemplo: mantén mi intención y mi tono; nunca añadas compromisos que no hice."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Par exemple : garde mon intention et mon ton ; n'ajoute jamais d'engagements que je n'ai pas pris."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Misalnya: pertahankan maksud dan nada saya; jangan pernah menambahkan janji yang tidak saya buat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ad esempio: mantieni il mio intento e il mio tono; non aggiungere mai impegni che non ho preso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例：意図と口調を保ち、言っていない約束を加えない。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예: 내 의도와 말투를 유지하고, 내가 하지 않은 약속은 절대 추가하지 않기."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na przykład: zachowaj mój zamiar i ton; nigdy nie dodawaj obietnic, których nie złożyłem."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por exemplo: mantenha minha intenção e meu tom; nunca adicione compromissos que eu não fiz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Например: сохраняй мой смысл и тон; никогда не добавляй обещаний, которых я не давал."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Örneğin: niyetimi ve tonumu koru; vermediğim sözleri asla ekleme."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：保留我的意思和语气；绝不添加我没做过的承诺。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：保留我的意思和語氣；絕不加入我沒做過的承諾。"
+          }
+        }
+      }
+    },
+    "Like: only for a finished result or something blocking me." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Etwa: nur bei einem fertigen Ergebnis oder etwas, das mich blockiert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por ejemplo: solo por un resultado terminado o algo que me bloquee."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Par exemple : seulement pour un résultat terminé ou quelque chose qui me bloque."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Misalnya: hanya untuk hasil yang sudah selesai atau sesuatu yang menghambat saya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ad esempio: solo per un risultato concluso o qualcosa che mi blocca."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例：結果が出たときや、行き詰まっているときだけ。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "예: 결과가 나왔거나 막힌 일이 있을 때만."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na przykład: tylko przy gotowym wyniku albo czymś, co mnie blokuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Por exemplo: só para um resultado pronto ou algo que esteja me travando."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Например: только ради готового результата или того, что меня блокирует."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Örneğin: yalnızca biten bir sonuç veya beni engelleyen bir şey için."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：只在有了结果或有事卡住我时。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "例如：只在有了結果或有事卡住我時。"
+          }
+        }
+      }
+    },
+    "Your instructions" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deine Anweisungen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Your instructions"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tus instrucciones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vos instructions"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruksi Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le tue istruzioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたの指示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 지시사항"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twoje instrukcje"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Suas instruções"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваши инструкции"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Talimatlarınız"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的指令"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你的指示"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -20,6 +20,11 @@
 //  Desktop shows them as notes. Conduit measures every duration it sends;
 //  the plugin writes them out, so the model never calculates.
 //
+//  Each of the three may carry the user's own instructions (issue 2970),
+//  kept on this device too, sent only with its own kind of question, and
+//  only to a plugin that reports `predict-custom-instructions` (0.190+):
+//  older plugins ignore the field, so Settings says it needs an update.
+//
 
 import Foundation
 
@@ -38,6 +43,47 @@ enum Predictive {
     static let followUpKey = "conduit.predictive.followUp"
     static let followUpDelayKey = "conduit.predictive.followUpDelay"
     static let modelKey = "conduit.predictive.model"
+    static let repliesInstructionsKey = "conduit.predictive.replies.instructions"
+    static let pauseInstructionsKey = "conduit.predictive.pause.instructions"
+    static let followUpInstructionsKey = "conduit.predictive.followUp.instructions"
+
+    // MARK: - The user's instructions (issue 2970)
+
+    static let instructionsCapability = "predict-custom-instructions"
+    static let instructionsMinimumPlugin = "0.190"
+    /// The plugin takes at most this many, counted as Python counts them
+    /// (Unicode scalars), like the draft.
+    static let maximumInstructionsScalars = 1_000
+
+    static func instructionsKey(_ kind: Kind) -> String {
+        switch kind {
+        case .replies: return repliesInstructionsKey
+        case .draft: return pauseInstructionsKey
+        case .turn: return followUpInstructionsKey
+        }
+    }
+
+    /// `text` cut to the plugin's limit at a whole character, so the cut
+    /// never splits an emoji.
+    static func clippedInstructions(_ text: String) -> String {
+        guard text.unicodeScalars.count > maximumInstructionsScalars else { return text }
+        var kept = ""
+        var scalars = 0
+        for character in text {
+            let count = character.unicodeScalars.count
+            guard scalars + count <= maximumInstructionsScalars else { break }
+            kept.append(character)
+            scalars += count
+        }
+        return kept
+    }
+
+    /// The instructions for `kind`'s questions, or nil when there are none.
+    static func instructions(_ kind: Kind, _ defaults: UserDefaults = .standard) -> String? {
+        let text = clippedInstructions(defaults.string(forKey: instructionsKey(kind)) ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? nil : text
+    }
 
     static let replyCounts = [1, 3, 5]
     static let defaultReplyCount = 3
@@ -162,7 +208,8 @@ enum Predictive {
         facts: TurnFacts? = nil,
         language: String,
         model: Model,
-        wait: TimeInterval
+        wait: TimeInterval,
+        instructions: String? = nil
     ) -> [String: Any] {
         var body: [String: Any] = [
             "session_id": sessionID,
@@ -173,6 +220,7 @@ enum Predictive {
             "wait_s": wait,
         ]
         if let draft { body["draft"] = draft }
+        if let instructions, !instructions.isEmpty { body["custom_instructions"] = instructions }
         if let facts {
             var measured: [String: Any] = [
                 "last_reply_s": max(0, facts.lastReplySeconds),
@@ -385,6 +433,19 @@ final class PredictiveStore: ObservableObject {
     func unfold() {
         isFolded = false
         shownAt = Date()
+    }
+
+    /// Suggested replies made under instructions since edited.
+    func dropReplies() {
+        replies = []
+        anchor = nil
+    }
+
+    /// A draft's guesses made under instructions since edited.
+    func dropDraftGuesses() {
+        answeredDraft = nil
+        draftNext = []
+        draftReplies = []
     }
 
     /// A new turn, another chat, or a switch turned off.
