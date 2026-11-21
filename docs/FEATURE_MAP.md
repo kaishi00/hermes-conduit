@@ -7709,11 +7709,12 @@ server, never Tailscale SSH)
 
 **Rulings**
 - Remote access goes through Tailscale Serve, never Tailscale SSH or a port opened to the internet. The README and the setup page say Conduit doesn't need Tailscale SSH and to keep Tailscale updated (Eric, 2026-10-27, #1377, from issue #1366).
+- The assistant's and the sign-in screen's dashboard username and password fields carry `.username` / `.password` so Passwords can fill and save the login, except under UI tests: `XCUIApplication.conduit()` sets `CONDUIT_NO_PASSWORD_AUTOFILL=1` and they take `.oneTimeCode` (`dashboardCredentialContentType`), since typing the password with AutoFill on sometimes left a hosted simulator's app never idle until the test ran out of time (Nightly 2026-10-27 and 2026-11-21, #2958).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
+**Checked:** 2026-11-21, #2958 (UI tests keep Passwords AutoFill off the credential fields; Rulings; README, the setup page and the prompts need no change, nothing users see changed); 2026-11-03, #1716 (a certificate failure in the connection test, Settings' Sign In Again or Repair's reconnect opens HTTPS & certificates and Back returns to it; its install step is in Connection failure messages); 2026-10-27, at #1377.
 
 ## Connection failure messages
 
