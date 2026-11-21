@@ -3348,6 +3348,7 @@ describes the controls; README.md's Scheduled jobs line says edit)
 **Rulings**
 - The interval stays in 1...999 of its unit; a typed number is clamped as it's typed (0 reads as 1, 5000 as 999), a localized number pad's digits count, a cleared field keeps the last number, and the field shows the clamped number once it loses focus. A job read in past the range shows its own number until edited.
 - An interval is read in its largest whole unit (120 minutes as 2 hours), so saving unchanged sends the same schedule.
+- VoiceOver reads the field and the stepper as the schedule in words ("Every 2 hours"), not a bare number.
 
 **Open gaps**
 - None known.
