@@ -40,6 +40,11 @@ final class DemoVideoTests: XCTestCase {
         app.launchEnvironment["TZ"] = AppStoreScreenshotTests.timeZoneNearStatusBarTime()
         app.launchEnvironment["CONDUIT_HIDE_TIPS"] = "1"
         // The backdrop drifts as it does for people: these are videos.
+        // Passwords AutoFill stays off the sign-in fields, as in the UI tests
+        // (`DashboardCredentialAutoFill`): typing the password with it on
+        // could leave the app never settling, and its Save Password sheet
+        // would cover the next scene.
+        app.launchEnvironment["CONDUIT_NO_PASSWORD_AUTOFILL"] = "1"
         app.launch()
     }
 
