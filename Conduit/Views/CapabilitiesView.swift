@@ -346,6 +346,7 @@ struct CapabilitiesView: View {
             Spacer()
             ProgressView("Loading capabilities…")
                 .tint(.conduitAccent)
+                .accessibilityIdentifier("capabilities.loading")
             Spacer()
         }
         .frame(maxWidth: .infinity)

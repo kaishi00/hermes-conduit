@@ -9,7 +9,8 @@ names.
 
 Results:
 - Artifact `app-store-screenshots`: one folder per device with `01-chats.png`
-  and the rest, `preview-<device>.mp4` (ready to upload) and the raw
+  and the rest (`11-capabilities.png` isn't one of the App Store ten: it's the
+  Tools screen of hermesconduit.app's whole-app tour), `preview-<device>.mp4` (ready to upload) and the raw
   `preview-<device>.mov`. Artifact `app-store-watch-screenshots` holds
   the Watch shots, including the approval card (`04-approval.png`).
 - `clips/`: short silent MP4s for the README and hermesconduit.app, recorded
