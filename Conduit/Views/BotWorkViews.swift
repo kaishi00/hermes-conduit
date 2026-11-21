@@ -320,8 +320,8 @@ struct BotWorkPanel: View {
             case .pin: return (AppLocalization.string("Pin"), "pin", .orange)
             case .unpin: return (AppLocalization.string("Unpin"), "pin.slash", .gray)
             case .resolve: return (AppLocalization.string("Resolve", table: .bots), "checkmark.circle", .green)
-            case .leaveAlone: return (AppLocalization.string("Leave Alone", table: .bots), "hand.raised", .gray)
-            case .coordinate: return (AppLocalization.string("Let \(botName) Coordinate It", table: .bots), "point.3.connected.trianglepath.dotted", .blue)
+            case .leaveAlone: return (AppLocalization.string("Keep \(botName) out of this", table: .bots), "hand.raised", .gray)
+            case .coordinate: return (AppLocalization.string("Let \(botName) coordinate this", table: .bots), "point.3.connected.trianglepath.dotted", .blue)
             default: return (AppLocalization.string("Reopen", table: .bots), "arrow.uturn.backward.circle", .conduitAccent)
             }
         }()
@@ -989,18 +989,46 @@ private struct BotWorkRow: View {
     /// The line under the title (BotWorkLook.subtitle).
     private var subtitle: String { BotWorkLook.subtitle(item, botName: botName) }
 
+    /// A workstream with a chat opens it on one tap (Eric 2026-11-21); the
+    /// chevron beside it opens the card in place. Other work opens in place.
+    private var tapOpensChat: Bool { item.kind == .workstream && !item.sessionID.isEmpty }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Button {
-                Haptics.light()
-                withAnimation(ConduitMotion.response) { expanded.toggle() }
-            } label: {
-                summary
+            HStack(alignment: .top, spacing: 4) {
+                Button {
+                    Haptics.light()
+                    if tapOpensChat {
+                        willOpen?()
+                        appState.openWorkstream(item, profile: profile)
+                    } else {
+                        withAnimation(ConduitMotion.response) { expanded.toggle() }
+                    }
+                } label: {
+                    summary
+                }
+                .buttonStyle(.plain)
+                .accessibilityElement(children: .combine)
+                .accessibilityValue(tapOpensChat ? String() : expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                .accessibilityHint(tapOpensChat ? AppLocalization.string("Open \(item.ref)’s chat", table: .bots)
+                                   : expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
+                if tapOpensChat {
+                    Button {
+                        Haptics.light()
+                        withAnimation(ConduitMotion.response) { expanded.toggle() }
+                    } label: {
+                        Image(systemName: expanded ? "chevron.up" : "chevron.down")
+                            .scaledFont(.footnote.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 28, height: 28)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(AppLocalization.string("Details"))
+                    .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                    .accessibilityIdentifier("botWork.details.\(item.ref)")
+                }
             }
-            .buttonStyle(.plain)
-            .accessibilityElement(children: .combine)
-            .accessibilityValue(expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
-            .accessibilityHint(expanded ? AppLocalization.string("Shows less") : AppLocalization.string("Shows more"))
             if item.status == "needs_you", !item.isClosed, item.kind == .workstream, !item.sessionID.isEmpty {
                 // Its approval, answered here or in its chat.
                 WorkstreamApprovalBox(item: item, profile: profile, isActing: isActing)
@@ -1107,7 +1135,7 @@ private struct BotWorkRow: View {
                         Image(systemName: "hand.raised.fill")
                             .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
-                            .accessibilityLabel(AppLocalization.string("Left alone", table: .bots))
+                            .accessibilityLabel(AppLocalization.string("\(botName) kept out", table: .bots))
                     }
                     if item.isPinned {
                         Image(systemName: "pin.fill")
@@ -1316,20 +1344,36 @@ private struct BotWorkRow: View {
             }
             // Also on the card, not only its long press: who coordinates it.
             if let handOver = [BotWorkItem.Action.leaveAlone, .coordinate].first(where: { item.manage.contains($0) }) {
-                Button {
-                    Haptics.light()
-                    Task { await appState.actOnWorkstream(item, profile: profile, action: handOver) }
-                } label: {
-                    Label(handOver == .leaveAlone ? AppLocalization.string("Leave Alone", table: .bots)
-                              : AppLocalization.string("Let \(botName) Coordinate It", table: .bots),
-                          systemImage: handOver == .leaveAlone ? "hand.raised" : "point.3.connected.trianglepath.dotted")
-                        .frame(maxWidth: .infinity, minHeight: 36)
+                // Its label says who is kept out, and the line under it what
+                // that means (Eric 2026-11-21: "Leave Alone" was vague).
+                VStack(spacing: 4) {
+                    Button {
+                        Haptics.light()
+                        Task { await appState.actOnWorkstream(item, profile: profile, action: handOver) }
+                    } label: {
+                        Label(handOver == .leaveAlone ? AppLocalization.string("Keep \(botName) out of this", table: .bots)
+                                  : AppLocalization.string("Let \(botName) coordinate this", table: .bots),
+                              systemImage: handOver == .leaveAlone ? "hand.raised" : "point.3.connected.trianglepath.dotted")
+                            .frame(maxWidth: .infinity, minHeight: 36)
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(isActing || !appState.isConnected)
+                    .accessibilityIdentifier("botWork.handOver.\(item.ref)")
+                    .accessibilityHint(handOverCaption(handOver))
+                    Text(handOverCaption(handOver))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                        .frame(maxWidth: .infinity)
+                        .accessibilityHidden(true)
                 }
-                .buttonStyle(.settings)
-                .disabled(isActing || !appState.isConnected)
-                .accessibilityIdentifier("botWork.handOver.\(item.ref)")
             }
         }
+    }
+
+    private func handOverCaption(_ handOver: BotWorkItem.Action) -> String {
+        handOver == .leaveAlone ? AppLocalization.string("\(botName) won’t message or stop it. You still can.", table: .bots)
+            : AppLocalization.string("Only you message or stop it now.", table: .bots)
     }
 
     /// Its chat, as a button at the top of the opened row.
