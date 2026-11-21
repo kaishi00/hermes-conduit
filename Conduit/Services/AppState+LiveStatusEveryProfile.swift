@@ -165,8 +165,10 @@ extension AppState {
         } else {
             index = otherProfilesLiveStatus.index(for: bot, client: client.map { ObjectIdentifier($0) })
         }
+        // A question the bot asked past its turn is its work's to count (counts.questions).
         let waits = needsYou.items.filter {
-            $0.roomID == nil && Self.profilesMatch($0.profile, bot) && Set($0.sessionIDs).isDisjoint(with: workstreams)
+            $0.roomID == nil && $0.asked == nil && Self.profilesMatch($0.profile, bot)
+                && Set($0.sessionIDs).isDisjoint(with: workstreams)
         }.count
         let running = botChatTurnsRunningHere(bot, leavingOut: workstreams)
         guard var counts = index?.counts(leavingOut: workstreams) else {
@@ -205,7 +207,8 @@ extension AppState {
     /// without the plugin's list, or before it's read), opened by its id.
     func newestBotChatWait(_ bot: String, leavingOut workstreams: Set<String> = []) -> NeedsYouItem? {
         if let wait = needsYou.items.first(where: {
-            $0.roomID == nil && Self.profilesMatch($0.profile, bot) && Set($0.sessionIDs).isDisjoint(with: workstreams)
+            $0.roomID == nil && $0.asked == nil && Self.profilesMatch($0.profile, bot)
+                && Set($0.sessionIDs).isDisjoint(with: workstreams)
         }) {
             return wait
         }

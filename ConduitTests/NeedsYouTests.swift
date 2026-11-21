@@ -97,6 +97,36 @@ extension ChatOnScreenTests {
                       "an encrypted pairing's answer never goes unsealed")
     }
 
+    /// Questions that don't pause the turn (notifier 0.189.0+): an open
+    /// one is a row that opens the chat that asked, carrying its choices;
+    /// one naming no chat, or already answered, isn't listed.
+    func testAQuestionThatWaitsPastItsTurnIsARowWithItsChoices() throws {
+        let questions: [[String: Any]] = [
+            ["id": "P7", "kind": "proposal", "ref": "", "at": 1_800_000_100.0, "text": "Roll back the deploy?",
+             "status": "open", "answer": "", "why": [], "actions": ["answer"], "choices": ["Roll back", "Wait"],
+             "recommended": "Roll back", "going_ahead": true, "chat": "c1", "session_ids": ["c1"],
+             "chat_title": "Deploy watch"],
+            ["id": "P8", "kind": "proposal", "ref": "", "at": 1_800_000_200.0, "text": "Stop W1?", "status": "open",
+             "answer": "", "why": [], "actions": ["approve", "decline"], "chat": "", "session_ids": []],
+            ["id": "P9", "kind": "proposal", "ref": "", "at": 1_800_000_300.0, "text": "Done?", "status": "approved",
+             "answer": "", "why": [], "actions": [], "chat": "c2", "session_ids": ["c2"]],
+            // A kept clarify answered in words since: its answer action no longer makes it wait.
+            ["id": "P10", "kind": "proposal", "ref": "", "at": 1_800_000_400.0, "text": "What note?", "status": "answered",
+             "answer": "Ship it", "why": [], "actions": ["answer"], "chat": "c3", "session_ids": ["c3"], "source": "clarify"],
+        ]
+        let items = try XCTUnwrap(NeedsYouItem.items(listed: ["waiting": [], "questions": questions], profile: "atlas"))
+        XCTAssertEqual(items.map(\.waitID), ["asked-P7"])
+        let item = try XCTUnwrap(items.first)
+        XCTAssertEqual(item.sessionIDs, ["c1"])
+        XCTAssertEqual(item.title, "Deploy watch")
+        XCTAssertEqual(item.kind, .question)
+        XCTAssertEqual(item.asked?.choices, ["Roll back", "Wait"])
+        XCTAssertEqual(item.asked?.recommended, "Roll back")
+        XCTAssertTrue(item.asked?.canAnswer == true)
+        XCTAssertEqual(item.kindLine, "Going ahead with “Roll back” unless you pick another")
+        XCTAssertNil(item.card, "no relay card: it's answered in its chat or on the Work panel")
+    }
+
     /// Issue 2683: the list's gateway reaches every row, an empty one none.
     func testTheWaitingListsGatewayReachesItsRows() throws {
         let rows = [needsYouWait("q1", "s1", at: 1, kind: "question"), needsYouWait("a1", "s2", at: 2)]

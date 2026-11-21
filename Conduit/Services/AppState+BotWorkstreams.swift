@@ -122,8 +122,12 @@ final class BotWorkStore: ObservableObject {
 
     /// A question as the user's tap answered it.
     func answer(_ id: String, approved: Bool, profile: String) {
+        answer(id, with: approved ? .approve : .decline, profile: profile)
+    }
+
+    func answer(_ id: String, with given: BotQuestionAnswer, profile: String) {
         guard let snapshot = snapshots[profile] else { return }
-        snapshots[profile] = snapshot.answering(id, approved: approved)
+        snapshots[profile] = snapshot.answering(id, with: given)
     }
 
     func clear() {
@@ -535,18 +539,28 @@ extension AppState {
     /// yes the Bot Chat is told and goes ahead. True when the plugin kept it.
     @discardableResult
     func answerBotQuestion(_ question: BotWorkCoordination.Item, profile: String, approved: Bool) async -> Bool {
+        await answerBotQuestion(question, profile: profile, with: approved ? .approve : .decline)
+    }
+
+    /// The same with any answer: one of the question's choices too (plugin
+    /// 0.189.0+), told to the chat that asked, the Bot Chat or another.
+    @discardableResult
+    func answerBotQuestion(_ question: BotWorkCoordination.Item, profile: String,
+                           with given: BotQuestionAnswer) async -> Bool {
         guard botWork.begin(question.id, profile: profile) else { return false }
         defer { botWork.end(question.id, profile: profile) }
         botWork.setRefusal(nil, profile: profile)
         botWork.noteAction(profile)
         let mark = botWork.mark(profile)
         do {
-            try await botWorkClient(profile: profile).answer(question: question.id, approved: approved)
+            try await botWorkClient(profile: profile).answer(question: question.id, with: given)
             guard botWork.mark(profile).epoch == mark.epoch else { return true }
             botWork.noteAction(profile)
-            botWork.answer(question.id, approved: approved, profile: profile)
+            botWork.answer(question.id, with: given, profile: profile)
             Haptics.success()
             Task { await refreshBotWork(profile: profile, afterAction: true) }
+            // It leaves the Needs you list too.
+            Task { await refreshNeedsYou() }
             return true
         } catch {
             guard botWork.mark(profile).epoch == mark.epoch else { return false }

@@ -737,10 +737,12 @@ struct BotWorkPanel: View {
     }
 }
 
-/// A question the Bot Chat asked the user about its work and waits on, at
-/// the top of the Work panel: what it asks, and Approve or Decline, which
-/// is the user's own answer with nothing typed in the Bot Chat. On a yes
-/// the Bot Chat goes ahead. The card's words open what was behind it.
+/// A question the bot asked the user and waits on past its turn, from its
+/// Bot Chat or any of its chats, at the top of the Work panel: what it asks,
+/// and Approve or Decline or one of its choices, the user's own answer with
+/// nothing typed, which reaches the chat that asked. A kept clarify question
+/// with no choices is answered there in words. The card's words open what
+/// was behind it.
 private struct BotWorkQuestionCard: View {
     @EnvironmentObject private var appState: AppState
     let question: BotWorkCoordination.Item
@@ -784,13 +786,21 @@ private struct BotWorkQuestionCard: View {
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
             .accessibilityHint(AppLocalization.string("Shows what was behind it", table: .bots))
-            let layout = dynamicTypeSize.isAccessibilitySize
-                ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
-            layout {
-                answerButton(AppLocalization.string("Approve"), approved: true)
-                answerButton(AppLocalization.string("Decline"), approved: false)
+            if let state = question.goingAhead ? question.stateText : nil {
+                Text(state)
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
             }
-            .disabled(isActing || !appState.isConnected)
+            if question.answersInWords {
+                Text(AppLocalization.string("Answer it in its chat, in your own words.", table: .bots))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            } else {
+                BotQuestionAnswerButtons(question: question) { given in
+                    Task { await appState.answerBotQuestion(question, profile: profile, with: given) }
+                }
+                .disabled(isActing || !appState.isConnected)
+            }
         }
         .padding(14)
         // A "Needs you" card's orange: it waits on the user as one does.
@@ -799,24 +809,58 @@ private struct BotWorkQuestionCard: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("botWork.question.\(question.id)")
     }
+}
 
-    private func answerButton(_ title: String, approved: Bool) -> some View {
+/// A question's answers on its card: Approve and Decline for a yes or no,
+/// else one button per choice, the recommended one filled (plugin
+/// 0.189.0+). Only the Work panel draws them: Needs you rows open the chat.
+struct BotQuestionAnswerButtons: View {
+    let question: BotWorkCoordination.Item
+    let answer: (BotQuestionAnswer) -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        if question.choices.isEmpty {
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            layout {
+                button(AppLocalization.string("Approve"), filled: true, given: .approve)
+                button(AppLocalization.string("Decline"), filled: false, given: .decline)
+            }
+        } else {
+            // Two short choices side by side; more, or long ones, one under another.
+            let sideBySide = question.choices.count == 2 && !dynamicTypeSize.isAccessibilitySize
+                && question.choices.allSatisfy { $0.count <= 18 }
+            let layout = sideBySide ? AnyLayout(HStackLayout(spacing: 8)) : AnyLayout(VStackLayout(spacing: 8))
+            layout {
+                ForEach(question.choices, id: \.self) { choice in
+                    button(choice, filled: choice == question.recommended, given: .choice(choice),
+                           recommended: choice == question.recommended)
+                }
+            }
+        }
+    }
+
+    private func button(_ title: String, filled: Bool, given: BotQuestionAnswer, recommended: Bool = false) -> some View {
         Button {
             Haptics.light()
-            Task { await appState.answerBotQuestion(question, profile: profile, approved: approved) }
+            answer(given)
         } label: {
             Text(title)
                 .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 44)
-                .foregroundStyle(approved ? Color.black.opacity(0.85) : Color.primary)
+                .padding(.horizontal, 8)
+                .foregroundStyle(filled ? Color.black.opacity(0.85) : Color.primary)
                 .background(
                     RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(approved ? Color.orange : Color.primary.opacity(0.08))
+                        .fill(filled ? Color.orange : Color.primary.opacity(0.08))
                 )
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
+        .accessibilityHint(recommended ? Text(AppLocalization.string("Recommended")) : Text(""))
     }
 }
 

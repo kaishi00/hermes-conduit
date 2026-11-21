@@ -190,6 +190,8 @@ struct NeedsYouSheet: View {
                             .accessibilityHint(item.dashboardID.map { $0 != appState.activeDashboardID } == true
                                 // Another combined dashboard's: the whole app moves there.
                                 ? AppLocalization.string("Switches to that dashboard and opens the chat at its card", table: .chat)
+                                : item.asked != nil
+                                ? AppLocalization.string("Opens the chat that asked", table: .chat)
                                 : item.roomID == nil
                                 ? AppLocalization.string("Opens the chat at its card", table: .chat)
                                 : AppLocalization.string("Opens this group chat."))

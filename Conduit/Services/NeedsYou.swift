@@ -49,6 +49,11 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// The relay gateway the profile's list said it pairs through (notifier
     /// 0.177.30+): the card's answer is sealed for it (issue 2683).
     var relayGatewayID: String? = nil
+    /// A question the bot asked that waits past its turn (work_propose, or
+    /// a clarify kept after it ran out; notifier 0.189.0+). Its row opens
+    /// the chat that asked, as every row does (the list only opens): it's
+    /// answered there in a reply, or with a tap on the bot's Work panel.
+    var asked: BotWorkCoordination.Item? = nil
 
     var id: String {
         dashboardID.map { "\($0.uuidString)\u{1F}\(hostKey)" } ?? hostKey
@@ -122,15 +127,37 @@ struct NeedsYouItem: Identifiable, Equatable {
         }
         let own = trimmed(installationID.flatMap { (response["gateways"] as? [String: Any])?[$0.lowercased()] as? String })
         let gatewayID = own ?? trimmed(response["gateway_id"] as? String)
-        return listed.compactMap { row in
+        let waits = listed.compactMap { row in
             var item = NeedsYouItem(host: row, profile: profile)
             item?.relayGatewayID = gatewayID
             return item
         }
+        let asked = (response["questions"] as? [[String: Any]] ?? []).compactMap { row in
+            var item = NeedsYouItem(question: row, profile: profile)
+            item?.relayGatewayID = gatewayID
+            return item
+        }
+        return waits + asked
+    }
+
+    /// One of the list's `questions` (notifier 0.189.0+); nil when it isn't
+    /// open or names no chat to open.
+    init?(question row: [String: Any], profile: String) {
+        guard let asked = BotWorkCoordination.Item(row: row), asked.kind == .proposal,
+              asked.canAnswer || (asked.answersInWords && asked.status == "open") else { return nil }
+        let ids = (row["session_ids"] as? [String] ?? [])
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard !ids.isEmpty else { return nil }
+        self.init(waitID: "asked-\(asked.id)", profile: profile, kind: .question, sessionIDs: ids,
+                  title: (row["chat_title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "",
+                  summary: asked.text.trimmingCharacters(in: .whitespacesAndNewlines), questions: 1, since: asked.at)
+        self.asked = asked
     }
 
     /// What the chat waits on, in the App Language.
     var kindLine: String {
+        if let asked, asked.goingAhead, let state = asked.stateText { return state }
         switch kind {
         case .approval: return AppLocalization.string("Approval needed")
         case .question where questions > 1: return AppLocalization.string("\(Int(questions)) questions", table: .chat)

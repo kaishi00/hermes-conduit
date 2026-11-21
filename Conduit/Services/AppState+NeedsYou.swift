@@ -443,7 +443,8 @@ extension AppState {
         // Another profile's chat doesn't open during a call (it says so),
         // so nothing waits to scroll.
         let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isCallEndingProfileSwitch
-        if !refused {
+        // A question asked past its turn has no card in its chat to scroll to: the chat just opens.
+        if !refused, item.asked == nil {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
         }
