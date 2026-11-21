@@ -9947,7 +9947,7 @@ board (upstream)
 **Open gaps**
 - The phone has no drag and drop between lanes; it moves a card through its menu or the task's Status.
 
-**Checked:** 2026-11-21, #PRNUM (seeded with desktop#286: the desktop's lane chips, sideways scrolling and right-click card menu).
+**Checked:** 2026-11-21, #2987 (seeded with desktop#286: the desktop's lane chips, sideways scrolling and right-click card menu).
 
 ## A blocked Kanban task
 
