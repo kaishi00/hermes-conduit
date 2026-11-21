@@ -755,7 +755,7 @@ extension AppState {
     /// fires before the change lands, so it's read on the next turn; on
     /// subscribing too, with the bots shown then.
     var shownBotRosterChanged: AnyPublisher<Void, Never> {
-        Publishers.Merge($botRoster.map { _ in () }, $botModePhase.map { _ in () })
+        Publishers.Merge(botRosterValues.map { _ in () }, botModePhaseValues.map { _ in () })
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
