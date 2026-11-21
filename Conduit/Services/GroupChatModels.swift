@@ -2321,11 +2321,21 @@ extension DesktopGroupChatDecoder {
     /// the room's revision, v2 its name at that revision, v1 its name at
     /// the wall-clock milliseconds v1 used. Every other room and field is
     /// kept as it is. Nil when the projection no longer holds the room.
-    static func removing(key: String, from snapshot: AnyCodable?, now: Date = Date()) -> [String: Any]? {
+    /// A room re-keyed since the list was read (Desktop's v2-to-v3 move,
+    /// or a name-keyed room that gained its `roomId`) is found by `roomID`
+    /// instead, so it isn't reported gone while it stays.
+    static func removing(key: String, roomID: String? = nil, from snapshot: AnyCodable?, now: Date = Date()) -> [String: Any]? {
         guard let object = snapshot?.objectValue else { return nil }
         let version = object["version"]?.doubleValue ?? 0
         var rooms = object["rooms"]?.objectValue ?? [:]
-        let rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        var rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        let wantedID = roomID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if rooms[rawKey] == nil, !wantedID.isEmpty,
+           let moved = rooms.first(where: {
+               $0.value.objectValue?["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) == wantedID
+           })?.key {
+            rawKey = moved
+        }
         guard let room = rooms.removeValue(forKey: rawKey)?.objectValue else { return nil }
 
         var deleted = object["deleted"]?.objectValue ?? [:]
