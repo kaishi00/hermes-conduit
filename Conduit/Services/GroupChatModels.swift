@@ -2226,8 +2226,14 @@ struct DesktopGroupChat: Equatable, Identifiable, Codable {
     /// The same room as `other`: by its id when it has one (a key can be
     /// reused by another room), else by its key.
     func isSameRoom(as other: DesktopGroupChat) -> Bool {
-        if let id = other.roomID, !id.isEmpty { return roomID == id }
+        if let id = other.roomIdentity { return roomIdentity == id }
         return key == other.key
+    }
+
+    /// Its `roomId`, else the id its v3 `id:` key names.
+    private var roomIdentity: String? {
+        if let roomID, !roomID.isEmpty { return roomID }
+        return key.hasPrefix("id:") ? String(key.dropFirst(3)) : nil
     }
 }
 
