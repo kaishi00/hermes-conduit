@@ -3172,10 +3172,11 @@ final class AppState: ObservableObject {
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
-        self._runtimeOnScreen = Published(wrappedValue: DashboardRuntime(notifierPlugin: NotifierPluginStatus(
+        let initialRuntime = DashboardRuntime(notifierPlugin: NotifierPluginStatus(
             followsMain: noticeChannel.followsMain,
             asksToUpdate: noticeChannel.asksToUpdate
-        )))
+        ))
+        self._runtimeOnScreen = Published(wrappedValue: initialRuntime)
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
@@ -3223,10 +3224,11 @@ final class AppState: ObservableObject {
         }
         defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
         profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
-        profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
-        profileDeviceNames = self.profileAppearanceStore.loadDeviceNames(dashboardID: initialDashboardID)
-        profileBotTitles = self.profileAppearanceStore.loadBotTitles(dashboardID: initialDashboardID)
-        profileHermesNames = self.profileAppearanceStore.loadHermesNames(dashboardID: initialDashboardID)
+        // Straight into the runtime: AppState isn't initialized yet.
+        initialRuntime.profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
+        initialRuntime.profileDeviceNames = self.profileAppearanceStore.loadDeviceNames(dashboardID: initialDashboardID)
+        initialRuntime.profileBotTitles = self.profileAppearanceStore.loadBotTitles(dashboardID: initialDashboardID)
+        initialRuntime.profileHermesNames = self.profileAppearanceStore.loadHermesNames(dashboardID: initialDashboardID)
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
