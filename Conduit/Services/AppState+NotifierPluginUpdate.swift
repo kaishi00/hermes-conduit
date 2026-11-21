@@ -45,7 +45,9 @@ extension AppState {
 
     /// Updates the plugin on this dashboard's host, or installs it when
     /// `install` is set, then restarts the gateway and the dashboard.
-    func updateNotifierPlugin(install: Bool = false) {
+    /// `acceptScan`: Update Anyway on an update Hermes' install scan held
+    /// (`.scanHeld`), accepting its caution verdict for this update only.
+    func updateNotifierPlugin(install: Bool = false, acceptScan: Bool = false) {
         guard canUpdateNotifierPlugin else { return }
         notifierPluginUpdateTask?.cancel()
         let dashboardID = activeDashboardID
@@ -63,6 +65,7 @@ extension AppState {
             return await self.renewDashboardSignIn(dashboardID: dashboardID)
         }, onHost: notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability),
            restartOnly: restartOnly,
+           acceptScan: acceptScan,
            profile: activeProfile, report: { [weak self] json in
             guard let self, self.activeDashboardID == dashboardID else { return }
             self.applyNotifierPluginReport(json)
@@ -441,7 +444,7 @@ extension NotifierPluginStatus {
             // restart, whatever an update would offer.
             guard case .reported = state else { return false }
             return !updateAvailable && !restartPending
-        case .failed, .runningOnHost:
+        case .failed, .runningOnHost, .scanHeld:
             guard !restartPending, let running = runtime?.loadedVersion else { return false }
             return !Self.isOlder(running, than: offeredVersion)
         default:

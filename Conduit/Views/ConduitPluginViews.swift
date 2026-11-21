@@ -406,6 +406,14 @@ struct NotifierPluginUpdateStatusView: View {
                         }
                         .accessibilityElement(children: .combine)
                         Spacer(minLength: 0)
+                        if case .scanHeld = appState.activeNotifierPluginUpdate {
+                            Button(AppLocalization.string("Update Anyway")) {
+                                appState.updateNotifierPlugin(acceptScan: true)
+                            }
+                            .buttonStyle(.settings)
+                            .disabled(!appState.canUpdateNotifierPlugin)
+                            .accessibilityIdentifier("pluginUpdate.updateAnyway")
+                        }
                         if row.symbol != nil {
                             Button { appState.dismissNotifierPluginUpdateOutcome() } label: {
                                 Image(systemName: "xmark")
@@ -490,6 +498,8 @@ struct NotifierPluginUpdateStatusView: View {
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
+        case .scanHeld(let hold):
+            return scanHeldRow(hold)
         case .runningOnHost:
             return Row(
                 title: AppLocalization.string("Still updating on the host", table: .notifications),
@@ -505,6 +515,26 @@ struct NotifierPluginUpdateStatusView: View {
                 tint: .orange
             )
         }
+    }
+
+    /// Hermes' install scan held the update for confirmation: what it found,
+    /// and that Update Anyway accepts it for this update only.
+    @MainActor
+    private static func scanHeldRow(_ hold: NotifierPluginScanHold) -> Row {
+        let found = hold.findingCount == 0
+            ? AppLocalization.string("Hermes' install scan on the host asks you to confirm this update.", table: .notifications)
+            : AppLocalization.string("Hermes' install scan on the host asks you to confirm this update. Findings: \(hold.findingCount)", table: .notifications)
+        let lines = hold.findingLines.map { "• \($0)" }
+        let notShownCount = hold.findingCount - lines.count
+        let more = notShownCount > 0 && !lines.isEmpty
+            ? [AppLocalization.string("Not shown here: \(notShownCount)", table: .notifications)] : []
+        let accept = AppLocalization.string("An older Hermes' scan often flags the plugin's own tests. Update Anyway accepts the scan for this update only; updating Hermes clears it for good.", table: .notifications)
+        return Row(
+            title: AppLocalization.string("Hermes held the update for your OK", table: .notifications),
+            detail: ([found] + lines + more + [accept]).joined(separator: "\n"),
+            symbol: "exclamationmark.shield.fill",
+            tint: .orange
+        )
     }
 
     @MainActor
@@ -658,6 +688,16 @@ struct NotifierPluginUpdateBanner: View {
                 }
                     .scaledFont(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("pluginUpdate.showSteps")
+            }
+            if case .scanHeld = update {
+                Button { appState.updateNotifierPlugin(acceptScan: true) } label: {
+                    Text(AppLocalization.string("Update Anyway"))
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .disabled(!appState.canUpdateNotifierPlugin)
+                    .accessibilityIdentifier("pluginUpdate.updateAnyway")
             }
             if update == .idle {
                 Button { confirming = true } label: {
