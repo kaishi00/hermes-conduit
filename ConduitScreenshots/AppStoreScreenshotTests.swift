@@ -343,7 +343,7 @@ final class AppStoreScreenshotTests: XCTestCase {
             while cards.firstMatch.exists {
                 let copies = cards.allElementsBoundByIndex.enumerated().filter {
                     !tried.contains($0.offset) && $0.element.exists && !$0.element.frame.isEmpty
-                        && screen.intersects($0.element.frame)
+                        && screen.contains(CGPoint(x: $0.element.frame.midX, y: $0.element.frame.midY))
                 }
                 guard let pick = copies.first(where: { $0.element.isHittable }) ?? copies.first else { break }
                 tried.insert(pick.offset)
