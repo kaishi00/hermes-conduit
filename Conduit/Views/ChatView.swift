@@ -466,7 +466,8 @@ struct ChatView: View {
         // runs in a task of its own, as the button's does: arming its
         // progress line redraws the chat, which would cancel it here.
         .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)|\(appState.displayPreferences.showReviews)") {
-            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading else { return }
+            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading,
+                  !transcriptInput.rowsOnTheirWay else { return }
             let conversation = Self.drawnConversation(in: appState)
             let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
             guard read < TranscriptModel.autoEarlierPageLimit else { return }

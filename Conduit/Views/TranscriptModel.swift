@@ -278,10 +278,10 @@ struct TranscriptModel {
     private(set) var rows: [TranscriptRow] = []
     private(set) var facts = ChatRowFacts()
 
-    /// The most pages Load earlier reads by itself in one open of a chat
-    /// (`drawsOnlyLoadEarlier`): 960 rows, under the 1,000 a chat keeps
-    /// loaded before it lets go of its oldest pages.
-    static let autoEarlierPageLimit = 8
+    /// The most pages Load earlier reads by itself in one visit to a chat
+    /// (`drawsOnlyLoadEarlier`): with the newest page, 960 rows, under the
+    /// 1,000 a chat keeps loaded before it lets go of its oldest pages.
+    static let autoEarlierPageLimit = 7
 
     /// Whether Load earlier is all the chat draws: its rows are there, but
     /// every one is hidden by the display settings (a bot working through
