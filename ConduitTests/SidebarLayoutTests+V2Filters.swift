@@ -206,6 +206,53 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatDoneMarks.body(for: compacted, done: true)["ids"] as? [String], ["chat-1", "chat-2"])
     }
 
+    func testChatMutesFollowTheConversationAndEnd() {
+        let compacted = SessionSummary(
+            id: "chat-2", alternateIds: ["chat-1"], title: "chat", model: "Hermes", updatedLabel: "now",
+            lastActivityAt: nil, profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: "chat-1"
+        )
+        let original = filterRow("chat-1", source: .chat)
+        let other = filterRow("chat-9", source: .chat)
+        let dashboard = UUID()
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        var mutes = ChatMutes().setting(compacted, duration: .oneHour, profile: "default", dashboardID: dashboard, now: now)
+        XCTAssertEqual(mutes.mute(for: original, profile: "default", now: now)?.until, now.addingTimeInterval(3600),
+                       "a compacted chat keeps its mute")
+        XCTAssertNil(mutes.mute(for: other, profile: "default", now: now))
+        XCTAssertNil(mutes.mute(for: original, profile: "work", now: now), "mutes are per profile")
+        XCTAssertNil(mutes.mute(for: original, profile: "default", now: now.addingTimeInterval(3600)), "a timed mute ends")
+        mutes = mutes.setting(original, duration: .untilUnmuted, profile: "default", dashboardID: dashboard, now: now)
+        XCTAssertNotNil(mutes.mute(for: compacted, profile: "default", now: now.addingTimeInterval(1e9)))
+        XCTAssertNil(mutes.mute(for: compacted, profile: "default", now: now)?.until)
+        mutes = mutes.setting(original, duration: nil, profile: "default", dashboardID: dashboard, now: now)
+        XCTAssertNil(mutes.mute(for: compacted, profile: "default", now: now), "unmuted")
+
+        XCTAssertEqual(ChatMutes.Duration.allCases.map(\.seconds), [900, 3600, 86400, nil])
+        XCTAssertEqual(ChatMutes.body(for: compacted, duration: .fifteenMinutes)["mute_s"] as? Int, 900)
+        XCTAssertTrue(ChatMutes.body(for: compacted, duration: .untilUnmuted)["mute_s"] is NSNull)
+        XCTAssertEqual(ChatMutes.body(for: compacted, duration: nil)["mute_s"] as? Int, 0)
+        XCTAssertEqual(ChatMutes.body(for: compacted, duration: nil)["session_ids"] as? [String], ["chat-1", "chat-2"])
+        XCTAssertEqual(ChatMutes.path(profile: "my bot"), "/api/plugins/conduit_push/notifications/muted-chats?profile=my%20bot")
+
+        let read = ChatMutes.mutes(from: ["chats": [
+            ["session_ids": ["chat-1"], "until": 5.0, "remaining_s": 60],
+            ["session_ids": ["chat-5"], "until": NSNull(), "remaining_s": NSNull()],
+            ["session_ids": [String](), "remaining_s": 1],
+            ["session_ids": ["x"], "remaining_s": "soon"]
+        ]], now: now)
+        XCTAssertEqual(read, [
+            ChatMutes.Mute(ids: ["chat-1"], until: now.addingTimeInterval(60)),
+            ChatMutes.Mute(ids: ["chat-5"], until: nil)
+        ], "the time left, on this device's clock")
+        XCTAssertNil(ChatMutes.mutes(from: ["error": "nope"]))
+        let replaced = ChatMutes().replacing(read ?? [], profile: "default", dashboardID: dashboard)
+        XCTAssertNotNil(replaced.mute(for: compacted, profile: "default", now: now))
+        XCTAssertTrue(replaced.hasRead("Default", dashboardID: dashboard))
+        XCTAssertNil(replaced.replacing([], profile: "work", dashboardID: UUID()).mute(for: compacted, profile: "default", now: now),
+                     "another dashboard's read drops this one's mutes")
+    }
+
     /// An AppState that offers Done (V2 on, a plugin with the route) over a
     /// bridge whose requests wait for the test to answer them.
     @MainActor

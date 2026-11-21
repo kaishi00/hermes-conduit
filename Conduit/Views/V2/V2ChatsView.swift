@@ -2706,6 +2706,7 @@ struct V2ChatsRowContent: View, Equatable {
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
                 isDone: appState.isSessionDone(session),
+                isMuted: appState.sessionMute(session) != nil,
                 selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
