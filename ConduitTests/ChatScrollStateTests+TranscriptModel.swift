@@ -173,6 +173,42 @@ extension ChatScrollStateTests {
         XCTAssertEqual(model.rows.map(\.id), ["u1", "r"], "Tool cards off hides the tool rows")
     }
 
+    /// A bot's inbox chat: its newest page is only tool steps, hidden with
+    /// Tool cards off. Load earlier is all it draws, so it reads on by
+    /// itself; once a row draws, or while a page loads, it doesn't.
+    @MainActor
+    func testAPageThatDrawsNothingButLoadEarlierReadsOnByItself() {
+        let steps = targets([toolStep("t1"), toolStep("t2"), toolStep("t3")])
+        let disclosure = ChatRowDisclosure()
+        var model = TranscriptModel()
+        var input = TranscriptModel.Input(targetsRevision: 1, loadsEarlier: true)
+        input.displayPreferences.showToolProgress = false
+        _ = model.update(input, targets: steps, disclosure: disclosure)
+        XCTAssertEqual(model.rows.map(\.id), [TranscriptRow.loadEarlierID])
+        XCTAssertTrue(model.drawsOnlyLoadEarlier)
+
+        input.isLoadingEarlier = true
+        _ = model.update(input, targets: steps, disclosure: disclosure)
+        XCTAssertFalse(model.drawsOnlyLoadEarlier, "not while a page loads")
+
+        input.isLoadingEarlier = false
+        input.targetsRevision = 2
+        let withWords = targets([message("u1", .user, "New mail arrived"), toolStep("t1"), toolStep("t2")])
+        _ = model.update(input, targets: withWords, disclosure: disclosure)
+        XCTAssertFalse(model.drawsOnlyLoadEarlier, "a row draws")
+
+        input.displayPreferences.showToolProgress = true
+        input.targetsRevision = 3
+        _ = model.update(input, targets: steps, disclosure: disclosure)
+        XCTAssertFalse(model.drawsOnlyLoadEarlier, "Tool cards on draws the steps")
+
+        input.loadsEarlier = false
+        input.displayPreferences.showToolProgress = false
+        _ = model.update(input, targets: steps, disclosure: disclosure)
+        XCTAssertFalse(model.drawsOnlyLoadEarlier, "nothing earlier to read")
+        XCTAssertLessThan(TranscriptModel.autoEarlierPageLimit * PersistedTranscriptPagination.pageSize, 1_000)
+    }
+
     func testTheLiveTurnsRowsFollowItsShape() {
         typealias Live = TranscriptModel.LiveTurn
         func kinds(_ live: Live) -> [TranscriptRow.Kind] { live.rows.map(\.kind) }

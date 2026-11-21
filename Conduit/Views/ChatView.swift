@@ -60,6 +60,10 @@ struct ChatView: View {
     /// session/profile staleness of the response itself is AppState's
     /// concern — this is view-lifetime only.)
     @State private var backfillTask: Task<Void, Never>?
+    /// The pages Load earlier read by itself for the chat on screen
+    /// (TranscriptModel.drawsOnlyLoadEarlier), by the conversation they
+    /// were read for.
+    @State private var autoEarlierPages: (conversation: String, count: Int) = ("", 0)
     /// The overview of every pinned reply, from the pinned bar (#918).
     @State private var showsPinnedReplies = false
     /// The pin whose label is being edited from the bar (#1147).
@@ -455,6 +459,18 @@ struct ChatView: View {
         // Pictures' sizes from earlier launches, read once off the main
         // thread, so rows above take their final height (#1238).
         .task { await TranscriptPictureMemory.loadKeptSizes() }
+        // A page of rows that all draw nothing reads the page before by
+        // itself, so the chat doesn't open on a lone Load earlier. The
+        // rows' revision is in the id: each page that lands looks again.
+        .task(id: "\(Self.drawnConversation(in: appState))|\(transcript.drawsOnlyLoadEarlier)|\(scroller.targetCache.renderingRevision)") {
+            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading else { return }
+            let conversation = Self.drawnConversation(in: appState)
+            let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
+            guard read < TranscriptModel.autoEarlierPageLimit else { return }
+            autoEarlierPages = (conversation, read + 1)
+            ChatViewportWatch.shared.command("loadEarlier")
+            _ = await appState.loadEarlierMessages()
+        }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
         // are staged in the composer for the user to send (#1408); a file
