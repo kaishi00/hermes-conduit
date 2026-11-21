@@ -11,10 +11,13 @@ extension XCUIApplication {
     /// Conduit as every UI test launches it: the backdrop holds still
     /// (`ConduitBackdropMotionPolicy.isHeldStillForUITests`), since XCUITest
     /// waits for the app to settle before each step and a drifting backdrop
-    /// never settles.
+    /// never settles, and Passwords AutoFill stays off the dashboard
+    /// credential fields (`DashboardCredentialAutoFill`), since typing a
+    /// password with it on sometimes left the app never settling either.
     static func conduit() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchEnvironment["CONDUIT_STILL_BACKDROP"] = "1"
+        app.launchEnvironment["CONDUIT_NO_PASSWORD_AUTOFILL"] = "1"
         return app
     }
 

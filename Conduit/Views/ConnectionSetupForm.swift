@@ -169,7 +169,7 @@ struct ConnectionSetupForm: View {
             )
             ConnectionSetupField(title: AppLocalization.string("Dashboard username")) {
                 TextField("Dashboard username", text: $flow.draft.username)
-                    .textContentType(.username)
+                    .dashboardCredentialContentType(.username)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .focused($focusedField, equals: .username)
@@ -181,7 +181,7 @@ struct ConnectionSetupForm: View {
             }.id(Field.username)
             ConnectionSetupField(title: AppLocalization.string("Dashboard password")) {
                 SecureField("Dashboard password", text: $flow.draft.password)
-                    .textContentType(.password)
+                    .dashboardCredentialContentType(.password)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .focused($focusedField, equals: .password)

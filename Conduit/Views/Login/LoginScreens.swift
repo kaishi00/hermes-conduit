@@ -427,7 +427,7 @@ struct LoginCredentialsPage: View {
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
             TextField("Username", text: $flow.username)
-                .textContentType(.username)
+                .dashboardCredentialContentType(.username)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("login.username")
@@ -451,7 +451,7 @@ struct LoginCredentialsPage: View {
                         SecureField("Password", text: $flow.password)
                     }
                 }
-                .textContentType(.password)
+                .dashboardCredentialContentType(.password)
                 .accessibilityIdentifier("login.password")
                 .focused($focusedField, equals: .password)
                 .submitLabel(LoginField.password.submitKeyboardLabel(cloudflareTokenEntryEnabled: false))
@@ -1226,10 +1226,30 @@ private struct LoginReadableWidth: ViewModifier {
     }
 }
 
+/// UI tests launch Conduit with `CONDUIT_NO_PASSWORD_AUTOFILL=1`
+/// (`XCUIApplication.conduit()`), which keeps Passwords AutoFill off the
+/// dashboard credential fields. On a hosted simulator, typing into the
+/// password field sometimes left the app never idle: every later step waited
+/// out XCTest's two 60 s "App animations complete notification not
+/// received" waits until the test hit its 10 minute allowance (Nightly
+/// 2026-10-27 and 2026-11-21, after the password was typed). A one-time-code
+/// type is the documented way to keep a field out of password AutoFill and
+/// its Save Password offer.
+enum DashboardCredentialAutoFill {
+    static let isOffForUITests = ProcessInfo.processInfo.environment["CONDUIT_NO_PASSWORD_AUTOFILL"] == "1"
+}
+
 extension View {
     /// A sign-in screen's column: see `LoginReadableWidth`.
     func loginReadableWidth() -> some View {
         modifier(LoginReadableWidth())
+    }
+
+    /// A dashboard username or password field's content type, `.username`
+    /// or `.password`, so Passwords can fill and save the dashboard login.
+    /// UI tests turn that off: see `DashboardCredentialAutoFill`.
+    func dashboardCredentialContentType(_ type: UITextContentType) -> some View {
+        textContentType(DashboardCredentialAutoFill.isOffForUITests ? .oneTimeCode : type)
     }
 
     /// A sign-in field: a quiet rounded well that turns gold while focused.
