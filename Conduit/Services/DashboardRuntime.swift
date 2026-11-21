@@ -70,7 +70,7 @@ final class DashboardRuntime: ObservableObject {
     /// so no superseded refresh can clear a newer one's claim and no
     /// identity change can strand the flag.
     var botRosterRefreshToken: UUID?
-    var botRosterRefreshFlight: BotRosterRefreshFlight?
+    var botRosterRefreshFlight: AppState.BotRosterRefreshFlight?
     /// Bot chats belong to the BOT's profile, not the dashboard's. Every
     /// re-resume of an open bot chat (reconnect, refresh, preserve-current
     /// sync) consults this in-memory registry to scope the resume RPC; it is
