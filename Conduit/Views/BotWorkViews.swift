@@ -1374,7 +1374,7 @@ private struct BotWorkRow: View {
 
     private func handOverCaption(_ handOver: BotWorkItem.Action) -> String {
         handOver == .leaveAlone ? AppLocalization.string("\(botName) won’t message or stop it. You still can.", table: .bots)
-            : AppLocalization.string("Only you message or stop it now.", table: .bots)
+            : AppLocalization.string("\(botName) can message or stop it again.", table: .bots)
     }
 
     /// Its chat, as a button at the top of the opened row.

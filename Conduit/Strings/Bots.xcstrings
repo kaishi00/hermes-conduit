@@ -51643,94 +51643,6 @@
         }
       }
     },
-    "Only you message or stop it now." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Jetzt schreibst nur du ihm oder stoppst es."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Only you message or stop it now."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ahora solo tú le escribes o lo detienes."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Désormais, vous seul lui écrivez ou l’arrêtez."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sekarang hanya Anda yang mengirim pesan atau menghentikannya."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ora solo tu gli scrivi o lo fermi."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "今はあなただけがメッセージを送ったり停止したりできます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이제 직접만 메시지를 보내거나 중지할 수 있습니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Teraz tylko ty do niego piszesz lub go zatrzymujesz."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Agora só você envia mensagens ou o para."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Теперь писать ему или останавливать его можете только вы."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Artık ona yalnızca sen mesaj gönderir veya durdurursun."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "现在只有你会给它发消息或停止它。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "現在只有你會給它傳訊息或停止它。"
-          }
-        }
-      }
-    },
     "%@ kept out" : {
       "localizations" : {
         "de" : {
@@ -51815,6 +51727,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "%@ 不參與"
+          }
+        }
+      }
+    },
+    "%@ can message or stop it again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ kann ihm wieder schreiben oder es stoppen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ can message or stop it again."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ podrá volver a escribirle o detenerlo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ pourra de nouveau lui écrire ou l’arrêter."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ bisa mengirim pesan atau menghentikannya lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ potrà di nuovo scrivergli o fermarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@が再びメッセージを送ったり停止したりできるようになります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 다시 메시지를 보내거나 중지할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ znów będzie mógł do niego pisać lub go zatrzymać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ poderá enviar mensagens ou pará-lo de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ снова сможет писать ему или останавливать его."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ yeniden ona mesaj gönderebilir veya onu durdurabilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 将可以再次给它发消息或停止它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 將可以再次給它傳訊息或停止它。"
           }
         }
       }
