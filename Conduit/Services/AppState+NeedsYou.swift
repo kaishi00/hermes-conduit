@@ -473,7 +473,7 @@ extension AppState {
     /// wait past their turn (plugin 0.189.0+), from the Needs you list:
     /// the user hears them when they ask what waits on them, and answers by
     /// voice. The answer goes to Hermes as a request, whose spoken turn
-    /// records it for the chat that asked (plugin 0.190.0+). Empty when
+    /// records it for the chat that asked (plugin 0.191.0+). Empty when
     /// none waits for `profile`.
     func liveAskedQuestionsInstructions(profile: String? = nil) -> String {
         let bot = profile ?? conversationIdentityProfile
