@@ -738,6 +738,41 @@ extension BotModeTests {
         XCTAssertFalse(store.isWorkstream(row("20261101_w2")))
     }
 
+    func testAQuestionWithChoicesIsAnsweredWithOneAndSaysWhatTheBotGoesAheadWith() throws {
+        // Questions that don't pause the turn (notifier 0.189.0+, Eric 2026-11-21).
+        var response = workResponse()
+        response["counts"] = ["working": 1, "needs_you": 1, "ready": 0, "waiting": 1, "questions": 2]
+        response["coordination"] = ["mode": "auto", "items": [
+            ["id": "P4", "kind": "proposal", "ref": "", "title": "", "at": 1_800_000_400.0,
+             "text": "Roll back the deploy?", "status": "open", "answer": "", "why": [], "actions": ["answer"],
+             "choices": ["Roll back", "Keep diagnosing", "Roll back"], "recommended": "Roll back",
+             "going_ahead": true, "chat": "c1"],
+            ["id": "P5", "kind": "proposal", "ref": "", "title": "", "at": 1_800_000_500.0,
+             "text": "What should the note say?", "status": "open", "answer": "", "why": [], "actions": ["answer"],
+             "choices": [], "chat": "c2", "source": "clarify"],
+        ]]
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        let question = try XCTUnwrap(snapshot.coordination?.items.first { $0.id == "P4" })
+        XCTAssertEqual(question.choices, ["Roll back", "Keep diagnosing"])
+        XCTAssertTrue(question.canAnswer)
+        XCTAssertEqual(question.chat, "c1")
+        XCTAssertEqual(question.stateText, "Going ahead with “Roll back” unless you pick another")
+        // One to answer in words is listed with no buttons.
+        let words = try XCTUnwrap(snapshot.coordination?.items.first { $0.id == "P5" })
+        XCTAssertTrue(words.answersInWords)
+        XCTAssertFalse(words.canAnswer)
+        XCTAssertEqual(snapshot.coordination?.openQuestions.map(\.id), ["P4", "P5"])
+        let answered = snapshot.answering("P4", with: .choice("Keep diagnosing"))
+        let kept = try XCTUnwrap(answered.coordination?.items.first { $0.id == "P4" })
+        XCTAssertEqual(kept.status, "answered")
+        XCTAssertEqual(kept.stateText, "You picked “Keep diagnosing”")
+        XCTAssertEqual(answered.questionCount, 1)
+        XCTAssertEqual(BotQuestionAnswer.choice("Keep diagnosing").action, "answer")
+        XCTAssertEqual(BotQuestionAnswer.choice("Keep diagnosing").body as? [String: String], ["choice": "Keep diagnosing"])
+        XCTAssertEqual(BotQuestionAnswer.approve.action, "approve")
+        XCTAssertTrue(BotQuestionAnswer.decline.body.isEmpty)
+    }
+
     func testAnOpenQuestionNeedsTheUserAndATapAnswersIt() throws {
         // Under Ask Me First the Bot Chat's question waited with no sign of it and nowhere to answer (Eric 2026-11-13).
         var response = workResponse()
