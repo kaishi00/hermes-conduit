@@ -17,7 +17,9 @@ import Foundation
 /// Another combined dashboard's group chats: the rooms its Hermes hosts
 /// and its copies of rooms another Hermes hosts, as last read.
 struct CombinedDashboardRooms: Equatable {
-    let client: ObjectIdentifier
+    /// The kept client it was read through; none for the one on screen's
+    /// lists, kept as it shows them.
+    let client: ObjectIdentifier?
     var rooms: [GroupRoom]
     var copies: [RoomCopy]
     let at: Date
@@ -101,8 +103,8 @@ extension AppState {
         }
         // The one on screen's rooms as it shows them, for when it's left,
         // as its chats and bots are: read anew there on the next pass.
-        if let active = activeDashboardID, isInCombinedGroup(active), let client, groupRoomsListed {
-            let seed = CombinedDashboardRooms(client: ObjectIdentifier(client), rooms: shownGroupRooms.filter { !$0.isDisbanded },
+        if let active = activeDashboardID, isInCombinedGroup(active), groupRoomsListed {
+            let seed = CombinedDashboardRooms(client: nil, rooms: shownGroupRooms.filter { !$0.isDisbanded },
                                               copies: linkedRoomCopyRows, at: .distantPast)
             if seed != combinedDashboardRooms[active] { combinedDashboardRooms[active] = seed }
         }
@@ -122,7 +124,7 @@ extension AppState {
                 if let keptDashboardRoomsReader {
                     listed = try await keptDashboardRoomsReader(runtime.client)
                 } else {
-                    listed = try await runtime.client.groupsList().rooms
+                    listed = try await Self.everyGroupRoom(runtime.client)
                 }
                 rooms = listed.filter { !$0.isDisbanded }
                 answered = true
@@ -153,6 +155,25 @@ extension AppState {
             let read = CombinedDashboardRooms(client: client, rooms: rooms ?? [], copies: copies ?? [], at: now)
             if read != combinedDashboardRooms[id] { combinedDashboardRooms[id] = read }
         }
+    }
+
+    /// Most pages of `groups.list` one read follows.
+    static let combinedDashboardRoomsMaxPages = 10
+
+    /// The rooms a Hermes hosts: `groups.list` page by page, while it names
+    /// a next page further on, up to `combinedDashboardRoomsMaxPages` (an
+    /// empty page with a next one still goes on: a partial page).
+    static func everyGroupRoom(_ client: HermesClient) async throws -> [GroupRoom] {
+        var rooms: [GroupRoom] = []
+        var offset: Int?
+        for _ in 0..<combinedDashboardRoomsMaxPages {
+            let page = try await client.groupsList(offset: offset)
+            rooms += page.rooms
+            guard let next = page.nextOffset, next > (offset ?? 0) else { break }
+            offset = next
+        }
+        var seen = Set<String>()
+        return rooms.filter { seen.insert($0.roomID).inserted }
     }
 
     /// Whether two lists of a room's members are one room's: a room's id is
@@ -246,19 +267,32 @@ extension AppState {
                 errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             }
         case .copy(let copy):
+            // A chat or room opened while its copies are read owns the
+            // screen: the tap is dropped, not opened over it, as a hosted
+            // room's is.
+            let viewport = chatViewportTransitionGeneration
+            let roomEpoch = groupRoomEpoch
+            var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
             // The switch reads the plugin's routes after its sync settles:
             // its copies can be read once they're known.
             if !canReadRoomCopies {
                 await refreshNotifierPluginStatusOnce()
-                guard !Task.isCancelled, activeDashboardID == tile.dashboardID else { return }
+                guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             }
             var found = linkedRoomCopyRows.first { $0.id == copy.id }
-            if found == nil, let read = await readLinkedRoomCopies(), activeDashboardID == tile.dashboardID {
-                found = read.first { $0.id == copy.id }
+            // Only a list read without it shows it gone; one that couldn't
+            // be read is tried again, as a hosted room's is.
+            var unread = false
+            if found == nil {
+                let read = await readLinkedRoomCopies()
+                found = read?.first { $0.id == copy.id }
+                unread = read == nil
             }
-            guard activeDashboardID == tile.dashboardID else { return }
+            guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             guard let found else {
-                errorMessage = AppLocalization.string("That chat is no longer available.")
+                errorMessage = unread
+                    ? AppLocalization.string("Couldn't open that chat. Try again.")
+                    : AppLocalization.string("That chat is no longer available.")
                 return
             }
             await openRoomCopy(found)
