@@ -465,8 +465,9 @@ struct ChatView: View {
         // that lands, or a setting that hides more, looks again. The read
         // runs in a task of its own, as the button's does: arming its
         // progress line redraws the chat, which would cancel it here.
-        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)") {
-            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading else { return }
+        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)|\(appState.displayPreferences.showReviews)") {
+            guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading,
+                  !transcriptInput.rowsOnTheirWay else { return }
             let conversation = Self.drawnConversation(in: appState)
             let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
             guard read < TranscriptModel.autoEarlierPageLimit else { return }
@@ -474,7 +475,13 @@ struct ChatView: View {
             backfillTask = Task { @MainActor in
                 // Only a page that landed counts: a failed read leaves the
                 // budget, and the next change of rows tries again.
-                if await appState.loadEarlierMessages() {
+                var landed = await appState.loadEarlierMessages()
+                // A page of rows already held lands nothing but moves the
+                // window on: the page after it is read once more.
+                if !landed, !Task.isCancelled, appState.canLoadEarlierMessagesForActiveConversation {
+                    landed = await appState.loadEarlierMessages()
+                }
+                if landed {
                     autoEarlierPages = (conversation, read + 1)
                 }
             }

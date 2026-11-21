@@ -206,7 +206,7 @@ extension ChatScrollStateTests {
         input.displayPreferences.showToolProgress = false
         _ = model.update(input, targets: steps, disclosure: disclosure)
         XCTAssertFalse(model.drawsOnlyLoadEarlier, "nothing earlier to read")
-        XCTAssertLessThan(TranscriptModel.autoEarlierPageLimit * PersistedTranscriptPagination.pageSize, 1_000)
+        XCTAssertLessThan((TranscriptModel.autoEarlierPageLimit + 1) * PersistedTranscriptPagination.pageSize, 1_000, "the newest page included")
     }
 
     func testTheLiveTurnsRowsFollowItsShape() {
