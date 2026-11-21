@@ -39,6 +39,20 @@ struct WidgetSnapshotPublisher {
         try writeIfChanged(WidgetSnapshot(appLanguage: previous.appLanguage, currentWorkspaceID: current, workspaces: workspaces))
     }
 
+    /// A dashboard renamed (Dashboard names): every workspace of it the
+    /// widgets and Siri keep says its new name.
+    func relabel(dashboardID: UUID, label: String) throws {
+        guard let previous = store.read() else { return }
+        let workspaces = previous.workspaces.map { workspace in
+            guard workspace.id.dashboardID == dashboardID, workspace.dashboardLabel != label else { return workspace }
+            return WidgetWorkspaceSnapshot(
+                id: workspace.id, dashboardLabel: label, profileLabel: workspace.profileLabel,
+                lastConversation: workspace.lastConversation, choices: workspace.choices, recency: workspace.recency
+            )
+        }
+        try writeIfChanged(WidgetSnapshot(appLanguage: previous.appLanguage, currentWorkspaceID: previous.currentWorkspaceID, workspaces: workspaces))
+    }
+
     func updateLanguage(_ language: String) throws {
         guard let previous = store.read() else { return }
         try writeIfChanged(WidgetSnapshot(appLanguage: language, currentWorkspaceID: previous.currentWorkspaceID, workspaces: previous.workspaces))

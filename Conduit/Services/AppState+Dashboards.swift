@@ -575,8 +575,16 @@ extension AppState {
         var registry = savedDashboardRegistry
         registry.dashboards[index].normalizedURL = newURL
         registry.dashboards[index].pendingURL = nil
+        // The old host's Hermes named it: the new host says for itself, and
+        // a name the person didn't give follows the new address meanwhile.
+        registry.dashboards[index].hermesName = nil
+        if !registry.dashboards[index].isNamed {
+            let others = registry.dashboards.filter { $0.id != id }.map(\.label)
+            registry.dashboards[index].label = SavedDashboardLabel.automatic(for: registry.dashboards[index], existingLabels: others)
+        }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        relabelWidgetSnapshot(dashboardID: id)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a
@@ -1111,5 +1119,53 @@ extension AppState {
                 await turnOffPhoneSync(deleteFromHost: false)
             }
         }
+    }
+}
+
+// MARK: - Dashboard names
+
+extension AppState {
+    /// Settings > Saved Dashboards' Rename: the name every list, badge and
+    /// switch shows for this dashboard. An empty one goes back to the
+    /// automatic name (SavedDashboardLabel.automatic).
+    func renameDashboard(_ id: UUID, to name: String) {
+        guard let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        var registry = savedDashboardRegistry
+        let trimmed = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SavedDashboardLabel.maxLength))
+        if trimmed.isEmpty {
+            registry.dashboards[index].named = nil
+            let others = registry.dashboards.filter { $0.id != id }.map(\.label)
+            registry.dashboards[index].label = SavedDashboardLabel.automatic(for: registry.dashboards[index], existingLabels: others)
+        } else {
+            registry.dashboards[index].named = true
+            registry.dashboards[index].label = trimmed
+        }
+        guard registry != savedDashboardRegistry else { return }
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+        relabelWidgetSnapshot(dashboardID: id)
+    }
+
+    /// What a dashboard's plugin calls its Hermes (the capabilities route's
+    /// `name`), read on connect and through a kept connection. A dashboard
+    /// the person hasn't named, at an address that names nothing (an IP
+    /// address or localhost), takes it as its name, so its badge isn't the
+    /// address's first digit.
+    func noteDashboardHermesName(_ id: UUID?, _ name: String?) {
+        guard let id, let index = savedDashboardRegistry.dashboards.firstIndex(where: { $0.id == id }) else { return }
+        let reported = name.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(SavedDashboardLabel.maxLength)) }
+        let hermesName = reported?.isEmpty == false ? reported : nil
+        var registry = savedDashboardRegistry
+        registry.dashboards[index].hermesName = hermesName
+        let dashboard = registry.dashboards[index]
+        if !dashboard.isNamed, SavedDashboardLabel.addressNamesNothing(dashboard.normalizedURL) {
+            let others = registry.dashboards.filter { $0.id != id }.map(\.label)
+            registry.dashboards[index].label = SavedDashboardLabel.automatic(for: dashboard, existingLabels: others)
+        }
+        guard registry != savedDashboardRegistry else { return }
+        let relabelled = registry.dashboards[index].label != savedDashboardRegistry.dashboards[index].label
+        savedDashboardRegistry = registry
+        SavedDashboardRegistryStore.save(registry)
+        if relabelled { relabelWidgetSnapshot(dashboardID: id) }
     }
 }

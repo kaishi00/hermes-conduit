@@ -69,6 +69,10 @@ extension AppState {
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
             guard isSceneActive else { return }
             guard let profiles = await keptDashboardProfileNames(id, runtime) else { continue }
+            // Its plugin's capabilities, read once per kept connection, so a
+            // dashboard on an IP address takes its Hermes' name with no bots
+            // shown (Dashboard names).
+            _ = await combinedDashboardCapabilities(id, runtime)
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
             // dashboard of this one's Hermes (issue 2631), bots or none
@@ -156,15 +160,15 @@ extension AppState {
     }
 
     /// A combined dashboard's badge (all-live stage 4): the first letter of
-    /// its name on its color. The color is its place among the combined
-    /// dashboards in Saved Dashboards order, so no two in the group share
-    /// one. Nil outside the group.
+    /// its name on its color, or its place in the group where two names
+    /// start alike (SavedDashboardLabel.badgeLetters). The color is its
+    /// place among the combined dashboards in Saved Dashboards order, so no
+    /// two in the group share one. Nil outside the group.
     func combinedDashboardBadge(_ id: UUID) -> (letter: String, colorIndex: Int, name: String)? {
         let members = savedDashboardRegistry.dashboards.filter { savedDashboardRegistry.combinedGroupIDs.contains($0.id) }
         guard let index = members.firstIndex(where: { $0.id == id }) else { return nil }
-        let name = members[index].label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let letter = name.first.map { String($0).uppercased() } ?? "?"
-        return (letter, index, name)
+        let names = members.map { $0.label.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return (SavedDashboardLabel.badgeLetters(names)[index], index, names[index])
     }
 
     private func readNeedsYou() async {
