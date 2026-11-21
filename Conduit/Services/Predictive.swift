@@ -22,7 +22,7 @@
 //
 //  Each of the three may carry the user's own instructions (issue 2970),
 //  kept on this device too, sent only with its own kind of question, and
-//  only to a plugin that reports `predict-custom-instructions` (0.189+):
+//  only to a plugin that reports `predict-custom-instructions` (0.190+):
 //  older plugins ignore the field, so Settings says it needs an update.
 //
 
@@ -50,7 +50,7 @@ enum Predictive {
     // MARK: - The user's instructions (issue 2970)
 
     static let instructionsCapability = "predict-custom-instructions"
-    static let instructionsMinimumPlugin = "0.189"
+    static let instructionsMinimumPlugin = "0.190"
     /// The plugin takes at most this many, counted as Python counts them
     /// (Unicode scalars), like the draft.
     static let maximumInstructionsScalars = 1_000
