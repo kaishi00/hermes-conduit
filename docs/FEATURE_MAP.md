@@ -3353,7 +3353,7 @@ describes the controls; README.md's Scheduled jobs line says edit)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-21, #2962 (added)
+**Checked:** 2026-11-21, #2963
 
 ## Links in messages
 
