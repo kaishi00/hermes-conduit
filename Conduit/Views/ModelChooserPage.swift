@@ -252,12 +252,20 @@ struct ModelChooserPage: View {
         let lines = currentLines
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .top, spacing: 12) {
-                // The provider's logo, as in the Model sheet's card (Eric 2026-11-20).
-                if pick != nil, let provider = pickedProvider {
-                    ProviderLogoView(provider: provider, size: 22)
-                        .frame(width: 36, height: 36)
-                        .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        .accessibilityHidden(true)
+                // The provider's logo, as in the Model sheet's card (Eric 2026-11-20); a cube for a model on no listed provider.
+                if pick != nil {
+                    Group {
+                        if let provider = pickedProvider {
+                            ProviderLogoView(provider: provider, size: 22)
+                        } else {
+                            Image(systemName: "cube.transparent")
+                                .scaledFont(.body.weight(.semibold))
+                                .foregroundStyle(.conduitAccent)
+                        }
+                    }
+                    .frame(width: 36, height: 36)
+                    .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 3) {
                     Text(AppLocalization.string("In use"))
