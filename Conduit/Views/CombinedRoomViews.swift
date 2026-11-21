@@ -18,7 +18,9 @@ struct CombinedRoomPortrait: View {
     var body: some View {
         Button {
             Haptics.light()
-            Task { await appState.openCombinedRoom(tile) }
+            // Opens in Bots, so Back returns to Bots Home (Eric, 2026-11-21:
+            // it landed on Chats).
+            Task { await appState.openCombinedRoom(tile, inBots: true) }
         } label: {
             BotRoomPortraitLabel(title: tile.name, talking: talking) { size in
                 CombinedRoomIcon(tile: tile, size: size)

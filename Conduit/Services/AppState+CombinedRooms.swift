@@ -277,11 +277,18 @@ extension AppState {
     /// Opens another combined dashboard's group chat: the switch to its
     /// dashboard through its kept connection, then the room there, where
     /// you talk in it as that Hermes' own person.
-    func openCombinedRoom(_ tile: CombinedRoomTile) async {
+    /// `inBots`: tapped on Bots Home, so its screen opens in Bots and Back
+    /// returns there, as this dashboard's rooms' portraits do. The mark is
+    /// made once the switch has settled, since a switch clears Bot Mode's
+    /// state, an open on its way included.
+    func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
         guard !refusesCombinedSwitchDuringCall() else { return }
         dismissSidebarDrawer()
         await switchToCombinedDashboardUntilSettled(tile.dashboardID)
         guard !Task.isCancelled, activeDashboardID == tile.dashboardID else { return }
+        let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
+        if let mark { beginOpeningBotChat(mark) }
+        defer { if let mark { endOpeningBotChat(mark) } }
         switch tile.kind {
         case .hosted(let room):
             if await openNotificationRoom(room.roomID) == .retry, activeDashboardID == tile.dashboardID {
