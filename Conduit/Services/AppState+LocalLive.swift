@@ -74,6 +74,7 @@ extension AppState {
         tail += GrokLiveProtocol.clockInstructions(now: Date(), timeZone: .current)
         tail += liveVoiceResumeContext?.instructionBlock ?? ""
         tail += liveHermesCallInstructions(delegation: false)
+        tail += liveAskedQuestionsInstructions()
         tail += liveVoiceThreadInstructions(delegation: false)
         tail += phoneVoiceSettingHint(for: .localLive)
         tail += VoiceHostTool.functionToolsFirst(supervisor.hostTools)

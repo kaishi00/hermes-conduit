@@ -3017,14 +3017,28 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.isNativeHermesCallActive = false
         appState.openNeedsYou(NeedsYouItem(waitID: "w3", profile: "default", kind: .approval, sessionIDs: ["stored-c"]))
         XCTAssertEqual(appState.pendingNeedsYouReveal?.opening, "stored-c")
-        // A question asked past its turn has no card in its chat: the chat
-        // opens, and an earlier reveal doesn't scroll it to another card (#2969).
-        var asked = NeedsYouItem(waitID: "asked-P7", profile: "default", kind: .question, sessionIDs: ["stored-c"])
-        asked.asked = BotWorkCoordination.Item(row: ["id": "P7", "kind": "proposal", "at": 1.0, "text": "Roll back?",
+        // A question asked past its turn has no card in its transcript: the
+        // chat opens, and an earlier reveal doesn't scroll it to another card
+        // (#2969). Its card is over the transcript of the chat that asked.
+        var asked = NeedsYouItem(waitID: "asked-P7", profile: "default", kind: .question, sessionIDs: ["stored-c"],
+                                 since: Date(timeIntervalSince1970: 2))
+        asked.asked = BotWorkCoordination.Item(row: ["id": "P7", "kind": "proposal", "at": 2.0, "text": "Roll back?",
                                                      "status": "open", "actions": ["approve", "decline"]])
         XCTAssertNotNil(asked.asked)
         appState.openNeedsYou(asked)
         XCTAssertNil(appState.pendingNeedsYouReveal, "no card to land at")
+        var older = NeedsYouItem(waitID: "asked-P6", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                                 since: Date(timeIntervalSince1970: 1))
+        older.asked = BotWorkCoordination.Item(row: ["id": "P6", "kind": "proposal", "at": 1.0, "text": "Pause it?",
+                                                     "status": "open", "actions": ["approve", "decline"]])
+        var newer = NeedsYouItem(waitID: "asked-P8", profile: "default", kind: .question, sessionIDs: ["runtime-a"],
+                                 since: Date(timeIntervalSince1970: 3))
+        newer.asked = BotWorkCoordination.Item(row: ["id": "P8", "kind": "proposal", "at": 3.0, "text": "Ship it?",
+                                                     "status": "open", "actions": ["approve", "decline"]])
+        let waiting = NeedsYouItem(waitID: "w4", profile: "default", kind: .approval, sessionIDs: ["runtime-a"])
+        appState.activeSessionId = "runtime-a"
+        XCTAssertEqual(ChatAskedQuestionBar.questions([newer, asked, waiting, older], in: appState).map(\.waitID),
+                       ["asked-P6", "asked-P8"], "the open chat's questions, oldest first; another chat's and a card's wait left out")
     }
 
     /// Issue 2556: a question Hermes drew no card for (the turn ran in

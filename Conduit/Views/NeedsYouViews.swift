@@ -329,3 +329,77 @@ struct NeedsYouMenuEntry: View {
         }
     }
 }
+
+/// The question the open chat's bot asked that waits past its turn
+/// (work_propose, or a clarify kept after it ran out; plugin 0.189.0+),
+/// over the transcript: answered here with a tap, as on the Work panel,
+/// and one with no choices in a message below. The oldest shows first;
+/// the next comes once it's answered.
+struct ChatAskedQuestionBar: View {
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject var store: NeedsYouStore
+    @ObservedObject var botWork: BotWorkStore
+
+    /// The open chat's questions, oldest first.
+    @MainActor
+    static func questions(_ items: [NeedsYouItem], in appState: AppState) -> [NeedsYouItem] {
+        items.filter { $0.asked != nil && appState.isOpenChat($0) }.sorted { $0.since < $1.since }
+    }
+
+    var body: some View {
+        let waiting = Self.questions(store.items, in: appState)
+        if let item = waiting.first, let question = item.asked {
+            let acting = botWork.isActing(question.id, profile: item.profile)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(question.headline)
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(Color.orange)
+                    Spacer(minLength: 4)
+                    if waiting.count > 1 {
+                        Text(AppLocalization.string("\(waiting.count - 1) more waiting"))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Text(BotWorkLook.rendered(question.text))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let state = question.goingAhead ? question.stateText : nil {
+                    Text(state)
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                }
+                if question.answersInWords {
+                    Text(AppLocalization.string("Answer it below, in your own words.", table: .chat))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                } else {
+                    BotQuestionAnswerButtons(question: question) { given in
+                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: given) }
+                    }
+                    .disabled(acting || !appState.isConnected)
+                }
+                if let refusal = botWork.refusal(item.profile, ref: question.id) {
+                    Text(refusal)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
+            .padding(12)
+            // The orange of a "Needs you" card, on the screen's own colour so
+            // the transcript doesn't show through.
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Color.orange.opacity(0.09)))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.background))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .strokeBorder(Color.orange.opacity(0.32), lineWidth: 1))
+            .padding(.horizontal, 14)
+            .padding(.top, 8)
+            .padding(.bottom, 4)
+            .accessibilityElement(children: .contain)
+            .accessibilityIdentifier("chat.askedQuestion.\(question.id)")
+        }
+    }
+}

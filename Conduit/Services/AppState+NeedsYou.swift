@@ -445,8 +445,9 @@ extension AppState {
         let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isCallEndingProfileSwitch
         // A question asked past its turn has no card in its chat to scroll to: the chat just opens.
         if item.asked != nil {
-            // Nor does an earlier wait's reveal scroll it to another card.
-            pendingNeedsYouReveal = nil
+            // Nor does an earlier wait's reveal scroll it to another card,
+            // unless this open is refused and that chat still opens.
+            if !refused { pendingNeedsYouReveal = nil }
         } else if !refused {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
@@ -465,4 +466,62 @@ extension AppState {
         guard let active = activeSessionId, !active.isEmpty else { return false }
         return active == opening || chatOwnSessionIDs(for: active).contains(opening)
     }
+}
+
+extension AppState {
+    /// What a live call is told about the questions its bot asked that
+    /// wait past their turn (plugin 0.189.0+), from the Needs you list:
+    /// the user hears them when they ask what waits on them, and answers by
+    /// voice. The answer goes to Hermes as a request, whose spoken turn
+    /// records it for the chat that asked (plugin 0.191.0+). Empty when
+    /// none waits for `profile`.
+    func liveAskedQuestionsInstructions(profile: String? = nil) -> String {
+        // The call's own profile, whose Hermes takes its requests and so the
+        // answer: it keeps through a switch of the screen's chat.
+        let bot = profile ?? voiceCallProfile
+        return Self.askedQuestionsBlock(
+            needsYou.items.filter { Self.profilesMatch($0.profile, bot) }.compactMap(\.asked)
+        )
+    }
+
+    /// The same for a Watch call, which can start with no phone screen, so
+    /// the list may be hours old or never read (it reads only on screen):
+    /// it reads the profile's list once itself, briefly, and falls back to
+    /// what was read before when that fails. A plugin whose capabilities
+    /// haven't loaded yet (a cold launch) is tried; one that reports no
+    /// list isn't.
+    func liveAskedQuestionsInstructionsReading(profile: String) async -> String {
+        guard notifierPlugin.mightSupport(NeedsYouStore.capability), let bridge = dashboardTicketBridge else {
+            return liveAskedQuestionsInstructions(profile: profile)
+        }
+        let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
+        guard let response = try? await bridge.requestJSON(path: path, timeoutMilliseconds: 3_000),
+              let read = NeedsYouItem.items(listed: response, profile: profile,
+                                            installationID: PushNotificationService.shared.installationID)
+        else { return liveAskedQuestionsInstructions(profile: profile) }
+        return Self.askedQuestionsBlock(read.compactMap(\.asked))
+    }
+
+    /// The block itself, oldest first; at most `askedQuestionsSpoken` of them.
+    nonisolated static func askedQuestionsBlock(_ asked: [BotWorkCoordination.Item]) -> String {
+        let open = asked.filter { $0.status == "open" }.sorted { $0.at < $1.at }.prefix(askedQuestionsSpoken)
+        guard !open.isEmpty else { return "" }
+        let lines = open.map { question -> String in
+            var line = "- \(question.id): «\(question.text.trimmingCharacters(in: .whitespacesAndNewlines))»"
+            if !question.choices.isEmpty {
+                line += " Choices: «" + question.choices.joined(separator: "», «") + "»."
+            } else if !question.answersInWords {
+                line += " A yes or no."
+            }
+            if !question.recommended.isEmpty { line += " Hermes recommends «\(question.recommended)»." }
+            return line
+        }
+        return "\n\nQuestions Hermes asked the user that still wait on their answer (on their Needs you list):\n"
+            + lines.joined(separator: "\n")
+            + "\nSay them when the user asks what's waiting on them, reading the choices out. When they answer one, "
+            + "send their answer to Hermes as a request that names its id, like \"My answer to P7: <what they said>\": "
+            + "Hermes records it, and the chat that asked acts on it."
+    }
+
+    nonisolated static let askedQuestionsSpoken = 5
 }

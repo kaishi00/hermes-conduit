@@ -557,6 +557,7 @@ extension AppState {
             guard botWork.mark(profile).epoch == mark.epoch else { return true }
             botWork.noteAction(profile)
             botWork.answer(question.id, with: given, profile: profile)
+            needsYou.dropAnsweredQuestion(question.id, profile: profile, dashboardID: activeDashboardID)
             Haptics.success()
             Task { await refreshBotWork(profile: profile, afterAction: true) }
             // It leaves the Needs you list too.

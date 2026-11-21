@@ -225,6 +225,7 @@ extension AppState {
             answerLength: liveCallStyle.answerLength,
             followedBy: (liveVoiceResumeContext?.summaryInstructionBlock ?? "")
                 + liveHermesCallInstructions(delegation: true)
+                + liveAskedQuestionsInstructions()
                 + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
                 + hermesCallsInstructions(delegation: true)
                 + VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools)
