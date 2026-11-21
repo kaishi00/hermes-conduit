@@ -924,7 +924,13 @@ struct ChatView: View {
             .padding(.bottom, 4)
             .transition(.opacity)
         } else {
-            pinnedReplyBar
+            VStack(spacing: 0) {
+                pinnedReplyBar
+                // A question the bot asked here that waits past its turn.
+                if !showsOfflineCopy, !appState.showsPendingNewChat {
+                    ChatAskedQuestionBar(store: appState.needsYou, botWork: appState.botWork)
+                }
+            }
         }
     }
 
