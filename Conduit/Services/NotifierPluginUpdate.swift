@@ -479,7 +479,9 @@ struct NotifierPluginUpdater {
                 return await managedRefusal(request: request)
             }
             if let probe = try? await request(path, "GET", nil),
-               let running = probe["job"] as? [String: Any], Self.hostStep(running) != nil {
+               let running = probe["job"] as? [String: Any],
+               // A held scan ends the job at once: the lost start may have been that.
+               Self.hostStep(running) != nil || NotifierPluginScanHold(job: running) != nil {
                 job = running
             } else {
                 // Nothing runs there.

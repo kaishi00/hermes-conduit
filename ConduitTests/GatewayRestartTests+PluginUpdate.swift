@@ -1234,6 +1234,14 @@ extension GatewayRestartTests {
         _ = await accepting.run { _ in }
         XCTAssertEqual(again.selfUpdatePaths.first.map { $0.contains("profile=coder") && $0.hasSuffix("&force=true") }, true)
 
+        // A start whose answer was lost finds the held job by asking.
+        let lost = PluginHost()
+        lost.selfUpdateStartError = DashboardTicketBridgeError.http(status: 0, detail: "")
+        lost.selfUpdateJobs = [held]
+        var asking = lost.updater()
+        asking.onHost = true
+        if case .scanHeld = await asking.run({ _ in }) {} else { XCTFail("a lost start lost the held scan") }
+
         // A dangerous verdict can't be accepted: a plain failure.
         var dangerous = held
         dangerous["scan_verdict"] = "dangerous"
