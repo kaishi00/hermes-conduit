@@ -461,15 +461,23 @@ struct ChatView: View {
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         // A page of rows that all draw nothing reads the page before by
         // itself, so the chat doesn't open on a lone Load earlier. The
-        // rows' revision is in the id: each page that lands looks again.
-        .task(id: "\(Self.drawnConversation(in: appState))|\(transcript.drawsOnlyLoadEarlier)|\(scroller.targetCache.renderingRevision)") {
+        // rows' revision and the display settings are in the id: each page
+        // that lands, or a setting that hides more, looks again. The read
+        // runs in a task of its own, as the button's does: arming its
+        // progress line redraws the chat, which would cancel it here.
+        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)") {
             guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading else { return }
             let conversation = Self.drawnConversation(in: appState)
             let read = autoEarlierPages.conversation == conversation ? autoEarlierPages.count : 0
             guard read < TranscriptModel.autoEarlierPageLimit else { return }
-            autoEarlierPages = (conversation, read + 1)
             ChatViewportWatch.shared.command("loadEarlier")
-            _ = await appState.loadEarlierMessages()
+            backfillTask = Task { @MainActor in
+                // Only a page that landed counts: a failed read leaves the
+                // budget, and the next change of rows tries again.
+                if await appState.loadEarlierMessages() {
+                    autoEarlierPages = (conversation, read + 1)
+                }
+            }
         }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
@@ -696,6 +704,8 @@ struct ChatView: View {
                 // Reinstalled on appear; late events go nowhere meanwhile.
                 scroller.onEvent = nil
                 backfillTask?.cancel()
+                // Each visit to the chat has its own pages to read by itself.
+                autoEarlierPages = ("", 0)
                 pinnedRevealFallbackTask?.cancel()
                 pinnedRevealFallbackTask = nil
                 pinnedRevealFallbackReveal = nil
