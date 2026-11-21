@@ -2930,11 +2930,17 @@ final class AppState: ObservableObject {
     }
     /// The full catalog read under way, for a read asked for meanwhile to
     /// join rather than send its own (CatalogReadInFlight).
-    var catalogReadInFlight: CatalogReadInFlight?
+    var catalogReadInFlight: CatalogReadInFlight? {
+        get { shownRuntime.catalogReadInFlight }
+        set { shownRuntime.catalogReadInFlight = newValue }
+    }
     /// The chat list's newest page going out, for a newest-page read asked
     /// for meanwhile to take its answer rather than send the same requests
     /// (NewestCatalogPageRead, issue 2604).
-    var newestCatalogPageRead: NewestCatalogPageRead?
+    var newestCatalogPageRead: NewestCatalogPageRead? {
+        get { shownRuntime.newestCatalogPageRead }
+        set { shownRuntime.newestCatalogPageRead = newValue }
+    }
     /// Ticket for each read that replaces the published list wholesale
     /// (`loadSessions` and a chat sync), taken when the read starts, and
     /// the newest ticket whose answer is listed. Reads overlap (a reconnect,
@@ -2951,7 +2957,10 @@ final class AppState: ObservableObject {
     /// Whether the listing that holds `sessionListListedTicket` took its
     /// cron rows from the catalog cache: a gateway listing fills none, so a
     /// later relist from the cache doesn't replace its rows (issue 2763).
-    var sessionListListedCronFromCache = false
+    var sessionListListedCronFromCache: Bool {
+        get { shownRuntime.sessionListListedCronFromCache }
+        set { shownRuntime.sessionListListedCronFromCache = newValue }
+    }
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
     var leaveCatalogRefreshTask: Task<Void, Never>? {
@@ -3534,19 +3543,37 @@ final class AppState: ObservableObject {
 
     // MARK: - Group Chats (hosted rooms) (AppState+GroupChats.swift, AppState+ProfileSettings.swift)
 
-    @Published var groupChatPhase: GroupChatPhase = .idle
-    @Published var groupCapabilities: GroupCapabilities?
-    @Published var groupRooms: [GroupRoom] = []
+    var groupChatPhase: GroupChatPhase {
+        get { shownRuntime.groupChatPhase }
+        set { shownRuntime.groupChatPhase = newValue }
+    }
+    var groupCapabilities: GroupCapabilities? {
+        get { shownRuntime.groupCapabilities }
+        set { shownRuntime.groupCapabilities = newValue }
+    }
+    var groupRooms: [GroupRoom] {
+        get { shownRuntime.groupRooms }
+        set { shownRuntime.groupRooms = newValue }
+    }
     /// The rooms this Hermes hosts with people you've linked that Group
     /// Chats lists until they start, and the people New Group Chat can
     /// invite (RoomDrafts.swift).
-    @Published var linkedRoomDrafts: LinkedRoomDrafts?
+    var linkedRoomDrafts: LinkedRoomDrafts? {
+        get { shownRuntime.linkedRoomDrafts }
+        set { shownRuntime.linkedRoomDrafts = newValue }
+    }
     /// The rooms people you've linked invited this Hermes to, which Group
     /// Chats lists with the drafts (RoomInvites.swift).
-    @Published var linkedRoomInvites: LinkedRoomInvites?
+    var linkedRoomInvites: LinkedRoomInvites? {
+        get { shownRuntime.linkedRoomInvites }
+        set { shownRuntime.linkedRoomInvites = newValue }
+    }
     /// Reads the invites again for a while after a Link is made
     /// (RoomInvites.swift followLinkedRoomInvites).
-    var linkedRoomInviteFollow: Task<Void, Never>?
+    var linkedRoomInviteFollow: Task<Void, Never>? {
+        get { shownRuntime.linkedRoomInviteFollow }
+        set { shownRuntime.linkedRoomInviteFollow = newValue }
+    }
     /// One read of each Linked Rooms list at a time (issue 2359).
     let linkedRoomDraftsReader = LinkedRoomListRead()
     /// A drafts read asked for with the people that hasn't run yet.
@@ -3555,10 +3582,16 @@ final class AppState: ObservableObject {
     let linkedRoomApprovalsReader = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
-    @Published var linkedRoomApprovals: LinkedRoomApprovals?
+    var linkedRoomApprovals: LinkedRoomApprovals? {
+        get { shownRuntime.linkedRoomApprovals }
+        set { shownRuntime.linkedRoomApprovals = newValue }
+    }
     /// The approvals answered here, by id: a read already under way when
     /// one was answered can't bring its row or card back.
-    var answeredLinkedRoomApprovalIDs: Set<String> = []
+    var answeredLinkedRoomApprovalIDs: Set<String> {
+        get { shownRuntime.answeredLinkedRoomApprovalIDs }
+        set { shownRuntime.answeredLinkedRoomApprovalIDs = newValue }
+    }
     /// The open copy's opening tail read failed: its next tick reads the
     /// tail again.
     var activeRoomCopyNeedsTail = false
@@ -3570,38 +3603,71 @@ final class AppState: ObservableObject {
     /// approvals, drafts or invites read it overtook is dropped: issued
     /// before the change, it could list what the change took away
     /// (issue 2347).
-    var linkedRosterGeneration = 0
+    var linkedRosterGeneration: Int {
+        get { shownRuntime.linkedRosterGeneration }
+        set { shownRuntime.linkedRosterGeneration = newValue }
+    }
     /// Your Hermes' copies of the rooms other people host that your agents
     /// joined, which Group Chats lists after your own (RoomCopies.swift).
-    @Published var linkedRoomCopies: LinkedRoomCopies?
+    var linkedRoomCopies: LinkedRoomCopies? {
+        get { shownRuntime.linkedRoomCopies }
+        set { shownRuntime.linkedRoomCopies = newValue }
+    }
     /// The hosted rooms whose bots are talking now (each room's driver is
     /// working), read while Bots Home shows (`refreshTalkingRooms`), for
     /// its live-rooms row and the "In <room>" pills.
-    @Published var talkingRoomIDs: Set<String> = []
+    var talkingRoomIDs: Set<String> {
+        get { shownRuntime.talkingRoomIDs }
+        set { shownRuntime.talkingRoomIDs = newValue }
+    }
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
     /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
     /// launch waits on opens as soon as Hermes lists it (#1597).
-    @Published var groupRoomsListed = false
+    var groupRoomsListed: Bool {
+        get { shownRuntime.groupRoomsListed }
+        set { shownRuntime.groupRoomsListed = newValue }
+    }
     /// The last `groups.list` answer was its last page: only then does a
     /// room missing from `groupRooms` prove it's gone.
-    var groupRoomsComplete = false
-    var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
+    var groupRoomsComplete: Bool {
+        get { shownRuntime.groupRoomsComplete }
+        set { shownRuntime.groupRoomsComplete = newValue }
+    }
+    var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)? {
+        get { shownRuntime.keptGroupRoomsMemo }
+        set { shownRuntime.keptGroupRoomsMemo = newValue }
+    }
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:
     /// Desktop drives their rounds, and `groups.*` cannot address them.
-    @Published var desktopGroupChats: [DesktopGroupChat] = []
+    var desktopGroupChats: [DesktopGroupChat] {
+        get { shownRuntime.desktopGroupChats }
+        set { shownRuntime.desktopGroupChats = newValue }
+    }
     /// Hosted rooms' custom pictures (JPEG/PNG bytes) and the plugin's
     /// revision of each, keyed by room id (`GroupRoomPictures`).
-    @Published var groupRoomPictureData: [String: Data] = [:]
-    var groupRoomPictureRevisions: [String: String] = [:]
+    var groupRoomPictureData: [String: Data] {
+        get { shownRuntime.groupRoomPictureData }
+        set { shownRuntime.groupRoomPictureData = newValue }
+    }
+    var groupRoomPictureRevisions: [String: String] {
+        get { shownRuntime.groupRoomPictureRevisions }
+        set { shownRuntime.groupRoomPictureRevisions = newValue }
+    }
     /// Moves on each time a room's picture is set or removed here, so a
     /// slower refresh or an older change can't undo a newer one. Never
     /// reset: a reset could make a change look as if it never happened.
-    var groupRoomPictureGenerations: [String: Int] = [:]
+    var groupRoomPictureGenerations: [String: Int] {
+        get { shownRuntime.groupRoomPictureGenerations }
+        set { shownRuntime.groupRoomPictureGenerations = newValue }
+    }
     /// How many set or remove requests are still on their way for each
     /// room; a room drops out once all of them have settled.
-    var groupRoomPicturesChanging: [String: Int] = [:]
+    var groupRoomPicturesChanging: [String: Int] {
+        get { shownRuntime.groupRoomPicturesChanging }
+        set { shownRuntime.groupRoomPicturesChanging = newValue }
+    }
     /// Whether the open chat's own sheet or prompt (Artifacts, Rename,
     /// Delete), or the open room's (its settings, info, picture, disband;
     /// issue 2064), covers it, so reading it doesn't clear its notifications
@@ -3647,17 +3713,32 @@ final class AppState: ObservableObject {
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     /// Boards replies name by line, by id, once read (LineBoards).
-    @Published var lineBoards: [String: RichBoard] = [:]
+    var lineBoards: [String: RichBoard] {
+        get { shownRuntime.lineBoards }
+        set { shownRuntime.lineBoards = newValue }
+    }
     /// Boards replies name that the plugin no longer has (pruned: the
     /// newest 500, a month), or answered in a shape Conduit can't draw:
     /// not asked for again, and the reply says one was there.
-    @Published var lineBoardsGone: Set<String> = []
-    var lineBoardsAsked: Set<String> = []
+    var lineBoardsGone: Set<String> {
+        get { shownRuntime.lineBoardsGone }
+        set { shownRuntime.lineBoardsGone = newValue }
+    }
+    var lineBoardsAsked: Set<String> {
+        get { shownRuntime.lineBoardsAsked }
+        set { shownRuntime.lineBoardsAsked = newValue }
+    }
     /// The dashboard and profile `lineBoards` were read from.
-    var lineBoardsScope = ""
+    var lineBoardsScope: String {
+        get { shownRuntime.lineBoardsScope }
+        set { shownRuntime.lineBoardsScope = newValue }
+    }
     /// Bumped whenever `lineBoards` is forgotten, so a read from before
     /// stores nothing (issue 2083).
-    var lineBoardsGeneration = 0
+    var lineBoardsGeneration: Int {
+        get { shownRuntime.lineBoardsGeneration }
+        set { shownRuntime.lineBoardsGeneration = newValue }
+    }
     var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
@@ -3675,8 +3756,14 @@ final class AppState: ObservableObject {
     @Published var activeRoomLooks = RoomLooks.empty
     /// How each room over Links on Bots Home looks, by dashboard and room
     /// (RoomLooks.swift), for its tile's faces.
-    @Published var homeRoomLooksByKey: [String: RoomLooks] = [:]
-    var homeRoomLooksReadAt: [String: Date] = [:]
+    var homeRoomLooksByKey: [String: RoomLooks] {
+        get { shownRuntime.homeRoomLooksByKey }
+        set { shownRuntime.homeRoomLooksByKey = newValue }
+    }
+    var homeRoomLooksReadAt: [String: Date] {
+        get { shownRuntime.homeRoomLooksReadAt }
+        set { shownRuntime.homeRoomLooksReadAt = newValue }
+    }
     /// The open room's host, as your Link names them, in a room someone
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
@@ -3696,7 +3783,10 @@ final class AppState: ObservableObject {
     /// The room (epoch and id) whose looks are being read now.
     var activeRoomLooksReading: String?
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
-    var sharedRoomLooks: [UUID: String] = [:]
+    var sharedRoomLooks: [UUID: String] {
+        get { shownRuntime.sharedRoomLooks }
+        set { shownRuntime.sharedRoomLooks = newValue }
+    }
     /// A looks share is on its way, and another change waits for it.
     var roomLooksSharing = false
     var roomLooksShareAgain = false
@@ -3800,18 +3890,33 @@ final class AppState: ObservableObject {
     /// The Group Chats probe asked again after a transient failure, so its
     /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
     /// stayed after a reconnect the app never saw as a disconnect).
-    var groupChatProbeRetry = TransientReadRetry()
+    var groupChatProbeRetry: TransientReadRetry {
+        get { shownRuntime.groupChatProbeRetry }
+        set { shownRuntime.groupChatProbeRetry = newValue }
+    }
     /// The same for the bot roster's "Could not refresh bots".
-    var botRosterRetry = TransientReadRetry()
+    var botRosterRetry: TransientReadRetry {
+        get { shownRuntime.botRosterRetry }
+        set { shownRuntime.botRosterRetry = newValue }
+    }
 
     /// The rooms in `keptRoomReplays`, the one left last at the end.
     var keptRoomReplayOrder: [String] = []
     /// Each room's reads in a row that failed.
-    var talkingRoomMisses: [String: Int] = [:]
+    var talkingRoomMisses: [String: Int] {
+        get { shownRuntime.talkingRoomMisses }
+        set { shownRuntime.talkingRoomMisses = newValue }
+    }
     /// A talking-rooms read is running.
-    var talkingRoomsReading = false
+    var talkingRoomsReading: Bool {
+        get { shownRuntime.talkingRoomsReading }
+        set { shownRuntime.talkingRoomsReading = newValue }
+    }
     /// When the last talking-rooms read began.
-    var talkingRoomsReadAt: Date?
+    var talkingRoomsReadAt: Date? {
+        get { shownRuntime.talkingRoomsReadAt }
+        set { shownRuntime.talkingRoomsReadAt = newValue }
+    }
 
     /// The room screens mounted, and whether each shows: the V2 shell
     /// keeps a hidden tab's screens mounted (#1827). Set by GroupChatView.
