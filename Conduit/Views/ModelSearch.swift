@@ -65,11 +65,14 @@ func modelSearchFocusesOnOpen(
     onMac || hardwareKeyboard
 }
 
-/// A search result's text: the model, then the provider serving it.
+/// A search result's text: the model, then the provider serving it, with
+/// its logo (Eric 2026-11-20: the sheet's first screen showed a cube for
+/// every provider).
 struct ModelSearchResultText: View {
     let title: String
     var detail: String?
     let provider: String
+    var logo: ProviderInfo?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -78,8 +81,13 @@ struct ModelSearchResultText: View {
                 .foregroundStyle(.primary)
                 .lineLimit(1)
             HStack(spacing: 4) {
-                Image(systemName: "cube.transparent")
-                    .accessibilityHidden(true)
+                if let logo {
+                    ProviderLogoView(provider: logo, size: 14)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: "cube.transparent")
+                        .accessibilityHidden(true)
+                }
                 Text(verbatim: provider)
                     .lineLimit(1)
             }
