@@ -37,6 +37,72 @@ extension ChatTypographyTests {
         XCTAssertNil(body["draft"])
     }
 
+    /// The user's instructions (issue 2970): each kind sends only its own,
+    /// blank sends nothing, and the limit is the plugin's, in scalars.
+    func testEachKindSendsOnlyItsOwnInstructions() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "PredictiveInstructionsTests-\(UUID().uuidString)"))
+        XCTAssertNil(Predictive.instructions(.replies, defaults))
+        defaults.set("  Favor next steps.\n", forKey: Predictive.repliesInstructionsKey)
+        defaults.set(" \n ", forKey: Predictive.pauseInstructionsKey)
+        defaults.set("Only for results.", forKey: Predictive.followUpInstructionsKey)
+        XCTAssertEqual(Predictive.instructions(.replies, defaults), "Favor next steps.")
+        XCTAssertNil(Predictive.instructions(.draft, defaults), "blank is none")
+        XCTAssertEqual(Predictive.instructions(.turn, defaults), "Only for results.")
+
+        let replies = Predictive.body(kind: .replies, sessionID: "s1", count: 3, language: "English", model: .fast,
+                                      wait: Predictive.repliesWait, instructions: Predictive.instructions(.replies, defaults))
+        XCTAssertEqual(replies["custom_instructions"] as? String, "Favor next steps.")
+        let draft = Predictive.body(kind: .draft, sessionID: "s1", count: 3, draft: "Can you", language: "English",
+                                    model: .fast, wait: Predictive.draftWait, instructions: Predictive.instructions(.draft, defaults))
+        XCTAssertNil(draft["custom_instructions"], "no field without instructions, as before")
+        XCTAssertNil(Predictive.body(kind: .replies, sessionID: "s1", count: 3, language: "English", model: .fast,
+                                     wait: 1, instructions: "")["custom_instructions"])
+    }
+
+    func testInstructionsAreCutAtThePluginsLimitAtAWholeCharacter() {
+        let family = "\u{1F468}\u{200D}\u{1F469}\u{200D}\u{1F467}" // 1 Character, 5 scalars
+        let fits = String(repeating: "a", count: Predictive.maximumInstructionsScalars)
+        XCTAssertEqual(Predictive.clippedInstructions(fits), fits)
+        let over = String(repeating: "a", count: Predictive.maximumInstructionsScalars - 2) + family
+        let clipped = Predictive.clippedInstructions(over)
+        XCTAssertEqual(clipped, String(repeating: "a", count: Predictive.maximumInstructionsScalars - 2),
+                       "the emoji that would cross the limit goes whole")
+        XCTAssertLessThanOrEqual(clipped.unicodeScalars.count, Predictive.maximumInstructionsScalars)
+    }
+
+    /// Editing one kind's instructions drops the guesses made under the old
+    /// ones for that kind only, and the next question asks afresh.
+    @MainActor
+    func testEditedInstructionsDropOnlyThatKindsGuesses() {
+        let defaults = makeScratchDefaults("PredictiveInstructionsEditTests")
+        let state = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        state.predictiveSender = { _ in [:] }
+        XCTAssertTrue(state.predictiveInstructionsAreServed)
+        let anchor = PredictiveStore.Anchor(sessionID: "s1", messageID: "a1")
+        state.predictive.showReplies([Predictive.Guess(text: "Thanks", p: 0.8)], for: anchor)
+        state.shownChat.predictiveRepliesAsked = anchor
+        state.predictive.draftChanged("Can you")
+        state.predictive.showDraftGuesses(next: [Predictive.Guess(text: " check", p: 0.7)], replies: [], for: "Can you")
+        state.shownChat.predictiveDraftAsked = ("s1", "Can you")
+
+        state.predictiveInstructionsChanged(.turn)
+        XCTAssertEqual(state.predictive.replies.count, 1, "follow-up instructions leave replies alone")
+        XCTAssertEqual(state.predictive.answeredDraft, "Can you")
+
+        state.predictiveInstructionsChanged(.replies)
+        XCTAssertTrue(state.predictive.replies.isEmpty)
+        XCTAssertNil(state.shownChat.predictiveRepliesAsked, "asked afresh")
+        XCTAssertEqual(state.predictive.answeredDraft, "Can you", "a draft's guesses stay")
+
+        state.predictiveInstructionsChanged(.draft)
+        XCTAssertNil(state.predictive.answeredDraft)
+        XCTAssertNil(state.shownChat.predictiveDraftAsked)
+    }
+
     func testGuessesComeBestFirst() {
         let guesses = Predictive.guesses([
             ["text": "Remind me tonight", "p": 0.2],

@@ -3,7 +3,8 @@
 //  Conduit
 //
 //  Settings > Chat > Predictive (Predictive.swift): each guess is its own
-//  switch, off by default, kept on this device.
+//  switch, off by default, kept on this device. Under each switch, the
+//  user's own instructions for that guess (issue 2970).
 //
 
 import SwiftUI
@@ -51,6 +52,9 @@ struct PredictiveSettingsPage: View {
     @AppStorage(Predictive.followUpKey) private var followUp = false
     @AppStorage(Predictive.followUpDelayKey) private var followUpDelay = Predictive.defaultFollowUpDelay
     @AppStorage(Predictive.modelKey) private var model = Predictive.Model.fast.rawValue
+    @AppStorage(Predictive.repliesInstructionsKey) private var repliesInstructions = ""
+    @AppStorage(Predictive.pauseInstructionsKey) private var pauseInstructions = ""
+    @AppStorage(Predictive.followUpInstructionsKey) private var followUpInstructions = ""
     @State private var status: Predictive.HostStatus?
     /// Helper models lists Conduit's predictions: only then do the captions
     /// point there. An older plugin doesn't add the slot. Nil until the
@@ -115,6 +119,7 @@ struct PredictiveSettingsPage: View {
                 ) {
                     Text("How many").foregroundStyle(.secondary)
                 }
+                instructionsField(.replies, text: $repliesInstructions, prompt: Text("Like: favor concrete next steps and questions about tradeoffs; skip plain thanks."))
             }
         }
     }
@@ -134,6 +139,7 @@ struct PredictiveSettingsPage: View {
                 ) {
                     Text("Pause before asking").foregroundStyle(.secondary)
                 }
+                instructionsField(.draft, text: $pauseInstructions, prompt: Text("Like: keep my meaning and tone; never add promises I didn't make."))
             }
         }
     }
@@ -153,6 +159,7 @@ struct PredictiveSettingsPage: View {
                 ) {
                     Text("Start asking after").foregroundStyle(.secondary)
                 }
+                instructionsField(.turn, text: $followUpInstructions, prompt: Text("Like: only for a finished result or something blocking me."))
             }
         }
     }
@@ -191,6 +198,36 @@ struct PredictiveSettingsPage: View {
                 SettingsMetricRow(label: AppLocalization.string("Predictions today", table: .settings), value: String(status.today))
             }
         }
+    }
+
+    /// The user's instructions for one kind of guess: kept on this device,
+    /// cut at the plugin's limit, sent only with that kind's questions, and
+    /// off (with the reason) on a plugin that would ignore them.
+    @ViewBuilder
+    private func instructionsField(_ kind: Predictive.Kind, text: Binding<String>, prompt: Text) -> some View {
+        let served = appState.predictiveInstructionsAreServed
+        TextField("Your instructions", text: Binding(
+            get: { text.wrappedValue },
+            set: { typed in
+                let clipped = Predictive.clippedInstructions(typed)
+                guard clipped != text.wrappedValue else { return }
+                text.wrappedValue = clipped
+                appState.predictiveInstructionsChanged(kind)
+            }
+        ), prompt: prompt, axis: .vertical)
+            .lineLimit(2...6)
+            .textFieldStyle(.roundedBorder)
+            .disabled(!served)
+            .accessibilityIdentifier("settings.predictive.instructions.\(kind.rawValue)")
+        Group {
+            if served {
+                Text("Guides only these guesses, not your agent's usual replies. Kept on this device and sent with each of these requests to your Hermes host's model.")
+            } else {
+                Text(PluginUpdateAsk.text(AppLocalization.string("Instructions need a newer Conduit plugin on your Hermes host (\(Predictive.instructionsMinimumPlugin) or later).", table: .settings)))
+            }
+        }
+        .scaledFont(.footnote)
+        .foregroundStyle(.secondary)
     }
 
     private static func seconds(_ value: Double) -> String {

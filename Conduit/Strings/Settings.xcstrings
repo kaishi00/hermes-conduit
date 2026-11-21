@@ -42944,6 +42944,88 @@
           }
         }
       }
+    },
+    "Instructions need a newer Conduit plugin on your Hermes host (%@ or later)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anweisungen brauchen ein neueres Conduit-Plugin auf deinem Hermes-Host (%@ oder neuer)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las instrucciones necesitan un plugin de Conduit más reciente en tu host de Hermes (%@ o posterior)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les instructions nécessitent un plugin Conduit plus récent sur ton hôte Hermes (%@ ou ultérieur)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instruksi memerlukan plugin Conduit yang lebih baru di host Hermes kamu (%@ atau lebih baru)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le istruzioni richiedono un plugin Conduit più recente sul tuo host Hermes (%@ o successivo)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示を使うには Hermes ホストの Conduit プラグインを更新してください（%@ 以降）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지시사항을 사용하려면 Hermes 호스트에 더 새로운 Conduit 플러그인이 필요합니다(%@ 이상)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Instrukcje wymagają nowszej wtyczki Conduit na twoim hoście Hermes (%@ lub nowszej)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As instruções precisam de um plugin do Conduit mais recente no seu host Hermes (%@ ou posterior)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для инструкций нужен более новый плагин Conduit на вашем хосте Hermes (%@ или новее)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Talimatlar için Hermes sunucunda daha yeni bir Conduit eklentisi gerekir (%@ veya sonrası)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示需要你的 Hermes 主机上装有更新的 Conduit 插件（%@ 或更高版本）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "指示需要你的 Hermes 主機上裝有更新的 Conduit 外掛（%@ 或更新版本）。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

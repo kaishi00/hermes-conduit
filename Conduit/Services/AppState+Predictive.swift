@@ -17,6 +17,33 @@ extension AppState {
         predictiveSender != nil || notifierPlugin.reports(Predictive.capability)
     }
 
+    /// Whether the connected plugin uses the user's instructions: an older
+    /// one ignores the field, so nothing is sent and Settings says so.
+    var predictiveInstructionsAreServed: Bool {
+        predictiveSender != nil || notifierPlugin.reports(Predictive.instructionsCapability)
+    }
+
+    /// What `kind`'s questions carry of the user's instructions now.
+    func predictiveInstructions(_ kind: Predictive.Kind) -> String? {
+        predictiveInstructionsAreServed ? Predictive.instructions(kind) : nil
+    }
+
+    /// The user edited `kind`'s instructions: guesses made under the old
+    /// ones go, and the next question asks afresh. Answers still on their
+    /// way are dropped when they arrive (each ask compares what it sent).
+    func predictiveInstructionsChanged(_ kind: Predictive.Kind) {
+        switch kind {
+        case .replies:
+            predictive.dropReplies()
+            shownChat.predictiveRepliesAsked = nil
+        case .draft:
+            predictive.dropDraftGuesses()
+            shownChat.predictiveDraftAsked = nil
+        case .turn:
+            break
+        }
+    }
+
     /// The open chat's last reply, while guesses may show for it: the chat
     /// on screen with Conduit in front, nothing running, no call, and its
     /// last row a reply (not a question or an approval Hermes waits on).
@@ -196,16 +223,18 @@ extension AppState {
               again || shownChat.predictiveRepliesAsked != anchor else { return }
         shownChat.predictiveRepliesAsked = anchor
         let count = Predictive.replyCount()
+        let instructions = predictiveInstructions(.replies)
         let body = Predictive.body(
             kind: .replies, sessionID: anchor.sessionID, count: count,
-            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.repliesWait
+            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.repliesWait,
+            instructions: instructions
         )
         let profile = activeProfile
         let generation = shownChat.predictiveGeneration
         Task { [weak self] in
             guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
                   let self, self.shownChat.predictiveGeneration == generation, Predictive.repliesEnabled(),
-                  self.predictiveAnchor == anchor else { return }
+                  self.predictiveAnchor == anchor, self.predictiveInstructions(.replies) == instructions else { return }
             let guesses = Array(Predictive.guesses(answer["replies"]).prefix(count))
             guard !guesses.isEmpty else { return }
             self.predictive.showReplies(guesses, for: anchor)
@@ -280,9 +309,11 @@ extension AppState {
         guard Predictive.fitsQuestion(draft),
               shownChat.predictiveDraftAsked?.sessionID != sessionID || shownChat.predictiveDraftAsked?.draft != draft else { return }
         shownChat.predictiveDraftAsked = (sessionID, draft)
+        let instructions = predictiveInstructions(.draft)
         let body = Predictive.body(
             kind: .draft, sessionID: sessionID, count: Predictive.replyCount(), draft: draft,
-            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.draftWait
+            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.draftWait,
+            instructions: instructions
         )
         let profile = activeProfile
         let asked = Date()
@@ -292,6 +323,7 @@ extension AppState {
         Task { [weak self] in
             guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.draftWait),
                   let self, self.shownChat.predictiveGeneration == generation, self.activeSessionId == sessionID,
+                  self.predictiveInstructions(.draft) == instructions,
                   Date().timeIntervalSince(asked) <= Predictive.draftWait + 1 else { return }
             self.predictive.showDraftGuesses(
                 next: Predictive.guesses(answer["next"]),
@@ -363,9 +395,11 @@ extension AppState {
             check: shownChat.predictiveFollowUp.checks,
             localTime: Predictive.localTime(now)
         )
+        let instructions = predictiveInstructions(.turn)
         let body = Predictive.body(
             kind: .turn, sessionID: anchor.sessionID, count: 1, facts: facts,
-            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.turnWait
+            language: ChatStepSummaries.languageName, model: Predictive.model(), wait: Predictive.turnWait,
+            instructions: instructions
         )
         let generation = shownChat.predictiveGeneration
         let asked: Result<[String: Any], Error>
@@ -379,6 +413,17 @@ extension AppState {
         guard !Task.isCancelled, shownChat.predictiveGeneration == generation, predictiveAnchor == anchor, shownChat.predictiveFollowUp.anchor == anchor,
               Predictive.followUpEnabled(), !predictive.hiddenSessions.contains(anchor.sessionID),
               predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Decided under instructions since edited: asked again with the new
+        // ones after the shortest wait, within the reply's checks.
+        guard predictiveInstructions(.turn) == instructions else {
+            if shownChat.predictiveFollowUp.checks < Predictive.maximumChecks {
+                shownChat.predictiveFollowUp.nextCheck = Date().addingTimeInterval(TimeInterval(Predictive.askAgainRange.lowerBound))
+                startPredictiveFollowUpClock(for: anchor)
+            } else {
+                shownChat.predictiveFollowUp.stopped = true
+            }
+            return
+        }
         let answer: [String: Any]
         switch asked {
         case .success(let value):
