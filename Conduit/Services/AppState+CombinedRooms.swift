@@ -122,7 +122,7 @@ extension AppState {
                 if let keptDashboardRoomsReader {
                     listed = try await keptDashboardRoomsReader(runtime.client)
                 } else {
-                    listed = try await runtime.client.groupsList().rooms
+                    listed = try await Self.everyGroupRoom(runtime.client)
                 }
                 rooms = listed.filter { !$0.isDisbanded }
                 answered = true
@@ -153,6 +153,24 @@ extension AppState {
             let read = CombinedDashboardRooms(client: client, rooms: rooms ?? [], copies: copies ?? [], at: now)
             if read != combinedDashboardRooms[id] { combinedDashboardRooms[id] = read }
         }
+    }
+
+    /// Most pages of `groups.list` one read follows.
+    static let combinedDashboardRoomsMaxPages = 10
+
+    /// Every room a Hermes hosts: `groups.list` page by page, while it names
+    /// a next page further on (up to `combinedDashboardRoomsMaxPages`).
+    static func everyGroupRoom(_ client: HermesClient) async throws -> [GroupRoom] {
+        var rooms: [GroupRoom] = []
+        var offset: Int?
+        for _ in 0..<combinedDashboardRoomsMaxPages {
+            let page = try await client.groupsList(offset: offset)
+            rooms += page.rooms
+            guard let next = page.nextOffset, next > (offset ?? 0), !page.rooms.isEmpty else { break }
+            offset = next
+        }
+        var seen = Set<String>()
+        return rooms.filter { seen.insert($0.roomID).inserted }
     }
 
     /// Whether two lists of a room's members are one room's: a room's id is
@@ -246,17 +264,23 @@ extension AppState {
                 errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             }
         case .copy(let copy):
+            // A chat or room opened while its copies are read owns the
+            // screen: the tap is dropped, not opened over it, as a hosted
+            // room's is.
+            let viewport = chatViewportTransitionGeneration
+            let roomEpoch = groupRoomEpoch
+            var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
             // The switch reads the plugin's routes after its sync settles:
             // its copies can be read once they're known.
             if !canReadRoomCopies {
                 await refreshNotifierPluginStatusOnce()
-                guard !Task.isCancelled, activeDashboardID == tile.dashboardID else { return }
+                guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             }
             var found = linkedRoomCopyRows.first { $0.id == copy.id }
             if found == nil, let read = await readLinkedRoomCopies(), activeDashboardID == tile.dashboardID {
                 found = read.first { $0.id == copy.id }
             }
-            guard activeDashboardID == tile.dashboardID else { return }
+            guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             guard let found else {
                 errorMessage = AppLocalization.string("That chat is no longer available.")
                 return

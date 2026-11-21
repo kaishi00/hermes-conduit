@@ -1952,6 +1952,12 @@ extension CrossProfilePresentationCacheTests {
         appState.groupRooms = [room("standup", ["furina"])]
         let vpsCopies = [copy("trip", ["raiden", "furina"]), copy("zoo", ["sam-bot", "nahida"]), copy("solo", ["sam-bot"])]
         appState.linkedRoomCopies = LinkedRoomCopies(dashboardID: vps.id, copies: vpsCopies.compactMap(RoomCopiesClient.copy))
+        // The one on screen's rooms are kept as it shows them, so leaving it
+        // shows them at once, and stand as unread, so they're read anew there.
+        await appState.readOtherCombinedDashboardsRooms()
+        XCTAssertEqual(appState.combinedDashboardRooms[vps.id]?.rooms.map(\.roomID), ["standup"])
+        XCTAssertEqual(appState.combinedDashboardRooms[vps.id]?.copies.map(\.roomID), ["trip", "zoo", "solo"])
+        XCTAssertEqual(appState.combinedDashboardRooms[vps.id]?.at, .distantPast)
         // VPS' copy of Mac's "trip" leaves for Mac's own room, and its copy
         // of Sam's "zoo" for Mac's, which comes first in Saved Dashboards.
         XCTAssertEqual(appState.shownLinkedRoomCopyRows.map(\.roomID), ["solo"])
