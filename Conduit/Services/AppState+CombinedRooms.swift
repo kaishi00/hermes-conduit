@@ -228,16 +228,17 @@ extension AppState {
         }
     }
 
-    /// The other combined dashboards' group chats Bots Home shows, in Saved
-    /// Dashboards order: every room its Hermes hosts that no dashboard
-    /// before it in this list shows, and its copies of rooms you talk in
-    /// from there.
+    /// Every other combined dashboard's group chat Bots Home shows, as
+    /// `combinedRoomTilesAroundThisDashboard` places them.
     var otherCombinedDashboardsRoomTiles: [CombinedRoomTile] {
         let around = combinedRoomTilesAroundThisDashboard
         return around.before + around.after
     }
 
-    /// The same, split where Saved Dashboards puts this dashboard: the ones
+    /// The other combined dashboards' group chats: every room its Hermes
+    /// hosts that no dashboard before it in Saved Dashboards shows, and its
+    /// copies of rooms you talk in from there, split where Saved Dashboards
+    /// puts this dashboard: the ones
     /// before show before its group chats, the rest after. Each
     /// dashboard's show as they do when it's on screen, its rooms in its
     /// own order then its copies, so opening one, which switches there,
