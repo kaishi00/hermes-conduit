@@ -518,7 +518,7 @@ struct HermesCallSettingsSection: View {
 
     private static func makePairsEveryDeviceChanges() -> AnyPublisher<Bool, Never> {
         guard let appState = AppStateRuntimeRegistry.shared.existing else { return Empty().eraseToAnyPublisher() }
-        return appState.$notifierPlugin.map { $0.reports("pairing-devices") }.removeDuplicates().eraseToAnyPublisher()
+        return appState.notifierPluginValues.map { $0.reports("pairing-devices") }.removeDuplicates().eraseToAnyPublisher()
     }
 
     /// "Don't call me while I'm at": the saved places where a call becomes
