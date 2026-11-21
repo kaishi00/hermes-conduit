@@ -218,16 +218,30 @@ struct PredictiveSettingsPage: View {
             .lineLimit(2...6)
             .textFieldStyle(.roundedBorder)
             .disabled(!served)
+            .accessibilityLabel(Self.instructionsLabel(kind))
             .accessibilityIdentifier("settings.predictive.instructions.\(kind.rawValue)")
         Group {
             if served {
                 Text("Guides only these guesses, not your agent's usual replies. Kept on this device and sent with each of these requests to your Hermes host's model.")
             } else {
-                Text(PluginUpdateAsk.text(AppLocalization.string("Instructions need a newer Conduit plugin on your Hermes host (\(Predictive.instructionsMinimumPlugin) or later).", table: .settings)))
+                Text(PluginUpdateAsk.text(
+                    AppLocalization.string("Instructions need a newer Conduit plugin on your Hermes host (\(Predictive.instructionsMinimumPlugin) or later).", table: .settings),
+                    lead: AppLocalization.string("Needs Conduit plugin \(Predictive.instructionsMinimumPlugin) or later.")
+                ))
             }
         }
         .scaledFont(.footnote)
         .foregroundStyle(.secondary)
+    }
+
+    /// What VoiceOver calls a kind's box, so the three don't all read as
+    /// "Your instructions".
+    private static func instructionsLabel(_ kind: Predictive.Kind) -> Text {
+        switch kind {
+        case .replies: Text("Instructions for suggested replies")
+        case .draft: Text("Instructions for guesses while I pause")
+        case .turn: Text("Instructions for follow-ups")
+        }
     }
 
     private static func seconds(_ value: Double) -> String {
