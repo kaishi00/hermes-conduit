@@ -1973,10 +1973,19 @@ extension CrossProfilePresentationCacheTests {
         // of Sam's "zoo" for Mac's, which comes first in Saved Dashboards.
         XCTAssertEqual(appState.shownLinkedRoomCopyRows.map(\.roomID), ["solo"])
         let tiles = appState.otherCombinedDashboardsRoomTiles
-        XCTAssertEqual(tiles.map(\.roomID), ["plans", "trip", "zoo"], "Mac's, newest first")
+        XCTAssertEqual(tiles.map(\.roomID), ["trip", "plans", "zoo"], "Mac's as Mac shows them: its rooms, then its copies")
         XCTAssertEqual(Set(tiles.map(\.dashboardID)), [mac.id])
-        if case .hosted = tiles[1].kind {} else { XCTFail("Mac's own room opens as Mac's") }
+        if case .hosted = tiles[0].kind {} else { XCTFail("Mac's own room opens as Mac's") }
         if case .copy = tiles[2].kind {} else { XCTFail("Sam's room opens from Mac's copy") }
+        // Mac comes before VPS in Saved Dashboards, so its group chats show
+        // before VPS' own, in Mac's own room order: opening one, which
+        // switches to Mac, moves nothing (Eric, 2026-11-21).
+        let macOrderKey = BotOrder.roomStorageKey(scope: AppState.dashboardPreferenceBucket(mac.id))
+        BotOrder(names: ["plans", "trip"], kind: .rooms).save(to: appState.defaults, key: macOrderKey)
+        let around = appState.combinedRoomTilesAroundThisDashboard
+        XCTAssertEqual(around.before.map(\.roomID), ["plans", "trip", "zoo"])
+        XCTAssertTrue(around.after.isEmpty)
+        appState.defaults.removeObject(forKey: macOrderKey)
         // A room id another Hermes uses for another room (no member shared)
         // is not the same room.
         appState.linkedRoomCopies = LinkedRoomCopies(dashboardID: vps.id,

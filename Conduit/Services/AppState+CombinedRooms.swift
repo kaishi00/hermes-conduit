@@ -228,17 +228,37 @@ extension AppState {
         }
     }
 
-    /// The other combined dashboards' group chats Bots Home shows after
-    /// this dashboard's, in Saved Dashboards order, each one's newest
-    /// first: every room its Hermes hosts that no dashboard before it in
-    /// this list shows, and its copies of rooms you talk in from there.
+    /// The other combined dashboards' group chats Bots Home shows, in Saved
+    /// Dashboards order: every room its Hermes hosts that no dashboard
+    /// before it in this list shows, and its copies of rooms you talk in
+    /// from there.
     var otherCombinedDashboardsRoomTiles: [CombinedRoomTile] {
-        guard isInCombinedGroup(activeDashboardID), !combinedDashboardRooms.isEmpty else { return [] }
+        let around = combinedRoomTilesAroundThisDashboard
+        return around.before + around.after
+    }
+
+    /// The same, split where Saved Dashboards puts this dashboard: the ones
+    /// before show before its group chats, the rest after. Each
+    /// dashboard's show as they do when it's on screen, its rooms in its
+    /// own order then its copies, so opening one, which switches there,
+    /// moves nothing (Eric, 2026-11-21: the group chats' order shifted on
+    /// a tap; it put this dashboard's first and the others newest first).
+    var combinedRoomTilesAroundThisDashboard: (before: [CombinedRoomTile], after: [CombinedRoomTile]) {
+        guard isInCombinedGroup(activeDashboardID), !combinedDashboardRooms.isEmpty else { return ([], []) }
         let lists = combinedGroupRoomLists
-        var tiles: [CombinedRoomTile] = []
-        for list in lists where list.id != activeDashboardID {
+        var before: [CombinedRoomTile] = []
+        var after: [CombinedRoomTile] = []
+        var passed = !lists.contains { $0.id == activeDashboardID }
+        for list in lists {
+            if list.id == activeDashboardID {
+                passed = true
+                continue
+            }
+            let order = BotOrder(defaults: defaults,
+                                 key: BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(list.id)),
+                                 kind: .rooms)
             var own: [CombinedRoomTile] = []
-            for room in list.rooms {
+            for room in order.arrange(list.rooms, name: \.roomID) {
                 let members = room.members.compactMap(\.memberID)
                 guard combinedRoomHome(roomID: room.roomID, memberIDs: members, in: lists) == list.id else { continue }
                 own.append(CombinedRoomTile(dashboardID: list.id, kind: .hosted(room)))
@@ -248,9 +268,9 @@ extension AppState {
                 guard combinedRoomHome(roomID: copy.roomID, memberIDs: members, in: lists) == list.id else { continue }
                 own.append(CombinedRoomTile(dashboardID: list.id, kind: .copy(copy)))
             }
-            tiles += own.sorted { $0.updatedAt > $1.updatedAt }
+            if passed { after += own } else { before += own }
         }
-        return tiles
+        return (before, after)
     }
 
     /// Opens another combined dashboard's group chat: the switch to its
