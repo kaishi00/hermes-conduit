@@ -848,7 +848,8 @@ struct BotQuestionAnswerButtons: View {
         } label: {
             Text(title)
                 .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                // All of a choice shows: two that start alike differ at the end.
+                .fixedSize(horizontal: false, vertical: true)
                 .multilineTextAlignment(.center)
                 .frame(maxWidth: .infinity, minHeight: 44)
                 .padding(.horizontal, 8)

@@ -444,7 +444,10 @@ extension AppState {
         // so nothing waits to scroll.
         let refused = !isOpen && !profilesMatch(item.profile, activeProfile) && isCallEndingProfileSwitch
         // A question asked past its turn has no card in its chat to scroll to: the chat just opens.
-        if !refused, item.asked == nil {
+        if item.asked != nil {
+            // Nor does an earlier wait's reveal scroll it to another card.
+            pendingNeedsYouReveal = nil
+        } else if !refused {
             // The open chat names itself, so a switch away never takes its reveal.
             pendingNeedsYouReveal = NeedsYouReveal(opening: isOpen ? activeSessionId : sessionID)
         }
