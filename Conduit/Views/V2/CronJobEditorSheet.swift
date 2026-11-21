@@ -402,12 +402,16 @@ private struct CronIntervalField: View {
             .multilineTextAlignment(.center)
             .monospacedDigit()
             .textFieldStyle(.roundedBorder)
-            .frame(width: fieldWidth)
+            // Four digits (a job read in past the range) need no more, at
+            // any text size, and the stepper keeps its room.
+            .frame(width: min(fieldWidth, 150))
             .focused($focused)
             .accessibilityValue(Text(spoken))
             .accessibilityIdentifier("cron.editor.interval.field")
             Spacer()
-            Stepper(value: $value, in: CronScheduleDraft.intervalRange) {
+            // A step shows its number in the field at once, even while the
+            // field is focused on a seeded number past the range.
+            Stepper(value: Binding(get: { value }, set: { value = $0; text = String($0) }), in: CronScheduleDraft.intervalRange) {
                 Text(AppLocalization.string("Every…", table: .tasks))
             }
             .labelsHidden()
