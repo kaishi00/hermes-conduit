@@ -7990,7 +7990,7 @@ badge beside a combined row's name, the page's caption) · every place a
 dashboard is labeled, which reads its label (the dashboard menu, the Profiles
 sheet, the launch list and Ask Which Dashboard at Launch, the call-ending
 switch prompt, Connection Setup's "already a saved dashboard" alert,
-Artifacts' chips, the usage and Pulse widgets' dashboard line) · the combined
+Artifacts' chips, the chat widgets' dashboard line and Siri and Spotlight's chat subtitle, rewritten on a rename by WidgetSnapshotPublisher.relabel) · the combined
 badge (Combined dashboards: Needs you, the Chats list and strip, Bots Home,
 Pulse chips, New Bot's dashboard pick, Artifacts, and Group Chats once app
 #2934 lands, all through combinedDashboardBadge) · the notifier's
@@ -7998,15 +7998,17 @@ capabilities route (`name`: the main bot's name, else the host's first
 label; nothing for "Hermes", a Docker container's id or localhost) · Pairing
 a computer (the phone sends each dashboard's name, which the desktop keeps
 unless it's only an address) · README.md (the feature line), the notifier's
-README (Capabilities) and CHANGELOG · the Watch, CarPlay, Siri and calls
-(not needed: they name the dashboard on screen nowhere)
+README (Capabilities) and CHANGELOG · an edited address (the old host's
+Hermes name goes, and a name the person didn't give follows the new address)
+· the Watch, CarPlay and calls (not needed: they name the dashboard on screen
+nowhere)
 
 **Desktop app:** has it: Settings > Connection's Hermes list has Rename per host and its badge beside a combined one; a host it isn't given a name for goes by its address, or by its Hermes' name when the address names nothing, read from the plugin each time it or a kept host connects; the title bar's host menu, Combine Dashboards, the launch list, every switch prompt and every badge use that name (`desktop/src/shared/hostNames.ts`, `desktop/src/main/hosts.ts`, `desktop/src/renderer/src/state/hostNames.ts`, desktop#230); a host signed in by pairing takes the phone's name for it.
 
 **Code**
-- `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.named, hermesName; SavedDashboardLabel.addressNamesNothing, automatic, badgeLetters), `Conduit/Services/AppState+Dashboards.swift` (renameDashboard, noteDashboardHermesName), `Conduit/Services/NotifierPluginStatus.swift` (hermesName(from:)), `Conduit/Services/AppState+NotifierPlugin.swift` (refreshNotifierPluginStatus notes it), `Conduit/Services/AppState+CombinedBots.swift` (combinedDashboardCapabilities notes a kept one's), `Conduit/Services/AppState+NeedsYou.swift` (combinedDashboardBadge), `Conduit/Views/SavedDashboardsView.swift` (the Rename alert, the row's badge)
+- `Conduit/Services/SavedDashboardRegistry.swift` (SavedDashboard.named, hermesName; SavedDashboardLabel.addressNamesNothing, automatic, badgeLetters), `Conduit/Services/AppState+Dashboards.swift` (renameDashboard, noteDashboardHermesName), `Conduit/Services/NotifierPluginStatus.swift` (hermesName(from:)), `Conduit/Services/AppState+NotifierPlugin.swift` (refreshNotifierPluginStatus notes it), `Conduit/Services/AppState+CombinedBots.swift` (combinedDashboardCapabilities notes a kept one's), `Conduit/Services/AppState+NeedsYou.swift` (combinedDashboardBadge), `Conduit/Views/SavedDashboardsView.swift` (the Rename alert, the row's badge), `Conduit/Services/WidgetSnapshotPublisher.swift` (relabel), `Conduit/Services/AppState+Widgets.swift` (relabelWidgetSnapshot), `Conduit/Services/AppState+Dashboards.swift` (settlePendingDashboardMove clears hermesName)
 - `notifier/dashboard/api/capabilities.py` (instance_name), `notifier/client.py` (instance_name)
-- Tests: `ConduitTests/SavedDashboardRegistryTests.swift` (testAnAddressThatNamesNothingTakesItsHermesName, testBadgesNeverReadTheSame), `ConduitTests/AppStateMultiDashboardTests.swift` (testADashboardOnAnIPAddressTakesItsHermesNameUntilRenamed, testCombinedDashboardsThatStartAlikeAreNumbered); `notifier/tests/test_pairing.py` (test_capabilities_name_this_hermes)
+- Tests: `ConduitTests/SavedDashboardRegistryTests.swift` (testAnAddressThatNamesNothingTakesItsHermesName, testBadgesNeverReadTheSame), `ConduitTests/AppStateMultiDashboardTests.swift` (testADashboardOnAnIPAddressTakesItsHermesNameUntilRenamed, testCombinedDashboardsThatStartAlikeAreNumbered), `ConduitTests/WidgetSnapshotPublisherTests.swift` (testARenamedDashboardIsRelabelledInEveryWorkspaceOfIt); `notifier/tests/test_pairing.py` (test_capabilities_name_this_hermes)
 
 **Rulings**
 - A name the person gives stays until they clear it; an empty Rename goes back to the automatic name. Two dashboards may share a name the person gave; automatic names stay unique ("Furina 2") (2026-11-21, Eric asked for user-editable names; the rest taken while he was away, #2940).
@@ -8017,7 +8019,7 @@ README (Capabilities) and CHANGELOG · the Watch, CarPlay, Siri and calls
 **Open gaps**
 - A rename stays on the device it's made on: the phone and the desktop each keep their own names (pairing carries the phone's once).
 
-**Checked:** 2026-11-21, #2940 (review: a place number never repeats another's letter, a kept dashboard's name read on the Needs you pass, an update's report brings it, Rename capped at 40 on screen); 2026-11-21, #2940 (new entry: Rename, Hermes' name for an IP address, distinct badges; notifier #972, desktop#230).
+**Checked:** 2026-11-21, #2940 (review: a place number never repeats another's letter, a kept dashboard's name read on the Needs you pass, an update's report brings it, Rename capped at 40 on screen, the widgets and Siri relabelled on a rename, an edited address drops the old Hermes name); 2026-11-21, #2940 (new entry: Rename, Hermes' name for an IP address, distinct badges; notifier #972, desktop#230).
 
 ## Face ID for saved dashboards
 

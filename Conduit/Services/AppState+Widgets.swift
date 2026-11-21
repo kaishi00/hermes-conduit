@@ -124,6 +124,14 @@ extension AppState {
         catch { /* Keep the prior valid cache if atomic replacement fails. */ }
     }
 
+    /// The widgets' and Siri's copy of a dashboard's name, after a rename.
+    func relabelWidgetSnapshot(dashboardID: UUID) {
+        guard let store = widgetStore, let label = savedDashboardRegistry.dashboard(with: dashboardID)?.label else { return }
+        let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)
+        do { try publisher.relabel(dashboardID: dashboardID, label: label) }
+        catch { /* Keep the previous valid cache if atomic replacement fails. */ }
+    }
+
     func removeWidgetSnapshot(dashboardID: UUID) {
         guard let store = widgetStore else { return }
         let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)

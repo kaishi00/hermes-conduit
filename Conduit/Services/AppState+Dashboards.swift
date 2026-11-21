@@ -575,8 +575,16 @@ extension AppState {
         var registry = savedDashboardRegistry
         registry.dashboards[index].normalizedURL = newURL
         registry.dashboards[index].pendingURL = nil
+        // The old host's Hermes named it: the new host says for itself, and
+        // a name the person didn't give follows the new address meanwhile.
+        registry.dashboards[index].hermesName = nil
+        if !registry.dashboards[index].isNamed {
+            let others = registry.dashboards.filter { $0.id != id }.map(\.label)
+            registry.dashboards[index].label = SavedDashboardLabel.automatic(for: registry.dashboards[index], existingLabels: others)
+        }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        relabelWidgetSnapshot(dashboardID: id)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
         // Who manages the plugin, and what it served, go with the host: a
@@ -1135,6 +1143,7 @@ extension AppState {
         guard registry != savedDashboardRegistry else { return }
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        relabelWidgetSnapshot(dashboardID: id)
     }
 
     /// What a dashboard's plugin calls its Hermes (the capabilities route's
@@ -1154,7 +1163,9 @@ extension AppState {
             registry.dashboards[index].label = SavedDashboardLabel.automatic(for: dashboard, existingLabels: others)
         }
         guard registry != savedDashboardRegistry else { return }
+        let relabelled = registry.dashboards[index].label != savedDashboardRegistry.dashboards[index].label
         savedDashboardRegistry = registry
         SavedDashboardRegistryStore.save(registry)
+        if relabelled { relabelWidgetSnapshot(dashboardID: id) }
     }
 }
