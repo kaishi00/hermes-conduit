@@ -21,6 +21,9 @@ struct SavedDashboardsSettingsDetail: View {
     @State private var rows: [SavedDashboardRowModel] = []
     @State private var isSwitchingTo: UUID?
     @State private var pendingRemoval: SavedDashboardRowModel?
+    /// The dashboard Rename is open for, and the name being typed.
+    @State private var renaming: SavedDashboardRowModel?
+    @State private var newName = ""
     @State private var showsAddDashboard = false
     /// A switch picked during a call, waiting on the user's answer (issue 2390).
     @State private var pendingCallEndingSwitch: CallEndingSwitch?
@@ -35,7 +38,7 @@ struct SavedDashboardsSettingsDetail: View {
                 symbol: "server.rack",
                 tint: .conduitAura
             ) {
-                Text("Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device.")
+                Text(AppLocalization.string("Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device. Touch and hold one to rename it.", table: .connection))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 ForEach(rows) { row in
@@ -89,6 +92,25 @@ struct SavedDashboardsSettingsDetail: View {
         } message: {
             Text("This dashboard's saved sign-in and cookies will be deleted from this device, and location, health and phone sharing with it stops. Its notifications stop coming to this device. Other dashboards are not affected.")
         }
+        .alert(
+            AppLocalization.string("Rename Dashboard", table: .connection),
+            isPresented: Binding(
+                get: { renaming != nil },
+                set: { if !$0 { renaming = nil } }
+            )
+        ) {
+            TextField(AppLocalization.string("Name"), text: $newName)
+                .accessibilityIdentifier("settings.dashboard.name")
+            Button(AppLocalization.string("Save")) {
+                if let row = renaming { appState.renameDashboard(row.dashboard.id, to: newName) }
+                renaming = nil
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) {
+                renaming = nil
+            }
+        } message: {
+            Text(AppLocalization.string("Its badge shows the name's first letter. Leave it empty to go back to the name Conduit picked.", table: .connection))
+        }
         .callEndingSwitchConfirmation($pendingCallEndingSwitch)
         // Adding a dashboard is a sheet over this page: Cancel leaves the
         // current dashboard and chat as they were.
@@ -140,6 +162,13 @@ struct SavedDashboardsSettingsDetail: View {
         .disabled(row.isActive || isSwitchingTo != nil)
         .accessibilityIdentifier("settings.dashboard.row")
         .contextMenu {
+            Button {
+                Haptics.selection()
+                newName = row.dashboard.isNamed ? row.dashboard.label : ""
+                renaming = row
+            } label: {
+                Label(AppLocalization.string("Rename"), systemImage: "pencil")
+            }
             Button {
                 Haptics.selection()
                 signOut(row)
@@ -244,6 +273,9 @@ struct SavedDashboardRowLabel: View {
                 .frame(width: 9, height: 9)
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 4) {
+                    // Its badge, in a combined group, so a rename shows what it marks.
+                    CombinedDashboardBadge(dashboardID: row.dashboard.id, size: 16)
+                        .accessibilityHidden(true)
                     Text(verbatim: row.dashboard.label)
                         .scaledFont(.subheadline.weight(.semibold))
                     if let quantumSafe = notificationsEncryption {

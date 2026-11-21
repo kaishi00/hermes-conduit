@@ -122,6 +122,27 @@ final class SavedDashboardRegistryTests: XCTestCase {
         XCTAssertEqual(labels, "Mac 2")
     }
 
+    func testAnAddressThatNamesNothingTakesItsHermesName() {
+        XCTAssertTrue(SavedDashboardLabel.addressNamesNothing("http://192.168.1.5:9119"))
+        XCTAssertTrue(SavedDashboardLabel.addressNamesNothing("http://localhost:9119"))
+        XCTAssertTrue(SavedDashboardLabel.addressNamesNothing("http://[2001:db8::1]:8080"))
+        XCTAssertFalse(SavedDashboardLabel.addressNamesNothing("https://furina.milim.dev"))
+        var lan = SavedDashboard(id: UUID(), label: "192.168.1.5", normalizedURL: "http://192.168.1.5:9119")
+        XCTAssertEqual(SavedDashboardLabel.automatic(for: lan, existingLabels: []), "192.168.1.5", "no name from Hermes yet")
+        lan.hermesName = "Furina"
+        XCTAssertEqual(SavedDashboardLabel.automatic(for: lan, existingLabels: ["Furina"]), "Furina 2")
+        var named = SavedDashboard(id: UUID(), label: "Conduit", normalizedURL: "https://conduit.milim.dev")
+        named.hermesName = "Raiden"
+        XCTAssertEqual(SavedDashboardLabel.automatic(for: named, existingLabels: []), "Conduit", "a DNS name keeps its own")
+    }
+
+    func testBadgesNeverReadTheSame() {
+        XCTAssertEqual(SavedDashboardLabel.badgeLetters(["furina", "Conduit"]), ["F", "C"])
+        // Two names starting alike: each its place in the group.
+        XCTAssertEqual(SavedDashboardLabel.badgeLetters(["192.168.1.5", "192.168.1.6", "Studio"]), ["1", "2", "S"])
+        XCTAssertEqual(SavedDashboardLabel.badgeLetters(["Studio", " ", "Lab"]), ["S", "?", "L"])
+    }
+
     // MARK: - Migration decision (pure)
 
     private func fullLegacyState() -> LegacyDashboardState {

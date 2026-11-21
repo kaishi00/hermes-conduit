@@ -161,6 +161,45 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertNotEqual(onUpper.agentSettingsScope, onLower.agentSettingsScope)
     }
 
+    // MARK: - Names
+
+    func testADashboardOnAnIPAddressTakesItsHermesNameUntilRenamed() {
+        let lan = dashboard("192.168.1.5", "http://192.168.1.5:9119")
+        let web = dashboard("Furina", "https://furina.milim.dev")
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: lan.id, dashboards: [lan, web]))
+        appState.noteDashboardHermesName(lan.id, "Studio")
+        appState.noteDashboardHermesName(web.id, "Raiden")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.label, "Studio")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: web.id)?.label, "Furina", "a DNS name keeps its own")
+        XCTAssertEqual(SavedDashboardRegistryStore.load()?.dashboard(with: lan.id)?.label, "Studio", "saved")
+
+        appState.renameDashboard(lan.id, to: "  Lab box  ")
+        appState.noteDashboardHermesName(lan.id, "Cortana")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.label, "Lab box", "a name the person gave stays")
+        appState.renameDashboard(web.id, to: "Lab box")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: web.id)?.label, "Lab box", "the person may reuse a name")
+
+        appState.renameDashboard(lan.id, to: "")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.label, "Cortana", "empty goes back to Hermes' name")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: lan.id)?.isNamed, false)
+        appState.renameDashboard(web.id, to: " ")
+        XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: web.id)?.label, "Furina", "and the address's")
+    }
+
+    func testCombinedDashboardsThatStartAlikeAreNumbered() {
+        var first = dashboard("192.168.1.5", "http://192.168.1.5:9119")
+        var second = dashboard("192.168.1.6", "http://192.168.1.6:9119")
+        first.combined = true
+        second.combined = true
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: first.id, dashboards: [first, second]))
+        XCTAssertEqual(appState.combinedDashboardBadge(first.id)?.letter, "1")
+        XCTAssertEqual(appState.combinedDashboardBadge(second.id)?.letter, "2")
+        appState.renameDashboard(second.id, to: "studio")
+        XCTAssertEqual(appState.combinedDashboardBadge(first.id)?.letter, "1")
+        XCTAssertEqual(appState.combinedDashboardBadge(second.id)?.letter, "S")
+        XCTAssertEqual(appState.combinedDashboardBadge(second.id)?.name, "studio")
+    }
+
     // MARK: - Adoption
 
     func testAdoptDashboardRegistersAndActivatesNewDashboard() {

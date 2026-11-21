@@ -154,15 +154,15 @@ extension AppState {
     }
 
     /// A combined dashboard's badge (all-live stage 4): the first letter of
-    /// its name on its color. The color is its place among the combined
-    /// dashboards in Saved Dashboards order, so no two in the group share
-    /// one. Nil outside the group.
+    /// its name on its color, or its place in the group where two names
+    /// start alike (SavedDashboardLabel.badgeLetters). The color is its
+    /// place among the combined dashboards in Saved Dashboards order, so no
+    /// two in the group share one. Nil outside the group.
     func combinedDashboardBadge(_ id: UUID) -> (letter: String, colorIndex: Int, name: String)? {
         let members = savedDashboardRegistry.dashboards.filter { savedDashboardRegistry.combinedGroupIDs.contains($0.id) }
         guard let index = members.firstIndex(where: { $0.id == id }) else { return nil }
-        let name = members[index].label.trimmingCharacters(in: .whitespacesAndNewlines)
-        let letter = name.first.map { String($0).uppercased() } ?? "?"
-        return (letter, index, name)
+        let names = members.map { $0.label.trimmingCharacters(in: .whitespacesAndNewlines) }
+        return (SavedDashboardLabel.badgeLetters(names)[index], index, names[index])
     }
 
     private func readNeedsYou() async {

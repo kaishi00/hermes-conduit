@@ -80,11 +80,13 @@ extension AppState {
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
         var managedBy: String?
+        var hermesName: String?
         do {
             let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
             state = NotifierPluginStatus.state(from: response)
             runtime = NotifierPluginStatus.runtime(from: response)
             managedBy = NotifierPluginStatus.managedBy(from: response)
+            hermesName = NotifierPluginStatus.hermesName(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -114,6 +116,8 @@ extension AppState {
         )
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)
+        // Its Hermes' own name, for a dashboard whose address names nothing.
+        if case .reported = state { noteDashboardHermesName(activeDashboardID, hermesName) }
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()

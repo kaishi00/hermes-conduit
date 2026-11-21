@@ -334,6 +334,15 @@ struct NotifierPluginStatus: Equatable {
         return .reported(version: response["version"] as? String, capabilities: Set(capabilities))
     }
 
+    /// What the plugin calls its Hermes (plugin 0.188+): the main bot's
+    /// name, else the host's. Nil when it doesn't say.
+    static func hermesName(from response: [String: Any]) -> String? {
+        guard response["ok"] as? Bool == true,
+              let name = (response["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !name.isEmpty else { return nil }
+        return name
+    }
+
     static func runtime(from response: [String: Any]) -> Runtime? {
         guard response["ok"] as? Bool == true, response.keys.contains("loaded_version") else { return nil }
         return Runtime(

@@ -12505,6 +12505,88 @@
         }
       }
     },
+    "Its badge shows the name's first letter. Leave it empty to go back to the name Conduit picked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sein Abzeichen zeigt den ersten Buchstaben des Namens. Lass das Feld leer, um zum Namen zurückzukehren, den Conduit gewählt hat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su insignia muestra la primera letra del nombre. Déjalo vacío para volver al nombre que eligió Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Son badge affiche la première lettre du nom. Laissez le champ vide pour revenir au nom choisi par Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lencananya menampilkan huruf pertama nama. Kosongkan untuk kembali ke nama yang dipilih Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il suo badge mostra la prima lettera del nome. Lascia vuoto per tornare al nome scelto da Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "バッジには名前の最初の文字が表示されます。空欄にすると Conduit が付けた名前に戻ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "배지에는 이름의 첫 글자가 표시됩니다. 비워 두면 Conduit이 정한 이름으로 돌아갑니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jego plakietka pokazuje pierwszą literę nazwy. Zostaw puste, aby wrócić do nazwy wybranej przez Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O selo mostra a primeira letra do nome. Deixe em branco para voltar ao nome que o Conduit escolheu."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На значке — первая буква названия. Оставьте поле пустым, чтобы вернуть название, выбранное Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozeti adın ilk harfini gösterir. Conduit’in seçtiği ada dönmek için boş bırakın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "徽章显示名称的首字母。留空即可恢复 Conduit 选的名称。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "徽章顯示名稱的首字母。留空即可恢復 Conduit 選的名稱。"
+          }
+        }
+      }
+    },
     "I’m not sure" : {
       "localizations" : {
         "de" : {
@@ -17613,6 +17695,88 @@
         }
       }
     },
+    "Rename Dashboard" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dashboard umbenennen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambiar nombre del panel"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renommer le tableau de bord"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ganti Nama Dasbor"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rinomina dashboard"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダッシュボード名を変更"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대시보드 이름 변경"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zmień nazwę panelu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renomear Painel"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переименовать дашборд"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paneli Yeniden Adlandır"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重命名仪表板"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新命名儀表板"
+          }
+        }
+      }
+    },
     "Repair connection" : {
       "localizations" : {
         "de" : {
@@ -21165,6 +21329,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "正在停止閘道…"
+          }
+        }
+      }
+    },
+    "Switch between your saved Hermes dashboards. Each dashboard keeps its own sign-in and cookies on this device. Touch and hold one to rename it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wechsle zwischen deinen gespeicherten Hermes-Dashboards. Jedes Dashboard behält auf diesem Gerät seine eigene Anmeldung und eigene Cookies. Halte eines gedrückt, um es umzubenennen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cambia entre tus paneles de Hermes guardados. Cada panel conserva su propio inicio de sesión y sus cookies en este dispositivo. Mantén pulsado uno para cambiarle el nombre."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passez d'un tableau de bord Hermes enregistré à l'autre. Chaque tableau de bord conserve sa propre connexion et ses propres cookies sur cet appareil. Maintenez-en un appuyé pour le renommer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Beralih di antara dasbor Hermes yang tersimpan. Setiap dasbor menyimpan login dan cookie-nya sendiri di perangkat ini. Sentuh dan tahan salah satunya untuk mengganti namanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passa da una dashboard Hermes salvata all'altra. Ogni dashboard mantiene accesso e cookie propri su questo dispositivo. Tieni premuta una dashboard per rinominarla."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存済みのHermesダッシュボードを切り替えます。各ダッシュボードのサインイン情報とCookieは、このデバイス上で個別に保持されます。長押しすると名前を変更できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "저장된 Hermes 대시보드 간에 전환해요. 각 대시보드는 이 기기에서 자체 로그인 정보와 쿠키를 유지해요. 길게 누르면 이름을 바꿀 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przełączaj się między zapisanymi panelami Hermes. Każdy panel ma na tym urządzeniu własne logowanie i pliki cookie. Przytrzymaj panel, aby zmienić jego nazwę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alterne entre seus painéis do Hermes salvos. Cada painel mantém o próprio login e os próprios cookies neste aparelho. Toque e segure um painel para renomeá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Переключайтесь между сохранёнными дашбордами Hermes. Каждый дашборд хранит на этом устройстве собственные данные входа и cookie. Нажмите и удерживайте дашборд, чтобы переименовать его."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kayıtlı Hermes panelleriniz arasında geçiş yapın. Her panel bu cihazda kendi girişini ve çerezlerini saklar. Yeniden adlandırmak için bir panele dokunup basılı tutun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在已保存的 Hermes 仪表板之间切换。每个仪表板在此设备上保留各自的登录状态和 Cookie。按住一个仪表板即可重命名。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在已儲存的 Hermes 儀表板之間切換。每個儀表板在此裝置上都有各自的登入資訊和 Cookie。按住一個儀表板即可重新命名。"
           }
         }
       }
