@@ -476,18 +476,22 @@ extension AppState {
     /// records it for the chat that asked (plugin 0.191.0+). Empty when
     /// none waits for `profile`.
     func liveAskedQuestionsInstructions(profile: String? = nil) -> String {
-        let bot = profile ?? conversationIdentityProfile
+        // The call's own profile, whose Hermes takes its requests and so the
+        // answer: it keeps through a switch of the screen's chat.
+        let bot = profile ?? voiceCallProfile
         return Self.askedQuestionsBlock(
             needsYou.items.filter { Self.profilesMatch($0.profile, bot) }.compactMap(\.asked)
         )
     }
 
     /// The same for a Watch call, which can start with no phone screen, so
-    /// the waits may never have been read (the list reads only on screen):
-    /// then it reads the profile's list once itself, briefly.
+    /// the list may be hours old or never read (it reads only on screen):
+    /// it reads the profile's list once itself, briefly, and falls back to
+    /// what was read before when that fails. A plugin whose capabilities
+    /// haven't loaded yet (a cold launch) is tried; one that reports no
+    /// list isn't.
     func liveAskedQuestionsInstructionsReading(profile: String) async -> String {
-        let known = needsYou.items.contains { Self.profilesMatch($0.profile, profile) }
-        guard !known, servesNeedsYou, let bridge = dashboardTicketBridge else {
+        guard notifierPlugin.mightSupport(NeedsYouStore.capability), let bridge = dashboardTicketBridge else {
             return liveAskedQuestionsInstructions(profile: profile)
         }
         let path = DashboardPath.withProfile(NeedsYouStore.path, profile: profile)
