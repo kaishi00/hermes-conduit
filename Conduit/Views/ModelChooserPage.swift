@@ -251,23 +251,32 @@ struct ModelChooserPage: View {
     private var currentCard: some View {
         let lines = currentLines
         return VStack(alignment: .leading, spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(AppLocalization.string("In use"))
-                    .scaledFont(.caption2.weight(.bold))
-                    .textCase(.uppercase)
-                    .foregroundStyle(Color.conduitAccent)
-                Text(verbatim: lines.title)
-                    .scaledFont(.headline)
-                    .foregroundStyle(.primary)
-                    .lineLimit(2)
-                if let detail = lines.detail {
-                    Text(verbatim: detail)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2)
+            HStack(alignment: .top, spacing: 12) {
+                // The provider's logo, as in the Model sheet's card (Eric 2026-11-20).
+                if pick != nil, let provider = pickedProvider {
+                    ProviderLogoView(provider: provider, size: 22)
+                        .frame(width: 36, height: 36)
+                        .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .accessibilityHidden(true)
                 }
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(AppLocalization.string("In use"))
+                        .scaledFont(.caption2.weight(.bold))
+                        .textCase(.uppercase)
+                        .foregroundStyle(Color.conduitAccent)
+                    Text(verbatim: lines.title)
+                        .scaledFont(.headline)
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                    if let detail = lines.detail {
+                        Text(verbatim: detail)
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                }
+                .accessibilityElement(children: .combine)
             }
-            .accessibilityElement(children: .combine)
             if let reasoning {
                 ReasoningEffortBars(
                     effort: reasoning.effort,
@@ -403,6 +412,7 @@ struct ModelChooserPage: View {
             title: match.model.label ?? match.model.id,
             detail: match.model.label == nil ? nil : match.model.id,
             providerTitle: note.map { match.provider.title + " · " + $0 } ?? match.provider.title,
+            logo: match.provider,
             isSelected: picked(match.provider, match.model)
         ) {
             onPick(match.provider, match.model)
@@ -502,7 +512,7 @@ struct ModelChooserPage: View {
 
     /// A choice. The page closes on a pick, except where it has reasoning
     /// to set after it.
-    private func row(title: String, detail: String? = nil, providerTitle: String? = nil, isSelected: Bool, select: @escaping () -> Void) -> some View {
+    private func row(title: String, detail: String? = nil, providerTitle: String? = nil, logo: ProviderInfo? = nil, isSelected: Bool, select: @escaping () -> Void) -> some View {
         Button {
             Haptics.selection()
             select()
@@ -510,7 +520,7 @@ struct ModelChooserPage: View {
         } label: {
             HStack {
                 if let providerTitle {
-                    ModelSearchResultText(title: title, detail: detail, provider: providerTitle)
+                    ModelSearchResultText(title: title, detail: detail, provider: providerTitle, logo: logo)
                 } else if let detail {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(verbatim: title)

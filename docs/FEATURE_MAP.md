@@ -5642,30 +5642,33 @@ Model page (done) · Edit's provider list on both (done: logo and display
 name; no quota, as it shows and hides rather than picks) · Models & providers' Providers section and Add a provider
 (done: the logo replaces the status symbol, a key that needs a look keeps an
 orange badge) · Settings > Usage (done: logo beside each quota; its full
-windows stay there) · search matches and Quick picks (not needed: the
-provider is a caption under a model) · a per-model rate limit (not needed
+windows stay there) · search matches and Quick picks (done, #PRNUM: the
+provider caption under a model leads with its logo) · the Model sheet's
+model card and a setting's Model page's top card (done, #PRNUM: the
+provider's logo in place of the cube) · a per-model rate limit (not needed
 on a provider row: it stays on Settings > Usage) · the Plan limits widget
 (done: it reads the same rows with the same ProviderQuota) · Watch, CarPlay, rooms and
 the notifier (not needed: none lists providers) · Text (done: README's
 Models & providers line)
 
-**Desktop app:** has it: provider logos on the model picker's groups, Settings > Providers and Usage's quota titles (`desktop/src/renderer/src/state/providerLogos.ts`, `desktop/src/renderer/src/components/ProviderLogo.tsx`, desktop#90), provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23).
+**Desktop app:** has it: provider logos on the model picker's groups, Settings > Providers and Usage's quota titles (`desktop/src/renderer/src/state/providerLogos.ts`, `desktop/src/renderer/src/components/ProviderLogo.tsx`, desktop#90), provider quota in Settings > Usage (`desktop/src/renderer/src/components/UsagePage.tsx`, desktop#23); gap: the model panel's and Model page's model card, Quick picks and matches name their provider without its logo, and their provider rows show no quota (the panel's rework is next).
 
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
 - Quota: `Shared/Usage/ProviderQuota.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary; in Shared/ for the Plan limits widget), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
-- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible keeps the quota, visibilityProviderCard), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
+- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard, currentModelSection), `Conduit/Views/ModelChooserPage.swift` (providerRow, currentCard), `Conduit/Views/ModelSearch.swift` (ModelSearchResultText's logo), `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible keeps the quota, visibilityProviderCard), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
 - Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled), `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
 
 **Rulings**
 - Logos are bundled from lobe-icons (MIT), never fetched: no request leaves the phone for them. A provider is matched by slug, then alias, then a whole word of its slug or name; one with none shows its initial (#2161).
 - A single-colour logo takes the text colour; a coloured one keeps its brand colours unless it has black parts, which vanish in Dark Mode (#2161).
 - A row's quota is its tightest account-wide window's share left (a model-scoped window only when there's no other), with that window's reset; a pool counts the usable account with the most left; an account limit, or every signed-in account limited, reads "Limited until …". Orange under a fifth left, red at none (#2161).
+- Every model named under its provider shows that provider's logo, not only the provider rows: the Model sheet's model card, Quick picks and search matches, and a Model page's top card, Quick picks and matches (Eric 2026-11-20, #PRNUM: the first screen showed a cube for every provider).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
+**Checked:** 2026-11-21, #PRNUM (logos on the first screen too: the model card, Quick picks and search matches, and the Model page's top card); 2026-11-20, #2892 (ProviderQuota moved to Shared/Usage for the Plan limits widget, which reads the same rows; no behavior change here); 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
