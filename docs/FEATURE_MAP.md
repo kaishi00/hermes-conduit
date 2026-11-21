@@ -1175,7 +1175,7 @@ describes it
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-05, #1773 (the project page shows it in its own profile's part; a folder's trailing backslash, a Windows host's, matches too); 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
+**Checked:** 2026-11-21, #3002 (newChatAwaitingListing moved into DashboardRuntime.swift with #2997); 2026-11-12, #2302 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2300 (map paths for code moved out of AppState.swift, issue 828); 2026-11-12, #2290 (the code it lists moved out of AppState.swift, issue 828); 2026-11-05, #1773 (the project page shows it in its own profile's part; a folder's trailing backslash, a Windows host's, matches too); 2026-11-02, #1631 (every create goes through createSession, which on the gateway's own listener sends `source: gui`, `reasoning` and `service_tier` and no `cols`; a folder's `cwd` is within its create fields, checked against the canary's session_policy; see Two Hermes servers); 2026-10-28, added at #1456.
 
 ## An empty new chat Hermes lost
 
