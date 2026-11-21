@@ -256,6 +256,27 @@ struct BotWorkItem: Identifiable, Equatable {
     }
 }
 
+/// How the user answers a question the bot asked them (work_propose): a
+/// yes or no, or one of its choices (plugin 0.189.0+).
+enum BotQuestionAnswer: Equatable {
+    case approve, decline
+    case choice(String)
+
+    /// The plugin's action for it, and its body.
+    var action: String {
+        switch self {
+        case .approve: return "approve"
+        case .decline: return "decline"
+        case .choice: return "answer"
+        }
+    }
+
+    var body: [String: Any] {
+        if case .choice(let choice) = self { return ["choice": choice] }
+        return [:]
+    }
+}
+
 /// What a Bot Chat did to keep its workstreams in step over the last day,
 /// as the plugin's ledger has it (plugin 0.155+): what its helper model
 /// flagged, what the Bot Chat sent on its own, and what it asked the user,
@@ -303,13 +324,26 @@ struct BotWorkCoordination: Equatable {
         let woke: Bool
         /// A send's state: "delivered", "waiting" or "not_arrived".
         let state: String
-        /// A proposal's: "open", "approved" or "declined", and the user's words.
+        /// A proposal's: "open", "approved", "declined" or "answered" (one of
+        /// its choices, or the user's words), and that answer.
         private(set) var status: String
-        let answer: String
+        private(set) var answer: String
         let why: [Line]
         /// An open question the user can answer on its card (plugin
-        /// 0.168.0+ takes Approve and Decline for it).
+        /// 0.168.0+ takes Approve and Decline for it; 0.189.0+ one of its
+        /// choices).
         private(set) var canAnswer: Bool
+        /// A question's options, the one the bot recommends, and whether it
+        /// goes ahead with that until the user answers (plugin 0.189.0+).
+        /// No choices: a yes or no.
+        let choices: [String]
+        let recommended: String
+        let goingAhead: Bool
+        /// The chat that asked when it isn't the Bot Chat (plugin 0.189.0+).
+        let chat: String
+        /// A clarify question with no choices kept after it ran out: the
+        /// user answers it in its chat, in their own words.
+        let answersInWords: Bool
 
         init?(row: [String: Any]) {
             guard let id = row["id"] as? String, !id.isEmpty,
@@ -330,7 +364,16 @@ struct BotWorkCoordination: Equatable {
             status = row["status"] as? String ?? ""
             answer = row["answer"] as? String ?? ""
             let actions = row["actions"] as? [String] ?? []
-            canAnswer = kind == .proposal && status == "open" && actions.contains("approve") && actions.contains("decline")
+            var seenChoices = Set<String>()
+            choices = (row["choices"] as? [String] ?? []).filter { !$0.isEmpty && seenChoices.insert($0).inserted }
+            let recommended = row["recommended"] as? String ?? ""
+            self.recommended = choices.contains(recommended) ? recommended : ""
+            goingAhead = row["going_ahead"] as? Bool ?? false
+            chat = row["chat"] as? String ?? ""
+            answersInWords = kind == .proposal && choices.isEmpty && actions.contains("answer")
+            canAnswer = kind == .proposal && status == "open" && (choices.isEmpty
+                ? actions.contains("approve") && actions.contains("decline")
+                : actions.contains("answer"))
             why = (row["why"] as? [[String: Any]] ?? []).enumerated().compactMap { index, line in
                 guard let text = line["text"] as? String, !text.isEmpty,
                       let at = (line["at"] as? NSNumber)?.doubleValue else { return nil }
@@ -340,12 +383,20 @@ struct BotWorkCoordination: Equatable {
         }
 
         /// The question as the user's tap answered it.
-        func answered(approved: Bool) -> Item {
+        func answered(_ given: BotQuestionAnswer) -> Item {
             var copy = self
-            copy.status = approved ? "approved" : "declined"
+            switch given {
+            case .approve: copy.status = "approved"
+            case .decline: copy.status = "declined"
+            case .choice(let choice):
+                copy.status = "answered"
+                copy.answer = choice
+            }
             copy.canAnswer = false
             return copy
         }
+
+        func answered(approved: Bool) -> Item { answered(approved ? .approve : .decline) }
 
         /// What happened, in a line.
         var headline: String {
@@ -375,7 +426,14 @@ struct BotWorkCoordination: Equatable {
                 switch status {
                 case "approved": return AppLocalization.string("You approved", table: .bots)
                 case "declined": return AppLocalization.string("You declined")
-                default: return AppLocalization.string("No answer yet", table: .bots)
+                case "answered": return AppLocalization.string("You picked “\(answer)”", table: .bots)
+                default:
+                    if goingAhead {
+                        return recommended.isEmpty
+                            ? AppLocalization.string("Going ahead unless you say no", table: .bots)
+                            : AppLocalization.string("Going ahead with “\(recommended)” unless you pick another", table: .bots)
+                    }
+                    return AppLocalization.string("No answer yet", table: .bots)
                 }
             }
         }
@@ -394,15 +452,22 @@ struct BotWorkCoordination: Equatable {
     let mode: String
     private(set) var items: [Item]
 
-    /// What the Bot Chat asked the user and still waits on, which they can
-    /// answer here, oldest first: the Work panel shows them above the work.
-    var openQuestions: [Item] { items.filter(\.canAnswer).sorted { $0.at < $1.at } }
+    /// What the bot asked the user and still waits on, oldest first: the
+    /// Work panel shows them above the work, each answered on its card, or,
+    /// one to answer in words, in its chat.
+    var openQuestions: [Item] {
+        items.filter { $0.canAnswer || ($0.answersInWords && $0.status == "open") }.sorted { $0.at < $1.at }
+    }
 
     /// The list with one question as the user's tap answered it.
-    func answering(_ id: String, approved: Bool) -> BotWorkCoordination {
+    func answering(_ id: String, with given: BotQuestionAnswer) -> BotWorkCoordination {
         var copy = self
-        copy.items = items.map { $0.id == id ? $0.answered(approved: approved) : $0 }
+        copy.items = items.map { $0.id == id ? $0.answered(given) : $0 }
         return copy
+    }
+
+    func answering(_ id: String, approved: Bool) -> BotWorkCoordination {
+        answering(id, with: approved ? .approve : .decline)
     }
 
     init?(_ response: [String: Any]?) {
@@ -490,9 +555,13 @@ struct BotWorkSnapshot: Equatable {
     /// The list with a question as the user's tap answered it: it stops
     /// waiting on them at once, as the plugin counts it.
     func answering(_ id: String, approved: Bool) -> BotWorkSnapshot {
+        answering(id, with: approved ? .approve : .decline)
+    }
+
+    func answering(_ id: String, with given: BotQuestionAnswer) -> BotWorkSnapshot {
         guard let coordination, coordination.items.contains(where: { $0.id == id && $0.canAnswer }) else { return self }
         var copy = self
-        copy.coordination = coordination.answering(id, approved: approved)
+        copy.coordination = coordination.answering(id, with: given)
         if questionCount > 0 {
             copy.questionCount = questionCount - 1
             copy.needsYouCount = max(0, needsYouCount - 1)
@@ -677,10 +746,17 @@ final class BotWorkstreamsClient {
     /// Bot Chat, which goes ahead.
     @MainActor
     func answer(question id: String, approved: Bool) async throws {
+        try await answer(question: id, with: approved ? .approve : .decline)
+    }
+
+    /// The same with one of the question's choices (plugin 0.189.0+): the
+    /// plugin tells the chat that asked, the Bot Chat or another.
+    @MainActor
+    func answer(question id: String, with given: BotQuestionAnswer) async throws {
         guard let encoded = DashboardPath.encodedQueryComponent(id) else { throw Failure.malformed }
-        let path = DashboardPath.withProfile("\(Self.path)/\(encoded)/\(approved ? "approve" : "decline")",
+        let path = DashboardPath.withProfile("\(Self.path)/\(encoded)/\(given.action)",
                                              profile: profile, parameter: parameter)
-        let response = try await request(path, "POST", [:])
+        let response = try await request(path, "POST", given.body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
     }
 }
