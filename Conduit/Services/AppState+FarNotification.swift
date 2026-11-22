@@ -123,7 +123,8 @@ extension AppState {
     /// its kept read lists for that profile. False when the launch goes on
     /// as before (through a switch): not a chat's resume, the dashboard on
     /// screen's, not kept connected, its bots not read yet, not listed, its
-    /// Pulse chat, or a Bot Chat.
+    /// Pulse chat, or a Bot Chat (startFarChatOpen's isFarBotChat). An open
+    /// that fails later shows the launch's error.
     func openWidgetChatInPlace(_ link: WidgetLaunchLink) -> Bool {
         guard link.action == .resume, let workspace = link.workspace,
               let reference = link.reference, reference.kind == .dashboard,
@@ -138,6 +139,16 @@ extension AppState {
               // Its Pulse chat opens through a switch, on the Pulse screen.
               Set(SessionContentSearch.identities(of: session))
                   .isDisjoint(with: farPulseHomes(in: workspace.dashboardID)) else { return false }
-        return openFarChatInPlace(session, in: workspace.dashboardID)
+        // An open that fails says so, as the switch's launch does: the chat
+        // gone there since its list was read, or its connection lost.
+        let unavailable = AppLocalization.string("WidgetLaunch.ConversationUnavailable")
+        let open = startFarChatOpen(session, in: workspace.dashboardID, onFailure: { [weak self] sessionWasNotFound in
+            guard let self else { return }
+            self.errorMessage = Self.linkedSessionFailureMessage(
+                current: self.errorMessage, sessionWasNotFound: sessionWasNotFound, unavailable: unavailable
+            )
+        })
+        if open != nil { errorMessage = nil }
+        return open != nil
     }
 }
