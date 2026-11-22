@@ -263,7 +263,7 @@ struct V2PulsePage: View {
                 await appState.readOtherCombinedDashboardsPulse()
                 // Another's feed shown here: the one on screen's chip and the
                 // tab's dot keep up from its own read meanwhile.
-                if appState.pulseRuntime != nil, !appState.pulseFeedIsFresh(within: 50) {
+                if appState.pulseRuntime != nil, !appState.pulseFeedIsFresh(within: AppState.combinedDashboardPulseMaxAge) {
                     await appState.refreshPulseFeed()
                 }
                 try? await Task.sleep(for: .seconds(60))
@@ -1836,7 +1836,8 @@ struct V2PulsePage: View {
                 appState.readingPulseRuntime { appState.pulseUnseen = 0 }
             }
         } catch {
-            guard appState.pulseDashboardID == dashboard else { return }
+            // Cancelled for a load that follows (the plugin answered): that one says how it went.
+            guard appState.pulseDashboardID == dashboard, !(Task.isCancelled && UserFacingError.isCancellation(error)) else { return }
             if page == nil { loadError = PulseRefusal.message(for: error) }
         }
     }
