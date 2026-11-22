@@ -360,6 +360,7 @@ extension AppState {
                 return
             }
             await actAcrossAwaits(onRuntime: runtime) { await openCombinedRoomTile(tile) }
+            closeFarRoomIfLetGo(runtime, tile.dashboardID)
             return
         }
         guard !refusesCombinedSwitchDuringCall() else { return }
@@ -384,6 +385,16 @@ extension AppState {
     func keptRuntimeOpeningRoomsInPlace(_ id: UUID) -> DashboardRuntime? {
         guard let runtime = runtime(for: id), runtime !== runtimeOnScreen, runtime.isConnected else { return nil }
         return runtime
+    }
+
+    /// A far room that opened as its dashboard's kept connection went:
+    /// nothing is left to act on it, so it closes and says so, as the drop
+    /// closes one already open.
+    func closeFarRoomIfLetGo(_ runtime: DashboardRuntime, _ id: UUID) {
+        guard keptRuntimeOpeningRoomsInPlace(id) !== runtime, activeRoomSurface?.dashboardID == id,
+              id != dashboardIDOnScreen else { return }
+        closeRoomSurface(clearingRoomError: false)
+        errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
     }
 
     /// Reads what a kept dashboard's rooms need on its own runtime, once

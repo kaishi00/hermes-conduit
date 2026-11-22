@@ -135,6 +135,9 @@ struct BotRosterView: View {
         // A new bot or name is a new try: the last one's error goes.
         .onChange(of: newRoom.names) { _, _ in newRoomError = nil }
         .onChange(of: newRoom.name) { _, _ in newRoomError = nil }
+        // Its rooms' tiles draw their own dashboard's bots, a far room
+        // open in place or not.
+        .environment(\.readsOpenRoomRuntime, false)
         .sheet(isPresented: $showingReorder) {
             BotReorderSheet()
                 .environmentObject(appState)

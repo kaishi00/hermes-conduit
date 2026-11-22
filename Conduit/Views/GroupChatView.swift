@@ -91,6 +91,8 @@ struct GroupChatView: View {
         .environment(\.groupMemberTints, appState.readingRoomRuntime { appState.groupMemberTints(members) })
         // Other people's agents and the people, as their own Conduits draw them.
         .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
+        // Its members' avatars read its own dashboard's bots.
+        .environment(\.readsOpenRoomRuntime, true)
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
         // Hermes (#1522). A member's MEDIA: files read through its own
@@ -113,6 +115,7 @@ struct GroupChatView: View {
         // never show.
         .sheet(isPresented: $showingInfo) {
             GroupRoomInfoSheet()
+                .environment(\.readsOpenRoomRuntime, true)
                 .environmentObject(appState)
         }
         .sheet(isPresented: $showingSettings) {
@@ -217,7 +220,7 @@ struct GroupChatView: View {
         imageGallery.update {
             GroupRoomImageGallery.items(in: galleryEvents, files: roomPictures) { event in
                 GroupRoomTurns.localProfile(of: GroupRoomTurns.speaker(of: event, members: roster))
-                    .map { galleryAppState.gatewayMediaResolver(for: $0) }
+                    .map { galleryAppState.roomGatewayMediaResolver(for: $0) }
             }
         }
         return GeometryReader { proxy in
@@ -1574,6 +1577,20 @@ struct GroupRespondingRow: View {
     }
 }
 
+private struct ReadsOpenRoomRuntimeKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    /// Whether a member's avatar reads the open group chat's dashboard's
+    /// bots (a far room open in place); off on Bots Home, whose tiles are
+    /// their own dashboard's.
+    var readsOpenRoomRuntime: Bool {
+        get { self[ReadsOpenRoomRuntimeKey.self] }
+        set { self[ReadsOpenRoomRuntimeKey.self] = newValue }
+    }
+}
+
 /// A room member's picture: the bot's own (its profile's avatar), else its
 /// starter face. Another person's member wears the look their Conduit sent.
 struct GroupMemberAvatar: View {
@@ -1584,12 +1601,20 @@ struct GroupMemberAvatar: View {
     /// A person's look, for a bubble that isn't a member's.
     var look: RoomLook? = nil
     @Environment(\.groupRoomLooks) private var roomLooks
+    /// Off outside the room's screen (Bots Home's tiles): a far room open
+    /// in place doesn't lend them its bots.
+    @Environment(\.readsOpenRoomRuntime) private var readsOpenRoom
+
+    /// The open room's dashboard's, where this avatar is the room's.
+    private func reading<T>(_ body: () -> T) -> T {
+        readsOpenRoom ? appState.readingRoomRuntime(body) : body()
+    }
 
     /// The roster bot this member is. A person's bubble, which comes with
     /// their look, is never matched to one of your bots by name.
     private var bot: BotProfile? {
         if member == nil, look != nil { return nil }
-        return appState.readingRoomRuntime { appState.groupMemberBot(member, name: name) }
+        return reading { appState.groupMemberBot(member, name: name) }
     }
 
     var body: some View {
@@ -1598,14 +1623,18 @@ struct GroupMemberAvatar: View {
                 name: bot.name,
                 label: bot.displayLabel,
                 colorString: bot.shownColor,
-                image: appState.readingRoomRuntime { appState.botAvatarImage(for: bot) },
+                image: reading { appState.botAvatarImage(for: bot) },
                 size: size,
                 face: bot.faceLook
             )
             // Connecting fetches again: a kept bot's fetch fails offline. A
             // far room's bots are fetched from their own dashboard.
-            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.readingRoomRuntime { appState.botAvatarGeneration })|\(appState.readingRoomRuntime { appState.isConnected })") {
-                await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
+            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(reading { appState.botAvatarGeneration })|\(reading { appState.isConnected })") {
+                if readsOpenRoom {
+                    await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
+                } else {
+                    await appState.loadBotAvatarRetrying(bot)
+                }
             }
             .accessibilityHidden(true)
         } else {
@@ -2467,7 +2496,9 @@ struct GroupRouterModelRow: View {
         // row, and the saved notice can bring it back (a Group that shows
         // nothing runs no onAppear or onReceive).
         ModifierHost {
-            if let slot {
+            // Another dashboard's room open in place: its router is that
+            // Hermes', which this row's reads and saves don't reach yet.
+            if let slot, appState.farRoomRuntime == nil {
                 // The section's own spacing between the row and its caption.
                 VStack(alignment: .leading, spacing: 14) {
                     NavigationLink {

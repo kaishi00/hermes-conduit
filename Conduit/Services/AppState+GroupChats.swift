@@ -1702,7 +1702,12 @@ extension AppState {
             return message
         }
         guard self.client === client else { return nil }
-        if activeRoomSurface?.copy == nil, activeRoomSurface?.room.roomID == roomID { closeGoneRoomSurface() }
+        // Only this dashboard's room of that id: another dashboard's can be
+        // open in place under it (the scope names the room's dashboard).
+        if activeRoomSurface?.copy == nil, activeRoomSurface?.room.roomID == roomID,
+           activeRoomSurface?.dashboardID == activeDashboardID {
+            closeGoneRoomSurface()
+        }
         await refreshGroupRooms()
         return nil
     }

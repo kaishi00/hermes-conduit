@@ -85,7 +85,9 @@ extension AppState {
             // the shared wait that makes the two one Hermes.
             func sameHermes() -> Bool {
                 let hermes = combinedHermesGroups
-                return hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
+                // The open room's dashboard: another one's, open in place, or this one.
+                let open = activeRoomSurface?.dashboardID ?? activeDashboardID
+                return hermes[open] != nil && hermes[open] == hermes[id]
             }
             for profile in profiles {
                 guard isSceneActive else { return }
@@ -427,6 +429,7 @@ extension AppState {
                 // A chat or room opened since the tap owns the screen.
                 guard self.chatViewportTransitionGeneration == viewport, self.groupRoomEpoch == roomEpoch else { return }
                 let outcome = await self.actAcrossAwaits(onRuntime: runtime) { await self.openNotificationRoom(roomID) }
+                self.closeFarRoomIfLetGo(runtime, dashboardID)
                 guard outcome == .retry, self.chatViewportTransitionGeneration == viewport,
                       self.groupRoomEpoch == roomEpoch else { return }
                 self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
