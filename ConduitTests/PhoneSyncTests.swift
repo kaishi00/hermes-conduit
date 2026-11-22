@@ -429,11 +429,27 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.batches.count, 5)
 
+        // Turned off, but the answer is lost: the host may have it, so
+        // turning it back on still goes, with nothing else new.
+        shared.otherProfiles = false
+        relaunched.savePreferences(shared)
+        host.loseAnswers = true
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 6)
+        host.loseAnswers = false
+        shared.otherProfiles = true
+        relaunched.savePreferences(shared)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 7)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["other_profiles"] as? Bool, true)
+
         // An older plugin's status doesn't say what's waiting: every pass posts.
         host.reportsPending = false
         now += 60
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(host.batches.count, 6)
+        XCTAssertEqual(host.batches.count, 8)
     }
 
     func testPhoneChangesAskUnlessTheUserChoseAddWithoutAsking() async throws {
@@ -2235,6 +2251,8 @@ private final class FakePhoneHost {
     private var ingestsSinceFail = 0
     /// Thrown by every upload while set, as the notifier's refusals are.
     var ingestError: Error?
+    /// Uploads kept, but their answer never reaches the phone.
+    var loseAnswers = false
 
     func forgetKey() {
         keys = nil
@@ -2314,6 +2332,7 @@ private final class FakePhoneHost {
                 throw DashboardTicketBridgeError.http(status: 413, detail: "At most 5000 items per batch")
             }
             batches.append(batch)
+            if loseAnswers { throw URLError(.networkConnectionLost) }
             // phone_store: a picture the host waits for is taken.
             let files = (batch["photo_files"] as? [[String: Any]] ?? []).compactMap { $0["change_id"] as? String }
             return ["ok": true, "pending": changes.count, "photos_sent": files]

@@ -462,7 +462,11 @@ final class HealthSyncEngine: ObservableObject {
     /// about to go: until it's answered, whether the host took it is
     /// unknown, so a lost answer can't leave a later change unsent.
     fileprivate func noteSending(otherProfiles: Bool) {
-        if state.sentOtherProfiles != otherProfiles { state.sentOtherProfiles = nil }
+        guard state.sentOtherProfiles != otherProfiles, state.sentOtherProfiles != nil else { return }
+        state.sentOtherProfiles = nil
+        // Saved before the upload goes, so an app closed while it waits
+        // still finds the choice unknown on its next launch.
+        store.save(state)
     }
 
     fileprivate func notePosted(otherProfiles: Bool) {

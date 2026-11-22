@@ -730,6 +730,13 @@ final class PhoneSyncEngine: ObservableObject {
             // sends the whole pass again (a full one starting over).
             let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
                                                      maxBytes: PhoneSyncLimits.batchBytes)
+            // A new frame (what's shared, the time zone) may reach the host
+            // even if its answer doesn't: until one is answered, what the
+            // host has is unknown, so turning a choice back still sends.
+            if frame != state.frameHash, state.frameHash != nil {
+                state.frameHash = nil
+                persist()
+            }
             for var part in parts {
                 // Photos turned off (or its access taken away) while this
                 // pass got ready or sent an earlier part: what's left goes
