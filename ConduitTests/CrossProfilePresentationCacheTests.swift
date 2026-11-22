@@ -723,6 +723,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(kept.isConnected)
         XCTAssertTrue(appState.runtime(for: vps.id) === appState.runtimeOnScreen, "the one on screen's own")
         XCTAssertFalse(appState.runtime(for: mac.id) === appState.runtimeOnScreen)
+        XCTAssertNil(appState.runtime(for: UUID()), "none for a dashboard not kept")
+        XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
         // Acting on it reads and writes its own, and leaves the screen's.
         appState.act(onRuntime: kept) {
             XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])

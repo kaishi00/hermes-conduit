@@ -15,6 +15,7 @@ import Foundation
 /// on screen. Its events go to its own lists (`handleKeptDashboardEvent`),
 /// never the dashboard showing; the sync on taking it up brings its chat
 /// current.
+@MainActor
 struct KeptDashboardRuntime {
     let client: HermesClient
     let bridge: DashboardTicketBridge
@@ -96,9 +97,10 @@ extension AppState {
 
     /// A live dashboard's runtime: the one on screen's, or a kept one's,
     /// which the surfaces that act on another dashboard read and act on
-    /// (no-switch stage 2). Nil for one that isn't connected here.
+    /// (no-switch stage 2). Nil for one that isn't connected here, or none.
     func runtime(for dashboardID: UUID?) -> DashboardRuntime? {
-        guard let dashboardID, dashboardID != activeDashboardID else { return runtimeOnScreen }
+        guard let dashboardID else { return nil }
+        guard dashboardID != activeDashboardID else { return runtimeOnScreen }
         return keptDashboardRuntimes[dashboardID]?.runtime
     }
 
