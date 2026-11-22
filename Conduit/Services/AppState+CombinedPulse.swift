@@ -30,6 +30,8 @@ struct PulseDashboardChip: Identifiable, Equatable {
     let unseen: Int
     /// The page shows its Pulse.
     let isShown: Bool
+    /// Its kept connection dropped: a tap switches there and signs in.
+    var switches = false
     var id: UUID { dashboardID }
 }
 
@@ -90,7 +92,10 @@ extension AppState {
                shown == dashboard.id || applied.at > pulse.at {
                 unseen = runtime.pulseUnseen
             }
-            return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id)
+            return PulseDashboardChip(
+                dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id,
+                switches: runtime(for: dashboard.id) == nil
+            )
         }
         return chips.count > 1 ? chips : []
     }
@@ -129,8 +134,9 @@ extension AppState {
 
     /// Shows another combined dashboard's Pulse in place: the page reads
     /// and acts on its feed through its kept connection, with no switch, so
-    /// no call ends either. Its own chip, or one not connected here, goes
-    /// back to the one on screen's (one let go shows the screen's anyway).
+    /// no call ends either. Its own chip goes back to the one on screen's;
+    /// one whose kept connection dropped switches there, signs in and opens
+    /// its Pulse (refused during a call).
     func openCombinedPulse(_ dashboardID: UUID) {
         let other = dashboardID != dashboardIDOnScreen
         // A chip whose kept connection dropped (its list stays, below) signs

@@ -2892,6 +2892,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         XCTAssertTrue(appState.pulseRuntime === kept.runtime)
         XCTAssertEqual(appState.pulseDashboardChips.map(\.isShown), [true, false])
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.switches), [false, false], "a kept chip shows in place")
         XCTAssertEqual(appState.shownPulseClient.dashboardID, mac.id, "its requests go to its own dashboard")
         XCTAssertTrue(appState.pulseExplainsLearning, "what its plugin serves")
         appState.readingPulseRuntime { appState.pulseUnseen = 0 }
