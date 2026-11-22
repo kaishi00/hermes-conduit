@@ -218,8 +218,8 @@ extension AppState {
             }
             // Its connection dropped: its own row as it opened, if any.
             if farChat != nil, case .unreachable = chatRuntimeRoute {
-                let kept = farChatRowOnScreen(sessionID)
-                return (Set([sessionID]).union(kept?.nestingIDs ?? []), kept?.durableKey ?? sessionID, false)
+                let chat = unreachableFarChatIdentity(sessionID)
+                return (chat.ids, chat.durableID, false)
             }
             return (liveChatSessionIDs(), durableComposerSessionID(for: sessionID), false)
         }
@@ -623,12 +623,14 @@ extension AppState {
         return ids
     }
 
-    /// The far chat's row as it opened, while `sessionID` is still how it's
-    /// open: recorded under its own dashboard and profile.
-    private func farChatRowOnScreen(_ sessionID: String) -> SessionSummary? {
+    /// A far chat whose connection dropped, open as `openID`: every id it
+    /// answers to and the one its draft is kept under, from its row as it
+    /// opened (recorded under its own dashboard and profile), else its open
+    /// id alone. A waiting message records and is matched by this one rule.
+    private func unreachableFarChatIdentity(_ openID: String) -> (ids: Set<String>, durableID: String) {
         guard let farChat, let kept = rowOfChatOnScreen, kept.dashboardID == farChat.dashboardID,
-              kept.profile == farChat.profile, kept.openIDs.contains(sessionID) else { return nil }
-        return kept.row
+              kept.profile == farChat.profile, kept.openIDs.contains(openID) else { return ([openID], openID) }
+        return (Set(kept.row.nestingIDs).union([openID]), kept.row.durableKey)
     }
 
     /// A current catalog claim wins over historical scroll aliases: a
@@ -642,8 +644,7 @@ extension AppState {
         // Its connection dropped: never the dashboard on screen's rows,
         // only the far chat's own row as it opened, else its open id.
         if farChat != nil, case .unreachable = chatRuntimeRoute {
-            guard let kept = farChatRowOnScreen(activeSessionId) else { return sessionID == activeSessionId }
-            return kept.nestingIDs.contains(sessionID) || kept.durableKey == sessionID
+            return unreachableFarChatIdentity(activeSessionId).ids.contains(sessionID)
         }
         // The chat on screen's row: the one recorded as it opened, else the
         // row owning its id (own or stored id first, else a single
