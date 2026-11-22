@@ -24,6 +24,15 @@ import UIKit
 /// Only the dashboard's own state moves here. What reacts to a change on
 /// screen (the widget launch, the composer's pending send, the Watch's
 /// shared context) stays in AppState's forwarding setters.
+/// The runtime async work acts on across its awaits
+/// (`AppState.actAcrossAwaits(onRuntime:_:)`), and its dashboard. Task-local, so
+/// other work on the main actor meanwhile keeps the one on screen, and a
+/// Task made inside carries it on.
+enum RuntimeScope {
+    @TaskLocal static var runtime: DashboardRuntime?
+    @TaskLocal static var dashboardID: UUID?
+}
+
 @MainActor
 final class DashboardRuntime: ObservableObject {
 
