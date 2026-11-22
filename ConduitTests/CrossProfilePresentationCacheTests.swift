@@ -2788,15 +2788,21 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertTrue(appState.pulseDashboardChips.allSatisfy { $0.dashboardID != mac.id || $0.isShown },
                       "on screen, its chip is the page's own")
+    }
 
-        // One let go while shown: the page goes back to the one on screen's,
-        // so a runtime kept for it anew doesn't take the page over.
-        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "the one switched from is kept")
-        appState.openCombinedPulse(vps.id)
-        XCTAssertEqual(appState.pulseDashboardID, vps.id)
-        appState.dropKeptDashboardRuntime(vps.id)
-        XCTAssertNil(appState.pulseShownDashboardID)
+    /// A dashboard let go while its Pulse shows in place: the page goes back
+    /// to the one on screen's, so a runtime kept for it anew doesn't take
+    /// the page over.
+    func testAPulseShownInPlaceGoesBackToTheScreensWhenItsDashboardIsLetGo() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        appState.openCombinedPulse(mac.id)
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertNil(appState.pulseShownDashboardID)
+        XCTAssertEqual(appState.pulseDashboardID, vps.id)
     }
 
     /// A notification from a combined dashboard kept beside the one on
