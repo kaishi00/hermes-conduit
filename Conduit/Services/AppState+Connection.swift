@@ -120,8 +120,17 @@ extension AppState {
         return resolver
     }
 
-    /// The dashboard a connection currently belongs to (the selected target).
-    var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
+    /// The dashboard the app acts on: the one in scope while another
+    /// dashboard's work runs on its own runtime (`act(onRuntime:)`), so a
+    /// fence or key read there is that dashboard's; else the one on screen.
+    var activeDashboardID: UUID? {
+        if runtimeInScope != nil { return dashboardIDInScope }
+        if RuntimeScope.runtime != nil { return RuntimeScope.dashboardID }
+        return savedDashboardRegistry.activeDashboardID
+    }
+
+    /// The dashboard on screen (the selected target), whatever runs in scope.
+    var dashboardIDOnScreen: UUID? { savedDashboardRegistry.activeDashboardID }
 
     // MARK: - Connection management
 
@@ -422,13 +431,17 @@ extension AppState {
         }
     }
 
-    func connect(with conn: HermesConnection, profile: String = "default", reusing keptClient: HermesClient? = nil) async {
+    func connect(
+        with conn: HermesConnection, profile: String = "default", reusing keptClient: HermesClient? = nil,
+        showingKept keptLists: DashboardRuntime? = nil
+    ) async {
         await connect(
             with: conn,
             profile: profile,
             syncPurpose: .automaticReturn,
             cancelsResumeRestoration: true,
-            reusing: keptClient
+            reusing: keptClient,
+            showingKept: keptLists
         )
     }
 
@@ -440,7 +453,8 @@ extension AppState {
         automaticWorkToken existingAutomaticWorkToken: ChatResumeAutomaticWorkToken? = nil,
         automaticReconnectOperationID: UUID? = nil,
         isRenewal: Bool = false,
-        reusing keptClient: HermesClient? = nil
+        reusing keptClient: HermesClient? = nil,
+        showingKept keptLists: DashboardRuntime? = nil
     ) async {
         // A kept client this connect stops before taking up closes, rather
         // than staying open with nothing holding it.
@@ -581,6 +595,9 @@ extension AppState {
             followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
+            // A kept dashboard's lists as it left them, until the sync below
+            // reads them anew.
+            if let keptLists { showKeptLists(of: keptLists) }
             // A fresh healthy session never inherits an older banner error;
             // a failed send's reason stays until the next send or its chat.
             if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }

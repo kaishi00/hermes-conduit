@@ -36,14 +36,21 @@ final class AppState: ObservableObject {
     /// (`runtimeOnScreenChanges`).
     @Published private(set) var runtimeOnScreen = DashboardRuntime()
     /// The runtime the app acts on: the one on screen, except while another
-    /// dashboard's answer or event applies to its own (`act(onRuntime:)`).
-    var shownRuntime: DashboardRuntime { runtimeInScope ?? runtimeOnScreen }
-    /// Another dashboard's runtime while its answer or event applies.
+    /// dashboard's answer or event applies to its own (`act(onRuntime:)`,
+    /// or `actAcrossAwaits(onRuntime:)`).
+    var shownRuntime: DashboardRuntime { runtimeInScope ?? RuntimeScope.runtime ?? runtimeOnScreen }
+    /// Another dashboard's runtime while its answer or event applies
+    /// synchronously; `RuntimeScope.runtime` holds one across awaits.
     var runtimeInScope: DashboardRuntime?
+    /// The dashboard of `runtimeInScope`.
+    var dashboardIDInScope: UUID?
     /// Whether the app acts on the dashboard on screen: what reacts on
     /// screen (the forwarders' side effects) runs only then.
-    var actingOnRuntimeOnScreen: Bool { runtimeInScope == nil || runtimeInScope === runtimeOnScreen }
+    var actingOnRuntimeOnScreen: Bool { shownRuntime === runtimeOnScreen }
     var runtimeOnScreenChanges: AnyCancellable?
+    /// Other dashboards' runtimes a surface shows (a far group chat), whose
+    /// changes publish as AppState's while it does, keyed by the surface.
+    var surfaceRuntimeChanges: [String: (runtime: ObjectIdentifier, changes: AnyCancellable)] = [:]
 
     var connection: HermesConnection? {
         get { shownRuntime.connection }
@@ -112,36 +119,83 @@ final class AppState: ObservableObject {
     var isConnectingValues: AnyPublisher<Bool, Never> {
         $runtimeOnScreen.map { $0.$isConnecting }.switchToLatest().eraseToAnyPublisher()
     }
+    /// The profile on screen as it changes (as `$activeProfile` did).
+    var activeProfileValues: AnyPublisher<String, Never> {
+        $runtimeOnScreen.map { $0.$activeProfile }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's Chats list rows as they change.
+    var sessionsValues: AnyPublisher<[SessionSummary], Never> {
+        $runtimeOnScreen.map { $0.$sessions }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's roster as it changes.
+    var botRosterValues: AnyPublisher<[BotProfile], Never> {
+        $runtimeOnScreen.map { $0.$botRoster }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// Which chat is the dashboard on screen's Pulse home, as it changes.
+    var pulseHomeChatIDValues: AnyPublisher<String?, Never> {
+        $runtimeOnScreen.map { $0.$pulseHomeChatID }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The dashboard on screen's Bots phase as it changes.
+    var botModePhaseValues: AnyPublisher<BotModePhase, Never> {
+        $runtimeOnScreen.map { $0.$botModePhase }.switchToLatest().eraseToAnyPublisher()
+    }
     /// A failed sign-in refresh or ticket kept quiet during those retries,
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
-    var quietReconnectFailure: Error?
+    var quietReconnectFailure: Error? {
+        get { shownRuntime.quietReconnectFailure }
+        set { shownRuntime.quietReconnectFailure = newValue }
+    }
     /// Renewals that have failed quietly since the last one worked. Counted
     /// apart from the backoff's attempts, which a network change resets, so
     /// a link that keeps changing still surfaces the failure.
-    var quietRenewalFailures = 0
+    var quietRenewalFailures: Int {
+        get { shownRuntime.quietRenewalFailures }
+        set { shownRuntime.quietRenewalFailures = newValue }
+    }
     /// Moves on at a Sign Out of the dashboard location sharing is bound
     /// to, so a host pass read before it isn't saved after it (issue 2482).
     var locationHostPassGeneration = 0
     /// A Reconnect someone asked for (the button, Settings, a gateway
     /// restart) shows its failure at once, as before #1624: it is an
     /// answer they are waiting for, not a resume.
-    var surfacesRenewalFailureAtOnce = false
+    var surfacesRenewalFailureAtOnce: Bool {
+        get { shownRuntime.surfacesRenewalFailureAtOnce }
+        set { shownRuntime.surfacesRenewalFailureAtOnce = newValue }
+    }
     /// The device has a usable network path (the app's one path monitor).
     @Published var networkPathUsable = true
-    @Published var profiles: [String] = []
+    var profiles: [String] {
+        get { shownRuntime.profiles }
+        set { shownRuntime.profiles = newValue }
+    }
     /// The Chats list's All view, per dashboard (`AllProfilesChatsSettings`).
-    @Published var allProfilesChatsSettings = AllProfilesChatsSettings()
+    var allProfilesChatsSettings: AllProfilesChatsSettings {
+        get { shownRuntime.allProfilesChatsSettings }
+        set { shownRuntime.allProfilesChatsSettings = newValue }
+    }
     /// Every profile's chats for All, read in one request.
-    @Published var allProfilesCatalog = AllProfilesCatalog()
-    var allProfilesCatalogTask: Task<Void, Never>?
+    var allProfilesCatalog: AllProfilesCatalog {
+        get { shownRuntime.allProfilesCatalog }
+        set { shownRuntime.allProfilesCatalog = newValue }
+    }
+    var allProfilesCatalogTask: Task<Void, Never>? {
+        get { shownRuntime.allProfilesCatalogTask }
+        set { shownRuntime.allProfilesCatalogTask = newValue }
+    }
     /// Which read `allProfilesCatalogTask` is, so only it clears the handle.
-    var allProfilesCatalogRead: UUID?
+    var allProfilesCatalogRead: UUID? {
+        get { shownRuntime.allProfilesCatalogRead }
+        set { shownRuntime.allProfilesCatalogRead = newValue }
+    }
     @Published var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
 
     var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
     /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
-    var cachedRoomFilesResolver: GatewayMediaDataURLResolver?
+    var cachedRoomFilesResolver: GatewayMediaDataURLResolver? {
+        get { shownRuntime.cachedRoomFilesResolver }
+        set { shownRuntime.cachedRoomFilesResolver = newValue }
+    }
 
     /// The open chat's pictures, which a tapped one pages through in the
     /// viewer: the saved copy's while it stands in for the chat. One
@@ -157,8 +211,16 @@ final class AppState: ObservableObject {
     /// (its Artifacts in All).
     var keptGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
-    @Published var activeProfile: String = "default" {
-        didSet {
+    /// The profile the dashboard acted on is on: the one on screen's, or,
+    /// while another dashboard's work runs in its scope (`act(onRuntime:)`),
+    /// that dashboard's own (`DashboardRuntime.activeProfile`). What reacts
+    /// to a change on screen runs only for the one on screen.
+    var activeProfile: String {
+        get { shownRuntime.activeProfile }
+        set {
+            let oldValue = shownRuntime.activeProfile
+            shownRuntime.activeProfile = newValue
+            guard actingOnRuntimeOnScreen else { return }
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 // Its own saved voice jobs, if no boundary already took them.
@@ -214,8 +276,11 @@ final class AppState: ObservableObject {
     /// Each profile's `display_name` set in Hermes, when it has one (#1046):
     /// "Coding Assistant" for `coding-agent`. Names only; routing keeps the
     /// profile id.
-    @Published var profileHermesNames: [String: String] = [:] {
-        didSet {
+    var profileHermesNames: [String: String] {
+        get { shownRuntime.profileHermesNames }
+        set {
+            shownRuntime.profileHermesNames = newValue
+            guard actingOnRuntimeOnScreen else { return }
             persistSiriProfileNames()
             stampMainBotConduitName()
         }
@@ -223,8 +288,11 @@ final class AppState: ObservableObject {
     /// Each profile's bot title (`ui_meta['hermes-bots'].title`), the name
     /// Edit Bot, the Profiles sheet and Hermes Desktop rename it with. It
     /// wins over `display_name`, as on Desktop and in the bot's pushes.
-    @Published var profileBotTitles: [String: String] = [:] {
-        didSet {
+    var profileBotTitles: [String: String] {
+        get { shownRuntime.profileBotTitles }
+        set {
+            shownRuntime.profileBotTitles = newValue
+            guard actingOnRuntimeOnScreen else { return }
             persistSiriProfileNames()
             stampMainBotConduitName()
         }
@@ -236,17 +304,34 @@ final class AppState: ObservableObject {
     }
     /// Backdrop glow colors picked in the profile picker (`#rrggbb`), for
     /// the selected dashboard.
-    @Published var profileGlowPicks: [String: String] = [:]
+    var profileGlowPicks: [String: String] {
+        get { shownRuntime.profileGlowPicks }
+        set { shownRuntime.profileGlowPicks = newValue }
+    }
     /// Names given in the profile picker to profiles a gateway without bot
     /// looks can't name, for the selected dashboard.
-    @Published var profileDeviceNames: [String: String] = [:] {
-        didSet { persistSiriProfileNames() }
+    var profileDeviceNames: [String: String] {
+        get { shownRuntime.profileDeviceNames }
+        set {
+            shownRuntime.profileDeviceNames = newValue
+            guard actingOnRuntimeOnScreen else { return }
+            persistSiriProfileNames()
+        }
     }
-    var profileAvatarRevision = 0
-    var profileGlowCache: (key: ProfileGlowCacheKey, colors: [String: ProfileGlowRGB])?
+    var profileAvatarRevision: Int {
+        get { shownRuntime.profileAvatarRevision }
+        set { shownRuntime.profileAvatarRevision = newValue }
+    }
+    var profileGlowCache: (key: ProfileGlowCacheKey, colors: [String: ProfileGlowRGB])? {
+        get { shownRuntime.profileGlowCache }
+        set { shownRuntime.profileGlowCache = newValue }
+    }
     /// Each photo's colors, kept while the photos stay the same, so a pick
     /// (a color drag sets one per tick) never samples the photos again.
-    var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) = (0, [:])
+    var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) {
+        get { shownRuntime.profileGlowPalettes }
+        set { shownRuntime.profileGlowPalettes = newValue }
+    }
     @Published var isProfileSwitching = false
     /// How long a profile switch's follow-up reads wait after it ends: the
     /// profile strip's slide-in (`ConduitMotion.easeSpring`, response
@@ -342,6 +427,10 @@ final class AppState: ObservableObject {
     /// Lets the kept connections go once Conduit has been off screen for
     /// the background grace.
     var keptDashboardRuntimesGraceTask: Task<Void, Never>?
+    /// A kept dashboard's chats read due after its `sessions.changed` (one
+    /// read per wait, at most), by dashboard, and the wait (a test sets none).
+    var keptDashboardChatsChangeReads: [UUID: Task<Void, Never>] = [:]
+    var keptDashboardChatsChangeWait: Duration = .seconds(2)
     var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
     /// `takeVoiceEventAfterCancel`).
@@ -357,8 +446,11 @@ final class AppState: ObservableObject {
 
     // MARK: - Session (AppState+Session.swift)
 
-    @Published var sessions: [SessionSummary] = [] {
-        didSet {
+    var sessions: [SessionSummary] {
+        get { shownRuntime.sessions }
+        set {
+            shownRuntime.sessions = newValue
+            guard actingOnRuntimeOnScreen else { return }
             sessionsRevision &+= 1
             catalogRowsByAnyID = nil
             refreshActiveChatScrollSessionIdentity()
@@ -475,7 +567,10 @@ final class AppState: ObservableObject {
     /// "host|profile" whose Hermes answered 404 for the mutation snapshot
     /// (older than the route): its writes skip the read until a write is
     /// refused for missing identity, which clears the mark.
-    var hostsWithoutMutationSnapshot: Set<String> = []
+    var hostsWithoutMutationSnapshot: Set<String> {
+        get { shownRuntime.hostsWithoutMutationSnapshot }
+        set { shownRuntime.hostsWithoutMutationSnapshot = newValue }
+    }
     /// Tests and the UI fixture: stands in for Hermes creating a chat, for
     /// a widget's New Chat and the app's own alike.
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
@@ -543,6 +638,16 @@ final class AppState: ObservableObject {
     var chatDoneMarksWrites: [String: Int] = [:]
     var chatDoneMarksWriteTail: [String: Task<Void, Never>] = [:]
     var chatDoneMarksReadFailureLogged: Set<String> = []
+    /// Muted chats, per profile, as the plugin keeps them (ChatMutes), and
+    /// their reads and writes' bookkeeping (AppState+ChatMute, keyed by
+    /// chatDoneMarksKey). Each write moves `chatMutesWrites`, so a read from
+    /// before it is dropped.
+    @Published var chatMutes = ChatMutes()
+    var chatMutesReadAt: [String: Date] = [:]
+    var chatMutesReads: Set<String> = []
+    var chatMutesPendingWrites: [String: Int] = [:]
+    var chatMutesWrites: [String: Int] = [:]
+    var chatMutesWriteTail: [String: Task<Void, Never>] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
@@ -571,10 +676,16 @@ final class AppState: ObservableObject {
     /// The refusal `showCallRefusal` left on the drawer shell's error line (V2 off).
     var callRefusalOnErrorLine: String?
     /// What the user has and hasn't seen, per conversation (#454).
-    @Published var chatReadState = ChatReadState()
+    var chatReadState: ChatReadState {
+        get { shownRuntime.chatReadState }
+        set { shownRuntime.chatReadState = newValue }
+    }
     /// The latest `session.active_list` snapshot and the profile it belongs
     /// to (#454).
-    @Published var liveSessionStatusIndex = SessionLiveStatusIndex()
+    var liveSessionStatusIndex: SessionLiveStatusIndex {
+        get { shownRuntime.liveSessionStatusIndex }
+        set { shownRuntime.liveSessionStatusIndex = newValue }
+    }
     /// Where active_list snapshots and a required sign-in reach the Lock
     /// Screen's turn activities (LiveTurnActivities); tests watch them. A
     /// snapshot answers true when a turn's chat was just seen absent and
@@ -585,14 +696,20 @@ final class AppState: ObservableObject {
     /// The one `session.active_list` read that settles a turn whose chat
     /// was just seen absent, whether or not the chat list (and its poll) is
     /// on screen.
-    var liveTurnRegistryRecheck: Task<Void, Never>?
+    var liveTurnRegistryRecheck: Task<Void, Never>? {
+        get { shownRuntime.liveTurnRegistryRecheck }
+        set { shownRuntime.liveTurnRegistryRecheck = newValue }
+    }
     /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
     /// sign-in), or with `true` only those the relay can't end by push.
     var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
         LiveTurnActivities.shared?.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
     }
 
-    var liveSessionStatusProfile: String?
+    var liveSessionStatusProfile: String? {
+        get { shownRuntime.liveSessionStatusProfile }
+        set { shownRuntime.liveSessionStatusProfile = newValue }
+    }
     /// The registries of the other profiles something on screen shows (All,
     /// a project's page, Bots Home), read by name beside the profile in
     /// use's.
@@ -610,16 +727,31 @@ final class AppState: ObservableObject {
     /// False once the gateway turned `session.active_list` down, so the chat
     /// list hides the Working and Needs input chips instead of showing a 0 it
     /// can't know. A successful poll turns it back on.
-    @Published var liveSessionStatusAvailable = true
+    var liveSessionStatusAvailable: Bool {
+        get { shownRuntime.liveSessionStatusAvailable }
+        set { shownRuntime.liveSessionStatusAvailable = newValue }
+    }
     /// The client whose failed poll was already logged, so a flaky
     /// connection leaves one line rather than one per tick.
     weak var activeListFailureLoggedClient: HermesClient?
     /// The host the Desktop views below came from, when each profile was
     /// last asked, and the newest settled time it reported.
-    var desktopViewsHost: String?
-    var desktopViewsFailureLogged = false
-    var desktopViewsFetchedAt: [String: Date] = [:]
-    var desktopViewsCursor: [String: TimeInterval] = [:]
+    var desktopViewsHost: String? {
+        get { shownRuntime.desktopViewsHost }
+        set { shownRuntime.desktopViewsHost = newValue }
+    }
+    var desktopViewsFailureLogged: Bool {
+        get { shownRuntime.desktopViewsFailureLogged }
+        set { shownRuntime.desktopViewsFailureLogged = newValue }
+    }
+    var desktopViewsFetchedAt: [String: Date] {
+        get { shownRuntime.desktopViewsFetchedAt }
+        set { shownRuntime.desktopViewsFetchedAt = newValue }
+    }
+    var desktopViewsCursor: [String: TimeInterval] {
+        get { shownRuntime.desktopViewsCursor }
+        set { shownRuntime.desktopViewsCursor = newValue }
+    }
     @Published var sessionMutationID: String?
     @Published var isRefreshingSessionCatalog = false
     /// Catalog reads on their way over a list Hermes may have changed since
@@ -857,14 +989,20 @@ final class AppState: ObservableObject {
     /// ahead of the automatic resume.
     var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
-    var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    var keptBotChatCopies: [String: KeptBotChatCopy] {
+        get { shownRuntime.keptBotChatCopies }
+        set { shownRuntime.keptBotChatCopies = newValue }
+    }
     /// The dashboards whose Bot Chat copies on the phone were read into
     /// `keptBotChatCopies` this run (`readKeptBotChatCopies`).
     var botChatCopiesReadFromDisk: Set<UUID> = []
 
     /// The last chats left after Load earlier brought in older rows, newest
     /// last (`keepLeftBackfilledTranscript`).
-    var leftBackfilledTranscripts: [LeftBackfilledTranscript] = []
+    var leftBackfilledTranscripts: [LeftBackfilledTranscript] {
+        get { shownRuntime.leftBackfilledTranscripts }
+        set { shownRuntime.leftBackfilledTranscripts = newValue }
+    }
     /// The bot the chat on screen was open for, taken before a bot open
     /// notes its destination's ids (`noteBotChatOpen`): the destination can
     /// share the id the chat on screen is open as.
@@ -1006,35 +1144,59 @@ final class AppState: ObservableObject {
     /// capability call: a gateway old enough to lack the method has no
     /// Bot Mode, and the UI degrades to "requires a newer Hermes gateway"
     /// without blocking Sessions or anything else.
-    @Published var botModePhase: BotModePhase = .idle {
-        // Device names count only until the gateway shows bot looks.
-        didSet { if oldValue != botModePhase { persistSiriProfileNames() } }
+    var botModePhase: BotModePhase {
+        get { shownRuntime.botModePhase }
+        set {
+            // Device names count only until the gateway shows bot looks.
+            let oldValue = shownRuntime.botModePhase
+            shownRuntime.botModePhase = newValue
+            guard actingOnRuntimeOnScreen else { return }
+            if oldValue != botModePhase { persistSiriProfileNames() }
+        }
     }
     /// The read-only roster, as Hermes last answered on this dashboard.
     /// Hermes remains authoritative: the copy the Bots list keeps to open on
     /// (`shownBotRoster`) only stands in until it answers, and nothing
     /// writes from that copy.
-    @Published var botRoster: [BotProfile] = [] {
-        didSet {
+    var botRoster: [BotProfile] {
+        get { shownRuntime.botRoster }
+        set {
+            shownRuntime.botRoster = newValue
+            guard actingOnRuntimeOnScreen else { return }
             stampMainBotConduitName()
             invalidateBotOwnershipCache()
             publishWidgetSnapshot()
         }
     }
-    @Published var isRefreshingBotRoster = false
+    var isRefreshingBotRoster: Bool {
+        get { shownRuntime.isRefreshingBotRoster }
+        set { shownRuntime.isRefreshingBotRoster = newValue }
+    }
     /// Bot avatars from each profile's gateway asset store (the same pictures
     /// Hermes Desktop shows), keyed by profile name. Runtime-only, fenced by
     /// the roster epoch, cleared at the server-identity boundary.
-    @Published var botAvatarImages: [String: UIImage] = [:]
+    var botAvatarImages: [String: UIImage] {
+        get { shownRuntime.botAvatarImages }
+        set { shownRuntime.botAvatarImages = newValue }
+    }
     /// Bumped by an explicit roster reload so rows re-fetch their avatar
     /// (another client may have changed it; the roster carries no version).
-    @Published var botAvatarGeneration = 0
+    var botAvatarGeneration: Int {
+        get { shownRuntime.botAvatarGeneration }
+        set { shownRuntime.botAvatarGeneration = newValue }
+    }
     /// When `reloadBotRoster` last asked for every picture again.
-    var botAvatarsReloadedAt: Date?
+    var botAvatarsReloadedAt: Date? {
+        get { shownRuntime.botAvatarsReloadedAt }
+        set { shownRuntime.botAvatarsReloadedAt = newValue }
+    }
     /// The same, by dashboard: a pull asks again only for that
     /// dashboard's pictures, so another's phone copies stay fresh.
     var botPicturesPulledAt: [UUID: Date] = [:]
-    var botAvatarFetchedGeneration: [String: Int] = [:]
+    var botAvatarFetchedGeneration: [String: Int] {
+        get { shownRuntime.botAvatarFetchedGeneration }
+        set { shownRuntime.botAvatarFetchedGeneration = newValue }
+    }
     /// When each bot's picture last came from Hermes, by dashboard and
     /// name. Kept across switches (unlike the generation above), so a
     /// switch back within `botPictureRecheckInterval` shows the phone's
@@ -1042,32 +1204,50 @@ final class AppState: ObservableObject {
     var botPictureFetchedAt: [String: Date] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
-    var botAvatarFetchInflight: [String: Int] = [:]
+    var botAvatarFetchInflight: [String: Int] {
+        get { shownRuntime.botAvatarFetchInflight }
+        set { shownRuntime.botAvatarFetchInflight = newValue }
+    }
     /// Each picture write this app makes takes the next serial, kept per
     /// profile, so a roster or asset read that started before the write
     /// never puts the older picture back.
     var profileAvatarWriteSerial = 0
     var profileAvatarLastWrite: [String: Int] = [:]
     /// The running photo sync; each roster read queues the next behind it.
-    var profileAvatarSyncTask: Task<Void, Never>?
+    var profileAvatarSyncTask: Task<Void, Never>? {
+        get { shownRuntime.profileAvatarSyncTask }
+        set { shownRuntime.profileAvatarSyncTask = newValue }
+    }
     /// Each profile's last queued photo write. Writes to one profile run in
     /// the order they were asked for, so the latest one lands last.
     var profilePhotoWriteQueue: [String: Task<String?, Never>] = [:]
     /// `profiles.list` `bot_mode_protocol`: the backend teaches bots the
     /// teammate-messaging protocol itself, so a new bot's SOUL stays
     /// identity-only.
-    var botRosterSupportsProtocol = false
+    var botRosterSupportsProtocol: Bool {
+        get { shownRuntime.botRosterSupportsProtocol }
+        set { shownRuntime.botRosterSupportsProtocol = newValue }
+    }
     /// Bumped at every server-identity boundary; responses captured under an
     /// older epoch are dropped, so a stale async roster can never overwrite
     /// the state of a different dashboard/profile.
-    var botRosterEpoch = 0
+    var botRosterEpoch: Int {
+        get { shownRuntime.botRosterEpoch }
+        set { shownRuntime.botRosterEpoch = newValue }
+    }
     /// Ownership token for the in-flight roster refresh: only the refresh
     /// that captured the CURRENT token may release the single-flight flag,
     /// so no superseded refresh can clear a newer one's claim and no
     /// identity change can strand the flag.
-    var botRosterRefreshToken: UUID?
+    var botRosterRefreshToken: UUID? {
+        get { shownRuntime.botRosterRefreshToken }
+        set { shownRuntime.botRosterRefreshToken = newValue }
+    }
 
-    var botRosterRefreshFlight: BotRosterRefreshFlight?
+    var botRosterRefreshFlight: BotRosterRefreshFlight? {
+        get { shownRuntime.botRosterRefreshFlight }
+        set { shownRuntime.botRosterRefreshFlight = newValue }
+    }
     /// Bot chats belong to the BOT's profile, not the dashboard's. Every
     /// re-resume of an open bot chat (reconnect, refresh, preserve-current
     /// sync) consults this in-memory registry to scope the resume RPC; it is
@@ -1085,7 +1265,10 @@ final class AppState: ObservableObject {
     /// lifecycle point ever exists upstream (e.g. an explicit
     /// session-destroyed event), a bounded cleanup could hook there —
     /// none exists today, so correctness wins over the small dictionary.
-    var botChatSessionProfiles: [String: String] = [:]
+    var botChatSessionProfiles: [String: String] {
+        get { shownRuntime.botChatSessionProfiles }
+        set { shownRuntime.botChatSessionProfiles = newValue }
+    }
     /// The bot's display label per canonical-chat session id — the title a
     /// restored Bot Chat presents. Runtime-only like the registry above (same
     /// lifetime: entries are kept until the server-identity boundary, with no
@@ -1094,7 +1277,10 @@ final class AppState: ObservableObject {
     /// persisted into a `SessionReference`'s `botLabel` when the conversation
     /// becomes the workspace's last-selected one, so a cold launch can show
     /// the bot's name before the roster has loaded.
-    var botChatSessionLabels: [String: String] = [:]
+    var botChatSessionLabels: [String: String] {
+        get { shownRuntime.botChatSessionLabels }
+        set { shownRuntime.botChatSessionLabels = newValue }
+    }
     var botChatOpenFlights: [String: BotChatOpenFlight] = [:]
     @Published var botChatOnItsWay: BotChatOnItsWay? {
         didSet {
@@ -1131,21 +1317,36 @@ final class AppState: ObservableObject {
     /// on every stream/tool/approval event, and the registry keeps aliases for
     /// the process lifetime — so rebuilding the value per read would scan a
     /// growing roster on the event path.
-    var cachedBotOwnership: (generation: Int, ownership: SessionBotOwnership)?
-    var botOwnershipGeneration = 0
+    var cachedBotOwnership: (generation: Int, ownership: SessionBotOwnership)? {
+        get { shownRuntime.cachedBotOwnership }
+        set { shownRuntime.cachedBotOwnership = newValue }
+    }
+    var botOwnershipGeneration: Int {
+        get { shownRuntime.botOwnershipGeneration }
+        set { shownRuntime.botOwnershipGeneration = newValue }
+    }
 
     /// Whether the roster on hand was verified since the CURRENT connection
     /// began. Cleared whenever a connection (or reconnect) is established, so
     /// absence evidence can never outlive the socket that produced it.
-    var botRosterVerifiedForCurrentConnection = false
+    var botRosterVerifiedForCurrentConnection: Bool {
+        get { shownRuntime.botRosterVerifiedForCurrentConnection }
+        set { shownRuntime.botRosterVerifiedForCurrentConnection = newValue }
+    }
 
     // MARK: - Runtime (AppState+UIState.swift)
 
     /// When a Pulse feed read last landed, and for which dashboard
     /// (PulseFeed.swift).
-    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
+    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)? {
+        get { shownRuntime.pulseFeedAppliedAt }
+        set { shownRuntime.pulseFeedAppliedAt = newValue }
+    }
 
-    @Published var runtime = RuntimeState()
+    var runtime: RuntimeState {
+        get { shownRuntime.runtime }
+        set { shownRuntime.runtime = newValue }
+    }
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
@@ -1158,17 +1359,38 @@ final class AppState: ObservableObject {
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0
-    @Published var gatewayDiagnostics: GatewayDiagnostics?
-    @Published var gatewayDiagnosticsLoading = false
+    var gatewayDiagnostics: GatewayDiagnostics? {
+        get { shownRuntime.gatewayDiagnostics }
+        set { shownRuntime.gatewayDiagnostics = newValue }
+    }
+    var gatewayDiagnosticsLoading: Bool {
+        get { shownRuntime.gatewayDiagnosticsLoading }
+        set { shownRuntime.gatewayDiagnosticsLoading = newValue }
+    }
     /// Restart Gateway's progress and outcome, and the dashboard it belongs
     /// to (AppState+GatewayRestart.swift).
-    @Published var gatewayRestart = GatewayRestartSlot()
-    var gatewayRestartTask: Task<Void, Never>?
+    var gatewayRestart: GatewayRestartSlot {
+        get { shownRuntime.gatewayRestart }
+        set { shownRuntime.gatewayRestart = newValue }
+    }
+    var gatewayRestartTask: Task<Void, Never>? {
+        get { shownRuntime.gatewayRestartTask }
+        set { shownRuntime.gatewayRestartTask = newValue }
+    }
     /// Update Hermes in Settings > Connection, and the dashboard it belongs
     /// to (AppState+HermesUpdate.swift).
-    @Published var hermesUpdate: HermesUpdateState = .idle
-    var hermesUpdateDashboardID: UUID?
-    var hermesUpdateTask: Task<Void, Never>?
+    var hermesUpdate: HermesUpdateState {
+        get { shownRuntime.hermesUpdate }
+        set { shownRuntime.hermesUpdate = newValue }
+    }
+    var hermesUpdateDashboardID: UUID? {
+        get { shownRuntime.hermesUpdateDashboardID }
+        set { shownRuntime.hermesUpdateDashboardID = newValue }
+    }
+    var hermesUpdateTask: Task<Void, Never>? {
+        get { shownRuntime.hermesUpdateTask }
+        set { shownRuntime.hermesUpdateTask = newValue }
+    }
     /// Test seam: answers Update Hermes' dashboard requests.
     var hermesUpdateRequest: (@MainActor (String, String) async throws -> [String: Any])?
     /// The dashboards a Restart now is under way on (restartGatewayNow): one
@@ -1179,11 +1401,25 @@ final class AppState: ObservableObject {
     var gatewayRestartingNow: Bool { gatewayRestartingNowDashboards.contains(activeDashboardID) }
     /// Why the last Restart now failed, kept here so a wait view opened
     /// after it finished still shows it.
-    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
+    var gatewayRestartNowFailure: GatewayRestartNow.Failure? {
+        get { shownRuntime.gatewayRestartNowFailure }
+        set { shownRuntime.gatewayRestartNowFailure = newValue }
+    }
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
-    @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
-    var notifierPluginUpdateTask: Task<Void, Never>?
+    var notifierPluginUpdate: NotifierPluginUpdateSlot {
+        get { shownRuntime.notifierPluginUpdate }
+        set { shownRuntime.notifierPluginUpdate = newValue }
+    }
+    var notifierPluginUpdateTask: Task<Void, Never>? {
+        get { shownRuntime.notifierPluginUpdateTask }
+        set { shownRuntime.notifierPluginUpdateTask = newValue }
+    }
+    /// Ends a run whose steps went quiet past their limit (NotifierPluginUpdater.stallLimit).
+    var notifierPluginUpdateWatchdog: Task<Void, Never>? {
+        get { shownRuntime.notifierPluginUpdateWatchdog }
+        set { shownRuntime.notifierPluginUpdateWatchdog = newValue }
+    }
     /// Dashboard and profile pairs Conduit already tried to pair on its own
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.
@@ -1191,8 +1427,14 @@ final class AppState: ObservableObject {
     /// Bumped per plugin status request; the accepted one is the newest
     /// request whose answer landed, so an older answer never lands over a
     /// newer one, but still lands when a newer request failed.
-    var notifierPluginStatusGeneration = 0
-    var notifierPluginStatusAcceptedGeneration = 0
+    var notifierPluginStatusGeneration: Int {
+        get { shownRuntime.notifierPluginStatusGeneration }
+        set { shownRuntime.notifierPluginStatusGeneration = newValue }
+    }
+    var notifierPluginStatusAcceptedGeneration: Int {
+        get { shownRuntime.notifierPluginStatusAcceptedGeneration }
+        set { shownRuntime.notifierPluginStatusAcceptedGeneration = newValue }
+    }
     /// The list open's shared status read (refreshNotifierPluginStatusOnce),
     /// and the bridge it reads through.
     var notifierPluginStatusSharedRefresh: (bridge: ObjectIdentifier, task: Task<Void, Never>)?
@@ -1202,9 +1444,15 @@ final class AppState: ObservableObject {
     var relayPairingSweep: Task<Void, Never>?
     var relayPairingSweepAgain = false
     var relayPairingSweepSaved: Set<UUID> = []
-    @Published var modelVisibility = ModelVisibility()
+    var modelVisibility: ModelVisibility {
+        get { shownRuntime.modelVisibility }
+        set { shownRuntime.modelVisibility = newValue }
+    }
     /// The model sheet's pinned and recent models, for the active dashboard.
-    @Published var modelQuickPicks = ModelQuickPicks()
+    var modelQuickPicks: ModelQuickPicks {
+        get { shownRuntime.modelQuickPicks }
+        set { shownRuntime.modelQuickPicks = newValue }
+    }
 
     // MARK: - UI state (AppState+Pulse.swift, AppState+UIState.swift)
 
@@ -1409,10 +1657,19 @@ final class AppState: ObservableObject {
     /// button's badge, the chats' messages that have a card (chat id, then
     /// Hermes' message id, to card id), a request to show it, and Pulse's
     /// own chat, which the screen stands in for.
-    @Published var pulseUnseen = 0
-    @Published var pulseSources: [String: [Int: Int]] = [:]
+    var pulseUnseen: Int {
+        get { shownRuntime.pulseUnseen }
+        set { shownRuntime.pulseUnseen = newValue }
+    }
+    var pulseSources: [String: [Int: Int]] {
+        get { shownRuntime.pulseSources }
+        set { shownRuntime.pulseSources = newValue }
+    }
     @Published var pulseOpenRequest: PulseOpenRequest?
-    @Published var pulseHomeChatID: String?
+    var pulseHomeChatID: String? {
+        get { shownRuntime.pulseHomeChatID }
+        set { shownRuntime.pulseHomeChatID = newValue }
+    }
     /// Pulse's chat per dashboard as the last feed named it, kept across
     /// launches: until the feed is read again after a launch or a
     /// reconnect, the Pulse button and the hidden chat go by it. Views read
@@ -1538,10 +1795,16 @@ final class AppState: ObservableObject {
 
     // MARK: - Capabilities (AppState+HelperModels.swift, AppState+GeminiQwenLive.swift, AppState+GPTLive.swift, AppState+GrokLive.swift, AppState+LocalLive.swift, AppState+Voice.swift, AppState+VoiceConversation.swift)
 
-    @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
+    var slashCommands: [SlashCommand] {
+        get { shownRuntime.slashCommands }
+        set { shownRuntime.slashCommands = newValue }
+    }
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
-    @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
+    var slashSubcommands: [String: [String]] {
+        get { shownRuntime.slashSubcommands }
+        set { shownRuntime.slashSubcommands = newValue }
+    }
     /// The bot on screen's skills, toolsets, tools catalog and MCP servers,
     /// and whose they are (`BotState`).
     var skills: [CapabilitySkill] {
@@ -2808,49 +3071,94 @@ final class AppState: ObservableObject {
         get { shownRuntime.connectedAt }
         set { shownRuntime.connectedAt = newValue }
     }
-    var sessionCatalogCache = SessionCatalogCache()
+    var sessionCatalogCache: SessionCatalogCache {
+        get { shownRuntime.sessionCatalogCache }
+        set { shownRuntime.sessionCatalogCache = newValue }
+    }
     /// Counts catalog reads as they start, so the slow read a chat sync left
     /// for later can tell that a newer read began while it was paging.
-    var catalogReadSequence: UInt64 = 0
+    var catalogReadSequence: UInt64 {
+        get { shownRuntime.catalogReadSequence }
+        set { shownRuntime.catalogReadSequence = newValue }
+    }
     /// The full catalog read under way, for a read asked for meanwhile to
     /// join rather than send its own (CatalogReadInFlight).
-    var catalogReadInFlight: CatalogReadInFlight?
+    var catalogReadInFlight: CatalogReadInFlight? {
+        get { shownRuntime.catalogReadInFlight }
+        set { shownRuntime.catalogReadInFlight = newValue }
+    }
     /// The chat list's newest page going out, for a newest-page read asked
     /// for meanwhile to take its answer rather than send the same requests
     /// (NewestCatalogPageRead, issue 2604).
-    var newestCatalogPageRead: NewestCatalogPageRead?
+    var newestCatalogPageRead: NewestCatalogPageRead? {
+        get { shownRuntime.newestCatalogPageRead }
+        set { shownRuntime.newestCatalogPageRead = newValue }
+    }
     /// Ticket for each read that replaces the published list wholesale
     /// (`loadSessions` and a chat sync), taken when the read starts, and
     /// the newest ticket whose answer is listed. Reads overlap (a reconnect,
     /// a return to the list, a pull to refresh), and an older answer that
     /// lands after a newer one would put back a list from before it (#786).
-    var sessionListReadTicket: UInt64 = 0
-    var sessionListListedTicket: UInt64 = 0
+    var sessionListReadTicket: UInt64 {
+        get { shownRuntime.sessionListReadTicket }
+        set { shownRuntime.sessionListReadTicket = newValue }
+    }
+    var sessionListListedTicket: UInt64 {
+        get { shownRuntime.sessionListListedTicket }
+        set { shownRuntime.sessionListListedTicket = newValue }
+    }
     /// Whether the listing that holds `sessionListListedTicket` took its
     /// cron rows from the catalog cache: a gateway listing fills none, so a
     /// later relist from the cache doesn't replace its rows (issue 2763).
-    var sessionListListedCronFromCache = false
+    var sessionListListedCronFromCache: Bool {
+        get { shownRuntime.sessionListListedCronFromCache }
+        set { shownRuntime.sessionListListedCronFromCache = newValue }
+    }
     /// The catalog read that returning to the list starts, and whether
     /// another return asked for one while it ran.
-    var leaveCatalogRefreshTask: Task<Void, Never>?
-    var leaveCatalogRefreshPending = false
-    var leaveCatalogRefreshReportsFailure = false
+    var leaveCatalogRefreshTask: Task<Void, Never>? {
+        get { shownRuntime.leaveCatalogRefreshTask }
+        set { shownRuntime.leaveCatalogRefreshTask = newValue }
+    }
+    var leaveCatalogRefreshPending: Bool {
+        get { shownRuntime.leaveCatalogRefreshPending }
+        set { shownRuntime.leaveCatalogRefreshPending = newValue }
+    }
+    var leaveCatalogRefreshReportsFailure: Bool {
+        get { shownRuntime.leaveCatalogRefreshReportsFailure }
+        set { shownRuntime.leaveCatalogRefreshReportsFailure = newValue }
+    }
     /// The coalesced read serves a `sessions.changed`: if it fails, the
     /// change stays pending (issue 2294).
-    var leaveCatalogRefreshReadsChange = false
+    var leaveCatalogRefreshReadsChange: Bool {
+        get { shownRuntime.leaveCatalogRefreshReadsChange }
+        set { shownRuntime.leaveCatalogRefreshReadsChange = newValue }
+    }
     /// One chat on two devices (ChatSync.swift): when the list reads the
     /// catalog on its own, the open chat's registry checks, and the newest
     /// `session.active_list` snapshot they share, so the open chat reuses
     /// the list's poll instead of asking again.
-    var chatListCatalogFreshness = ChatListCatalogFreshness()
+    var chatListCatalogFreshness: ChatListCatalogFreshness {
+        get { shownRuntime.chatListCatalogFreshness }
+        set { shownRuntime.chatListCatalogFreshness = newValue }
+    }
     var openChatSync = OpenChatSync()
     /// Hermes' `sessions.changed` waiting for its catalog read, and the
     /// wait for one held back by the quiet-read wait (5 s, up to 60 s).
-    var catalogChangeSignal = CatalogChangeSignal()
-    var catalogChangeReadTask: Task<Void, Never>?
+    var catalogChangeSignal: CatalogChangeSignal {
+        get { shownRuntime.catalogChangeSignal }
+        set { shownRuntime.catalogChangeSignal = newValue }
+    }
+    var catalogChangeReadTask: Task<Void, Never>? {
+        get { shownRuntime.catalogChangeReadTask }
+        set { shownRuntime.catalogChangeReadTask = newValue }
+    }
     /// The registry read before reading rows a catalog read found moved.
     var openChatCatalogCheck: Task<Void, Never>?
-    var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
+    var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)? {
+        get { shownRuntime.latestActiveList }
+        set { shownRuntime.latestActiveList = newValue }
+    }
     var openChatSyncRead: Task<Void, Never>?
     /// Why the notification route's last attempt failed, and which tap's
     /// route said it, kept while another attempt is still due: the chat that
@@ -2886,7 +3194,10 @@ final class AppState: ObservableObject {
     var reconnectCycleGeneration = 0
     /// The Chats list's poll pace, the sleep a return to the app or a tap
     /// cuts short, and a count of catalog reads that changed the list.
-    var chatListPollPacer = ChatListPollPacer()
+    var chatListPollPacer: ChatListPollPacer {
+        get { shownRuntime.chatListPollPacer }
+        set { shownRuntime.chatListPollPacer = newValue }
+    }
     let chatListPollSleep = WakeableSleep()
     /// Published so a project's page beside the open chat reads its own
     /// list again when the catalog changes (issue 1454). A change also
@@ -2894,8 +3205,11 @@ final class AppState: ObservableObject {
     /// ended elsewhere (its messages move the catalog, which a gateway's
     /// `sessions.changed` reads at once) shows Running or stops without
     /// waiting out the backoff (issue 851).
-    @Published var chatListCatalogGeneration = 0 {
-        didSet {
+    var chatListCatalogGeneration: Int {
+        get { shownRuntime.chatListCatalogGeneration }
+        set {
+            shownRuntime.chatListCatalogGeneration = newValue
+            guard actingOnRuntimeOnScreen else { return }
             // Any wait past 4 s: a later step, or the first one stretched
             // by Low Power or Low Data Mode.
             let wait = PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
@@ -2907,7 +3221,10 @@ final class AppState: ObservableObject {
     /// every catalog read would drop the row the create put in, and a list
     /// beside the open chat wouldn't show it (issue 1454). The lists keep
     /// it while it is the open chat and the catalog doesn't list it.
-    @Published var newChatAwaitingListing: NewChatAwaitingListing?
+    var newChatAwaitingListing: NewChatAwaitingListing? {
+        get { shownRuntime.newChatAwaitingListing }
+        set { shownRuntime.newChatAwaitingListing = newValue }
+    }
     /// Fences optional approval-queue reads across re-entrant MainActor
     /// awaits. A late response must not populate a replacement conversation.
     var pendingApprovalsRequestGeneration: UInt64 = 0
@@ -3017,10 +3334,11 @@ final class AppState: ObservableObject {
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
-        self._runtimeOnScreen = Published(wrappedValue: DashboardRuntime(notifierPlugin: NotifierPluginStatus(
+        let initialRuntime = DashboardRuntime(notifierPlugin: NotifierPluginStatus(
             followsMain: noticeChannel.followsMain,
             asksToUpdate: noticeChannel.asksToUpdate
-        )))
+        ))
+        self._runtimeOnScreen = Published(wrappedValue: initialRuntime)
         // The registry (and its legacy migration) loads before any connection
         // hydration: scoped auth records are meaningless without it.
         let initialRegistry = preloadedRegistry
@@ -3068,10 +3386,11 @@ final class AppState: ObservableObject {
         }
         defaultProfileName = self.profileAppearanceStore.loadDefaultName(dashboardID: initialDashboardID)
         profileAvatarURLs = self.profileAppearanceStore.loadAvatarURLs(dashboardID: initialDashboardID)
-        profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
-        profileDeviceNames = self.profileAppearanceStore.loadDeviceNames(dashboardID: initialDashboardID)
-        profileBotTitles = self.profileAppearanceStore.loadBotTitles(dashboardID: initialDashboardID)
-        profileHermesNames = self.profileAppearanceStore.loadHermesNames(dashboardID: initialDashboardID)
+        // Straight into the runtime: AppState isn't initialized yet.
+        initialRuntime.profileGlowPicks = self.profileAppearanceStore.loadGlowColors(dashboardID: initialDashboardID)
+        initialRuntime.profileDeviceNames = self.profileAppearanceStore.loadDeviceNames(dashboardID: initialDashboardID)
+        initialRuntime.profileBotTitles = self.profileAppearanceStore.loadBotTitles(dashboardID: initialDashboardID)
+        initialRuntime.profileHermesNames = self.profileAppearanceStore.loadHermesNames(dashboardID: initialDashboardID)
         appIconChoice = UIApplication.shared.alternateIconName == AppIconChoice.light.alternateIconName ? .light : .dark
         themePreference = ThemePreference(
             rawValue: defaults.string(forKey: themePreferenceKey) ?? ""
@@ -3082,9 +3401,10 @@ final class AppState: ObservableObject {
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
         }
-        activeProfile = defaults.string(forKey: activeProfileKey)?
+        // Straight into the runtime: at launch nothing on screen reacts yet.
+        let launchProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
-        if activeProfile.isEmpty { activeProfile = "default" }
+        runtimeOnScreen.activeProfile = launchProfile.isEmpty ? "default" : launchProfile
         displayPreferences = storedDisplayPreferences(dashboardID: initialDashboardID, profile: activeProfile)
             ?? ProfileDisplayPreferences()
         // The global key is what cold launch opens (the resume state and
@@ -3195,13 +3515,22 @@ final class AppState: ObservableObject {
 
     /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
     /// session id.
-    @Published var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] {
+        get { shownRuntime.voiceSessionTagsByKey }
+        set { shownRuntime.voiceSessionTagsByKey = newValue }
+    }
     /// Bumped whenever a call-chat link lands, so observers (the Sessions
     /// drawer's nests) can re-resolve parents the row list alone doesn't
     /// show changing.
     @Published var voiceCallChatLinksRevision = 0
-    var voiceTagsFetchedAt: [String: Date] = [:]
-    var voiceTagRefreshTask: Task<Void, Never>?
+    var voiceTagsFetchedAt: [String: Date] {
+        get { shownRuntime.voiceTagsFetchedAt }
+        set { shownRuntime.voiceTagsFetchedAt = newValue }
+    }
+    var voiceTagRefreshTask: Task<Void, Never>? {
+        get { shownRuntime.voiceTagRefreshTask }
+        set { shownRuntime.voiceTagRefreshTask = newValue }
+    }
 
     /// The call being saved: set when a live call starts, cleared when it
     /// closes. Nothing reaches the host until the call ends: a save while
@@ -3313,8 +3642,14 @@ final class AppState: ObservableObject {
 
     /// Files sessions under Voice or Voice Jobs, here at once and on the
     /// host for every device.
-    var voiceTagChain: Task<Void, Never>?
-    var voiceTagGeneration = 0
+    var voiceTagChain: Task<Void, Never>? {
+        get { shownRuntime.voiceTagChain }
+        set { shownRuntime.voiceTagChain = newValue }
+    }
+    var voiceTagGeneration: Int {
+        get { shownRuntime.voiceTagGeneration }
+        set { shownRuntime.voiceTagGeneration = newValue }
+    }
 
     @Published var waitingCall: WaitingCall?
 
@@ -3377,31 +3712,58 @@ final class AppState: ObservableObject {
 
     // MARK: - Group Chats (hosted rooms) (AppState+GroupChats.swift, AppState+ProfileSettings.swift)
 
-    @Published var groupChatPhase: GroupChatPhase = .idle
-    @Published var groupCapabilities: GroupCapabilities?
-    @Published var groupRooms: [GroupRoom] = []
+    var groupChatPhase: GroupChatPhase {
+        get { shownRuntime.groupChatPhase }
+        set { shownRuntime.groupChatPhase = newValue }
+    }
+    var groupCapabilities: GroupCapabilities? {
+        get { shownRuntime.groupCapabilities }
+        set { shownRuntime.groupCapabilities = newValue }
+    }
+    var groupRooms: [GroupRoom] {
+        get { shownRuntime.groupRooms }
+        set { shownRuntime.groupRooms = newValue }
+    }
     /// The rooms this Hermes hosts with people you've linked that Group
     /// Chats lists until they start, and the people New Group Chat can
     /// invite (RoomDrafts.swift).
-    @Published var linkedRoomDrafts: LinkedRoomDrafts?
+    var linkedRoomDrafts: LinkedRoomDrafts? {
+        get { shownRuntime.linkedRoomDrafts }
+        set { shownRuntime.linkedRoomDrafts = newValue }
+    }
     /// The rooms people you've linked invited this Hermes to, which Group
     /// Chats lists with the drafts (RoomInvites.swift).
-    @Published var linkedRoomInvites: LinkedRoomInvites?
+    var linkedRoomInvites: LinkedRoomInvites? {
+        get { shownRuntime.linkedRoomInvites }
+        set { shownRuntime.linkedRoomInvites = newValue }
+    }
     /// Reads the invites again for a while after a Link is made
     /// (RoomInvites.swift followLinkedRoomInvites).
-    var linkedRoomInviteFollow: Task<Void, Never>?
+    var linkedRoomInviteFollow: Task<Void, Never>? {
+        get { shownRuntime.linkedRoomInviteFollow }
+        set { shownRuntime.linkedRoomInviteFollow = newValue }
+    }
     /// One read of each Linked Rooms list at a time (issue 2359).
     let linkedRoomDraftsReader = LinkedRoomListRead()
     /// A drafts read asked for with the people that hasn't run yet.
-    var linkedRoomDraftsPeopleAsked = false
+    var linkedRoomDraftsPeopleAsked: Bool {
+        get { shownRuntime.linkedRoomDraftsPeopleAsked }
+        set { shownRuntime.linkedRoomDraftsPeopleAsked = newValue }
+    }
     let linkedRoomInvitesReader = LinkedRoomListRead()
     let linkedRoomApprovalsReader = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
-    @Published var linkedRoomApprovals: LinkedRoomApprovals?
+    var linkedRoomApprovals: LinkedRoomApprovals? {
+        get { shownRuntime.linkedRoomApprovals }
+        set { shownRuntime.linkedRoomApprovals = newValue }
+    }
     /// The approvals answered here, by id: a read already under way when
     /// one was answered can't bring its row or card back.
-    var answeredLinkedRoomApprovalIDs: Set<String> = []
+    var answeredLinkedRoomApprovalIDs: Set<String> {
+        get { shownRuntime.answeredLinkedRoomApprovalIDs }
+        set { shownRuntime.answeredLinkedRoomApprovalIDs = newValue }
+    }
     /// The open copy's opening tail read failed: its next tick reads the
     /// tail again.
     var activeRoomCopyNeedsTail = false
@@ -3413,38 +3775,71 @@ final class AppState: ObservableObject {
     /// approvals, drafts or invites read it overtook is dropped: issued
     /// before the change, it could list what the change took away
     /// (issue 2347).
-    var linkedRosterGeneration = 0
+    var linkedRosterGeneration: Int {
+        get { shownRuntime.linkedRosterGeneration }
+        set { shownRuntime.linkedRosterGeneration = newValue }
+    }
     /// Your Hermes' copies of the rooms other people host that your agents
     /// joined, which Group Chats lists after your own (RoomCopies.swift).
-    @Published var linkedRoomCopies: LinkedRoomCopies?
+    var linkedRoomCopies: LinkedRoomCopies? {
+        get { shownRuntime.linkedRoomCopies }
+        set { shownRuntime.linkedRoomCopies = newValue }
+    }
     /// The hosted rooms whose bots are talking now (each room's driver is
     /// working), read while Bots Home shows (`refreshTalkingRooms`), for
     /// its live-rooms row and the "In <room>" pills.
-    @Published var talkingRoomIDs: Set<String> = []
+    var talkingRoomIDs: Set<String> {
+        get { shownRuntime.talkingRoomIDs }
+        set { shownRuntime.talkingRoomIDs = newValue }
+    }
     /// `groups.list` has answered since the group state was last cleared:
     /// until then the Bots list shows the rooms kept from its last answer on
     /// this dashboard (`shownGroupRooms`, #1533). Published so a room a
     /// launch waits on opens as soon as Hermes lists it (#1597).
-    @Published var groupRoomsListed = false
+    var groupRoomsListed: Bool {
+        get { shownRuntime.groupRoomsListed }
+        set { shownRuntime.groupRoomsListed = newValue }
+    }
     /// The last `groups.list` answer was its last page: only then does a
     /// room missing from `groupRooms` prove it's gone.
-    var groupRoomsComplete = false
-    var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)?
+    var groupRoomsComplete: Bool {
+        get { shownRuntime.groupRoomsComplete }
+        set { shownRuntime.groupRoomsComplete = newValue }
+    }
+    var keptGroupRoomsMemo: (key: String, rooms: KeptGroupRooms?)? {
+        get { shownRuntime.keptGroupRoomsMemo }
+        set { shownRuntime.keptGroupRoomsMemo = newValue }
+    }
     /// Hermes Desktop's group chats, read from its ui_meta projection on the
     /// `default` profile (refreshed with the bot roster). Read-only here:
     /// Desktop drives their rounds, and `groups.*` cannot address them.
-    @Published var desktopGroupChats: [DesktopGroupChat] = []
+    var desktopGroupChats: [DesktopGroupChat] {
+        get { shownRuntime.desktopGroupChats }
+        set { shownRuntime.desktopGroupChats = newValue }
+    }
     /// Hosted rooms' custom pictures (JPEG/PNG bytes) and the plugin's
     /// revision of each, keyed by room id (`GroupRoomPictures`).
-    @Published var groupRoomPictureData: [String: Data] = [:]
-    var groupRoomPictureRevisions: [String: String] = [:]
+    var groupRoomPictureData: [String: Data] {
+        get { shownRuntime.groupRoomPictureData }
+        set { shownRuntime.groupRoomPictureData = newValue }
+    }
+    var groupRoomPictureRevisions: [String: String] {
+        get { shownRuntime.groupRoomPictureRevisions }
+        set { shownRuntime.groupRoomPictureRevisions = newValue }
+    }
     /// Moves on each time a room's picture is set or removed here, so a
     /// slower refresh or an older change can't undo a newer one. Never
     /// reset: a reset could make a change look as if it never happened.
-    var groupRoomPictureGenerations: [String: Int] = [:]
+    var groupRoomPictureGenerations: [String: Int] {
+        get { shownRuntime.groupRoomPictureGenerations }
+        set { shownRuntime.groupRoomPictureGenerations = newValue }
+    }
     /// How many set or remove requests are still on their way for each
     /// room; a room drops out once all of them have settled.
-    var groupRoomPicturesChanging: [String: Int] = [:]
+    var groupRoomPicturesChanging: [String: Int] {
+        get { shownRuntime.groupRoomPicturesChanging }
+        set { shownRuntime.groupRoomPicturesChanging = newValue }
+    }
     /// Whether the open chat's own sheet or prompt (Artifacts, Rename,
     /// Delete), or the open room's (its settings, info, picture, disband;
     /// issue 2064), covers it, so reading it doesn't clear its notifications
@@ -3490,17 +3885,32 @@ final class AppState: ObservableObject {
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     /// Boards replies name by line, by id, once read (LineBoards).
-    @Published var lineBoards: [String: RichBoard] = [:]
+    var lineBoards: [String: RichBoard] {
+        get { shownRuntime.lineBoards }
+        set { shownRuntime.lineBoards = newValue }
+    }
     /// Boards replies name that the plugin no longer has (pruned: the
     /// newest 500, a month), or answered in a shape Conduit can't draw:
     /// not asked for again, and the reply says one was there.
-    @Published var lineBoardsGone: Set<String> = []
-    var lineBoardsAsked: Set<String> = []
+    var lineBoardsGone: Set<String> {
+        get { shownRuntime.lineBoardsGone }
+        set { shownRuntime.lineBoardsGone = newValue }
+    }
+    var lineBoardsAsked: Set<String> {
+        get { shownRuntime.lineBoardsAsked }
+        set { shownRuntime.lineBoardsAsked = newValue }
+    }
     /// The dashboard and profile `lineBoards` were read from.
-    var lineBoardsScope = ""
+    var lineBoardsScope: String {
+        get { shownRuntime.lineBoardsScope }
+        set { shownRuntime.lineBoardsScope = newValue }
+    }
     /// Bumped whenever `lineBoards` is forgotten, so a read from before
     /// stores nothing (issue 2083).
-    var lineBoardsGeneration = 0
+    var lineBoardsGeneration: Int {
+        get { shownRuntime.lineBoardsGeneration }
+        set { shownRuntime.lineBoardsGeneration = newValue }
+    }
     var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
@@ -3518,8 +3928,14 @@ final class AppState: ObservableObject {
     @Published var activeRoomLooks = RoomLooks.empty
     /// How each room over Links on Bots Home looks, by dashboard and room
     /// (RoomLooks.swift), for its tile's faces.
-    @Published var homeRoomLooksByKey: [String: RoomLooks] = [:]
-    var homeRoomLooksReadAt: [String: Date] = [:]
+    var homeRoomLooksByKey: [String: RoomLooks] {
+        get { shownRuntime.homeRoomLooksByKey }
+        set { shownRuntime.homeRoomLooksByKey = newValue }
+    }
+    var homeRoomLooksReadAt: [String: Date] {
+        get { shownRuntime.homeRoomLooksReadAt }
+        set { shownRuntime.homeRoomLooksReadAt = newValue }
+    }
     /// The open room's host, as your Link names them, in a room someone
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
@@ -3539,10 +3955,19 @@ final class AppState: ObservableObject {
     /// The room (epoch and id) whose looks are being read now.
     var activeRoomLooksReading: String?
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
-    var sharedRoomLooks: [UUID: String] = [:]
+    var sharedRoomLooks: [UUID: String] {
+        get { shownRuntime.sharedRoomLooks }
+        set { shownRuntime.sharedRoomLooks = newValue }
+    }
     /// A looks share is on its way, and another change waits for it.
-    var roomLooksSharing = false
-    var roomLooksShareAgain = false
+    var roomLooksSharing: Bool {
+        get { shownRuntime.roomLooksSharing }
+        set { shownRuntime.roomLooksSharing = newValue }
+    }
+    var roomLooksShareAgain: Bool {
+        get { shownRuntime.roomLooksShareAgain }
+        set { shownRuntime.roomLooksShareAgain = newValue }
+    }
     /// Your room picture's changes so far: a read of the one Hermes keeps
     /// that started before the latest is dropped.
     var roomPersonPictureChanges = 0
@@ -3643,18 +4068,33 @@ final class AppState: ObservableObject {
     /// The Group Chats probe asked again after a transient failure, so its
     /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
     /// stayed after a reconnect the app never saw as a disconnect).
-    var groupChatProbeRetry = TransientReadRetry()
+    var groupChatProbeRetry: TransientReadRetry {
+        get { shownRuntime.groupChatProbeRetry }
+        set { shownRuntime.groupChatProbeRetry = newValue }
+    }
     /// The same for the bot roster's "Could not refresh bots".
-    var botRosterRetry = TransientReadRetry()
+    var botRosterRetry: TransientReadRetry {
+        get { shownRuntime.botRosterRetry }
+        set { shownRuntime.botRosterRetry = newValue }
+    }
 
     /// The rooms in `keptRoomReplays`, the one left last at the end.
     var keptRoomReplayOrder: [String] = []
     /// Each room's reads in a row that failed.
-    var talkingRoomMisses: [String: Int] = [:]
+    var talkingRoomMisses: [String: Int] {
+        get { shownRuntime.talkingRoomMisses }
+        set { shownRuntime.talkingRoomMisses = newValue }
+    }
     /// A talking-rooms read is running.
-    var talkingRoomsReading = false
+    var talkingRoomsReading: Bool {
+        get { shownRuntime.talkingRoomsReading }
+        set { shownRuntime.talkingRoomsReading = newValue }
+    }
     /// When the last talking-rooms read began.
-    var talkingRoomsReadAt: Date?
+    var talkingRoomsReadAt: Date? {
+        get { shownRuntime.talkingRoomsReadAt }
+        set { shownRuntime.talkingRoomsReadAt = newValue }
+    }
 
     /// The room screens mounted, and whether each shows: the V2 shell
     /// keeps a hidden tab's screens mounted (#1827). Set by GroupChatView.
@@ -3705,15 +4145,24 @@ final class AppState: ObservableObject {
 
     // MARK: - Session management (AppState+Session.swift)
 
-    var isReadingNewestCatalogPage = false
+    var isReadingNewestCatalogPage: Bool {
+        get { shownRuntime.isReadingNewestCatalogPage }
+        set { shownRuntime.isReadingNewestCatalogPage = newValue }
+    }
 
     // MARK: - Bot management (create / edit / delete / avatars) (AppState+BotMode.swift)
 
-    var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)?
+    var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)? {
+        get { shownRuntime.keptBotRosterMemo }
+        set { shownRuntime.keptBotRosterMemo = newValue }
+    }
 
     /// Whether Hermes can generate pictures, as last asked
     /// (`refreshPictureGeneration`).
-    @Published var canGeneratePictures = false
+    var canGeneratePictures: Bool {
+        get { shownRuntime.canGeneratePictures }
+        set { shownRuntime.canGeneratePictures = newValue }
+    }
 
     // MARK: - New Chat (AppState+Session.swift)
 
@@ -3867,18 +4316,30 @@ final class AppState: ObservableObject {
 
     // MARK: - Slash Commands (AppState+SlashCommands.swift)
 
-    var lastSlashCatalogPayload: AnyCodable?
+    var lastSlashCatalogPayload: AnyCodable? {
+        get { shownRuntime.lastSlashCatalogPayload }
+        set { shownRuntime.lastSlashCatalogPayload = newValue }
+    }
 
     // MARK: - Profiles and preferences (AppState+SessionCatalog.swift, AppState+TranscriptHistory.swift, AppState+Profiles.swift, AppState+Clarify.swift, AppState+Projects.swift)
 
     /// Dashboard and profile scopes whose plugin refused the history page
     /// route this run (`HistoryPage.isRefusedForScope`).
-    var historyPageRefusedScopes: Set<String> = []
+    var historyPageRefusedScopes: Set<String> {
+        get { shownRuntime.historyPageRefusedScopes }
+        set { shownRuntime.historyPageRefusedScopes = newValue }
+    }
 
     /// Profile list reads sent, and the newest of them whose list (with
     /// names) was taken, so an older answer landing after it doesn't commit.
-    var profileListReadsSent: UInt64 = 0
-    var profileListReadCommitted: UInt64 = 0
+    var profileListReadsSent: UInt64 {
+        get { shownRuntime.profileListReadsSent }
+        set { shownRuntime.profileListReadsSent = newValue }
+    }
+    var profileListReadCommitted: UInt64 {
+        get { shownRuntime.profileListReadCommitted }
+        set { shownRuntime.profileListReadCommitted = newValue }
+    }
 
     /// The project a rename or delete is running for; a second one waits.
     @Published var projectMutationID: String?

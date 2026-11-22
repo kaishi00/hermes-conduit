@@ -156,6 +156,8 @@ final class HealthSyncEngine: ObservableObject {
     private let keys: HealthSyncKeyStore
     private let now: () -> Date
     private let deviceName: () -> String
+    /// How the pass waits out a busy host (a test's returns at once).
+    fileprivate let wait: (TimeInterval) async throws -> Void
     var calendar: Calendar
     private var running: Task<Outcome, Never>?
     private var runningPreferences: HealthSyncPreferences?
@@ -173,7 +175,8 @@ final class HealthSyncEngine: ObservableObject {
         keys: HealthSyncKeyStore = .keychain,
         calendar: Calendar = .current,
         now: @escaping () -> Date = Date.init,
-        deviceName: @escaping () -> String = { "iPhone" }
+        deviceName: @escaping () -> String = { "iPhone" },
+        wait: @escaping (TimeInterval) async throws -> Void = { try await Task.sleep(nanoseconds: UInt64($0 * 1_000_000_000)) }
     ) {
         self.source = source
         self.store = store
@@ -181,6 +184,7 @@ final class HealthSyncEngine: ObservableObject {
         self.calendar = calendar
         self.now = now
         self.deviceName = deviceName
+        self.wait = wait
         if let state = store.loadIfReadable() {
             self.state = state
         } else {
@@ -506,9 +510,26 @@ private struct Session {
         let plaintext = try JSONSerialization.data(withJSONObject: part.json(), options: [.sortedKeys])
         let body = try HealthSyncCrypto.envelope(plaintext: plaintext, key: key, deviceID: engine.state.deviceID,
                                                  batchID: part.batchID)
-        let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
-        engine.notePosted()
-        return answer
+        var busyWait = HealthSyncLimits.firstBusyWait
+        while true {
+            do {
+                let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
+                engine.notePosted()
+                return answer
+            } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {
+                // The host takes so many uploads a minute (120 per profile):
+                // a long history sync outruns it. That's the host asking us
+                // to slow down, not a failure, so wait and send the same
+                // part again, longer each time, within the pass's time. The
+                // refusal came before the host read the batch, so nothing of
+                // it was kept (notifier issue 975).
+                let delay = busyWait * Double.random(in: 0.75...1.25)
+                if engine.currentNow.addingTimeInterval(delay) >= deadline { throw DeadlineReached() }
+                try await engine.wait(delay)
+                try checkTime()
+                busyWait = min(busyWait * 2, HealthSyncLimits.longestBusyWait)
+            }
+        }
     }
 
     /// An upload with nothing in it, so the host knows this phone is still

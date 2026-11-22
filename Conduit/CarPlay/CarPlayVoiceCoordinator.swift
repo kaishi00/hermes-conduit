@@ -366,7 +366,7 @@ final class CarPlayVoiceCoordinator {
         // updates the title there.
         chatTitleObservation = Publishers.Merge(
             appState.$activeSessionId.map { _ in () }.dropFirst(),
-            appState.$sessions.map { _ in () }.dropFirst()
+            appState.sessionsValues.map { _ in () }.dropFirst()
         )
         .sink { [weak self] _ in self?.scheduleChatTitleRefresh() }
 
@@ -1174,16 +1174,16 @@ final class CarPlayVoiceCoordinator {
         // rebuilt once the change has landed, from AppState itself. The
         // open chat moves the marker on the chat Listen talks in.
         chatsObservation = Publishers.MergeMany(
-            appState.$sessions.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.sessionsValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$pinnedSessionIDs.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$pinnedChatOrder.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.isConnectedValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
-            appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
-            appState.$botRoster.map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.activeProfileValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.botRosterValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chat is Pulse's, left out (the feed names it).
-            appState.$pulseHomeChatID.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)

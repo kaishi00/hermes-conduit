@@ -674,6 +674,144 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
     }
 
+    /// A kept dashboard keeps what it showed, and a switch back shows it
+    /// at once (no-switch plan, slice 5): its bots, chats, group rooms and
+    /// Pulse badge, before its sync reads them anew. Lists read on another
+    /// profile than the one it resumes stay unused.
+    func testAKeptDashboardsListsShowAtOnceOnTheSwitchBack() async throws {
+        // What the switch back's sync finds on screen when it reads the list.
+        final class AtSync { weak var appState: AppState?; var roster: [String]?; var rooms: [String]?; var pulse: Int? }
+        let atSync = AtSync()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.loadCatalog = { _, _ in
+            if let appState = atSync.appState, atSync.roster == nil {
+                atSync.roster = appState.botRoster.map(\.name)
+                atSync.rooms = appState.groupRooms.map(\.roomID)
+                atSync.pulse = appState.pulseUnseen
+            }
+            return []
+        }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        let chat = SessionSummary(id: "session-a", alternateIds: [], title: "Plans", model: "Hermes",
+                                  updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                  isArchived: false, lineageRootId: nil)
+        appState.botModePhase = .available
+        appState.botRoster = [raiden]
+        appState.sessions = [chat]
+        let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                             revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        appState.groupChatPhase = .available
+        appState.groupRooms = [trip]
+        appState.groupRoomsListed = true
+        appState.pulseUnseen = 3
+
+        await appState.switchDashboard(to: vps.id)
+        let tile = CombinedRoomTile(dashboardID: mac.id, kind: .hosted(trip))
+        XCTAssertFalse(appState.listsCombinedRoomTile(tile), "another dashboard's room waits for the switch")
+
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.lists, "what it showed is kept with it")
+        XCTAssertEqual(kept.keptListsProfile, "default")
+        XCTAssertEqual(kept.botRoster.map(\.name), ["raiden"])
+        // It's the dashboard's own runtime while kept, its connection in it.
+        let keptConnection = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(appState.runtime(for: mac.id) === kept)
+        XCTAssertTrue(kept.client === keptConnection.client)
+        XCTAssertTrue(kept.dashboardTicketBridge === keptConnection.bridge)
+        XCTAssertTrue(kept.isConnected)
+        XCTAssertTrue(appState.runtime(for: vps.id) === appState.runtimeOnScreen, "the one on screen's own")
+        XCTAssertFalse(appState.runtime(for: mac.id) === appState.runtimeOnScreen)
+        XCTAssertNil(appState.runtime(for: UUID()), "none for a dashboard not kept")
+        XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
+        // Acting on it reads and writes its own, and leaves the screen's.
+        XCTAssertEqual(kept.activeProfile, keptConnection.client.profile ?? "default", "its profile is its kept client's")
+        let profileOnScreen = appState.activeProfile
+        var syncTask: Task<Int, Never>?
+        appState.act(onRuntime: kept) {
+            XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
+            XCTAssertFalse(appState.actingOnRuntimeOnScreen)
+            XCTAssertEqual(appState.activeDashboardID, mac.id, "the dashboard in scope")
+            XCTAssertEqual(appState.dashboardIDOnScreen, vps.id)
+            appState.pulseUnseen = 5
+            appState.activeProfile = "kept-profile"
+            syncTask = Task { @MainActor in appState.pulseUnseen }
+        }
+        let fromSyncScope = await syncTask?.value
+        XCTAssertEqual(fromSyncScope, 5, "a Task made in a synchronous scope carries it on")
+        XCTAssertEqual(kept.activeProfile, "kept-profile", "a profile set in its scope is its own")
+        XCTAssertEqual(appState.activeProfile, profileOnScreen, "and the screen's stays")
+        kept.activeProfile = keptConnection.client.profile ?? "default"
+        XCTAssertEqual(kept.pulseUnseen, 5)
+        XCTAssertEqual(appState.pulseUnseen, 0)
+        XCTAssertTrue(appState.actingOnRuntimeOnScreen)
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        // Across awaits too: the scope is the task's, so main-actor work in
+        // between keeps the screen's, and a Task made inside carries it on.
+        final class Seen { var between: Int?; var inner: Int?; var innerDashboard: UUID? }
+        let seen = Seen()
+        await appState.actAcrossAwaits(onRuntime: kept) {
+            let between = Task { @MainActor in seen.between = appState.pulseUnseen }
+            await between.value
+            XCTAssertEqual(appState.pulseUnseen, 5, "still the kept one's after the await")
+            XCTAssertEqual(appState.activeDashboardID, mac.id)
+            XCTAssertTrue(appState.runtime(for: vps.id) === appState.runtimeOnScreen)
+            await Task { @MainActor in
+                seen.inner = appState.pulseUnseen
+                seen.innerDashboard = appState.activeDashboardID
+            }.value
+        }
+        XCTAssertEqual(seen.between, 5, "a Task made inside carries the scope")
+        XCTAssertEqual(seen.inner, 5)
+        XCTAssertEqual(seen.innerDashboard, mac.id)
+        let outside = await Task { @MainActor in appState.pulseUnseen }.value
+        XCTAssertEqual(outside, 0, "work outside the scope acts on the screen's")
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+        // The one on screen's runs unscoped.
+        await appState.actAcrossAwaits(onRuntime: appState.runtimeOnScreen) {
+            XCTAssertTrue(appState.actingOnRuntimeOnScreen)
+            XCTAssertEqual(appState.activeDashboardID, vps.id)
+        }
+        kept.pulseUnseen = 3
+        XCTAssertEqual(appState.pulseUnseen, 0, "the dashboard switched to shows none of it")
+        // As the other dashboard's roster would be (a first switch with no
+        // stored server identity crosses no boundary, so nothing clears it).
+        appState.botRoster = []
+
+        // The switch back takes the connection up and shows them before its
+        // sync reads anew; its reads, refused here, leave the roster standing.
+        atSync.appState = appState
+        await appState.switchDashboard(to: mac.id)
+        XCTAssertEqual(atSync.roster, ["raiden"], "shown before the sync reads")
+        XCTAssertEqual(atSync.rooms, ["trip"])
+        XCTAssertEqual(atSync.pulse, 3)
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
+        XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"], "shown on the switch back")
+
+        appState.botRoster = []
+        appState.sessions = []
+        appState.groupChatPhase = .idle
+        appState.groupRooms = []
+        appState.groupRoomsListed = false
+        appState.pulseUnseen = 0
+        XCTAssertFalse(appState.listsCombinedRoomTile(tile))
+        appState.showKeptLists(of: kept)
+        XCTAssertTrue(appState.listsCombinedRoomTile(tile), "its room opens without waiting for the sync")
+
+        XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
+        XCTAssertEqual(appState.botModePhase, .available)
+        XCTAssertEqual(appState.sessions.map(\.id), ["session-a"])
+        XCTAssertEqual(appState.groupChatPhase, .available)
+        XCTAssertTrue(appState.groupRoomsListed)
+        XCTAssertEqual(appState.pulseUnseen, 3)
+
+        appState.botRoster = []
+        kept.keptListsProfile = "coder"
+        appState.showKeptLists(of: kept)
+        XCTAssertTrue(appState.botRoster.isEmpty, "read on another profile: unused")
+    }
+
     /// A kept socket that dropped is let go, and the switch back signs in
     /// as before. Leaving the group lets a kept one go too.
     func testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo() async throws {
@@ -817,6 +955,9 @@ extension CrossProfilePresentationCacheTests {
         appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id, roster: [])
 
         XCTAssertEqual(appState.keptDashboardRuntimes.count, 4)
+        // One kept without showing has a runtime of its own, and no lists.
+        XCTAssertNil(appState.keptDashboardRuntimes[dashboards[1].id]?.lists)
+        XCTAssertTrue(appState.runtime(for: dashboards[1].id)?.client === kept[1])
         XCTAssertTrue(appState.takeKeptDashboardRuntime(dashboards[0].id, profile: "default")?.client === kept[0], "the oldest kept is the target, and is taken up")
 
         appState.signOutDashboard(dashboards[1].id)
@@ -1547,6 +1688,55 @@ extension CrossProfilePresentationCacheTests {
             _ = try await appState.artifactsClient(for: source).page(source)
             XCTFail("no kept connection to read through")
         } catch {}
+    }
+
+    func testAKeptDashboardsChatsChangeReadsItsChatsAtOnce() async throws {
+        final class Reads { var paths: [String] = [] }
+        let reads = Reads()
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardChatsChangeWait = .zero
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" { return ["profiles": ["default"]] }
+            guard path.contains("/api/profiles/sessions"), !path.contains("source=cron") else { return ["sessions": []] }
+            reads.paths.append(path)
+            return ["sessions": [
+                ["id": "mac-new", "title": "Made there", "message_count": 1, "profile": "default", "last_active": 2_000],
+            ]]
+        }
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(reads.paths.count, 1)
+
+        // A chat made on its Hermes: its own sessions.changed reads its
+        // chats now, inside the minute the poll would wait.
+        kept.client.onEvent?(.sessionsChanged)
+        kept.client.onEvent?(.sessionsChanged)
+        let read = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id], "a read on its way")
+        await read.value
+        XCTAssertEqual(reads.paths.count, 2, "a burst is one read")
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-new"])
+        // Never the screen's: its list and its catalog stay as they were.
+        XCTAssertFalse(appState.sessions.contains { $0.id == "mac-new" })
+
+        // Taken up, the switch back's sync reads it; a change noted before
+        // goes with the kept connection.
+        appState.keptDashboardChatsChangeWait = .seconds(60)
+        kept.client.onEvent?(.sessionsChanged)
+        let waiting = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id])
+        await appState.switchDashboard(to: mac.id)
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertTrue(waiting.isCancelled)
+
+        // Kept again and let go, nothing waits on it either.
+        await appState.switchDashboard(to: vps.id)
+        let keptAgain = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        keptAgain.client.onEvent?(.sessionsChanged)
+        let dropped = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id])
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertTrue(dropped.isCancelled)
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {

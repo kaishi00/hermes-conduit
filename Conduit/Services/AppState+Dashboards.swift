@@ -761,6 +761,9 @@ extension AppState {
         let outgoingGlows = profileGlowColors()
         var outgoingCapabilities: Set<String>?
         if case .reported(_, let capabilities) = notifierPlugin.state { outgoingCapabilities = capabilities }
+        // What it shows, for a switch back to show at once if it's kept.
+        let outgoingLists = isInCombinedGroup(previousDashboardID)
+            ? DashboardRuntime(keepingListsOf: runtimeOnScreen, profile: activeProfile) : nil
         selectDashboardTarget(id)
         // Pulse's badge, marks and chat are the outgoing dashboard's.
         pulseUnseen = 0
@@ -778,7 +781,8 @@ extension AppState {
         // switch back is at once (multi-instance stage 3).
         keepOutgoingDashboardRuntimeIfCombined(
             previousDashboardID, switchingTo: id, roster: outgoingRoster, profiles: outgoingProfiles, chats: outgoingChats,
-            cronIDs: outgoingCronIDs, work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows
+            cronIDs: outgoingCronIDs, work: outgoingWork, pluginCapabilities: outgoingCapabilities, glows: outgoingGlows,
+            lists: outgoingLists
         )
         retireConnectionRuntimeForDashboardSwitch()
         if crossedServer || previousDashboardID != id {
@@ -795,14 +799,15 @@ extension AppState {
             restorePinnedSessions(for: targetProfile)
         }
         // A combined dashboard kept connected is taken up again: its socket
-        // and bridge are already open, so only the sync runs.
+        // and bridge are already open, and what it showed shows at once,
+        // so only the sync runs, reading it anew.
         if let kept = takeKeptDashboardRuntime(id, profile: activeProfile),
            let reusing = keptClient(kept, on: activeProfile) {
             presentOfflineChatIfAvailable(dashboardID: id)
             showLogin = false
             isConnecting = true
             turnState = .synchronizing
-            await connect(with: kept.connection, profile: activeProfile, reusing: reusing)
+            await connect(with: kept.connection, profile: activeProfile, reusing: reusing, showingKept: kept.lists)
             settleExpiredWidgetDashboardSwitch(generation: generation, widgetLease: widgetLease)
             return
         }

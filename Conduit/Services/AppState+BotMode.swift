@@ -755,7 +755,7 @@ extension AppState {
     /// fires before the change lands, so it's read on the next turn; on
     /// subscribing too, with the bots shown then.
     var shownBotRosterChanged: AnyPublisher<Void, Never> {
-        Publishers.Merge($botRoster.map { _ in () }, $botModePhase.map { _ in () })
+        Publishers.Merge(botRosterValues.map { _ in () }, botModePhaseValues.map { _ in () })
             .receive(on: DispatchQueue.main)
             .eraseToAnyPublisher()
     }
@@ -1776,6 +1776,44 @@ extension AppState {
         } catch {
             return AppLocalization.string("Could not update \(bot.displayLabel).")
         }
+    }
+
+    /// Removes a group chat Hermes Desktop made: Conduit can't send into one
+    /// (Desktop runs its rounds), so this is how it stops showing. Reads the
+    /// projection fresh, takes the room out and tombstones it, as Desktop's
+    /// own delete does, so Desktop drops it too; a write that lost a race
+    /// with another client reads again once. Nil when it's gone.
+    func removeDesktopGroupChat(_ group: DesktopGroupChat) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to manage bots.")
+        }
+        let failure = AppLocalization.string("Could not remove \(group.name).")
+        // The list may hold another Hermes' groups once the write returns.
+        let dashboard = activeDashboardID
+        for attempt in 0..<2 {
+            let outcome: BotMetaWriteOutcome
+            do {
+                let current = try await client.desktopGroupProjection()
+                guard let envelope = DesktopGroupChatDecoder.removing(key: group.key, roomID: group.roomIdentity, from: current.snapshot) else {
+                    // Already gone (removed elsewhere meanwhile).
+                    if activeDashboardID == dashboard { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
+                    await refreshBotRosterAfterWrite()
+                    return nil
+                }
+                outcome = BotMetaWriteOutcome(configureResult: try await client.writeDesktopGroupProjection(
+                    envelope, expectedRevision: current.revision
+                ))
+            } catch {
+                return failure
+            }
+            if outcome == .conflict, attempt == 0 { continue }
+            let removed = outcome == .persisted || outcome == .unsupported
+            // Gone from the list even if the read after it fails.
+            if removed, activeDashboardID == dashboard { desktopGroupChats.removeAll { $0.isSameRoom(as: group) } }
+            await refreshBotRosterAfterWrite()
+            return removed ? nil : failure
+        }
+        return failure
     }
 
     /// Duplicate (Desktop's `duplicateBot`): a full copy of the bot's profile

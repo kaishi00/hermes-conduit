@@ -871,7 +871,7 @@ final class PhoneSyncEngine: ObservableObject {
 
     /// An upload as parts the host takes, each with at most `maxItems` items
     /// (what phone_store counts against MAX_ITEMS: calendars, upserts,
-    /// deletions, alarms and people) and about `maxBytes` of JSON. The first
+    /// deletions, alarms, people and shortcuts) and about `maxBytes` of JSON. The first
     /// part is the upload with as many event and reminder deletions, then
     /// upserts, as fit: it carries every other section and each section's
     /// `full`. The others only add deletions and upserts (never `full`) under
@@ -904,6 +904,7 @@ final class PhoneSyncEngine: ObservableObject {
             later[section] = more
         }
         var items = count(head["calendars"]) + count(head["alarms"]) + count(head["contacts"])
+            + count(head["shortcuts"])
         var bytes = size(head)
         var base = head
         var taken: [String: [String: [Any]]] = [:]

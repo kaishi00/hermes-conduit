@@ -2222,6 +2222,22 @@ struct DesktopGroupChat: Equatable, Identifiable, Codable {
         }
     }
     var lastActivity: Double { messages.last?.timestamp ?? 0 }
+
+    /// The same room as `other`: by its id when it has one (a key can be
+    /// reused by another room), else by its key.
+    func isSameRoom(as other: DesktopGroupChat) -> Bool {
+        if let id = other.roomIdentity { return roomIdentity == id }
+        return key == other.key
+    }
+
+    /// Its `roomId`, else the id its v3 `id:` key names, trimmed as
+    /// `DesktopGroupChatDecoder.removing` trims it.
+    var roomIdentity: String? {
+        if let roomID, !roomID.isEmpty { return roomID }
+        guard key.hasPrefix("id:") else { return nil }
+        let id = String(key.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
+    }
 }
 
 enum DesktopGroupChatDecoder {
@@ -2310,6 +2326,64 @@ enum DesktopGroupChatDecoder {
             if lhs.lastActivity != rhs.lastActivity { return lhs.lastActivity > rhs.lastActivity }
             return lhs.key < rhs.key
         }
+    }
+}
+
+extension DesktopGroupChatDecoder {
+    /// The projection with the room `key` names taken out of `rooms` and
+    /// tombstoned in `deleted`, in the envelope's own version, so Hermes
+    /// Desktop drops it too on its next sync rather than writing it back:
+    /// v3 tombstones its room key (and `id:<roomId>`, which is final) at
+    /// the room's revision, v2 its name at that revision, v1 its name at
+    /// the wall-clock milliseconds v1 used. Every other room and field is
+    /// kept as it is. Nil when the projection no longer holds the room.
+    /// A room re-keyed since the list was read (Desktop's v2-to-v3 move,
+    /// or a name-keyed room that gained its `roomId`) is found by `roomID`
+    /// instead, so it isn't reported gone while it stays.
+    static func removing(key: String, roomID: String? = nil, from snapshot: AnyCodable?, now: Date = Date()) -> [String: Any]? {
+        guard let object = snapshot?.objectValue else { return nil }
+        let version = object["version"]?.doubleValue ?? 0
+        var rooms = object["rooms"]?.objectValue ?? [:]
+        var rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        // The room's id wins over the key: a stale key may now name
+        // another room, which must not be the one removed.
+        let wantedID = roomID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !wantedID.isEmpty {
+            func id(of key: String) -> String {
+                guard rooms[key] != nil else { return "" }
+                let own = rooms[key]?.objectValue?["roomId"]?.stringValue?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !own.isEmpty { return own }
+                return version >= 3 && key.hasPrefix("id:")
+                    ? String(key.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            }
+            if id(of: rawKey) != wantedID {
+                guard let moved = rooms.keys.sorted().first(where: { id(of: $0) == wantedID }) else { return nil }
+                rawKey = moved
+            }
+        }
+        guard let room = rooms.removeValue(forKey: rawKey)?.objectValue else { return nil }
+
+        var deleted = object["deleted"]?.objectValue ?? [:]
+        let revision = max(0, room["revision"]?.doubleValue ?? 0)
+        func tombstone(_ tombstoneKey: String, at value: Double) {
+            let kept = deleted[tombstoneKey]?.doubleValue ?? 0
+            deleted[tombstoneKey] = .number(max(kept, value))
+        }
+        if version >= 3 {
+            tombstone(rawKey, at: revision)
+            let roomID = room["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            if !roomID.isEmpty { tombstone("id:\(roomID)", at: revision) }
+        } else if version >= 2 {
+            tombstone(rawKey, at: revision)
+        } else {
+            tombstone(rawKey, at: (now.timeIntervalSince1970 * 1000).rounded())
+        }
+
+        var envelope = object
+        envelope["rooms"] = .object(rooms)
+        envelope["deleted"] = .object(deleted)
+        return AnyCodable.object(envelope).anyValue as? [String: Any]
     }
 }
 

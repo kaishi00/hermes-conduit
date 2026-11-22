@@ -5,21 +5,48 @@
 //  The combined group (multi-instance stage 3): dashboards switched on under
 //  Settings > Saved Dashboards > Combine Dashboards. A combined dashboard
 //  left while connected keeps its socket and bridge, so a switch back takes
-//  them up again: no new ticket, no new socket, only the usual sync.
-//  Lists stay per dashboard until stage 4.
+//  them up again: no new ticket, no new socket, and what it showed shows
+//  again at once while the usual sync reads it anew.
 //
 
+import Combine
 import Foundation
 
 /// A combined dashboard's live connection, kept while another dashboard is
-/// on screen. Its events are fenced (the client epoch moved on), so nothing
-/// of it reaches the dashboard showing; the sync on taking it up brings its
-/// chat current.
+/// on screen. Its events go to its own lists (`handleKeptDashboardEvent`),
+/// never the dashboard showing; the sync on taking it up brings its chat
+/// current.
+@MainActor
 struct KeptDashboardRuntime {
     let client: HermesClient
     let bridge: DashboardTicketBridge
     let connection: HermesConnection
     let keptAt: Date
+    /// The dashboard's own runtime while it's kept (`runtime(for:)`): its
+    /// connection, and, switched away from, what it showed (its bots, chat
+    /// list, group rooms, live status, Pulse marks, plugin status), which a
+    /// switch back shows at once, before its sync reads them again.
+    let runtime: DashboardRuntime
+
+    init(client: HermesClient, bridge: DashboardTicketBridge, connection: HermesConnection, keptAt: Date,
+         runtime: DashboardRuntime? = nil) {
+        self.client = client
+        self.bridge = bridge
+        self.connection = connection
+        self.keptAt = keptAt
+        let runtime = runtime ?? DashboardRuntime()
+        runtime.connection = connection
+        runtime.client = client
+        runtime.dashboardTicketBridge = bridge
+        runtime.isConnected = true
+        runtime.isConnecting = false
+        runtime.activeProfile = client.profile ?? "default"
+        self.runtime = runtime
+    }
+
+    /// What it showed when it was switched away from; nil for one signed in
+    /// quietly, which never showed.
+    var lists: DashboardRuntime? { runtime.keptListsProfile == nil ? nil : runtime }
 }
 
 /// Why a combined dashboard beside the one on screen isn't connected.
@@ -69,6 +96,73 @@ extension AppState {
     /// Live dashboards at once in the group, the one on screen included
     /// (stage 0's cap). Past it, the one kept longest is let go.
     static let combinedLiveDashboardCap = 4
+
+    /// A live dashboard's runtime: the one on screen's, or a kept one's,
+    /// which the surfaces that act on another dashboard read and act on
+    /// (no-switch stage 2). Nil for one that isn't connected here, or none.
+    func runtime(for dashboardID: UUID?) -> DashboardRuntime? {
+        guard let dashboardID else { return nil }
+        guard dashboardID != dashboardIDOnScreen else { return runtimeOnScreen }
+        return keptDashboardRuntimes[dashboardID]?.runtime
+    }
+
+    /// The dashboard a runtime is: the one on screen's, or a kept one's.
+    func dashboardID(of runtime: DashboardRuntime) -> UUID? {
+        if runtime === runtimeOnScreen { return dashboardIDOnScreen }
+        return keptDashboardRuntimes.first { $0.value.runtime === runtime }?.key
+    }
+
+    /// Runs `body` on another dashboard's runtime: AppState's forwarders
+    /// read and write `runtime` meanwhile, `activeDashboardID` is its
+    /// dashboard, and what reacts on screen (their side effects) stays off
+    /// unless it's the one on screen. This one is synchronous;
+    /// `actAcrossAwaits(onRuntime:_:)` holds the scope across awaits. A Task
+    /// made inside carries the scope on (the reducer's deferred publishes).
+    func act<T>(onRuntime runtime: DashboardRuntime, _ body: () throws -> T) rethrows -> T {
+        let previous = (runtimeInScope, dashboardIDInScope)
+        let id = dashboardID(of: runtime)
+        runtimeInScope = runtime
+        dashboardIDInScope = id
+        defer { (runtimeInScope, dashboardIDInScope) = previous }
+        let scoped: DashboardRuntime? = runtime === runtimeOnScreen ? nil : runtime
+        return try RuntimeScope.$runtime.withValue(scoped) {
+            try RuntimeScope.$dashboardID.withValue(scoped == nil ? nil : id) { try body() }
+        }
+    }
+
+    /// Runs async `body` on another dashboard's runtime, as the synchronous
+    /// one does, across its awaits: the scope is the task's
+    /// (`RuntimeScope`), so the main actor's other work meanwhile keeps
+    /// acting on the screen's, and a Task made inside (a room's polls)
+    /// carries it on. The runtime on screen runs `body` unscoped.
+    /// (A name of its own: an async context would pick an async overload
+    /// for a synchronous scope too.)
+    func actAcrossAwaits<T>(onRuntime runtime: DashboardRuntime, _ body: () async throws -> T) async rethrows -> T {
+        // A synchronous scope can't be open across an await, so none is.
+        guard runtime !== runtimeOnScreen else {
+            return try await RuntimeScope.$runtime.withValue(nil) {
+                try await RuntimeScope.$dashboardID.withValue(nil) { try await body() }
+            }
+        }
+        let id = dashboardID(of: runtime)
+        return try await RuntimeScope.$runtime.withValue(runtime) {
+            try await RuntimeScope.$dashboardID.withValue(id) { try await body() }
+        }
+    }
+
+    /// Publishes another dashboard's runtime's changes as AppState's while
+    /// a surface shows it (a far group chat's screen reads it), since only
+    /// the one on screen's publish otherwise. Nil, or the one on screen's,
+    /// stops it for that surface.
+    func republishRuntime(_ runtime: DashboardRuntime?, for surface: String) {
+        guard let runtime, runtime !== runtimeOnScreen else {
+            surfaceRuntimeChanges[surface] = nil
+            return
+        }
+        guard surfaceRuntimeChanges[surface]?.runtime != ObjectIdentifier(runtime) else { return }
+        let changes = runtime.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        surfaceRuntimeChanges[surface] = (ObjectIdentifier(runtime), changes)
+    }
 
     /// Whether this dashboard is in the combined group.
     func isInCombinedGroup(_ id: UUID?) -> Bool {
@@ -139,7 +233,7 @@ extension AppState {
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
         profiles: [String] = [], chats: [SessionSummary] = [], cronIDs: Set<String> = [],
         work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
-        glows: [String: ProfileGlowRGB]? = nil
+        glows: [String: ProfileGlowRGB]? = nil, lists: DashboardRuntime? = nil
     ) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
@@ -154,7 +248,8 @@ extension AppState {
             client: client,
             bridge: bridge,
             connection: connection,
-            keptAt: Date()
+            keptAt: Date(),
+            runtime: lists
         ), for: outgoingID)
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
@@ -236,7 +331,43 @@ extension AppState {
                 self.noteCombinedDashboardFailed(id, .down)
             }
         }
+        // Its own events reach its own lists, not the screen's (taking it
+        // up points them back at the screen, `attachClientEvents`).
+        kept.client.onEvent = { [weak self, weak client = kept.client] event in
+            guard let self, let client else { return }
+            self.handleKeptDashboardEvent(event, from: id, client: client)
+        }
         clearCombinedDashboardTrouble(id)
+    }
+
+    /// A kept dashboard's event (no-switch slice 5c). Only what is its
+    /// dashboard's alone acts here: a chat made, renamed or deleted on its
+    /// Hermes reads its chats for the Chats list now, not on the minute's
+    /// poll. Its turns' events wait for the switch back, whose sync brings
+    /// its chat current, as before.
+    func handleKeptDashboardEvent(_ event: StreamEvent, from id: UUID, client: HermesClient) {
+        guard keptDashboardRuntimes[id]?.client === client else { return }
+        if case .sessionsChanged = event { noteKeptDashboardChatsChanged(id) }
+    }
+
+    /// Reads the kept dashboard's chats `keptDashboardChatsChangeWait` after
+    /// a change, at most once per wait: a burst (a turn's title, its
+    /// compaction) is one read, and a long turn's steady changes still read
+    /// every wait rather than never until it pauses.
+    func noteKeptDashboardChatsChanged(_ id: UUID) {
+        guard keptDashboardChatsChangeReads[id] == nil else { return }
+        let wait = keptDashboardChatsChangeWait
+        keptDashboardChatsChangeReads[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: wait)
+            guard let self, !Task.isCancelled else { return }
+            self.keptDashboardChatsChangeReads[id] = nil
+            // Noted only when it reads: off screen, or taken up or let go
+            // during the wait, the read stops before asking.
+            if self.isSceneActive, self.keptDashboardRuntimes[id] != nil {
+                self.noteConnectionStep("Kept dashboard's chats read on its change")
+            }
+            await self.readOtherCombinedDashboardsChats(force: true, only: id)
+        }
     }
 
     /// The dashboard's kept connection, taken out of the kept set, when it
@@ -245,6 +376,8 @@ extension AppState {
     /// as before.
     func takeKeptDashboardRuntime(_ id: UUID, profile: String) -> KeptDashboardRuntime? {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return nil }
+        // Taken up, its sync reads its chats.
+        keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
               // On another profile, its socket is handed to a client on this
@@ -258,6 +391,22 @@ extension AppState {
             return nil
         }
         return kept
+    }
+
+    /// A kept dashboard taken up again shows what it showed when it was
+    /// left (its bots, chat list, group rooms, live status, Pulse marks,
+    /// plugin status), so the switch back opens on them at once rather than
+    /// on empty lists filling in; its sync then reads each anew. Lists read
+    /// on another profile than the one it resumes stay unused.
+    func showKeptLists(of kept: DashboardRuntime) {
+        guard kept.keptListsProfile == activeProfile else { return }
+        shownRuntime.copyKeptLists(from: kept)
+        // Through the forwarders, which act on these changing on screen.
+        botModePhase = kept.botModePhase
+        botRoster = kept.botRoster
+        sessions = kept.sessions
+        notifierPlugin = kept.notifierPlugin
+        noteConnectionStep("Kept lists shown")
     }
 
     /// The client a kept connection is taken up with on `profile`: its own,
@@ -304,6 +453,7 @@ extension AppState {
     func dropKeptDashboardRuntime(_ id: UUID, keepingLists: Bool = false) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
+        keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }

@@ -125,7 +125,9 @@ enum NotificationCopy {
     }
 
     /// What a verified push shows with Chat names (#1415): the chat's title
-    /// and the profile, and none of Hermes' words, so the body stays the
+    /// (a reply outside a named chat takes its bot's name instead) and the
+    /// profile when the title doesn't already say it, and none of Hermes'
+    /// words, so the body stays the
     /// generic one. Only a title Conduit writes from the `title_label`
     /// counts, never the host's own title, which may quote a tool's prompt.
     static func chatNames(_ content: [String: Any]) -> (title: String?, subtitle: String?) {
