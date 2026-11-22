@@ -2222,6 +2222,19 @@ struct DesktopGroupChat: Equatable, Identifiable, Codable {
         }
     }
     var lastActivity: Double { messages.last?.timestamp ?? 0 }
+
+    /// The same room as `other`: by its id when it has one (a key can be
+    /// reused by another room), else by its key.
+    func isSameRoom(as other: DesktopGroupChat) -> Bool {
+        if let id = other.roomIdentity { return roomIdentity == id }
+        return key == other.key
+    }
+
+    /// Its `roomId`, else the id its v3 `id:` key names.
+    private var roomIdentity: String? {
+        if let roomID, !roomID.isEmpty { return roomID }
+        return key.hasPrefix("id:") ? String(key.dropFirst(3)) : nil
+    }
 }
 
 enum DesktopGroupChatDecoder {
@@ -2329,12 +2342,22 @@ extension DesktopGroupChatDecoder {
         let version = object["version"]?.doubleValue ?? 0
         var rooms = object["rooms"]?.objectValue ?? [:]
         var rawKey = version >= 3 ? key : (key.hasPrefix("name:") ? String(key.dropFirst(5)) : key)
+        // The room's id wins over the key: a stale key may now name
+        // another room, which must not be the one removed.
         let wantedID = roomID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        if rooms[rawKey] == nil, !wantedID.isEmpty,
-           let moved = rooms.first(where: {
-               $0.value.objectValue?["roomId"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) == wantedID
-           })?.key {
-            rawKey = moved
+        if !wantedID.isEmpty {
+            func id(of key: String) -> String {
+                guard rooms[key] != nil else { return "" }
+                let own = rooms[key]?.objectValue?["roomId"]?.stringValue?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                if !own.isEmpty { return own }
+                return version >= 3 && key.hasPrefix("id:")
+                    ? String(key.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines) : ""
+            }
+            if id(of: rawKey) != wantedID {
+                guard let moved = rooms.keys.sorted().first(where: { id(of: $0) == wantedID }) else { return nil }
+                rawKey = moved
+            }
         }
         guard let room = rooms.removeValue(forKey: rawKey)?.objectValue else { return nil }
 
