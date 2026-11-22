@@ -51,7 +51,7 @@ extension DashboardTicketBridge {
             do {
                 return try await Self.download(retry, filename: filename, into: root, maxBytes: maxBytes, session: session)
             } catch DashboardTicketBridgeError.signInRequired {
-                nativeOAuthSession.discardRejectedGrant()
+                nativeOAuthSession.discardRejectedGrant(sentIn: retry)
                 throw DashboardTicketBridgeError.signInRequired
             }
         }

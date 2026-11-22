@@ -536,6 +536,16 @@ extension AppState {
             ?? ConnectionFailureClassifier.classify(bridgeError))
     }
 
+    /// What the sign-in screen says when the dashboard asks to sign in
+    /// again: on a dashboard whose plugin said its password sign-ins end on
+    /// each restart, why, and what keeps them (plugin 0.193.6+).
+    static func signInRequiredPresentation(
+        _ failure: ConnectionFailurePresentation,
+        endsOnRestart: Bool
+    ) -> ConnectionFailurePresentation {
+        endsOnRestart && failure == .signInExpired ? .signInEndsOnRestart : failure
+    }
+
     /// Forces the sign-in screen with a classified failure presentation.
     /// Prefer this overload whenever the failure derives from an Error — the
     /// full presentation (title, actions, help routing) reaches the login
@@ -592,6 +602,10 @@ extension AppState {
         pendingFailure: ConnectionFailurePresentation,
         keepingNativeGrant: Bool = false
     ) {
+        let pendingFailure = Self.signInRequiredPresentation(
+            pendingFailure,
+            endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: activeDashboardID, in: defaults)
+        )
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
         invalidateGroupChatState()

@@ -374,6 +374,19 @@ struct ConnectionFailurePresentation: Equatable {
         )
     }
 
+    /// `signInExpired` for a dashboard whose plugin said its password
+    /// sign-ins end on each restart (no `dashboard.basic_auth.secret`):
+    /// says why, and the line that keeps them.
+    static var signInEndsOnRestart: ConnectionFailurePresentation {
+        ConnectionFailurePresentation(
+            title: AppLocalization.string("Your dashboard sign-in expired", table: .connection),
+            message: AppLocalization.string("Hermes ends every password sign-in when its dashboard restarts, such as after an update, because no sign-in secret is set. To stay signed in, set dashboard.basic_auth.secret in Hermes' config.yaml to the output of openssl rand -base64 32, then restart Hermes. Sign in again to reconnect now.", table: .connection),
+            helpDestination: ConnectionFailure.loginRequired.helpDestination,
+            offersRecoveryActions: true,
+            classifiedFailure: .loginRequired
+        )
+    }
+
     /// Whether this presentation asks the user to sign in to the dashboard
     /// again (its session is gone), as opposed to fixing an address,
     /// network or password.
