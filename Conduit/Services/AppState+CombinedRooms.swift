@@ -550,10 +550,10 @@ extension AppState {
         }
         let key = BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(dashboardID))
         let order = BotOrder(defaults: defaults, key: key, kind: .rooms)
-        let moved = order.dropping(room.roomID, onto: onto, shown: hosted)
-        guard moved != order else { return }
+        let dropped = order.dropping(room.roomID, onto: onto, shown: hosted)
+        guard dropped != order else { return }
         objectWillChange.send()
-        moved.save(to: defaults, key: key)
+        dropped.save(to: defaults, key: key)
     }
 
     /// The other combined dashboards' hosted rooms on Bots Home, read on
