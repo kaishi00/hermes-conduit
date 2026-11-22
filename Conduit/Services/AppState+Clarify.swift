@@ -1043,6 +1043,9 @@ extension AppState {
 
     /// Try Again on an app whose sign-in page went dead.
     func reissueConnection(messageId: String, target name: String) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.reissueConnection(messageId: messageId, target: name) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].connection, current.needsUser else { return }
         guard let client = connectionClient(for: current, at: index) else { return }
@@ -1062,6 +1065,9 @@ extension AppState {
     /// The sign-in page closed: Hermes looks at the account now. Only
     /// shortens the wait; Hermes' own check finds it anyway.
     func wakeConnection(messageId: String) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.wakeConnection(messageId: messageId) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].connection, current.isOpen,
               current.profile.isEmpty || current.profile == activeProfile,

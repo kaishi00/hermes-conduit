@@ -295,6 +295,10 @@ extension AppState {
     /// it. One whose reply was lost after its chat was left may have gone,
     /// so it isn't announced as unsent.
     func composerSubmissionStoppedQuietly(_ context: ComposerSubmissionContext) -> Bool {
+        // Checked where it was captured: a far chat's runtime for its send.
+        if case .far(let runtime) = chatRuntimeRoute {
+            return act(onRuntime: runtime) { composerSubmissionStoppedQuietly(context) }
+        }
         if takeComposerSubmissionOfUnknownDelivery(context) { return false }
         return !isCurrentComposerSubmission(context)
     }

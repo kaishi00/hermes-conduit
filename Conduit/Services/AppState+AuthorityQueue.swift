@@ -109,6 +109,9 @@ extension AppState {
     /// Discards a cut-off turn and sends its words again, as a new message.
     /// The messages that waited behind it run first.
     func resendLostPrompt(_ row: QueuedPrompt) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.resendLostPrompt(row) }) != nil { return }
         let sessionID = authorityQueue.sessionID
         // Where the words go back if the resend doesn't go: this chat's
         // draft, wherever the user is by then.
