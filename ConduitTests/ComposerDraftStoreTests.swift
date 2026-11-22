@@ -255,8 +255,13 @@ final class ComposerDraftStoreTests: XCTestCase {
                        "a dictation retry keeps its recording until then too")
         XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(far, key: farKey, share: UUID()), draftDashboard: far, activeDashboard: screen),
                       "the far chat's own composer takes it")
-        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(screen, key: farKey, clip: UUID()), draftDashboard: far, activeDashboard: screen),
-                      "the active dashboard's, as before")
+        let screenKey = ComposerBar.composerDraftKey(for: "here-1", profile: "default", dashboard: screen)
+        XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(screen, key: screenKey, clip: UUID()), draftDashboard: far, activeDashboard: screen),
+                       "the screen's filed restore waits while a far chat's draft is loaded")
+        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(screen, key: screenKey), draftDashboard: far, activeDashboard: screen),
+                      "its refused words still go to their stored draft")
+        XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(screen, key: screenKey, clip: UUID()), draftDashboard: screen, activeDashboard: screen),
+                      "and its own composer takes the filed one")
         XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(other, key: farKey), draftDashboard: screen, activeDashboard: screen),
                        "named for one dashboard but kept for another: left alone")
     }
