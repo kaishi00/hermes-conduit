@@ -10399,6 +10399,8 @@ whole and selectable, see A blocked Kanban task) · Hermes' own board drawer
 (upstream; `GET /tasks/{id}` sends the full latest summary, cards on the
 board a 200-character preview)
 
+**Desktop app:** unchecked: whether the desktop's Kanban board opens a task's runs, activity, comments and attachments whole wasn't checked.
+
 **Code**
 - The sheet and the text it shows: `Conduit/Views/Kanban/KanbanFullTextSheet.swift` (KanbanFullText, KanbanFullTextSheet, KanbanFullTextFormatter: runText, eventText)
 - The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (runsSection, runRow, activityRow, commentsSection, attachmentsSection, openAttachment, previewLineLimit)
@@ -10406,15 +10408,15 @@ board a 200-character preview)
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 
 **Rulings**
-- A run's summary or error and a comment show four lines on the task screen, an activity row's detail two; a row with more to read has a chevron and opens it whole. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #FULLTEXTPR, Michel couldn't review a "review requested" run's summary on his phone).
-- Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines, nested values as indented JSON, as plain text, so key names like `root_assignee` aren't read as emphasis (2026-11-22, #FULLTEXTPR).
-- An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #FULLTEXTPR).
+- A run's summary or error and a comment show four lines on the task screen, an activity row's detail two; a row with more to read has a chevron and opens it whole. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #103, Michel couldn't review a "review requested" run's summary on his phone).
+- Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines, nested values as indented JSON, as plain text, so key names like `root_assignee` aren't read as emphasis (2026-11-22, #103).
+- An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #103).
 
 **Open gaps**
 - A parent task's child results (each child's latest summary) come with the task but aren't shown; Dependencies links each child, whose own screen has its runs.
 - Only the 60 newest activity events are listed.
 
-**Checked:** 2026-11-22, #FULLTEXTPR (seeded).
+**Checked:** 2026-11-22, #103 (seeded).
 
 ## Feature map rules
 

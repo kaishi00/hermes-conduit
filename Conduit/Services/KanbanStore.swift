@@ -406,7 +406,7 @@ final class KanbanStore {
     /// Downloads a task attachment into the preview staging folder; the
     /// caller hands it to `MediaPreviewPresenter`, which removes it.
     func downloadAttachment(_ attachment: KanbanAttachment) async throws -> DashboardDownloadedFile {
-        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         return try await service.downloadAttachment(
             attachment,
             board: loadedBoardSlug ?? effectiveBoardSlug,

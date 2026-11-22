@@ -165,7 +165,7 @@ final class KanbanService {
     /// `root` (`GET /attachments/{id}`, the board drawer's download link).
     func downloadAttachment(_ attachment: KanbanAttachment, board: String?, into root: URL) async throws -> DashboardDownloadedFile {
         guard let downloader = requester as? any DashboardFileDownloading else {
-            throw KanbanServiceError.invalidResponse(AppLocalization.string("Couldn't open this attachment."))
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Couldn't open this attachment.", table: .tasks))
         }
         let path = try withBoard(Self.namespace + "/attachments/" + (try pathComponent(attachment.id)), slug: board)
         return try await downloader.downloadFile(

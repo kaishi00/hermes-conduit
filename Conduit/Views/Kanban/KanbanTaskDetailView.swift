@@ -933,7 +933,7 @@ struct KanbanTaskDetailView: View {
                 ForEach(comments) { value in
                     Button {
                         fullText = KanbanFullText(
-                            title: AppLocalization.string("Comment from \(value.author)"),
+                            title: AppLocalization.string("Comment from \(value.author)", table: .tasks),
                             subtitle: relativeDate(value.createdAt),
                             body: value.body
                         )
@@ -1122,7 +1122,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var attachmentsSection: some View {
         if let attachments = detail?.attachments, !attachments.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Attachments (\(attachments.count))"), symbol: "paperclip", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Attachments (\(attachments.count))", table: .tasks), symbol: "paperclip", tint: .conduitAccent) {
                 ForEach(attachments) { attachment in
                     Button {
                         Task { await openAttachment(attachment) }
@@ -1182,12 +1182,12 @@ struct KanbanTaskDetailView: View {
         do {
             let file = try await store.downloadAttachment(attachment)
             if !MediaPreviewPresenter.shared.present(downloaded: file) {
-                attachmentError = AppLocalization.string("Couldn't open this attachment.")
+                attachmentError = AppLocalization.string("Couldn't open this attachment.", table: .tasks)
             }
         } catch is CancellationError {
             return
         } catch {
-            attachmentError = AppLocalization.string("Couldn't open this attachment.")
+            attachmentError = AppLocalization.string("Couldn't open this attachment.", table: .tasks)
         }
     }
 

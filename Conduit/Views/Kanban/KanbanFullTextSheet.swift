@@ -80,7 +80,7 @@ enum KanbanFullTextFormatter {
         switch (error, summary) {
         case let (error?, summary?):
             parts.append("### " + AppLocalization.string("Error") + "\n\n" + error)
-            parts.append("### " + AppLocalization.string("Summary") + "\n\n" + summary)
+            parts.append("### " + AppLocalization.string("Summary", table: .tasks) + "\n\n" + summary)
         case let (error?, nil):
             parts.append(error)
         case let (nil, summary?):
