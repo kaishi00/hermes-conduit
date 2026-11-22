@@ -3729,6 +3729,30 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerRestoreRequests.map(\.dashboardID), [far.dashboardID])
     }
 
+    /// A far chat whose connection dropped stays open: its waiting
+    /// message is matched by its own row as it opened, never by the
+    /// dashboard on screen's rows that happen to share its open id.
+    func testAnUnreachableFarChatIsToldByItsOwnRow() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.offlineChatPresentation = nil
+        appState.activeSessionId = "stored-b"
+        let far = FarChatOwner(dashboardID: UUID(), profile: "work")
+        appState.farChat = far
+        appState.rowOfChatOnScreen = (row: session("far-durable", profile: "work"), openIDs: ["stored-b"],
+                                      dashboardID: far.dashboardID, profile: "work")
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("Its runtime isn't kept here") }
+
+        XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-a"))
+
+        // With no row of its own recorded, only its open id says.
+        appState.rowOfChatOnScreen = nil
+        XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
+    }
+
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
         let (appState, store, dashboard) = makeAppState()
         let otherDashboard = UUID()
