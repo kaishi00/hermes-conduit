@@ -388,6 +388,9 @@ extension AppState {
     /// A catalog read landed: the open chat's stored count, against the
     /// last one, says whether a turn the registry never saw ran in it.
     func observeOpenChatCatalog() {
+        // Another combined dashboard's chat on screen isn't in this
+        // dashboard's catalog: one id can name chats on two Hermes.
+        guard chatOnScreenIsInScope else { return }
         guard let local = openChatLocalTurn(),
               openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing else { return }
         let accepted = acceptedIdentitySessionIDs(forRequested: local.sessionID)

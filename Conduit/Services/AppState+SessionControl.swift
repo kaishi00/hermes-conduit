@@ -23,7 +23,9 @@ extension AppState {
     /// dock shows the open chat's only, and reads a chat's again when it
     /// opens.
     func applySessionControl(_ snapshot: SessionControlSnapshot, for sessionID: String) {
-        guard sessionControlIsOpenChat(sessionID) else { return }
+        // Only the dashboard whose chat is on screen speaks for its dock:
+        // one id can name chats on two combined dashboards.
+        guard chatOnScreenIsInScope, sessionControlIsOpenChat(sessionID) else { return }
         // One key per chat: word under another of its ids (runtime or
         // stored) doesn't release an action still waiting.
         let key = sessionControl.sessionID.flatMap { sessionControlIsOpenChat($0) ? $0 : nil } ?? sessionID
@@ -48,7 +50,7 @@ extension AppState {
             return
         }
         // Newer word (an event, an action's answer) landed meanwhile.
-        guard self.client === client, sessionControl.revision == revision else { return }
+        guard self.client === client, sessionControl.revision == revision, chatOnScreenIsInScope else { return }
         applySessionControl(snapshot, for: sessionID)
     }
 
@@ -84,7 +86,7 @@ extension AppState {
             }
             // Dropped once the store went to another chat, like the note.
             guard self.client === client, sessionControl.isCurrent(token),
-                  sessionControl.sessionID == sessionID else { return }
+                  sessionControl.sessionID == sessionID, chatOnScreenIsInScope else { return }
             if let snapshot = answer.snapshot {
                 sessionControl.apply(snapshot, for: sessionID)
             } else {
@@ -97,7 +99,7 @@ extension AppState {
             }
         } catch {
             guard self.client === client, sessionControl.isCurrent(token),
-                  sessionControl.sessionID == sessionID else { return }
+                  sessionControl.sessionID == sessionID, chatOnScreenIsInScope else { return }
             sessionControl.notice = UserFacingError.message(for: error)
         }
     }
@@ -124,7 +126,7 @@ extension AppState {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
         if let routed = await onChatRuntime(unreachable: [BackgroundProcess]?.none, { await self.loadBackgroundProcesses() }) { return routed }
-        guard let client, let sessionID = backgroundProcessSessionID else { return nil }
+        guard let client, let sessionID = backgroundProcessSessionID, chatOnScreenIsInScope else { return nil }
         let processes: [BackgroundProcess]
         do {
             if let list = chatResumeLifecycleOperations.listBackgroundProcesses {
