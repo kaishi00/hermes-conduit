@@ -432,8 +432,10 @@ extension AppState {
     /// Keeps a dashboard's hidden models without its runtime (a far
     /// chat's, after its runtime has gone).
     func saveModelVisibility(_ visibility: ModelVisibility, dashboardID: UUID) {
+        let normalized = Self.normalizedModelVisibility(visibility)
+        guard normalized != storedModelVisibilities()[Self.dashboardPreferenceBucket(dashboardID)] else { return }
         objectWillChange.send()
-        keepModelVisibility(Self.normalizedModelVisibility(visibility), dashboardID: dashboardID)
+        keepModelVisibility(normalized, dashboardID: dashboardID)
     }
 
     private static func normalizedModelVisibility(_ visibility: ModelVisibility) -> ModelVisibility {

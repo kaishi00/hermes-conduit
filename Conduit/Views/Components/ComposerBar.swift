@@ -2003,8 +2003,13 @@ struct ComposerBar: View {
         guard let loadedDraftKey else { return }
         var restoredIntoField = false
         // Its words are its chat's dashboard's: a far chat's, not the screen's.
+        // A far chat's words while another draft is loaded go to its stored
+        // draft, so they outlive the queue (it isn't saved).
         let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
-        for request in appState.composerRestoreRequests where request.dashboardID == draftDashboardID {
+        for request in appState.composerRestoreRequests
+        where request.dashboardID == draftDashboardID
+            || request.dashboardID == appState.activeDashboardID
+            || request.dashboardID == request.key.dashboard {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 // Only a send's own words can be the refused message: a
                 // shared draft, a dictation retry or a waiting message's
