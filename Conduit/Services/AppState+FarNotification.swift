@@ -3,12 +3,14 @@
 //  Conduit
 //
 //  A push or chat link from another combined dashboard opens in place (no-
-//  switch stage 2, the notifications thread): the chat it names opens as
-//  its far Chats row does (openFarChatInPlace, AppState+FarChat.swift), on
-//  that dashboard's own runtime through its kept connection, while the
-//  dashboard on screen stays as it is. What opens on another surface keeps
-//  the switch until that surface opens in place: a group room's, a Pulse
-//  report's, a call's and a Bot Chat's.
+//  switch stage 2, the notifications thread): its route runs on that
+//  dashboard's own runtime, through its kept connection, as the far Chats
+//  row's open does (AppState+FarChat.swift), while the dashboard on screen
+//  stays as it is. So does a widget's, Siri's or Spotlight's chat of
+//  another combined dashboard (its row in the launcher widget's picker, Open
+//  Chat). What opens on another surface keeps the switch until that surface
+//  opens in place: a group room's, a Pulse report's, a call's and a Bot
+//  Chat's, and a widget's New Chat or Talk.
 //  The plan: /mnt/project-files/all-live/no-switch-plan.md.
 //
 
@@ -114,5 +116,43 @@ extension AppState {
     func farChatIsShown(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
         guard farChatDashboardID == dashboardID, let active = activeSessionId, !active.isEmpty else { return false }
         return SessionContentSearch.identities(of: session).contains(active)
+    }
+
+    /// Opens a widget's or Siri's chat of another combined dashboard in
+    /// place, on that dashboard's runtime, as its Chats row does: the chat
+    /// its kept read lists for that profile. False when the launch goes on
+    /// as before (through a switch, or its refusal during a call): a call
+    /// going on, not a chat's resume, the dashboard on
+    /// screen's, not kept connected, its bots not read yet, not listed, its
+    /// Pulse chat, or a Bot Chat (startFarChatOpen's isFarBotChat). An open
+    /// that fails later shows the launch's error.
+    func openWidgetChatInPlace(_ link: WidgetLaunchLink) -> Bool {
+        // During a call a widget's chat refuses, as the switch's launch
+        // does (A switch during a call): end the call first.
+        guard !isVoiceCallInProgress,
+              link.action == .resume, let workspace = link.workspace,
+              let reference = link.reference, reference.kind == .dashboard,
+              workspace.dashboardID != dashboardIDOnScreen,
+              let kept = keptDashboardRuntimes[workspace.dashboardID],
+              // Its bots read, so a Bot Chat is told from a chat, as a push's.
+              combinedDashboardBots[workspace.dashboardID] != nil || !kept.runtime.botRoster.isEmpty,
+              let session = combinedDashboardChats[workspace.dashboardID]?.sessions.first(where: {
+                  profilesMatch($0.profile ?? "default", workspace.profile)
+                      && SessionContentSearch.identities(of: $0).contains(reference.sessionID)
+              }),
+              // Its Pulse chat opens through a switch, on the Pulse screen.
+              Set(SessionContentSearch.identities(of: session))
+                  .isDisjoint(with: farPulseHomes(in: workspace.dashboardID)) else { return false }
+        // An open that fails says so, as the switch's launch does: the chat
+        // gone there since its list was read, or its connection lost.
+        let unavailable = AppLocalization.string("WidgetLaunch.ConversationUnavailable")
+        let open = startFarChatOpen(session, in: workspace.dashboardID, onFailure: { [weak self] sessionWasNotFound in
+            guard let self else { return }
+            self.errorMessage = Self.linkedSessionFailureMessage(
+                current: self.errorMessage, sessionWasNotFound: sessionWasNotFound, unavailable: unavailable
+            )
+        })
+        if open != nil { errorMessage = nil }
+        return open != nil
     }
 }

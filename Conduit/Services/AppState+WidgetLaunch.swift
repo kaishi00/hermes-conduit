@@ -15,6 +15,12 @@ extension AppState {
         }
         guard let link = WidgetLaunchLink(url: url) else { return true }
         cancelChatResumeRestoration()
+        // Another combined dashboard's chat opens in place, with no switch
+        // (no-switch stage 2).
+        if openWidgetChatInPlace(link) {
+            revealChatForWidgetLaunch()
+            return true
+        }
         receiveLaunch(link, origin: origin)
         // A New Chat's chat shows straight away, empty, while it waits for
         // what its launch needs.
