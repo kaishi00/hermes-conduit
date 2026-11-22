@@ -728,8 +728,13 @@ extension AppState {
     /// its route restarts when `isConnected` flips, which the retirement
     /// does, and that cancelled the target's sign-in halfway, leaving
     /// Conduit on the login screen "connecting" to it (issue 1888).
-    func switchDashboard(to id: UUID, widgetLease: WidgetLaunchLease? = nil) async {
+    /// `stillWanted`: asked again as the switch's main-actor job starts,
+    /// after the hop, so a launch a newer one replaced meanwhile switches
+    /// nothing (issue 3088).
+    func switchDashboard(to id: UUID, widgetLease: WidgetLaunchLease? = nil,
+                         stillWanted: @escaping () -> Bool = { true }) async {
         await Task { @MainActor in
+            guard stillWanted() else { return }
             await self.runDashboardSwitch(to: id, widgetLease: widgetLease)
         }.value
     }

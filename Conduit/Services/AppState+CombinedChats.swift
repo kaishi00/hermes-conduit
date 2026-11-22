@@ -130,11 +130,12 @@ extension AppState {
                 sessions = V2FilterSelection.mergedByRecency(sessions, rows)
             }
             // No chat read answered, but its Hermes listed its profiles: the
-            // kept list drops the ones it no longer lists, so a later publish
-            // doesn't bring them back into the widgets, and reads the new
-            // ones on the next pass.
+            // kept list drops the ones it no longer lists, and the widgets
+            // publish without them now, and reads the new ones on the next
+            // pass.
             if !stale, !answered, let listed, let last = combinedDashboardChats[id], last.profiles != listed {
                 combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread, at: now)
+                wroteAny = true
             }
             guard !stale, answered else { continue }
             // Its cron runs' ids, so it counts them as the dashboard on
@@ -389,7 +390,7 @@ extension AppState {
         in dashboardID: UUID,
         profile: String? = nil,
         endingTheCall: Bool = false,
-        stillWanted: () -> Bool = { true }
+        stillWanted: @escaping () -> Bool = { true }
     ) async -> Bool {
         guard endingTheCall || !refusesCombinedSwitchDuringCall(to: dashboardID) else { return false }
         if let profile {
@@ -403,7 +404,9 @@ extension AppState {
             // one it last used there (Eric, 2026-11-16).
             rememberActiveProfile(profile, for: dashboardID)
         }
-        await switchDashboard(to: dashboardID)
+        // Asked again as the switch commits, after its hop: a launch a newer
+        // one replaced in that window doesn't switch (issue 3088).
+        await switchDashboard(to: dashboardID, stillWanted: stillWanted)
         guard activeDashboardID == dashboardID else { return false }
         // Its own list has the last word: the profile list read moves off a
         // profile it doesn't name, and its All stays as it was.

@@ -506,6 +506,42 @@ extension ChatOnScreenTests {
         XCTAssertEqual(AppState.askedQuestionsBlock([]), "")
     }
 
+    /// A live call is told the questions that wait on the user only by a
+    /// plugin that records a spoken answer, 0.191.0 or newer (issue 2985).
+    /// A Watch call's read follows the same rule; a plugin that reports no
+    /// list falls back to the last read, and one whose version can't be
+    /// learned is told nothing it couldn't keep (issue 2980).
+    func testALiveCallIsToldTheWaitingQuestionsOnlyWhenThePluginRecordsTheAnswer() async throws {
+        let appState = makeQuietAppState()
+        let asked = try XCTUnwrap(NeedsYouItem(question: ["id": "P7", "kind": "proposal", "status": "open", "at": 1.0,
+                                                          "text": "Which branch?", "choices": ["main", "release"],
+                                                          "actions": ["answer"], "session_ids": ["s1"]], profile: "atlas"))
+        appState.needsYou.apply([asked], profile: "atlas", dashboardID: appState.activeDashboardID) { _ in false }
+        func plugin(_ version: String, capabilities: Set<String> = [NeedsYouStore.capability]) -> NotifierPluginStatus {
+            var plugin = NotifierPluginStatus(state: .reported(version: version, capabilities: capabilities))
+            plugin.runtime = NotifierPluginStatus.Runtime(loadedVersion: version, restartNeeded: false, bootID: nil)
+            return plugin
+        }
+
+        appState.notifierPlugin = plugin("0.190.1")
+        XCTAssertFalse(appState.notifierPlugin.recordsSpokenQuestionAnswers)
+        XCTAssertEqual(appState.liveAskedQuestionsInstructions(profile: "atlas"), "", "0.189-0.190 lists them but can't record an answer")
+        let olderWatch = await appState.liveAskedQuestionsInstructionsReading(profile: "atlas")
+        XCTAssertEqual(olderWatch, "", "nor is a Watch call told them")
+
+        appState.notifierPlugin = plugin("0.191.0")
+        XCTAssertTrue(appState.liveAskedQuestionsInstructions(profile: "atlas").contains("My answer to P7"))
+        // Reported with no list: the Watch call falls back to the last read.
+        appState.notifierPlugin = plugin("0.191.1", capabilities: [])
+        let lastRead = await appState.liveAskedQuestionsInstructionsReading(profile: "atlas")
+        XCTAssertTrue(lastRead.contains("- P7: «Which branch?»"), "the last read stands in")
+
+        // Never learned (no connection to read it through): nothing promised.
+        appState.notifierPlugin = NotifierPluginStatus(state: .unknown)
+        let unknown = await appState.liveAskedQuestionsInstructionsReading(profile: "atlas")
+        XCTAssertEqual(unknown, "")
+    }
+
     func testAQuestionAnsweredHereLeavesAtOnceOnlyOnItsDashboard() throws {
         let store = NeedsYouStore()
         let dashboard = UUID()
@@ -518,6 +554,28 @@ extension ChatOnScreenTests {
         store.dropAnsweredQuestion("P7", profile: "ATLAS", dashboardID: UUID())
         XCTAssertEqual(store.items.count, 2, "another dashboard's answer leaves these alone")
         store.dropAnsweredQuestion("P7", profile: "ATLAS", dashboardID: dashboard)
+        XCTAssertEqual(store.items.map(\.waitID), ["asked-P8"])
+
+        // A read already out when it was answered doesn't bring it back
+        // (issue 2980).
+        store.apply([try asked("P7", at: 1), try asked("P8", at: 2)], profile: "atlas", dashboardID: dashboard) { _ in false }
+        XCTAssertEqual(store.items.map(\.waitID), ["asked-P8"], "an older read keeps the answered question out")
+
+        // The same Hermes saved as another combined dashboard: its copy goes
+        // at once and stays out; another Hermes' question of that id stays.
+        let twin = UUID(), elsewhere = UUID()
+        store.applyOther([try asked("P9", at: 3)], profile: "atlas", dashboardID: twin)
+        store.applyOther([try asked("P9", at: 3)], profile: "atlas", dashboardID: elsewhere)
+        store.dropAnsweredQuestion("P9", profile: "atlas", dashboardID: dashboard, alsoOn: [twin])
+        XCTAssertNil(store.otherDashboards[twin], "the twin's copy went")
+        XCTAssertEqual(store.otherDashboards[elsewhere]?.map(\.waitID), ["asked-P9"], "another Hermes' P9 stays")
+        store.applyOther([try asked("P9", at: 3)], profile: "atlas", dashboardID: twin)
+        XCTAssertNil(store.otherDashboards[twin], "the twin's older read keeps it out too")
+
+        // Past the hold, a list that still names it shows it again.
+        store.dropAnsweredQuestion("P8", profile: "atlas", dashboardID: dashboard,
+                                   now: Date().addingTimeInterval(-NeedsYouStore.answeredQuestionHold - 1))
+        store.apply([try asked("P8", at: 2)], profile: "atlas", dashboardID: dashboard) { _ in false }
         XCTAssertEqual(store.items.map(\.waitID), ["asked-P8"])
     }
 }

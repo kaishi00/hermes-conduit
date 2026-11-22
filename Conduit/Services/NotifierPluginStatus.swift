@@ -311,6 +311,19 @@ struct NotifierPluginStatus: Equatable {
         reports("voice-tools") && !Self.isOlder(runningVersion, than: Self.locationVoiceVersion)
     }
 
+    /// The plugin version that records a spoken answer to a question that
+    /// waits past its turn (`work_propose` with its `id` and `answer`,
+    /// notifier #977). Its rows are listed from 0.189.0.
+    static let spokenQuestionAnswersVersion = "0.191.0"
+
+    /// Whether a live call may be told the questions that wait on the user
+    /// and to hand Hermes their spoken answer by id: only a plugin that
+    /// records it (issue 2985). An older one would take the answer as a new
+    /// request and leave the question open; the user answers by tap there.
+    var recordsSpokenQuestionAnswers: Bool {
+        !Self.isOlder(runningVersion, than: Self.spokenQuestionAnswersVersion)
+    }
+
     /// Whether the running plugin takes `?conduit_profile=` on the routes
     /// that need the dashboard process (DashboardPath.conduitProfileParameter).
     var servesDashboardProfiles: Bool { reports(DashboardPath.dashboardProfilesCapability) }

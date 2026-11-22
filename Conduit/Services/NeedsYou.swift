@@ -300,6 +300,7 @@ final class NeedsYouStore: ObservableObject {
         isOpenChat: (NeedsYouItem) -> Bool
     ) {
         if dashboardID != self.dashboardID { reset(dashboardID: dashboardID) }
+        let read = read.filter { !answeredLately($0, on: dashboardID) }
         let firstRead = !readProfiles.contains(profile)
         readProfiles.insert(profile)
         let fresh = read.filter { !seen.contains($0.id) }
@@ -365,7 +366,7 @@ final class NeedsYouStore: ObservableObject {
         isOpenChat: (NeedsYouItem) -> Bool = { _ in false }
     ) {
         guard dashboardID != self.dashboardID else { return }
-        let tagged = read.map { item -> NeedsYouItem in
+        let tagged = read.filter { !answeredLately($0, on: dashboardID) }.map { item -> NeedsYouItem in
             var item = item
             item.dashboardID = dashboardID
             return item
@@ -439,12 +440,46 @@ final class NeedsYouStore: ObservableObject {
     /// A question the user just answered here leaves at once, so the asking
     /// chat's card moves on to the next even when the read behind it fails.
     /// Only on the dashboard these were read on.
-    func dropAnsweredQuestion(_ questionID: String, profile: String, dashboardID: UUID?) {
+    func dropAnsweredQuestion(_ questionID: String, profile: String, dashboardID: UUID?,
+                              alsoOn twins: Set<UUID> = [], now: Date = Date()) {
         guard dashboardID == self.dashboardID else { return }
-        let kept = items.filter { !($0.waitID == "asked-\(questionID)" && AppState.profilesMatch($0.profile, profile)) }
-        guard kept != items else { return }
+        let waitID = "asked-\(questionID)"
+        func answered(_ item: NeedsYouItem) -> Bool { item.waitID == waitID && AppState.profilesMatch(item.profile, profile) }
+        // A read already out when it was answered can't bring it back for
+        // a while: the read after the answer lists it no more (issue 2980).
+        answeredQuestions.removeAll { now.timeIntervalSince($0.at) >= Self.answeredQuestionHold }
+        answeredQuestions.append((waitID, profile, now, Set([self.dashboardID]).union(twins.map { Optional($0) })))
+        // The same Hermes saved as another combined dashboard lists the
+        // same question: its copy goes too, rather than at its next read.
+        for twin in twins where twin != self.dashboardID {
+            guard let listed = otherDashboards[twin] else { continue }
+            let kept = listed.filter { !answered($0) }
+            if kept != listed { otherDashboards[twin] = kept.isEmpty ? nil : kept }
+        }
+        let kept = items.filter { !answered($0) }
+        guard kept != items else {
+            dropBannerNoLongerListed()
+            return
+        }
         items = kept
         dropBannerNoLongerListed()
+    }
+
+    /// How long a question answered here stays out of a read that lists it
+    /// (one started before the answer landed).
+    static let answeredQuestionHold: TimeInterval = 30
+    /// Questions answered here lately, by wait id and profile.
+    /// A question id is its Hermes' own, so each names the dashboards it
+    /// was answered on: this one and its twins (one Hermes saved twice).
+    private var answeredQuestions: [(waitID: String, profile: String, at: Date, dashboards: Set<UUID?>)] = []
+
+    /// Whether `item`, as listed by `dashboardID`, is a question answered
+    /// here within the hold.
+    private func answeredLately(_ item: NeedsYouItem, on dashboardID: UUID?, now: Date = Date()) -> Bool {
+        answeredQuestions.contains {
+            $0.waitID == item.waitID && AppState.profilesMatch($0.profile, item.profile)
+                && $0.dashboards.contains(dashboardID) && now.timeIntervalSince($0.at) < Self.answeredQuestionHold
+        }
     }
 
     /// A profile no longer listed (removed, or its plugin can't be read).

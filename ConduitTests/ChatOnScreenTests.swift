@@ -398,6 +398,10 @@ final class ChatOnScreenTests: XCTestCase {
 
     // MARK: - Harness
 
+    /// An AppState with nothing reported on screen, for this class's
+    /// extensions in other files.
+    func makeQuietAppState() -> AppState { makeAppState(recorder: nil) }
+
     private func makeAppState(recorder: OnScreenRecorder?) -> AppState {
         let suite = "ChatOnScreenTests.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

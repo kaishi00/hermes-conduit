@@ -366,8 +366,8 @@ extension AppState {
     /// one that finds the connection let go or replaced, keeps nothing.
     func readKeptPluginReport(_ kept: KeptDashboardRuntime, for id: UUID) {
         Task { @MainActor [weak self] in
-            guard let response = try? await kept.bridge.requestJSON(path: NotifierPluginStatus.path),
-                  let self, self.keptDashboardRuntimes[id]?.client === kept.client else { return }
+            guard let self, let response = try? await self.readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
+                  self.keptDashboardRuntimes[id]?.client === kept.client else { return }
             let state = NotifierPluginStatus.state(from: response)
             guard state != .unknown else { return }
             kept.runtime.notifierPlugin.state = state
