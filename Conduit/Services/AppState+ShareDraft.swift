@@ -272,7 +272,9 @@ extension AppState {
             }
         }
         composerRestoreRequests.append(ComposerRestoreRequest(
-            dashboardID: dashboardID,
+            // A far chat's words name its own dashboard, as its draft does,
+            // so its own composer takes them.
+            dashboardID: restoreKey.dashboard ?? dashboardID,
             key: restoreKey,
             draft: content,
             focuses: false,

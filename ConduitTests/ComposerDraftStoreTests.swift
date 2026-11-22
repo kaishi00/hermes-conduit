@@ -262,6 +262,8 @@ final class ComposerDraftStoreTests: XCTestCase {
                       "its refused words still go to their stored draft")
         XCTAssertTrue(ComposerBar.handlesRestoreRequest(request(screen, key: screenKey, clip: UUID()), draftDashboard: screen, activeDashboard: screen),
                       "and its own composer takes the filed one")
+        XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(screen, key: farKey, share: UUID()), draftDashboard: far, activeDashboard: screen),
+                       "a share named for the screen but kept for the far chat isn't taken there: it must name the far dashboard")
         XCTAssertFalse(ComposerBar.handlesRestoreRequest(request(other, key: farKey), draftDashboard: screen, activeDashboard: screen),
                        "named for one dashboard but kept for another: left alone")
     }

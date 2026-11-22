@@ -2081,6 +2081,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.composerDraftOwner(for: farKey), "mac-1", "read from the Mac's list, not the screen's")
         XCTAssertTrue(appState.composerDraftKey(farKey, isNotChatOf: "older-chat"),
                       "and whether its id is another chat's is the Mac's list's call too")
+        // Two ids of one Mac row are one chat's, by the Mac's list alone.
+        kept.runtime.sessions[0].alternateIds = ["mac-alias"]
+        var aliasKey = farKey
+        aliasKey.sessionID = "mac-alias"
+        var strangerKey = farKey
+        strangerKey.sessionID = "nobody"
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(farKey, aliasKey), "its alias is its chat")
+        XCTAssertFalse(appState.composerDraftKeysAreSameChat(farKey, strangerKey), "an id the Mac doesn't list isn't")
+        kept.runtime.sessions[0].alternateIds = []
         appState.farChat = farChatOwner
 
         // Its kept connection gone, nothing reaches another dashboard's.
