@@ -112,9 +112,14 @@ extension AppState {
     }
 
     /// The open `openFarChatInPlace` starts, for a caller that waits on it
-    /// (a push, whose card lands once its chat is up). Nil when it can't
-    /// open in place.
-    func startFarChatOpen(_ session: SessionSummary, in dashboardID: UUID) -> Task<Bool, Never>? {
+    /// (a push, whose card lands once its chat is up). `prepare` runs on
+    /// that dashboard's runtime just before the open (a push records its
+    /// card there). Nil when it can't open in place.
+    func startFarChatOpen(
+        _ session: SessionSummary,
+        in dashboardID: UUID,
+        prepare: () -> Void = {}
+    ) -> Task<Bool, Never>? {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               !isFarBotChat(session, in: dashboardID),
               let runtime = keptRuntime(dashboardID, on: session.profile ?? "default") else { return nil }
@@ -123,7 +128,8 @@ extension AppState {
         seedFarChatList(runtime, from: dashboardID, with: session)
         widgetLaunchCoordinator.supersede()
         return act(onRuntime: runtime) {
-            requestOpenSession(session.id)
+            prepare()
+            return requestOpenSession(session.id)
         }
     }
 

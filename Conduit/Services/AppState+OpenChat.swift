@@ -1438,7 +1438,10 @@ extension AppState {
             // switch, so a call goes on.
             if let opened = await openFarNotificationInPlace(target, in: dashboardID) {
                 traceStage = "dashboard check (another combined dashboard, in place)"
-                return opened ? .opened : .failed
+                // One that didn't open (its kept socket dropped, a read
+                // timed out) is tried again, as a switch's open would be;
+                // a newer tap replaces it meanwhile.
+                return opened ? .opened : .retry
             }
             traceStage = "dashboard check (switching to another saved dashboard)"
             // A notification tapped during a call, or a chat link routed

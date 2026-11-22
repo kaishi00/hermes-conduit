@@ -17,8 +17,9 @@ import Foundation
 extension AppState {
     /// Opens the chat a push or chat link for another combined dashboard
     /// names in place, as its Chats row does, and lands a wait's push on its
-    /// card: whether its chat opened, waited on so the card's reveal names
-    /// the chat that opened, as on screen. Nil when it opens through a
+    /// card: true once its chat opened, waited on so the card's reveal names
+    /// the chat that opened, as on screen; false when the open failed, to
+    /// be tried again. Nil when it opens through a
     /// switch as before: the dashboard isn't kept connected (or its socket
     /// can't be handed to the chat's profile), its list doesn't hold the
     /// chat, or the push opens a room, its Pulse, a call or a Bot Chat; and
@@ -34,12 +35,25 @@ extension AppState {
                   botChats: farBotChatIDs(in: dashboardID),
                   pulseHome: farPulseHome(in: dashboardID)
               ),
-              let open = startFarChatOpen(session, in: dashboardID) else { return nil }
+              let open = startFarChatOpen(session, in: dashboardID, prepare: {
+                  // A wait raised while Conduit was away comes on the push:
+                  // its card is recorded on that dashboard's runtime before
+                  // the open, whose resume merges it in, as on screen.
+                  guard let decision = target.decision else { return }
+                  let requested = target.sessionId
+                  let ids = [session.id, requested, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty }
+                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: Array(Set([requested, session.id])))
+              }) else { return nil }
         // An approval's or a question's push lands on its card, as on screen.
-        if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
+        let reveals = target.type.map { NeedsYouStore.notificationTypes.contains($0) } ?? false
+        if reveals {
             pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
         }
-        return await open.value
+        let opened = await open.value
+        // One that didn't open is tried again: its card's reveal waits for
+        // that try rather than land on another chat.
+        if !opened, reveals { pendingNeedsYouReveal = nil }
+        return opened
     }
 
     /// The chat of another combined dashboard's list a push opens in place:
@@ -73,11 +87,11 @@ extension AppState {
         return Set(roster.compactMap(\.canonicalSessionID))
     }
 
-    /// Another combined dashboard's Pulse chat, as its kept runtime, its
-    /// feed or its last visit here named it.
+    /// Another combined dashboard's Pulse chat, as its feed read through
+    /// its kept connection names it, else its runtime or its last visit here.
     func farPulseHome(in dashboardID: UUID) -> String? {
-        keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID
-            ?? combinedDashboardPulse[dashboardID]?.homeChatID
+        combinedDashboardPulse[dashboardID]?.homeChatID
+            ?? keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID
             ?? pulseRememberedHomes[dashboardID.uuidString]
     }
 }
