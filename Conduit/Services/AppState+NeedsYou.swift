@@ -523,6 +523,8 @@ extension AppState {
         // The call's own profile, whose Hermes takes its requests and so the
         // answer: it keeps through a switch of the screen's chat.
         let bot = profile ?? voiceCallProfile
+        // A plugin that can't record a spoken answer isn't asked for one.
+        guard notifierPlugin.recordsSpokenQuestionAnswers else { return "" }
         return Self.askedQuestionsBlock(
             needsYou.items.filter { Self.profilesMatch($0.profile, bot) }.compactMap(\.asked)
         )
@@ -531,10 +533,14 @@ extension AppState {
     /// The same for a Watch call, which can start with no phone screen, so
     /// the list may be hours old or never read (it reads only on screen):
     /// it reads the profile's list once itself, briefly, and falls back to
-    /// what was read before when that fails. A plugin whose capabilities
-    /// haven't loaded yet (a cold launch) is tried; one that reports no
-    /// list isn't.
+    /// what was read before when that fails. A plugin whose status hasn't
+    /// loaded yet (a cold launch) is asked for it first, since only 0.191.0+
+    /// records the answer (issue 2985); one that reports no list isn't read.
     func liveAskedQuestionsInstructionsReading(profile: String) async -> String {
+        // Its version decides whether a spoken answer is recorded (issue
+        // 2985): on a cold start it's read first.
+        if case .unknown = notifierPlugin.state { await refreshNotifierPluginStatusOnce() }
+        guard notifierPlugin.recordsSpokenQuestionAnswers else { return "" }
         guard notifierPlugin.mightSupport(NeedsYouStore.capability), let bridge = dashboardTicketBridge else {
             return liveAskedQuestionsInstructions(profile: profile)
         }

@@ -838,31 +838,39 @@ final class ClarifyBatchStateTests: XCTestCase {
     func testAnswerTakenElsewhereStillTakesTheCopyAway() async throws {
         // notifier#965 leftover: another surface answered Hermes' card
         // first. The card no longer holds the question, so its plugin copy
-        // goes too, rather than come in beside the settled card.
-        var operations = ChatResumeLifecycleOperations.live
-        operations.respondToClarification = { _, _, _, _, _, _ in .answeredElsewhere }
-        let defaults = makeScratchDefaults("ClarifyBatchStateTests")
-        let appState = AppState(
-            defaults: defaults,
-            loadSavedConnection: false,
-            clearSessionPresentationCache: {},
-            chatResumeLifecycleOperations: operations,
-            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
-        )
-        var copy = makeBatchActivity(requestId: "conduit-push-copy")
-        copy.questions[0].status = .error
-        appState.messages = [
-            ChatMessage(id: "clarify-conduit-push-copy", role: .clarify, content: "copy", timestamp: "1", clarify: copy),
-            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity())
+        // goes too, rather than come in beside the settled card. A turn that
+        // ended does the same, and says the questions are no longer active
+        // (issue 2942).
+        let cases: [(HermesClient.ClarifyResponseOutcome, String)] = [
+            (.answeredElsewhere, "These questions were answered elsewhere."),
+            (.ended, "These questions are no longer active."),
         ]
-        try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
+        for (outcome, notice) in cases {
+            var operations = ChatResumeLifecycleOperations.live
+            operations.respondToClarification = { _, _, _, _, _, _ in outcome }
+            let defaults = makeScratchDefaults("ClarifyBatchStateTests")
+            let appState = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                clearSessionPresentationCache: {},
+                chatResumeLifecycleOperations: operations,
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            var copy = makeBatchActivity(requestId: "conduit-push-copy")
+            copy.questions[0].status = .error
+            appState.messages = [
+                ChatMessage(id: "clarify-conduit-push-copy", role: .clarify, content: "copy", timestamp: "1", clarify: copy),
+                ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity())
+            ]
+            try await installConnectedClient(appState, socket: ClarifyFakeSocket(), transport: ClarifyFakeTransport())
 
-        await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
+            await appState.respondToClarify(requestId: "req-batch", questionId: "environment", answer: "staging")
 
-        XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch"])
-        let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
-        XCTAssertTrue(settled.isExpired)
-        XCTAssertEqual(settled.error, AppLocalization.string("These questions were answered elsewhere."))
+            XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch"], "\(outcome): the copy goes")
+            let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+            XCTAssertTrue(settled.isExpired)
+            XCTAssertEqual(settled.error, AppLocalization.string(notice))
+        }
     }
 
     func testAcceptedOutcomeCannotResurrectAnExpiredRequest() async throws {

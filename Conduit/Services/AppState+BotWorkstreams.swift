@@ -586,7 +586,12 @@ extension AppState {
             guard botWork.mark(profile).epoch == mark.epoch else { return true }
             botWork.noteAction(profile)
             botWork.answer(question.id, with: given, profile: profile)
-            needsYou.dropAnsweredQuestion(question.id, profile: profile, dashboardID: activeDashboardID)
+            // One Hermes saved as another combined dashboard lists it too.
+            let hermes = combinedHermesGroups
+            let twins = Set(hermes.compactMap { id, group in
+                id.flatMap { $0 != activeDashboardID && hermes[activeDashboardID] == group ? $0 : nil }
+            })
+            needsYou.dropAnsweredQuestion(question.id, profile: profile, dashboardID: activeDashboardID, alsoOn: twins)
             Haptics.success()
             Task { await refreshBotWork(profile: profile, afterAction: true) }
             // It leaves the Needs you list too.

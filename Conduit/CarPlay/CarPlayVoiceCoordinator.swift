@@ -244,6 +244,9 @@ final class CarPlayVoiceCoordinator {
     private var chatCatalogLoad: UUID?
     /// The chat list on screen already asked for the chats once.
     private var didRequestChatCatalog = false
+    /// How long before a far agent's chat read that brought nothing back
+    /// is tried again while the car's list shows.
+    static let farChatsRetryDelay: Duration = .seconds(10)
     private var isChatsRefreshScheduled = false
     /// Whether the chat list on screen is being kept current.
     var isObservingChats: Bool { chatsObservation != nil }
@@ -1267,6 +1270,16 @@ final class CarPlayVoiceCoordinator {
     /// What stands in for the chats while there are none to show yet.
     private func chatsPlaceholder(for chats: CarPlayChatList, in appState: AppState) -> String? {
         guard chats.pinned.isEmpty, chats.recent.isEmpty else { return nil }
+        // A far agent's list stands on its own dashboard's kept connection,
+        // not the screen's, and stays loading until a read of it has landed
+        // (a failed one is tried again, `loadChatsIfMissing`) (issue 3077).
+        if let far = farAgent?.dashboardID {
+            if !appState.farDashboardKeptForCalls(far) { return AppLocalization.string("Connecting…") }
+            if chatCatalogLoad != nil || !didRequestChatCatalog || appState.combinedDashboardChats[far] == nil {
+                return AppLocalization.string("Loading chats…")
+            }
+            return nil
+        }
         if !appState.isConnected { return AppLocalization.string("Connecting…") }
         if chatCatalogLoad != nil || !didRequestChatCatalog { return AppLocalization.string("Loading chats…") }
         return nil
@@ -1296,6 +1309,13 @@ final class CarPlayVoiceCoordinator {
             }
             guard let self, self.chatCatalogLoad == load else { return }
             self.chatCatalogLoad = nil
+            // A far read that brought nothing back is tried again while the
+            // list shows, rather than leave a bare list until it's reopened.
+            if let far, appState.combinedDashboardChats[far] == nil {
+                try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay)
+                guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far else { return }
+                self.didRequestChatCatalog = false
+            }
             self.scheduleChatsRefresh()
         }
     }
@@ -1639,7 +1659,8 @@ final class CarPlayVoiceCoordinator {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.onAgentDashboard(generation: generation) { [weak self] in
+            // Not a start: an End meanwhile doesn't call it off (issue 3077).
+            await self.onAgentDashboard(generation: generation, endCallsOff: false) { [weak self] in
                 guard let self else { return }
                 (self.lastBoundAppState ?? self.appStateProvider()).applyVoiceMode(mode.choice)
             }
@@ -1653,13 +1674,14 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// The mode the voice list marks: another combined dashboard's agent's
-    /// as set there, else the dashboard on screen's.
+    /// as set there (Classic when it's set to Classic there, issue 3077),
+    /// else the dashboard on screen's.
     private func listedVoiceMode(in appState: AppState) -> CarPlayVoiceMode {
         guard let far = farAgent, let dashboardID = far.dashboardID,
-              let choice = appState.voiceModeOnFarDashboard(dashboardID, profile: far.profile) else {
+              appState.farDashboardKeptForCalls(dashboardID) else {
             return CarPlayVoiceMode.listed(in: appState)
         }
-        return CarPlayVoiceMode(choice)
+        return appState.voiceModeOnFarDashboard(dashboardID, profile: far.profile).map { CarPlayVoiceMode($0) } ?? .classic
     }
 
     /// Switches the agent (Hermes profile) from the car.
@@ -1831,7 +1853,10 @@ final class CarPlayVoiceCoordinator {
     /// else as it is. One far start at a time, each after the one before.
     /// A dashboard that can no longer carry the call (let go, signed out,
     /// on screen now) falls back to the switch, then the tap goes on.
-    func onAgentDashboard(generation: UInt64, _ body: @escaping @MainActor () async -> Void) async {
+    /// `endCallsOff`: an End tapped while it waits calls it off, as it does
+    /// a conversation start; a voice mode change goes ahead regardless.
+    func onAgentDashboard(generation: UInt64, endCallsOff: Bool = true,
+                          _ body: @escaping @MainActor () async -> Void) async {
         guard let far = farAgent, let dashboardID = far.dashboardID else {
             await body()
             return
@@ -1843,7 +1868,7 @@ final class CarPlayVoiceCoordinator {
         let start = Task { @MainActor [weak self] in
             await previous?.value
             guard let self, self.isCurrent(generation), self.isConnected, self.farAgent == far,
-                  self.voiceStartRequest == request else { return }
+                  !endCallsOff || self.voiceStartRequest == request else { return }
             let appState = self.lastBoundAppState ?? self.appStateProvider()
             self.forgetStaleFarAgent(appState)
             // On screen now: the start goes on as one on screen.

@@ -1737,9 +1737,11 @@ final class PushNotificationService: ObservableObject {
     /// single-question shape).
     enum RelayDecisionOutcome {
         case answered
-        /// The decision expired (clarify timed out server-side), was answered
-        /// on another surface first, or was released by the native path.
+        /// The decision expired (clarify timed out server-side) or is gone.
         case noLongerActive
+        /// The relay released the decision: Hermes' own card was answered
+        /// (the native gateway path resolved the clarify).
+        case released
         /// Another device already answered this decision.
         case alreadyAnsweredElsewhere
     }
@@ -1898,7 +1900,8 @@ final class PushNotificationService: ObservableObject {
         switch try await relayDecisionRespond(requestId: requestId, body: body) {
         case .accepted: return .answered
         case .alreadyLocked: return .alreadyAnsweredElsewhere
-        case .released, .noLongerActive: return .noLongerActive
+        case .released: return .released
+        case .noLongerActive: return .noLongerActive
         }
     }
 

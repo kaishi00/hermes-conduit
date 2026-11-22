@@ -478,6 +478,12 @@ extension AppState {
                     activity.questions[0].status = .answered
                     activity.questions[0].answer = nil
                 }
+            case .released:
+                // Hermes' own card was answered (the relay released the
+                // decision), as the batch card says (issue 2942).
+                activity.questions[0].status = .error
+                activity.questions[0].answer = nil
+                activity.questions[0].error = AppLocalization.string("This question was answered elsewhere.")
             case .noLongerActive:
                 activity.questions[0].status = .error
                 activity.questions[0].answer = nil
@@ -1351,7 +1357,8 @@ extension AppState {
         // `index`.
         switch outcome {
         case .accepted:
-            if !activity.isExpired { keepQuestionCopiesOut(answeredOn: activity) }
+            // An expired card returned above, before the write.
+            keepQuestionCopiesOut(answeredOn: activity)
         case .answeredElsewhere, .ended:
             keepQuestionCopiesOut(answeredOn: activity)
         case .expired:

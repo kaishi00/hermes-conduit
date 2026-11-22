@@ -1170,6 +1170,25 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.callBridge === macBridge, "its host routes go to Mac")
         XCTAssertEqual(appState.loadCallVoicePreferences(profile: "default"), macPreferences)
         XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
+
+        // Kept anew while the call holds it (a quiet sign-in after a drop):
+        // the call's dashboard has its plugin read on its own runtime, for
+        // the call's host tools, and the screen's plugin is left alone
+        // (#3044 review, issue 3045).
+        let screensPlugin = appState.notifierPlugin
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === macBridge, "read through the call's dashboard")
+            guard path == NotifierPluginStatus.path else { throw URLError(.badURL) }
+            return ["ok": true, "version": "0.191.1", "loaded_version": "0.191.1", "capabilities": ["voice-tools"]]
+        }
+        appState.keep(KeptDashboardRuntime(
+            client: macClient, bridge: macBridge, connection: macClient.connection, keptAt: Date()
+        ), for: mac.id)
+        let rekept = try XCTUnwrap(appState.runtime(for: mac.id))
+        await waitUntil { if case .reported = rekept.notifierPlugin.state { return true } else { return false } }
+        guard case .reported = rekept.notifierPlugin.state else { return XCTFail("the call's dashboard's plugin was read") }
+        XCTAssertTrue(appState.onCallRuntime { appState.notifierPlugin.servesLocationVoice })
+        XCTAssertEqual(appState.notifierPlugin, screensPlugin, "the screen's plugin untouched")
         appState.minimisedLiveVoice = nil
     }
 }

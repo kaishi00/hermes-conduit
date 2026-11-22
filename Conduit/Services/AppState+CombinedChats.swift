@@ -389,7 +389,7 @@ extension AppState {
         in dashboardID: UUID,
         profile: String? = nil,
         endingTheCall: Bool = false,
-        stillWanted: () -> Bool = { true }
+        stillWanted: @escaping () -> Bool = { true }
     ) async -> Bool {
         guard endingTheCall || !refusesCombinedSwitchDuringCall(to: dashboardID) else { return false }
         if let profile {
@@ -403,7 +403,9 @@ extension AppState {
             // one it last used there (Eric, 2026-11-16).
             rememberActiveProfile(profile, for: dashboardID)
         }
-        await switchDashboard(to: dashboardID)
+        // Asked again as the switch commits, after its hop: a launch a newer
+        // one replaced in that window doesn't switch (issue 3088).
+        await switchDashboard(to: dashboardID, stillWanted: stillWanted)
         guard activeDashboardID == dashboardID else { return false }
         // Its own list has the last word: the profile list read moves off a
         // profile it doesn't name, and its All stays as it was.
