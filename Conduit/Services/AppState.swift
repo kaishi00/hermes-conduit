@@ -408,8 +408,8 @@ final class AppState: ObservableObject {
     /// Lets the kept connections go once Conduit has been off screen for
     /// the background grace.
     var keptDashboardRuntimesGraceTask: Task<Void, Never>?
-    /// A kept dashboard's chats read waiting out its `sessions.changed`
-    /// burst, by dashboard, and how long it waits (a test sets none).
+    /// A kept dashboard's chats read due after its `sessions.changed` (one
+    /// read per wait, at most), by dashboard, and the wait (a test sets none).
     var keptDashboardChatsChangeReads: [UUID: Task<Void, Never>] = [:]
     var keptDashboardChatsChangeWait: Duration = .seconds(2)
     var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]

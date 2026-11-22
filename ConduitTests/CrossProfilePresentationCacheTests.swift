@@ -715,6 +715,14 @@ extension CrossProfilePresentationCacheTests {
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.lists, "what it showed is kept with it")
         XCTAssertEqual(kept.keptListsProfile, "default")
         XCTAssertEqual(kept.botRoster.map(\.name), ["raiden"])
+        // It's the dashboard's own runtime while kept, its connection in it.
+        let keptConnection = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(appState.runtime(for: mac.id) === kept)
+        XCTAssertTrue(kept.client === keptConnection.client)
+        XCTAssertTrue(kept.dashboardTicketBridge === keptConnection.bridge)
+        XCTAssertTrue(kept.isConnected)
+        XCTAssertTrue(appState.runtime(for: vps.id) === appState.runtimeOnScreen, "the one on screen's own")
+        XCTAssertFalse(appState.runtime(for: mac.id) === appState.runtimeOnScreen)
         XCTAssertEqual(appState.pulseUnseen, 0, "the dashboard switched to shows none of it")
         // As the other dashboard's roster would be (a first switch with no
         // stored server identity crosses no boundary, so nothing clears it).
@@ -896,6 +904,9 @@ extension CrossProfilePresentationCacheTests {
         appState.keepOutgoingDashboardRuntimeIfCombined(dashboards[3].id, switchingTo: dashboards[0].id, roster: [])
 
         XCTAssertEqual(appState.keptDashboardRuntimes.count, 4)
+        // One kept without showing has a runtime of its own, and no lists.
+        XCTAssertNil(appState.keptDashboardRuntimes[dashboards[1].id]?.lists)
+        XCTAssertTrue(appState.runtime(for: dashboards[1].id)?.client === kept[1])
         XCTAssertTrue(appState.takeKeptDashboardRuntime(dashboards[0].id, profile: "default")?.client === kept[0], "the oldest kept is the target, and is taken up")
 
         appState.signOutDashboard(dashboards[1].id)

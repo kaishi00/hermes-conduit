@@ -20,11 +20,30 @@ struct KeptDashboardRuntime {
     let bridge: DashboardTicketBridge
     let connection: HermesConnection
     let keptAt: Date
-    /// What it showed when it was switched away from (its bots, chat list,
-    /// group rooms, live status, Pulse marks, plugin status): a switch back
-    /// shows them at once, before its sync reads them again. Nil for one
-    /// signed in quietly, which never showed.
-    var lists: DashboardRuntime? = nil
+    /// The dashboard's own runtime while it's kept (`runtime(for:)`): its
+    /// connection, and, switched away from, what it showed (its bots, chat
+    /// list, group rooms, live status, Pulse marks, plugin status), which a
+    /// switch back shows at once, before its sync reads them again.
+    let runtime: DashboardRuntime
+
+    init(client: HermesClient, bridge: DashboardTicketBridge, connection: HermesConnection, keptAt: Date,
+         runtime: DashboardRuntime? = nil) {
+        self.client = client
+        self.bridge = bridge
+        self.connection = connection
+        self.keptAt = keptAt
+        let runtime = runtime ?? DashboardRuntime()
+        runtime.connection = connection
+        runtime.client = client
+        runtime.dashboardTicketBridge = bridge
+        runtime.isConnected = true
+        runtime.isConnecting = false
+        self.runtime = runtime
+    }
+
+    /// What it showed when it was switched away from; nil for one signed in
+    /// quietly, which never showed.
+    var lists: DashboardRuntime? { runtime.keptListsProfile == nil ? nil : runtime }
 }
 
 /// Why a combined dashboard beside the one on screen isn't connected.
@@ -74,6 +93,14 @@ extension AppState {
     /// Live dashboards at once in the group, the one on screen included
     /// (stage 0's cap). Past it, the one kept longest is let go.
     static let combinedLiveDashboardCap = 4
+
+    /// A live dashboard's runtime: the one on screen's, or a kept one's,
+    /// which the surfaces that act on another dashboard read and act on
+    /// (no-switch stage 2). Nil for one that isn't connected here.
+    func runtime(for dashboardID: UUID?) -> DashboardRuntime? {
+        guard let dashboardID, dashboardID != activeDashboardID else { return runtimeOnScreen }
+        return keptDashboardRuntimes[dashboardID]?.runtime
+    }
 
     /// Whether this dashboard is in the combined group.
     func isInCombinedGroup(_ id: UUID?) -> Bool {
@@ -160,7 +187,7 @@ extension AppState {
             bridge: bridge,
             connection: connection,
             keptAt: Date(),
-            lists: lists
+            runtime: lists
         ), for: outgoingID)
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
