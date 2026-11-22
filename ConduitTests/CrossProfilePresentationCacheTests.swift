@@ -2049,6 +2049,14 @@ extension CrossProfilePresentationCacheTests {
         let savedAs = appState.presentationCacheSessionIDs(for: "mac-1")
         XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f1",
                        "saved under the far chat's profile (as \(savedAs))")
+        // So do a deferred flush's, its connection having dropped while it
+        // was parked.
+        appState.messages = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f2")]
+        appState.schedulePresentationCacheFlush(for: "mac-1")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f2",
+                       "a deferred flush saves under the far chat's profile too")
         // A switch makes the chat on screen that dashboard's, as before.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         var registry = appState.savedDashboardRegistry
@@ -2114,6 +2122,19 @@ extension CrossProfilePresentationCacheTests {
         appState.sessionPresentationCache.waitForPendingWrites()
         XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "ts-a1",
                        "saved under the far chat's profile, though scheduled on screen")
+        // Scheduled for a chat on the runtime's profile, and run once the
+        // chat open there is on another: skipped, though the runtime's
+        // profile is still the one it was scheduled on.
+        appState.activeSessionId = "far-p"
+        appState.messages = outgoingTranscript
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        appState.schedulePresentationCacheFlush(for: "far-p")
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        await appState.presentationCacheFlushOperationForTesting?.value
+        appState.sessionPresentationCache.waitForPendingWrites()
+        let movedIDs = appState.presentationCacheSessionIDs(for: "far-p")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: movedIDs).first?.timestamp, "",
+                       "the chat open there is on another profile: nothing saved under the runtime's")
         appState.farChat = nil
 
         // The same ids on two dashboards are two chats, each followed.

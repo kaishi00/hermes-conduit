@@ -5034,6 +5034,15 @@ final class OfflineChatCacheTests: XCTestCase {
         twoHermes.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-shared", durableID: "shared",
                                                                 profile: twoHermes.activeProfile, source: .resume)
         XCTAssertEqual(twoHermes.followedChatIndex(reboundTo: "rt-shared"), 1, "the dashboard in scope's")
+        // The pane's chat is found by the rebound id, though another
+        // dashboard's chat answers that id as its own.
+        let raw = BackgroundChat(sessionIDs: ["rt-shared"], durableSessionID: nil, title: "Shared", dashboardID: elsewhere.id,
+                                 profile: twoHermes.activeProfile, isBotChat: false, rows: [], streamingText: "Half")
+        twoHermes.backgroundChats = [raw, sharedChat(on: here)]
+        twoHermes.besideChatIDs = ["shared"]
+        XCTAssertEqual(twoHermes.keptChat(answering: "rt-shared")?.dashboardID, here.id,
+                       "this dashboard's, never lost to the other's raw id")
+        twoHermes.besideChatIDs = nil
         twoHermes.backgroundChats = []
 
         // An alias no row owned yet, made a chat of its own later.

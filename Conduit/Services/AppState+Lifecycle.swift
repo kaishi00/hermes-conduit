@@ -557,6 +557,17 @@ extension AppState {
             // Read on the chat on screen's own runtime, as it was scheduled:
             // another combined dashboard's for a chat opened in place there.
             self.presentationCacheFlushTask = nil
+            // Its connection dropped while parked: the rows still save under
+            // its own profile, as flushPendingPresentationCache's do.
+            if case .unreachable = self.chatRuntimeRoute, let farChat = self.farChat {
+                guard farChat.profile == scheduledProfile,
+                      self.presentationCacheProfileEpoch == scheduledEpoch else { return }
+                let standIn = DashboardRuntime()
+                standIn.activeProfile = farChat.profile
+                self.act(onRuntime: standIn) { self.cacheMessagePresentation(for: [sessionId]) }
+                self.lastPresentationCacheFlushDate = Date()
+                return
+            }
             self.onChatRuntimeNow {
                 // Its runtime moved to another profile (the kept socket
                 // handed on, as in flushPendingPresentationCache): skip.
