@@ -356,6 +356,18 @@ extension AppState {
         }
     }
 
+    /// How long a fetched call context stays usable when the next prepare
+    /// can't reach the host (a reconnect within a call).
+    static let hostContextKeptFor: TimeInterval = 10 * 60
+
+    /// The call context to use: what the host just sent, else the previous
+    /// one while it's fresh, else nothing.
+    static func keptHostContext(_ fetched: String?, previous: String, fetchedAt: Date?, now: Date) -> String {
+        if let fetched { return fetched }
+        guard let fetchedAt, now.timeIntervalSince(fetchedAt) < hostContextKeptFor else { return "" }
+        return previous
+    }
+
     /// Bumped by each call's prepare, so an older one still fetching can't
     /// hand its mode's tools (and that mode's consent) to a newer call.
     @MainActor private static var voiceToolsGeneration = 0
@@ -372,6 +384,7 @@ extension AppState {
             supervisor.runHostTool = nil
             supervisor.hostToolsMode = nil
             supervisor.hostContext = ""
+            supervisor.hostContextAt = nil
             supervisor.hostToolsWatch = nil
         }
         async let context = voiceCallContext(for: mode)
@@ -386,8 +399,12 @@ extension AppState {
         }
         supervisor.hostToolsMode = mode
         supervisor.hostTools = host + fetched.local
-        // The host couldn't be asked: the same mode keeps what it had.
-        if let opening { supervisor.hostContext = opening }
+        // The host couldn't be asked: a reconnect on the same mode keeps what
+        // it had, but a later call never starts on an old place or status.
+        let now = Date()
+        supervisor.hostContext = Self.keptHostContext(opening, previous: supervisor.hostContext,
+                                                      fetchedAt: supervisor.hostContextAt, now: now)
+        if opening != nil { supervisor.hostContextAt = now }
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]
