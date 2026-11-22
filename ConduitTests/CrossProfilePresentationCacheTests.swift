@@ -2288,6 +2288,19 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        // CarPlay's Voice list offers the same agents (no-switch stage 2):
+        // another dashboard's carries it, and is named with it.
+        let agents = CarPlayVoiceCoordinator.agents(in: appState)
+        XCTAssertEqual(agents.map(\.profile), appState.combinedProfileStrip(own: appState.profiles).map(\.profile))
+        XCTAssertEqual(agents.filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas", "default"])
+        XCTAssertFalse(agents.contains { $0.dashboardID == vps.id }, "the dashboard on screen's carry none")
+        XCTAssertTrue(CarPlayVoiceCoordinator.agentTitle(CarPlayAgent(dashboardID: mac.id, profile: "atlas"), in: appState).hasPrefix("atlas"))
+        // Its chats in the car are that agent's, from the kept read; with
+        // no live mode set there, the car switches rather than calling it
+        // in place (Classic voice talks through the chat on screen).
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatList("atlas", in: mac.id, appState: appState).recent.map(\.sessionID), ["atlas-1"])
+        XCTAssertFalse(appState.canStartLiveCallOnFarDashboard(mac.id, profile: "atlas"))
+        XCTAssertNil(appState.voiceModeOnFarDashboard(mac.id, profile: "atlas"), "no mode to mark where it can't start")
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).
@@ -2376,6 +2389,18 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(counts.reads.count, 4)
         XCTAssertEqual(counts.cronReads.count, 2, "cron ids stand for half an hour on one connection")
+        // With the phone's scene in the background no read runs, except
+        // the one CarPlay's list of a far agent's chats asks for while the
+        // car's voice screen is up.
+        appState.isSceneActive = false
+        let readsBefore = counts.reads.count
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id)
+        XCTAssertEqual(counts.reads.count, readsBefore)
+        appState.isCarPlayVoiceSurfaceActive = true
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id, forCar: true)
+        XCTAssertGreaterThan(counts.reads.count, readsBefore, "the car's read runs")
+        appState.isCarPlayVoiceSurfaceActive = false
+        appState.isSceneActive = true
         // A failed read keeps what the list showed.
         let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
         appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
@@ -2840,20 +2865,31 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(Array(calls.capabilities.dropFirst(screensReads)), [ObjectIdentifier(outgoing)],
                        "what its groups can do, read through the kept connection")
         XCTAssertTrue(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes said it can")
+        XCTAssertFalse(appState.canEditCombinedRoomSettings(tiles[0]), "no groups.context there: no Group Settings")
         // Within the tick, not read again.
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
         XCTAssertEqual(calls.states["trip"]?.count, 1)
 
         // A drag takes the place of a room of its own dashboard, kept for it.
-        appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id)
+        XCTAssertNil(appState.combinedRoomNeighbor(tiles[0], by: -1), "the first: nothing earlier")
+        XCTAssertEqual(appState.combinedRoomNeighbor(tiles[0], by: 1)?.id, tiles[1].id, "VoiceOver's Move Later drops on it")
+        // The last dropped past the end moves nothing: no haptic, no order saved.
+        XCTAssertFalse(appState.dropCombinedRoom(tiles[1].id, onto: nil, dashboardID: mac.id), "nothing moved")
+        XCTAssertEqual(hosted(), ["trip", "plans"])
+        XCTAssertTrue(appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id))
         XCTAssertEqual(hosted(), ["plans", "trip"])
         // This dashboard's room, or one named for another dashboard, moves nothing.
-        appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id)
-        appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id)
+        XCTAssertFalse(appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id), "refused: no haptic")
+        XCTAssertFalse(appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id))
         XCTAssertEqual(hosted(), ["plans", "trip"])
         XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))
         XCTAssertEqual(calls.capabilities.count, screensReads + 1, "known: not read again on a later tick")
+        // Its Hermes serves groups.context: Group Settings in its menu.
+        appState.keptDashboardRuntimes[mac.id]?.runtime.groupCapabilities = GroupCapabilities(
+            protocolVersion: 1, driverReady: true, authorityGatewayID: "gw", features: [],
+            methods: GroupWire.requiredMethods.union(["groups.context"]), maxLogLimit: 500)
+        XCTAssertTrue(appState.canEditCombinedRoomSettings(tiles[0]))
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its

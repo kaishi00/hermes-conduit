@@ -424,13 +424,27 @@ extension CarPlayVoiceTemplateFactoryTests {
         XCTAssertEqual(rows.map(\.canReplay), [true, false])
     }
 
-    func testAgentsAreOfferedOnlyWhenThereIsAChoice() {
-        XCTAssertTrue(CarPlayBrowse.agentRows(profiles: ["default"], active: "default", displayName: { $0 }).isEmpty)
-        let rows = CarPlayBrowse.agentRows(profiles: ["default", "work"], active: "work", displayName: { $0.uppercased() })
+    func testAgentsOfEveryCombinedDashboardAreOfferedAndOnlyOneOnScreenIsSelected() {
+        // Another dashboard's agent's mode, as saved there, marks the
+        // voice list's row it is.
+        for choice in VoiceModeChoice.allCases {
+            XCTAssertEqual(CarPlayVoiceMode(choice).choice, choice)
+        }
+        let mac = UUID()
+        let one = [CarPlayAgent(dashboardID: nil, profile: "default")]
+        XCTAssertTrue(CarPlayBrowse.agentRows(agents: one, active: "default", displayName: { $0.profile }).isEmpty)
+        let agents = one + [CarPlayAgent(dashboardID: mac, profile: "default"), CarPlayAgent(dashboardID: mac, profile: "atlas")]
+        let rows = CarPlayBrowse.agentRows(agents: agents, active: "default") {
+            $0.dashboardID == nil ? $0.profile : "\($0.profile) · Mac"
+        }
         XCTAssertEqual(rows, [
-            CarPlayOptionRow(title: "DEFAULT", isSelected: false),
-            CarPlayOptionRow(title: "WORK", isSelected: true),
-        ])
+            CarPlayOptionRow(title: "default", isSelected: true),
+            CarPlayOptionRow(title: "default · Mac", isSelected: false),
+            CarPlayOptionRow(title: "atlas · Mac", isSelected: false),
+        ], "another dashboard's default isn't the one in use")
+        // Another dashboard's agent the car calls in place is the one marked.
+        let picked = CarPlayBrowse.agentRows(agents: agents, active: "default", picked: agents[2]) { $0.profile }
+        XCTAssertEqual(picked.map(\.isSelected), [false, false, true])
     }
 
     func testModeRowsMarkTheCurrentMode() {
