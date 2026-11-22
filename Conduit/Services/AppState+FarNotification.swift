@@ -33,7 +33,7 @@ extension AppState {
                   target,
                   listed: combinedDashboardChats[dashboardID]?.sessions ?? [],
                   botChats: farBotChatIDs(in: dashboardID),
-                  pulseHome: farPulseHome(in: dashboardID)
+                  pulseHomes: farPulseHomes(in: dashboardID)
               ),
               let open = startFarChatOpen(session, in: dashboardID, prepare: {
                   // A wait raised while Conduit was away comes on the push:
@@ -68,12 +68,12 @@ extension AppState {
         _ target: ConduitNotificationTarget,
         listed: [SessionSummary],
         botChats: Set<String>,
-        pulseHome: String?
+        pulseHomes: Set<String>
     ) -> SessionSummary? {
         guard target.call == nil, target.roomID == nil else { return nil }
         let ids = Set([target.sessionId, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
         guard !ids.isEmpty, ids.isDisjoint(with: botChats) else { return nil }
-        if let pulseHome, ids.contains(pulseHome) { return nil }
+        guard ids.isDisjoint(with: pulseHomes) else { return nil }
         let profile = target.profile.flatMap { $0.isEmpty ? nil : $0 }
         return listed.first { row in
             !ids.isDisjoint(with: SessionContentSearch.identities(of: row))
@@ -89,11 +89,14 @@ extension AppState {
         return Set(roster.compactMap(\.canonicalSessionID))
     }
 
-    /// Another combined dashboard's Pulse chat, as its feed read through
-    /// its kept connection names it, else its runtime or its last visit here.
-    func farPulseHome(in dashboardID: UUID) -> String? {
-        combinedDashboardPulse[dashboardID]?.homeChatID
-            ?? keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID
-            ?? pulseRememberedHomes[dashboardID.uuidString]
+    /// Another combined dashboard's Pulse chat, as any of its feed read
+    /// through its kept connection, its runtime or its last visit here names
+    /// it: one of them can be behind the others.
+    func farPulseHomes(in dashboardID: UUID) -> Set<String> {
+        Set([
+            combinedDashboardPulse[dashboardID]?.homeChatID,
+            keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID,
+            pulseRememberedHomes[dashboardID.uuidString],
+        ].compactMap { $0 }.filter { !$0.isEmpty })
     }
 }

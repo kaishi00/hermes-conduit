@@ -26,7 +26,7 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         let listed = [SessionSummary(id: "chat", alternateIds: [], title: "Chat", model: "m", updatedLabel: "",
                                      lastActivityAt: 1, profile: "default", source: .chat, isActive: false, isArchived: false)]
         func opens(_ target: ConduitNotificationTarget) -> Bool {
-            AppState.farNotificationChat(target, listed: listed, botChats: ["bot-chat"], pulseHome: "pulse")?.id == "chat"
+            AppState.farNotificationChat(target, listed: listed, botChats: ["bot-chat"], pulseHomes: ["pulse"])?.id == "chat"
         }
         func target(_ id: String, type: String? = "response.ready", decision: PendingDecisionPayload? = nil,
                     call: HermesCallRequest? = nil, room: String? = nil) -> ConduitNotificationTarget {
@@ -45,14 +45,17 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
                                     call: HermesCallRequest(id: "", kind: .done, title: nil, sessionIDs: ["chat"]))),
                        "a call's")
         XCTAssertFalse(opens(target("pulse")), "its Pulse")
-        XCTAssertFalse(opens(target("bot-chat")), "a Bot Chat")
+        XCTAssertNil(AppState.farNotificationChat(target("chat"), listed: listed, botChats: [], pulseHomes: ["pulse", "chat"]),
+                     "its Pulse as any source names it")
+        XCTAssertNil(AppState.farNotificationChat(target("chat"), listed: listed, botChats: ["chat"], pulseHomes: []),
+                     "a Bot Chat")
         XCTAssertNil(AppState.farNotificationChat(
             ConduitNotificationTarget(profile: "atlas", sessionId: "chat", type: "response.ready"),
-            listed: listed, botChats: [], pulseHome: nil
+            listed: listed, botChats: [], pulseHomes: []
         ), "a push for another profile than the listed chat's switches")
         XCTAssertEqual(AppState.farNotificationChat(
             ConduitNotificationTarget(profile: nil, sessionId: "chat", type: "response.ready"),
-            listed: listed, botChats: [], pulseHome: nil
+            listed: listed, botChats: [], pulseHomes: []
         )?.id, "chat", "a push naming no profile opens the chat on its own")
     }
 
