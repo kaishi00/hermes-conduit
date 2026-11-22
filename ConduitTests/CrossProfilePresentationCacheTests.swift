@@ -2042,19 +2042,19 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.chatClient === outgoing, "its own connection's client")
         XCTAssertEqual(appState.composerDraftKeyOnScreen.dashboard, mac.id, "its draft is the Mac's")
         XCTAssertEqual(appState.composerDraftKeyOnScreen.profile, "default")
-        let framesBefore = socket.sentTexts.count
+        let framesBefore = socket.refusedTexts.count
         _ = await appState.setReasoningEffort("high")
-        XCTAssertTrue(socket.sentTexts.dropFirst(framesBefore).contains { $0.contains("reasoning") && $0.contains("mac-1") },
+        XCTAssertTrue(socket.refusedTexts.dropFirst(framesBefore).contains { $0.contains("reasoning") && $0.contains("mac-1") },
                       "its reasoning goes through the kept connection, for its chat")
-        let yoloFrames = socket.sentTexts.count
+        let yoloFrames = socket.refusedTexts.count
         _ = await appState.setYoloModeReportingFailure(true)
-        XCTAssertTrue(socket.sentTexts.dropFirst(yoloFrames).contains { $0.contains("mac-1") },
+        XCTAssertTrue(socket.refusedTexts.dropFirst(yoloFrames).contains { $0.contains("mac-1") },
                       "its YOLO goes through the kept connection too")
         // The Model sheet's catalog is read through it, and its Edit
         // filters and Quick picks are the Mac's own.
-        let catalogFrames = socket.sentTexts.count
+        let catalogFrames = socket.refusedTexts.count
         _ = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
-        XCTAssertTrue(socket.sentTexts.dropFirst(catalogFrames).contains { $0.contains("model.options") },
+        XCTAssertTrue(socket.refusedTexts.dropFirst(catalogFrames).contains { $0.contains("model.options") },
                       "the catalog is the Mac's, read through its kept connection")
         let screenVisibility = appState.modelVisibility
         let screenPicks = appState.modelQuickPicks
