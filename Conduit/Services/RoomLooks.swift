@@ -218,6 +218,10 @@ extension AppState {
     /// your devices where it can (`roomLooksKeepYou`).
     @discardableResult
     func setRoomPersonPicture(_ image: UIImage?) async -> RoomPersonPictureChange {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await setRoomPersonPicture(image) }
+        }
         let data = image.flatMap(RoomLooksUpload.picture)
         if image != nil, data == nil { return .unusable }
         guard !roomPersonPictureSaving else { return .notSaved }
@@ -251,6 +255,10 @@ extension AppState {
     /// devices last gave it (`GET /rooms/looks` without a room). One that
     /// fails, or that a change here overtook, keeps what's shown.
     func readRoomPersonPicture() async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await readRoomPersonPicture() }
+        }
         guard roomLooksKeepYou, isConnected, let dashboard = activeDashboardID else { return }
         let changes = roomPersonPictureChanges
         guard let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "GET", body: nil,

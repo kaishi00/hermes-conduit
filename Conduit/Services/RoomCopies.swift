@@ -413,6 +413,7 @@ extension AppState {
     /// Your agents' approvals in the open room, when it's hosted elsewhere:
     /// its room screen shows their cards.
     var activeRoomCopyApprovals: [RoomApproval] {
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { activeRoomCopyApprovals } }
         guard let copy = activeRoomSurface?.copy else { return [] }
         // Room ids are only unique per host: one without its Link is this
         // room's only when no other copy has the same id.

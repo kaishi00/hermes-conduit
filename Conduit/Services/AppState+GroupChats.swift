@@ -141,6 +141,7 @@ extension AppState {
 
     /// The open room's approvals still waiting on the user.
     var activeRoomPendingApprovals: [GroupPendingApproval] {
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { activeRoomPendingApprovals } }
         guard groupCapabilities?.supports("groups.approve") == true else { return [] }
         return (activeRoomDriverStatus?.pendingApprovals ?? []).filter {
             roomApprovalAnswers[$0.id] != .sent
@@ -240,7 +241,8 @@ extension AppState {
 
     /// Whether the open room's settings can be changed here.
     var canEditActiveRoomSettings: Bool {
-        groupCapabilities?.supports("groups.context") == true && activeRoomContext != nil
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { canEditActiveRoomSettings } }
+        return groupCapabilities?.supports("groups.context") == true && activeRoomContext != nil
             && activeRoomSurface.map { !$0.room.isDisbanded } == true
     }
 
@@ -267,6 +269,7 @@ extension AppState {
     /// The open room's discussions paused at their cap that Continue can
     /// reopen, by the cap's event id (its caption carries the button).
     var activeRoomContinuablePauses: [String: (discussionEventID: String, grant: Int)] {
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { activeRoomContinuablePauses } }
         guard groupCapabilities?.supports("groups.continue") == true,
               let maxContinues = activeRoomDriverStatus?.maxContinues, maxContinues > 0 else { return [:] }
         return GroupRoomTurns.continuablePauses(events: activeRoomReplay.events).filter { $0.value.grant <= maxContinues }
@@ -1265,7 +1268,10 @@ extension AppState {
         if before != roomSurfaceShows { updateChatOnScreen() }
         guard !before, roomSurfaceShows, activeRoomSurface != nil else { return }
         let epoch = groupRoomEpoch
-        Task { @MainActor [weak self] in await self?.pollActiveRoomOnce(epoch: epoch) }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.onRoomRuntime { await self.pollActiveRoomOnce(epoch: epoch) }
+        }
     }
 
     private func pollActiveRoomOnce(epoch: Int) async {
@@ -1359,6 +1365,10 @@ extension AppState {
         threadID: String? = nil,
         attachments: [GroupRoomAttachment] = []
     ) async -> Bool {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await sendGroupRoomMessage(rawText, threadID: threadID, attachments: attachments) }
+        }
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
         // Files alone are a message too; a retry brings the pending ones.
         guard !text.isEmpty || !attachments.isEmpty || groupRoomOutbox.pending?.text == text else { return false }
@@ -1514,6 +1524,10 @@ extension AppState {
 
     /// Stop the open room's queued or running work (`groups.stop`).
     func stopActiveRoomWork() async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await stopActiveRoomWork() }
+        }
         guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.stop") == true else { return }
         let epoch = groupRoomEpoch
@@ -1531,6 +1545,10 @@ extension AppState {
     /// Continue a discussion paused at its cap (`groups.continue`): the
     /// room's members get another budget of rounds and messages for it.
     func continueActiveRoomDiscussion(_ discussionEventID: String) async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await continueActiveRoomDiscussion(discussionEventID) }
+        }
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.continue") == true,
               !continuingRoomDiscussions.contains(discussionEventID),
@@ -1566,6 +1584,10 @@ extension AppState {
     func saveActiveRoomSettings(
         _ context: GroupRoomContext, eventID: String, roomID: String, original: GroupRoomContext? = nil
     ) async -> String? {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await saveActiveRoomSettings(context, eventID: eventID, roomID: roomID, original: original) }
+        }
         guard let surface = activeRoomSurface, let client, isConnected,
               groupCapabilities?.supports("groups.context") == true else {
             return AppLocalization.string("Connect to Hermes to change this group chat's settings.")
@@ -1603,6 +1625,10 @@ extension AppState {
     /// (`groups.approve`). The room's driver resumes the member's turn on
     /// its own; the poll that follows picks up the new status.
     func respondToRoomApproval(_ approval: GroupPendingApproval, choice: String) async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await respondToRoomApproval(approval, choice: choice) }
+        }
         guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.approve") == true,
               approval.allows(choice),
@@ -1644,6 +1670,10 @@ extension AppState {
 
     /// Permanently disband the open room (destructive; the view confirms).
     func disbandActiveRoom() async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await disbandActiveRoom() }
+        }
         // A room someone else hosts is theirs to disband.
         guard let surface = activeRoomSurface, surface.copy == nil else { return }
         await disbandGroupRoom(surface.room.roomID, opened: true)
@@ -1775,6 +1805,10 @@ extension AppState {
     /// Who's who in the open room, read now (Group Info, and after taking
     /// one out).
     func refreshActiveRoomPeople() async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await refreshActiveRoomPeople() }
+        }
         guard let surface = activeRoomSurface, surface.copy != nil || hasLinkedPeople(surface.room)
         else { return }
         await readActiveRoomPeople(epoch: groupRoomEpoch)
@@ -2065,6 +2099,10 @@ extension AppState {
     /// it's due. Only a read that answered waits out the quiet interval; a
     /// failed one is tried again next tick (issue 2151).
     func readRoomCopyApprovalsIfDue(roomMoved: Bool, now: Date = Date()) async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await readRoomCopyApprovalsIfDue(roomMoved: roomMoved, now: now) }
+        }
         guard Self.roomCopyReadsApprovals(roomMoved: roomMoved, working: activeRoomDriverStatus?.working == true,
                                           listed: !activeRoomCopyApprovals.isEmpty,
                                           lastRead: activeRoomCopyApprovalsReadAt, now: now),
@@ -2091,6 +2129,10 @@ extension AppState {
     /// polling. False when the room closed or another took its place.
     @discardableResult
     func refreshActiveRoomCopy(epoch: Int? = nil) async -> Bool {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await refreshActiveRoomCopy(epoch: epoch) }
+        }
         let epoch = epoch ?? groupRoomEpoch
         guard let copy = activeRoomSurface?.copy, groupRoomEpoch == epoch else { return false }
         guard let copies = await readLinkedRoomCopies() else { return true }
@@ -2151,6 +2193,10 @@ extension AppState {
     /// One poll of the open room now, as the poller's tick runs it (tests,
     /// and a pull to refresh).
     func pollActiveRoom() async {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await pollActiveRoom() }
+        }
         await pollActiveRoomOnce(epoch: groupRoomEpoch)
     }
 

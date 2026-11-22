@@ -87,6 +87,10 @@ extension AppState {
     /// Unlinks them (unlinkLinkedPerson). Refused once the dashboard it was
     /// listed on isn't the active one.
     func block(_ target: RoomBlockTarget) async throws -> Bool {
+        // A far room's person is unlinked on that room's dashboard.
+        if let id = target.dashboardID, id != activeDashboardID, let runtime = runtime(for: id) {
+            return try await actAcrossAwaits(onRuntime: runtime) { try await block(target) }
+        }
         guard target.dashboardID == nil || target.dashboardID == activeDashboardID else {
             throw CancellationError()
         }

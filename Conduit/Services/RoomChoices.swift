@@ -156,12 +156,16 @@ extension AppState {
         notifierPlugin.reports(RoomChoicesClient.freeBusyCapability)
     }
 
-    /// Requests stay with the dashboard they were made for.
+    /// Requests stay with the dashboard they were made for, through its
+    /// own connection while it's live: a far room's go to its dashboard.
     var roomChoicesClient: RoomChoicesClient {
         let dashboard = activeDashboardID
         return RoomChoicesClient(dashboardID: dashboard) { [weak self] path, method, body in
-            guard let self, self.activeDashboardID == dashboard,
-                  let bridge = self.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let self else { throw DashboardTicketBridgeError.notReady }
+            let bridge = dashboard == nil
+                ? (self.activeDashboardID == nil ? self.dashboardTicketBridge : nil)
+                : self.runtime(for: dashboard)?.dashboardTicketBridge
+            guard let bridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body)
         }
     }

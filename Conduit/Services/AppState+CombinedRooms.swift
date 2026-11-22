@@ -8,8 +8,9 @@
 //  the one dashboard you talk in it from: the Hermes that hosts it, when
 //  that Hermes is in the group, else the first dashboard in Saved
 //  Dashboards order that has a copy of it. So you're the same person in it
-//  whichever dashboard is on screen (Eric, 2026-11-20). A tap switches to
-//  that dashboard (through its kept connection) and opens the room there.
+//  whichever dashboard is on screen (Eric, 2026-11-20). A tap opens the
+//  room in place on that dashboard's own runtime (its kept connection),
+//  with no switch (no-switch stage 2).
 //
 
 import Foundation
@@ -287,20 +288,89 @@ extension AppState {
         }
     }
 
-    /// Opens another combined dashboard's group chat: the switch to its
-    /// dashboard through its kept connection, then the room there, where
-    /// you talk in it as that Hermes' own person.
+    /// The open group chat's runtime when it's another combined
+    /// dashboard's, opened in place on its own runtime with no switch
+    /// (no-switch stage 2); nil for the one on screen's, or one let go.
+    var farRoomRuntime: DashboardRuntime? {
+        guard let id = activeRoomSurface?.dashboardID, id != dashboardIDOnScreen else { return nil }
+        return runtime(for: id)
+    }
+
+    /// Whether `roomID` is the open far group chat's.
+    func isOpenFarRoom(_ roomID: String) -> Bool {
+        farRoomRuntime != nil && activeRoomSurface?.room.roomID == roomID
+    }
+
+    /// The far room's runtime when a step isn't already acting on it: a
+    /// room entry point called from its screen enters it first.
+    var roomRuntimeToEnter: DashboardRuntime? {
+        guard let runtime = farRoomRuntime, runtime !== shownRuntime else { return nil }
+        return runtime
+    }
+
+    /// Where the open room's media are read: a far room's through its own
+    /// dashboard's connection, from `profile` there (a member's own), else
+    /// the profile it last used. The one on screen's resolvers otherwise.
+    func roomGatewayMediaResolver(for profile: String? = nil) -> GatewayMediaDataURLResolver {
+        guard let runtime = farRoomRuntime, let id = activeRoomSurface?.dashboardID else {
+            return profile.map { gatewayMediaResolver(for: $0) } ?? gatewayMediaResolver
+        }
+        let profile = profile ?? runtime.keptListsProfile ?? "default"
+        let key = "\(id.uuidString)|\(profile)"
+        if let cached = farRoomMediaResolvers[key] { return cached }
+        let resolver = act(onRuntime: runtime) { GatewayMediaDataURLResolver(appState: self, profile: profile) }
+        farRoomMediaResolvers[key] = resolver
+        return resolver
+    }
+
+    /// Runs a step of the open group chat on its own dashboard's runtime
+    /// across its awaits: a far room's sends, polls and reads go through
+    /// its dashboard's connection and lists, never the one on screen's.
+    func onRoomRuntime<T>(_ body: () async -> T) async -> T {
+        guard let runtime = farRoomRuntime else { return await body() }
+        return await actAcrossAwaits(onRuntime: runtime, body)
+    }
+
+    /// Reads what the open group chat's screen draws (its capabilities, its
+    /// bots, its plugin's routes) from its own dashboard's runtime.
+    func readingRoomRuntime<T>(_ body: () -> T) -> T {
+        guard let runtime = farRoomRuntime else { return body() }
+        return act(onRuntime: runtime, body)
+    }
+
+    /// Opens another combined dashboard's group chat. Kept connected, it
+    /// opens in place on that dashboard's own runtime: no switch, and you
+    /// talk in it as that Hermes' own person (no-switch stage 2). One not
+    /// connected here switches there first, as before.
     /// `inBots`: tapped on Bots Home, so its screen opens in Bots and Back
-    /// returns there, as this dashboard's rooms' portraits do. The mark is
-    /// made once the switch has connected there (and its kept lists show
-    /// the room) or settled, since a switch clears Bot Mode's state, an
-    /// open on its way included.
+    /// returns there, as this dashboard's rooms' portraits do.
     func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
-        guard !refusesCombinedSwitchDuringCall() else { return }
         dismissSidebarDrawer()
+        if let runtime = runtime(for: tile.dashboardID), runtime !== runtimeOnScreen, runtime.isConnected {
+            let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
+            if let mark { beginOpeningBotChat(mark) }
+            defer { if let mark { endOpeningBotChat(mark) } }
+            // What its plugin serves (pictures, files, copies), then its group
+            // chats, read on its own runtime once while it's kept: signed in
+            // quietly beside this one, it read only what the lists show.
+            await readKeptPluginStatusIfUnknown(tile.dashboardID)
+            guard !Task.isCancelled else { return }
+            await actAcrossAwaits(onRuntime: runtime) {
+                if groupChatPhase != .available || groupCapabilities == nil { await refreshGroupChatSupport() }
+                guard !Task.isCancelled else { return }
+                // Its bots as its list read them, for the room's faces and
+                // names, until its own roster is read.
+                if botRoster.isEmpty, let bots = combinedDashboardBots[tile.dashboardID]?.bots { botRoster = bots }
+                await openCombinedRoomTile(tile)
+            }
+            return
+        }
+        guard !refusesCombinedSwitchDuringCall() else { return }
         // Opens once the dashboard is connected if it still lists the room
         // as it was left (its kept lists show at once on the switch back),
-        // rather than after the switch's sync.
+        // rather than after the switch's sync. The mark is made once the
+        // switch has connected there or settled, since a switch clears Bot
+        // Mode's state, an open on its way included.
         await switchToCombinedDashboardUntilSettled(tile.dashboardID) { [weak self] in
             self?.listsCombinedRoomTile(tile) == true
         }
@@ -308,6 +378,29 @@ extension AppState {
         let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
         if let mark { beginOpeningBotChat(mark) }
         defer { if let mark { endOpeningBotChat(mark) } }
+        await openCombinedRoomTile(tile)
+    }
+
+    /// A kept dashboard's plugin status on its own runtime, read through its
+    /// kept connection when it isn't known there yet: just what the plugin
+    /// serves, none of what the read on screen sets going (shares, Watch
+    /// voices, update notices).
+    func readKeptPluginStatusIfUnknown(_ id: UUID) async {
+        guard let kept = keptDashboardRuntimes[id], case .unknown = kept.runtime.notifierPlugin.state,
+              let response = try? await readKeptDashboardJSON(kept.bridge, path: NotifierPluginStatus.path),
+              keptDashboardRuntimes[id]?.bridge === kept.bridge else { return }
+        let state = NotifierPluginStatus.state(from: response)
+        guard state != .unknown, case .unknown = kept.runtime.notifierPlugin.state else { return }
+        kept.runtime.notifierPlugin.state = state
+        kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
+        if case .reported(_, let capabilities) = state {
+            combinedDashboardPluginCapabilities[id] = (ObjectIdentifier(kept.bridge), capabilities)
+        }
+    }
+
+    /// Opens the tile's room on its dashboard, the one acted on (in place,
+    /// or after the switch).
+    private func openCombinedRoomTile(_ tile: CombinedRoomTile) async {
         switch tile.kind {
         case .hosted(let room):
             if await openNotificationRoom(room.roomID) == .retry, activeDashboardID == tile.dashboardID {
@@ -320,9 +413,10 @@ extension AppState {
             let viewport = chatViewportTransitionGeneration
             let roomEpoch = groupRoomEpoch
             var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
-            // The switch reads the plugin's routes after its sync settles:
-            // its copies can be read once they're known.
-            if !canReadRoomCopies {
+            // Its plugin's routes may not be read yet (a switch reads them
+            // after its sync settles): its copies can be read once they're
+            // known. In place, they were read before.
+            if !canReadRoomCopies, actingOnRuntimeOnScreen {
                 await refreshNotifierPluginStatusOnce()
                 guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             }

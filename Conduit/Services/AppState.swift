@@ -51,6 +51,9 @@ final class AppState: ObservableObject {
     /// Other dashboards' runtimes a surface shows (a far group chat), whose
     /// changes publish as AppState's while it does, keyed by the surface.
     var surfaceRuntimeChanges: [String: (runtime: ObjectIdentifier, changes: AnyCancellable)] = [:]
+    /// A far group chat's media readers, one per dashboard and profile, so
+    /// its rows compare equal from one draw to the next.
+    var farRoomMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
     var connection: HermesConnection? {
         get { shownRuntime.connection }
@@ -3849,6 +3852,11 @@ final class AppState: ObservableObject {
             // Another room straight from one: its notifications are read too (issue 2064).
             if (oldValue == nil) != (activeRoomSurface == nil) || oldValue?.room.roomID != activeRoomSurface?.room.roomID {
                 updateChatOnScreen()
+            }
+            // A far room's screen draws its own dashboard's runtime.
+            if oldValue?.dashboardID != activeRoomSurface?.dashboardID {
+                republishRuntime(farRoomRuntime, for: "room")
+                farRoomMediaResolvers = [:]
             }
         }
     }

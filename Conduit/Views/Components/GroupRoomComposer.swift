@@ -77,7 +77,7 @@ struct GroupRoomComposer: View {
             && appState.pendingRoomMessage == nil
             && (isCopy
                 ? appState.activeRoomCopyTakesPosts
-                : appState.groupCapabilities?.supports("groups.send") == true && surface?.room.isDisbanded == false)
+                : appState.readingRoomRuntime { appState.groupCapabilities?.supports("groups.send") == true } && surface?.room.isDisbanded == false)
     }
 
     /// A room someone else hosts: posts go through your Hermes, and files
@@ -982,7 +982,7 @@ struct GroupRoomComposer: View {
     /// message only holds Send; the draft still takes words.
     private var dictationClipIdentity: String? {
         guard surface?.room.isDisbanded == false,
-              appState.groupCapabilities?.supports("groups.send") == true else { return nil }
+              appState.readingRoomRuntime({ appState.groupCapabilities?.supports("groups.send") == true }) else { return nil }
         return appState.dictationClipIdentity
     }
 

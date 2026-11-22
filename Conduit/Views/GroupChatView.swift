@@ -88,14 +88,14 @@ struct GroupChatView: View {
         }
         .animation(.easeInOut(duration: 0.2), value: appState.minimisedLiveVoice)
         // Each bot's color, for its name, bubble, tags and "To" chip.
-        .environment(\.groupMemberTints, appState.groupMemberTints(members))
+        .environment(\.groupMemberTints, appState.readingRoomRuntime { appState.groupMemberTints(members) })
         // Other people's agents and the people, as their own Conduits draw them.
         .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         .environment(\.chatTextSize, chatTextSize)
         // A Desktop card reads its title and summary from the connected
         // Hermes (#1522). A member's MEDIA: files read through its own
         // profile's resolver, set on its bubble.
-        .environment(\.gatewayMediaFiles, appState.gatewayMediaResolver)
+        .environment(\.gatewayMediaFiles, appState.roomGatewayMediaResolver())
         // Files dragged onto the room are staged in its composer (#1408);
         // a plugin that can't store them gets the composer's notice.
         .attachmentDropTarget(isEnabled: surface.map { !$0.room.isDisbanded } ?? false) { providers in
@@ -130,7 +130,7 @@ struct GroupChatView: View {
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
             Text(GroupRoomDisband.warning(members: surface?.room.members ?? [],
-                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true,
+                                          chatsKept: appState.readingRoomRuntime { appState.notifierPlugin.runtime?.roomChatsKept == true },
                                           ownHermes: appState.activeRoomOwnHermes == true))
         }
         .modifier(RoomCopyDelete(copy: copyPendingDelete, confirming: Binding(
@@ -169,12 +169,14 @@ struct GroupChatView: View {
     /// Named as the bots are now, not as they were when they joined.
     /// With their owners, for a room over Links.
     private var members: [GroupMember] {
-        GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.shownBotRoster)
+        GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.readingRoomRuntime { appState.shownBotRoster })
     }
 
     /// The member whose turn is running (memoized by AppState).
     private var respondingMember: GroupMember? {
-        appState.activeRoomResponder.flatMap { GroupRoomTurns.members([$0], namedBy: appState.shownBotRoster).first }
+        appState.activeRoomResponder.flatMap {
+            GroupRoomTurns.members([$0], namedBy: appState.readingRoomRuntime { appState.shownBotRoster }).first
+        }
     }
 
     // MARK: - Transcript
@@ -326,7 +328,7 @@ struct GroupChatView: View {
     /// connected Hermes, where Hermes saved them. Another gateway's bot, or
     /// a member the room no longer lists, gets none, so its tags stay text.
     private func mediaResolver(for member: GroupMember?) -> GatewayMediaDataURLResolver? {
-        GroupRoomTurns.localProfile(of: member).map { appState.gatewayMediaResolver(for: $0) }
+        GroupRoomTurns.localProfile(of: member).map { appState.roomGatewayMediaResolver(for: $0) }
     }
 
     /// In a room someone else hosts, where the message on its way stands:
@@ -507,7 +509,7 @@ struct GroupChatView: View {
             return AppLocalization.string("Approval needed")
         }
         if case .leadChoosing(let lead)? = appState.activeRoomPendingRoute {
-            let named = GroupRoomTurns.members([lead], namedBy: appState.shownBotRoster).first ?? lead
+            let named = GroupRoomTurns.members([lead], namedBy: appState.readingRoomRuntime { appState.shownBotRoster }).first ?? lead
             return AppLocalization.string("\(GroupRoomTurns.displayName(of: named)) is choosing who answers…", table: .rooms)
         }
         if case .routerChoosing? = appState.activeRoomPendingRoute {
@@ -614,7 +616,7 @@ struct GroupRoomActionItems: View {
                 Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
             }
         }
-        if appState.canSetGroupRoomPictures, let roomID = appState.activeRoomSurface?.room.roomID {
+        if appState.readingRoomRuntime({ appState.canSetGroupRoomPictures }), let roomID = appState.activeRoomSurface?.room.roomID {
             Button {
                 onChoosePicture(.choose)
             } label: {
@@ -642,7 +644,7 @@ struct GroupRoomActionItems: View {
                 }
             }
         }
-        if appState.groupCapabilities?.supports("groups.stop") == true,
+        if appState.readingRoomRuntime({ appState.groupCapabilities?.supports("groups.stop") == true }),
            let driver = appState.activeRoomDriverStatus,
            driver.running || driver.working {
             Button {
@@ -1488,7 +1490,7 @@ struct GroupRoomContinueButton: View {
             .buttonBorderShape(.capsule)
             .controlSize(.small)
             .tint(.conduitAccent)
-            .disabled(continuing || !appState.isConnected)
+            .disabled(continuing || !appState.readingRoomRuntime { appState.isConnected })
             .accessibilityHint(Text(AppLocalization.string("Lets the members keep talking about this message.", table: .rooms)))
         }
     }
@@ -1587,7 +1589,7 @@ struct GroupMemberAvatar: View {
     /// their look, is never matched to one of your bots by name.
     private var bot: BotProfile? {
         if member == nil, look != nil { return nil }
-        return appState.groupMemberBot(member, name: name)
+        return appState.readingRoomRuntime { appState.groupMemberBot(member, name: name) }
     }
 
     var body: some View {
@@ -1596,13 +1598,14 @@ struct GroupMemberAvatar: View {
                 name: bot.name,
                 label: bot.displayLabel,
                 colorString: bot.shownColor,
-                image: appState.botAvatarImage(for: bot),
+                image: appState.readingRoomRuntime { appState.botAvatarImage(for: bot) },
                 size: size,
                 face: bot.faceLook
             )
-            // Connecting fetches again: a kept bot's fetch fails offline.
-            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.botAvatarGeneration)|\(appState.isConnected)") {
-                await appState.loadBotAvatarRetrying(bot)
+            // Connecting fetches again: a kept bot's fetch fails offline. A
+            // far room's bots are fetched from their own dashboard.
+            .task(id: "\(bot.name)|\(bot.hasAvatar)|\(appState.readingRoomRuntime { appState.botAvatarGeneration })|\(appState.readingRoomRuntime { appState.isConnected })") {
+                await appState.onRoomRuntime { await appState.loadBotAvatarRetrying(bot) }
             }
             .accessibilityHidden(true)
         } else {
@@ -2522,7 +2525,8 @@ struct GroupRoomSettingsSheet: View {
     @State private var roomID: String?
 
     private var members: [GroupMember] {
-        GroupRoomTurns.members(appState.activeRoomSurface?.room.members ?? [], namedBy: appState.shownBotRoster)
+        GroupRoomTurns.members(appState.activeRoomSurface?.room.members ?? [],
+                               namedBy: appState.readingRoomRuntime { appState.shownBotRoster })
     }
 
     /// The modes to offer: the host's known ones, or just Everyone when the

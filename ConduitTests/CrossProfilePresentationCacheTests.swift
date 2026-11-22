@@ -99,6 +99,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
 
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations,
+        groups: GroupChatLifecycleOperations = .live,
         park: @escaping @Sendable (Duration) async throws -> Void
     ) -> (
         appState: AppState,
@@ -125,6 +126,7 @@ final class CrossProfilePresentationCacheTests: XCTestCase {
             loadSavedConnection: false,
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: lifecycleOperations,
+            groupChatOperations: groups,
             sessionPresentationCache: cache,
             presentationCacheDebounceSuspension: park
         )
@@ -597,11 +599,12 @@ extension CrossProfilePresentationCacheTests {
     /// Two combined dashboards with the first one connected, over a socket
     /// that stays open until the test closes it.
     private func combinedDashboards(
-        operations: ChatResumeLifecycleOperations
+        operations: ChatResumeLifecycleOperations,
+        groups: GroupChatLifecycleOperations = .live
     ) async throws -> (appState: AppState, mac: SavedDashboard, vps: SavedDashboard, outgoing: HermesClient, socket: ClarifyFakeSocket) {
         KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
         addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
-        let harness = makeHarness(lifecycleOperations: operations) { _ in }
+        let harness = makeHarness(lifecycleOperations: operations, groups: groups) { _ in }
         let appState = harness.appState
         let mac = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
         let vps = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
@@ -2195,6 +2198,77 @@ extension CrossProfilePresentationCacheTests {
         appState.groupRooms = []
         appState.groupRoomsListed = false
         appState.groupChatPhase = .idle
+    }
+
+    /// Another combined dashboard's group chat opens in place on that
+    /// dashboard's own runtime (no-switch stage 2): no switch, its reads and
+    /// sends through its kept connection, its lists on its own runtime, and
+    /// it closes when that connection is let go.
+    func testAKeptDashboardsGroupChatOpensInPlaceOnItsRuntime() async throws {
+        final class Calls { var clients: [String: [ObjectIdentifier]] = [:]; var sent: [String] = [] }
+        let calls = Calls()
+        let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                             revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        func note(_ name: String, _ client: HermesClient) {
+            calls.clients[name, default: []].append(ObjectIdentifier(client))
+        }
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { client in
+                note("capabilities", client)
+                return GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw", features: [],
+                                         methods: GroupWire.requiredMethods, maxLogLimit: 500)
+            },
+            list: { client in
+                note("list", client)
+                return ([trip], nil)
+            },
+            state: { client, _ in
+                note("state", client)
+                return (trip, nil)
+            },
+            log: { client, _, sinceSeq, _ in
+                note("log", client)
+                return GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                                    authorityGatewayID: "gw", authorityEpoch: 1)
+            },
+            send: { client, _, _, text, _ in
+                note("send", client)
+                calls.sent.append(text)
+                throw URLError(.timedOut)
+            }
+        )
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations, groups: groups)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.runtime(for: mac.id))
+        XCTAssertFalse(kept === appState.runtimeOnScreen)
+
+        await appState.openCombinedRoom(CombinedRoomTile(dashboardID: mac.id, kind: .hosted(trip)))
+
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "trip")
+        XCTAssertTrue(appState.farRoomRuntime === kept)
+        for name in ["capabilities", "list", "state", "log"] {
+            XCTAssertEqual(calls.clients[name]?.isEmpty, false, "\(name) was read")
+            XCTAssertEqual(Set(calls.clients[name] ?? []), [ObjectIdentifier(outgoing)], "\(name) through the kept connection")
+        }
+        XCTAssertEqual(kept.groupRooms.map(\.roomID), ["trip"], "its rooms on its own runtime")
+        XCTAssertTrue(appState.groupRooms.isEmpty, "the screen's stay its own")
+        XCTAssertTrue(appState.readingRoomRuntime { appState.groupCapabilities?.supports("groups.send") == true })
+        XCTAssertNil(appState.groupCapabilities, "the screen's capabilities untouched")
+
+        // A send from the room's screen goes through the room's dashboard.
+        await appState.sendGroupRoomMessage("Hello from VPS")
+        XCTAssertEqual(calls.sent, ["Hello from VPS"])
+        XCTAssertEqual(Set(calls.clients["send"] ?? []), [ObjectIdentifier(outgoing)])
+        XCTAssertEqual(appState.activeDashboardID, vps.id)
+
+        // Its connection let go, the room has nothing to act on and closes.
+        appState.dropKeptDashboardRuntime(mac.id)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertNil(appState.farRoomRuntime)
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
