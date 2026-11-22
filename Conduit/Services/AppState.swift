@@ -2115,6 +2115,7 @@ final class AppState: ObservableObject {
                 tail += self?.liveVoiceThreadInstructions(delegation: false) ?? ""
                 tail += self?.phoneVoiceSettingHint(for: .grokLive) ?? ""
                 tail += VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                tail += VoiceHostTool.contextBlock(self?.voiceBackgroundJobSupervisor.hostContext ?? "")
                 tail += LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                 tail += self?.liveCallStyle.instructions ?? ""
                 let instructions = GeminiLiveConversationController.instructions(

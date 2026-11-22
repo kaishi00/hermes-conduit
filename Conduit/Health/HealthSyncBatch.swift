@@ -86,6 +86,11 @@ struct HealthBatch {
     var timeZone: TimeZone
     var categories: [HealthCategory]
     var detailed: [HealthCategory]
+    /// The live voice modes the user lets read health on a call
+    /// (`voice_readers`), so the host can answer Conduit for desktop's calls
+    /// for those modes alone. Every upload carries it: an empty list takes it
+    /// back. Left out of the windows' hashes, so a change resends nothing.
+    var voiceReaders: [String] = []
     var windows: [HealthWindow] = []
     var events: [HealthEvent] = []
     var deleted: [String] = []
@@ -101,6 +106,7 @@ struct HealthBatch {
             "device": ["name": deviceName, "time_zone": timeZone.identifier],
             "categories": categories.map(\.rawValue).sorted(),
             "detailed": detailed.map(\.rawValue).sorted(),
+            "voice_readers": voiceReaders,
             "windows": windows.map { Self.json($0, format: format) },
             "events": events.map { event -> [String: Any] in
                 var entry: [String: Any] = [
@@ -185,7 +191,7 @@ struct HealthBatch {
 
     private func emptyCopy() -> HealthBatch {
         HealthBatch(computedAt: computedAt, deviceName: deviceName, timeZone: timeZone,
-                    categories: categories, detailed: detailed)
+                    categories: categories, detailed: detailed, voiceReaders: voiceReaders)
     }
 }
 

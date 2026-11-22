@@ -93,6 +93,40 @@ extension AppState {
         }
     }
 
+    static let voiceReadersCapability = "voice-readers"
+    static let voiceContextPath = "/api/plugins/conduit_push/voice-context"
+    /// The most of the opening facts a call's instructions carry.
+    static let voiceContextLimit = 1500
+
+    /// What a call on `mode` starts knowing about the user: where they are
+    /// and their phone's state, as this iPhone tells the host `mode` may read
+    /// them (`voice_readers`, from each sharing's voice switches); the same
+    /// lines Conduit for desktop's calls get. "" for none, nil when the host
+    /// couldn't be asked (a plugin without the route says none).
+    func voiceCallContext(for mode: LiveVoiceModeName, profile: String? = nil) async -> String? {
+        let profile = profile ?? voiceCallProfile
+        let location = LocationSharingController.shared
+        let mayRead = location.letsVoiceRead(mode) || phoneSync.preferences.letsVoiceUse(mode)
+        guard mayRead else { return "" }
+        guard onCallRuntime({ notifierPlugin.reports(Self.voiceReadersCapability) }) else { return "" }
+        guard let bridge = callBridge else { return nil }
+        let path = DashboardPath.withProfile(Self.voiceContextPath, profile: profile)
+        do {
+            let response = try await bridge.requestJSON(
+                path: path + "\(path.contains("?") ? "&" : "?")reader=\(mode.storageID)",
+                method: "GET", body: nil, timeoutMilliseconds: 5_000)
+            return Self.voiceCallContext(from: response)
+        } catch {
+            Self.voiceToolsLog.info("Voice context unavailable: \(LogRedaction.redactingURLs(HealthSyncEngine.describe(error)), privacy: .public)")
+            return nil
+        }
+    }
+
+    static func voiceCallContext(from response: [String: Any]) -> String {
+        guard response["ok"] as? Bool == true, let context = response["context"] as? String else { return "" }
+        return String(context.trimmingCharacters(in: .whitespacesAndNewlines).prefix(voiceContextLimit))
+    }
+
     /// GET /voice-tools for `profile`, naming this iPhone's device in each
     /// store it shares from (older plugins ignore the names).
     static func voiceToolsListPath(profile: String, devices: [String: String]) -> String {
@@ -337,9 +371,12 @@ extension AppState {
             supervisor.hostTools = []
             supervisor.runHostTool = nil
             supervisor.hostToolsMode = nil
+            supervisor.hostContext = ""
             supervisor.hostToolsWatch = nil
         }
+        async let context = voiceCallContext(for: mode)
         let fetched = await voiceHostTools(for: mode)
+        let opening = await context
         // A cancelled probe (the call isn't starting) publishes nothing.
         guard mine == Self.voiceToolsGeneration, !Task.isCancelled else { return }
         // The host couldn't be asked: the same mode keeps its host tools
@@ -349,6 +386,8 @@ extension AppState {
         }
         supervisor.hostToolsMode = mode
         supervisor.hostTools = host + fetched.local
+        // The host couldn't be asked: the same mode keeps what it had.
+        if let opening { supervisor.hostContext = opening }
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]

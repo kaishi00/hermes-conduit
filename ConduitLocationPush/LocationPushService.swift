@@ -152,6 +152,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
 
         var batch = LocationBatch(sentAt: Date(), settings: config.settings)
         batch.approximateOnly = approximate || config.approximateOnly
+        batch.voiceReaders = config.voiceReaders ?? []
         batch.knownPlaces = config.places
         // The same place list the app sends, so the host's stays current.
         // (No coordinates: names, kinds and ids only.)

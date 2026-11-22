@@ -226,6 +226,9 @@ extension AppState {
         guard preferences.isOn else { return }
         preferences.setVoiceRead(mode, allowed: allowed)
         saveHealthSyncPreferences(preferences)
+        // The host learns the choice too (voice_readers), for Conduit for
+        // desktop's calls: the pass sends an upload when it changed.
+        Task { await runHealthSync(reason: .manual) }
     }
 
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {

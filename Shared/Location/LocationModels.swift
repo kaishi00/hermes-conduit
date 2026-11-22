@@ -262,8 +262,9 @@ struct LocationSharedConfig: Codable, Equatable {
     /// most.
     var settingsPending = false
     /// Live voice modes the user lets read the shared location on a call
-    /// (`LiveVoiceModeName.storageID`); nil is none. Kept on this iPhone:
-    /// the phone makes every voice read, so the host never needs it.
+    /// (`LiveVoiceModeName.storageID`); nil is none. The phone's own calls
+    /// check it here; each batch also tells the host (`sharing.voice_readers`)
+    /// so it can answer Conduit for desktop's calls for these modes alone.
     var voiceReaders: [String]?
 
     init(binding: LocationBinding? = nil, settings: LocationSharingSettings = LocationSharingSettings(),

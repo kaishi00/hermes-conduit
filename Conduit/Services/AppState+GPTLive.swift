@@ -230,6 +230,7 @@ extension AppState {
                 + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
                 + hermesCallsInstructions(delegation: true)
                 + VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools)
+                + VoiceHostTool.contextBlock(voiceBackgroundJobSupervisor.hostContext)
                 + GPTLiveConversationController.jobApprovalRule
                 + (gptLiveWebLookUps ? GPTLiveConversationController.webLookUpRule : "")
                 + LiveVoiceStyle.askFirstInstructions(on: voiceBackgroundJobSupervisor.asksBeforeSending)

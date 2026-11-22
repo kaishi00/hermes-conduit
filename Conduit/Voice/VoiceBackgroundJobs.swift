@@ -609,6 +609,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     var hostTools: [VoiceHostTool] = []
     /// The mode `hostTools` were prepared for.
     var hostToolsMode: LiveVoiceModeName?
+    /// What the call starts knowing about the user from the host (where they
+    /// are, their phone's state), as the phone lets `hostToolsMode` read it
+    /// (GET /voice-context); "" for none.
+    var hostContext = ""
     /// Runs one of `hostTools` (AppState: a sealed /voice-tools/call).
     var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
     /// What keeps an eye on the phone for the running call (Hermes' calendar
@@ -2838,6 +2842,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // A call's host tools carry its mode's consent: never the next call's.
         hostTools = []
         hostToolsMode = nil
+        hostContext = ""
         runHostTool = nil
         hostToolsWatch = nil
         pollTask?.cancel()

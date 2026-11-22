@@ -340,6 +340,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, false)
         choices.focus = true
         XCTAssertTrue(choices.turnStatus, "The choice is kept while neither is shared")
+
+        // The voice modes that may use the calendar and phone go with every
+        // upload, for Conduit for desktop's calls; none is an empty list.
+        XCTAssertEqual(choices.sharingJSON["voice_readers"] as? [String], [])
+        choices.voiceReaders = ["grok-live"]
+        XCTAssertEqual(choices.sharingJSON["voice_readers"] as? [String], ["grok-live"])
     }
 
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {

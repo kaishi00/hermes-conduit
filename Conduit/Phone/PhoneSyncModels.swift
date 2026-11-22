@@ -243,6 +243,10 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "contacts_edit": contactsEdit,
             "photos": photos,
             "turn_status": turnStatus,
+            // The live voice modes the user lets read the calendar and phone
+            // status, so the host can answer Conduit for desktop's calls for
+            // them alone.
+            "voice_readers": voiceReaders ?? [],
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]

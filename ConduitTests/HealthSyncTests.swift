@@ -98,6 +98,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(parts.map { $0.windows.map(\.buckets.count) }, [[4], [5], [6]], "Each window whole")
         XCTAssertEqual(parts.flatMap(\.deleted), ["a", "b"])
         XCTAssertTrue(parts.allSatisfy { $0.itemCount <= 8 })
+        // Every part says which voice modes may read health, an empty list included.
+        XCTAssertTrue(parts.allSatisfy { ($0.json()["voice_readers"] as? [String]) == [] })
+        batch.voiceReaders = ["gpt-live"]
+        XCTAssertTrue(batch.split(limit: 8).allSatisfy { ($0.json()["voice_readers"] as? [String]) == ["gpt-live"] })
 
         let json = parts[0].json()
         XCTAssertEqual(json["categories"] as? [String], ["activity"])
