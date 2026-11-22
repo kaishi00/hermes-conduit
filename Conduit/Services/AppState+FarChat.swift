@@ -104,10 +104,12 @@ extension AppState {
     /// Opens another combined dashboard's Chats row in place, on that
     /// dashboard's runtime through its kept connection, with no switch.
     /// False when it can't (not kept connected, or its socket can't be
-    /// handed to a client on the row's profile): the caller switches as
-    /// before.
+    /// handed to a client on the row's profile) or it's a bot's Bot Chat,
+    /// whose bot comes from that dashboard's own sync: the caller switches
+    /// as before.
     func openFarChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
+              !isFarBotChat(session, in: dashboardID),
               let runtime = keptRuntime(dashboardID, on: session.profile ?? "default") else { return false }
         // Its list as the Chats list read it, for the open to find the row
         // (its title, its saved copy, its profile) as a row here is found.
@@ -117,6 +119,16 @@ extension AppState {
             _ = requestOpenSession(session.id)
         }
         return true
+    }
+
+    /// Whether another dashboard's row is a bot's Bot Chat, by its bots as
+    /// Bots Home or its kept runtime read them, or by the title only a Bot
+    /// Chat carries.
+    func isFarBotChat(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
+        let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
+            + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        return BotChatHygiene.isCanonicalBotChatRow(session, roster: roster)
+            || BotChatHygiene.isReservedCanonicalTitleRow(session)
     }
 
     /// A kept dashboard's runtime on `profile`: as kept, or with its socket

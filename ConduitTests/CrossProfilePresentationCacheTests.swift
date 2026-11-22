@@ -1776,6 +1776,11 @@ extension CrossProfilePresentationCacheTests {
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
 
+        var botChat = row
+        botChat.title = BotMode.canonicalChatTitle
+        XCTAssertFalse(appState.openFarChatInPlace(botChat, in: mac.id), "a far Bot Chat still opens through a switch")
+        XCTAssertNil(appState.farChatDashboardID)
+
         appState.openCombinedChat(row, in: mac.id)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
