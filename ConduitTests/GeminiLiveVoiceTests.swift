@@ -3682,6 +3682,38 @@ extension VoiceConversationControllerTests {
         guard case .toolResponse(_, _, let emptyResult, _)? = emptyInside.first else { return XCTFail("\(emptyInside)") }
         XCTAssertEqual(emptyResult["error"], GeminiLiveToolBridge.invalidCardsNote, "cards that wrap nothing still get the cards note")
     }
+
+    /// A cards string with a } missing says where it broke, as conduit_show's
+    /// cards_not_json does (notifier #1006), sent as the string itself or
+    /// inside the list; a string that parses into invalid cards keeps the
+    /// cards note.
+    func testGeminiLiveShowOnScreenSaysWhereCardsJSONBroke() async throws {
+        let (supervisor, _, bridge) = makeJobs()
+        supervisor.liveCallTranscript = { [] }
+        supervisor.beginLiveCall()
+        let broken = #"[{"type": "callout", "callout": {"text": "Bon choix"}, {"type": "checklist", "title": "Le bruit qu'un voisin entend"}]"#
+        XCTAssertNil(try? JSONSerialization.jsonObject(with: Data(broken.utf8)))
+        let listed = String(decoding: try JSONSerialization.data(withJSONObject: [broken]), as: UTF8.self)
+        for (index, given) in [broken, listed].enumerated() {
+            let answer = await bridge.handle(.init(id: "j\(index)", name: "show_on_screen", arguments: ["title": "Bruit", "cards": given]))
+            guard case .toolResponse(_, _, let result, _)? = answer.first else { return XCTFail("\(answer)") }
+            let error = try XCTUnwrap(result["error"], given)
+            XCTAssertTrue(error.hasPrefix(GeminiLiveToolBridge.cardsNotJSONNote), error)
+            XCTAssertTrue(error.contains("cards: \(RichCardSchema.notJSONMark)"), error)
+            XCTAssertTrue(error.contains("not a string"), error)
+        }
+        let place = #"{"type": "place", "places": [{"name": "Tartine"}]}"#
+        var problems: [String] = []
+        let placeCard = try JSONSerialization.jsonObject(with: Data(place.utf8))
+        let opened = RichCardSchema.unwrappedCards([placeCard, "[{\"type\""]) { problems.append($0) }
+        XCTAssertEqual((opened as? [Any])?.count, 2, "the good card stays beside the string")
+        XCTAssertEqual(problems.count, 1)
+        XCTAssertTrue(problems.first?.hasPrefix("cards[1]: \(RichCardSchema.notJSONMark)") == true, "\(problems)")
+        let parsedButInvalid = await bridge.handle(.init(id: "j-invalid", name: "show_on_screen", arguments: ["title": "Weather", "cards": #"[{"type": "weather"}]"#]))
+        guard case .toolResponse(_, _, let invalid, _)? = parsedButInvalid.first else { return XCTFail("\(parsedButInvalid)") }
+        XCTAssertEqual(invalid["error"], GeminiLiveToolBridge.invalidCardsNote)
+        XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "nothing reached the screen")
+    }
 }
 
 // MARK: - A start's late answers (#999)

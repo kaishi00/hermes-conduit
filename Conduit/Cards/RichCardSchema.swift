@@ -79,25 +79,60 @@ struct RichCardSchema {
     /// the plugin's conduit_show reads them (notifier #876, #878, 879: a
     /// smaller model retried a board for 35 minutes over its wrapping). Past
     /// eight levels the cards are left as they are, and refused.
-    static func unwrappedCards(_ value: Any?, depth: Int = 0) -> Any? {
+    /// A JSON string that doesn't parse is left as it is, and `broken` hears
+    /// where it stopped (`notJSONProblem`), as conduit_show's
+    /// cards_not_json says (notifier #1006).
+    static func unwrappedCards(_ value: Any?, depth: Int = 0, place: String = "cards",
+                               broken: ((String) -> Void)? = nil) -> Any? {
         guard depth <= 8 else { return value }
         var value = value
         if let text = cardJSON(value) {
-            guard let parsed = text.data(using: .utf8).flatMap({ try? JSONSerialization.jsonObject(with: $0) }) else { return value }
-            value = parsed
+            do {
+                value = try JSONSerialization.jsonObject(with: Data(text.utf8))
+            } catch {
+                broken?(notJSONProblem(text, error: error, place: place))
+                return value
+            }
         }
         if let card = value as? [String: Any] {
-            if let inner = cardsInWrapper(card) { return unwrappedCards(inner, depth: depth + 1) }
+            if let inner = cardsInWrapper(card) { return unwrappedCards(inner, depth: depth + 1, place: place, broken: broken) }
             return [card]
         }
         guard let list = value as? [Any] else { return value }
-        return list.flatMap { item -> [Any] in
+        // One string alone in the list is still "cards" to the model.
+        let alone = depth == 0 && list.count == 1
+        return list.enumerated().flatMap { index, item -> [Any] in
             let opens = item is [Any] || cardJSON(item) != nil || (item as? [String: Any]).flatMap(cardsInWrapper) != nil
             guard opens else { return [item] }
-            let opened = unwrappedCards(item, depth: depth + 1)
+            let opened = unwrappedCards(item, depth: depth + 1, place: alone ? place : "\(place)[\(index)]", broken: broken)
             return (opened as? [Any]) ?? [opened as Any]
         }
     }
+
+    /// The words every cards_not_json problem carries.
+    static let notJSONMark = "sent as a JSON string that doesn't parse"
+
+    /// Where a cards string stops parsing, with the text around that spot,
+    /// for the model to fix it instead of guessing: one blamed French quotes
+    /// and stripped every apostrophe and accent when a } was missing
+    /// (notifier #1006, 2026-11-22).
+    static func notJSONProblem(_ text: String, error: Error, place: String = "cards") -> String {
+        let info = (error as NSError).userInfo
+        var detail = (info[NSDebugDescriptionErrorKey] as? String) ?? "invalid JSON"
+        var near = ""
+        if let index = info["NSJSONSerializationErrorIndex"] as? Int {
+            detail += " at character \(index)"
+            let bytes = Array(text.utf8)
+            let spot = min(max(index, 0), bytes.count)
+            let slice = bytes[max(0, spot - 40)..<min(bytes.count, spot + 40)]
+            near = String(decoding: slice, as: UTF8.self).replacingOccurrences(of: "\n", with: " ")
+        }
+        let nearText = near.isEmpty ? "" : ", near: \"\(near)\""
+        return "\(place): \(notJSONMark) (\(detail)\(nearText)), its cards left out. Send cards as an array of card objects, not a string. Quotes, apostrophes and accents are fine as they are; check that every { and [ is closed."
+    }
+
+    /// Whether `value` reads as cards sent as JSON text: a list or an object.
+    static func looksLikeCardJSON(_ value: Any?) -> Bool { cardJSON(value) != nil }
 
     /// What a `{"cards": ...}` around cards holds: a list, one card, or a
     /// JSON string of them. Nil for a card of its own.
