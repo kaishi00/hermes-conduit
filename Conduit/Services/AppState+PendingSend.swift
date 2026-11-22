@@ -366,7 +366,7 @@ extension AppState {
         let chatIsGone = !onScreen && pendingComposerSendChatIsGone(pending)
         let request = restoreRequest(
             for: pending,
-            key: chatIsGone ? durableComposerDraftKeyOnScreen : submittedDraftKey,
+            key: chatIsGone ? goneChatDraftKey(for: pending) : submittedDraftKey,
             redirects: chatIsGone,
             focuses: false
         )
@@ -375,7 +375,7 @@ extension AppState {
         // sends it itself (issue 2140).
         if !mayHaveGone, keepsWordsForChatTakeover(request) { return }
         composerRestoreRequests.append(request)
-        if !onScreen, !mayHaveGone, pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
+        if !onScreen, !mayHaveGone, composerOnScreenSaysWhy(for: pending) {
             composerNotice = pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
         }
     }
@@ -398,7 +398,8 @@ extension AppState {
     /// The waiting message isn't sent: its words go back into its chat's
     /// draft, or the composer when that chat is the one on screen, with a
     /// line saying so. A chat Hermes no longer has can't be opened again,
-    /// so its words go into the composer on screen instead, unsent.
+    /// so its words go into the composer on screen instead, unsent (see
+    /// `goneChatDraftKey(for:)`).
     func returnPendingComposerSendToDraft(_ pending: PendingComposerSend, saysWhy: Bool = true) {
         let onScreen = isOnScreen(pending)
         let chatIsGone = !onScreen && pendingComposerSendChatIsGone(pending)
@@ -406,34 +407,43 @@ extension AppState {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
         }
-        // A gone chat's words go to the composer on screen, unless that's
-        // another dashboard's far chat: then to its own dashboard's New
-        // Chat draft, never into another Hermes' chat.
-        let screenKey = durableComposerDraftKeyOnScreen
-        let goneKey = screenKey.dashboard == pending.dashboardID ? screenKey
-            : ComposerDraftKey(dashboard: pending.dashboardID, profile: pending.profile,
-                               sessionID: ComposerDraftKey.newConversationSessionID)
         composerRestoreRequests.append(
             restoreRequest(
                 for: pending,
-                key: onScreen ? screenKey : chatIsGone ? goneKey : nil,
+                key: onScreen ? durableComposerDraftKeyOnScreen : chatIsGone ? goneChatDraftKey(for: pending) : nil,
                 redirects: chatIsGone,
                 focuses: false
             )
         )
-        // The composer on screen says why only when it's this dashboard's:
-        // a far chat's composer doesn't hold these words.
-        if pending.dashboardID == activeDashboardID, pending.profile == activeProfile,
-           composerDraftKeyOnScreen.dashboard == pending.dashboardID {
+        if composerOnScreenSaysWhy(for: pending) {
             composerNotice = saysWhy
                 ? pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
                 : nil
         }
     }
 
+    /// Where a gone chat's words go: the composer on screen, unless that's
+    /// another dashboard's far chat; then their own dashboard's New Chat
+    /// draft, never into another Hermes' chat.
+    private func goneChatDraftKey(for pending: PendingComposerSend) -> ComposerDraftKey {
+        let screenKey = durableComposerDraftKeyOnScreen
+        guard screenKey.dashboard != pending.dashboardID else { return screenKey }
+        return ComposerDraftKey(dashboard: pending.dashboardID, profile: pending.profile,
+                                sessionID: ComposerDraftKey.newConversationSessionID)
+    }
+
+    /// The composer on screen says why `pending`'s words came back only
+    /// when it's that dashboard's and profile's: a far chat's composer
+    /// doesn't hold them.
+    private func composerOnScreenSaysWhy(for pending: PendingComposerSend) -> Bool {
+        pending.dashboardID == activeDashboardID && pending.profile == activeProfile
+            && composerDraftKeyOnScreen.dashboard == pending.dashboardID
+    }
+
     /// The waiting message's chat is one Hermes said it no longer has: the
     /// composer on screen takes its words instead (with no chat open, the
-    /// next New Chat's draft).
+    /// next New Chat's draft; with another dashboard's far chat on screen,
+    /// its own dashboard's New Chat draft).
     private func pendingComposerSendChatIsGone(_ pending: PendingComposerSend) -> Bool {
         guard !pending.isNewChat,
               pending.dashboardID == activeDashboardID,
