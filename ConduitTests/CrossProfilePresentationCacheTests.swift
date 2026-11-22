@@ -2914,10 +2914,10 @@ extension CrossProfilePresentationCacheTests {
         // connection, until far chats open in place.
         appState.openCombinedPulse(mac.id)
         // A step from the one on screen's Pulse doesn't go on another's.
-        let screensStep = await appState.switchForFarPulseStep(from: nil)
+        let screensStep = await appState.switchForFarPulseStep(for: vps.id)
         XCTAssertFalse(screensStep, "the page shows Mac's now")
         XCTAssertEqual(appState.activeDashboardID, vps.id)
-        let stepGoes = await appState.switchForFarPulseStep(from: mac.id)
+        let stepGoes = await appState.switchForFarPulseStep(for: mac.id)
         XCTAssertTrue(stepGoes)
         XCTAssertEqual(appState.activeDashboardID, mac.id)
         XCTAssertTrue(appState.client === outgoing, "switched through the kept connection")
