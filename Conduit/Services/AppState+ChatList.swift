@@ -76,6 +76,7 @@ extension AppState {
         if let dashboardID { prefetchSavedChats(dashboardID: dashboardID) }
         // Done marks the agent set come with its turn's list read.
         refreshChatDoneMarks(profiles: [activeProfile])
+        refreshChatMutes(profiles: [activeProfile])
         guard savedChatList != nil else { return }
         guard newestPageOnly, let saved = savedChatListForActiveScope else {
             savedChatList = nil
