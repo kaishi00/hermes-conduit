@@ -7,8 +7,10 @@
 //  The plugin keeps them per profile (`/notifications/muted-chats`, plugin
 //  0.193+) and skips the pushes itself, so the mute holds on every device
 //  paired with the profile and for sealed pushes. Approvals and questions
-//  still notify. Kept under the chat's ids as Done marks are
-//  (ChatDoneMarks.ids): its lineage root, which a compaction keeps, first.
+//  still notify. Sent under the chat's own ids only, never its lineage
+//  root: a branch or reset names its parent as root, and muting it must not
+//  mute the parent. The plugin adds the ids a compaction carried the chat
+//  under (notifications._same_chat).
 //
 
 import Foundation
@@ -90,9 +92,11 @@ struct ChatMutes: Equatable {
         return next
     }
 
-    /// The ids a mute is kept under: Done marks' (the lineage root first).
+    /// The ids a mute is sent under: the chat's own, never its lineage root.
     static func ids(for session: SessionSummary) -> [String] {
-        Array(ChatDoneMarks.ids(for: session).prefix(maxIDs))
+        var ids: [String] = []
+        for id in [session.id] + session.alternateIds where !id.isEmpty && !ids.contains(id) { ids.append(id) }
+        return Array(ids.prefix(maxIDs))
     }
 
     static func path(profile: String) -> String {

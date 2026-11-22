@@ -232,7 +232,17 @@ extension SidebarLayoutTests {
         XCTAssertEqual(ChatMutes.body(for: compacted, duration: .fifteenMinutes)["mute_s"] as? Int, 900)
         XCTAssertTrue(ChatMutes.body(for: compacted, duration: .untilUnmuted)["mute_s"] is NSNull)
         XCTAssertEqual(ChatMutes.body(for: compacted, duration: nil)["mute_s"] as? Int, 0)
-        XCTAssertEqual(ChatMutes.body(for: compacted, duration: nil)["session_ids"] as? [String], ["chat-1", "chat-2"])
+        XCTAssertEqual(ChatMutes.body(for: compacted, duration: nil)["session_ids"] as? [String], ["chat-2", "chat-1"],
+                       "the chat's own ids")
+        let branch = SessionSummary(
+            id: "branch-1", alternateIds: [], title: "branch", model: "Hermes", updatedLabel: "now",
+            lastActivityAt: nil, profile: "default", source: .chat, isActive: false, isArchived: false,
+            lineageRootId: "chat-1"
+        )
+        XCTAssertEqual(ChatMutes.ids(for: branch), ["branch-1"], "never the lineage root")
+        let branchMuted = ChatMutes().setting(branch, duration: .oneHour, profile: "default", dashboardID: dashboard, now: now)
+        XCTAssertNotNil(branchMuted.mute(for: branch, profile: "default", now: now))
+        XCTAssertNil(branchMuted.mute(for: original, profile: "default", now: now), "muting a branch leaves its parent")
         XCTAssertEqual(ChatMutes.path(profile: "my bot"), "/api/plugins/conduit_push/notifications/muted-chats?profile=my%20bot")
 
         let read = ChatMutes.mutes(from: ["chats": [
