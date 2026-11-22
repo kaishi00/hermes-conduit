@@ -261,9 +261,10 @@ extension AppState {
         if case .sessionsChanged = event { noteKeptDashboardChatsChanged(id) }
     }
 
-    /// Reads the kept dashboard's chats once its changes have settled for
-    /// `keptDashboardChatsChangeWait`: a burst of them (a turn's title, its
-    /// compaction) is one read.
+    /// Reads the kept dashboard's chats `keptDashboardChatsChangeWait` after
+    /// a change, at most once per wait: a burst (a turn's title, its
+    /// compaction) is one read, and a long turn's steady changes still read
+    /// every wait rather than never until it pauses.
     func noteKeptDashboardChatsChanged(_ id: UUID) {
         guard keptDashboardChatsChangeReads[id] == nil else { return }
         let wait = keptDashboardChatsChangeWait
@@ -271,7 +272,11 @@ extension AppState {
             try? await Task.sleep(for: wait)
             guard let self, !Task.isCancelled else { return }
             self.keptDashboardChatsChangeReads[id] = nil
-            self.noteConnectionStep("Kept dashboard's chats read on its change")
+            // Noted only when it reads: off screen, or taken up or let go
+            // during the wait, the read stops before asking.
+            if self.isSceneActive, self.keptDashboardRuntimes[id] != nil {
+                self.noteConnectionStep("Kept dashboard's chats read on its change")
+            }
             await self.readOtherCombinedDashboardsChats(force: true, only: id)
         }
     }
