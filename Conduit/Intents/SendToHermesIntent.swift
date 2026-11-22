@@ -539,7 +539,8 @@ struct SendToHermesIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let picked = chat.map { ShortcutPickedChat(dashboardID: $0.workspace.dashboardID, reference: $0.reference, title: $0.title) }
         // A picked chat wins over Profile, so Profile isn't checked then.
-        let onScreenProfile: String? = try picked == nil ? Self.profileOnScreen(profile?.id) : nil
+        var onScreenProfile: String?
+        if picked == nil { onScreenProfile = try await Self.profileOnScreen(profile?.id) }
         let request = ShortcutSendRequest(text: message, chatName: chatName, profile: onScreenProfile,
                                           waitsForAnswer: waitForAnswer, chat: picked)
         let deadline = Date().addingTimeInterval(Self.runTime)
