@@ -163,6 +163,7 @@ extension AppState {
     /// then switches first, as before.
     @discardableResult
     func openLiveCallOnFarDashboard(_ dashboardID: UUID, profile: String, attachingTo thread: VoiceThreadTarget? = nil) -> Bool {
+        let profile = Self.farCallProfile(profile)
         guard !showVoiceSheet, !voiceConversationController.hasLiveVoiceSession,
               !isCarPlayVoiceSurfaceActive, !isWatchVoiceCallActive,
               pendingHermesCall == nil, hermesCallOpenTask == nil,
@@ -188,8 +189,14 @@ extension AppState {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               savedDashboardRegistry.dashboard(with: dashboardID)?.pendingURL == nil
         else { return nil }
+        return keptRuntime(dashboardID, on: Self.farCallProfile(profile))
+    }
+
+    /// The profile a far start names, as its settings and kept client key
+    /// it: trimmed, and the main profile for none.
+    private static func farCallProfile(_ profile: String) -> String {
         let profile = profile.trimmingCharacters(in: .whitespacesAndNewlines)
-        return keptRuntime(dashboardID, on: profile.isEmpty ? "default" : profile)
+        return profile.isEmpty ? "default" : profile
     }
 
     /// Hangs up whichever live call runs; each stop hands its jobs back.
