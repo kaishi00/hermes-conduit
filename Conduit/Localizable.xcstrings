@@ -117233,84 +117233,84 @@
         }
       }
     },
-    "Read by voice in the last 7 days" : {
+    "Read by this iPhone's calls in the last 7 days" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In den letzten 7 Tagen per Sprache gelesen"
+            "value" : "In den letzten 7 Tagen von Anrufen auf diesem iPhone gelesen"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Leído por voz en los últimos 7 días"
+            "value" : "Leído por llamadas de este iPhone en los últimos 7 días"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lu par la voix ces 7 derniers jours"
+            "value" : "Lu par les appels de cet iPhone ces 7 derniers jours"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dibaca lewat suara dalam 7 hari terakhir"
+            "value" : "Dibaca oleh panggilan di iPhone ini dalam 7 hari terakhir"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Letto dalla voce negli ultimi 7 giorni"
+            "value" : "Letto dalle chiamate di questo iPhone negli ultimi 7 giorni"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "過去 7 日間に音声で読み取られた内容"
+            "value" : "過去 7 日間にこの iPhone の通話で読み取られた内容"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "지난 7일 동안 음성으로 읽은 기록"
+            "value" : "지난 7일 동안 이 iPhone의 통화가 읽은 기록"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Odczytane głosowo w ciągu ostatnich 7 dni"
+            "value" : "Odczytane przez rozmowy na tym iPhonie w ciągu ostatnich 7 dni"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lido por voz nos últimos 7 dias"
+            "value" : "Lido por chamadas deste iPhone nos últimos 7 dias"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Прочитано голосом за последние 7 дней"
+            "value" : "Прочитано звонками с этого iPhone за последние 7 дней"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son 7 günde sesle okunanlar"
+            "value" : "Son 7 günde bu iPhone'daki aramalarca okunanlar"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "过去 7 天内语音读取的记录"
+            "value" : "过去 7 天内此 iPhone 上的通话读取的记录"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "過去 7 天內語音讀取的紀錄"
+            "value" : "過去 7 天內此 iPhone 上的通話讀取的紀錄"
           }
         }
       }

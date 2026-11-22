@@ -152,7 +152,6 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
 
         var batch = LocationBatch(sentAt: Date(), settings: config.settings)
         batch.approximateOnly = approximate || config.approximateOnly
-        batch.voiceReaders = config.voiceReaders ?? []
         batch.knownPlaces = config.places
         // The same place list the app sends, so the host's stays current.
         // (No coordinates: names, kinds and ids only.)
@@ -161,9 +160,12 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         batch.locateID = request.id
         // Paused, turned off or its detail lowered while the fix was on its
         // way: nothing goes.
-        guard Self.stillAnswers(request, detail: precision) else {
+        guard let now = Self.answeringConfig(request, detail: precision) else {
             return Self.unanswered(id, "sharing no longer answers it after the fix (paused, off, detail lowered, bound elsewhere, or its config unreadable)", kind: "locate")
         }
+        // The voice modes as they are now: one turned off during the fix
+        // wait never goes back to the host.
+        batch.voiceReaders = now.voiceReaders ?? []
         guard let body = try? LocationIngest.body(batch, key: key) else {
             return Self.unanswered(id, "the batch couldn't be sealed", kind: "locate")
         }
@@ -324,8 +326,14 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
     /// lowers its detail: checked after the waits, not only before them
     /// (issue 1881).
     private static func stillAnswers(_ request: LocationLocateRequest, detail: LocationPrecision) -> Bool {
-        guard case .value(let config) = LocationSharedStore.readConfig() else { return false }
+        answeringConfig(request, detail: detail) != nil
+    }
+
+    /// The config as it is now, when it still answers `request` at `detail`.
+    private static func answeringConfig(_ request: LocationLocateRequest, detail: LocationPrecision) -> LocationSharedConfig? {
+        guard case .value(let config) = LocationSharedStore.readConfig() else { return nil }
         return request.isAnswered(by: config, at: Date()) && config.settings.backgroundPrecision.capped(at: detail) == detail
+            ? config : nil
     }
 
     /// A value for the query string: ids are `[A-Za-z0-9_-]` already.

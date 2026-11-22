@@ -401,10 +401,14 @@ extension AppState {
         supervisor.hostTools = host + fetched.local
         // The host couldn't be asked: a reconnect on the same mode keeps what
         // it had, but a later call never starts on an old place or status.
+        // Consent is asked again now: a mode turned off while the context
+        // was on its way keeps nothing from before.
+        let stillReads = LocationSharingController.shared.letsVoiceRead(mode) || phoneSync.preferences.letsVoiceUse(mode)
         let now = Date()
-        supervisor.hostContext = Self.keptHostContext(opening, previous: supervisor.hostContext,
-                                                      fetchedAt: supervisor.hostContextAt, now: now)
-        if opening != nil { supervisor.hostContextAt = now }
+        supervisor.hostContext = stillReads
+            ? Self.keptHostContext(opening, previous: supervisor.hostContext, fetchedAt: supervisor.hostContextAt, now: now)
+            : ""
+        if opening != nil, stillReads { supervisor.hostContextAt = now }
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]

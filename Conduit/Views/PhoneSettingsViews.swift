@@ -575,7 +575,7 @@ struct PhoneSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !voiceUses.entries.isEmpty {
-                Text("Read by voice in the last 7 days")
+                Text("Read by this iPhone's calls in the last 7 days")
                     .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 4)
                 ForEach(voiceUses.entries.suffix(20).reversed()) { entry in
