@@ -2767,7 +2767,9 @@ extension CrossProfilePresentationCacheTests {
         // The one on screen's chip goes back to it.
         appState.openCombinedPulse(vps.id)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
-        XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [3, 1], "no longer shown, the background read's count")
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [0, 1], "left, the page's read there is the newer")
+        await appState.readOtherCombinedDashboardsPulse(force: true)
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [3, 1], "then a newer background read's")
         XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
 

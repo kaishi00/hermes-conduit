@@ -83,9 +83,11 @@ extension AppState {
             }
             guard let pulse = combinedDashboardPulse[dashboard.id] else { return nil }
             // Shown here, its feed read on its own runtime knows best; once
-            // another is shown, only the background read keeps up with it.
+            // another is shown, whichever read is newer: the page's last one
+            // there (its cards just seen) or the background read since.
             var unseen = pulse.unseen
-            if shown == dashboard.id, let runtime = runtime(for: dashboard.id), runtime.pulseFeedAppliedAt != nil {
+            if let runtime = runtime(for: dashboard.id), let applied = runtime.pulseFeedAppliedAt,
+               shown == dashboard.id || applied.at > pulse.at {
                 unseen = runtime.pulseUnseen
             }
             return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id)
