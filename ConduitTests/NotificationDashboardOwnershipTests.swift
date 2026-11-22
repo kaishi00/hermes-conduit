@@ -35,10 +35,10 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         XCTAssertTrue(opens(target("chat")), "a reply")
         XCTAssertTrue(opens(target("newer")), "a chat newer than its last read")
         XCTAssertTrue(opens(target("chat", type: "approval.needed",
-                                   decision: .approval(sessionKey: "chat", description: "rm", choices: ["once"])))),
+                                   decision: .approval(sessionKey: "chat", description: "rm", choices: ["once"]))),
                       "an approval in a chat it lists")
         XCTAssertFalse(opens(target("hidden", type: "approval.needed",
-                                    decision: .approval(sessionKey: "hidden", description: "rm", choices: ["once"])))),
+                                    decision: .approval(sessionKey: "hidden", description: "rm", choices: ["once"]))),
                        "an approval for a chat it doesn't list (a room's)")
         XCTAssertFalse(opens(target("chat", room: "room-1")), "a room's")
         XCTAssertFalse(opens(target("chat", type: HermesCallRequest.type,
