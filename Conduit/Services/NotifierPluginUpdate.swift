@@ -528,10 +528,13 @@ struct NotifierPluginUpdater {
         }
         guard let jobID = job["id"] as? String else { return nil }
         let started = now()
+        // Each answer from the host is progress, even on the same step; a read that
+        // failed isn't, so reads that keep failing let the run's watchdog end it.
+        var answered = true
         while true {
             if let step = Self.hostStep(job) {
                 // A restart-only job opens on "downloading" for its no-op pull.
-                progress(.updating(restartOnly && step == .downloading ? firstStep : step))
+                if answered { progress(.updating(restartOnly && step == .downloading ? firstStep : step)) }
             } else if let outcome = Self.hostOutcome(job) {
                 let pullFailed = job["failed_step"] as? String == "downloading"
                 if pullFailed, case .failed(let detail) = outcome, Self.ranMixedHermes(detail) {
@@ -545,7 +548,7 @@ struct NotifierPluginUpdater {
                 return await finishHostUpdate(outcome, pullFailed: pullFailed, request: request)
             } else {
                 // A step this Conduit doesn't know (a newer plugin's).
-                progress(.updating(firstStep))
+                if answered { progress(.updating(firstStep)) }
             }
             guard now().timeIntervalSince(started) < Self.hostFollowLimit else {
                 return .runningOnHost
@@ -560,8 +563,10 @@ struct NotifierPluginUpdater {
             } catch DashboardTicketBridgeError.signInRequired {
                 return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
             } catch {
+                answered = false
                 continue
             }
+            answered = true
             guard let latest = json["job"] as? [String: Any], latest["id"] as? String == jobID else {
                 // The restarted dashboard lost the job: its report says where it stands.
                 return await finishHostUpdate(nil, pullFailed: false, request: request)
