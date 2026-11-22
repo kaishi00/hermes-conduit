@@ -50,7 +50,10 @@ extension AppState {
             reveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
             pendingNeedsYouReveal = reveal
         }
-        let opened = await open.value
+        // The open's own answer can be false for an open that a later read
+        // of the same chat took over (the chat still came up), so the chat
+        // on screen decides too.
+        let opened = await open.value || farChatIsShown(session, in: dashboardID)
         // One that didn't open is tried again: its card's reveal waits for
         // that try rather than land on another chat. A newer tap's reveal
         // stays.
@@ -105,5 +108,11 @@ extension AppState {
             keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID,
             pulseRememberedHomes[dashboardID.uuidString],
         ].compactMap { $0 }.filter { !$0.isEmpty })
+    }
+
+    /// Whether another dashboard's chat is the one on screen, opened in place.
+    func farChatIsShown(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
+        guard farChatDashboardID == dashboardID, let active = activeSessionId, !active.isEmpty else { return false }
+        return SessionContentSearch.identities(of: session).contains(active)
     }
 }
