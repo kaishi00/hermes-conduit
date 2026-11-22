@@ -10421,7 +10421,7 @@ board a 200-character preview)
 **Open gaps**
 - None on the phone.
 
-**Checked:** 2026-11-22, #3083.
+**Checked:** 2026-11-22, #3087.
 
 ## Feature map rules
 
