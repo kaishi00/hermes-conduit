@@ -39,6 +39,12 @@ enum NotifierPluginUpdateState: Equatable {
         return false
     }
 
+    /// Held by Hermes' install scan, waiting on Update Anyway.
+    var isScanHeld: Bool {
+        if case .scanHeld = self { return true }
+        return false
+    }
+
     /// A failure, or a held scan: nothing the update pulled can be running.
     var endedWithoutUpdating: Bool {
         switch self {
@@ -220,15 +226,23 @@ struct NotifierPluginUpdater {
     /// How a run that went quiet ended, from the host's job (`job`, nil when
     /// it couldn't be read) and the plugin's report read after it: a job
     /// still running is left to the host's notification, one this run
-    /// started (after `runStarted`) says how it ended, a plugin that runs
-    /// the new version is updated, and anything else never got going.
+    /// started says how it ended, a plugin that runs the new version is
+    /// updated, and anything else never got going. This run's job is the one
+    /// it followed (`followedJobID`), whatever the host's clock says; before
+    /// it knew one, a job that began after `runStarted` (desktop#299).
     static func outcomeAfterStall(job: [String: Any]?, plugin: NotifierPluginStatus,
-                                  runStarted: Date) -> NotifierPluginUpdateState {
+                                  runStarted: Date, followedJobID: String? = nil) -> NotifierPluginUpdateState {
         if let job {
             if hostStep(job) != nil { return .runningOnHost }
             // An earlier update's job (yesterday's "done") says nothing about this one.
-            let started = (job["started_at"] as? Double) ?? (job["started_at"] as? Int).map(Double.init)
-            if let started, started >= runStarted.timeIntervalSince1970 - 5, let outcome = hostOutcome(job) {
+            let ours: Bool
+            if let followedJobID {
+                ours = job["id"] as? String == followedJobID
+            } else {
+                let started = (job["started_at"] as? Double) ?? (job["started_at"] as? Int).map(Double.init)
+                ours = started.map { $0 >= runStarted.timeIntervalSince1970 - 5 } ?? false
+            }
+            if ours, let outcome = hostOutcome(job) {
                 return outcome
             }
         }
@@ -238,6 +252,21 @@ struct NotifierPluginUpdater {
             return .updated(version: plugin.runningVersion)
         }
         return .failed(detail: AppLocalization.string("The update didn't get going on the host, so Conduit stopped waiting for it. Try again.", table: .notifications))
+    }
+
+    /// How a quiet run ends (outcomeAfterStall), once the gateway serves
+    /// too: an update is ready only when `gatewayBack` says the gateway came
+    /// back, as after a run that ended on its own. `gatewayBack` is asked
+    /// only for an update.
+    static func settleStall(job: [String: Any]?, plugin: NotifierPluginStatus, runStarted: Date,
+                            followedJobID: String?,
+                            gatewayBack: () async -> Bool) async -> NotifierPluginUpdateState {
+        let outcome = outcomeAfterStall(job: job, plugin: plugin, runStarted: runStarted, followedJobID: followedJobID)
+        guard case .updated = outcome else { return outcome }
+        guard await gatewayBack() else {
+            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
+        }
+        return outcome
     }
 
     /// How long Conduit waits for running chats before the dashboard
@@ -270,6 +299,9 @@ struct NotifierPluginUpdater {
     /// Each capabilities answer read after the update: the new plugin's
     /// report, so the screen doesn't wait for another status refresh.
     var report: (@MainActor ([String: Any]) -> Void)?
+    /// The id of the host's job this run follows, once it has one: the
+    /// watchdog reads how that job ended (outcomeAfterStall).
+    var followedJob: (@MainActor (String) -> Void)?
     var pollInterval: Duration = .milliseconds(2_000)
     var sleep: @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
     var now: @MainActor () -> Date = { Date() }
@@ -529,6 +561,7 @@ struct NotifierPluginUpdater {
             }
         }
         guard let jobID = job["id"] as? String else { return nil }
+        followedJob?(jobID)
         let started = now()
         // Each answer from the host is progress, even on the same step; a read that
         // failed isn't, so reads that keep failing let the run's watchdog end it.
