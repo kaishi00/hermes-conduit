@@ -1180,7 +1180,7 @@ final class CarPlayVoiceCoordinator {
             appState.isConnectedValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.$activeSessionId.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chats are this agent's, and which are bots'.
-            appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            appState.activeProfileValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.botRosterValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chat is Pulse's, left out (the feed names it).
             appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()

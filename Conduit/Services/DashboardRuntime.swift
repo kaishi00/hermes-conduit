@@ -39,6 +39,13 @@ final class DashboardRuntime: ObservableObject {
     var clientEpoch = UUID()
     var connectedAt: Date?
 
+    // MARK: Profile
+
+    /// The profile its client is on: for the one on screen, the profile
+    /// picked there (AppState's `activeProfile`); for a kept one, the one
+    /// its kept client is on.
+    @Published var activeProfile: String = "default"
+
     // MARK: Plugin
 
     /// What the host's notifier plugin serves.
