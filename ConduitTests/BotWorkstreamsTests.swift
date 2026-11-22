@@ -771,6 +771,38 @@ extension BotModeTests {
         XCTAssertEqual(BotQuestionAnswer.choice("Keep diagnosing").body as? [String: String], ["choice": "Keep diagnosing"])
         XCTAssertEqual(BotQuestionAnswer.approve.action, "approve")
         XCTAssertTrue(BotQuestionAnswer.decline.body.isEmpty)
+        // A plugin before 0.195.0 lists no dismiss: none is offered.
+        XCTAssertFalse(question.canDismiss)
+    }
+
+    func testAnOpenQuestionCanBeDismissedWithNoAnswer() throws {
+        // Issue 3105: a question kept on Needs you could only be answered, so a tap to clear it fed the bot an answer.
+        var response = workResponse()
+        response["counts"] = ["working": 1, "needs_you": 1, "ready": 0, "waiting": 1, "questions": 2]
+        response["coordination"] = ["mode": "ask", "items": [
+            ["id": "P1", "kind": "proposal", "ref": "", "title": "", "at": 1_800_000_400.0,
+             "text": "Dinner earlier or later?", "status": "open", "answer": "", "why": [],
+             "actions": ["answer", "dismiss"], "choices": ["Earlier", "Later"], "chat": "c1"],
+            ["id": "P2", "kind": "proposal", "ref": "", "title": "", "at": 1_800_000_500.0,
+             "text": "What should the note say?", "status": "open", "answer": "", "why": [],
+             "actions": ["answer", "dismiss"], "choices": [], "chat": "c2", "source": "clarify"],
+        ]]
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        let picked = try XCTUnwrap(snapshot.coordination?.items.first { $0.id == "P1" })
+        let words = try XCTUnwrap(snapshot.coordination?.items.first { $0.id == "P2" })
+        XCTAssertTrue(picked.canDismiss)
+        XCTAssertTrue(words.canDismiss)
+        XCTAssertEqual(BotQuestionAnswer.dismiss.action, "dismiss")
+        XCTAssertTrue(BotQuestionAnswer.dismiss.body.isEmpty)
+        // One answered in words has no buttons, and is dismissed all the same.
+        let dismissed = snapshot.answering("P2", with: .dismiss)
+        let kept = try XCTUnwrap(dismissed.coordination?.items.first { $0.id == "P2" })
+        XCTAssertEqual(kept.status, "dismissed")
+        XCTAssertEqual(kept.stateText, "You dismissed it")
+        XCTAssertFalse(kept.canDismiss)
+        XCTAssertEqual(dismissed.questionCount, 1)
+        XCTAssertEqual(dismissed.coordination?.openQuestions.map(\.id), ["P1"])
+        XCTAssertEqual(dismissed.answering("P2", with: .dismiss), dismissed)  // dismissed once
     }
 
     func testAnOpenQuestionNeedsTheUserAndATapAnswersIt() throws {

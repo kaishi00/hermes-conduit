@@ -340,6 +340,36 @@ final class ClarifyBatchStateTests: XCTestCase {
         )
     }
 
+    func testAQuestionWrittenPastOrAnsweredElsewhereSaysSo() async throws {
+        // Issue 3105: the plugin withdraws Hermes' card when the user writes instead, or answers on the phone's card.
+        let (appState, _) = makeAppState()
+        var mine = ClarifyActivity(requestId: "srq-mine", question: "Mine", choices: [ClarifyChoice(label: "a", value: "a")])
+        mine.questions[0].status = .answered
+        appState.messages = [
+            ChatMessage(id: "clarify-srq-1", role: .clarify, content: "q", timestamp: "1", clarify: ClarifyActivity(requestId: "srq-1", question: "Pick", choices: [ClarifyChoice(label: "a", value: "a")])),
+            ChatMessage(id: "clarify-req-batch", role: .clarify, content: "batch", timestamp: "2", clarify: makeBatchActivity()),
+            ChatMessage(id: "clarify-srq-mine", role: .clarify, content: "mine", timestamp: "3", clarify: mine)
+        ]
+
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "srq-1", reason: "superseded"))
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "req-batch", reason: "resolved"))
+        appState.handleStreamEvent(.clarifyExpire(sessionId: "stored-a", requestId: "srq-mine", reason: "resolved"))
+
+        let written = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-1"))
+        XCTAssertEqual(written.status, .expired)
+        XCTAssertEqual(written.error, AppLocalization.string("You wrote a message instead, so Hermes stopped waiting for this question."))
+        let elsewhere = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
+        XCTAssertEqual(elsewhere.status, .expired)
+        XCTAssertEqual(elsewhere.error, AppLocalization.string("These questions were answered elsewhere."))
+        // A replay of the question keeps its notice rather than the timeout's.
+        appState.handleStreamEvent(.clarify(sessionId: "stored-a", activity: makeBatchActivity()))
+        XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.error, AppLocalization.string("These questions were answered elsewhere."))
+        // Answered here: its card stays as it is.
+        let answered = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-mine"))
+        XCTAssertFalse(answered.isExpired)
+        XCTAssertNil(answered.error)
+    }
+
     // MARK: - Approval withdrawal (request.cancel)
 
     private func approvalCard(_ appState: AppState, _ requestId: String) -> ApprovalActivity? {
