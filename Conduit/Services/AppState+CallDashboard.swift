@@ -248,7 +248,7 @@ extension AppState {
             // as any superseded one is (kept unless a newer one waits).
             // The screenshot was taken on the dashboard in use, so it never
             // carries the other dashboard's profile.
-            func superseded() -> Bool {
+            @MainActor func superseded() -> Bool {
                 guard store.revision != revision else { return false }
                 if let request = intent.screenQuestion {
                     self.settleSupersededScreenQuestion(
