@@ -125,6 +125,8 @@ extension AppState {
                 profiles: chats.profiles,
                 sessions: chats.sessions,
                 bots: combinedDashboardBots[dashboard.id]?.bots,
+                workstreamIDs: (combinedDashboardBotWork[dashboard.id] ?? [:]).values
+                    .reduce(into: Set<String>()) { $0.formUnion($1.knownSessionIDs) },
                 botsProfile: rememberedActiveProfile(for: dashboard.id) ?? "default",
                 previous: previous
             )
@@ -136,7 +138,8 @@ extension AppState {
     }
 
     /// Another combined dashboard's workspaces, one per profile it was read
-    /// for: each profile's chats (no cron runs or Bot Chats, as on screen),
+    /// for: each profile's chats (no cron runs, Bot Chats or its bots'
+    /// workstreams as far as their work was read, as on screen),
     /// and its Bot Chats in `botsProfile`'s, the profile a switch there
     /// resumes on, as the dashboard on screen lists its bots in the profile
     /// in use. Until its roster is read, its chats are unverified, as on
@@ -149,6 +152,7 @@ extension AppState {
         profiles: [String],
         sessions: [SessionSummary],
         bots: [BotProfile]?,
+        workstreamIDs: Set<String> = [],
         botsProfile: String,
         previous: [WidgetWorkspaceID: WidgetWorkspaceSnapshot]
     ) -> [WidgetWorkspaceSnapshot] {
@@ -162,7 +166,9 @@ extension AppState {
             let pinnedBefore = Set((before?.choices ?? []).filter(\.isPinned).map(\.reference.sessionID))
             var choices = sessions.compactMap { session -> WidgetConversationChoice? in
                 guard profilesMatch(session.profile ?? "", profile), !session.isArchived, session.source != .cron,
-                      !BotChatHygiene.isCanonicalBotChatRow(session, roster: roster) else { return nil }
+                      !BotChatHygiene.isCanonicalBotChatRow(session, roster: roster),
+                      Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
+                          .isDisjoint(with: workstreamIDs) else { return nil }
                 let durableID = session.storedSessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let sessionID = (durableID?.isEmpty == false ? durableID : nil) ?? session.id
                 let reference = widgetReference(from: .dashboard(profile: profile, sessionID: sessionID, isUnverified: bots == nil))

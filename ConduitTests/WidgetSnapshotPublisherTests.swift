@@ -186,7 +186,7 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
                              canonicalSession: BotCanonicalSession(id: "bot-chat", resolvedID: nil, lastActive: 9, preview: nil),
                              lastActive: nil, lastPreview: nil)
         let sessions = [chat("a", "default", pinned: true), chat("b", "coder"), chat("bot-chat", "coder"),
-                        chat("cron", "default", source: .cron), chat("old", "default")]
+                        chat("cron", "default", source: .cron), chat("old", "default"), chat("work", "coder")]
         let earlier = WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil, botLabel: nil,
                                                   sessionID: "old", isUnverified: false)
         let before = WidgetWorkspaceSnapshot(
@@ -197,7 +197,7 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
 
         let built = AppState.combinedWidgetWorkspaces(
             dashboardID: dashboardB, dashboardLabel: "Studio", profiles: ["default", "coder"], sessions: sessions,
-            bots: [bot], botsProfile: "default", previous: [before.id: before]
+            bots: [bot], workstreamIDs: ["work"], botsProfile: "default", previous: [before.id: before]
         )
 
         XCTAssertEqual(built.map(\.id.profile), ["default", "coder"])
@@ -212,7 +212,7 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
         XCTAssertFalse(main.choices.contains { $0.reference.isUnverified }, "its roster was read")
         let coder = built[1]
         XCTAssertEqual(coder.profileLabel, "Coder")
-        XCTAssertEqual(coder.choices.map(\.reference.sessionID), ["b"], "its Bot Chat isn't a chat of its own")
+        XCTAssertEqual(coder.choices.map(\.reference.sessionID), ["b"], "its Bot Chat isn't a chat of its own, nor its workstream")
 
         let unread = AppState.combinedWidgetWorkspaces(
             dashboardID: dashboardB, dashboardLabel: "Studio", profiles: ["default"], sessions: sessions,
