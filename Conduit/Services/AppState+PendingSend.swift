@@ -616,7 +616,18 @@ extension AppState {
         if lhs == rhs { return true }
         // A kept dashboard's draft: told from its own list, on its runtime.
         if let farRuntime = composerDraftFarRuntime(for: lhs) {
-            return act(onRuntime: farRuntime) { composerDraftKeysAreSameChat(lhs, rhs) }
+            // Its chat on screen: every check below is its own.
+            if farChat?.dashboardID == lhs.dashboard {
+                return act(onRuntime: farRuntime) { composerDraftKeysAreSameChat(lhs, rhs) }
+            }
+            // Left: only its list says. The chat state on screen (a New
+            // Chat, a lost chat's replacement) is another chat's.
+            return act(onRuntime: farRuntime) {
+                let rows = composerDraftRows(profile: lhs.profile)
+                guard let left = Self.composerDraftOwningRow(of: lhs.sessionID, in: rows).row,
+                      let right = Self.composerDraftOwningRow(of: rhs.sessionID, in: rows).row else { return false }
+                return left.durableKey == right.durableKey
+            }
         }
         // The lists and ids below are the dashboard on screen's: another
         // dashboard's draft is only ever its own key.
