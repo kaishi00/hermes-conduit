@@ -727,6 +727,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
         // Acting on it reads and writes its own, and leaves the screen's.
         XCTAssertEqual(kept.activeProfile, keptConnection.client.profile ?? "default", "its profile is its kept client's")
+        let onWork = KeptDashboardRuntime(
+            client: HermesClient(connection: keptConnection.connection, profile: "work"),
+            bridge: keptConnection.bridge, connection: keptConnection.connection, keptAt: Date()
+        )
+        XCTAssertEqual(onWork.runtime.activeProfile, "work", "a kept client on another profile gives its runtime that one")
+        XCTAssertNotEqual(appState.activeProfile, "work", "and the screen keeps its own")
         let profileOnScreen = appState.activeProfile
         var syncTask: Task<Int, Never>?
         appState.act(onRuntime: kept) {

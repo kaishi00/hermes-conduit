@@ -473,6 +473,9 @@ extension AppState {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
+        // A surface showing it stops republishing a runtime that's gone.
+        let gone = ObjectIdentifier(kept.runtime)
+        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }
