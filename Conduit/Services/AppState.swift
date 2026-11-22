@@ -615,6 +615,16 @@ final class AppState: ObservableObject {
     var chatDoneMarksWrites: [String: Int] = [:]
     var chatDoneMarksWriteTail: [String: Task<Void, Never>] = [:]
     var chatDoneMarksReadFailureLogged: Set<String> = []
+    /// Muted chats, per profile, as the plugin keeps them (ChatMutes), and
+    /// their reads and writes' bookkeeping (AppState+ChatMute, keyed by
+    /// chatDoneMarksKey). Each write moves `chatMutesWrites`, so a read from
+    /// before it is dropped.
+    @Published var chatMutes = ChatMutes()
+    var chatMutesReadAt: [String: Date] = [:]
+    var chatMutesReads: Set<String> = []
+    var chatMutesPendingWrites: [String: Int] = [:]
+    var chatMutesWrites: [String: Int] = [:]
+    var chatMutesWriteTail: [String: Task<Void, Never>] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
