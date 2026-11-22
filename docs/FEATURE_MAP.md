@@ -10417,12 +10417,12 @@ board a 200-character preview)
 - Run summaries, comments and the result render as Markdown in the sheet, a run's error alone as written; beside a summary or metadata the error sits in a code block under its heading, so it still reads as written; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #3076).
 - An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files. A download still running when the screen moves to another task or closes is cancelled, and its file never opens over what's there (2026-11-22, #3076).
 
-- A parent's Blocks rows preview each child's result (its `result`, else its latest summary) in two lines; the row opens the child, whose screen has it whole. Activity lists the 60 newest events, then "Show N earlier events" lists the rest (2026-11-22, #PENDING).
+- A parent's Blocks rows preview each child's result (its `result`, else its latest summary) in two lines; the row opens the child, whose screen has it whole. Activity lists the 60 newest events, then "Show N earlier events" lists the rest (2026-11-22, #3083).
 
 **Open gaps**
 - None on the phone.
 
-**Checked:** 2026-11-22, #PENDING.
+**Checked:** 2026-11-22, #3083.
 
 ## Feature map rules
 
