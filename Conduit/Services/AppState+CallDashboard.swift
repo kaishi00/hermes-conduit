@@ -221,14 +221,17 @@ extension AppState {
     /// A Siri launch or screen question naming another combined
     /// dashboard's profile (`PendingVoiceIntent.dashboardID`). Siri's call
     /// starts there in place, on that dashboard's runtime in its mode there
-    /// (`openLiveCallOnFarDashboard`), with no switch; anything else, or a
+    /// (`openLiveCallOnFarDashboard`), with no switch. Anything else, or a
     /// call that can't start there (not kept connected, Classic voice
     /// there, CarPlay or the Watch on the line), switches there first as
-    /// Chats' strip does, and the launch then goes on as one on screen.
-    /// A call running ends with that switch, as a Siri start on another
-    /// profile replaces it. True when this handled the launch: its call
-    /// started there, or the switch couldn't be made, which says so. False
-    /// when the launch goes on as usual, now on screen.
+    /// Chats' strip does, then hands the launch back to the pending store
+    /// as one on screen, so the scene routes it afresh once connected: the
+    /// route's own task is restarted by the switch's connection change, and
+    /// a start on it would run cancelled (issue 1888). A call running ends
+    /// with that switch, as a Siri start on another profile replaces it. A
+    /// switch that can't be made says so, and a screenshot is kept for when
+    /// Hermes is reached, as its other failures keep it. True when this
+    /// handled the launch; false when it goes on as usual, on screen.
     func handledVoiceLaunchOnFarDashboard(_ intent: PendingVoiceIntent) async -> Bool {
         guard let dashboardID = intent.dashboardID, dashboardID != activeDashboardID else { return false }
         let profile = Self.farCallProfile(intent.profile ?? "")
@@ -236,13 +239,28 @@ extension AppState {
            openLiveCallOnFarDashboard(dashboardID, profile: profile) {
             return true
         }
-        guard savedDashboardRegistry.dashboard(with: dashboardID) != nil,
-              await switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true),
-              activeDashboardID == dashboardID else {
-            errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
-            return true
+        let store = PendingVoiceIntentStore.shared
+        let revision = store.revision
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            var switched = false
+            if self.savedDashboardRegistry.dashboard(with: dashboardID) != nil {
+                switched = await self.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
+            }
+            // A newer launch took over meanwhile: this one goes quietly.
+            guard store.revision == revision else { return }
+            guard switched, self.activeDashboardID == dashboardID else {
+                if let request = intent.screenQuestion {
+                    self.parkScreenQuestion(request, profile: intent.profile)
+                }
+                self.errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+                return
+            }
+            var onScreen = intent
+            onScreen.dashboardID = nil
+            store.enqueue(onScreen)
         }
-        return false
+        return true
     }
 
     /// The kept runtime a call on another combined dashboard starts on.
