@@ -682,6 +682,11 @@ extension AppState {
                     // one-shot event must not re-arm controls the gateway
                     // already expired.
                     merged.isExpired = merged.isExpired || existing.isExpired
+                    // Its notice too: "answered elsewhere" or "you wrote
+                    // instead" mustn't turn into the timeout's (issue 3105).
+                    if existing.isExpired, (merged.error ?? "").isEmpty {
+                        merged.error = existing.error
+                    }
                     let incomingIDs = Set(merged.questions.map(\.id))
                     for questionIndex in merged.questions.indices {
                         guard let prior = existing.questions.first(where: { $0.id == merged.questions[questionIndex].id }),

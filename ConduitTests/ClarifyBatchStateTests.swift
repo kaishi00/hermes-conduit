@@ -361,6 +361,9 @@ final class ClarifyBatchStateTests: XCTestCase {
         let elsewhere = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
         XCTAssertEqual(elsewhere.status, .expired)
         XCTAssertEqual(elsewhere.error, AppLocalization.string("These questions were answered elsewhere."))
+        // A replay of the question keeps its notice rather than the timeout's.
+        appState.handleStreamEvent(.clarify(sessionId: "stored-a", activity: makeBatchActivity()))
+        XCTAssertEqual(clarifyCard(in: appState, requestId: "req-batch")?.error, AppLocalization.string("These questions were answered elsewhere."))
         // Answered here: its card stays as it is.
         let answered = try XCTUnwrap(clarifyCard(in: appState, requestId: "srq-mine"))
         XCTAssertFalse(answered.isExpired)
