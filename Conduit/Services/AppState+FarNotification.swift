@@ -42,7 +42,7 @@ extension AppState {
                   guard let decision = target.decision else { return }
                   let requested = target.sessionId
                   let ids = [session.id, requested, target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty }
-                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: Array(Set([requested, session.id])))
+                  recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: requested == session.id ? [requested] : [requested, session.id])
               }) else { return nil }
         // An approval's or a question's push lands on its card, as on screen.
         var reveal: NeedsYouReveal?
@@ -75,10 +75,17 @@ extension AppState {
         guard !ids.isEmpty, ids.isDisjoint(with: botChats) else { return nil }
         guard ids.isDisjoint(with: pulseHomes) else { return nil }
         let profile = target.profile.flatMap { $0.isEmpty ? nil : $0 }
-        return listed.first { row in
-            !ids.isDisjoint(with: SessionContentSearch.identities(of: row))
-                && profile.map { profilesMatch(row.profile ?? "default", $0) } ?? true
+        // The durable id first, as the switch's route resolves it.
+        func match(_ candidates: Set<String>) -> SessionSummary? {
+            listed.first { row in
+                !candidates.isDisjoint(with: SessionContentSearch.identities(of: row))
+                    && profile.map { profilesMatch(row.profile ?? "default", $0) } ?? true
+            }
         }
+        let durable = Set([target.durableSessionID].compactMap { $0 }.filter { !$0.isEmpty })
+        guard let row = match(durable) ?? match(ids),
+              Set(SessionContentSearch.identities(of: row)).isDisjoint(with: pulseHomes) else { return nil }
+        return row
     }
 
     /// Another combined dashboard's Bot Chats, by its bots as Bots Home or
