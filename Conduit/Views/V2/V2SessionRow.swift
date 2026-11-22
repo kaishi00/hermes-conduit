@@ -178,6 +178,8 @@ struct V2SessionRow: View {
     var isStarred = false
     /// Marked done (Done chats): dimmed, with a check before the time.
     var isDone = false
+    /// Its notifications muted (ChatMutes): a crossed-out bell before the time.
+    var isMuted = false
     var selection = V2RowSelection.none
     /// Project pages draw the status glyph ahead of the title, in the unread
     /// column, instead of ahead of the preview.
@@ -269,6 +271,12 @@ struct V2SessionRow: View {
                             .foregroundStyle(Color.conduitAccent)
                             .accessibilityHidden(true)
                     }
+                    if isMuted {
+                        Image(systemName: "bell.slash.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(Color.primary.opacity(0.45))
+                            .accessibilityHidden(true)
+                    }
                     Text(time)
                         .scaledFont(.footnote)
                         .foregroundStyle(Color.primary.opacity(0.45))
@@ -351,6 +359,7 @@ struct V2SessionRow: View {
             isPinned ? AppLocalization.string("Pinned") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             isDone ? AppLocalization.string("Done") : nil,
+            isMuted ? AppLocalization.string("Notifications muted", table: .chat) : nil,
             status.accessibilityWord,
             preview.isEmpty ? nil : preview,
             time.isEmpty ? nil : time
