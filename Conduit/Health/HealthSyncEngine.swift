@@ -51,7 +51,8 @@ struct HealthSyncState: Codable, Equatable {
     var lastIngest: Date?
     /// "Share with this host's other profiles" as the host last took it
     /// (every upload carries it); a change sends an upload even when
-    /// nothing else is new. Nil: never sent, which the host reads as off.
+    /// nothing else is new. Nil: unknown (never sent, or a change sent
+    /// without an answer), which the next pass settles with an upload.
     var sentOtherProfiles: Bool?
     var lastSync: Date?
     var lastAttempt: Date?
@@ -331,7 +332,8 @@ final class HealthSyncEngine: ObservableObject {
             try await session.sendEvents()
             // Low Data Mode: older history waits for another network.
             if !options.lowData { try await session.sendHistory() }
-            if (state.sentOtherProfiles ?? false) != preferences.otherProfiles
+            // Unknown (nil: never sent, or sent without an answer) counts as different.
+            if state.sentOtherProfiles != preferences.otherProfiles
                 || (state.lastIngest == postedBefore
                     && ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now())) {
                 try await session.sendKeepalive()
@@ -456,6 +458,13 @@ final class HealthSyncEngine: ObservableObject {
         store.save(state)
     }
 
+    /// An upload that would change what the host has for the choice is
+    /// about to go: until it's answered, whether the host took it is
+    /// unknown, so a lost answer can't leave a later change unsent.
+    fileprivate func noteSending(otherProfiles: Bool) {
+        if state.sentOtherProfiles != otherProfiles { state.sentOtherProfiles = nil }
+    }
+
     fileprivate func notePosted(otherProfiles: Bool) {
         state.lastIngest = now()
         state.sentOtherProfiles = otherProfiles
@@ -531,6 +540,7 @@ private struct Session {
         var busyWait = HealthSyncLimits.firstBusyWait
         while true {
             do {
+                engine.noteSending(otherProfiles: part.otherProfiles)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
                 engine.notePosted(otherProfiles: part.otherProfiles)
                 return answer

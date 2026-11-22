@@ -175,6 +175,19 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.batches.count - before, quiet, "Once the host has it, nothing more goes for it")
 
+        // Turned off, but the host's answer is lost: whether it took it is
+        // unknown, so the next pass sends it again with nothing new.
+        preferences.otherProfiles = false
+        host.loseAnswers = true
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.last?["other_profiles"] as? Bool, false)
+        XCTAssertNil(engine.state.sentOtherProfiles)
+        host.loseAnswers = false
+        before = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertGreaterThan(host.batches.count - before, quiet, "An unknown choice goes again")
+        XCTAssertEqual(engine.state.sentOtherProfiles, false)
+
         // The windows the host holds don't change with it, so none goes again.
         var batch = HealthBatch(computedAt: Date(timeIntervalSince1970: 1_760_000_000), deviceName: "iPhone",
                                 timeZone: TimeZone(identifier: "UTC")!, categories: [.activity], detailed: [])
@@ -674,6 +687,8 @@ private final class FakeHealthHost {
     private(set) var busyRefusals = 0
     /// health_store's count of windows it kept a newer computation of.
     var staleWindows = 0
+    /// Uploads kept, but their answer never reaches the phone.
+    var loseAnswers = false
 
     func forgetKey() {
         session = nil
@@ -717,6 +732,7 @@ private final class FakeHealthHost {
                                            batchID: try XCTUnwrap(body["batch_id"] as? String))
             let plaintext = try ChaChaPoly.open(box, using: session, authenticating: aad)
             batches.append(try XCTUnwrap(JSONSerialization.jsonObject(with: plaintext) as? [String: Any]))
+            if loseAnswers { throw URLError(.networkConnectionLost) }
             return ["ok": true, "stale_windows": staleWindows]
         }
         if path == "\(base)/wipe" {
