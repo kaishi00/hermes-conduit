@@ -2180,6 +2180,13 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        // CarPlay's Voice list offers the same agents (no-switch stage 2):
+        // another dashboard's carries it, and is named with it.
+        let agents = CarPlayVoiceCoordinator.agents(in: appState)
+        XCTAssertEqual(agents.map(\.profile), appState.combinedProfileStrip(own: appState.profiles).map(\.profile))
+        XCTAssertEqual(agents.filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas", "default"])
+        XCTAssertFalse(agents.contains { $0.dashboardID == vps.id }, "the dashboard on screen's carry none")
+        XCTAssertTrue(CarPlayVoiceCoordinator.agentTitle(CarPlayAgent(dashboardID: mac.id, profile: "atlas"), in: appState).hasPrefix("atlas"))
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).

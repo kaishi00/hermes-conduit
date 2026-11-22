@@ -248,8 +248,9 @@ final class CarPlayVoiceCoordinator {
     /// the pick looked like it did nothing (#1362). Past this the call
     /// starts and the phone goes on opening the chat.
     var liveChatOpenWait: Duration = .seconds(3)
-    /// The profiles the open Voice list offered, in row order.
-    private var listedAgentProfiles: [String] = []
+    /// The agents the open Voice list offered, in row order: the dashboard
+    /// on screen's profiles and every other combined dashboard's.
+    private var listedAgents: [CarPlayAgent] = []
     /// An agent picked while a profile switch was running, switched to
     /// once it ends.
     private(set) var queuedAgent = V2QueuedProfilePick()
@@ -1357,13 +1358,14 @@ final class CarPlayVoiceCoordinator {
     func showVoiceOptions() {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
-        listedAgentProfiles = appState.profiles.count > 1 ? appState.profiles : []
+        let agents = Self.agents(in: appState)
+        listedAgents = agents.count > 1 ? agents : []
         push(CarPlayBrowseTemplateFactory.voiceTemplate(
             modes: CarPlayBrowse.modeRows(current: CarPlayVoiceMode.listed(in: appState)),
             agents: CarPlayBrowse.agentRows(
-                profiles: appState.profiles,
+                agents: agents,
                 active: appState.activeProfile,
-                displayName: { appState.profileDisplayName($0) }
+                displayName: { Self.agentTitle($0, in: appState) }
             ),
             handlers: makeBrowseHandlers()
         ))
@@ -1546,14 +1548,38 @@ final class CarPlayVoiceCoordinator {
     }
 
     /// Switches the agent (Hermes profile) from the car.
+    /// Every agent of a combined group, as Chats' profile strip lists them
+    /// (one per Hermes, in the group's one order); outside a group, the
+    /// dashboard on screen's profiles.
+    static func agents(in appState: AppState) -> [CarPlayAgent] {
+        appState.combinedProfileStrip(own: appState.profiles).map {
+            CarPlayAgent(dashboardID: $0.isOther ? $0.dashboardID : nil, profile: $0.profile)
+        }
+    }
+
+    /// Another combined dashboard's agent is named with its dashboard, as
+    /// its chip's badge on Chats' strip tells it apart.
+    static func agentTitle(_ agent: CarPlayAgent, in appState: AppState) -> String {
+        guard let dashboardID = agent.dashboardID else { return appState.profileDisplayName(agent.profile) }
+        let dashboard = appState.combinedDashboardBadge(dashboardID)?.name ?? ""
+        return dashboard.isEmpty ? agent.profile : "\(agent.profile) · \(dashboard)"
+    }
+
     func selectAgent(at index: Int) {
         // A tap from a list left behind by a disconnect never ends the
         // conversation or switches the agent.
         guard isConnected else { return }
         returnToVoiceScreen()
-        guard listedAgentProfiles.indices.contains(index) else { return }
-        let profile = listedAgentProfiles[index]
+        guard listedAgents.indices.contains(index) else { return }
+        let agent = listedAgents[index]
         let appState = lastBoundAppState ?? appStateProvider()
+        if let dashboardID = agent.dashboardID {
+            queuedAgentObservation = nil
+            queuedAgent = V2QueuedProfilePick()
+            switchAgent(to: agent.profile, on: dashboardID, appState: appState)
+            return
+        }
+        let profile = agent.profile
         // A switch already under way would refuse this one, so the pick
         // is kept and goes once that switch ends, as a chip tapped on the
         // phone during a switch does (#1435). The last pick wins.
@@ -1609,6 +1635,35 @@ final class CarPlayVoiceCoordinator {
             // A switch that failed (and rolled back) shows Error rather
             // than a closed conversation with no explanation.
             guard appState.activeProfile == profile else {
+                self.handleControllerState(.failed(""))
+                return
+            }
+            // The picked chat belongs to the agent left behind.
+            self.chosenChat = nil
+            self.observeCurrentVoiceMode(appState)
+        }
+    }
+
+    /// Another combined dashboard's agent: the phone switches there and to
+    /// that profile, as its chip on Chats' strip does. A profile change
+    /// replaces the voice gateway, so the conversation ends first, as an
+    /// agent of this dashboard's does; with it ended, the car's idle voice
+    /// screen holds no call for the switch to refuse over.
+    private func switchAgent(to profile: String, on dashboardID: UUID, appState: AppState) {
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            guard let self, self.isCurrent(generation), self.isConnected else { return }
+            self.endConversation()
+            let switched = await appState.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
+            guard self.isCurrent(generation), self.isConnected else { return }
+            // Picked by the name its own list gives, as the strip's chip does.
+            if switched, !appState.profilesMatch(appState.activeProfile, profile),
+               let listed = appState.profiles.first(where: { appState.profilesMatch($0, profile) }) {
+                await appState.switchProfile(to: listed)
+                guard self.isCurrent(generation), self.isConnected else { return }
+            }
+            guard switched, appState.activeDashboardID == dashboardID,
+                  appState.profilesMatch(appState.activeProfile, profile) else {
                 self.handleControllerState(.failed(""))
                 return
             }
