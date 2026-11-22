@@ -555,6 +555,16 @@ struct ClarifyActivity: Codable, Equatable {
         questions.count > 1 && questions.contains(where: \.isFreeText)
     }
 
+    /// Whether `question` may go back blank, which Hermes reads as
+    /// skipped: a form's field, or any question Hermes named by its id (a
+    /// batch's, on the gateway or through the relay), so its Skip, Skip all
+    /// and a spoken "skip" leave it so. A legacy single-question card, whose
+    /// id is made up here, answers through a shape that takes no blank, so
+    /// it offers no skip (#3080).
+    func mayLeaveBlank(_ question: ClarifyQuestion) -> Bool {
+        isForm || !question.isSyntheticID
+    }
+
     /// Visible question text for the transcript row: the joined question
     /// texts, identical to the legacy scalar text for one-question batches.
     var displayQuestion: String {

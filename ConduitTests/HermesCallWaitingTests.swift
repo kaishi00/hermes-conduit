@@ -61,9 +61,17 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(HermesCallWaiting.pickedChoices(in: "one and three", choices: environmentQuestion(multiSelect: true).choices, multiSelect: true), [0, 2])
     }
 
-    func testSkipLeavesOnlyAFormsQuestionBlank() {
+    func testSkipLeavesBlankOnlyAQuestionThatMayGoBlank() {
+        // Any question Hermes named by its id may go blank, as its card's
+        // Skip leaves it (#3080); a legacy card's, whose id is made up here,
+        // may not, and its words go as they are.
+        let choices = [ClarifyChoice(label: "staging", value: "staging"), ClarifyChoice(label: "prod", value: "prod")]
+        let named = HermesCallWaiting(clarify: ClarifyActivity(requestId: "r1", questions: [ClarifyQuestion(id: "environment", question: "Which?", choices: choices)]))
+        let legacy = HermesCallWaiting(clarify: ClarifyActivity(requestId: "r2", questions: [ClarifyQuestion(id: "q-local", question: "Which?", choices: choices, isSyntheticID: true)]))
+        XCTAssertEqual(named?.openQuestion?.mayLeaveBlank, true)
+        XCTAssertEqual(legacy?.openQuestion?.mayLeaveBlank, false)
         var question = environmentQuestion()
-        XCTAssertEqual(HermesCallWaiting.answerValue(for: "skip", question: question), "skip", "Outside a form the words go as they are")
+        XCTAssertEqual(HermesCallWaiting.answerValue(for: "skip", question: question), "skip", "One that may not go blank takes the words as they are")
         XCTAssertFalse(HermesCallWaiting.spokenQuestion(question).contains("skip"))
         question.mayLeaveBlank = true
         XCTAssertNil(HermesCallWaiting.answerValue(for: "Skip it, please", question: question))
