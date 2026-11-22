@@ -19,6 +19,46 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
     private var defaults: UserDefaults!
     private var backend: InMemoryKeychainBackend!
 
+    /// No-switch stage 2: which pushes for another combined dashboard open
+    /// their chat in place, and which still switch (a room's, a call's,
+    /// its Pulse's, a Bot Chat's, an approval for a chat its list lacks).
+    func testWhichPushesFromAnotherCombinedDashboardOpenInPlace() {
+        let listed = [SessionSummary(id: "chat", alternateIds: [], title: "Chat", model: "m", updatedLabel: "",
+                                     lastActivityAt: 1, profile: "default", source: .chat, isActive: false, isArchived: false)]
+        func opens(_ target: ConduitNotificationTarget) -> Bool {
+            AppState.farNotificationChat(target, listed: listed, botChats: ["bot-chat"], pulseHomes: ["pulse"])?.id == "chat"
+        }
+        func target(_ id: String, type: String? = "response.ready", decision: PendingDecisionPayload? = nil,
+                    call: HermesCallRequest? = nil, room: String? = nil) -> ConduitNotificationTarget {
+            ConduitNotificationTarget(profile: "default", sessionId: id, type: type, decision: decision, call: call, roomID: room)
+        }
+        XCTAssertTrue(opens(target("chat")), "a reply")
+        XCTAssertFalse(opens(target("newer")), "a chat newer than its last read switches")
+        XCTAssertTrue(opens(target("chat", type: "approval.needed",
+                                   decision: .approval(sessionKey: "chat", description: "rm", choices: ["once"]))),
+                      "an approval in a chat it lists")
+        XCTAssertFalse(opens(target("hidden", type: "approval.needed",
+                                    decision: .approval(sessionKey: "hidden", description: "rm", choices: ["once"]))),
+                       "an approval for a chat it doesn't list (a room's)")
+        XCTAssertFalse(opens(target("chat", room: "room-1")), "a room's")
+        XCTAssertFalse(opens(target("chat", type: HermesCallRequest.type,
+                                    call: HermesCallRequest(id: "", kind: .done, title: nil, sessionIDs: ["chat"]))),
+                       "a call's")
+        XCTAssertFalse(opens(target("pulse")), "its Pulse")
+        XCTAssertNil(AppState.farNotificationChat(target("chat"), listed: listed, botChats: [], pulseHomes: ["pulse", "chat"]),
+                     "its Pulse as any source names it")
+        XCTAssertNil(AppState.farNotificationChat(target("chat"), listed: listed, botChats: ["chat"], pulseHomes: []),
+                     "a Bot Chat")
+        XCTAssertNil(AppState.farNotificationChat(
+            ConduitNotificationTarget(profile: "atlas", sessionId: "chat", type: "response.ready"),
+            listed: listed, botChats: [], pulseHomes: []
+        ), "a push for another profile than the listed chat's switches")
+        XCTAssertEqual(AppState.farNotificationChat(
+            ConduitNotificationTarget(profile: nil, sessionId: "chat", type: "response.ready"),
+            listed: listed, botChats: [], pulseHomes: []
+        )?.id, "chat", "a push naming no profile opens the chat on its own")
+    }
+
     override func setUp() {
         super.setUp()
         defaultsSuite = "NotificationDashboardOwnershipTests.\(UUID().uuidString)"

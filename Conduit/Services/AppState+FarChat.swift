@@ -108,17 +108,29 @@ extension AppState {
     /// whose bot comes from that dashboard's own sync: the caller switches
     /// as before.
     func openFarChatInPlace(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
+        startFarChatOpen(session, in: dashboardID) != nil
+    }
+
+    /// The open `openFarChatInPlace` starts, for a caller that waits on it
+    /// (a push, whose card lands once its chat is up). `prepare` runs on
+    /// that dashboard's runtime just before the open (a push records its
+    /// card there). Nil when it can't open in place.
+    func startFarChatOpen(
+        _ session: SessionSummary,
+        in dashboardID: UUID,
+        prepare: () -> Void = {}
+    ) -> Task<Bool, Never>? {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               !isFarBotChat(session, in: dashboardID),
-              let runtime = keptRuntime(dashboardID, on: session.profile ?? "default") else { return false }
+              let runtime = keptRuntime(dashboardID, on: session.profile ?? "default") else { return nil }
         // Its list as the Chats list read it, for the open to find the row
         // (its title, its saved copy, its profile) as a row here is found.
         seedFarChatList(runtime, from: dashboardID, with: session)
         widgetLaunchCoordinator.supersede()
-        act(onRuntime: runtime) {
-            _ = requestOpenSession(session.id)
+        return act(onRuntime: runtime) {
+            prepare()
+            return requestOpenSession(session.id)
         }
-        return true
     }
 
     /// Whether another dashboard's row is a bot's Bot Chat, by its bots as
