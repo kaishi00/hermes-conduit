@@ -10385,6 +10385,37 @@ don't ship; `@testable import Conduit` resolves to Foundation's)
 
 **Checked:** 2026-11-06, #1891 (the binaries check also fails a strong load of ActivityKit or ImagePlayground, issue 1877; DateOrder and BANNED unchanged); 2026-11-06, #1856 (a failed archive check blocks the upload; Open gaps); 2026-11-06, #1848.
 
+## Reading a Kanban task in full
+
+Everything a Kanban task carries can be read whole on the phone. The task
+screen keeps its rows short so it stays scannable, and each row that cuts
+text opens it whole in a sheet, selectable, with Copy and Share.
+
+**Siblings:** the task screen's Runs rows (summary, error and metadata) ·
+its Activity rows (each event's payload) · its Comments · its Attachments
+(iPhone, iPad and Mac share one view) · the Worker Log (already whole, see
+Kanban workers' transcripts) · the blocked question's callout (already
+whole and selectable, see A blocked Kanban task) · Hermes' own board drawer
+(upstream; `GET /tasks/{id}` sends the full latest summary, cards on the
+board a 200-character preview)
+
+**Code**
+- The sheet and the text it shows: `Conduit/Views/Kanban/KanbanFullTextSheet.swift` (KanbanFullText, KanbanFullTextSheet, KanbanFullTextFormatter: runText, eventText)
+- The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (runsSection, runRow, activityRow, commentsSection, attachmentsSection, openAttachment, previewLineLimit)
+- Attachments: `Conduit/Services/KanbanService.swift` (DashboardFileDownloading, downloadAttachment), `Conduit/Services/KanbanStore.swift` (downloadAttachment), opened with `Conduit/Views/Components/MediaPreviewPresenter.swift`
+- Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
+
+**Rulings**
+- A run's summary or error and a comment show four lines on the task screen, an activity row's detail two; a row with more to read has a chevron and opens it whole. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #FULLTEXTPR, Michel couldn't review a "review requested" run's summary on his phone).
+- Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines, nested values as indented JSON, as plain text, so key names like `root_assignee` aren't read as emphasis (2026-11-22, #FULLTEXTPR).
+- An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #FULLTEXTPR).
+
+**Open gaps**
+- A parent task's child results (each child's latest summary) come with the task but aren't shown; Dependencies links each child, whose own screen has its runs.
+- Only the 60 newest activity events are listed.
+
+**Checked:** 2026-11-22, #FULLTEXTPR (seeded).
+
 ## Feature map rules
 
 How a change brings its connected features along, and how this map stays

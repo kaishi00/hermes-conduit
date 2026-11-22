@@ -779,6 +779,56 @@ final class KanbanV2Tests: XCTestCase {
         return try! JSONDecoder().decode(KanbanTask.self, from: data)
     }
 
+    // MARK: - Full text behind a row
+
+    func testRunFullTextKeepsTheWholeSummary() {
+        let long = String(repeating: "All five children complete and live-verified. ", count: 40)
+        let run = makeRun(fields: ["summary": long])
+        XCTAssertEqual(KanbanFullTextFormatter.runText(run), long)
+    }
+
+    func testRunFullTextShowsErrorAndSummaryUnderHeadingsThenMetadata() {
+        let run = makeRun(fields: ["error": "boom", "summary": "partial", "metadata": ["pr": 3100]])
+        let text = KanbanFullTextFormatter.runText(run) ?? ""
+        XCTAssertTrue(text.contains("### Error\n\nboom"), text)
+        XCTAssertTrue(text.contains("### Summary\n\npartial"), text)
+        XCTAssertTrue(text.contains("\"pr\" : 3100"), text)
+    }
+
+    func testRunWithNothingToReadHasNoFullText() {
+        XCTAssertNil(KanbanFullTextFormatter.runText(makeRun(fields: ["metadata": ["a": 1]])))
+    }
+
+    func testEventFullTextListsEveryPayloadEntryWhole() {
+        let summary = String(repeating: "six signed PRs open with branch shas equal to PR heads; ", count: 20)
+        let event = KanbanEvent(
+            id: "1", taskID: "t", kind: "review_requested",
+            payload: .object([
+                "summary": .string(summary),
+                "implementer": .string("default"),
+                "checks": .array([.string("ci"), .string("review")]),
+                "size": .number(2294)
+            ]),
+            createdAt: 100
+        )
+        XCTAssertEqual(
+            KanbanFullTextFormatter.eventText(event),
+            "checks:\n[\n  \"ci\",\n  \"review\"\n]\n\nimplementer: default\n\nsize: 2294\n\nsummary: " + summary
+        )
+    }
+
+    func testEventWithoutPayloadHasNoFullText() {
+        XCTAssertNil(KanbanFullTextFormatter.eventText(KanbanEvent(id: "1", kind: "heartbeat")))
+        XCTAssertNil(KanbanFullTextFormatter.eventText(KanbanEvent(id: "1", kind: "heartbeat", payload: .object([:]))))
+    }
+
+    private func makeRun(fields: [String: Any]) -> KanbanRun {
+        var object: [String: Any] = ["id": "r1", "status": "completed"]
+        for (key, value) in fields { object[key] = value }
+        let data = try! JSONSerialization.data(withJSONObject: object)
+        return try! JSONDecoder().decode(KanbanRun.self, from: data)
+    }
+
     private func makeRun(outcome: String?, status: String = "completed") -> KanbanRun {
         var object: [String: Any] = ["id": "r1", "status": status]
         if let outcome { object["outcome"] = outcome }
