@@ -625,7 +625,7 @@ struct GroupRoomActionItems: View {
             } label: {
                 Label(AppLocalization.string("Choose Group Picture"), systemImage: "photo")
             }
-            if appState.canGeneratePictures {
+            if appState.readingRoomRuntime({ appState.canGeneratePictures }) {
                 Button {
                     onChoosePicture(.generate)
                 } label: {

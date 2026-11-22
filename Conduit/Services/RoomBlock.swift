@@ -80,6 +80,8 @@ enum RoomBlock {
 extension AppState {
     /// Who Group Info's Block lists for the open room.
     var activeRoomBlockTargets: [RoomBlockTarget] {
+        // A far room's people are linked on its own dashboard.
+        if let runtime = roomRuntimeToEnter { return act(onRuntime: runtime) { activeRoomBlockTargets } }
         guard canInviteLinkedPeople, let surface = activeRoomSurface else { return [] }
         return RoomBlock.targets(for: surface, draft: surface.copy == nil ? linkedRoomDraft(surface.room.roomID) : nil)
     }

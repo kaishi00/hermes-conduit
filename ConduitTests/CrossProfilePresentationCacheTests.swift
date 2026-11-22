@@ -2217,7 +2217,7 @@ extension CrossProfilePresentationCacheTests {
             capabilities: { client in
                 note("capabilities", client)
                 return GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw", features: [],
-                                         methods: GroupWire.requiredMethods, maxLogLimit: 500)
+                                         methods: GroupWire.requiredMethods.union(["groups.attachment.upload"]), maxLogLimit: 500)
             },
             list: { client in
                 note("list", client)
@@ -2236,6 +2236,10 @@ extension CrossProfilePresentationCacheTests {
                 note("send", client)
                 calls.sent.append(text)
                 throw URLError(.timedOut)
+            },
+            uploadAttachment: { client, _, _, kind, name, mime, _ in
+                note("upload", client)
+                return GroupRoomAttachment(attachmentID: "att-1", kind: kind, name: name, size: 9, mime: mime)
             }
         )
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
@@ -2265,6 +2269,16 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(calls.sent, ["Hello from VPS"])
         XCTAssertEqual(Set(calls.clients["send"] ?? []), [ObjectIdentifier(outgoing)])
         XCTAssertEqual(appState.activeDashboardID, vps.id)
+
+        // A file staged there goes up to the room's own Hermes too.
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-plan.pdf")
+        try Data("%PDF-1.7\n".utf8).write(to: url)
+        addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+        let pdf = Attachment(id: UUID().uuidString, name: "plan.pdf", uri: url.absoluteString,
+                             mimeType: "application/pdf", kind: .document)
+        let message = try await appState.roomMessage("", attachments: [pdf])
+        XCTAssertEqual(message.attachments.map(\.attachmentID), ["att-1"])
+        XCTAssertEqual(Set(calls.clients["upload"] ?? []), [ObjectIdentifier(outgoing)], "uploaded through the kept connection")
 
         // A wait in that room, from Needs you, opens it in place too.
         appState.closeRoomSurface()

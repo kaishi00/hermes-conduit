@@ -242,8 +242,8 @@ extension AppState {
     /// puts this dashboard: the ones
     /// before show before its group chats, the rest after. Each
     /// dashboard's show as they do when it's on screen, its rooms in its
-    /// own order then its copies, so opening one, which switches there,
-    /// moves nothing (Eric, 2026-11-21: the group chats' order shifted on
+    /// own order then its copies, so opening one (in place, or through a
+    /// switch when it isn't kept) moves nothing (Eric, 2026-11-21: the group chats' order shifted on
     /// a tap; it put this dashboard's first and the others newest first).
     var combinedRoomTilesAroundThisDashboard: (before: [CombinedRoomTile], after: [CombinedRoomTile]) {
         guard isInCombinedGroup(activeDashboardID), !combinedDashboardRooms.isEmpty else { return ([], []) }

@@ -265,7 +265,8 @@ struct RoomCopyBottomBar: View {
         guard answers[approval.id] != .submitting else { return }
         answers[approval.id] = .submitting
         Task { @MainActor in
-            let result = await appState.answerLinkedRoomApproval(approval, choice: choice)
+            // A copy open in place is answered on its own dashboard.
+            let result = await appState.onRoomRuntime { await appState.answerLinkedRoomApproval(approval, choice: choice) }
             // A card already gone keeps no answer behind.
             if appState.activeRoomCopyApprovals.contains(where: { $0.id == approval.id }) {
                 answers[approval.id] = result

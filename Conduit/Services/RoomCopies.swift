@@ -350,7 +350,11 @@ extension AppState {
     /// Whether this copy offers Delete: on its tile, its row and the open
     /// room's menu alike.
     func canDelete(_ copy: RoomCopy) -> Bool {
-        copy.isOver && canDeleteRoomCopies
+        // The copy open in place: its own dashboard's plugin says.
+        if activeRoomSurface?.copy?.id == copy.id, let runtime = roomRuntimeToEnter {
+            return act(onRuntime: runtime) { canDelete(copy) }
+        }
+        return copy.isOver && canDeleteRoomCopies
     }
 
     /// Requests stay with the dashboard they were made for.
@@ -426,6 +430,10 @@ extension AppState {
     /// Deletes an ended copy: each of your agents' hidden chats for it,
     /// then the copy. A refusal keeps the copy and says the plugin's words.
     func deleteLinkedRoomCopy(_ copy: RoomCopy) async -> RoomCopyDeletion {
+        // The copy open in place is deleted on its own dashboard.
+        if activeRoomSurface?.copy?.id == copy.id, let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await deleteLinkedRoomCopy(copy) }
+        }
         guard copy.isOver else { return .notOver }
         guard canDeleteRoomCopies else { return .refused(RoomCopyText.deleteRefusal(for: HermesError.invalidResponse)) }
         let client = roomCopiesClient
