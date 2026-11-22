@@ -500,6 +500,7 @@ extension AppState {
             profileAppearanceStore.adoptLegacyAppearance(into: id)
             adoptLegacyProfilePreferences(into: id)
             adoptLegacyDashboardLists(into: id)
+            adoptUnscopedPinnedReplies(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }

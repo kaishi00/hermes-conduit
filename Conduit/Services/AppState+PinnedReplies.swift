@@ -13,9 +13,36 @@
 import Foundation
 
 extension AppState {
+    /// The dashboard in scope's pins, per profile: the one on screen's, or
+    /// inside another combined dashboard's runtime scope, that one's.
+    var pinnedRepliesByProfile: [String: [PinnedReply]] {
+        get { pinnedRepliesByDashboard[Self.dashboardPreferenceBucket(activeDashboardID)] ?? [:] }
+        set {
+            let bucket = Self.dashboardPreferenceBucket(activeDashboardID)
+            let kept = newValue.filter { !$0.value.isEmpty }
+            pinnedRepliesByDashboard[bucket] = kept.isEmpty ? nil : kept
+        }
+    }
+
     /// The active profile's pinned replies, in the order they were pinned.
     var activePinnedReplies: [PinnedReply] {
-        pinnedRepliesByProfile[activeProfile] ?? []
+        pinnedReplies(of: screenPinOwner)
+    }
+
+    /// The pins the overview lists: the profile in use's, or from another
+    /// combined dashboard's chat opened in place, that chat's own (a pin of
+    /// another of its chats would open on the dashboard on screen).
+    func pinnedRepliesOverview(fromOpenChat: Bool) -> [PinnedReply] {
+        if fromOpenChat, !chatOnScreenIsInScope { return openChatPinnedReplies }
+        return activePinnedReplies
+    }
+
+    /// The owner of a pin the bar or the overview shows: the open chat's
+    /// (another combined dashboard's chat keeps its own), else the screen's.
+    private func owner(of pin: PinnedReply) -> PinnedReplyOwner? {
+        [openChatPinOwner, screenPinOwner].first { owner in
+            pinnedReplies(of: owner).contains { $0.id == pin.id }
+        }
     }
 
     /// Whether replies in the open conversation can be pinned: a chat with
@@ -37,6 +64,13 @@ extension AppState {
         pinnedRepliesForOpenChat.messageIDs
     }
 
+    /// The title saved with a pin made now: the chat's row's, or for another
+    /// combined dashboard's chat (not in this dashboard's list), its own.
+    private var openChatPinTitle: String {
+        guard chatOnScreenIsInScope else { return activeSessionTitle }
+        return activeChatSessionSummary?.title ?? activeSessionTitle
+    }
+
     /// Pins the whole of `message` to the top of the open chat, or unpins
     /// it.
     func togglePinnedReply(_ message: ChatMessage) {
@@ -47,15 +81,13 @@ extension AppState {
             unpinReply(existing)
             return
         }
-        let session = activeChatSessionSummary
         let pin = PinnedReply(
             sessionID: openChatPinIDs().store,
             message: message,
-            chatTitle: session?.title ?? activeSessionTitle
+            chatTitle: openChatPinTitle
         )
-        var stored = activePinnedReplies
-        stored.append(pin)
-        pinnedRepliesByProfile[activeProfile] = stored
+        let owner = openChatPinOwner
+        setPinnedReplies(pinnedReplies(of: owner) + [pin], of: owner)
         persistPinnedReplies()
     }
 
@@ -83,12 +115,11 @@ extension AppState {
         let pin = PinnedReply(
             sessionID: openChatPinIDs().store,
             message: message,
-            chatTitle: activeChatSessionSummary?.title ?? activeSessionTitle,
+            chatTitle: openChatPinTitle,
             passage: passage
         )
-        var stored = activePinnedReplies
-        stored.append(pin)
-        pinnedRepliesByProfile[activeProfile] = stored
+        let owner = openChatPinOwner
+        setPinnedReplies(pinnedReplies(of: owner) + [pin], of: owner)
         persistPinnedReplies()
     }
 
@@ -102,22 +133,19 @@ extension AppState {
 
     /// Names a pin for the bar and the list; a blank label clears it.
     func setPinnedReplyLabel(_ pin: PinnedReply, to label: String) {
-        let profile = activeProfile
-        var stored = pinnedRepliesByProfile[profile] ?? []
+        guard let owner = owner(of: pin) else { return }
+        var stored = pinnedReplies(of: owner)
         guard let index = stored.firstIndex(where: { $0.id == pin.id }) else { return }
         let normalized = PinnedReply.normalizedLabel(label)
         guard stored[index].label != normalized else { return }
         stored[index].label = normalized
-        pinnedRepliesByProfile[profile] = stored
+        setPinnedReplies(stored, of: owner)
         persistPinnedReplies()
     }
 
     func unpinReply(_ pin: PinnedReply) {
-        let profile = activeProfile
-        let stored = pinnedRepliesByProfile[profile] ?? []
-        guard stored.contains(where: { $0.id == pin.id }) else { return }
-        let remaining = stored.filter { $0.id != pin.id }
-        pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+        guard let owner = owner(of: pin) else { return }
+        setPinnedReplies(pinnedReplies(of: owner).filter { $0.id != pin.id }, of: owner)
         if pendingPinnedReplyReveal?.pin.id == pin.id { pendingPinnedReplyReveal = nil }
         persistPinnedReplies()
     }
@@ -130,7 +158,9 @@ extension AppState {
         let open = openChatPinnedReplies
         guard !open.isEmpty else { return }
         var refreshed = PinnedReplies.refreshed(open, in: messages) ?? open
-        if let rowID = activeChatSessionSummary?.id {
+        // Only this dashboard's rows: another combined dashboard's chat
+        // isn't in its list, though one id can name chats on both.
+        if chatOnScreenIsInScope, let rowID = activeChatSessionSummary?.id {
             refreshed = refreshed.map { pin in
                 var moved = pin
                 moved.sessionID = rowID
@@ -139,7 +169,8 @@ extension AppState {
         }
         guard refreshed != open else { return }
         let byID = Dictionary(uniqueKeysWithValues: refreshed.map { ($0.id, $0) })
-        pinnedRepliesByProfile[activeProfile] = activePinnedReplies.map { byID[$0.id] ?? $0 }
+        let owner = openChatPinOwner
+        setPinnedReplies(pinnedReplies(of: owner).map { byID[$0.id] ?? $0 }, of: owner)
         persistPinnedReplies()
     }
 

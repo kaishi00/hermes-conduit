@@ -1192,7 +1192,11 @@ extension AppState {
         allProfilesCatalogTask?.cancel()
         allProfilesCatalogTask = nil
         allProfilesCatalog = AllProfilesCatalog()
-        clearPinnedReplies()
+        if let signingOutDashboardID {
+            clearPinnedReplies(inDashboard: signingOutDashboardID)
+        } else {
+            clearPinnedReplies()
+        }
         voiceJobSessionIDsByProfile = [:]
         defaults.removeObject(forKey: activeProfileKey)
         if let signingOutDashboardID { forgetActiveProfile(for: signingOutDashboardID) }

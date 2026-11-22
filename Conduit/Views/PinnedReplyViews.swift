@@ -259,7 +259,7 @@ struct PinnedRepliesSheet: View {
     }
 
     var body: some View {
-        let all = appState.activePinnedReplies
+        let all = appState.pinnedRepliesOverview(fromOpenChat: fromOpenChat)
         let openChat: Set<String> = fromOpenChat ? Set(appState.openChatPinnedReplies.map(\.id)) : []
         // Shown when both sides have pins (with none in this chat, or none
         // anywhere else, the two would show the same list or nothing), then

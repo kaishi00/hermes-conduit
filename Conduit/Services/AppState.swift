@@ -700,9 +700,10 @@ final class AppState: ObservableObject {
     @Published var groupSettingsOnOpen: GroupSettingsRequest?
     /// Which Bot Chat grows out of its Bots Home portrait (BotZoomArm).
     var botZoom = BotZoomArm()
-    /// Replies pinned to the top of their chat, per profile (#918). Kept on
-    /// this device only (AppState+PinnedReplies).
-    @Published var pinnedRepliesByProfile: [String: [PinnedReply]] = [:]
+    /// Replies pinned to the top of their chat, per dashboard and profile
+    /// (#918): two combined dashboards can each have a profile of the same
+    /// name. Kept on this device only (AppState+PinnedReplies).
+    @Published var pinnedRepliesByDashboard: [String: [String: [PinnedReply]]] = [:]
     /// A pinned reply the overview asked to show; the chat scrolls to it
     /// once its transcript has the row (AppState+PinnedReplies).
     @Published var pendingPinnedReplyReveal: PinnedReplyReveal?
@@ -3310,6 +3311,7 @@ final class AppState: ObservableObject {
     let activeSessionTitlesByProfileKey = "conduit.activeSessionTitlesByProfile.v1"
     let pinnedSessionIDsByProfileKey = "conduit.pinnedSessionIdsByProfile.v1"
     let pinnedRepliesByProfileKey = "conduit.pinnedRepliesByProfile.v1"
+    let pinnedRepliesByDashboardKey = "conduit.pinnedRepliesByDashboard.v2"
     let hostPinsAdoptedKey = "conduit.hostPinsAdopted.v1"
     let phoneOnlyPinsKey = "conduit.phoneOnlyPins.v1"
     let voiceJobSessionIDsByProfileKey = "conduit.voiceJobSessionIdsByProfile.v1"
@@ -3471,10 +3473,7 @@ final class AppState: ObservableObject {
         adoptLegacyDashboardLists(into: initialDashboardID)
         loadDashboardLists(dashboardID: initialDashboardID)
         allProfilesChatsSettings = AllProfilesChatsSettings(defaults: defaults)
-        if let data = defaults.data(forKey: pinnedRepliesByProfileKey),
-           let stored = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data) {
-            pinnedRepliesByProfile = stored
-        }
+        loadPinnedReplies(adoptingLegacyInto: initialDashboardID)
         sessionPinSync = SessionPinSync(
             adopted: Set(defaults.stringArray(forKey: hostPinsAdoptedKey) ?? []),
             phoneOnly: Set(defaults.stringArray(forKey: phoneOnlyPinsKey) ?? [])
