@@ -223,8 +223,11 @@ extension AppState {
     }
 
     /// Your agents in the open room Group Info offers a chat with.
+    /// None yet in another combined dashboard's room opened in place: its
+    /// chat would open on that dashboard, which waits for far chats to open
+    /// in place too (no-switch stage 2, the chat screen's part).
     var activeRoomChatAgents: [RoomChatAgent] {
-        guard canOpenRoomChats, activeRoomSurface != nil else { return [] }
+        guard canOpenRoomChats, activeRoomSurface != nil, farRoomRuntime == nil else { return [] }
         return RoomChatAgent.agents(in: GroupRoomTurns.members(activeRoomMembers, namedBy: botRoster))
     }
 

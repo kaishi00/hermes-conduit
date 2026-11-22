@@ -59,18 +59,24 @@ extension AppState {
     }
 
     /// Runs `body` with AppState's forwarders reading the call's own
-    /// dashboard's runtime (its connection, which keys its voice settings;
-    /// its plugin report), or as it is with the call on screen.
+    /// dashboard's runtime (its connection, its plugin report), or as it is
+    /// with the call on screen. A call off its dashboard whose connection
+    /// has dropped (before a quiet sign-in keeps it again) reads an empty
+    /// runtime: no connection and no plugin report, never the screen's.
     /// Synchronous, as `act(onRuntime:)`.
     func onCallRuntime<T>(_ body: () throws -> T) rethrows -> T {
-        guard let runtime = callRuntimeOffScreen else { return try body() }
-        return try act(onRuntime: runtime, body)
+        guard callDashboardOffScreen != nil else { return try body() }
+        return try act(onRuntime: callRuntimeOffScreen ?? DashboardRuntime(), body)
     }
 
     /// A profile's voice settings as the call reads them: kept per host,
-    /// so a call off its dashboard reads its own host's, not the screen's.
+    /// so a call off its dashboard reads its own host's (by its address,
+    /// connected or not), not the screen's.
     func loadCallVoicePreferences(profile: String) -> VoiceProfilePreferences {
-        onCallRuntime { loadVoiceProfilePreferences(profile: profile) }
+        guard let id = callDashboardOffScreen else { return loadVoiceProfilePreferences(profile: profile) }
+        let gateway = callRuntimeOffScreen?.connection?.baseUrl
+            ?? savedDashboardRegistry.dashboard(with: id)?.normalizedURL
+        return loadVoiceProfilePreferences(profile: profile, gateway: gateway)
     }
 
     /// Whether a switch to dashboard `target` leaves the running call going:
@@ -138,13 +144,26 @@ extension AppState {
     /// another dashboard shows: the call's profile and its dashboard's name.
     var callDashboardSubject: String? {
         guard let id = callDashboardOffScreen else { return nil }
-        // The name the call's dashboard gives its profile (a bot's title,
-        // Hermes' own name), else the profile's.
-        let key = voiceCallProfile.trimmingCharacters(in: .whitespacesAndNewlines)
-        let profile = profileAppearanceStore.loadBotTitles(dashboardID: id)[key]
-            ?? profileAppearanceStore.loadHermesNames(dashboardID: id)[key]
-            ?? (key.lowercased() == "default" || key.isEmpty ? defaultProfileName
-                : String(key.prefix(1)).uppercased() + String(key.dropFirst()))
+        // The name the call's dashboard gives its profile, in
+        // profileDisplayName's order but from that dashboard's own store:
+        // its main profile's name, a device name until its gateway keeps
+        // bot looks (no bot titles stored), a bot's title, Hermes' own name,
+        // else the profile's.
+        var key = voiceCallProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let isMain = key.isEmpty || key.lowercased() == "default"
+        let mainName = profileAppearanceStore.loadDefaultName(dashboardID: id)
+        let titles = profileAppearanceStore.loadBotTitles(dashboardID: id)
+        let profile: String
+        if isMain, mainName != ProfileAppearanceStore.defaultName {
+            profile = mainName
+        } else {
+            if isMain { key = "default" }
+            let deviceName = isMain || !titles.isEmpty ? nil
+                : profileAppearanceStore.loadDeviceNames(dashboardID: id)[key]
+            profile = deviceName ?? titles[key]
+                ?? profileAppearanceStore.loadHermesNames(dashboardID: id)[key]
+                ?? (isMain ? mainName : String(key.prefix(1)).uppercased() + String(key.dropFirst()))
+        }
         let name = savedDashboardRegistry.dashboard(with: id)?.label.trimmingCharacters(in: .whitespacesAndNewlines)
         return [profile, name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }

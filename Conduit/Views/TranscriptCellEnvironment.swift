@@ -69,6 +69,7 @@ struct TranscriptCellEnvironment: Equatable {
     var windowSideInsets: WindowSideInsets?
     var v2ComposerRests: Bool
     var groupMemberTints: [String: CustomAccentColor]
+    var readsOpenRoomRuntime: Bool
     var groupRoomLooks: RoomLooks
     var conduitAccent: ConduitAccent
     var settingsGlowTint: Color?
@@ -114,6 +115,7 @@ struct TranscriptCellEnvironment: Equatable {
         windowSideInsets = values.windowSideInsets
         v2ComposerRests = values.v2ComposerRests
         groupMemberTints = values.groupMemberTints
+        readsOpenRoomRuntime = values.readsOpenRoomRuntime
         groupRoomLooks = values.groupRoomLooks
         conduitAccent = values.conduitAccent
         settingsGlowTint = values.settingsGlowTint
@@ -152,6 +154,7 @@ struct TranscriptCellEnvironment: Equatable {
         same.conduitAccent = conduitAccent
         same.settingsGlowTint = settingsGlowTint
         same.groupMemberTints = groupMemberTints
+        same.readsOpenRoomRuntime = readsOpenRoomRuntime
         return self == same
     }
 
@@ -249,6 +252,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.windowSideInsets, values.windowSideInsets)
             .environment(\.v2ComposerRests, values.v2ComposerRests)
             .environment(\.groupMemberTints, values.groupMemberTints)
+            .environment(\.readsOpenRoomRuntime, values.readsOpenRoomRuntime)
             .environment(\.groupRoomLooks, values.groupRoomLooks)
             .environment(\.conduitAccent, values.conduitAccent)
             .environment(\.settingsGlowTint, values.settingsGlowTint)

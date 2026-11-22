@@ -46,7 +46,7 @@ struct GroupRoomInfoSheet: View {
                 }
                 roomChatSection
                 blockSection
-                if appState.canLeaveActiveRoom {
+                if appState.readingRoomRuntime({ appState.canLeaveActiveRoom }) {
                     Button(role: .destructive) {
                         confirmingLeave = true
                     } label: {
@@ -128,16 +128,16 @@ struct GroupRoomInfoSheet: View {
     @ViewBuilder
     private func memberSection(_ room: GroupRoom) -> some View {
         // Named as the bots are now, as in the room, with their owners.
-        let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
+        let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.readingRoomRuntime { appState.botRoster })
         // Choices matter only beside other people's agents: not in a room of only your own Hermes.
         let offersChoices = GroupRoomTurns.offersChoices(
-            canSet: appState.canSetRoomChoices, members: members, ownHermes: appState.activeRoomOwnHermes)
+            canSet: appState.readingRoomRuntime { appState.canSetRoomChoices }, members: members, ownHermes: appState.activeRoomOwnHermes)
         let choiceProfiles = offersChoices
             ? Array(Set(members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty })).sorted()
             : []
         ConduitSettingsSection(title: AppLocalization.string("Members", table: .rooms), symbol: "person.3", tint: .conduitAccent) {
             ForEach(members, id: \.identityKey) { member in
-                let canTakeOut = appState.canTakeOut(member) && !working
+                let canTakeOut = appState.readingRoomRuntime { appState.canTakeOut(member) } && !working
                 HStack(spacing: 8) {
                     if offersChoices, !member.isPeer, member.out == nil, let profile = member.profile, !profile.isEmpty {
                         NavigationLink {
@@ -218,7 +218,9 @@ struct GroupRoomInfoSheet: View {
     /// Each agent's choices for the room, one read each; one that fails
     /// shows no line rather than a wrong one.
     private func loadAgentTools(roomID: String, profiles: [String]) async {
-        let client = appState.roomChoicesClient
+        let client = appState.readingRoomRuntime { appState.roomChoicesClient }
+        // A room of another dashboard can share its id.
+        let dashboardID = appState.activeRoomSurface?.dashboardID
         // All at once, not one after another (issue 2359): a room holds at
         // most six agents.
         var read: [String: RoomChoices] = [:]
@@ -231,7 +233,8 @@ struct GroupRoomInfoSheet: View {
             }
         }
         // Left (or a newer read started), or another room opened meanwhile.
-        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
+        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID,
+              appState.activeRoomSurface?.dashboardID == dashboardID else { return }
         if read != agentTools { agentTools = read }
     }
 }
@@ -282,7 +285,7 @@ extension GroupRoomInfoSheet {
     /// chat about it, or asks there for its notes (C5b).
     @ViewBuilder
     private var roomChatSection: some View {
-        let agents = appState.activeRoomChatAgents
+        let agents = appState.readingRoomRuntime { appState.activeRoomChatAgents }
         if !agents.isEmpty {
             ConduitSettingsSection(title: RoomChatText.sectionTitle, symbol: "bubble.left.and.text.bubble.right", tint: .conduitAccent) {
                 ForEach(agents, id: \.profile) { agent in
@@ -452,7 +455,7 @@ struct RoomAgentChoicesView: View {
     @State private var noteDraft = ""
 
     private var key: String {
-        "\(appState.activeDashboardID?.uuidString ?? "")|\(roomID)|\(profile)"
+        "\(appState.activeRoomSurface?.dashboardID.uuidString ?? appState.activeDashboardID?.uuidString ?? "")|\(roomID)|\(profile)"
     }
 
     var body: some View {
@@ -518,7 +521,7 @@ struct RoomAgentChoicesView: View {
             (id: "look", title: AppLocalization.string("Look things up", table: .rooms)),
         ]
         // Offered where the plugin shares when you're busy; else shown while it's the choice.
-        if RoomChoices.offersUseMyData(freeBusy: appState.canShareFreeBusy, current: [choices.tools]) {
+        if RoomChoices.offersUseMyData(freeBusy: appState.readingRoomRuntime { appState.canShareFreeBusy }, current: [choices.tools]) {
             tools.append((id: "data", title: AppLocalization.string("Use my data", table: .rooms)))
         }
         if choices.tools == "custom" {
@@ -530,7 +533,7 @@ struct RoomAgentChoicesView: View {
             }) {
                 Text(AppLocalization.string("What it can do", table: .rooms)).foregroundStyle(.secondary)
             }
-            Text(Self.toolsDetail(choices, freeBusy: appState.canShareFreeBusy))
+            Text(Self.toolsDetail(choices, freeBusy: appState.readingRoomRuntime { appState.canShareFreeBusy }))
                 .settingsCaption()
         }
     }
@@ -634,7 +637,7 @@ struct RoomAgentChoicesView: View {
             error = nil
         }
         do {
-            let read = try await appState.roomChoicesClient.choices(roomID: roomID, profile: profile)
+            let read = try await appState.readingRoomRuntime { appState.roomChoicesClient }.choices(roomID: roomID, profile: profile)
             // Moved on meanwhile.
             guard key == self.key else { return }
             choices = read
@@ -656,7 +659,7 @@ struct RoomAgentChoicesView: View {
         guard loadedKey == key else { return }
         error = nil
         do {
-            let kept = try await appState.roomChoicesClient.set(change, roomID: roomID, profile: profile)
+            let kept = try await appState.readingRoomRuntime { appState.roomChoicesClient }.set(change, roomID: roomID, profile: profile)
             guard key == self.key, loadedKey == key else { return }
             choices = kept
             if change["note"] != nil { noteDraft = kept.note }

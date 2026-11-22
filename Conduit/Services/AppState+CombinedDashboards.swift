@@ -326,7 +326,12 @@ extension AppState {
         // A live call going on through this dashboard (signed in again
         // quietly after its socket dropped): the client names the call's
         // profile for its sessions, as a reconnect's does.
-        if liveCallHolds(dashboard: id) { keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client) }
+        // Its plugin report too, which a quiet sign-in's fresh runtime
+        // hasn't read: the call's host tools ask it (location reads).
+        if liveCallHolds(dashboard: id) {
+            keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client)
+            if kept.runtime.notifierPlugin.state == .unknown { readKeptPluginReport(kept, for: id) }
+        }
         kept.client.onDisconnected = { [weak self, weak client = kept.client] in
             Task { @MainActor in
                 guard let self, let client,
@@ -344,6 +349,21 @@ extension AppState {
             self.handleKeptDashboardEvent(event, from: id, client: client)
         }
         clearCombinedDashboardTrouble(id)
+    }
+
+    /// Reads what a kept dashboard's plugin serves into its own runtime,
+    /// with none of the screen's follow-on syncs: only what a live call
+    /// going on through it asks (`servesLocationVoice`). A failed read, or
+    /// one that finds the connection let go or replaced, keeps nothing.
+    func readKeptPluginReport(_ kept: KeptDashboardRuntime, for id: UUID) {
+        Task { @MainActor [weak self] in
+            guard let response = try? await kept.bridge.requestJSON(path: NotifierPluginStatus.path),
+                  let self, self.keptDashboardRuntimes[id]?.client === kept.client else { return }
+            let state = NotifierPluginStatus.state(from: response)
+            guard state != .unknown else { return }
+            kept.runtime.notifierPlugin.state = state
+            kept.runtime.notifierPlugin.runtime = NotifierPluginStatus.runtime(from: response)
+        }
     }
 
     /// A kept dashboard's event (no-switch slice 5c). A chat made, renamed
@@ -493,6 +513,9 @@ extension AppState {
     /// would ask for an answer that may be given.
     func dropKeptDashboardRuntime(_ id: UUID, keepingLists: Bool = false) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
+        // Its group chat open in place has nothing left to act on: it closes,
+        // its send parked with its dashboard as a switch's is.
+        if activeRoomSurface?.dashboardID == id, id != dashboardIDOnScreen { closeRoomSurface(clearingRoomError: false) }
         release(kept)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // A surface showing it stops republishing a runtime that's gone.

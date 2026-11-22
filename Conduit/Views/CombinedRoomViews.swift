@@ -4,7 +4,7 @@
 //
 //  Another combined dashboard's group chat on Bots Home: a portrait among
 //  the rooms, or a row in the list, with its dashboard's badge. A tap
-//  switches to that dashboard and opens the room there.
+//  opens the room in place, on that dashboard's own runtime.
 //
 
 import SwiftUI

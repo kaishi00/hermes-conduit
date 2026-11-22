@@ -77,7 +77,7 @@ struct GroupRoomComposer: View {
             && appState.pendingRoomMessage == nil
             && (isCopy
                 ? appState.activeRoomCopyTakesPosts
-                : appState.groupCapabilities?.supports("groups.send") == true && surface?.room.isDisbanded == false)
+                : appState.readingRoomRuntime { appState.groupCapabilities?.supports("groups.send") == true } && surface?.room.isDisbanded == false)
     }
 
     /// A room someone else hosts: posts go through your Hermes, and files
@@ -730,6 +730,8 @@ struct GroupRoomComposer: View {
         }
         isUploading = true
         let roomID = surface?.room.roomID
+        // A room of another dashboard can share its id.
+        let roomDashboardID = surface?.dashboardID
         uploadTask = Task {
             defer { isUploading = false }
             let message: AppState.RoomMessage
@@ -746,7 +748,8 @@ struct GroupRoomComposer: View {
             // Left for another room while the files went up: they never go
             // to the room open now. The typed text and the files stay in
             // this room's draft.
-            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
+            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID,
+                  appState.activeRoomSurface?.dashboardID == roomDashboardID else { return }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
             // Typed on after it while the files went up: only the sent
@@ -982,7 +985,7 @@ struct GroupRoomComposer: View {
     /// message only holds Send; the draft still takes words.
     private var dictationClipIdentity: String? {
         guard surface?.room.isDisbanded == false,
-              appState.groupCapabilities?.supports("groups.send") == true else { return nil }
+              appState.readingRoomRuntime({ appState.groupCapabilities?.supports("groups.send") == true }) else { return nil }
         return appState.dictationClipIdentity
     }
 
