@@ -483,7 +483,7 @@ struct ChatView: View {
                 var heldPages = 0
                 while outcome == .dedupedToNothing, heldPages < TranscriptModel.autoEarlierHeldPageRetries,
                       !Task.isCancelled, Self.drawnConversation(in: appState) == conversation,
-                      transcript.drawsOnlyLoadEarlier, appState.canLoadEarlierMessagesForActiveConversation {
+                      transcriptModel.model.drawsOnlyLoadEarlier, appState.canLoadEarlierMessagesForActiveConversation {
                     heldPages += 1
                     outcome = await appState.loadEarlierPage()
                 }

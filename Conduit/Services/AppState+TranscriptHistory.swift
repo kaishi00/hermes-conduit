@@ -511,7 +511,7 @@ extension AppState {
     /// `loadEarlierMessages`, telling a page of rows already held from a
     /// read that failed, so ChatView reads on only past the first.
     func loadEarlierPage() async -> EarlierPageOutcome {
-        if let done = await onChatRuntime(unreachable: false, { await self.loadEarlierPage() }) { return done }
+        if let done = await onChatRuntime(unreachable: EarlierPageOutcome.failed, { await self.loadEarlierPage() }) { return done }
         let before = persistedTranscriptWindow
         if await loadEarlierMessages() { return .landed }
         guard let before, let after = persistedTranscriptWindow,
