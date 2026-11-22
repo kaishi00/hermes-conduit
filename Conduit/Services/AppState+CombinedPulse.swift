@@ -4,9 +4,10 @@
 //
 //  All-live stage 4d: a chip per combined dashboard on top of Pulse. Pulse
 //  is one per host, its cards' steps (Done, Not now, Do it, ratings) are
-//  that host's, so a chip shows that dashboard's Pulse: a tap switches to
-//  it, through its kept connection, at once. Each other dashboard's chip
-//  says how many of its cards are new, read through its kept connection.
+//  that host's, so a chip shows that dashboard's Pulse: in place, on that
+//  dashboard's own runtime through its kept connection, with no switch
+//  (no-switch stage 2). Each other dashboard's chip says how many of its
+//  cards are new, read through its kept connection.
 //
 
 import Foundation
@@ -27,7 +28,8 @@ struct PulseDashboardChip: Identifiable, Equatable {
     let dashboardID: UUID
     let badge: V2DashboardBadge
     let unseen: Int
-    let isOnScreen: Bool
+    /// The page shows its Pulse.
+    let isShown: Bool
     var id: UUID { dashboardID }
 }
 
@@ -72,29 +74,84 @@ extension AppState {
     /// order. None unless there's another to show.
     var pulseDashboardChips: [PulseDashboardChip] {
         guard let active = activeDashboardID, isInCombinedGroup(active) else { return [] }
+        let shown = pulseDashboardID
         let chips: [PulseDashboardChip] = savedDashboardRegistry.dashboards.compactMap { dashboard in
             guard isInCombinedGroup(dashboard.id), let badge = combinedDashboardBadge(dashboard.id) else { return nil }
             let mark = V2DashboardBadge(letter: badge.letter, colorIndex: badge.colorIndex, name: badge.name)
             if dashboard.id == active {
-                return PulseDashboardChip(dashboardID: active, badge: mark, unseen: pulseUnseen, isOnScreen: true)
+                return PulseDashboardChip(dashboardID: active, badge: mark, unseen: pulseUnseen, isShown: shown == active)
             }
             guard let pulse = combinedDashboardPulse[dashboard.id] else { return nil }
-            return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: pulse.unseen, isOnScreen: false)
+            // Shown here, its feed read on its own runtime knows best; once
+            // another is shown, whichever read is newer: the page's last one
+            // there (its cards just seen) or the background read since.
+            var unseen = pulse.unseen
+            if let runtime = runtime(for: dashboard.id), let applied = runtime.pulseFeedAppliedAt,
+               shown == dashboard.id || applied.at > pulse.at {
+                unseen = runtime.pulseUnseen
+            }
+            return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id)
         }
         return chips.count > 1 ? chips : []
     }
 
-    /// Shows another combined dashboard's Pulse: the switch to it, through
-    /// its kept connection, then its Pulse page.
+    /// The dashboard the Pulse page shows: a chip's, while it's kept
+    /// connected (no-switch stage 2), else the one on screen.
+    var pulseDashboardID: UUID? { pulseRuntime == nil ? activeDashboardID : pulseShownDashboardID }
+
+    /// The runtime of the other combined dashboard the Pulse page shows;
+    /// nil while it shows the one on screen's.
+    var pulseRuntime: DashboardRuntime? {
+        guard let id = pulseShownDashboardID, id != dashboardIDOnScreen else { return nil }
+        return runtime(for: id)
+    }
+
+    /// What the plugin of the Pulse shown serves: the one on screen's but
+    /// while the page shows another dashboard's (its chip), which goes back
+    /// as the page leaves, so Settings > Pulse stays the one on screen's.
+    var pulsePlugin: NotifierPluginStatus { readingPulseRuntime { notifierPlugin } }
+
+    /// What the Pulse page draws (what its plugin serves, its counts), from
+    /// the dashboard it shows.
+    func readingPulseRuntime<T>(_ body: () -> T) -> T {
+        guard let runtime = pulseRuntime, runtime !== shownRuntime else { return body() }
+        return act(onRuntime: runtime, body)
+    }
+
+    /// Before the page reads another dashboard's feed in place: what its
+    /// plugin serves, read on its own runtime when one signed in quietly
+    /// beside this one hasn't been asked yet, so its feed is asked for
+    /// suggestions and looks, and its cards get their buttons, as there.
+    func readyShownPulseRuntime() async {
+        guard pulseRuntime != nil, let id = pulseShownDashboardID else { return }
+        await readKeptPluginStatusIfUnknown(id)
+    }
+
+    /// Shows another combined dashboard's Pulse in place: the page reads
+    /// and acts on its feed through its kept connection, with no switch, so
+    /// no call ends either. Its own chip, or one not connected here, goes
+    /// back to the one on screen's (one let go shows the screen's anyway).
     func openCombinedPulse(_ dashboardID: UUID) {
-        guard dashboardID != activeDashboardID, !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            // Open as soon as its sync settles, as its bots do.
-            await self.switchToCombinedDashboardUntilSettled(dashboardID)
-            // Another dashboard picked meanwhile owns the screen.
-            guard self.activeDashboardID == dashboardID else { return }
-            self.openPulse(card: nil)
-        }
+        let far = dashboardID != dashboardIDOnScreen && runtime(for: dashboardID) != nil
+        let shown: UUID? = far ? dashboardID : nil
+        if pulseShownDashboardID != shown { pulseShownDashboardID = shown }
+    }
+
+    /// Before a Pulse card's step that opens a chat or task, or changes
+    /// this phone's calendar, on another combined dashboard's Pulse: the
+    /// switch there, until chats of another dashboard open in place too
+    /// (this phone shares its calendar with the one on screen). `shown` is
+    /// the dashboard the page showed at the tap (`pulseShownDashboardID`
+    /// then). True when the step can go ahead on that dashboard: never on
+    /// another one, as a chip picked meanwhile or a connection let go would.
+    func switchForFarPulseStep(from shown: UUID?) async -> Bool {
+        guard let id = shown, id != dashboardIDOnScreen else { return pulseRuntime == nil }
+        guard runtime(for: id) != nil else { return false }
+        guard !refusesCombinedSwitchDuringCall(to: id) else { return false }
+        await switchToCombinedDashboardUntilSettled(id)
+        guard !Task.isCancelled, activeDashboardID == id else { return false }
+        // A chip picked during the switch keeps its place.
+        if pulseShownDashboardID == id { pulseShownDashboardID = nil }
+        return true
     }
 }

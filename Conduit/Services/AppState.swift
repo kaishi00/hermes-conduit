@@ -435,6 +435,12 @@ final class AppState: ObservableObject {
     /// Each other combined dashboard's count of new Pulse cards (all-live
     /// stage 4d), read through its kept connection.
     @Published var combinedDashboardPulse: [UUID: CombinedDashboardPulse] = [:]
+    /// The other combined dashboard whose Pulse the page shows (its chip),
+    /// nil for the one on screen's (`pulseDashboardID`).
+    @Published var pulseShownDashboardID: UUID? {
+        // The page draws that dashboard's runtime, so its changes redraw it.
+        didSet { if oldValue != pulseShownDashboardID { republishRuntime(pulseRuntime, for: "pulse") } }
+    }
     /// Reads a kept dashboard's bot roster through its client. Tests set it.
     var keptDashboardBotRosterReader: ((HermesClient) async throws -> BotRosterSnapshot)?
     /// Reads the rooms a kept dashboard's Hermes hosts through its client.

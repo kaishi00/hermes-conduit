@@ -1231,7 +1231,8 @@ extension AppState {
         let dashboard = activeDashboardID
         // Looks off: this read keeps only the counts and sources; the Pulse
         // screen's own load asks for them.
-        guard let page = try? await pulseClient.feed(proposals: pulseSuggests, looks: false),
+        // The one on screen's own plugin, whichever Pulse the page shows.
+        guard let page = try? await pulseClient.feed(proposals: notifierPlugin.reports(PulseClient.proposalsCapability), looks: false),
               activeDashboardID == dashboard else {
             return
         }
@@ -1245,8 +1246,9 @@ extension AppState {
         if sources != pulseSources { pulseSources = sources }
         if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
         rememberPulseHome(page.homeChatID, profile: page.profile)
-        // The Pulse widget reads again when the open cards changed (issue 2190).
-        pulseWidgetFeedChanged(page)
+        // The Pulse widget reads again when the open cards changed (issue
+        // 2190); it shows the one on screen's Pulse, not a chip's.
+        if actingOnRuntimeOnScreen { pulseWidgetFeedChanged(page) }
     }
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
@@ -1295,7 +1297,8 @@ extension AppState {
     /// report's or brief's cards point there), nor a Kanban task's worker,
     /// which Hermes won't reopen as a chat (the card shows its task).
     func pulseCardHasChat(_ card: PulseCard) -> Bool {
-        !card.chatID.isEmpty && card.chatID != pulseHomeChat && card.kanbanTask == nil
+        if let runtime = pulseRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { pulseCardHasChat(card) } }
+        return !card.chatID.isEmpty && card.chatID != pulseHomeChat && card.kanbanTask == nil
     }
 
     /// The Kanban task a card from a worker links to, when it was named.
@@ -1306,8 +1309,8 @@ extension AppState {
     /// Done on this card: a follow-up's or a remembered report item's
     /// (0.64.0), or one Pulse found on its own (0.77.0).
     func canMarkPulseCardDone(_ card: PulseCard) -> Bool {
-        notifierPlugin.reports(PulseClient.doneCapability)
-            && (card.canBeDone || card.isFound && notifierPlugin.reports(PulseClient.foundActionsCapability))
+        pulsePlugin.reports(PulseClient.doneCapability)
+            && (card.canBeDone || card.isFound && pulsePlugin.reports(PulseClient.foundActionsCapability))
     }
 
     /// Not now's "Don't bring it back" on this card: one with no Done (a
@@ -1322,7 +1325,7 @@ extension AppState {
     /// item Pulse found on its own (0.77.0).
     func canActOnPulseCard(_ card: PulseCard) -> Bool {
         card.isActionable
-            || card.isFound && card.hasReminder && notifierPlugin.reports(PulseClient.foundActionsCapability)
+            || card.isFound && card.hasReminder && pulsePlugin.reports(PulseClient.foundActionsCapability)
     }
 
     /// Ask on this card (0.150.0): its chat, or a new one in Pulse's
@@ -1343,24 +1346,24 @@ extension AppState {
     /// report item its candidate's reason (0.80.1). A plugin from before
     /// gave report and brief cards stock lines, not reasons.
     func explainsPulseCardReason(_ card: PulseCard) -> Bool {
-        !card.why.isEmpty && (card.kind == "followup" || notifierPlugin.reports(PulseClient.cardWhyCapability))
+        !card.why.isEmpty && (card.kind == "followup" || pulsePlugin.reports(PulseClient.cardWhyCapability))
     }
 
     /// What Pulse learned lists what learning holds with Reset, and What
     /// Pulse left out shows (0.84.0).
-    var pulseExplainsLearning: Bool { notifierPlugin.reports(PulseClient.explainsCapability) }
+    var pulseExplainsLearning: Bool { pulsePlugin.reports(PulseClient.explainsCapability) }
 
     /// Pulse's turns look things up before they write (0.96.0): Settings >
     /// Pulse's switch, and Why? says what a card's turn looked at.
-    var pulseLooksFirst: Bool { notifierPlugin.reports(PulseClient.lookCapability) }
+    var pulseLooksFirst: Bool { pulsePlugin.reports(PulseClient.lookCapability) }
 
     /// An event or reminder a Pulse turn would add comes as a suggestion
     /// card with Add (0.98.0): the feed brings them to an app that asks.
-    var pulseSuggests: Bool { notifierPlugin.reports(PulseClient.proposalsCapability) }
+    var pulseSuggests: Bool { pulsePlugin.reports(PulseClient.proposalsCapability) }
 
     /// Pulse cards carry the pick they were made from (0.150.0): the feed
     /// brings their looks to an app that asks.
-    var pulseLooks: Bool { notifierPlugin.reports(PulseClient.looksCapability) }
+    var pulseLooks: Bool { pulsePlugin.reports(PulseClient.looksCapability) }
 
     /// Pulse reads where the user is with Where you are on (0.100.0):
     /// Settings > Pulse's switch.
@@ -1374,13 +1377,13 @@ extension AppState {
     /// card's once the plugin acts on its reasons (0.81.1). Before, a report
     /// card's reason changed nothing, so its thumbs down was enough.
     func asksPulseDownReason(_ card: PulseCard) -> Bool {
-        card.kind == "followup" || card.isNoticed && notifierPlugin.reports(PulseClient.learnsCapability)
+        card.kind == "followup" || card.isNoticed && pulsePlugin.reports(PulseClient.learnsCapability)
     }
 
     /// The reasons a thumbs down offers: Wrong time once the plugin picks
     /// the time (0.86.0).
     var pulseDownReasons: [PulseDownReason] {
-        PulseDownReason.offered(knowsHours: notifierPlugin.reports(PulseClient.hoursCapability))
+        PulseDownReason.offered(knowsHours: pulsePlugin.reports(PulseClient.hoursCapability))
     }
 
     /// Settings > Calendar & phone > People says Pulse brings up the picked
