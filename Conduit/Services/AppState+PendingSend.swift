@@ -475,9 +475,17 @@ extension AppState {
                 && !shownChat.deliveringPendingComposerSendIDs.contains(file.id)
                 && !composerRestoreRequests.contains { $0.pending?.id == file.id }
         }
-        composerRestoreRequests.append(contentsOf: leftBehind.map { restoreRequest(for: $0, focuses: false) })
-        if let newest = leftBehind.last(where: { $0.profile == activeProfile }) {
-            composerNotice = pendingComposerSendNotice(for: newest, onScreen: isOnScreen(newest))
+        // A gone chat's words go where they would have when handed back:
+        // a left request's redirect isn't kept, only its file.
+        func isGone(_ file: PendingComposerSend) -> Bool {
+            !isOnScreen(file) && pendingComposerSendChatIsGone(file)
+        }
+        composerRestoreRequests.append(contentsOf: leftBehind.map { file in
+            let gone = isGone(file)
+            return restoreRequest(for: file, key: gone ? goneChatDraftKey(for: file) : nil, redirects: gone, focuses: false)
+        })
+        if let newest = leftBehind.last(where: { $0.profile == activeProfile }), composerOnScreenSaysWhy(for: newest) {
+            composerNotice = pendingComposerSendNotice(for: newest, onScreen: isOnScreen(newest), chatIsGone: isGone(newest))
         }
     }
 

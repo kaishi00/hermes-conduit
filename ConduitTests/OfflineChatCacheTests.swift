@@ -3640,7 +3640,8 @@ final class OfflineChatCacheTests: XCTestCase {
     /// A waiting message whose chat Hermes no longer has, failed or handed
     /// back while another combined dashboard's chat is open in place: its
     /// words go to their own dashboard's New Chat draft, not the far chat's,
-    /// and the far chat's composer doesn't say they're in it.
+    /// also when rebuilt from their file after the dashboard was left, and
+    /// the far chat's composer doesn't say they're in it.
     func testAGoneChatsWaitingWordsSkipAFarChatOnScreen() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
@@ -3668,6 +3669,14 @@ final class OfflineChatCacheTests: XCTestCase {
 
         appState.composerRestoreRequests.removeAll()
         appState.returnPendingComposerSendToDraft(pending)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
+        XCTAssertNil(appState.composerNotice)
+
+        // Left and visited again: the request rebuilt from its file goes
+        // the same way, not to the gone chat's own draft.
+        appState.leaveComposerSends(dashboardID: dashboard, keepingWordsOnTheirWay: true)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
         XCTAssertNil(appState.composerNotice)
     }
