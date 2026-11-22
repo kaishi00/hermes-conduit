@@ -244,21 +244,33 @@ enum KanbanFullTextFormatter {
         // are kept as written, and emphasis pairs only within a paragraph
         // (lines between blank lines or fences), as the sheet pairs it.
         var lines: [(pieces: [String], paragraph: Int, literal: Bool)] = []
+        var prose: [Int: [String]] = [:]
         var paragraph = 0
-        var inFence = false
-        for raw in markdown.components(separatedBy: .newlines) {
+        // The open fence's character and length: only a run of the same
+        // character, at least as long, with nothing after it closes it.
+        var fence: (mark: Character, length: Int)?
+        for raw in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines) {
             var line = raw.trimmingCharacters(in: .whitespaces)
-            if line.hasPrefix("```") {
-                inFence.toggle()
-                paragraph += 1
+            if let open = fence {
+                let run = line.prefix { $0 == open.mark }.count
+                if run >= open.length, line.dropFirst(run).allSatisfy(\.isWhitespace) {
+                    fence = nil
+                    paragraph += 1
+                } else if !line.isEmpty {
+                    lines.append(([raw], paragraph, true))
+                }
                 continue
+            }
+            if let mark = line.first, mark == "`" || mark == "~" {
+                let run = line.prefix { $0 == mark }.count
+                if run >= 3, mark == "~" || !line.dropFirst(run).contains("`") {
+                    fence = (mark, run)
+                    paragraph += 1
+                    continue
+                }
             }
             if line.isEmpty {
                 paragraph += 1
-                continue
-            }
-            if inFence {
-                lines.append(([line], paragraph, true))
                 continue
             }
             // A heading or quote marker counts only with its space, so
@@ -267,15 +279,11 @@ enum KanbanFullTextFormatter {
                   marker > line.startIndex, line[marker] == " " {
                 line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
             }
-            lines.append((line.split(separator: "`", omittingEmptySubsequences: false).map(String.init), paragraph, false))
+            let pieces = line.split(separator: "`", omittingEmptySubsequences: false).map(String.init)
+            lines.append((pieces, paragraph, false))
+            prose[paragraph, default: []] += pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
         }
-        var stripped: [Int: [String]] = [:]
-        for block in Set(lines.filter { !$0.literal }.map { $0.paragraph }) {
-            let prose = lines
-                .filter { !$0.literal && $0.paragraph == block }
-                .flatMap { line in line.pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element) }
-            stripped[block] = pairedEmphasisMarkers(in: prose)
-        }
+        let stripped = prose.mapValues(pairedEmphasisMarkers(in:))
         return lines
             .map { line -> String in
                 guard !line.literal else { return line.pieces.joined() }

@@ -908,6 +908,11 @@ final class KanbanV2Tests: XCTestCase {
         // A fenced block's markers neither count nor go; a blank line ends the pairing.
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("```python\nx = a**b\n```\n**Done**"), "x = a**b\nDone")
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**A\n\nB**"), "**A\nB**")
+        // A fence closes only on its own character, at least as long; its lines keep their indentation.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("````md\n```\n**literal**\n````\n**Done**"), "```\n**literal**\nDone")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("~~~\nif ready:\n    run()\n~~~"), "if ready:\n    run()")
+        // CRLF is one line break, not a paragraph break.
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**Started\r\nended**"), "Started\nended")
         // `__` between letters is never emphasis, however many there are.
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("my__var\nother__name"), "my__var\nother__name")
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("snake__case__var and __bold__"), "snake__case__var and bold")
