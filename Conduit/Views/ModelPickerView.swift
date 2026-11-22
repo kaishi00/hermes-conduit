@@ -753,8 +753,10 @@ struct ModelPickerView: View {
     private var quickPicksSection: some View {
         let providers = visibleProviders
         let current = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-        let pinned = appState.chatModelQuickPicks.pinnedRows(in: providers)
-        let recent = appState.chatModelQuickPicks.recentRows(in: providers, excluding: current)
+        // Read once: a far chat's are decoded from what's kept.
+        let picks = appState.chatModelQuickPicks
+        let pinned = picks.pinnedRows(in: providers)
+        let recent = picks.recentRows(in: providers, excluding: current)
         if catalog.state != .ready {
             ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
                 catalogStateRows
@@ -763,14 +765,14 @@ struct ModelPickerView: View {
             ModelPickerSection(title: AppLocalization.string("Quick picks", table: .settings), symbol: "pin", tint: .conduitAccent, flush: true) {
                 if !pinned.isEmpty {
                     quickPicksHeader(AppLocalization.string("Pinned"))
-                    quickPickRows(pinned)
+                    quickPickRows(pinned, picks: picks)
                 }
                 if !recent.isEmpty {
                     if !pinned.isEmpty {
                         Divider().overlay(rowStroke).padding(.leading, 16).padding(.top, 4)
                     }
                     quickPicksHeader(AppLocalization.string("Recent"))
-                    quickPickRows(recent)
+                    quickPickRows(recent, picks: picks)
                 }
                 if catalog.keptRowsFailed {
                     catalogFailedRow
@@ -796,18 +798,18 @@ struct ModelPickerView: View {
     }
 
     @ViewBuilder
-    private func quickPickRows(_ rows: [ModelSearchMatch]) -> some View {
+    private func quickPickRows(_ rows: [ModelSearchMatch], picks: ModelQuickPicks) -> some View {
         ForEach(rows) { row in
             HStack(spacing: 0) {
                 modelRow(row.model, provider: row.provider, showsProvider: true)
-                pinButton(row.model, provider: row.provider)
+                pinButton(row.model, provider: row.provider, picks: picks)
             }
         }
     }
 
     /// Pins a model to Quick picks, or unpins it.
-    private func pinButton(_ model: ModelInfo, provider: ProviderInfo) -> some View {
-        let pinned = appState.chatModelQuickPicks.isPinned(model: model.id, provider: provider)
+    private func pinButton(_ model: ModelInfo, provider: ProviderInfo, picks: ModelQuickPicks) -> some View {
+        let pinned = picks.isPinned(model: model.id, provider: provider)
         // Several providers serve one model, so VoiceOver names both.
         let name = "\(model.id), \(provider.title)"
         return Button {

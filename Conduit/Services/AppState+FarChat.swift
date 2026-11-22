@@ -153,7 +153,7 @@ extension AppState {
     }
 
     /// Saves the Model sheet's Edit filters under the chat on screen's own
-    /// dashboard. Nothing is saved while a far chat's connection is down.
+    /// dashboard, its connection up or not.
     func saveChatModelVisibility(_ visibility: ModelVisibility) {
         guard let farChat else { return saveModelVisibility(visibility) }
         guard let chatRuntime = runtime(for: farChat.dashboardID) else {
