@@ -88,13 +88,14 @@ extension AppState {
             // another is shown, whichever read is newer: the page's last one
             // there (its cards just seen) or the background read since.
             var unseen = pulse.unseen
-            if let runtime = runtime(for: dashboard.id), let applied = runtime.pulseFeedAppliedAt,
+            let kept = runtime(for: dashboard.id)
+            if let runtime = kept, let applied = runtime.pulseFeedAppliedAt,
                shown == dashboard.id || applied.at > pulse.at {
                 unseen = runtime.pulseUnseen
             }
             return PulseDashboardChip(
                 dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id,
-                switches: runtime(for: dashboard.id) == nil
+                switches: kept == nil
             )
         }
         return chips.count > 1 ? chips : []

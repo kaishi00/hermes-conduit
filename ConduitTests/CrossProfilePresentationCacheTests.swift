@@ -2911,6 +2911,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
 
+        // A step tapped on Mac's Pulse, after the screen's chip was picked:
+        // no switch for a page that left it.
+        let leftStep = await appState.switchForFarPulseStep(for: mac.id)
+        XCTAssertFalse(leftStep, "the page left Mac's Pulse")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+
         // A step that opens a chat there switches first, through the kept
         // connection, until far chats open in place.
         appState.openCombinedPulse(mac.id)
@@ -2936,11 +2942,16 @@ extension CrossProfilePresentationCacheTests {
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { _, _ in ["cards": [], "unseen": 2] }
+        await appState.readOtherCombinedDashboardsPulse()
         appState.openCombinedPulse(mac.id)
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        let dropped = appState.pulseDashboardChips.first { $0.dashboardID == mac.id }
+        XCTAssertEqual(dropped?.switches, true, "its chip stays, as its last read, and switches")
+        XCTAssertEqual(dropped?.isShown, false)
 
         appState.isNativeHermesCallActive = true
         appState.openCombinedPulse(mac.id)
