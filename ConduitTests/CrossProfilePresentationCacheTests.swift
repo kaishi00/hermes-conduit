@@ -2072,6 +2072,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.composerDraftKey(appState.composerDraftKeyOnScreen, isNotChatOf: "older-chat"),
                       "the Mac's list gives mac-1 to its own row")
         XCTAssertFalse(appState.composerDraftKey(appState.composerDraftKeyOnScreen, isNotChatOf: "mac-1"))
+        // Once the chat is left, its stored draft is still told from the
+        // Mac's list while the Mac is kept: words that came back after it
+        // was left keep their owner and stay its chat's.
+        let farKey = appState.composerDraftKeyOnScreen
+        let farChatOwner = appState.farChat
+        appState.farChat = nil
+        XCTAssertEqual(appState.composerDraftOwner(for: farKey), "mac-1", "read from the Mac's list, not the screen's")
+        XCTAssertTrue(appState.composerDraftKeysAreSameChat(farKey, farKey))
+        appState.farChat = farChatOwner
 
         // Its kept connection gone, nothing reaches another dashboard's.
         let sentBefore = seen.sent.count
