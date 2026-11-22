@@ -60,6 +60,8 @@ struct BotRosterView: View {
     @State private var showingRoomReorder = false
     /// A room whose tile's Disband Group waits for its confirmation.
     @State private var pendingDisbandRoom: GroupRoom?
+    /// Another combined dashboard's room, disbanded on its own runtime.
+    @State private var pendingDisbandFarRoom: CombinedRoomTile?
     /// A Hermes Desktop group chat whose Remove waits on its confirmation.
     @State private var pendingDesktopRemoval: DesktopGroupChat?
     /// A picture asked for from a room's tile, and the room it's for.
@@ -167,6 +169,26 @@ struct BotRosterView: View {
         } message: { room in
             Text(GroupRoomDisband.warning(members: room.members,
                                           chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
+        }
+        .confirmationDialog(
+            AppLocalization.string("Disband this group chat?"),
+            isPresented: Binding(
+                get: { pendingDisbandFarRoom != nil },
+                set: { if !$0 { pendingDisbandFarRoom = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingDisbandFarRoom
+        ) { tile in
+            Button(AppLocalization.string("Disband"), role: .destructive) {
+                pendingDisbandFarRoom = nil
+                Task {
+                    if let failure = await appState.disbandCombinedRoom(tile) { managementNotice = failure }
+                }
+            }
+            Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDisbandFarRoom = nil }
+        } message: { tile in
+            Text(GroupRoomDisband.warning(members: tile.room.members,
+                                          chatsKept: appState.runtime(for: tile.dashboardID)?.notifierPlugin.runtime?.roomChatsKept == true))
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
@@ -1595,7 +1617,7 @@ struct BotRosterView: View {
         // one, which switches there, moves nothing (Eric, 2026-11-21).
         let combinedRooms = appState.combinedRoomTilesAroundThisDashboard
         ForEach(combinedRooms.before) { tile in
-            CombinedRoomPortrait(tile: tile)
+            CombinedRoomPortrait(tile: tile, onDisband: { pendingDisbandFarRoom = $0 })
         }
         ForEach(homeRooms) { room in
             GroupRoomPortrait(room: room, actions: roomActions(room))
@@ -1609,7 +1631,7 @@ struct BotRosterView: View {
             }
         }
         ForEach(combinedRooms.after) { tile in
-            CombinedRoomPortrait(tile: tile)
+            CombinedRoomPortrait(tile: tile, onDisband: { pendingDisbandFarRoom = $0 })
         }
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupPortrait(group: group, onRemove: desktopRemoval(group)) {
@@ -1664,6 +1686,8 @@ struct BotRosterView: View {
     /// A room's tile dropped on `target`'s (nil: at the end), whose place it
     /// takes.
     private func dropRoom(_ dragged: String, onto target: String?) {
+        // Another dashboard's room keeps its place among its own rooms.
+        guard !appState.otherCombinedDashboardsRoomTiles.contains(where: { $0.id == dragged }) else { return }
         Haptics.selection()
         withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             appState.dropGroupRoom(dragged, onto: target, shown: appState.shownGroupRooms.map(\.roomID))
