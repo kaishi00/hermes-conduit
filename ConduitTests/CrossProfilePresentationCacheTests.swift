@@ -2752,6 +2752,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))
         XCTAssertEqual(calls.capabilities.count, screensReads + 1, "known: not read again on a later tick")
+        // Its Hermes serves groups.context: Group Settings in its menu.
+        appState.keptDashboardRuntimes[mac.id]?.runtime.groupCapabilities = GroupCapabilities(
+            protocolVersion: 1, driverReady: true, authorityGatewayID: "gw", features: [],
+            methods: GroupWire.requiredMethods.union(["groups.context"]), maxLogLimit: 500)
+        XCTAssertTrue(appState.canEditCombinedRoomSettings(tiles[0]))
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
