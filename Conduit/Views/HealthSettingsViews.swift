@@ -59,6 +59,11 @@ struct HealthSettingsPage: View {
             if preferences.isOn, appState.notifierPlugin.reports(AppState.voiceToolsCapability) {
                 voiceSection
             }
+            // Left on, it stays so it can be turned off on an older plugin.
+            if preferences.isOn,
+               appState.notifierPlugin.reports(AppState.phoneHealthProfilesCapability) || preferences.otherProfiles {
+                profilesSection
+            }
             // Turning off stays reachable even if Health becomes unavailable.
             if preferences.isOn || (engine.source.isAvailable && pluginServesHealth) {
                 actionSection
@@ -144,6 +149,24 @@ struct HealthSettingsPage: View {
             Text(error)
                 .scaledFont(.caption)
                 .foregroundStyle(.red)
+        }
+    }
+
+    // MARK: Other profiles
+
+    private var profilesSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Other profiles", table: .phone), symbol: "person.2", tint: .conduitAccent) {
+            Toggle("Share with this host's other profiles", isOn: Binding(
+                get: { preferences.otherProfiles },
+                set: { on in
+                    Haptics.selection()
+                    appState.setHealthOtherProfiles(on)
+                }
+            ))
+            .accessibilityIdentifier("settings.health.other-profiles")
+            Text(AppLocalization.string("When this is on, other Hermes profiles on \(preferences.destination?.host ?? hostLabel) that are paired with this iPhone can read your health data.", table: .phone))
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -155,6 +155,37 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.anchors["workouts"], Data("w-anchor".utf8), "Moves past them all the same")
     }
 
+    func testOtherProfilesGoesWithEveryUploadAndAChangeReachesTheHostAlone() async throws {
+        let host = FakeHealthHost()
+        let engine = makeHealthEngine(source: FakeHealthSource())
+        var preferences = healthPreferences(history: .days30)
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(host.batches.allSatisfy { $0["other_profiles"] as? Bool == false })
+        var before = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        let quiet = host.batches.count - before
+
+        preferences.otherProfiles = true
+        before = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertGreaterThan(host.batches.count - before, quiet, "Turning it on reaches the host with nothing new")
+        XCTAssertEqual(host.batches.last?["other_profiles"] as? Bool, true)
+        XCTAssertEqual(engine.state.sentOtherProfiles, true)
+        before = host.batches.count
+        _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count - before, quiet, "Once the host has it, nothing more goes for it")
+
+        // The windows the host holds don't change with it, so none goes again.
+        var batch = HealthBatch(computedAt: Date(timeIntervalSince1970: 1_760_000_000), deviceName: "iPhone",
+                                timeZone: TimeZone(identifier: "UTC")!, categories: [.activity], detailed: [])
+        batch.windows = [HealthWindow(metric: "steps", grain: .day, unit: "count",
+                                      from: Date(timeIntervalSince1970: 1_760_000_000),
+                                      to: Date(timeIntervalSince1970: 1_760_086_400), buckets: [])]
+        let prints = batch.windowPrints().map(\.hash)
+        batch.otherProfiles = true
+        XCTAssertEqual(batch.windowPrints().map(\.hash), prints)
+    }
+
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
         let source = FakeHealthSource()
         let host = FakeHealthHost()

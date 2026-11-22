@@ -340,6 +340,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, false)
         choices.focus = true
         XCTAssertTrue(choices.turnStatus, "The choice is kept while neither is shared")
+
+        // Share with this host's other profiles: off until chosen, and in
+        // every upload's sharing, so the host's other profiles read it only then.
+        XCTAssertEqual(choices.sharingJSON["other_profiles"] as? Bool, false)
+        choices.otherProfiles = true
+        XCTAssertEqual(choices.sharingJSON["other_profiles"] as? Bool, true)
     }
 
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {
@@ -410,11 +416,24 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(host.batches.count, 4)
 
+        // Share with this host's other profiles changed alone: it goes at
+        // once, and once the host has it nothing more goes for it.
+        var shared = relaunched.preferences
+        shared.otherProfiles = true
+        relaunched.savePreferences(shared)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 5)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["other_profiles"] as? Bool, true)
+        now += 60
+        _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, 5)
+
         // An older plugin's status doesn't say what's waiting: every pass posts.
         host.reportsPending = false
         now += 60
         _ = await relaunched.sync(deadline: .distantFuture, request: host.handle)
-        XCTAssertEqual(host.batches.count, 5)
+        XCTAssertEqual(host.batches.count, 6)
     }
 
     func testPhoneChangesAskUnlessTheUserChoseAddWithoutAsking() async throws {
