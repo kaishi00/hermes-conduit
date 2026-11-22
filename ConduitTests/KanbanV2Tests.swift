@@ -813,7 +813,27 @@ final class KanbanV2Tests: XCTestCase {
         )
         XCTAssertEqual(
             KanbanFullTextFormatter.eventText(event),
-            "checks:\n[\n  \"ci\",\n  \"review\"\n]\n\nimplementer: default\n\nsize: 2294\n\nsummary: " + summary
+            "implementer: default\n\nsize: 2294\n\nsummary: " + summary + "\n\nchecks:\n[\n  \"ci\",\n  \"review\"\n]"
+        )
+    }
+
+    func testOnlyEventsWithMoreToReadOpen() {
+        let claimed = KanbanEvent(id: "1", kind: "claimed", payload: .object(["source_status": .string("todo")]))
+        XCTAssertFalse(KanbanFullTextFormatter.eventHasMoreToRead(claimed, detail: nil))
+        let review = KanbanEvent(id: "2", kind: "review_requested", payload: .object([
+            "summary": .string(String(repeating: "verified ", count: 20))
+        ]))
+        XCTAssertTrue(KanbanFullTextFormatter.eventHasMoreToRead(review, detail: nil))
+        let nested = KanbanEvent(id: "3", kind: "x", payload: .object(["checks": .array([.string("ci")])]))
+        XCTAssertTrue(KanbanFullTextFormatter.eventHasMoreToRead(nested, detail: nil))
+        XCTAssertFalse(KanbanFullTextFormatter.eventHasMoreToRead(KanbanEvent(id: "4", kind: "heartbeat"), detail: nil))
+    }
+
+    func testRowPreviewDropsMarkdownMarkersAndBlankLines() {
+        let source = "## Passation\n\nSix **signed** PRs on `malaiwah/farm-infra`:\n\n> all green\n```\ncode\n```"
+        XCTAssertEqual(
+            KanbanFullTextFormatter.plainPreview(source),
+            "Passation\nSix signed PRs on malaiwah/farm-infra:\nall green\ncode"
         )
     }
 

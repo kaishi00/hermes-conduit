@@ -947,7 +947,7 @@ struct KanbanTaskDetailView: View {
                                     .foregroundStyle(.conduitTertiary)
                                 fullTextChevron
                             }
-                            Text(value.body)
+                            Text(KanbanFullTextFormatter.plainPreview(value.body))
                                 .scaledFont(.footnote)
                                 .lineLimit(Self.previewLineLimit)
                                 .multilineTextAlignment(.leading)
@@ -1062,7 +1062,8 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private func activityRow(_ event: KanbanEvent) -> some View {
         let row = KanbanActivityFormatter.row(for: event)
-        if let payloadText = KanbanFullTextFormatter.eventText(event) {
+        if KanbanFullTextFormatter.eventHasMoreToRead(event, detail: row.detail),
+           let payloadText = KanbanFullTextFormatter.eventText(event) {
             Button {
                 fullText = KanbanFullText(
                     title: row.label,
@@ -1273,7 +1274,7 @@ struct KanbanTaskDetailView: View {
                     .lineLimit(Self.previewLineLimit)
                     .multilineTextAlignment(.leading)
             } else if let summary = run.summary, !summary.isEmpty {
-                Text(summary)
+                Text(KanbanFullTextFormatter.plainPreview(summary))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(Self.previewLineLimit)

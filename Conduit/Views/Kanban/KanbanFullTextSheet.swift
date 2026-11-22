@@ -95,19 +95,76 @@ enum KanbanFullTextFormatter {
         return parts.joined(separator: "\n\n")
     }
 
-    /// Every payload entry of an activity event, whole: scalars as
-    /// `key: value`, nested values as indented JSON. Nil when the event
-    /// carries no payload.
+    /// Every payload entry of an activity event, whole: short values first
+    /// as `key: value` (who, what, how big), then long text such as a
+    /// worker's `summary`, then nested values as indented JSON. Nil when
+    /// the event carries no payload.
     static func eventText(_ event: KanbanEvent) -> String? {
         guard let payload = event.payload?.objectValue, !payload.isEmpty else { return nil }
-        return payload.keys.sorted().map { key in
-            let value = payload[key] ?? .null
+        func rank(_ value: AnyCodable) -> Int {
             switch value {
-            case .array, .object: return key + ":\n" + display(value)
-            default: return key + ": " + display(value)
+            case .array, .object: return 2
+            case .string(let s): return isLong(s) ? 1 : 0
+            default: return 0
             }
         }
-        .joined(separator: "\n\n")
+        return payload.keys
+            .sorted { lhs, rhs in
+                let l = rank(payload[lhs] ?? .null), r = rank(payload[rhs] ?? .null)
+                return l == r ? lhs < rhs : l < r
+            }
+            .map { key in
+                let value = payload[key] ?? .null
+                switch value {
+                case .array, .object: return key + ":\n" + display(value)
+                default: return key + ": " + display(value)
+                }
+            }
+            .joined(separator: "\n\n")
+    }
+
+    /// Whether an activity row hides something worth a tap: long text or a
+    /// nested value its one detail line can't hold. A row like "Claimed by
+    /// worker" whose payload is `source_status: todo` doesn't open.
+    static func eventHasMoreToRead(_ event: KanbanEvent, detail: String?) -> Bool {
+        guard let payload = event.payload?.objectValue, !payload.isEmpty else { return false }
+        if let detail, detail.count > rowDetailCharacters { return true }
+        return payload.values.contains { value in
+            switch value {
+            case .array(let a): return !a.isEmpty
+            case .object(let o): return !o.isEmpty
+            case .string(let s): return isLong(s)
+            default: return false
+            }
+        }
+    }
+
+    /// Roughly what two caption lines hold on an iPhone.
+    static let rowDetailCharacters = 80
+
+    private static func isLong(_ text: String) -> Bool {
+        text.count > 60 || text.contains("\n")
+    }
+
+    /// A row's preview of Markdown text: heading and quote markers, code
+    /// fences, emphasis and backticks taken out and blank lines dropped, so
+    /// the few lines a row shows are words, not `## Handoff` and an empty
+    /// line. The sheet renders the Markdown itself.
+    static func plainPreview(_ markdown: String) -> String {
+        markdown
+            .components(separatedBy: .newlines)
+            .compactMap { raw -> String? in
+                var line = raw.trimmingCharacters(in: .whitespaces)
+                if line.hasPrefix("```") || line.isEmpty { return nil }
+                while line.hasPrefix("#") || line.hasPrefix(">") {
+                    line = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
+                }
+                for marker in ["**", "__", "`"] {
+                    line = line.replacingOccurrences(of: marker, with: "")
+                }
+                return line.isEmpty ? nil : line
+            }
+            .joined(separator: "\n")
     }
 
     static func display(_ value: AnyCodable) -> String {
