@@ -33,6 +33,8 @@ struct KanbanTaskDetailView: View {
     @Environment(KanbanStore.self) private var store
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    /// Rows estimate how many columns a line holds at this text size.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private let initialTask: KanbanTask
     /// This sheet's own presentation: a reopened task, or another task's
@@ -87,6 +89,8 @@ struct KanbanTaskDetailView: View {
     /// A row's whole text (run summary, event payload, comment), opened by
     /// tapping the row.
     @State private var fullText: KanbanFullText?
+    /// Activity lists its newest events until the operator asks for the rest.
+    @State private var showsAllEvents = false
     @State private var openingAttachmentID: String?
     @State private var attachmentError: String?
     /// The attachment download in flight, cancelled when the screen moves
@@ -213,6 +217,7 @@ struct KanbanTaskDetailView: View {
                             commentsSection
                         }
                         diagnosticsSection
+                        resultSection(currentTask)
                         dependenciesSection
                         if !isBlocked {
                             commentsSection
@@ -368,6 +373,7 @@ struct KanbanTaskDetailView: View {
                 openingAttachmentID = nil
                 attachmentError = nil
                 fullText = nil
+                showsAllEvents = false
                 modelOverrideDraft = TaskModelOverride()
                 // The open editor session belonged to the departed identity;
                 // its dismissal must never commit against the new one.
@@ -891,6 +897,17 @@ struct KanbanTaskDetailView: View {
         }
     }
 
+    /// A child's result as its parent received it (`child_results`): its
+    /// task result, else its latest run summary. The child's own screen,
+    /// one tap away, has it whole.
+    private func childResultPreview(for id: String) -> String? {
+        guard let child = detail?.childResults.first(where: { $0.id == id }) else { return nil }
+        let text = [child.result, child.latestSummary]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        return text.map(KanbanFullTextFormatter.plainPreview)
+    }
+
     private func dependencyGroup(title: String, ids: [String]) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -918,6 +935,13 @@ struct KanbanTaskDetailView: View {
                                         .scaledFont(.caption2)
                                         .foregroundStyle(.secondary)
                                 }
+                            }
+                            if let preview = childResultPreview(for: linkedID), !preview.isEmpty {
+                                Text(preview)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(2)
+                                    .multilineTextAlignment(.leading)
                             }
                         }
                         Spacer()
@@ -947,7 +971,10 @@ struct KanbanTaskDetailView: View {
         ConduitSettingsSection(title: AppLocalization.string("Comments", table: .tasks), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
             if let comments = detail?.comments, !comments.isEmpty {
                 ForEach(comments) { value in
-                    if KanbanFullTextFormatter.textHasMoreToRead(value.body) {
+                    if KanbanFullTextFormatter.textHasMoreToRead(
+                        KanbanFullTextFormatter.plainPreview(value.body),
+                        lineWidth: KanbanFullTextFormatter.lineWidth(for: .footnote, at: dynamicTypeSize)
+                    ) {
                         Button {
                             fullText = KanbanFullText(
                                 title: AppLocalization.string("Comment from \(value.author)", table: .tasks),
@@ -1070,13 +1097,21 @@ struct KanbanTaskDetailView: View {
     private var activitySection: some View {
         if let events = detail?.events, !events.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Activity (\(events.count))", table: .tasks), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
-                ForEach(events.prefix(60)) { event in
+                ForEach(showsAllEvents ? events[...] : events.prefix(Self.newestEventCount)) { event in
                     activityRow(event)
                 }
-                if events.count > 60 {
-                    Text("\(events.count - 60) earlier events hidden")
-                        .scaledFont(.caption2)
-                        .foregroundStyle(.conduitTertiary)
+                if !showsAllEvents, events.count > Self.newestEventCount {
+                    Button {
+                        showsAllEvents = true
+                    } label: {
+                        Text(AppLocalization.string("Show \(events.count - Self.newestEventCount) earlier events", table: .tasks))
+                            .scaledFont(.caption.weight(.medium))
+                            .foregroundStyle(.conduitAccent)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -1145,6 +1180,53 @@ struct KanbanTaskDetailView: View {
     /// a tap away.
     private static let previewLineLimit = 4
 
+    /// Activity events listed before "Show earlier events".
+    private static let newestEventCount = 60
+
+    // MARK: - Result
+
+    /// The task's result, what its worker handed back when it completed:
+    /// four lines as plain words, whole from the chevron.
+    @ViewBuilder
+    private func resultSection(_ task: KanbanTask) -> some View {
+        if let result = task.result?.trimmingCharacters(in: .whitespacesAndNewlines), !result.isEmpty {
+            let preview = KanbanFullTextFormatter.plainPreview(result)
+            let opens = KanbanFullTextFormatter.textHasMoreToRead(
+                preview,
+                lineWidth: KanbanFullTextFormatter.lineWidth(for: .footnote, at: dynamicTypeSize)
+            ) || preview != result
+            ConduitSettingsSection(title: AppLocalization.string("Result", table: .tasks), symbol: "flag.checkered", tint: .green) {
+                if opens {
+                    Button {
+                        fullText = KanbanFullText(
+                            title: AppLocalization.string("Result", table: .tasks),
+                            subtitle: task.completedAt.map { relativeDate($0) },
+                            body: result
+                        )
+                    } label: {
+                        resultRow(preview, opensFullText: true)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint("Shows the full text")
+                } else {
+                    resultRow(preview, opensFullText: false)
+                }
+            }
+        }
+    }
+
+    private func resultRow(_ preview: String, opensFullText: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(preview)
+                .scaledFont(.footnote)
+                .lineLimit(Self.previewLineLimit)
+                .multilineTextAlignment(.leading)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if opensFullText { fullTextChevron }
+        }
+        .contentShape(Rectangle())
+    }
+
     // MARK: - Attachments
 
     @ViewBuilder
@@ -1208,6 +1290,9 @@ struct KanbanTaskDetailView: View {
     /// moved on from (another task, or closed) is dropped with its file,
     /// never shown over what's there now.
     private func openAttachment(_ attachment: KanbanAttachment, token: UUID) async {
+        // Cancelled before it began (the screen moved on): touch nothing,
+        // or the spinner would come back and hold every row disabled.
+        guard !Task.isCancelled, attachmentDownloadToken == token else { return }
         openingAttachmentID = attachment.id
         attachmentError = nil
         let stillCurrent = { !Task.isCancelled && attachmentDownloadToken == token }
@@ -1242,7 +1327,10 @@ struct KanbanTaskDetailView: View {
         if let runs = detail?.runs, !runs.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))", table: .tasks), symbol: "terminal", tint: .orange) {
                 ForEach(runs) { run in
-                    if KanbanFullTextFormatter.runHasMoreToRead(run) {
+                    if KanbanFullTextFormatter.runHasMoreToRead(
+                        run,
+                        lineWidth: KanbanFullTextFormatter.lineWidth(for: .caption1, at: dynamicTypeSize)
+                    ) {
                         Button {
                             guard let text = KanbanFullTextFormatter.runText(run) else { return }
                             fullText = KanbanFullText(

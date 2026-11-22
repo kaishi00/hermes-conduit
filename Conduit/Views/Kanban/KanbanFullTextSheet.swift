@@ -72,53 +72,69 @@ struct KanbanFullTextSheet: View {
 /// short. Pure, so the tests read exactly what the sheet shows.
 enum KanbanFullTextFormatter {
     /// A run's error and summary, whole, then its metadata when Hermes sent
-    /// any. Nil when the run has nothing to read.
+    /// any. Nil when the run has nothing to read. An error alone is the
+    /// body as written (the sheet shows it plain); beside a summary or
+    /// metadata the sheet renders Markdown, so the error goes in a code
+    /// block under its heading, where `*` or `<...>` in it stay put.
     static func runText(_ run: KanbanRun) -> String? {
         let error = run.error.flatMap { $0.isEmpty ? nil : $0 }
         let summary = run.summary.flatMap { $0.isEmpty ? nil : $0 }
-        var parts: [String] = []
-        switch (error, summary) {
-        case let (error?, summary?):
-            parts.append("### " + AppLocalization.string("Error") + "\n\n" + error)
-            parts.append("### " + AppLocalization.string("Summary", table: .tasks) + "\n\n" + summary)
-        case let (error?, nil):
-            parts.append(error)
-        case let (nil, summary?):
-            parts.append(summary)
-        case (nil, nil):
-            break
+        guard error != nil || summary != nil else { return nil }
+        let details = run.metadata.flatMap { metadata in
+            isEmptyContainer(metadata) ? nil : prettyJSON(metadata)
         }
-        if parts.isEmpty { return nil }
-        if let metadata = run.metadata, let json = prettyJSON(metadata), !isEmptyContainer(metadata) {
-            parts.append("### " + AppLocalization.string("Details") + "\n\n```json\n" + json + "\n```")
+        if let error, summary == nil, details == nil { return error }
+        var parts: [String] = []
+        if let error {
+            parts.append("### " + AppLocalization.string("Error") + "\n\n" + fenced(error))
+        }
+        if let summary {
+            parts.append(error == nil ? summary : "### " + AppLocalization.string("Summary", table: .tasks) + "\n\n" + summary)
+        }
+        if let details {
+            parts.append("### " + AppLocalization.string("Details") + "\n\n" + fenced(details, language: "json"))
         }
         return parts.joined(separator: "\n\n")
+    }
+
+    /// `text` as a fenced code block, its fence longer than any run of
+    /// backticks inside, so the text can't close it early.
+    static func fenced(_ text: String, language: String = "") -> String {
+        var longest = 0, current = 0
+        for character in text {
+            current = character == "`" ? current + 1 : 0
+            longest = max(longest, current)
+        }
+        let fence = String(repeating: "`", count: max(3, longest + 1))
+        return fence + language + "\n" + text + "\n" + fence
     }
 
     /// Whether a run row hides something worth a tap: text past what its
     /// four lines hold, both an error and a summary (the row shows only the
     /// error), or metadata. A short crash message already shown whole
     /// doesn't open.
-    static func runHasMoreToRead(_ run: KanbanRun) -> Bool {
+    static func runHasMoreToRead(_ run: KanbanRun, lineWidth: Int = rowLineWidth) -> Bool {
         let error = run.error.flatMap { $0.isEmpty ? nil : $0 }
         let summary = run.summary.flatMap { $0.isEmpty ? nil : $0 }
         guard let shown = error ?? summary else { return false }
         if error != nil, summary != nil { return true }
         if let metadata = run.metadata, !isEmptyContainer(metadata) { return true }
-        return textHasMoreToRead(error != nil ? shown : plainPreview(shown))
+        return textHasMoreToRead(error != nil ? shown : plainPreview(shown), lineWidth: lineWidth)
     }
 
     /// Whether `text` likely wraps past the four lines a row shows on an
     /// iPhone. An estimate, not a measurement: each line counts the lines it
-    /// wraps to at `rowLineWidth` columns, with wide characters (CJK, Hangul,
-    /// emoji) taking two columns, so a short line of Chinese still opens. It
+    /// wraps to at `lineWidth` columns (`lineWidth(for:at:)` for the row's
+    /// text style and text size), with wide characters (CJK, Hangul, emoji)
+    /// taking two columns, so a short line of Chinese still opens. It
     /// leans toward opening: a chevron on text that fit costs a tap, a
     /// missing one hides text.
-    static func textHasMoreToRead(_ text: String) -> Bool {
+    static func textHasMoreToRead(_ text: String, lineWidth: Int = rowLineWidth) -> Bool {
+        let width = max(1, lineWidth)
         var lines = 0
         for line in text.components(separatedBy: .newlines) {
             let columns = line.unicodeScalars.reduce(0) { $0 + (isWide($1) ? 2 : 1) }
-            lines += max(1, (columns + rowLineWidth - 1) / rowLineWidth)
+            lines += max(1, (columns + width - 1) / width)
             if lines > previewLines { return true }
         }
         return false
@@ -126,24 +142,44 @@ enum KanbanFullTextFormatter {
 
     /// Lines a run summary, error or comment shows on the task screen.
     static let previewLines = 4
-    /// Columns of caption text a row line holds on the narrowest iPhone,
-    /// rounded down.
+    /// Columns of caption text a row line holds on the narrowest iPhone at
+    /// the default text size, rounded down.
     static let rowLineWidth = 40
+
+    /// Columns a row line holds in `style` at `size`: `rowLineWidth` scaled
+    /// by the style's point size against default-size caption (12 pt), so
+    /// footnote comments and the larger text sizes, accessibility sizes
+    /// included, count the fewer columns they hold.
+    static func lineWidth(for style: UIFont.TextStyle, at size: DynamicTypeSize) -> Int {
+        let traits = UITraitCollection(preferredContentSizeCategory: UIContentSizeCategory(size))
+        let points = UIFont.preferredFont(forTextStyle: style, compatibleWith: traits).pointSize
+        return lineWidth(points: points)
+    }
+
+    /// `rowLineWidth` for text of `points` (the pure half of the above).
+    static func lineWidth(points: CGFloat) -> Int {
+        guard points > 0 else { return rowLineWidth }
+        return max(8, Int((CGFloat(rowLineWidth) * 12 / points).rounded(.down)))
+    }
 
     private static func isWide(_ scalar: Unicode.Scalar) -> Bool {
         switch scalar.value {
         case 0x1100...0x115F, 0x2E80...0xA4CF, 0xAC00...0xD7A3, 0xF900...0xFAFF,
-             0xFE30...0xFE4F, 0xFF00...0xFF60, 0xFFE0...0xFFE6, 0x1F300...0x1FAFF, 0x20000...0x3FFFD:
+             0x2600...0x27BF, 0xFE30...0xFE4F, 0xFF00...0xFF60, 0xFFE0...0xFFE6,
+             0x1F000...0x1FAFF, 0x20000...0x3FFFD:
             return true
         default:
             return false
         }
     }
 
-    /// A run's sheet renders Markdown when it holds a worker's summary; an
-    /// error alone is shown as written, so `*` or `<...>` in it stay put.
+    /// A run's sheet renders Markdown when it holds a worker's summary or
+    /// metadata (its Details heading and JSON block); an error alone is
+    /// shown as written, so `*` or `<...>` in it stay put.
     static func runTextIsMarkdown(_ run: KanbanRun) -> Bool {
-        !(run.summary ?? "").isEmpty
+        if !(run.summary ?? "").isEmpty { return true }
+        guard let metadata = run.metadata else { return false }
+        return !isEmptyContainer(metadata)
     }
 
     /// Every payload entry of an activity event, whole: short values first
@@ -200,7 +236,8 @@ enum KanbanFullTextFormatter {
     /// A row's preview of Markdown text: heading and quote markers, code
     /// fences, emphasis and backticks taken out and blank lines dropped, so
     /// the few lines a row shows are words, not `## Handoff` and an empty
-    /// line. The sheet renders the Markdown itself.
+    /// line. A code span keeps what's inside it whole (`__init__`), only its
+    /// backticks go. The sheet renders the Markdown itself.
     static func plainPreview(_ markdown: String) -> String {
         markdown
             .components(separatedBy: .newlines)
@@ -213,9 +250,17 @@ enum KanbanFullTextFormatter {
                       marker > line.startIndex, line[marker] == " " {
                     line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
                 }
-                for marker in ["**", "__", "`"] {
-                    line = line.replacingOccurrences(of: marker, with: "")
-                }
+                // Split on backticks: even pieces are prose, odd ones the
+                // inside of a code span, left as written.
+                line = line
+                    .split(separator: "`", omittingEmptySubsequences: false)
+                    .enumerated()
+                    .map { index, piece in
+                        index.isMultiple(of: 2)
+                            ? piece.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "")
+                            : String(piece)
+                    }
+                    .joined()
                 return line.isEmpty ? nil : line
             }
             .joined(separator: "\n")

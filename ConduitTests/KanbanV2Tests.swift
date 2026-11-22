@@ -790,7 +790,7 @@ final class KanbanV2Tests: XCTestCase {
     func testRunFullTextShowsErrorAndSummaryUnderHeadingsThenMetadata() throws {
         let run = try makeRun(fields: ["error": "boom", "summary": "partial", "metadata": ["pr": 3100]])
         let text = KanbanFullTextFormatter.runText(run) ?? ""
-        XCTAssertTrue(text.contains("### Error\n\nboom"), text)
+        XCTAssertTrue(text.contains("### Error\n\n```\nboom\n```"), text)
         XCTAssertTrue(text.contains("### Summary\n\npartial"), text)
         XCTAssertTrue(text.contains("\"pr\" : 3100"), text)
     }
@@ -852,6 +852,40 @@ final class KanbanV2Tests: XCTestCase {
     func testErrorOnlyRunSheetIsPlainText() throws {
         XCTAssertFalse(KanbanFullTextFormatter.runTextIsMarkdown(try makeRun(fields: ["error": "bad *glob* <tag>"])))
         XCTAssertTrue(KanbanFullTextFormatter.runTextIsMarkdown(try makeRun(fields: ["error": "e", "summary": "s"])))
+    }
+
+    func testErrorWithMetadataRendersMarkdownWithTheErrorInACodeBlock() throws {
+        let run = try makeRun(fields: ["error": "bad *glob*", "metadata": ["exit": 137]])
+        XCTAssertTrue(KanbanFullTextFormatter.runTextIsMarkdown(run))
+        let text = KanbanFullTextFormatter.runText(run) ?? ""
+        XCTAssertTrue(text.hasPrefix("### Error\n\n```\nbad *glob*\n```\n\n### Details\n\n```json\n"), text)
+        // An error alone stays as written, for the plain sheet.
+        XCTAssertEqual(KanbanFullTextFormatter.runText(try makeRun(fields: ["error": "bad *glob*"])), "bad *glob*")
+    }
+
+    func testFenceOutrunsBackticksInside() {
+        XCTAssertEqual(KanbanFullTextFormatter.fenced("a ``` b", language: "json"), "````json\na ``` b\n````")
+    }
+
+    func testRowLineWidthShrinksWithLargerText() {
+        XCTAssertEqual(KanbanFullTextFormatter.lineWidth(points: 12), 40)
+        XCTAssertEqual(KanbanFullTextFormatter.lineWidth(points: 13), 36)
+        XCTAssertEqual(KanbanFullTextFormatter.lineWidth(points: 24), 20)
+        // A comment that fits four lines at the default size doesn't at an
+        // accessibility size.
+        let comment = String(repeating: "word ", count: 30)
+        XCTAssertFalse(KanbanFullTextFormatter.textHasMoreToRead(comment, lineWidth: 40))
+        XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead(comment, lineWidth: KanbanFullTextFormatter.lineWidth(points: 31)))
+    }
+
+    func testSymbolEmojiCountWide() {
+        // 25 check marks fill 50 columns: two lines each, eight in all.
+        let line = String(repeating: "✅", count: 25)
+        XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead([line, line, line, line].joined(separator: "\n")))
+    }
+
+    func testRowPreviewKeepsCodeSpansWhole() {
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("Call `__init__` **first**."), "Call __init__ first.")
     }
 
     func testRowPreviewKeepsHashtags() {
