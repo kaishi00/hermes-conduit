@@ -2732,16 +2732,17 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(Array(calls.capabilities.dropFirst(screensReads)), [ObjectIdentifier(outgoing)],
                        "what its groups can do, read through the kept connection")
         XCTAssertTrue(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes said it can")
+        XCTAssertFalse(appState.canEditCombinedRoomSettings(tiles[0]), "no groups.context there: no Group Settings")
         // Within the tick, not read again.
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
         XCTAssertEqual(calls.states["trip"]?.count, 1)
 
         // A drag takes the place of a room of its own dashboard, kept for it.
-        appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id)
+        XCTAssertTrue(appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id))
         XCTAssertEqual(hosted(), ["plans", "trip"])
         // This dashboard's room, or one named for another dashboard, moves nothing.
-        appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id)
-        appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id)
+        XCTAssertFalse(appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id), "refused: no haptic")
+        XCTAssertFalse(appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id))
         XCTAssertEqual(hosted(), ["plans", "trip"])
         XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))

@@ -48,8 +48,8 @@ struct CombinedRoomPortrait: View {
                 .environmentObject(appState)
         })
         .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: tile.id, targeted: $dropTarget) { dragged in
-            Haptics.selection()
-            appState.dropCombinedRoom(dragged, onto: tile.id, dashboardID: tile.dashboardID)
+            // Only a move that took: a refused drop doesn't buzz as one.
+            if appState.dropCombinedRoom(dragged, onto: tile.id, dashboardID: tile.dashboardID) { Haptics.selection() }
         })
         .accessibilityLabel(Text(verbatim: tile.name))
         .accessibilityValue(Text(verbatim: CombinedRoomText.value(tile, appState: appState)))
@@ -63,10 +63,12 @@ struct CombinedRoomPortrait: View {
     @ViewBuilder
     private var menu: some View {
         if isHosted {
-            Button {
-                Task { await appState.openCombinedRoomSettings(tile, inBots: true) }
-            } label: {
-                Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+            if appState.canEditCombinedRoomSettings(tile) {
+                Button {
+                    Task { await appState.openCombinedRoomSettings(tile, inBots: true) }
+                } label: {
+                    Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+                }
             }
             if let onDisband, appState.canDisbandCombinedRoom(tile) {
                 Divider()

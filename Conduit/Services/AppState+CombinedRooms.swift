@@ -514,6 +514,14 @@ extension AppState {
         return runtime.groupCapabilities?.supports("groups.disband") == true
     }
 
+    /// Whether another dashboard's hosted room's Group Settings can be
+    /// edited from its tile: its Hermes serves them, as read on its own
+    /// runtime (this dashboard's tiles ask the same of theirs).
+    func canEditCombinedRoomSettings(_ tile: CombinedRoomTile) -> Bool {
+        guard case .hosted = tile.kind, let runtime = keptRuntime(of: tile) else { return false }
+        return runtime.groupCapabilities?.supports("groups.context") == true
+    }
+
     /// Disbands another dashboard's hosted room on its own runtime, then
     /// reads that dashboard's rooms again. The failure, if any, for Bots
     /// Home's notice.
@@ -539,25 +547,28 @@ extension AppState {
     /// dashboard's room order, kept on this phone as its tiles read it. A
     /// tile of another dashboard, or this one's, moves nothing: each
     /// dashboard's rooms keep their place among the group's.
-    func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) {
+    /// Whether it moved.
+    @discardableResult
+    func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) -> Bool {
         let tiles = otherCombinedDashboardsRoomTiles.filter { $0.dashboardID == dashboardID }
         let hosted = tiles.compactMap { tile -> String? in
             if case .hosted(let room) = tile.kind { return room.roomID }
             return nil
         }
-        guard let movedTile = tiles.first(where: { $0.id == moved }), case .hosted(let room) = movedTile.kind else { return }
+        guard let movedTile = tiles.first(where: { $0.id == moved }), case .hosted(let room) = movedTile.kind else { return false }
         var onto: String?
         if let target {
-            guard let targetTile = tiles.first(where: { $0.id == target }) else { return }
+            guard let targetTile = tiles.first(where: { $0.id == target }) else { return false }
             // A copy follows the rooms: dropped on one, it goes past the last.
             if case .hosted(let targetRoom) = targetTile.kind { onto = targetRoom.roomID }
         }
         let key = BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(dashboardID))
         let order = BotOrder(defaults: defaults, key: key, kind: .rooms)
         let dropped = order.dropping(room.roomID, onto: onto, shown: hosted)
-        guard dropped != order else { return }
+        guard dropped != order else { return false }
         objectWillChange.send()
         dropped.save(to: defaults, key: key)
+        return true
     }
 
     /// The other combined dashboards' hosted rooms on Bots Home, read on
