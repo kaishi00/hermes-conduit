@@ -5781,7 +5781,7 @@ Text (done: Edit's own caption says where the filters stay)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-22, #PRAPP (entry added, with desktop#305 bringing Edit to the desktop)
+**Checked:** 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
 
 ## One Model page for every model setting
 
