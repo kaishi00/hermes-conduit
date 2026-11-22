@@ -42,10 +42,11 @@ extension AppState {
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self, weak client] event in
-            // A fenced client (a kept combined dashboard's) drops its event
+            // A fenced client (one this connection replaced) drops its event
             // here, before a task is made for it: the client delivers on the
-            // main actor, so this is the same check the task makes, made
-            // once per event of every kept dashboard (issue 2624).
+            // main actor, so this is the same check the task makes (issue
+            // 2624). A kept combined dashboard's go to its own lists
+            // instead (`keep(_:for:)`).
             guard let self, self.activeClientEpoch == epoch else { return }
             // Read while the client delivers this event: the turn it names,
             // and the queued message it ran from.

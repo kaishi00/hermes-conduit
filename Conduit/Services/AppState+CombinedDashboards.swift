@@ -12,9 +12,9 @@
 import Foundation
 
 /// A combined dashboard's live connection, kept while another dashboard is
-/// on screen. Its events are fenced (the client epoch moved on), so nothing
-/// of it reaches the dashboard showing; the sync on taking it up brings its
-/// chat current.
+/// on screen. Its events go to its own lists (`handleKeptDashboardEvent`),
+/// never the dashboard showing; the sync on taking it up brings its chat
+/// current.
 struct KeptDashboardRuntime {
     let client: HermesClient
     let bridge: DashboardTicketBridge
@@ -242,7 +242,43 @@ extension AppState {
                 self.noteCombinedDashboardFailed(id, .down)
             }
         }
+        // Its own events reach its own lists, not the screen's (taking it
+        // up points them back at the screen, `attachClientEvents`).
+        kept.client.onEvent = { [weak self, weak client = kept.client] event in
+            guard let self, let client else { return }
+            self.handleKeptDashboardEvent(event, from: id, client: client)
+        }
         clearCombinedDashboardTrouble(id)
+    }
+
+    /// A kept dashboard's event (no-switch slice 5c). Only what is its
+    /// dashboard's alone acts here: a chat made, renamed or deleted on its
+    /// Hermes reads its chats for the Chats list now, not on the minute's
+    /// poll. Its turns' events wait for the switch back, whose sync brings
+    /// its chat current, as before.
+    func handleKeptDashboardEvent(_ event: StreamEvent, from id: UUID, client: HermesClient) {
+        guard keptDashboardRuntimes[id]?.client === client else { return }
+        if case .sessionsChanged = event { noteKeptDashboardChatsChanged(id) }
+    }
+
+    /// Reads the kept dashboard's chats `keptDashboardChatsChangeWait` after
+    /// a change, at most once per wait: a burst (a turn's title, its
+    /// compaction) is one read, and a long turn's steady changes still read
+    /// every wait rather than never until it pauses.
+    func noteKeptDashboardChatsChanged(_ id: UUID) {
+        guard keptDashboardChatsChangeReads[id] == nil else { return }
+        let wait = keptDashboardChatsChangeWait
+        keptDashboardChatsChangeReads[id] = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: wait)
+            guard let self, !Task.isCancelled else { return }
+            self.keptDashboardChatsChangeReads[id] = nil
+            // Noted only when it reads: off screen, or taken up or let go
+            // during the wait, the read stops before asking.
+            if self.isSceneActive, self.keptDashboardRuntimes[id] != nil {
+                self.noteConnectionStep("Kept dashboard's chats read on its change")
+            }
+            await self.readOtherCombinedDashboardsChats(force: true, only: id)
+        }
     }
 
     /// The dashboard's kept connection, taken out of the kept set, when it
@@ -251,6 +287,8 @@ extension AppState {
     /// as before.
     func takeKeptDashboardRuntime(_ id: UUID, profile: String) -> KeptDashboardRuntime? {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return nil }
+        // Taken up, its sync reads its chats.
+        keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
               // On another profile, its socket is handed to a client on this
@@ -326,6 +364,7 @@ extension AppState {
     func dropKeptDashboardRuntime(_ id: UUID, keepingLists: Bool = false) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
         release(kept)
+        keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }
