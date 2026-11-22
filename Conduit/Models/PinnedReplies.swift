@@ -6,7 +6,7 @@
 //  Telegram or WhatsApp: a long answer worked through point by point stays
 //  one tap away however far the chat has moved on. A pin can hold the
 //  whole reply or just a passage of it, and can carry a label (#1147).
-//  Pins are kept on this device, per profile. Pure list shaping, so
+//  Pins are kept on this device, per dashboard and profile. Pure list shaping, so
 //  finding a pin's row in a transcript and the bar's order stay testable
 //  without a view.
 //

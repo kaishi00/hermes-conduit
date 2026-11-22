@@ -736,7 +736,7 @@ extension AppState {
                 removeSavedCopies(ofDeleted: deletedSessionIDs, dashboardID: dashboardID, profile: profile)
             }
             // Its pinned replies go too, under the profile it was deleted in.
-            dropPinnedReplies(forDeleted: session, profile: profile)
+            dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             // A call in it goes on in a new chat (issue 1797).
             voiceBackgroundJobSupervisor.noteChatDeleted(deletedSessionIDs)
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }

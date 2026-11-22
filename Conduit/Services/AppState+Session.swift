@@ -54,7 +54,7 @@ extension AppState {
     }
 
     struct OpenChatPinnedRepliesKey: Equatable {
-        let profile: String
+        let owner: PinnedReplyOwner
         let active: String
         let stored: [PinnedReply]
         let transcriptRevision: UInt64

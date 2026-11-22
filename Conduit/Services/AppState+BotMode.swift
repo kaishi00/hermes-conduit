@@ -1894,12 +1894,11 @@ extension AppState {
         } catch {
             return AppLocalization.string("Could not delete \(bot.displayLabel): \(UserFacingError.message(for: error))")
         }
-        // Its pinned replies keep reply text: they go while the dashboard
-        // is still the open one, even if its bridge was rebuilt meanwhile.
-        if activeDashboardID == dashboardID {
-            forgetPinnedReplies(profile: bot.name)
-            forgetBotChatPinnedReplies(of: bot)
-        }
+        // Its pinned replies keep reply text: they go from the dashboard it
+        // was deleted on, even if the screen moved to another one meanwhile.
+        let pinsBucket = Self.dashboardPreferenceBucket(dashboardID)
+        forgetPinnedReplies(profile: bot.name, dashboard: pinsBucket)
+        forgetBotChatPinnedReplies(of: bot, dashboard: pinsBucket)
         // Its chats' raw rows, kept for the history page, go on any
         // dashboard, and so do its settings pages' kept answers.
         if let dashboardID {
@@ -1942,7 +1941,7 @@ extension AppState {
     /// profile (a pin made while another profile was active stays under
     /// that one): the sessions this process saw opened as the bot's, and
     /// its canonical chat.
-    func forgetBotChatPinnedReplies(of bot: BotProfile) {
+    func forgetBotChatPinnedReplies(of bot: BotProfile, dashboard: String? = nil) {
         var ids = Set(botChatSessionProfiles.compactMap { id, owner in
             owner.caseInsensitiveCompare(bot.name) == .orderedSame ? id : nil
         })
@@ -1950,11 +1949,12 @@ extension AppState {
             if let id = ChatScrollIdentityNormalization.sessionID(id) { ids.insert(id) }
         }
         guard !ids.isEmpty else { return }
+        let bucket = dashboard ?? Self.dashboardPreferenceBucket(activeDashboardID)
         var changed = false
-        for (profile, stored) in pinnedRepliesByProfile {
+        for (profile, stored) in pinnedRepliesByDashboard[bucket] ?? [:] {
             let remaining = stored.filter { !ids.contains($0.sessionID) }
             guard remaining.count != stored.count else { continue }
-            pinnedRepliesByProfile[profile] = remaining.isEmpty ? nil : remaining
+            setPinnedReplies(remaining, of: PinnedReplyOwner(dashboard: bucket, profile: profile))
             changed = true
         }
         guard changed else { return }
