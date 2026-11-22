@@ -35,8 +35,7 @@ extension AppState {
               // on two Hermes.
               let index = backgroundChats.firstIndex(where: {
                   $0.dashboardID == activeDashboardID && $0.profile == activeProfile && $0.answers(to: sessionID)
-              }) ?? backgroundChats.firstIndex(where: { $0.answers(to: sessionID) })
-                ?? followedChatIndex(reboundTo: sessionID) else { return nil }
+              }) ?? followedChatIndex(reboundTo: sessionID) else { return nil }
         let chat = backgroundChats[index]
         guard chat.dashboardID == activeDashboardID, chat.profile == activeProfile,
               !chat.sessionIDs.isDisjoint(with: kept) else { return nil }
