@@ -243,15 +243,30 @@ extension AppState {
         let revision = store.revision
         Task { @MainActor [weak self] in
             guard let self else { return }
+            // A newer launch took over: this one goes quietly, neither
+            // switching nor ending a call, and its screenshot is settled
+            // as any superseded one is (kept unless a newer one waits).
+            // The screenshot was taken on the dashboard in use, so it never
+            // carries the other dashboard's profile.
+            func superseded() -> Bool {
+                guard store.revision != revision else { return false }
+                if let request = intent.screenQuestion {
+                    self.settleSupersededScreenQuestion(
+                        request, profile: nil,
+                        newerScreenQuestionPending: store.peekClaim()?.intent.screenQuestion != nil
+                    )
+                }
+                return true
+            }
+            guard !superseded() else { return }
             var switched = false
             if self.savedDashboardRegistry.dashboard(with: dashboardID) != nil {
                 switched = await self.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
             }
-            // A newer launch took over meanwhile: this one goes quietly.
-            guard store.revision == revision else { return }
+            guard !superseded() else { return }
             guard switched, self.activeDashboardID == dashboardID else {
                 if let request = intent.screenQuestion {
-                    self.parkScreenQuestion(request, profile: intent.profile)
+                    self.parkScreenQuestion(request, profile: nil)
                 }
                 self.errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
                 return

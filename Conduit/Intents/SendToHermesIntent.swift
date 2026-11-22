@@ -103,6 +103,11 @@ struct ShortcutSendError: LocalizedError, Equatable {
         ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
     }
 
+    /// The Profile set is another combined dashboard's.
+    static var profileOnAnotherDashboard: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("That profile is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
+    }
+
     /// The chat's runtime was gone and reopening it failed too: Hermes's
     /// own error ("session not found") would mean nothing to the listener.
     static var reopenFailed: ShortcutSendError {
@@ -533,7 +538,9 @@ struct SendToHermesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let picked = chat.map { ShortcutPickedChat(dashboardID: $0.workspace.dashboardID, reference: $0.reference, title: $0.title) }
-        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: try await Self.profileOnScreen(profile?.id),
+        // A picked chat wins over Profile, so Profile isn't checked then.
+        let onScreenProfile = picked == nil ? try await Self.profileOnScreen(profile?.id) : nil
+        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: onScreenProfile,
                                           waitsForAnswer: waitForAnswer, chat: picked)
         let deadline = Date().addingTimeInterval(Self.runTime)
         let text = try await Self.run(request, deadline: deadline).text
@@ -549,7 +556,7 @@ struct SendToHermesIntent: AppIntent {
         let parts = ConduitProfileEntity.parts(of: id)
         guard let dashboardID = parts.dashboardID else { return id }
         guard AppStateRuntimeRegistry.shared.appState.activeDashboardID == dashboardID else {
-            throw ShortcutSendError.chatOnAnotherDashboard
+            throw ShortcutSendError.profileOnAnotherDashboard
         }
         return parts.profile
     }

@@ -16219,6 +16219,88 @@
         }
       }
     },
+    "That profile is on another Hermes dashboard. Switch to it in Conduit first, then run this again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Profil ist auf einem anderen Hermes-Dashboard. Wechsle zuerst in Conduit dorthin und führe dies dann erneut aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ese perfil está en otro panel de Hermes. Cambia a él en Conduit primero y vuelve a ejecutar esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce profil se trouve sur un autre tableau de bord Hermes. Passez-y d'abord dans Conduit, puis relancez ceci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Profil itu ada di dasbor Hermes lain. Beralih ke dasbor itu di Conduit dulu, lalu jalankan ini lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quel profilo è su un'altra dashboard di Hermes. Passa a quella dashboard in Conduit, poi esegui di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのプロフィールは別のHermesダッシュボードにあります。先にConduitでそのダッシュボードに切り替えてから、もう一度実行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 프로필은 다른 Hermes 대시보드에 있습니다. 먼저 Conduit에서 그 대시보드로 전환한 다음 다시 실행하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten profil jest na innym pulpicie Hermesa. Najpierw przełącz się na niego w Conduit, a potem uruchom to ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse perfil está em outro painel do Hermes. Mude para ele no Conduit primeiro e execute de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот профиль находится на другой панели Hermes. Сначала переключитесь на неё в Conduit, затем запустите снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu profil başka bir Hermes panosunda. Önce Conduit'te o panoya geçin, sonra bunu yeniden çalıştırın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该配置文件位于另一个 Hermes 仪表板上。请先在 Conduit 中切换到它，然后再运行一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該設定檔位於另一個 Hermes 儀表板上。請先在 Conduit 中切換到它，然後再執行一次。"
+          }
+        }
+      }
+    },
     "The Shortcuts app couldn't be opened." : {
       "localizations" : {
         "de" : {
