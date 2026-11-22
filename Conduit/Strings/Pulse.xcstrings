@@ -24609,84 +24609,84 @@
         }
       }
     },
-    "Switches to that dashboard and shows its Pulse" : {
+    "Shows that dashboard's Pulse, without switching" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wechselt zu diesem Dashboard und zeigt sein Pulse"
+            "value" : "Zeigt das Pulse dieses Dashboards, ohne zu wechseln"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cambia a ese panel y muestra su Pulse"
+            "value" : "Muestra el Pulse de ese panel sin cambiar de panel"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Passe à ce tableau de bord et affiche son Pulse"
+            "value" : "Affiche le Pulse de ce tableau de bord, sans changer"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Beralih ke dasbor itu dan menampilkan Pulse-nya"
+            "value" : "Menampilkan Pulse dasbor itu, tanpa beralih"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Passa a quella dashboard e mostra il suo Pulse"
+            "value" : "Mostra il Pulse di quella dashboard, senza cambiare"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "そのダッシュボードに切り替えて、その Pulse を表示します"
+            "value" : "切り替えずに、そのダッシュボードの Pulse を表示します"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "해당 대시보드로 전환하고 그 Pulse를 표시합니다"
+            "value" : "전환하지 않고 해당 대시보드의 Pulse를 표시합니다"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Przełącza na ten panel i pokazuje jego Pulse"
+            "value" : "Pokazuje Pulse tego panelu bez przełączania"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Muda para esse painel e mostra o Pulse dele"
+            "value" : "Mostra o Pulse desse painel, sem mudar de painel"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Переключается на эту панель и показывает её Pulse"
+            "value" : "Показывает Pulse этой панели без переключения"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O panoya geçer ve Pulse'unu gösterir"
+            "value" : "Geçiş yapmadan o panonun Pulse'unu gösterir"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切换到该仪表板并显示其 Pulse"
+            "value" : "无需切换即可显示该仪表板的 Pulse"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "切換到該儀表板並顯示其 Pulse"
+            "value" : "無需切換即可顯示該儀表板的 Pulse"
           }
         }
       }

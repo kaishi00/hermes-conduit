@@ -31,19 +31,36 @@ extension AppState {
     /// fails instead of reaching another host. Pulse's state and what it
     /// remembers are kept as they're answered, once per dashboard (Pulse is
     /// one per host), so Settings > Pulse and What Pulse remembers open on
-    /// them next time (#1533).
+    /// them next time (#1533). Made for another combined dashboard (its Pulse shown in place), its
+    /// requests run on that dashboard's runtime, through its connection.
     var pulseClient: PulseClient {
         let dashboard = activeDashboardID
         return PulseClient(dashboardID: dashboard) { [weak self] path, method, body in
-            guard let self, self.activeDashboardID == dashboard,
-                  let owner = self.currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
-            // A step answers with the state it made.
-            return try await self.keepingAnswer(
-                profile: KeptRoute.everyProfile, owner: owner,
-                keptAs: { PulseClient.keptRoute(path: path, method: method, answer: $0) }, writes: method != "GET"
-            ) {
-                try await owner.bridge.requestJSON(path: path, method: method, body: body)
+            guard let self else { throw DashboardTicketBridgeError.notReady }
+            if let dashboard, dashboard != self.activeDashboardID, let runtime = self.runtime(for: dashboard) {
+                return try await self.actAcrossAwaits(onRuntime: runtime) {
+                    try await self.pulseRequest(dashboard: dashboard, path: path, method: method, body: body)
+                }
             }
+            return try await self.pulseRequest(dashboard: dashboard, path: path, method: method, body: body)
+        }
+    }
+
+    /// The dashboard Pulse page's client: the one it shows.
+    var shownPulseClient: PulseClient { readingPulseRuntime { pulseClient } }
+
+    /// One Pulse request on the dashboard acted on, while it's still the one
+    /// the client was made for.
+    private func pulseRequest(dashboard: UUID?, path: String, method: String, body: [String: Any]?)
+        async throws -> [String: Any] {
+        guard activeDashboardID == dashboard,
+              let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        // A step answers with the state it made.
+        return try await keepingAnswer(
+            profile: KeptRoute.everyProfile, owner: owner,
+            keptAs: { PulseClient.keptRoute(path: path, method: method, answer: $0) }, writes: method != "GET"
+        ) {
+            try await owner.bridge.requestJSON(path: path, method: method, body: body)
         }
     }
 

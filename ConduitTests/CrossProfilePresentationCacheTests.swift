@@ -2615,7 +2615,7 @@ extension CrossProfilePresentationCacheTests {
     /// other's saying how many of its cards are new; its tap shows that
     /// dashboard's Pulse, switching through the kept connection (all-live
     /// stage 4d).
-    func testPulseHasAChipPerCombinedDashboardAndOneSwitchesThroughIt() async throws {
+    func testPulseHasAChipPerCombinedDashboardAndOneShowsItsFeedInPlace() async throws {
         final class Counts { var mints = 0; var reads: [String] = [] }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
@@ -2639,7 +2639,7 @@ extension CrossProfilePresentationCacheTests {
         let chips = appState.pulseDashboardChips
         XCTAssertEqual(chips.map(\.dashboardID), [mac.id, vps.id], "Saved Dashboards order")
         XCTAssertEqual(chips.map(\.unseen), [3, 1])
-        XCTAssertEqual(chips.map(\.isOnScreen), [false, true])
+        XCTAssertEqual(chips.map(\.isShown), [false, true])
         XCTAssertEqual(chips.first?.badge.letter, "M")
         // Read again only past its age; a failed read keeps the count.
         await appState.readOtherCombinedDashboardsPulse()
@@ -2648,20 +2648,37 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsPulse(force: true)
         XCTAssertEqual(appState.pulseDashboardChips.first?.unseen, 3)
 
-        // During a call the switch is refused, and nothing opens.
+        // A chip shows its Pulse in place: no switch, so a call goes on.
         appState.isNativeHermesCallActive = true
+        kept.runtime.notifierPlugin.state = .reported(version: NotifierPluginStatus.recommendedVersion,
+                                                      capabilities: [PulseClient.explainsCapability])
         appState.openCombinedPulse(mac.id)
-        XCTAssertEqual(appState.activeDashboardID, vps.id, "a call keeps the dashboard")
-        XCTAssertNil(appState.pulseOpenRequest)
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.pulseDashboardID, mac.id)
+        XCTAssertTrue(appState.pulseRuntime === kept.runtime)
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.isShown), [true, false])
+        XCTAssertEqual(appState.shownPulseClient.dashboardID, mac.id, "its requests go to its own dashboard")
+        XCTAssertTrue(appState.pulseExplainsLearning, "what its plugin serves")
+        appState.readingPulseRuntime { appState.pulseUnseen = 0 }
+        XCTAssertEqual(kept.runtime.pulseUnseen, 0)
+        XCTAssertEqual(appState.pulseUnseen, 1, "the one on screen's count stays")
+        XCTAssertEqual(counts.mints, 0, "no sign-in")
+        // The one on screen's chip goes back to it.
+        appState.openCombinedPulse(vps.id)
+        XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
 
+        // A step that opens a chat there switches first, through the kept
+        // connection, until far chats open in place.
         appState.openCombinedPulse(mac.id)
-        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
+        let stepGoes = await appState.switchForFarPulseStep()
+        XCTAssertTrue(stepGoes)
+        XCTAssertEqual(appState.activeDashboardID, mac.id)
         XCTAssertTrue(appState.client === outgoing, "switched through the kept connection")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
-        await waitUntil { appState.pulseOpenRequest != nil }
-        XCTAssertNotNil(appState.pulseOpenRequest, "its Pulse page shows")
-        XCTAssertTrue(appState.pulseDashboardChips.allSatisfy { $0.dashboardID != mac.id || $0.isOnScreen },
+        XCTAssertNil(appState.pulseShownDashboardID)
+        XCTAssertTrue(appState.pulseDashboardChips.allSatisfy { $0.dashboardID != mac.id || $0.isShown },
                       "on screen, its chip is the page's own")
     }
 
