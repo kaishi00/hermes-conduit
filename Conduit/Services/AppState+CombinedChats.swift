@@ -51,7 +51,11 @@ extension AppState {
     /// kept connection. Quiet on failure: a profile that can't be read
     /// keeps what it showed, and a dashboard let go or opened says nothing
     /// more. `only`: that dashboard's alone (its own `sessions.changed`).
-    func readOtherCombinedDashboardsChats(force: Bool = false, only: UUID? = nil, now: Date = Date()) async {
+    /// `forCar`: CarPlay's list of that dashboard's agent's chats asked,
+    /// so it reads while the car's voice screen is up with the phone's
+    /// scene in the background, as the car's own reads do.
+    func readOtherCombinedDashboardsChats(force: Bool = false, only: UUID? = nil, forCar: Bool = false, now: Date = Date()) async {
+        var mayRead: Bool { isSceneActive || (forCar && isCarPlayVoiceSurfaceActive) }
         let kept = keptDashboardRuntimes.filter {
             isInCombinedGroup($0.key) && $0.key != activeDashboardID && (only == nil || $0.key == only)
         }
@@ -64,7 +68,7 @@ extension AppState {
         var wroteAny = false
         defer { if wroteAny { publishCombinedWidgetWorkspaces() } }
         for (id, runtime) in kept.sorted(by: { $0.value.keptAt < $1.value.keptAt }) {
-            guard isSceneActive else { return }
+            guard mayRead else { return }
             let bridge = ObjectIdentifier(runtime.bridge)
             // No profile list to be had (a reconnect lost it and the read
             // failed): the profiles it listed last, so none of them drops.
@@ -79,7 +83,7 @@ extension AppState {
             var answered = false
             var stale = false
             for profile in profiles {
-                guard isSceneActive else { return }
+                guard mayRead else { return }
                 let path = profileSessionsPath(profile, limit: Self.combinedDashboardChatsLimit)
                 let response = try? await readKeptDashboardJSON(runtime.bridge, path: path)
                 // Let go, opened, or out of the group while the read was
@@ -120,7 +124,7 @@ extension AppState {
                 // failed keeps the evidence it gave last (#2800 review).
                 var cronAnswered = true
                 for profile in profiles {
-                    guard isSceneActive else { return }
+                    guard mayRead else { return }
                     let path = cronSessionsPath(profile, limit: Self.combinedDashboardCronLimit)
                     guard let batch = (try? await readKeptDashboardJSON(runtime.bridge, path: path))?["sessions"] as? [Any] else {
                         cronAnswered = false

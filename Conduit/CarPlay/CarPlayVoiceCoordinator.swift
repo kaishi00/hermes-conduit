@@ -1279,7 +1279,9 @@ final class CarPlayVoiceCoordinator {
         let far = farAgent?.dashboardID
         Task { @MainActor [weak self, loader = chatCatalogLoader] in
             if let far {
-                await appState.readOtherCombinedDashboardsChats(force: true, only: far)
+                // Read with the phone's scene in the background, as the car
+                // runs.
+                await appState.readOtherCombinedDashboardsChats(force: true, only: far, forCar: true)
             } else {
                 await loader(appState)
             }

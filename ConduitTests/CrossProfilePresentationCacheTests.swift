@@ -2167,6 +2167,18 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.combinedChatTarget(
             try XCTUnwrap(appState.otherCombinedDashboardsChats(excluding: []).first { $0.id == "atlas-1" }), in: mac.id
         ).profile, "atlas", "a row opens in its own profile")
+        // With the phone's scene in the background no read runs, except
+        // the one CarPlay's list of a far agent's chats asks for while the
+        // car's voice screen is up.
+        appState.isSceneActive = false
+        let readsBefore = counts.reads.count
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id)
+        XCTAssertEqual(counts.reads.count, readsBefore)
+        appState.isCarPlayVoiceSurfaceActive = true
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id, forCar: true)
+        XCTAssertGreaterThan(counts.reads.count, readsBefore, "the car's read runs")
+        appState.isCarPlayVoiceSurfaceActive = false
+        appState.isSceneActive = true
         // Chats' strip: every dashboard's profiles in one row, each
         // dashboard's in Saved Dashboards order until arranged on Bots
         // Home, then in that order.
