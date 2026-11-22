@@ -120,8 +120,17 @@ extension AppState {
         return resolver
     }
 
-    /// The dashboard a connection currently belongs to (the selected target).
-    var activeDashboardID: UUID? { savedDashboardRegistry.activeDashboardID }
+    /// The dashboard the app acts on: the one in scope while another
+    /// dashboard's work runs on its own runtime (`act(onRuntime:)`), so a
+    /// fence or key read there is that dashboard's; else the one on screen.
+    var activeDashboardID: UUID? {
+        if runtimeInScope != nil { return dashboardIDInScope }
+        if RuntimeScope.runtime != nil { return RuntimeScope.dashboardID }
+        return savedDashboardRegistry.activeDashboardID
+    }
+
+    /// The dashboard on screen (the selected target), whatever runs in scope.
+    var dashboardIDOnScreen: UUID? { savedDashboardRegistry.activeDashboardID }
 
     // MARK: - Connection management
 
