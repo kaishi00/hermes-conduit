@@ -121,6 +121,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
         // Share with this host's other profiles changed: only what's new goes.
         XCTAssertFalse(ContextUploadPolicy.healthPass(for: .sharingChanged, conditions: normal).resendRecent)
+        XCTAssertTrue(ContextUploadPolicy.healthPass(for: .sharingChanged, conditions: Self.lowData).lowData)
     }
 
     func testHealthResendsRecentDaysWholeEverySixHoursExceptOnLowData() {

@@ -144,9 +144,10 @@ struct HealthBatch {
 
     /// Each window's place on the host (metric, grain and range) and a hash
     /// of what it carries, in `windows`' order. What the batch says around
-    /// the windows (device, time zone, what's shared) is in every hash, so
-    /// a change there sends every window again. `batch_id` and
-    /// `computed_at` change every time and say nothing new.
+    /// the windows (device, time zone, categories and detailed ones) is in
+    /// every hash, so a change there sends every window again. The other
+    /// profiles choice isn't: it changes nothing the windows say.
+    /// `batch_id` and `computed_at` change every time and say nothing new.
     func windowPrints() -> [(key: String, hash: String)] {
         let format = HealthDateFormat(timeZone: timeZone)
         let scope: [String: Any] = [

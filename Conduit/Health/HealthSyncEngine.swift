@@ -200,14 +200,23 @@ final class HealthSyncEngine: ObservableObject {
     /// Runs a pass, or joins the one already running. A pass started with
     /// other choices, or that does less than these options ask (Sync now
     /// during a routine pass), is followed by one with these, so a change
-    /// isn't lost.
-    func sync(preferences: HealthSyncPreferences, deadline: Date, options: HealthPassOptions = HealthPassOptions(),
-              request: @escaping Request) async -> Outcome {
+    /// isn't lost. `latest` gives the choices as they are now: after waiting
+    /// on another pass, they're read again, so of two changes made while a
+    /// pass ran the older can't go last.
+    func sync(preferences: HealthSyncPreferences, latest: (() -> HealthSyncPreferences)? = nil, deadline: Date,
+              options: HealthPassOptions = HealthPassOptions(), request: @escaping Request) async -> Outcome {
         let turnOffs = self.turnOffs
+        var preferences = preferences
         while let current = running {
             let joined = runningPreferences
             let joinedOptions = runningOptions
             let outcome = await current.value
+            if let latest {
+                let now = latest()
+                // Turned off, or moved to another dashboard, meanwhile.
+                guard now.isOn, now.destination == preferences.destination else { return .off }
+                preferences = now
+            }
             if joined == preferences, joinedOptions.covers(options) { return outcome }
             // Turned off meanwhile: these choices no longer hold.
             guard self.turnOffs == turnOffs else { return .off }

@@ -97,7 +97,8 @@ extension AppState {
         guard current.isOn, current.destination == destination else { return .off }
         let profile = destination.profile
         engine.changesWaiting = false
-        let outcome = await engine.sync(preferences: current, deadline: deadline, options: options) { [weak self] path, method, body in
+        let outcome = await engine.sync(preferences: current, latest: { [weak self] in self?.healthSyncPreferences ?? HealthSyncPreferences() },
+                                        deadline: deadline, options: options) { [weak self] path, method, body in
             // A dashboard swapped mid-pass belongs to someone else's data.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == destination.dashboardID else {
                 throw DashboardTicketBridgeError.notReady
