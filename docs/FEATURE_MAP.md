@@ -5759,9 +5759,13 @@ providers page's, which goes back to it) · every setting's Model page (done:
 its own Edit, see One Model page for every model setting) · Quick picks (done:
 a hidden model stays kept but isn't shown, see Pinned and recent models) ·
 search (done: the sheet leaves hidden ones out, a Model page finds them marked
-Hidden, see Searching for a model) · a typed model id (done: the sheet never
-offers it on a hidden provider or as a hidden model) · Watch, CarPlay, rooms
-and the notifier (not needed: no model lists; the filters never reach Hermes) ·
+Hidden, Edit's own search finds every one, see Searching for a model) · a typed model id (done: the sheet never
+offers it on a hidden provider or as a hidden model) · a provider's page in
+Models & providers (gap: it lists every model the provider serves, hidden ones
+included, and a tap makes one the profile's default) · Local Live's and
+ElevenLabs' model fields (not needed: typed names, not Hermes' lists) · Watch,
+CarPlay, rooms and the notifier (not needed: no model lists; the filters never
+reach Hermes) ·
 Text (done: Edit's own caption says where the filters stay)
 
 **Desktop app:** has it: Edit in the model panel and its All providers page, and on every Model page, each provider shown or hidden with Show all and Hide all, the panel's Quick picks, matches and providers leaving hidden ones out and a Model page marking them Hidden in its search and top card (`desktop/src/renderer/src/components/ModelVisibilityEditor.tsx`, `desktop/src/renderer/src/state/modelVisibility.ts`, desktop#305).
@@ -5779,7 +5783,7 @@ Text (done: Edit's own caption says where the filters stay)
 - With every provider hidden, the list says "All providers are hidden. Tap Edit to restore one." (the desktop says Click).
 
 **Open gaps**
-- None known.
+- A provider's page in Models & providers lists hidden models and makes one the profile's default on a tap (found 2026-11-22, #3022); whether it follows Edit is Eric's call.
 
 **Checked:** 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
 
