@@ -22,6 +22,9 @@ enum HealthSyncReason: String {
     case backgroundRefresh
     case manual
     case turnedOn
+    /// Something the host keeps about the sharing changed (Share with this
+    /// host's other profiles): a pass goes now, sending only what's new.
+    case sharingChanged
     /// A live voice call that may read health data is starting.
     case voiceCall
 }
@@ -88,10 +91,13 @@ extension AppState {
         // sync can bring in a good part of the history.
         let deadline = inBackground ? started.addingTimeInterval(25) : Date().addingTimeInterval(120)
         // Sharing may have been turned off while this waited.
-        guard healthSyncPreferences.isOn, healthSyncPreferences.destination == destination else { return .off }
+        // What's shared is read again here: a choice changed while this
+        // waited goes as it is now, never as it was.
+        let current = healthSyncPreferences
+        guard current.isOn, current.destination == destination else { return .off }
         let profile = destination.profile
         engine.changesWaiting = false
-        let outcome = await engine.sync(preferences: preferences, deadline: deadline, options: options) { [weak self] path, method, body in
+        let outcome = await engine.sync(preferences: current, deadline: deadline, options: options) { [weak self] path, method, body in
             // A dashboard swapped mid-pass belongs to someone else's data.
             guard let self, bridge === self.dashboardTicketBridge, self.activeDashboardID == destination.dashboardID else {
                 throw DashboardTicketBridgeError.notReady
@@ -235,7 +241,7 @@ extension AppState {
         guard preferences.isOn, preferences.otherProfiles != allowed else { return }
         preferences.otherProfiles = allowed
         saveHealthSyncPreferences(preferences)
-        Task { await runHealthSync(reason: .manual) }
+        Task { await runHealthSync(reason: .sharingChanged) }
     }
 
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {

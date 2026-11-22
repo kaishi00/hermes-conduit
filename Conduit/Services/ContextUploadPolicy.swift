@@ -126,7 +126,7 @@ enum ContextUploadPolicy {
         case .voiceCall:
             // A pass in the last three minutes has what the call reads.
             return healthForegroundSpacing
-        case .connected, .manual, .turnedOn:
+        case .connected, .manual, .turnedOn, .sharingChanged:
             return 0
         }
     }

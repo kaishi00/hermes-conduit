@@ -116,9 +116,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(ContextUploadPolicy.healthSpacing(for: .voiceCall, conditions: normal), 180,
                        "A call reuses a pass from the last three minutes")
         XCTAssertEqual(ContextUploadPolicy.healthSpacing(for: .voiceCall, conditions: Self.lowPower), 180)
-        for reason in [HealthSyncReason.connected, .manual, .turnedOn] {
+        for reason in [HealthSyncReason.connected, .manual, .turnedOn, .sharingChanged] {
             XCTAssertEqual(ContextUploadPolicy.healthSpacing(for: reason, conditions: Self.lowPower), 0, "\(reason)")
         }
+        // Share with this host's other profiles changed: only what's new goes.
+        XCTAssertFalse(ContextUploadPolicy.healthPass(for: .sharingChanged, conditions: normal).resendRecent)
     }
 
     func testHealthResendsRecentDaysWholeEverySixHoursExceptOnLowData() {
