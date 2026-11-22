@@ -726,13 +726,17 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.runtime(for: UUID()), "none for a dashboard not kept")
         XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
         // Acting on it reads and writes its own, and leaves the screen's.
+        var syncTask: Task<Int, Never>?
         appState.act(onRuntime: kept) {
             XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
             XCTAssertFalse(appState.actingOnRuntimeOnScreen)
             XCTAssertEqual(appState.activeDashboardID, mac.id, "the dashboard in scope")
             XCTAssertEqual(appState.dashboardIDOnScreen, vps.id)
             appState.pulseUnseen = 5
+            syncTask = Task { @MainActor in appState.pulseUnseen }
         }
+        let fromSyncScope = await syncTask?.value
+        XCTAssertEqual(fromSyncScope, 5, "a Task made in a synchronous scope carries it on")
         XCTAssertEqual(kept.pulseUnseen, 5)
         XCTAssertEqual(appState.pulseUnseen, 0)
         XCTAssertTrue(appState.actingOnRuntimeOnScreen)
