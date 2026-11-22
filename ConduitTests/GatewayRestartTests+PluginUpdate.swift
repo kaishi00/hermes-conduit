@@ -758,6 +758,39 @@ extension GatewayRestartTests {
         XCTAssertEqual(NotifierPluginStatus.runtime(from: kept)?.roomChatsKept, true)
     }
 
+    /// Plugin 0.193.6: a password sign-in with no signing secret ends at
+    /// every dashboard restart. Kept per dashboard across launches, so the
+    /// sign-in screen, which asks once the session is gone, can say why.
+    func testASignInThatEndsOnRestartIsRememberedAndExplained() throws {
+        let base: [String: Any] = ["ok": true, "version": "0.193.6", "loaded_version": "0.193.6", "capabilities": []]
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: base)?.signInEndsOnRestart, false)
+        var ends = base
+        ends["sign_in_ends_on_restart"] = true
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: ends)?.signInEndsOnRestart, true)
+
+        let suite = "sign-in-ends-on-restart-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = UUID()
+        let other = UUID()
+        typealias Remembered = NotifierPluginStatus.Remembered
+        Remembered.remember(signInEndsOnRestart: true, for: dashboard, in: defaults)
+        XCTAssertTrue(Remembered.signInEndsOnRestart(for: dashboard, in: defaults))
+        XCTAssertFalse(Remembered.signInEndsOnRestart(for: other, in: defaults))
+        XCTAssertFalse(Remembered.signInEndsOnRestart(for: nil, in: defaults))
+
+        // The expired sign-in says why on that dashboard; other failures stay.
+        XCTAssertEqual(AppState.signInRequiredPresentation(.signInExpired, endsOnRestart: true), .signInEndsOnRestart)
+        XCTAssertEqual(AppState.signInRequiredPresentation(.signInExpired, endsOnRestart: false), .signInExpired)
+        let rateLimited = ConnectionFailurePresentation.presenting(.rateLimited)
+        XCTAssertEqual(AppState.signInRequiredPresentation(rateLimited, endsOnRestart: true), rateLimited)
+        XCTAssertTrue(ConnectionFailurePresentation.signInEndsOnRestart.asksToSignInAgain)
+
+        // A secret set since: the next report forgets it.
+        Remembered.remember(signInEndsOnRestart: false, for: dashboard, in: defaults)
+        XCTAssertFalse(Remembered.signInEndsOnRestart(for: dashboard, in: defaults))
+    }
+
     func testARuntimeListsWhatThePluginCantDoOnThisHermes() {
         // Notifier issue 834: only the host's log said it before.
         let base: [String: Any] = ["ok": true, "version": "0.177.16", "loaded_version": "0.177.16", "capabilities": []]

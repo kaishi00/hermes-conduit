@@ -533,9 +533,7 @@ final class NativeOAuthSession {
                 guard !isInvalidated else { throw CancellationError() }
                 return response
             } catch DashboardTicketBridgeError.signInRequired {
-                if !isInvalidated, !tokens.isSessionToken {
-                    KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
-                }
+                if !isInvalidated { forgetStoredGrant(tokens) }
                 throw DashboardTicketBridgeError.signInRequired
             } catch let error as URLError where error.code == .cancelled && isInvalidated {
                 throw CancellationError()
@@ -587,7 +585,35 @@ final class NativeOAuthSession {
     /// `requestJSON`'s replay does.
     /// A session token is kept, as `refresh` keeps it (issue 2481).
     func discardRejectedGrant() {
-        guard !isInvalidated, !tokens.isSessionToken else { return }
+        guard !isInvalidated else { return }
+        forgetStoredGrant(tokens)
+    }
+
+    /// Takes the Keychain's grant when another session of this dashboard
+    /// rotated or replaced it since this one read it: a combined
+    /// dashboard's runtime, or a bridge built before a refresh. A rotated
+    /// refresh token is spent, so renewing from this session's own copy
+    /// would be refused and sign the dashboard out. A copy a failed save
+    /// left behind (`unsavedOver`) is the retired grant, never taken.
+    /// True when it took one.
+    private func adoptNewerStoredGrant() -> Bool {
+        guard let stored = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID),
+              stored != tokens, stored != unsavedOver else { return false }
+        tokens = stored
+        unsavedOver = nil
+        return true
+    }
+
+    /// Deletes the Keychain grant after the server refused `rejected`,
+    /// unless the Keychain has moved on to another grant (another session
+    /// renewed it, or a new sign-in replaced it): that one is still good.
+    /// A session token is kept through a refusal (issue 2481).
+    private func forgetStoredGrant(_ rejected: NativeOAuthTokenSet) {
+        guard !rejected.isSessionToken else { return }
+        if let stored = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID),
+           stored != rejected, stored != unsavedOver {
+            return
+        }
         KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
     }
 
@@ -614,14 +640,18 @@ final class NativeOAuthSession {
             guard !isInvalidated else { throw CancellationError() }
             return
         }
+        // Another session of this dashboard may have renewed the grant: its
+        // refresh token is the only one the server still takes. A fresh one
+        // needs no renewal; the request goes again with it.
+        if adoptNewerStoredGrant(), !tokens.needsRefresh() {
+            return
+        }
         guard !tokens.refreshToken.isEmpty else {
             // A session token is kept through a 401 (issue 2481): Conduit
             // can't tell Hermes' refusal from a proxy's in front of it, the
             // token never rotates and the host's environment is the only
             // other copy. The next connect mints a ticket with it again.
-            if !tokens.isSessionToken {
-                KeychainHelper.clearNativeOAuthTokens(dashboardID: dashboardID)
-            }
+            forgetStoredGrant(tokens)
             throw DashboardTicketBridgeError.signInRequired
         }
         let current = tokens
@@ -651,7 +681,11 @@ final class NativeOAuthSession {
                 return refreshed
             } catch NativeOAuthError.requestFailed(let status) where status == 400 || status == 401 {
                 guard !self.isInvalidated else { throw CancellationError() }
-                KeychainHelper.clearNativeOAuthTokens(dashboardID: self.dashboardID)
+                // Another session renewed the grant while this refresh was
+                // out: the server refused the spent token, and the new
+                // grant stands.
+                if self.adoptNewerStoredGrant() { return self.tokens }
+                self.forgetStoredGrant(current)
                 throw DashboardTicketBridgeError.signInRequired
             } catch let error as URLError where error.code == .cancelled && self.isInvalidated {
                 throw CancellationError()

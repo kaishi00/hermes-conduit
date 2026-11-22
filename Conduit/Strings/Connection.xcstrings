@@ -40984,6 +40984,170 @@
           }
         }
       }
+    },
+    "Your dashboard signed you out when it restarted" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Dashboard hat dich beim Neustart abgemeldet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu panel cerró tu sesión al reiniciarse"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre tableau de bord vous a déconnecté en redémarrant"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dasbor Anda mengeluarkan Anda saat dimulai ulang"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La dashboard ti ha disconnesso al riavvio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ダッシュボードの再起動でサインアウトされました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대시보드가 다시 시작되면서 로그아웃됐어요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panel wylogował cię podczas ponownego uruchomienia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu painel desconectou você ao reiniciar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Панель вышла из вашей учётной записи при перезапуске"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panonuz yeniden başlarken oturumunuzu kapattı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仪表板重启时让你退出了登录"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儀表板重新啟動時讓你登出了"
+          }
+        }
+      }
+    },
+    "Hermes ends every password sign-in when its dashboard restarts, such as after an update, because no sign-in secret is set. To stay signed in, set dashboard.basic_auth.secret in Hermes' config.yaml to the output of openssl rand -base64 32, then restart Hermes. Sign in again to reconnect now." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes beendet jede Passwort-Anmeldung, wenn sein Dashboard neu startet, etwa nach einem Update, weil kein Anmelde-Secret festgelegt ist. Damit du angemeldet bleibst, setze dashboard.basic_auth.secret in der config.yaml von Hermes auf die Ausgabe von openssl rand -base64 32 und starte Hermes dann neu. Melde dich jetzt erneut an, um dich wieder zu verbinden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes cierra todos los inicios de sesión con contraseña cuando su panel se reinicia, por ejemplo tras una actualización, porque no hay un secreto de inicio de sesión configurado. Para mantener la sesión, define dashboard.basic_auth.secret en el config.yaml de Hermes con el resultado de openssl rand -base64 32 y reinicia Hermes. Inicia sesión de nuevo para volver a conectarte ahora."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes met fin à chaque connexion par mot de passe quand son tableau de bord redémarre, par exemple après une mise à jour, car aucun secret de connexion n’est défini. Pour rester connecté, définissez dashboard.basic_auth.secret dans le config.yaml de Hermes avec la sortie de openssl rand -base64 32, puis redémarrez Hermes. Reconnectez-vous maintenant pour rétablir la connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes mengakhiri setiap login kata sandi saat dasbornya dimulai ulang, misalnya setelah pembaruan, karena belum ada secret login yang diatur. Agar tetap login, atur dashboard.basic_auth.secret di config.yaml Hermes ke keluaran openssl rand -base64 32, lalu mulai ulang Hermes. Login lagi untuk menyambung kembali sekarang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chiude ogni accesso con password quando la sua dashboard si riavvia, per esempio dopo un aggiornamento, perché non è impostato alcun segreto di accesso. Per restare connesso, imposta dashboard.basic_auth.secret nel config.yaml di Hermes con l'output di openssl rand -base64 32, poi riavvia Hermes. Accedi di nuovo per riconnetterti ora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サインイン用のシークレットが設定されていないため、Hermes はダッシュボードが再起動するたび(アップデート後など)にすべてのパスワードサインインを終了します。サインインを保つには、Hermes の config.yaml で dashboard.basic_auth.secret を openssl rand -base64 32 の出力に設定し、Hermes を再起動してください。今すぐ再接続するには、もう一度サインインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "로그인 시크릿이 설정되지 않아 Hermes는 대시보드가 다시 시작될 때마다(업데이트 후 등) 모든 비밀번호 로그인을 끝내요. 로그인 상태를 유지하려면 Hermes의 config.yaml에서 dashboard.basic_auth.secret을 openssl rand -base64 32의 출력으로 설정한 뒤 Hermes를 다시 시작하세요. 지금 다시 연결하려면 다시 로그인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes kończy każde logowanie hasłem, gdy jego panel uruchamia się ponownie, na przykład po aktualizacji, ponieważ nie ustawiono sekretu logowania. Aby pozostać zalogowanym, ustaw dashboard.basic_auth.secret w pliku config.yaml Hermesa na wynik polecenia openssl rand -base64 32, a potem uruchom Hermesa ponownie. Zaloguj się ponownie, aby teraz się połączyć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes encerra todo login por senha quando o painel reinicia, como depois de uma atualização, porque nenhum segredo de login está definido. Para continuar conectado, defina dashboard.basic_auth.secret no config.yaml do Hermes com a saída de openssl rand -base64 32 e reinicie o Hermes. Entre de novo para reconectar agora."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes завершает каждый вход по паролю при перезапуске панели, например после обновления, потому что секрет входа не задан. Чтобы оставаться в системе, задайте dashboard.basic_auth.secret в config.yaml Hermes равным выводу openssl rand -base64 32 и перезапустите Hermes. Войдите снова, чтобы переподключиться сейчас."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir oturum açma gizli anahtarı ayarlanmadığı için Hermes, panosu yeniden başladığında (örneğin bir güncellemeden sonra) tüm parola oturumlarını kapatır. Oturumunuzun açık kalması için Hermes'in config.yaml dosyasında dashboard.basic_auth.secret değerini openssl rand -base64 32 çıktısı olarak ayarlayın, ardından Hermes'i yeniden başlatın. Şimdi yeniden bağlanmak için tekrar oturum açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由于没有设置登录密钥,Hermes 会在仪表板每次重启时(例如更新后)结束所有密码登录。要保持登录,请在 Hermes 的 config.yaml 中将 dashboard.basic_auth.secret 设为 openssl rand -base64 32 的输出,然后重启 Hermes。现在请重新登录以重新连接。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "由於沒有設定登入密鑰,Hermes 會在儀表板每次重新啟動時(例如更新後)結束所有密碼登入。若要保持登入,請在 Hermes 的 config.yaml 中將 dashboard.basic_auth.secret 設為 openssl rand -base64 32 的輸出,然後重新啟動 Hermes。現在請重新登入以重新連線。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

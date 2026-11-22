@@ -110,6 +110,11 @@ extension AppState {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        if let runtime {
+            NotifierPluginStatus.Remembered.remember(
+                signInEndsOnRestart: runtime.signInEndsOnRestart, for: activeDashboardID, in: defaults
+            )
+        }
         notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
             after: state, reported: managedBy,
             before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
@@ -160,6 +165,11 @@ extension AppState {
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        if let runtime = notifierPlugin.runtime {
+            NotifierPluginStatus.Remembered.remember(
+                signInEndsOnRestart: runtime.signInEndsOnRestart, for: activeDashboardID, in: defaults
+            )
+        }
         notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
         NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         NotifierPluginStatus.Remembered.remember(state, for: activeDashboardID, in: defaults)

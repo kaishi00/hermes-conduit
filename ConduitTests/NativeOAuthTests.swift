@@ -744,6 +744,84 @@ final class NativeOAuthTests: XCTestCase {
         session.invalidate()
     }
 
+    /// Two sessions of one dashboard (a combined dashboard's runtime beside
+    /// the selected one's bridge): after one renews the grant, the other's
+    /// refresh token is spent. It takes the renewed grant from the Keychain
+    /// and goes again with it, instead of renewing with the spent token,
+    /// being refused and signing the dashboard out.
+    @MainActor
+    func testASecondSessionTakesTheGrantAnotherSessionRenewed() async throws {
+        let dashboardID = UUID()
+        let initial = tokens()
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        var refreshCalls = 0
+        var apiCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                refreshCalls += 1
+                guard refreshCalls == 1 else { return (401, ["error": "refresh_token_reused"]) }
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                apiCalls += 1
+                let header = request.value(forHTTPHeaderField: "Authorization")
+                return header == "Bearer new-access" ? (200, ["ok": true]) : (401, ["detail": "expired"])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let first = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        let second = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+
+        _ = try await first.requestJSON(path: "/api/status")
+        let response = try await second.requestJSON(path: "/api/status")
+
+        XCTAssertEqual(response["ok"] as? Bool, true)
+        XCTAssertEqual(refreshCalls, 1, "the second session never renews with the spent refresh token")
+        let stored = try XCTUnwrap(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID))
+        XCTAssertEqual(stored.accessToken, "new-access")
+        XCTAssertTrue(second.matchesStoredTokens(stored))
+        first.invalidate()
+        second.invalidate()
+    }
+
+    /// A refresh refused because another session renewed the grant while it
+    /// was out keeps the renewed grant: nothing is cleared, and the request
+    /// goes again with it.
+    @MainActor
+    func testARefusedRefreshKeepsAGrantAnotherSessionSavedMeanwhile() async throws {
+        let dashboardID = UUID()
+        let initial = tokens(expiresAt: 1)
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        let renewed = NativeOAuthTokenSet(
+            accessToken: "renewed-access", refreshToken: "renewed-refresh",
+            expiresAt: 4_000_000_100, provider: "google", userID: "user"
+        )
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                // The other session's renewal lands while this one is out.
+                KeychainHelper.saveNativeOAuthTokens(renewed, dashboardID: dashboardID)
+                return (401, ["error": "refresh_token_reused"])
+            case "/api/status":
+                XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer renewed-access")
+                return (200, ["ok": true])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+
+        let response = try await session.requestJSON(path: "/api/status")
+
+        XCTAssertEqual(response["ok"] as? Bool, true)
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), renewed)
+        session.invalidate()
+    }
+
     @MainActor
     func testRejectedRefreshClearsOnlyThisDashboardTokens() async throws {
         let dashboardID = UUID()

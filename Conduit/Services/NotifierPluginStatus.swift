@@ -56,6 +56,11 @@ struct NotifierPluginStatus: Equatable {
         /// the host's log said before. Settings > Conduit plugin shows a
         /// line for each (`degradedText`).
         var degraded: [String] = []
+        /// The dashboard's password sign-ins end each time it restarts:
+        /// Hermes' password sign-in has no `dashboard.basic_auth.secret`, so
+        /// it signs sessions with a key made per dashboard process (plugin
+        /// 0.193.6+). The sign-in screen says why it asks again.
+        var signInEndsOnRestart = false
     }
 
     /// The plugin version this Conduit build was made against: the least it
@@ -350,7 +355,8 @@ struct NotifierPluginStatus: Equatable {
             restartNeeded: response["restart_needed"] as? Bool ?? false,
             bootID: response["boot_id"] as? String,
             roomChatsKept: response["room_chats_kept"] as? Bool == true,
-            degraded: degraded(from: response)
+            degraded: degraded(from: response),
+            signInEndsOnRestart: response["sign_in_ends_on_restart"] as? Bool == true
         )
     }
 
@@ -378,6 +384,29 @@ struct NotifierPluginStatus: Equatable {
             guard all[dashboardID.uuidString] != managedBy else { return }
             all[dashboardID.uuidString] = managedBy
             defaults.set(all, forKey: key)
+        }
+
+        static let signInEndsOnRestartKey = "notifierPluginSignInEndsOnRestart"
+
+        /// Whether the dashboard's plugin last said its password sign-ins
+        /// end on each restart (`Runtime.signInEndsOnRestart`), kept across
+        /// launches: the sign-in screen asks after the session is gone,
+        /// when the plugin can't be read.
+        static func signInEndsOnRestart(for dashboardID: UUID?, in defaults: UserDefaults) -> Bool {
+            guard let dashboardID else { return false }
+            return (defaults.stringArray(forKey: signInEndsOnRestartKey) ?? []).contains(dashboardID.uuidString)
+        }
+
+        static func remember(signInEndsOnRestart: Bool, for dashboardID: UUID?, in defaults: UserDefaults) {
+            guard let dashboardID else { return }
+            var all = defaults.stringArray(forKey: signInEndsOnRestartKey) ?? []
+            guard all.contains(dashboardID.uuidString) != signInEndsOnRestart else { return }
+            if signInEndsOnRestart {
+                all.append(dashboardID.uuidString)
+            } else {
+                all.removeAll { $0 == dashboardID.uuidString }
+            }
+            defaults.set(all, forKey: signInEndsOnRestartKey)
         }
 
         static let capabilitiesKey = "notifierPluginCapabilities"

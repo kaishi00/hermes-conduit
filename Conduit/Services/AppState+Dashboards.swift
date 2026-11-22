@@ -623,6 +623,7 @@ extension AppState {
         // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(signInEndsOnRestart: false, for: id, in: defaults)
         // So do the chats it kept to resume: set aside, or still the live
         // set when it's the selected dashboard (a switch to it failed), so
         // the old host's ids never reach the new one.
@@ -1126,6 +1127,7 @@ extension AppState {
         // (same host).
         NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         NotifierPluginStatus.Remembered.remember(.predatesCapabilities, for: id, in: defaults)
+        NotifierPluginStatus.Remembered.remember(signInEndsOnRestart: false, for: id, in: defaults)
         // So do the chats it kept to resume.
         chatResumeCoordinator.forgetServer(id.uuidString)
         // Log to Hermes events waiting for it, and its inbox keys.
