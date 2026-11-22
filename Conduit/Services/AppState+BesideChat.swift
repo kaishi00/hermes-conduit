@@ -215,10 +215,11 @@ extension AppState {
         guard let kept, besideChatIDs == kept, let active = activeSessionId,
               kept.contains(active) || followedSessionIDs(forChatOpenAs: active) == kept else { return }
         besideChatIDs = nil
-        backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: kept) }
+        // Only this dashboard's: the same ids on another name another chat.
+        backgroundChats.removeAll { $0.dashboardID == activeDashboardID && !$0.sessionIDs.isDisjoint(with: kept) }
     }
 
     func letGoOfIdleFollowedChat(answering ids: Set<String>) {
-        backgroundChats.removeAll { !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
+        backgroundChats.removeAll { $0.dashboardID == activeDashboardID && !$0.sessionIDs.isDisjoint(with: ids) && !$0.isRunning }
     }
 }

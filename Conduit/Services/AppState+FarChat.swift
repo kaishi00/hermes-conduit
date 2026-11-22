@@ -175,17 +175,9 @@ extension AppState {
         // now: the open that follows flushes it again on the new one, and
         // skips it there (`flushPendingPresentationCache`).
         if farChat?.dashboardID == dashboardID { flushPendingPresentationCache() }
-        // The chats followed there on its old profile (the one open in
-        // place, ones left mid-reply) were never noted, being that client's
-        // own: the new one names their profile for them.
-        if let farChat, farChat.dashboardID == dashboardID {
-            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
-        }
-        for chat in backgroundChats where chat.dashboardID == dashboardID {
-            next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))
-        }
+        noteFollowedChatProfiles(of: dashboardID, on: next)
         // A live call held on this dashboard keeps its requests in flight
-        // and its sessions on its own profile, as `keptClient(_:on:)` and a
+        // and its sessions on its own profile, as `keptClient(_:of:on:)` and a
         // profile switch carry it (`keep` below names the call's profile
         // for its sessions). Asked directly, not through `liveCallHolds`,
         // so it holds whichever dashboard is in scope.
@@ -209,6 +201,19 @@ extension AppState {
         ), for: dashboardID)
         noteConnectionStep("Kept socket handed to another profile for a chat there")
         return runtime
+    }
+
+    /// The chats followed on `dashboardID` (the one open in place, ones
+    /// left mid-reply) were never noted on its kept client when they were
+    /// on its own profile: a client on another profile taking its socket
+    /// names their profile for them.
+    func noteFollowedChatProfiles(of dashboardID: UUID, on next: HermesClient) {
+        if let farChat, farChat.dashboardID == dashboardID {
+            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
+        }
+        for chat in backgroundChats where chat.dashboardID == dashboardID {
+            next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))
+        }
     }
 
     /// The open finds the row (its title, saved copy and profile) in its
