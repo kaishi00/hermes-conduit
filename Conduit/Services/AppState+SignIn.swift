@@ -623,11 +623,15 @@ extension AppState {
         voiceSheetShouldAutoListen = false
         voiceControllerSessionProfile = nil
         voiceConversationController.stop()
-        stopQwenLiveConversation()
-        stopGeminiLiveConversation()
-        stopGPTLiveConversation()
-        stopGrokLiveConversation()
-        stopLocalLiveConversation()
+        // A live call on another combined dashboard isn't this one's: only
+        // letting its own dashboard go ends it (no-switch stage 2).
+        if callDashboardOffScreen == nil {
+            stopQwenLiveConversation()
+            stopGeminiLiveConversation()
+            stopGPTLiveConversation()
+            stopGrokLiveConversation()
+            stopLocalLiveConversation()
+        }
         showVoiceSheet = false
         clearClassicVoiceCards()
         projects = []

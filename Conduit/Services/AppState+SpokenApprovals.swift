@@ -132,7 +132,9 @@ extension AppState {
     /// chat's card when it shows there (the card then shows the answer),
     /// else straight to Hermes. False when Hermes no longer waits on it.
     func respondToApprovalByVoice(_ approval: ApprovalActivity, choice: String, profile: String?) async throws -> Bool {
-        if let message = messages.first(where: { message in
+        // The chat on screen is another Hermes' while the call is off its
+        // dashboard: its cards are never this call's.
+        if callDashboardOffScreen == nil, let message = messages.first(where: { message in
             guard let shown = message.approval, shown.status == .pending || shown.status == .error else { return false }
             return approval.requestId.map { shown.requestId == $0 } ?? shown.asksSameAs(approval)
         }) {
@@ -161,7 +163,7 @@ extension AppState {
         sessionID: String? = nil,
         profile: String? = nil
     ) async throws -> ClarifyActivity? {
-        if messages.contains(where: { $0.clarify?.requestId == clarify.requestId }) {
+        if callDashboardOffScreen == nil, messages.contains(where: { $0.clarify?.requestId == clarify.requestId }) {
             await respondToClarify(requestId: clarify.requestId, questionId: questionID, answer: answer)
             guard let after = messages.first(where: { $0.clarify?.requestId == clarify.requestId })?.clarify,
                   !after.isExpired else { return nil }

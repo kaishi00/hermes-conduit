@@ -34,8 +34,10 @@ extension AppState {
         }
         let location = LocationSharingController.shared
         // An older plugin has no location tool: no key is set up for it.
-        if notifierPlugin.servesLocationVoice, location.letsVoiceRead(mode), let binding = location.binding,
-           activeDashboardID == binding.dashboardID, profile == binding.profile {
+        // The call's own dashboard's plugin and binding, which another may
+        // cover meanwhile (no-switch stage 2).
+        if onCallRuntime({ notifierPlugin.servesLocationVoice }), location.letsVoiceRead(mode), let binding = location.binding,
+           voiceCallDashboardID == binding.dashboardID, profile == binding.profile {
             keys.insert("location")
         }
         return keys
@@ -64,7 +66,7 @@ extension AppState {
         guard !keys.isEmpty || phoneAllowed else { return ([], local) }
         // The connection or the plugin's report isn't back yet (a gateway
         // restart): can't ask now, which isn't "nothing offered".
-        guard notifierPlugin.reports(Self.voiceToolsCapability), let bridge = dashboardTicketBridge else { return (nil, local) }
+        guard onCallRuntime({ notifierPlugin.reports(Self.voiceToolsCapability) }), let bridge = callBridge else { return (nil, local) }
         // Not waited on: the call starts now and reads what has arrived by
         // the time it asks. A key from before voice reads is replaced here.
         if keys.contains("health"), !healthSync.isSyncing { Task { await runHealthSync(reason: .voiceCall) } }
@@ -112,9 +114,10 @@ extension AppState {
     }
 
     /// Whether data shared to `destination` is a call's on `profile`: the
-    /// dashboard in use and that profile.
+    /// call's dashboard (the one in use, unless the call went on across a
+    /// switch between combined dashboards) and that profile.
     private func isCallDestination(_ destination: HealthSyncDestination, profile: String) -> Bool {
-        activeDashboardID == destination.dashboardID && profile == destination.profile
+        voiceCallDashboardID == destination.dashboardID && profile == destination.profile
     }
 
     /// One call for the running call. What the model hears back.
@@ -132,7 +135,7 @@ extension AppState {
             let location = LocationSharingController.shared
             // Like the sealed location read: "me" and saved places only on a
             // call with the dashboard and profile the location is shared with.
-            let sharedHere = location.binding.map { activeDashboardID == $0.dashboardID && profile == $0.profile } ?? false
+            let sharedHere = location.binding.map { voiceCallDashboardID == $0.dashboardID && profile == $0.profile } ?? false
             return await MapsVoiceTool.run(arguments, mode: mode, controller: location, sharedHere: sharedHere)
         default: return ["error": "That isn't available on this call."]
         }
@@ -182,7 +185,7 @@ extension AppState {
             }
             return result
         }
-        guard let bridge = dashboardTicketBridge else {
+        guard let bridge = callBridge else {
             return ["error": "The calendar isn't reachable just now."]
         }
         do {
@@ -234,7 +237,7 @@ extension AppState {
     /// One sealed health or location read for the running call.
     private func callSealedReadTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?, profile: String) async -> [String: String] {
         // Checked again at each read: the user may have turned it off mid-call.
-        guard let mode, voiceReadableKeys(for: mode, profile: profile).contains(tool.key), let bridge = dashboardTicketBridge else {
+        guard let mode, voiceReadableKeys(for: mode, profile: profile).contains(tool.key), let bridge = callBridge else {
             return ["error": tool.key == "location"
                 ? "The user hasn't let this voice call read their location, or it isn't reachable now."
                 : "The user hasn't let this voice call read their health data, or it isn't reachable now."]

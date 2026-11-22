@@ -30,7 +30,7 @@ extension AppState {
     /// The call's style (tone, answer length, greeting): the call's own
     /// profile's, where Settings shows the profile on screen's.
     var liveCallStyle: LiveVoiceStyle {
-        loadVoiceProfilePreferences(profile: voiceCallProfile).liveVoiceStyle
+        loadCallVoicePreferences(profile: voiceCallProfile).liveVoiceStyle
     }
 
     /// The call's profile's voice settings. A running call reads its own
@@ -38,7 +38,7 @@ extension AppState {
     /// mode), as its reconnects run setup again: the settings getters read
     /// the profile on screen, which Settings edits.
     var callVoicePreferences: VoiceProfilePreferences {
-        loadVoiceProfilePreferences(profile: voiceCallProfile)
+        loadCallVoicePreferences(profile: voiceCallProfile)
     }
 
     /// The profile a live call speaks as: the bot of the Bot Chat it started
@@ -56,7 +56,7 @@ extension AppState {
     var callSpeakerVoicePreferences: VoiceProfilePreferences {
         var call = callVoicePreferences
         guard let bot = liveCallSpeaker else { return call }
-        let own = loadVoiceProfilePreferences(profile: bot)
+        let own = loadCallVoicePreferences(profile: bot)
         call.geminiLiveVoice = own.geminiLiveVoice ?? call.geminiLiveVoice
         call.qwenLiveVoice = own.qwenLiveVoice ?? call.qwenLiveVoice
         call.gptLiveVoice = own.gptLiveVoice ?? call.gptLiveVoice
@@ -112,9 +112,12 @@ extension AppState {
 
     /// `voiceCallProfile` when it isn't the profile on screen: what a call's
     /// request that names no profile names, so it reaches the call's
-    /// profile rather than the client's. Nil while they're the same.
+    /// profile rather than the client's. Nil while they're the same. A call
+    /// off its dashboard always names it: its dashboard's client may be on
+    /// another profile than the call's.
     var callProfileOffScreen: String? {
         let profile = voiceCallProfile
+        if callDashboardOffScreen != nil { return profile }
         return Self.profilesMatch(profile, activeProfile) ? nil : profile
     }
 
@@ -129,12 +132,17 @@ extension AppState {
     /// for the chat on the profile shown.
     func callChatLink(_ link: ConduitAppLink) -> ConduitAppLink {
         guard case .session(let id, .none, let dashboard) = link, let profile = callProfileOffScreen else { return link }
-        return .session(id: id, profile: profile, dashboard: dashboard)
+        // Off its dashboard, the link names that dashboard too.
+        return .session(id: id, profile: profile, dashboard: dashboard ?? callDashboardOffScreen?.uuidString)
     }
 
     /// What the minimised call's bar names after the mode: the call's chat,
     /// and the call's profile while another one is on screen.
     func liveCallBarSubject(thread: String?) -> String? {
+        // Off its dashboard: the call's profile and its dashboard's name.
+        if let subject = callDashboardSubject {
+            return thread.map { "\(subject) · \($0)" } ?? subject
+        }
         guard let profile = callProfileOffScreen else { return thread }
         let name = profileDisplayName(profile)
         return thread.map { "\(name) · \($0)" } ?? name
@@ -147,12 +155,11 @@ extension AppState {
     /// voice, CarPlay, the Watch, and a call from Hermes still ringing or
     /// opening its voice.
     var callSurvivesProfileSwitch: Bool {
-        guard isLiveCallUp, let liveCallProfile, !liveCallProfile.isEmpty,
-              !showVoiceSheet, !voiceConversationController.hasLiveVoiceSession,
-              !isCarPlayVoiceSurfaceActive, !isWatchVoiceCallActive,
-              pendingHermesCall == nil, hermesCallOpenTask == nil,
-              let connection, socketToKeepForProfileSwitch(within: connection) != nil
-        else { return false }
+        guard liveCallGoesOnWithoutTheScreen else { return false }
+        // A call on another dashboard goes on through that dashboard's own
+        // connection: a profile switch here touches nothing of it.
+        if callDashboardOffScreen != nil { return true }
+        guard let connection, socketToKeepForProfileSwitch(within: connection) != nil else { return false }
         return true
     }
 
@@ -167,7 +174,9 @@ extension AppState {
     /// keep it. It ends first and hands its jobs back. A call on the
     /// profile asked for is kept, as before.
     func endLiveCallOnAnotherProfile(than profile: String) {
-        guard isLiveCallUp, !Self.profilesMatch(voiceCallProfile, profile) else { return }
+        // A call on another dashboard is on another profile, whatever its name.
+        guard isLiveCallUp,
+              callDashboardOffScreen != nil || !Self.profilesMatch(voiceCallProfile, profile) else { return }
         stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
@@ -239,12 +248,18 @@ extension AppState {
         // call even when no recording ran (issue 2768).
         liveCallSpeaker = nil
         liveCallBot = nil
+        let endedDashboard = liveCallDashboardID
+        liveCallDashboardID = nil
         guard let ended = liveCallProfile else { return }
         liveCallProfile = nil
-        guard !Self.profilesMatch(ended, activeProfile) else { return }
+        // Off its dashboard it's off its profile too: the jobs, their
+        // ledger and their requests are that dashboard's.
+        let offItsDashboard = endedDashboard != nil && endedDashboard != activeDashboardID
+        guard offItsDashboard || !Self.profilesMatch(ended, activeProfile) else { return }
         // Until the hand-back the jobs, their ledger and their requests stay
         // the call's profile's.
         callProfileHandingBack = ended
+        callDashboardHandingBack = offItsDashboard ? endedDashboard : nil
         guard let hangUp = voiceBackgroundJobSupervisor.callbackSyncInFlight else {
             handBackCallJobs()
             return
@@ -282,6 +297,7 @@ extension AppState {
         // after the reset, under the profile on screen's key, and be refused.
         saveVoiceJobLedger(voiceBackgroundJobSupervisor.savedLedger())
         callProfileHandingBack = nil
+        callDashboardHandingBack = nil
         voiceJobLedgerRestoredKey = nil
         voiceBackgroundJobSupervisor.reset()
         scheduleVoiceJobLedgerRestore()

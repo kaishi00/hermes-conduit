@@ -132,17 +132,17 @@ extension AppState {
     /// Local Live's host routes for `profile` (see makeLiveTokenClient).
     func makeLocalLiveClient(profile: @escaping @MainActor () -> String) -> LocalLiveClient {
         LocalLiveClient(profile: profile, profileParameter: { [weak self] in
-            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+            self?.onCallRuntime { self?.notifierPlugin.dashboardProfileParameter } ?? "profile"
         }, dashboardBaseURL: { [weak self] in
-            self?.connection?.baseUrl
+            self?.callConnection?.baseUrl
         }, request: { [weak self] path, method, body, timeout in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         }, mintTicket: { [weak self] in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.mintTicket()
         }, socketRequest: { [weak self] path, queryItems in
-            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+            guard let bridge = self?.callBridge, let connection = self?.callConnection else {
                 throw DashboardTicketBridgeError.notReady
             }
             let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)
@@ -285,6 +285,6 @@ extension AppState {
     /// is the one voice runs on: a live call's own while it goes on across
     /// a switch (all-live stage 2).
     var voiceJobLedgerKey: String {
-        "conduit.voiceJobLedger.\(activeDashboardID?.uuidString ?? "none").\(voiceCallProfile)"
+        "conduit.voiceJobLedger.\(voiceCallDashboardID?.uuidString ?? "none").\(voiceCallProfile)"
     }
 }

@@ -390,8 +390,10 @@ extension AppState {
     /// Resume Call makes it continue that row.
     func beginVoiceCallRecording(engine: VoiceCallEngine) {
         finishVoiceCallRecording()
-        // The call's profile, which a switch to another profile leaves it on.
+        // The call's profile, which a switch to another profile leaves it on,
+        // and its dashboard, which a switch to another combined one does.
         liveCallProfile = activeProfile
+        liveCallDashboardID = activeDashboardID
         // A Bot Chat's call speaks as its bot (issue 2768).
         liveCallSpeaker = callSpeaker(for: voiceBackgroundJobSupervisor.liveThread)
         liveCallBot = liveCallSpeaker
@@ -1112,15 +1114,19 @@ extension AppState {
     /// `callProfile`: a Watch call's own profile when it isn't the one in
     /// use (#1564), so it finds that profile's chats.
     func searchChatsForVoice(_ query: String, profile callProfile: String? = nil) async throws -> [VoiceChatMatch] {
-        guard isConnected, let dashboardTicketBridge else { throw HermesError.notConnected }
+        // A call off its dashboard asks its own dashboard's Hermes.
+        guard callIsConnected, let bridge = callBridge else { throw HermesError.notConnected }
+        let offItsDashboard = callDashboardOffScreen != nil
         let profile = callProfile ?? activeProfile
         do {
-            let response = try await dashboardTicketBridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
+            let response = try await bridge.requestJSON(path: VoiceChatFinder.path(query: query, profile: profile))
             // Hermes' search knows nothing of the chats Conduit's lists leave out.
             return VoiceChatFinder.matches(from: response).filter { !isUnlistedChat(id: $0.sessionID, profile: profile) }
         } catch let error as DashboardTicketBridgeError where GeminiLiveTokenClient.isMissingRoute(error) {
             // A Watch call on another profile is asked by that profile's
-            // chats Conduit has listed (All profiles lists them).
+            // chats Conduit has listed (All profiles lists them). The lists
+            // are the screen's: a call off its dashboard finds none there.
+            guard !offItsDashboard else { return [] }
             let botOwned = botOwnedSessionIDs
             let listed = callProfile.map { profile in
                 sessions.filter {
@@ -1137,7 +1143,7 @@ extension AppState {
     /// turns a resumed call gets, with a long chat's older part summarized
     /// once and the summary kept on the host.
     func readChatForVoice(_ sessionID: String, profile callProfile: String? = nil) async throws -> VoiceResumeContext {
-        guard isConnected, dashboardTicketBridge != nil else { throw HermesError.notConnected }
+        guard callIsConnected, callBridge != nil else { throw HermesError.notConnected }
         guard let context = await voiceResumeContext(sessionID: sessionID, profile: callProfile ?? activeProfile) else {
             // Said to the model, not shown: not localized.
             throw VoiceAudioError.unavailable("Conduit couldn't read that chat.")
@@ -1355,7 +1361,9 @@ extension AppState {
 
     /// Whether `thread` is the chat on screen now.
     func isOpenChat(_ thread: VoiceThreadTarget) -> Bool {
-        guard let sessionID = activeSessionId else { return false }
+        // A call's chat on another dashboard is never the one on screen,
+        // whatever its id (two Hermes can name chats alike).
+        guard callDashboardOffScreen == nil, let sessionID = activeSessionId else { return false }
         // Reopened, the chat runs under a new runtime id; its durable id
         // still names it.
         let ids = knownSessionIDs(for: sessionID).union(chatOwnSessionIDs(for: sessionID))
@@ -1406,7 +1414,7 @@ extension AppState {
     func noteCallChatIfGone(_ thread: VoiceThreadTarget) {
         let ids = knownSessionIDs(for: thread.runtimeSessionID)
             .union([thread.runtimeSessionID, thread.storedSessionID].compactMap { $0 })
-        guard conversationIsGone(sessionIDs: ids, dashboardID: activeDashboardID, profile: thread.profile ?? voiceCallProfile) else { return }
+        guard conversationIsGone(sessionIDs: ids, dashboardID: voiceCallDashboardID, profile: thread.profile ?? voiceCallProfile) else { return }
         voiceBackgroundJobSupervisor.noteChatDeleted(ids)
     }
 
@@ -1697,7 +1705,7 @@ extension AppState {
             // copy standing in): the saved history decides.
             if !messages.isEmpty { return .noReply }
         }
-        guard let bridge = dashboardTicketBridge else { return .failed }
+        guard let bridge = callBridge else { return .failed }
         // One profile for every read: a reply from another profile's history
         // is never read out. A Bot Chat's history is in the bot's profile,
         // and a call that went on across a switch reads its own profile's.
@@ -1978,7 +1986,7 @@ extension AppState {
         let stored: VoiceResumeSummary?
         let summaryReadFailed: Bool
         do {
-            stored = try await voiceHistoryClient.summary(sessionID: sessionID, profile: profile)
+            stored = try await callVoiceHistoryClient.summary(sessionID: sessionID, profile: profile)
             summaryReadFailed = false
         } catch {
             stored = nil
@@ -2001,8 +2009,11 @@ extension AppState {
                 // would pass a middle stretch off as the earlier conversation.
                 return VoiceResumeContext(summary: stored?.text, recent: recent)
             }
-            guard let client,
-                  let text = try? await client.oneshot(
+            // Summarized by the Hermes the chat is on: the call's own
+            // dashboard's, never the screen's (the turns are that one's).
+            let summarizer = callDashboardOffScreen == nil ? client : callRuntimeOffScreen?.client
+            guard let summarizer,
+                  let text = try? await summarizer.oneshot(
                     task: "compression",
                     instructions: VoiceResumePlan.summaryInstructions,
                     input: VoiceResumePlan.summaryInput(older),
@@ -2014,7 +2025,7 @@ extension AppState {
             }
             if !summaryReadFailed {
                 let summary = VoiceResumeSummary(text: text, covers: covers)
-                try? await voiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
+                try? await callVoiceHistoryClient.storeSummary(summary, sessionID: sessionID, profile: profile)
             }
             return VoiceResumeContext(summary: text, recent: recent)
         }
@@ -2032,7 +2043,8 @@ extension AppState {
     /// so older rows past the page budget are left out. A dashboard that
     /// doesn't page from the newest end gets the legacy one-shot read.
     private func voiceRowMessages(sessionID: String, profile: String) async -> (rows: [Any], isComplete: Bool)? {
-        guard let bridge = dashboardTicketBridge else { return nil }
+        // A call's read of a chat goes to the call's own dashboard.
+        guard let bridge = callBridge else { return nil }
         func fetch(_ query: String) async -> (rows: [Any], page: PersistedTranscriptPagination.PageInfo?)? {
             guard let response = await voiceHistoryPage(sessionId: sessionID, profile: profile, query: query, using: bridge),
                   let rows = Self.persistedMessageRows(in: response) else { return nil }
@@ -2173,6 +2185,7 @@ extension AppState {
         callEndedOffProfileHandBack?.cancel()
         callEndedOffProfileHandBack = nil
         callProfileHandingBack = nil
+        callDashboardHandingBack = nil
         voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
         voiceBackgroundJobSupervisor.reset()
         scheduleVoiceJobLedgerRestore()

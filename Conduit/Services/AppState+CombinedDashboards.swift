@@ -208,6 +208,7 @@ extension AppState {
     func letGoKeptRuntimesOutsideTheGroup() {
         let group = savedDashboardRegistry.combinedGroupIDs
         for keptID in Array(keptDashboardRuntimes.keys) where !group.contains(keptID) {
+            endLiveCallLosingItsDashboard(keptID)
             dropKeptDashboardRuntime(keptID)
         }
         // Lists that stood through a drop go with the group too.
@@ -310,7 +311,8 @@ extension AppState {
         let allowed = Self.combinedLiveDashboardCap - 1 + (keptDashboardRuntimes[targetID] == nil ? 0 : 1)
         while keptDashboardRuntimes.count > allowed,
               let oldest = keptDashboardRuntimes
-                .filter({ $0.key != targetID })
+                // Never the one a live call goes on through.
+                .filter({ $0.key != targetID && !liveCallHolds(dashboard: $0.key) })
                 .min(by: { $0.value.keptAt < $1.value.keptAt })?.key {
             dropKeptDashboardRuntime(oldest)
         }
@@ -321,6 +323,10 @@ extension AppState {
     /// taking it up points its events back at the screen.
     func keep(_ kept: KeptDashboardRuntime, for id: UUID) {
         keptDashboardRuntimes[id] = kept
+        // A live call going on through this dashboard (signed in again
+        // quietly after its socket dropped): the client names the call's
+        // profile for its sessions, as a reconnect's does.
+        if liveCallHolds(dashboard: id) { keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client) }
         kept.client.onDisconnected = { [weak self, weak client = kept.client] in
             Task { @MainActor in
                 guard let self, let client,
@@ -348,6 +354,13 @@ extension AppState {
     func handleKeptDashboardEvent(_ event: StreamEvent, from id: UUID, client: HermesClient) {
         guard keptDashboardRuntimes[id]?.client === client else { return }
         if case .sessionsChanged = event { noteKeptDashboardChatsChanged(id) }
+        // A live call going on here while another dashboard shows hears its
+        // jobs' and its turns' events, as it does on screen (no-switch
+        // stage 2, calls and voice).
+        if liveCallHolds(dashboard: id) {
+            voiceBackgroundJobSupervisor.observe(event)
+            if isLocalLiveActive { localLiveTurns.observe(event) }
+        }
     }
 
     /// Reads the kept dashboard's chats `keptDashboardChatsChangeWait` after
@@ -421,7 +434,14 @@ extension AppState {
         guard (kept.client.profile ?? "default") != profile else { return kept.client }
         let next = makeClient(connection: kept.connection, profile: profile)
         next.inheritSessionProfiles(from: kept.client)
-        guard kept.client.handOffSocket(to: next) else {
+        // A live call that went on through this connection (the switch back
+        // to its dashboard) keeps its requests in flight and its sessions
+        // on its own profile, as across a profile switch.
+        let carriesCall = isLiveCallUp && liveCallDashboardID != nil && liveCallDashboardID == activeDashboardID
+        if carriesCall { keepCallSessionsOnTheirProfile(voiceCallProfile, for: next) }
+        guard kept.client.handOffSocket(
+            to: next, carryingSessions: carriesCall ? callSessionIDs : [], carryingCallRequests: carriesCall
+        ) else {
             dashboardTicketBridge = nil
             next.disconnect()
             release(kept)
@@ -434,6 +454,8 @@ extension AppState {
     /// Signed out of or moved: its kept connection goes, and a quiet sign-in
     /// still out for it keeps nothing it finishes.
     func letGoCombinedDashboard(_ id: UUID) {
+        // A live call going on through it ends: nothing carries it now.
+        endLiveCallLosingItsDashboard(id)
         if combinedSignInsUnderWay.contains(id) { combinedSignInsCalledOff.insert(id) }
         combinedSignInBridges.removeValue(forKey: id)?.invalidate()
         dropKeptDashboardRuntime(id)
@@ -506,8 +528,12 @@ extension AppState {
             do { try await Task.sleep(for: .seconds(window)) } catch { return }
             guard let self, !self.isSceneActive else { return }
             self.keptDashboardRuntimesGraceTask = nil
-            // Their lists stand until the return reconnects them.
-            self.dropAllKeptDashboardRuntimes(keepingLists: true)
+            // Their lists stand until the return reconnects them. One a live
+            // call goes on through stays: the call's audio keeps Conduit
+            // running, and the call needs it.
+            for id in Array(self.keptDashboardRuntimes.keys) where !self.liveCallHolds(dashboard: id) {
+                self.dropKeptDashboardRuntime(id, keepingLists: true)
+            }
         }
     }
 

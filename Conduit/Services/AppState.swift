@@ -2027,7 +2027,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
+                return self.loadCallVoicePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             }
         )
         // A hands-free goodbye closes the sheet like the Close button.
@@ -2036,7 +2036,7 @@ final class AppState: ObservableObject {
         controller.traceName = "GPT-Live"
         controller.apiCallLimit = { [weak self] in
             guard let self else { return nil }
-            return GPTLiveAPICallLimit.duration(self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).gptLiveAPIMaxMinutes)
+            return GPTLiveAPICallLimit.duration(self.loadCallVoicePreferences(profile: self.voiceCallProfile).gptLiveAPIMaxMinutes)
         }
         return controller
     }()
@@ -2151,7 +2151,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
+                return self.loadCallVoicePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveCallStyle.openingPrompt }
         )
@@ -2397,7 +2397,7 @@ final class AppState: ObservableObject {
             // The same "End conversation" phrases as the other voice modes.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
+                return self.loadCallVoicePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
             // A call from Hermes in agent mode: the fast model says why
             // Hermes called, as on the other live modes. Outside agent mode
@@ -2497,7 +2497,7 @@ final class AppState: ObservableObject {
                 let offScreen = self.callProfileOffScreen
                 // Voice jobs can run on their own (faster) model and
                 // reasoning level, chosen in Voice settings.
-                let options = self.loadVoiceProfilePreferences(profile: profile).voiceJobSessionOptions(
+                let options = self.loadCallVoicePreferences(profile: profile).voiceJobSessionOptions(
                     runtimeModel: offScreen == nil ? self.runtime.model : "",
                     runtimeProvider: offScreen == nil ? self.runtime.provider : ""
                 )
@@ -2537,9 +2537,11 @@ final class AppState: ObservableObject {
             },
             reportTurnSurface: { [weak self] sessionID, text, fromWatch in
                 guard let self else { return { _ in } }
-                let reportedOn = self.activeDashboardID
+                // The call's dashboard, whose plugin takes the report: a
+                // call off it goes on there (a discard then waits for none).
+                let reportedOn = self.voiceCallDashboardID
                 let surface = TurnSurface.voiceJob(fromWatch: fromWatch, carPlay: self.isCarPlayVoiceSurfaceActive)
-                await self.reportTurnSurface(surface, runtimeSessionID: sessionID, text: text)?.value
+                await self.onCallRuntime { self.reportTurnSurface(surface, runtimeSessionID: sessionID, text: text) }?.value
                 return { [weak self] error in
                     self?.discardTurnSurface(runtimeSessionID: sessionID, text: text, after: error, reportedOn: reportedOn)
                 }
@@ -2548,7 +2550,9 @@ final class AppState: ObservableObject {
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
                 // A job in the open chat: its turn is noted as any cancel there is.
-                let open = self.activeSessionId.flatMap { self.eventBelongsToActiveSession(sessionID) ? $0 : nil }
+                // Never with the call off its dashboard: the open chat is another Hermes'.
+                let open = self.callDashboardOffScreen != nil ? nil
+                    : self.activeSessionId.flatMap { self.eventBelongsToActiveSession(sessionID) ? $0 : nil }
                 let noteBeforeCancel = open.map { self.voiceCancelNote(in: $0) }
                 let wasRunning = self.isBusy
                 if let open { self.noteRunningTurnBeforeCancel(in: open) }
@@ -2575,7 +2579,8 @@ final class AppState: ObservableObject {
                 return try await client.sessionRunning(sessionID, profile: targetProfile ?? self.callProfileOffScreen)
             },
             resolveProfile: { [weak self] spokenName in
-                self?.voiceJobProfileTarget(named: spokenName) ?? .unknown
+                // Among the call's own dashboard's profiles and bots.
+                self?.onCallRuntime { self?.voiceJobProfileTarget(named: spokenName) } ?? .unknown
             },
             threadIsBusy: { [weak self] thread in
                 await self?.liveVoiceThreadIsBusy(thread) ?? false
@@ -3512,6 +3517,12 @@ final class AppState: ObservableObject {
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
     })
+    /// The same routes on the call's own dashboard (`callBridge`), for what
+    /// a running call reads and keeps there: a chat's summary it reads.
+    lazy var callVoiceHistoryClient = VoiceHistoryClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
 
     /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
     /// session id.
@@ -3620,6 +3631,12 @@ final class AppState: ObservableObject {
         guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         return try await bridge.requestJSON(path: path, method: method, body: body)
     })
+    /// The call watches of the running call ("call me when it's done"), on
+    /// its own dashboard (`callBridge`), which may not be the one on screen.
+    lazy var callHermesCallsClient = HermesCallsClient(request: { [weak self] path, method, body in
+        guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
+        return try await bridge.requestJSON(path: path, method: method, body: body)
+    })
     /// Calls whose closing save is still running, so the outbox doesn't
     /// save the same turns alongside it (possibly into a second new row).
     var voiceTranscriptsSaving: Set<String> = []
@@ -3689,6 +3706,13 @@ final class AppState: ObservableObject {
     var callEndedOffProfileHandBack: Task<Void, Never>?
     /// The ended call's profile while its hand-back waits.
     var callProfileHandingBack: String?
+    /// The dashboard the live call runs on, read as it starts (no-switch
+    /// stage 2). It stays the call's when another combined dashboard shows,
+    /// so the call goes on through that dashboard's runtime: see
+    /// `voiceCallDashboardID`.
+    var liveCallDashboardID: UUID?
+    /// The ended call's dashboard while its hand-back waits.
+    var callDashboardHandingBack: UUID?
 
     // MARK: - Read state (#454) (AppState+Session.swift, AppState+ChatList.swift, AppState+PinSync.swift, AppState+Reconciliation.swift)
 
