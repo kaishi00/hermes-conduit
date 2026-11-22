@@ -2104,13 +2104,15 @@ extension CrossProfilePresentationCacheTests {
         appState.schedulePresentationCacheFlush(for: "far-s")
         await appState.presentationCacheFlushOperationForTesting?.value
         appState.sessionPresentationCache.waitForPendingWrites()
-        XCTAssertEqual(cachedTimestamp(of: appState.sessionPresentationCache, profile: "work", sessionID: "far-s"), "",
+        let farProbe = [ChatMessage(id: "a1", role: .assistant, content: "Outgoing answer", timestamp: "")]
+        let farIDs = appState.presentationCacheSessionIDs(for: "far-s")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "",
                        "its runtime is on another profile now: nothing saved under it")
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         appState.schedulePresentationCacheFlush(for: "far-s")
         await appState.presentationCacheFlushOperationForTesting?.value
         appState.sessionPresentationCache.waitForPendingWrites()
-        XCTAssertEqual(cachedTimestamp(of: appState.sessionPresentationCache, profile: "work", sessionID: "far-s"), "ts-a1",
+        XCTAssertEqual(appState.sessionPresentationCache.merge(farProbe, profile: "work", sessionIDs: farIDs).first?.timestamp, "ts-a1",
                        "saved under the far chat's profile, though scheduled on screen")
         appState.farChat = nil
 
