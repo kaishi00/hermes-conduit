@@ -162,7 +162,8 @@ extension AppState {
     func switchForFarPulseStep(for dashboard: UUID?) async -> Bool {
         guard let id = dashboard else { return false }
         guard id != dashboardIDOnScreen else { return pulseDashboardID == id }
-        guard runtime(for: id) != nil else { return false }
+        // A chip picked since the tap: no switch for a step the page left.
+        guard pulseDashboardID == id, runtime(for: id) != nil else { return false }
         guard !refusesCombinedSwitchDuringCall(to: id) else { return false }
         await switchToCombinedDashboardUntilSettled(id)
         guard !Task.isCancelled, activeDashboardID == id else { return false }

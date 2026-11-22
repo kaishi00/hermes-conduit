@@ -2939,6 +2939,12 @@ extension CrossProfilePresentationCacheTests {
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
+
+        appState.isNativeHermesCallActive = true
+        appState.openCombinedPulse(mac.id)
+        XCTAssertNil(appState.pulseShownDashboardID, "not shown in place: nothing to show it on")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch during a call")
+        appState.isNativeHermesCallActive = false
     }
 
     /// A notification from a combined dashboard kept beside the one on
