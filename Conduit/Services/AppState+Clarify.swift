@@ -24,6 +24,9 @@ extension AppState {
     /// `answer` leaves one of a form's questions blank (`isForm`), which
     /// Hermes reads as skipped.
     func respondToClarify(requestId: String, questionId: String? = nil, answer: String?) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.respondToClarify(requestId: requestId, questionId: questionId, answer: answer) }) != nil { return }
         let trimmedAnswer = answer?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedAnswer?.isEmpty != true,
               let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
@@ -75,6 +78,9 @@ extension AppState {
     /// question still open, with its answer in `answers` by qid, or left
     /// blank when it has none there, which Hermes reads as skipped.
     func respondToClarifyForm(requestId: String, answers: [String: String]) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.respondToClarifyForm(requestId: requestId, answers: answers) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired, activity.isForm else { return }
@@ -913,6 +919,9 @@ extension AppState {
     /// The value is handed to the client and dropped; only the card's
     /// status is recorded.
     func respondToInputPrompt(messageId: String, value: String?) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.respondToInputPrompt(messageId: messageId, value: value) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].inputPrompt,
               current.isAnswerable else { return }
@@ -1012,6 +1021,9 @@ extension AppState {
     /// or Continue. The buttons wait until Hermes' next frame shows what
     /// it made of it.
     func respondToConnection(messageId: String, targets: [[String: Any]] = [], continues: Bool = false) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.respondToConnection(messageId: messageId, targets: targets, continues: continues) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].connection, current.needsUser else { return }
         guard let client = connectionClient(for: current, at: index) else { return }
@@ -1524,6 +1536,9 @@ extension AppState {
     }
 
     func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.respondToApproval(messageId: messageId, choice: choice, shown: shown) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,
               current.status == .pending || current.status == .error else { return }

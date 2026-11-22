@@ -549,10 +549,16 @@ extension AppState {
         return left
     }
 
-    /// The followed chats of the dashboard on screen, any of its profiles
-    /// (a profile switch leaves one); other dashboards' are let go.
+    /// The followed chats of the dashboard acted on, any of its profiles
+    /// (a profile switch leaves one), and of the other live dashboards (the
+    /// one on screen, kept ones): a chat left on another combined
+    /// dashboard's runtime follows on there (no-switch stage 2). Those of a
+    /// dashboard no longer connected are let go.
     func currentBackgroundChats() -> [BackgroundChat] {
-        backgroundChats.filter { $0.dashboardID == activeDashboardID }
+        backgroundChats.filter {
+            $0.dashboardID == activeDashboardID || $0.dashboardID == dashboardIDOnScreen
+                || keptDashboardRuntimes[$0.dashboardID] != nil
+        }
     }
 
     /// Applies a stream event of a chat that was left mid-reply. True when
@@ -589,7 +595,11 @@ extension AppState {
             }
         }
         guard chat.dashboardID == activeDashboardID else {
-            backgroundChats.remove(at: index)
+            // Another live dashboard's chat follows on its own runtime's
+            // events; one whose dashboard is gone is let go.
+            if chat.dashboardID != dashboardIDOnScreen, keptDashboardRuntimes[chat.dashboardID] == nil {
+                backgroundChats.remove(at: index)
+            }
             return false
         }
         if onScreen {

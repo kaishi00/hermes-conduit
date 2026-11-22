@@ -458,6 +458,11 @@ extension AppState {
         busyMode: BusyInputMode? = nil,
         runsSlashCommands: Bool = true
     ) async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, {
+            await self.submitComposer(text: text, attachments: attachments, context: context, onBusy: onBusy, busyMode: busyMode, runsSlashCommands: runsSlashCommands)
+        }) { return done }
         noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
         // The canvas a closed chat leaves (archive, delete) has no chat
