@@ -31,6 +31,10 @@ struct CombinedDashboardChats: Equatable {
     /// cron run's id never changes.
     var cronIDs: Set<String> = []
     var cronAt: Date? = nil
+    /// Profiles whose read failed with nothing read before to keep: the
+    /// widgets keep what they last stored for them rather than an empty
+    /// list (issue 3034).
+    var unreadProfiles: Set<String> = []
 }
 
 extension AppState {
@@ -77,9 +81,16 @@ extension AppState {
                 ?? combinedDashboardChats[id].flatMap { $0.profiles.isEmpty ? nil : $0.profiles }
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
+            // A profile its Hermes no longer lists leaves Siri, Spotlight and
+            // the widgets once the list says so, whether or not its chats
+            // are read on this pass (issue 3034).
+            if let listed, listed != combinedDashboardChats[id]?.profiles {
+                retainWidgetProfiles(Set(listed), dashboardID: id)
+            }
             if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
                now.timeIntervalSince(last.at) < Self.combinedDashboardChatsMaxAge { continue }
             var sessions: [SessionSummary] = []
+            var unread: Set<String> = []
             var answered = false
             var stale = false
             for profile in profiles {
@@ -101,6 +112,13 @@ extension AppState {
                 guard let batch = response?["sessions"] as? [Any] else {
                     let kept = combinedDashboardChats[id]?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
                     sessions = V2FilterSelection.mergedByRecency(sessions, kept)
+                    // Never read on this connection: not known to be empty.
+                    // A profile newly listed counts as never read too.
+                    if kept.isEmpty, combinedDashboardChats[id]?.unreadProfiles.contains(profile) ?? true
+                        || combinedDashboardChats[id]?.bridge != bridge
+                        || !(combinedDashboardChats[id]?.profiles.contains(profile) ?? false) {
+                        unread.insert(profile)
+                    }
                     continue
                 }
                 answered = true
@@ -110,6 +128,13 @@ extension AppState {
                     return row
                 }
                 sessions = V2FilterSelection.mergedByRecency(sessions, rows)
+            }
+            // No chat read answered, but its Hermes listed its profiles: the
+            // kept list drops the ones it no longer lists, so a later publish
+            // doesn't bring them back into the widgets, and reads the new
+            // ones on the next pass.
+            if !stale, !answered, let listed, let last = combinedDashboardChats[id], last.profiles != listed {
+                combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread, at: now)
             }
             guard !stale, answered else { continue }
             // Its cron runs' ids, so it counts them as the dashboard on
@@ -149,11 +174,9 @@ extension AppState {
                 sessions: sessions,
                 at: now,
                 cronIDs: cronIDs,
-                cronAt: cronAt
+                cronAt: cronAt,
+                unreadProfiles: unread
             )
-            // A profile its Hermes no longer lists leaves Siri, Spotlight
-            // and the widgets too, as it leaves the strip and All.
-            if let listed { retainWidgetProfiles(Set(listed), dashboardID: id) }
             wroteAny = true
         }
     }
@@ -405,15 +428,19 @@ extension AppState {
         }
         if let chats = combinedDashboardChats[dashboardID] {
             // Seeded now, so a pass that read the old list before this
-            // can't bring the chip back.
+            // can't bring the chip back. Every profile the list no longer
+            // has goes, not just the tapped one, so a later publish can't
+            // rebuild another deleted profile's workspace (issue 3034).
+            func stillListed(_ name: String) -> Bool { listed.contains { profilesMatch($0, name) } }
             combinedDashboardChats[dashboardID] = CombinedDashboardChats(
                 bridge: chats.bridge,
-                profiles: chats.profiles.filter { !profilesMatch($0, profile) },
-                sessions: chats.sessions.filter { !profilesMatch($0.profile ?? "", profile) },
+                profiles: chats.profiles.filter(stillListed),
+                sessions: chats.sessions.filter { stillListed($0.profile ?? "") },
                 at: chats.at,
                 seededAt: Date(),
                 cronIDs: chats.cronIDs,
-                cronAt: chats.cronAt
+                cronAt: chats.cronAt,
+                unreadProfiles: chats.unreadProfiles.filter(stillListed)
             )
         }
         needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))
@@ -425,5 +452,27 @@ extension AppState {
             forgetActiveProfile(for: dashboardID)
         }
         return false
+    }
+}
+
+extension AppState {
+    /// A dashboard's kept chats narrowed to the profiles its Hermes lists
+    /// now: the rows and unread marks of the rest go, `unread` joins the
+    /// marks, and it's read anew on the next pass (issue 3034, #3117
+    /// review). Stamped as seeded `at` the pass that narrowed it, so a pass
+    /// started before it can't bring the old list back. Pure, for tests.
+    static func combinedChats(_ last: CombinedDashboardChats, keepingProfiles listed: [String],
+                              unread: Set<String>, at now: Date) -> CombinedDashboardChats {
+        var kept = CombinedDashboardChats(
+            bridge: last.bridge,
+            profiles: listed,
+            sessions: last.sessions.filter { row in listed.contains { profilesMatch(row.profile ?? "default", $0) } },
+            at: .distantPast,
+            seededAt: max(last.seededAt ?? now, now),
+            cronIDs: last.cronIDs,
+            cronAt: last.cronAt
+        )
+        kept.unreadProfiles = last.unreadProfiles.union(unread).filter { profile in listed.contains(profile) }
+        return kept
     }
 }

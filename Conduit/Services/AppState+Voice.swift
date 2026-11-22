@@ -166,6 +166,14 @@ extension AppState {
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
+    /// What Local Live's speech server says when a call connects: the
+    /// greeting as written, a short fixed line for an empty one, nothing with
+    /// the greeting off.
+    nonisolated static func localLiveSpokenGreeting(_ greeting: String?) -> String? {
+        guard let greeting else { return nil }
+        return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
+    }
+
     /// What Conduit tells the live voice mode in use, for Voice settings:
     /// the text as the next call would send it, with the host's memory and
     /// persona shown as placeholders (they are read when a call starts).
@@ -232,10 +240,12 @@ extension AppState {
         }
         // Every live mode gets the greeting as the call's first turn: GPT-Live
         // no longer speaks first from its instructions (notifier #541).
+        // Local Live's speech server says the greeting itself, as written, as
+        // the readiness check's answer (desktop#340): no turn is sent.
         return LiveVoiceInstructionsPreviewContent(
             mode: mode,
             instructions: text,
-            openingTurn: style.openingPrompt
+            openingTurn: mode == "Local Live" ? Self.localLiveSpokenGreeting(style.greeting) : style.openingPrompt
         )
     }
 

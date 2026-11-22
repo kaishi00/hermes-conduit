@@ -11,7 +11,8 @@
 import SwiftUI
 
 /// What "What Conduit sends" shows: the text added to the live model's
-/// instructions, and the greeting turn sent when a call connects.
+/// instructions, and the opening: the greeting turn sent when a call
+/// connects, or for Local Live the greeting its speech server says.
 struct LiveVoiceInstructionsPreviewContent: Equatable {
     var mode: String
     var instructions: String
@@ -295,7 +296,11 @@ struct LiveVoiceInstructionsPreview: View {
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         if let opening = preview.openingTurn {
-                            Text("Sent as the call's first turn when it connects:")
+                            // Local Live's speech server says the greeting itself, as the
+                            // readiness check's answer; no turn is sent (desktop#340).
+                            Text(preview.isLocalLive
+                                ? AppLocalization.string("Your speech server says this when the call connects:", table: .voice)
+                                : AppLocalization.string("Sent as the call's first turn when it connects:"))
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Text(verbatim: opening)

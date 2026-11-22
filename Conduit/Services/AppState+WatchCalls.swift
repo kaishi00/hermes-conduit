@@ -425,7 +425,7 @@ extension AppState {
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
         }
-        var greeting = preferences.liveVoiceStyle.greeting.map { $0.isEmpty ? AppLocalization.string("Hi, I'm listening.") : $0 }
+        var greeting = AppState.localLiveSpokenGreeting(preferences.liveVoiceStyle.greeting)
         let hermesCall = await hermesCallLookup
         let waiting = await waitingLookup
         if let hermesCall {

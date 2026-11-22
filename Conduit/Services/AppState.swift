@@ -443,7 +443,8 @@ final class AppState: ObservableObject {
     /// The kept connection whose plugin the Needs you pass last asked for
     /// its Hermes' name, by dashboard: asked once per connection, so an old
     /// plugin without the route isn't asked on every poll (Dashboard names).
-    var combinedDashboardNameReads: [UUID: ObjectIdentifier] = [:]
+    /// One that didn't answer is asked again from `retryAt` (issue 2948).
+    var combinedDashboardNameReads: [UUID: (bridge: ObjectIdentifier, retryAt: Date?)] = [:]
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).
@@ -2379,8 +2380,8 @@ final class AppState: ObservableObject {
                 // Hermes isn't asked, so "own words" is a short fixed line.
                 session.greeting = { [weak self] in
                     // A call from Hermes opens with why it called instead.
-                    guard self?.liveHermesCall == nil, let greeting = self?.liveCallStyle.greeting else { return nil }
-                    return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
+                    guard self?.liveHermesCall == nil else { return nil }
+                    return AppState.localLiveSpokenGreeting(self?.liveCallStyle.greeting)
                 }
                 // The turns follow the newest session: a turn opened on an
                 // older one can't be answered on this socket.
