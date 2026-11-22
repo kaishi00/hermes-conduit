@@ -391,7 +391,8 @@ struct NotifierPluginStatus: Equatable {
         /// Whether the dashboard's plugin last said its password sign-ins
         /// end on each restart (`Runtime.signInEndsOnRestart`), kept across
         /// launches: the sign-in screen asks after the session is gone,
-        /// when the plugin can't be read.
+        /// when the plugin can't be read. Stored as the ids of the dashboards
+        /// that said yes: a no needs no record.
         static func signInEndsOnRestart(for dashboardID: UUID?, in defaults: UserDefaults) -> Bool {
             guard let dashboardID else { return false }
             return (defaults.stringArray(forKey: signInEndsOnRestartKey) ?? []).contains(dashboardID.uuidString)

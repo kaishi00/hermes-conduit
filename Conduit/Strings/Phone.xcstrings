@@ -18390,6 +18390,170 @@
           }
         }
       }
+    },
+    "When this is on, other Hermes profiles on %@ that are paired with this iPhone can read your calendar, reminders and phone status, and ask for the same changes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das an ist, können andere Hermes-Profile auf %@, die mit diesem iPhone gekoppelt sind, deinen Kalender, deine Erinnerungen und den Status deines Telefons lesen und um dieselben Änderungen bitten."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si está activado, otros perfiles de Hermes en %@ vinculados con este iPhone pueden leer tu calendario, tus recordatorios y el estado del teléfono, y pedir los mismos cambios."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si cette option est activée, les autres profils Hermes sur %@ jumelés avec cet iPhone peuvent lire votre calendrier, vos rappels et l’état de votre téléphone, et demander les mêmes modifications."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika aktif, profil Hermes lain di %@ yang dipasangkan dengan iPhone ini dapat membaca kalender, pengingat, dan status ponsel Anda, serta meminta perubahan yang sama."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se attivo, gli altri profili Hermes su %@ abbinati a questo iPhone possono leggere il tuo calendario, i promemoria e lo stato del telefono, e chiedere le stesse modifiche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにすると、このiPhoneとペアリングされている%@上のほかのHermesプロファイルも、カレンダー、リマインダー、電話の状態を読み取り、同じ変更を依頼できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜면 이 iPhone과 페어링된 %@의 다른 Hermes 프로필도 캘린더, 미리 알림, 전화 상태를 읽고 같은 변경을 요청할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy to jest włączone, inne profile Hermes na %@ sparowane z tym iPhone’em mogą odczytywać Twój kalendarz, przypomnienia i stan telefonu oraz prosić o te same zmiany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com isto ativado, outros perfis do Hermes em %@ pareados com este iPhone podem ler seu calendário, seus lembretes e o estado do telefone, e pedir as mesmas alterações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда это включено, другие профили Hermes на %@, связанные с этим iPhone, могут читать ваш календарь, напоминания и состояние телефона и запрашивать те же изменения."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu açıkken %@ üzerinde bu iPhone ile eşlenmiş diğer Hermes profilleri takvimini, anımsatıcılarını ve telefon durumunu okuyabilir ve aynı değişiklikleri isteyebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启后，%@ 上与这台 iPhone 配对的其他 Hermes 配置文件可以读取你的日历、提醒事项和手机状态，并请求同样的更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟後，%@ 上與這部 iPhone 配對的其他 Hermes 設定檔可以讀取你的行事曆、提醒事項和手機狀態，並要求同樣的變更。"
+          }
+        }
+      }
+    },
+    "When this is on, other Hermes profiles on %@ that are paired with this iPhone can read your health data." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn das an ist, können andere Hermes-Profile auf %@, die mit diesem iPhone gekoppelt sind, deine Gesundheitsdaten lesen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si está activado, otros perfiles de Hermes en %@ vinculados con este iPhone pueden leer tus datos de salud."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Si cette option est activée, les autres profils Hermes sur %@ jumelés avec cet iPhone peuvent lire vos données de santé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jika aktif, profil Hermes lain di %@ yang dipasangkan dengan iPhone ini dapat membaca data kesehatan Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se attivo, gli altri profili Hermes su %@ abbinati a questo iPhone possono leggere i tuoi dati sulla salute."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "オンにすると、このiPhoneとペアリングされている%@上のほかのHermesプロファイルも、あなたのヘルスケアデータを読み取れます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "켜면 이 iPhone과 페어링된 %@의 다른 Hermes 프로필도 건강 데이터를 읽을 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy to jest włączone, inne profile Hermes na %@ sparowane z tym iPhone’em mogą odczytywać Twoje dane zdrowotne."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com isto ativado, outros perfis do Hermes em %@ pareados com este iPhone podem ler seus dados de saúde."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда это включено, другие профили Hermes на %@, связанные с этим iPhone, могут читать ваши данные о здоровье."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu açıkken %@ üzerinde bu iPhone ile eşlenmiş diğer Hermes profilleri sağlık verilerini okuyabilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "开启后，%@ 上与这台 iPhone 配对的其他 Hermes 配置文件可以读取你的健康数据。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟後，%@ 上與這部 iPhone 配對的其他 Hermes 設定檔可以讀取你的健康資料。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

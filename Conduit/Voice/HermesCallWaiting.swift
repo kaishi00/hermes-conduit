@@ -26,8 +26,9 @@ struct HermesCallWaiting: Equatable {
         let multiSelect: Bool
         /// Answered already: a batch is answered one question at a time.
         var answered: Bool = false
-        /// One of a form's questions (ClarifyActivity.isForm), which may be
-        /// left blank as its field may: "skip" leaves it so.
+        /// A question that may go back blank (ClarifyActivity.mayLeaveBlank:
+        /// a form's field, or any question Hermes named by its id), as its
+        /// card's Skip does: "skip" leaves it so.
         var mayLeaveBlank: Bool = false
     }
 
@@ -64,7 +65,7 @@ struct HermesCallWaiting: Equatable {
                 choices: question.choices.map { Choice(label: Self.clipped($0.label, to: Self.maximumChoiceCharacters) ?? $0.value, value: $0.value) },
                 multiSelect: question.multiSelect,
                 answered: !(question.status == .pending || question.status == .error),
-                mayLeaveBlank: clarify.isForm
+                mayLeaveBlank: clarify.mayLeaveBlank(question)
             )
         }
         guard questions.contains(where: { !$0.answered }) else { return nil }
@@ -110,7 +111,7 @@ struct HermesCallWaiting: Equatable {
                     choices: choices,
                     multiSelect: entry["multi_select"] as? Bool == true,
                     answered: entry["answered"] as? Bool == true,
-                    // Plugin 0.82: a form's questions.
+                    // Plugin 0.82: a form's questions; 0.193.10: any of a batch.
                     mayLeaveBlank: entry["may_leave_blank"] as? Bool == true
                 )
             }
@@ -172,7 +173,7 @@ struct HermesCallWaiting: Equatable {
         return lines.joined(separator: "\n")
     }
 
-    /// Said under a question of a form, for the model (WatchCallAnswer's
+    /// Said under a question that may go blank, for the model (WatchCallAnswer's
     /// next question too).
     static let mayLeaveBlankNote = "(They may leave it blank: answer \(skipWord) when they want to.)"
 
@@ -208,7 +209,7 @@ struct HermesCallWaiting: Equatable {
 
     /// What an answer to `question` sends Hermes: the chosen choice's value
     /// (or a multi-select list of them) when the words point at choices,
-    /// nil when they leave a form's question blank (`isSkip`), else the
+    /// nil when they leave a question blank (`isSkip`), else the
     /// words themselves.
     static func answerValue(for words: String, question: Question) -> String? {
         let trimmed = words.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -227,7 +228,7 @@ struct HermesCallWaiting: Equatable {
         return picked.map { question.choices[$0].label }.joined(separator: ", ")
     }
 
-    /// Whether `words` leave a form's question blank. A choice named whole
+    /// Whether `words` leave a question that may go blank so. A choice named whole
     /// ("Pass") is picked instead; other words that leave it blank do, even
     /// with a choice's name in them ("leave it blank" beside a choice
     /// called Blank).

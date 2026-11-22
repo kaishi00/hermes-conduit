@@ -699,6 +699,7 @@ extension NotificationDashboardOwnershipTests {
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [moving]))
         appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
         NotifierPluginStatus.Remembered.remember("Family farm", for: dashboardA, in: defaults)
+        NotifierPluginStatus.Remembered.remember(signInEndsOnRestart: true, for: dashboardA, in: defaults)
 
         appState.settlePendingDashboardMove(dashboardA)
 
@@ -706,6 +707,8 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardA).isEmpty)
         // So is who managed the old host's plugin.
         XCTAssertNil(NotifierPluginStatus.Remembered.managedBy(for: dashboardA, in: defaults))
+        // And whether its sign-ins ended on restart: the new host says for itself.
+        XCTAssertFalse(NotifierPluginStatus.Remembered.signInEndsOnRestart(for: dashboardA, in: defaults))
     }
 }
 
@@ -717,6 +720,7 @@ extension NotificationDashboardOwnershipTests {
         appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
         appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
         NotifierPluginStatus.Remembered.remember("Family farm", for: dashboardB, in: defaults)
+        NotifierPluginStatus.Remembered.remember(signInEndsOnRestart: true, for: dashboardB, in: defaults)
 
         appState.signOutDashboard(dashboardB)
 
@@ -724,6 +728,7 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
         // Signing out leaves the host as it was: who manages its plugin stays.
         XCTAssertEqual(NotifierPluginStatus.Remembered.managedBy(for: dashboardB, in: defaults), "Family farm")
+        XCTAssertTrue(NotifierPluginStatus.Remembered.signInEndsOnRestart(for: dashboardB, in: defaults))
     }
 }
 

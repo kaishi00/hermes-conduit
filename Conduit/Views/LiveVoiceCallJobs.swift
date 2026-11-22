@@ -541,7 +541,7 @@ struct LiveVoiceJobWaitingCard: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(picked.isEmpty)
                 }
-                // One of a form's questions, as its field may be.
+                // One that may go blank, as its card's Skip leaves it.
                 if question.mayLeaveBlank {
                     Button {
                         picked = []

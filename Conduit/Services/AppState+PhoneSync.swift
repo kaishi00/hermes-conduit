@@ -45,6 +45,9 @@ extension AppState {
     /// Plugin 0.167.0: the phone's state goes with each message sent from
     /// Conduit, when the user lets it (issue 888).
     static let phoneTurnStatusCapability = "phone-turn-status"
+    /// Plugin 0.194.0: the host's other profiles paired with this iPhone
+    /// read the calendar, phone data and health when the user lets them.
+    static let phoneHealthProfilesCapability = "phone-health-profiles"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -131,8 +134,10 @@ extension AppState {
             throw DashboardTicketBridgeError.notReady
         }
         var preferences = choices
-        // Each voice mode is asked for on its own, after sharing is on.
+        // Each voice mode is asked for on its own, after sharing is on, as
+        // sharing with the host's other profiles is.
         preferences.voiceReaders = nil
+        preferences.otherProfiles = false
         preferences.destination = PhoneSyncDestination(dashboardID: dashboardID, profile: activeProfile,
                                                        host: URL(string: baseURL)?.host ?? baseURL)
         phoneSync.savePreferences(preferences)

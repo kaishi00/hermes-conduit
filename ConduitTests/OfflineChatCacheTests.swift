@@ -3641,7 +3641,9 @@ final class OfflineChatCacheTests: XCTestCase {
     /// back while another combined dashboard's chat is open in place: its
     /// words go to their own dashboard's New Chat draft, not the far chat's,
     /// also when rebuilt from their file after the dashboard was left, and
-    /// the far chat's composer doesn't say they're in it.
+    /// the far chat's composer doesn't say they're in it. Back on their own
+    /// dashboard with another of its chats open, that chat's composer takes
+    /// them and says why.
     func testAGoneChatsWaitingWordsSkipAFarChatOnScreen() throws {
         let (appState, store, dashboard) = makeAppState()
         seedCopy(store, dashboard: dashboard)
@@ -3679,6 +3681,76 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
         XCTAssertNil(appState.composerNotice)
+
+        // Back on its own dashboard with another of its chats open: that
+        // chat's composer takes the words and says why.
+        appState.leaveComposerSends(dashboardID: dashboard, keepingWordsOnTheirWay: true)
+        appState.farChat = nil
+        appState.activeSessionId = "stored-b"
+        let screenKey = appState.durableComposerDraftKeyOnScreen
+        XCTAssertEqual(screenKey, ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "stored-b"))
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [screenKey])
+        XCTAssertEqual(appState.composerNotice,
+                       appState.pendingComposerSendNotice(for: pending, onScreen: false, chatIsGone: true))
+    }
+
+    /// A message that waits in another combined dashboard's chat, open in
+    /// place, is that dashboard's: filed under it and its profile, sent only
+    /// once its own connection is up, and, when the chat is left, back as a
+    /// draft the next time that dashboard's chat opens in place.
+    func testAFarChatsWaitingMessageIsItsOwnDashboards() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        let far = FarChatOwner(dashboardID: UUID(), profile: "work")
+        appState.farChat = far
+
+        XCTAssertTrue(appState.sendWhenConnected("For the far chat", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        XCTAssertEqual(pending.dashboardID, far.dashboardID)
+        XCTAssertEqual(pending.profile, "work")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: far.dashboardID).map(\.id), [pending.id])
+        XCTAssertTrue(store.loadPendingSends(dashboardID: dashboard).isEmpty)
+        XCTAssertTrue(appState.isOnScreen(pending))
+        XCTAssertFalse(appState.chatIsConnected, "Its dashboard's connection isn't up here")
+
+        // Left: it leaves memory, its file stays.
+        appState.farChat = nil
+        appState.settlePendingComposerSend()
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: far.dashboardID).map(\.id), [pending.id])
+
+        // Its dashboard's chat opens in place again: back as a draft there.
+        appState.farChat = far
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.pending?.id), [pending.id])
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.dashboardID), [far.dashboardID])
+    }
+
+    /// A far chat whose connection dropped stays open: its waiting
+    /// message is matched by its own row as it opened, never by the
+    /// dashboard on screen's rows that happen to share its open id.
+    func testAnUnreachableFarChatIsToldByItsOwnRow() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.offlineChatPresentation = nil
+        appState.activeSessionId = "stored-b"
+        let far = FarChatOwner(dashboardID: UUID(), profile: "work")
+        appState.farChat = far
+        appState.rowOfChatOnScreen = (row: session("far-durable", profile: "work"), openIDs: ["stored-b"],
+                                      dashboardID: far.dashboardID, profile: "work")
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("Its runtime isn't kept here") }
+
+        XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-a"))
+
+        // With no row of its own recorded, only its open id says.
+        appState.rowOfChatOnScreen = nil
+        XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
     }
 
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {

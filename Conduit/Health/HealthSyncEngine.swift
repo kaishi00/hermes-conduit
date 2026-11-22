@@ -53,6 +53,11 @@ struct HealthSyncState: Codable, Equatable {
     /// (HealthBatch.voiceReaders): a change sends an upload, empty if need
     /// be, so the host learns it. Nil before one went.
     var sentVoiceReaders: [String]?
+    /// "Share with this host's other profiles" as the host last took it
+    /// (every upload carries it); a change sends an upload even when
+    /// nothing else is new. Nil: unknown (never sent, or a change sent
+    /// without an answer), which the next pass settles with an upload.
+    var sentOtherProfiles: Bool?
     var lastSync: Date?
     var lastAttempt: Date?
     var pause: HealthSyncPause?
@@ -200,14 +205,23 @@ final class HealthSyncEngine: ObservableObject {
     /// Runs a pass, or joins the one already running. A pass started with
     /// other choices, or that does less than these options ask (Sync now
     /// during a routine pass), is followed by one with these, so a change
-    /// isn't lost.
-    func sync(preferences: HealthSyncPreferences, deadline: Date, options: HealthPassOptions = HealthPassOptions(),
-              request: @escaping Request) async -> Outcome {
+    /// isn't lost. `latest` gives the choices as they are now: after waiting
+    /// on another pass, they're read again, so of two changes made while a
+    /// pass ran the older can't go last.
+    func sync(preferences: HealthSyncPreferences, latest: (() -> HealthSyncPreferences)? = nil, deadline: Date,
+              options: HealthPassOptions = HealthPassOptions(), request: @escaping Request) async -> Outcome {
         let turnOffs = self.turnOffs
+        var preferences = preferences
         while let current = running {
             let joined = runningPreferences
             let joinedOptions = runningOptions
             let outcome = await current.value
+            if let latest {
+                let now = latest()
+                // Turned off, or moved to another dashboard, meanwhile.
+                guard now.isOn, now.destination == preferences.destination else { return .off }
+                preferences = now
+            }
             if joined == preferences, joinedOptions.covers(options) { return outcome }
             // Turned off meanwhile: these choices no longer hold.
             guard self.turnOffs == turnOffs else { return .off }
@@ -322,9 +336,11 @@ final class HealthSyncEngine: ObservableObject {
             try await session.sendEvents()
             // Low Data Mode: older history waits for another network.
             if !options.lowData { try await session.sendHistory() }
-            if state.lastIngest == postedBefore,
-               ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now())
-                || state.sentVoiceReaders != Self.voiceReaders(preferences) {
+            // Unknown (nil: never sent, or sent without an answer) counts as different.
+            if state.sentOtherProfiles != preferences.otherProfiles
+                || state.sentVoiceReaders != Self.voiceReaders(preferences)
+                || (state.lastIngest == postedBefore
+                    && ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now())) {
                 try await session.sendKeepalive()
             }
             state.lastSync = now()
@@ -417,6 +433,8 @@ final class HealthSyncEngine: ObservableObject {
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
+        // A new key starts the host's copy over, its other profiles choice too.
+        state.sentOtherProfiles = nil
     }
 
     /// Fixes how far back sharing reaches. Another choice starts the
@@ -450,8 +468,20 @@ final class HealthSyncEngine: ObservableObject {
         store.save(state)
     }
 
-    fileprivate func notePosted() {
+    /// An upload that would change what the host has for the choice is
+    /// about to go: until it's answered, whether the host took it is
+    /// unknown, so a lost answer can't leave a later change unsent.
+    fileprivate func noteSending(otherProfiles: Bool) {
+        guard state.sentOtherProfiles != otherProfiles, state.sentOtherProfiles != nil else { return }
+        state.sentOtherProfiles = nil
+        // Saved before the upload goes, so an app closed while it waits
+        // still finds the choice unknown on its next launch.
+        store.save(state)
+    }
+
+    fileprivate func notePosted(otherProfiles: Bool) {
         state.lastIngest = now()
+        state.sentOtherProfiles = otherProfiles
     }
 
     fileprivate var currentNow: Date { now() }
@@ -498,7 +528,8 @@ private struct Session {
         HealthBatch(computedAt: engine.currentNow, deviceName: engine.currentDeviceName, timeZone: calendar.timeZone,
                     categories: HealthCategory.allCases.filter(categories.contains),
                     detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) },
-                    voiceReaders: HealthSyncEngine.voiceReaders(preferences))
+                    voiceReaders: HealthSyncEngine.voiceReaders(preferences),
+                    otherProfiles: preferences.otherProfiles)
     }
 
     /// Sends `batch` in parts. Returns the windows (HealthBatch.windowPrints
@@ -524,8 +555,9 @@ private struct Session {
         var busyWait = HealthSyncLimits.firstBusyWait
         while true {
             do {
+                engine.noteSending(otherProfiles: part.otherProfiles)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
-                engine.notePosted()
+                engine.notePosted(otherProfiles: part.otherProfiles)
                 engine.acknowledged { $0.sentVoiceReaders = part.voiceReaders }
                 return answer
             } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {

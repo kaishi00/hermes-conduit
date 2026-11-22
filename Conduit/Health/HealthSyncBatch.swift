@@ -91,6 +91,9 @@ struct HealthBatch {
     /// for those modes alone. Every upload carries it: an empty list takes it
     /// back. Left out of the windows' hashes, so a change resends nothing.
     var voiceReaders: [String] = []
+    /// "Share with this host's other profiles". Not in `windowPrints`: the
+    /// windows the host holds don't change with it.
+    var otherProfiles = false
     var windows: [HealthWindow] = []
     var events: [HealthEvent] = []
     var deleted: [String] = []
@@ -107,6 +110,7 @@ struct HealthBatch {
             "categories": categories.map(\.rawValue).sorted(),
             "detailed": detailed.map(\.rawValue).sorted(),
             "voice_readers": voiceReaders,
+            "other_profiles": otherProfiles,
             "windows": windows.map { Self.json($0, format: format) },
             "events": events.map { event -> [String: Any] in
                 var entry: [String: Any] = [
@@ -146,9 +150,10 @@ struct HealthBatch {
 
     /// Each window's place on the host (metric, grain and range) and a hash
     /// of what it carries, in `windows`' order. What the batch says around
-    /// the windows (device, time zone, what's shared) is in every hash, so
-    /// a change there sends every window again. `batch_id` and
-    /// `computed_at` change every time and say nothing new.
+    /// the windows (device, time zone, categories and detailed ones) is in
+    /// every hash, so a change there sends every window again. The other
+    /// profiles choice isn't: it changes nothing the windows say.
+    /// `batch_id` and `computed_at` change every time and say nothing new.
     func windowPrints() -> [(key: String, hash: String)] {
         let format = HealthDateFormat(timeZone: timeZone)
         let scope: [String: Any] = [
@@ -191,7 +196,8 @@ struct HealthBatch {
 
     private func emptyCopy() -> HealthBatch {
         HealthBatch(computedAt: computedAt, deviceName: deviceName, timeZone: timeZone,
-                    categories: categories, detailed: detailed, voiceReaders: voiceReaders)
+                    categories: categories, detailed: detailed, voiceReaders: voiceReaders,
+                    otherProfiles: otherProfiles)
     }
 }
 

@@ -247,6 +247,15 @@ struct HealthSyncPreferences: Codable, Equatable {
     /// (`LiveVoiceModeName.storageID`). Optional so preferences saved
     /// before it still decode; nil is none.
     var voiceReaders: [String]?
+    /// "Share with this host's other profiles": the host's other profiles
+    /// paired with this iPhone read the data (a batch's `other_profiles`,
+    /// plugin 0.194.0). Read `otherProfiles`.
+    var otherProfilesChoice: Bool?
+
+    var otherProfiles: Bool {
+        get { otherProfilesChoice ?? false }
+        set { otherProfilesChoice = newValue ? true : nil }
+    }
 
     var isOn: Bool { destination != nil && !categories.isEmpty }
 

@@ -782,6 +782,11 @@ extension GatewayRestartTests {
         // The expired sign-in says why on that dashboard; other failures stay.
         XCTAssertEqual(AppState.signInRequiredPresentation(.signInExpired, endsOnRestart: true), .signInEndsOnRestart)
         XCTAssertEqual(AppState.signInRequiredPresentation(.signInExpired, endsOnRestart: false), .signInExpired)
+        // A native sign-in or session token isn't kept by the password secret.
+        XCTAssertEqual(
+            AppState.signInRequiredPresentation(.signInExpired, endsOnRestart: true, nativeSignIn: true),
+            .signInExpired
+        )
         let rateLimited = ConnectionFailurePresentation.presenting(.rateLimited)
         XCTAssertEqual(AppState.signInRequiredPresentation(rateLimited, endsOnRestart: true), rateLimited)
         XCTAssertTrue(ConnectionFailurePresentation.signInEndsOnRestart.asksToSignInAgain)

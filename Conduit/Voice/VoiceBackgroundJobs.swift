@@ -441,7 +441,7 @@ struct VoiceBackgroundJobBackend {
         throw HermesError.notConnected
     }
     /// Answers one question of the clarify a job's turn waits on (`questionID`
-    /// nil for a single question; `answer` nil leaves one of a form blank),
+    /// nil for a single question; `answer` nil leaves it blank where it may go so),
     /// as its card would. The card as it stands after, or nil when Hermes no
     /// longer waits on it.
     /// `sessionID` and `profile` are the job's chat, where the session
@@ -816,7 +816,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Answers the first open question `jobID` asks, as its card would: a
     /// choice the words point at sends what its tap sends, and nil (the
-    /// card's Leave blank) or "skip" leaves one of a form blank. A batch
+    /// card's Leave blank) or "skip" leaves it blank where it may go so. A batch
     /// goes on with its next question.
     func answerJobQuestion(_ jobID: UUID, answer: String?) async -> VoiceCallDecisionOutcome {
         guard let job = job(jobID), let clarify = job.waitingQuestion,
