@@ -3954,6 +3954,11 @@ extension AppState {
     /// (or server) became active while it was.
     @discardableResult
     func refreshContextUsage() async -> ContextBreakdown? {
+        // Another combined dashboard's chat on screen: read on its own
+        // runtime, through its kept connection (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: ContextBreakdown?.none, { await refreshContextUsage() }) {
+            return routed
+        }
         guard let client, let sessionId = activeSessionId else { return nil }
         // Before a reconnect has resumed the chat, Hermes may no longer hold
         // its runtime and refuses the read ("not in memory"). The resume

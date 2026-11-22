@@ -1190,7 +1190,7 @@ struct ComposerBar: View {
 
     /// "42%", for the context ring's large content viewer.
     private var contextPercentLabel: String {
-        "\(Int(appState.runtime.contextPercent.rounded()))%"
+        "\(Int(appState.chatRuntimeState.contextPercent.rounded()))%"
     }
 
     private var controlsRow: some View {
@@ -1211,7 +1211,7 @@ struct ComposerBar: View {
                     Haptics.selection()
                     appState.showContextSheet = true
                 } label: {
-                    ContextRingView(percent: appState.runtime.contextPercent)
+                    ContextRingView(percent: appState.chatRuntimeState.contextPercent)
                         .frame(width: Self.controlSize, height: Self.controlSize)
                         .contentShape(Self.controlHitShape)
                 }
@@ -1222,7 +1222,7 @@ struct ComposerBar: View {
                         systemImage: "chart.pie"
                     )
                 }
-                .accessibilityLabel("Context usage, \(Int(appState.runtime.contextPercent.rounded())) percent")
+                .accessibilityLabel("Context usage, \(Int(appState.chatRuntimeState.contextPercent.rounded())) percent")
 
                 if appState.activeAgents > 0 {
                     Button {
@@ -1763,10 +1763,10 @@ struct ComposerBar: View {
                 openModelPicker()
             } label: {
                 HStack(spacing: 5) {
-                    Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+                    Text(appState.chatRuntimeState.model.isEmpty ? AppLocalization.string("Model") : appState.chatRuntimeState.model)
                         .lineLimit(1)
                         .truncationMode(.tail)
-                    if appState.runtime.yolo {
+                    if appState.chatRuntimeState.yolo {
                         Image(systemName: "shield.slash.fill")
                             .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(Color.orange)
@@ -1778,11 +1778,11 @@ struct ComposerBar: View {
             .buttonStyle(.plain)
             // The controls row is capped; touch and hold shows the model large.
             .accessibilityShowsLargeContentViewer {
-                Text(appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model)
+                Text(appState.chatRuntimeState.model.isEmpty ? AppLocalization.string("Model") : appState.chatRuntimeState.model)
             }
             .accessibilityLabel(modelAccessibilityLabel)
 
-            if !appState.runtime.model.isEmpty {
+            if !appState.chatRuntimeState.model.isEmpty {
                 // The model name gives way first, then the effort.
                 reasoningMenu
                     .layoutPriority(1)
@@ -1807,7 +1807,7 @@ struct ComposerBar: View {
     /// One tap to change reasoning, the setting changed most, without opening
     /// the Model sheet. Hermes applies it to the live agent at once.
     private var reasoningMenu: some View {
-        let current = ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort)
+        let current = ReasoningEffortLevel(runtimeEffort: appState.chatRuntimeState.reasoningEffort)
         return Menu {
             Picker(
                 selection: Binding<ReasoningEffortLevel?>(
@@ -1836,7 +1836,7 @@ struct ComposerBar: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort))
+                Text(ReasoningEffortLevel.displayTitle(for: appState.chatRuntimeState.reasoningEffort))
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .bold))
@@ -1850,10 +1850,10 @@ struct ComposerBar: View {
         // Picks land in order: the next waits for this write.
         .disabled(appState.isWritingReasoningEffort)
         .accessibilityShowsLargeContentViewer {
-            Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort))
+            Text(ReasoningEffortLevel.displayTitle(for: appState.chatRuntimeState.reasoningEffort))
         }
         .accessibilityLabel(Text("Reasoning"))
-        .accessibilityValue(Text(ReasoningEffortLevel.displayTitle(for: appState.runtime.reasoningEffort)))
+        .accessibilityValue(Text(ReasoningEffortLevel.displayTitle(for: appState.chatRuntimeState.reasoningEffort)))
     }
 
     /// Return-shortcut entry point. Invokes the exact same submission path
@@ -1923,7 +1923,8 @@ struct ComposerBar: View {
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submittedClearCount = draftStore.clearCount(for: submittedDraftKey.dashboard)
-        let submittedDashboardID = appState.activeDashboardID
+        // A far chat's draft is its own dashboard's, not the screen's.
+        let submittedDashboardID = submittedDraftKey.dashboard ?? appState.activeDashboardID
         let submittedChatTitle = appState.displayedChatTitle
         // The words may come back after the chat's runtime id has moved on:
         // they go back by its durable id, as a waiting message's do.
@@ -2001,7 +2002,14 @@ struct ComposerBar: View {
     private func applyComposerRestoreRequests() {
         guard let loadedDraftKey else { return }
         var restoredIntoField = false
-        for request in appState.composerRestoreRequests where request.dashboardID == appState.activeDashboardID {
+        // Its words are its chat's dashboard's: a far chat's, not the screen's.
+        // A far chat's words while another draft is loaded go to its stored
+        // draft, so they outlive the queue (it isn't saved).
+        let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
+        for request in appState.composerRestoreRequests
+        where request.dashboardID == draftDashboardID
+            || request.dashboardID == appState.activeDashboardID
+            || request.dashboardID == request.key.dashboard {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 // Only a send's own words can be the refused message: a
                 // shared draft, a dictation retry or a waiting message's
@@ -3326,9 +3334,9 @@ struct ComposerBar: View {
     }
 
     private var modelAccessibilityLabel: String {
-        let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
+        let model = appState.chatRuntimeState.model.isEmpty ? AppLocalization.string("Model") : appState.chatRuntimeState.model
         // Reasoning has its own control beside the model name.
-        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled", table: .chat) : ""
+        let approvals = appState.chatRuntimeState.yolo ? AppLocalization.string(", auto-approve enabled", table: .chat) : ""
         let activity = appState.turnState == .running ? AppLocalization.string(", agent working", table: .chat) : ""
         return "\(model)\(approvals)\(activity)"
     }

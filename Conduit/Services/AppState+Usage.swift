@@ -81,6 +81,11 @@ extension AppState {
     /// when the open chat can't be told apart from another (issue 2739).
     func loadOpenChatUsage() async -> SessionUsageReadout? {
         guard activeSessionId != nil else { return nil }
+        // Another combined dashboard's chat on screen: read on its own
+        // runtime, from its own dashboard and profile (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: SessionUsageReadout?.none, { await loadOpenChatUsage() }) {
+            return routed
+        }
         guard let sessionID = openChatUsageSessionID() else {
             // Not asked, not failed: say why (#2751 review).
             return .unavailable(AppLocalization.string("Another chat here goes by this chat's id, so its usage can't be told apart."))

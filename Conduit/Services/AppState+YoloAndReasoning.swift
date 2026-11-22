@@ -18,7 +18,7 @@ extension AppState {
 
     func toggleYolo(context: ComposerSubmissionContext? = nil) async {
         let submissionContext = context ?? composerSubmissionContext()
-        _ = await setYoloMode(!runtime.yolo, context: submissionContext)
+        _ = await setYoloMode(!chatRuntimeState.yolo, context: submissionContext)
     }
 
     @discardableResult
@@ -46,6 +46,14 @@ extension AppState {
     /// on tap.
     func setReasoningEffort(_ effort: String) async -> ReasoningWriteResult {
         guard !isWritingReasoningEffort else { return .abandoned }
+        // Another combined dashboard's chat on screen: written on its own
+        // runtime, through its kept connection (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(
+            unreachable: ReasoningWriteResult.failed(AppLocalization.string("Not connected to a conversation.")),
+            { await setReasoningEffort(effort) }
+        ) {
+            return routed
+        }
         guard let client, let sessionId = activeSessionId else {
             return .failed(AppLocalization.string("Not connected to a conversation."))
         }
@@ -75,6 +83,14 @@ extension AppState {
         context: ComposerSubmissionContext? = nil
     ) async -> YoloWriteFailure? {
         let submissionContext = context ?? composerSubmissionContext()
+        // Another combined dashboard's chat on screen: written on its own
+        // runtime, where its context was captured (AppState+FarChat.swift).
+        let unreachable = YoloWriteFailure(message: AppLocalization.string("Not connected to a conversation."))
+        if let routed = await onChatRuntime(unreachable: Optional(unreachable), {
+            await setYoloModeReportingFailure(enabled, context: submissionContext)
+        }) {
+            return routed
+        }
         guard isCurrentComposerSubmission(submissionContext) else { return YoloWriteFailure(message: nil) }
         guard runtime.approvalsMode?.lowercased() != "off" else {
             // Hermes auto-approves globally under approvals.mode == "off"; the
