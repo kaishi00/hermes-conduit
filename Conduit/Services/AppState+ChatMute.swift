@@ -94,8 +94,16 @@ extension AppState {
                 guard let self else { return }
                 self.chatMutesReads.remove(key)
                 guard self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge,
-                      self.chatMutesPendingWrites[key] == nil, (self.chatMutesWrites[key] ?? 0) == writes,
-                      let answer, let mutes = ChatMutes.mutes(from: answer) else { return }
+                      self.chatMutesPendingWrites[key] == nil else { return }
+                // A mute made since this read went out: dropped. Its write's
+                // answer reads them again, or, when that answer came while
+                // this read was out (so it read nothing), this does, as Done
+                // marks do.
+                guard (self.chatMutesWrites[key] ?? 0) == writes else {
+                    self.refreshChatMutes(profiles: [profile], force: true)
+                    return
+                }
+                guard let answer, let mutes = ChatMutes.mutes(from: answer) else { return }
                 let next = self.chatMutes.replacing(mutes, profile: profile, dashboardID: dashboardID)
                 if next != self.chatMutes { self.chatMutes = next }
             }
