@@ -104,8 +104,10 @@ extension AppState {
         case .newChat:
             return ComposerDraftKey(dashboard: activeDashboardID, profile: activeProfile, sessionID: ComposerDraftKey.newConversationSessionID)
         case .savedCopy:
-            if let sessionID = offlineChatPresentation?.composerSessionID {
-                return ComposerDraftKey(dashboard: activeDashboardID, profile: activeProfile, sessionID: sessionID)
+            // The copy's own dashboard and profile: a far chat's while it
+            // opens, so words typed then carry over to its live draft.
+            if let presentation = offlineChatPresentation, let sessionID = presentation.composerSessionID {
+                return ComposerDraftKey(dashboard: presentation.dashboardID, profile: presentation.profile, sessionID: sessionID)
             }
         case .live, .none:
             break
