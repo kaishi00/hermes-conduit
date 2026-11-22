@@ -1141,6 +1141,10 @@ extension CrossProfilePresentationCacheTests {
         // chat on screen: the phone's start leaves it to a switch.
         XCTAssertFalse(appState.openLiveCallOnFarDashboard(mac.id, profile: "default"))
         XCTAssertNil(appState.liveCallDashboardID)
+        // So does another profile there: the refusal leaves Mac's kept
+        // socket on its own profile, its kept chats untouched.
+        XCTAssertFalse(appState.openLiveCallOnFarDashboard(mac.id, profile: "work"))
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === macClient, "nothing handed over")
 
         // A start on Mac reads Mac's settings and begins a call holding Mac.
         var macPreferences = VoiceProfilePreferences()
