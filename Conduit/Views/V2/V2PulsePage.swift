@@ -77,7 +77,7 @@ struct PulseFeedReader: View {
             .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
                                       active: scenePhase == .active && shell.isTabActive,
                                       served: appState.notifierPlugin.reports(PulseClient.feedCapability),
-                                      available: appState.showsPulseScreen)) {
+                                      available: appState.readingPulseRuntime { appState.showsPulseScreen })) {
                 guard scenePhase == .active, shell.isTabActive, appState.showsPulseScreen else { return }
                 while !Task.isCancelled {
                     // The Pulse page, open over or beside the list, reads the
@@ -196,7 +196,7 @@ struct V2PulsePage: View {
     /// The added suggestion Undo asks about before it comes off the phone.
     @State private var undoCard: PulseCard?
 
-    private var client: PulseClient { appState.pulseClient }
+    private var client: PulseClient { appState.shownPulseClient }
 
     /// Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
     private var offersQuietToday: Bool { canQuiet && page?.quietNow == nil }
@@ -238,9 +238,9 @@ struct V2PulsePage: View {
 
     var body: some View {
         pageWithDialogs
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isVisible && scenePhase == .active,
-                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability),
-                                  available: appState.showsPulseScreen)) {
+        .task(id: PulseRefreshKey(dashboard: appState.pulseDashboardID, active: isVisible && scenePhase == .active,
+                                  served: appState.pulsePlugin.reports(PulseClient.feedCapability),
+                                  available: appState.readingPulseRuntime { appState.showsPulseScreen })) {
             guard isVisible, scenePhase == .active else { return }
             // This task ends with the visit (its key), so the visit it
             // starts in is the one each of its reads belongs to.
@@ -261,6 +261,11 @@ struct V2PulsePage: View {
                 guard !Task.isCancelled else { break }
                 // The other combined dashboards' chips (all-live stage 4d).
                 await appState.readOtherCombinedDashboardsPulse()
+                // Another's feed shown here: the one on screen's chip and the
+                // tab's dot keep up from its own read meanwhile.
+                if appState.pulseRuntime != nil, !appState.pulseFeedIsFresh(within: AppState.combinedDashboardPulseMaxAge) {
+                    await appState.refreshPulseFeed()
+                }
                 try? await Task.sleep(for: .seconds(60))
             }
         }
@@ -275,11 +280,17 @@ struct V2PulsePage: View {
         .onDisappear {
             isShown = false
             leaveVisit()
+            // Another dashboard's Pulse, shown from its chip, goes back to
+            // the one on screen's as the page leaves.
+            appState.pulseShownDashboardID = nil
         }
         // Another tab selected over a page kept mounted: the visit ends as if
         // it had gone, so the next one marks its own new cards.
         .onChange(of: shell.isTabActive) { _, active in
-            if !active { leaveVisit() }
+            if !active {
+                leaveVisit()
+                appState.pulseShownDashboardID = nil
+            }
         }
         // Backgrounded: a read already under way (a retry or reload outside
         // the page's task) belongs to the visit before, so it marks nothing
@@ -287,7 +298,7 @@ struct V2PulsePage: View {
         .onChange(of: scenePhase) { _, phase in
             if phase != .active { visit = UUID() }
         }
-        .onChange(of: appState.activeDashboardID) { _, _ in
+        .onChange(of: appState.pulseDashboardID) { _, _ in
             reasonCard = nil
             restCard = nil
             undoCard = nil
@@ -315,7 +326,8 @@ struct V2PulsePage: View {
         .onChange(of: page) { _, page in
             // Done, Not now and Undo here change the cards before the next
             // read: the Pulse widget reads again too (issue 2190).
-            if let page { appState.pulseWidgetFeedChanged(page) }
+            // The widget shows the one on screen's Pulse.
+            if let page, appState.pulseRuntime == nil { appState.pulseWidgetFeedChanged(page) }
         }
     }
 
@@ -604,9 +616,9 @@ struct V2PulsePage: View {
         }
     }
 
-    private var canDismiss: Bool { appState.notifierPlugin.reports(PulseClient.dismissCapability) }
-    private var canChooseRest: Bool { appState.notifierPlugin.reports(PulseClient.restCapability) }
-    private var canQuiet: Bool { appState.notifierPlugin.reports(PulseClient.quietCapability) }
+    private var canDismiss: Bool { appState.pulsePlugin.reports(PulseClient.dismissCapability) }
+    private var canChooseRest: Bool { appState.pulsePlugin.reports(PulseClient.restCapability) }
+    private var canQuiet: Bool { appState.pulsePlugin.reports(PulseClient.quietCapability) }
 
     /// Pulse is quiet (0.80.2): until when, and for a spell (a vacation, or
     /// Quiet for today) End quiet time. A quiet day ends on its own. Until
@@ -661,7 +673,7 @@ struct V2PulsePage: View {
     /// everything in it is handled (`PulseLayout.Brief.isFolded`).
     @ViewBuilder private func briefRows(_ brief: PulseLayout.Brief) -> some View {
         // Open when a Pulse mark pointed at it or one of its cards, even before focus() could expand it.
-        if brief.isFolded(folded: appState.pulseBriefFold(brief.id),
+        if brief.isFolded(folded: appState.readingPulseRuntime({ appState.pulseBriefFold(brief.id) }),
                           opened: expandedBriefs.contains(brief.id), focused: focusedCard) {
             foldedBriefRow(brief)
                 .id(brief.card.id)
@@ -839,7 +851,7 @@ struct V2PulsePage: View {
             } else {
                 expandedBriefs.insert(brief.id)
             }
-            appState.foldPulseBrief(brief.id, open: folded ? brief.openCards : nil)
+            appState.readingPulseRuntime { appState.foldPulseBrief(brief.id, open: folded ? brief.openCards : nil) }
         }
     }
 
@@ -1344,7 +1356,9 @@ struct V2PulsePage: View {
     /// The Kanban task, opened in Tasks, where it can be unblocked or run again.
     private func taskLink(_ card: PulseCard, task: String) -> some View {
         Button {
-            appState.openPulseCardTask(card)
+            // Another dashboard's Pulse: its task opens there.
+            let dashboard = appState.pulseDashboardID
+            Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardTask(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checklist")
@@ -1364,7 +1378,9 @@ struct V2PulsePage: View {
     /// The chat it came from, a tap away.
     private func chatLink(_ card: PulseCard) -> some View {
         Button {
-            appState.openPulseCardChat(card)
+            // Another dashboard's Pulse: its chat opens there.
+            let dashboard = appState.pulseDashboardID
+            Task { if await appState.switchForFarPulseStep(for: dashboard) { appState.openPulseCardChat(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left")
@@ -1467,7 +1483,7 @@ struct V2PulsePage: View {
             .buttonStyle(.borderless)
             .disabled(isBusy(card))
             .accessibilityHint(Text(AppLocalization.string("Puts the card back on the list", table: .pulse)))
-        } else if card.doneAt != nil, appState.notifierPlugin.reports(PulseClient.doneCapability) {
+        } else if card.doneAt != nil, appState.pulsePlugin.reports(PulseClient.doneCapability) {
             Button {
                 Haptics.selection()
                 markDone(card, false)
@@ -1614,8 +1630,10 @@ struct V2PulsePage: View {
     /// from no chat, a long press picks where it goes this once: a new
     /// chat or a bot's Bot Chat (`pulseDoItBotChoices`).
     private func doItButton(_ card: PulseCard, ask: PulseLook.Action? = nil, bar: Bool = false) -> some View {
-        let bots: [BotProfile] = appState.pulseCardHasChat(card) ? [] : appState.pulseDoItBotChoices
-        let bot = appState.pulseDoItBot(for: card)
+        let bots: [BotProfile] = appState.readingPulseRuntime {
+            appState.pulseCardHasChat(card) ? [] : appState.pulseDoItBotChoices
+        }
+        let bot = appState.readingPulseRuntime { appState.pulseDoItBot(for: card) }
         return Button {
             doIt(card, ask: ask)
         } label: {
@@ -1667,21 +1685,25 @@ struct V2PulsePage: View {
     /// check reads it there.
     private func doIt(_ card: PulseCard, ask: PulseLook.Action?, in picked: PulseDoItTarget? = nil) {
         Haptics.selection()
-        if let refusal = appState.pulseNewChatRefusal(for: card, in: picked) {
+        if let refusal = appState.readingPulseRuntime({ appState.pulseNewChatRefusal(for: card, in: picked) }) {
             showError(refusal)
             return
         }
-        let bot = appState.pulseDoItBot(for: card, in: picked)
+        let bot = appState.readingPulseRuntime { appState.pulseDoItBot(for: card, in: picked) }
         let failure = appState.pulseCardHasChat(card)
             ? AppLocalization.string("Couldn't open that chat. Try again.")
             : bot.map { AppLocalization.string("Could not open \($0.displayLabel)'s Bot Chat.") }
                 ?? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         actingCard = card.id
         Task {
-            defer { if actingCard == card.id { actingCard = nil } }
+            // A newer step on another dashboard's card with the same id keeps its mark.
+            defer { if appState.pulseDashboardID == dashboard, actingCard == card.id { actingCard = nil } }
+            // Another dashboard's Pulse: its chat opens there.
+            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
             let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             guard let opened else {
                 showError(failure)
                 return
@@ -1690,12 +1712,12 @@ struct V2PulsePage: View {
             let chat = opened.chat
             // Pulse reads the chat once Hermes has answered and marks the card done itself.
             // Only a card Pulse can mark done, with a Done button to fall back on.
-            if appState.canMarkPulseCardDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
+            if appState.canMarkPulseCardDone(card), appState.pulsePlugin.reports(PulseClient.actedCapability) {
                 do {
                     try await client.acted(card: card.id, chat: chat)
                     untoldCards.remove(card.id)
                 } catch {
-                    guard appState.activeDashboardID == dashboard else { return }
+                    guard appState.pulseDashboardID == dashboard else { return }
                     untoldCards.insert(card.id)
                     AccessibilityNotification.Announcement(Self.untoldNote).post()
                 }
@@ -1789,10 +1811,12 @@ struct V2PulsePage: View {
     /// read then would be the new one (issue 2686). A read that lands
     /// after its visit ended marks nothing seen.
     private func load(in visit: UUID) async {
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        await appState.readyShownPulseRuntime()
+        guard appState.pulseDashboardID == dashboard else { return }
         do {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             page = loaded
             if newCards == nil, isOnScreen(in: visit) {
                 newCards = Set(loaded.cards.filter { $0.seenAt == nil && !$0.isCleared }.map(\.id))
@@ -1800,18 +1824,19 @@ struct V2PulsePage: View {
             loadError = nil
             errorMessage = nil
             learnedNote = nil
-            appState.applyPulseFeed(loaded)
+            appState.readingPulseRuntime { appState.applyPulseFeed(loaded) }
             if let request = appState.pulseOpenRequest, isOnScreen(in: visit) { focus(request) }
             // Hidden or backgrounded meanwhile (a card action's reload isn't
             // cancelled by that): nothing was seen.
             // Checked again once the plugin answers: left meanwhile, the dot
             // keeps its count until the next visit's read settles it.
             if !Task.isCancelled, isOnScreen(in: visit), loaded.unseen > 0, (try? await client.markSeen(nil, proposals: appState.pulseSuggests)) != nil,
-               !Task.isCancelled, isOnScreen(in: visit), appState.activeDashboardID == dashboard {
-                appState.pulseUnseen = 0
+               !Task.isCancelled, isOnScreen(in: visit), appState.pulseDashboardID == dashboard {
+                appState.readingPulseRuntime { appState.pulseUnseen = 0 }
             }
         } catch {
-            guard appState.activeDashboardID == dashboard else { return }
+            // Cancelled for a load that follows (the plugin answered): that one says how it went.
+            guard appState.pulseDashboardID == dashboard, !(Task.isCancelled && UserFacingError.isCancellation(error)) else { return }
             if page == nil { loadError = PulseRefusal.message(for: error) }
         }
     }
@@ -1827,13 +1852,15 @@ struct V2PulsePage: View {
 
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
         ratingCards.insert(card.id)
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
-            defer { ratingCards.remove(card.id) }
+            // Another dashboard shown meanwhile cleared it, and may own that id now.
+            defer { if appState.pulseDashboardID == dashboard { ratingCards.remove(card.id) } }
             do {
                 let rated = try await client.rate(card: card.id, up: up, reason: reason)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 let now = Date()
                 if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                     page?.cards[index].rating = up ? "up" : "down"
@@ -1855,7 +1882,7 @@ struct V2PulsePage: View {
                 learnedNote = rated.lessons.isEmpty ? nil
                     : AppLocalization.string("Pulse learned: \(rated.lessons.map(\.text).joined(separator: "; "))", table: .pulse)
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
         }
@@ -1867,7 +1894,7 @@ struct V2PulsePage: View {
         guard !quieting else { return }
         quieting = true
         Haptics.light()
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
         let visit = self.visit
         let client = self.client
         Task {
@@ -1875,11 +1902,11 @@ struct V2PulsePage: View {
             do {
                 let until: Any = on ? "today" as Any : NSNull() as Any
                 _ = try await client.update(["quiet_until": until])
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 Haptics.success()
                 await load(in: visit)
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
                 Haptics.error()
             }
@@ -1891,13 +1918,14 @@ struct V2PulsePage: View {
     /// card moves at once.
     private func dismiss(_ card: PulseCard, _ dismissed: Bool, until: PulseRest? = nil) {
         finishingCards.insert(card.id)
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 guard answer.changed else { return await load(in: visit) }
                 withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
@@ -1910,7 +1938,7 @@ struct V2PulsePage: View {
                 if dismissed { showUndo(.dismissed, card: card.id, back: answer.restUntil, visit: visit) }
                 errorMessage = nil
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
         }
@@ -1920,20 +1948,21 @@ struct V2PulsePage: View {
     /// it, folded since, opens to show it (AppState.unfoldPulseCard).
     private func unfold(_ card: PulseCard) {
         guard let cards = page?.cards, let brief = PulseLayout(cards: cards).brief(bringing: card.id) else { return }
-        appState.unfoldPulseCard(card.id, in: brief.id)
+        appState.readingPulseRuntime { appState.unfoldPulseCard(card.id, in: brief.id) }
     }
 
     /// Done (or Undo) on a follow-up card: the promise closes or comes
     /// back; the card shows it at once.
     private func markDone(_ card: PulseCard, _ done: Bool) {
         finishingCards.insert(card.id)
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let changed = try await client.markDone(card: card.id, done: done)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 // The plugin had nothing to change (the card or its item is
                 // gone): show what it has instead.
                 guard changed else { return await load(in: visit) }
@@ -1950,7 +1979,7 @@ struct V2PulsePage: View {
                 }
                 errorMessage = nil
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
         }
@@ -1973,16 +2002,20 @@ struct V2PulsePage: View {
         guard let proposal = card.proposal else { return }
         finishingCards.insert(card.id)
         keptCards.insert(card.id)
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
-        // The sharing the tap was made in: turned off before the answer
-        // comes, the tap applies nothing here.
-        let sharing = appState.phoneSync.sharingSession
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
+            // Another dashboard's Pulse: this phone shares with the one on
+            // screen, so the change is made there.
+            guard await appState.switchForFarPulseStep(for: dashboard) else { return }
+            // The sharing the tap was made in: turned off before the answer
+            // comes, the tap applies nothing here.
+            let sharing = appState.phoneSync.sharingSession
             do {
                 let answer = try await (undo ? client.undoProposal(proposal.id) : client.addProposal(proposal.id))
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 setProposal(answer, on: card.id)
                 errorMessage = nil
                 guard let change = undo ? answer.undoID : answer.changeID else {
@@ -1990,9 +2023,9 @@ struct V2PulsePage: View {
                     return
                 }
                 let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 await load(in: visit)
-                guard appState.activeDashboardID == dashboard,
+                guard appState.pulseDashboardID == dashboard,
                       let settled = page?.cards.first(where: { $0.id == card.id })?.proposal else { return }
                 if !settled.isInFlight {
                     AccessibilityNotification.Announcement(settled.stateText).post()
@@ -2007,11 +2040,11 @@ struct V2PulsePage: View {
                 }
                 // Synced and still Adding…: the label says so, and the next load settles it.
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 // Where it stands now: added from another device, expired, …
                 // Loaded first: a load clears the page's error.
                 await load(in: visit)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
         }
@@ -2022,13 +2055,14 @@ struct V2PulsePage: View {
     private func dismissProposal(_ card: PulseCard) {
         guard let proposal = card.proposal else { return }
         finishingCards.insert(card.id)
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let answer = try await client.dismissProposal(proposal.id)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     setProposal(answer, on: card.id)
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
@@ -2039,10 +2073,10 @@ struct V2PulsePage: View {
                 AccessibilityNotification.Announcement(answer.stateText).post()
                 errorMessage = nil
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 // Loaded first: a load clears the page's error.
                 await load(in: visit)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
             }
         }
@@ -2146,9 +2180,9 @@ struct PulseLearnedSheet: View {
     @State private var working = false
     @State private var confirmsStartOver = false
 
-    private var client: PulseClient { appState.pulseClient }
+    private var client: PulseClient { appState.shownPulseClient }
     /// A plugin that learns from thumbs, Do it and Done (0.81.1): thumbs no longer move the levels.
-    private var learns: Bool { appState.notifierPlugin.reports(PulseClient.learnsCapability) }
+    private var learns: Bool { appState.pulsePlugin.reports(PulseClient.learnsCapability) }
 
     var body: some View {
         NavigationStack {
@@ -2222,7 +2256,7 @@ struct PulseLearnedSheet: View {
             } message: {
                 Text("Pulse forgets what your thumbs, Do it and Done taught it so far and learns again from what you do next. The levels you set and the lessons from your reasons stay, and Undo takes it back.")
             }
-            .task(id: appState.activeDashboardID) {
+            .task(id: appState.pulseDashboardID) {
                 // Another dashboard's: nothing of the last one stays to be reset or undone.
                 learned = nil
                 errorMessage = nil
@@ -2268,15 +2302,15 @@ struct PulseLearnedSheet: View {
     }
 
     private func load() async {
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
         let client = self.client
         do {
             let loaded = try await client.learned()
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             learned = loaded
             errorMessage = nil
         } catch {
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             errorMessage = PulseRefusal.message(for: error)
         }
     }
@@ -2298,19 +2332,19 @@ struct PulseLearnedSheet: View {
     /// asked for, not whichever is active once the task starts.
     private func run(_ step: @escaping @MainActor (PulseClient) async throws -> PulseLearned) {
         working = true
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
         let visit = currentVisit()
         let client = self.client
         Task {
             defer { working = false }
             do {
                 let result = try await step(client)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 learned = result
                 errorMessage = nil
                 onChange(visit)
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 errorMessage = PulseRefusal.message(for: error)
             }
         }
@@ -2334,7 +2368,7 @@ struct PulseLeftOutSheet: View {
     @State private var errorMessage: String?
     @State private var bringing: Int?
 
-    private var client: PulseClient { appState.pulseClient }
+    private var client: PulseClient { appState.shownPulseClient }
 
     var body: some View {
         NavigationStack {
@@ -2386,7 +2420,7 @@ struct PulseLeftOutSheet: View {
                     Button(AppLocalization.string("Done")) { dismiss() }
                 }
             }
-            .task(id: appState.activeDashboardID) {
+            .task(id: appState.pulseDashboardID) {
                 entries = nil
                 errorMessage = nil
                 await load()
@@ -2472,28 +2506,28 @@ struct PulseLeftOutSheet: View {
     }
 
     private func load() async {
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
         do {
             let loaded = try await client.leftOut()
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             entries = loaded
             errorMessage = nil
         } catch {
-            guard appState.activeDashboardID == dashboard else { return }
+            guard appState.pulseDashboardID == dashboard else { return }
             errorMessage = PulseRefusal.message(for: error)
         }
     }
 
     private func bringUp(_ entry: PulseLeftOut) {
         bringing = entry.id
-        let dashboard = appState.activeDashboardID
+        let dashboard = appState.pulseDashboardID
         let visit = currentVisit()
         let client = self.client
         Task {
             defer { bringing = nil }
             do {
                 let card = try await client.bringUp(entry.id)
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 if let index = entries?.firstIndex(where: { $0.id == entry.id }) {
                     entries?[index].cardID = card.id
                 }
@@ -2501,7 +2535,7 @@ struct PulseLeftOutSheet: View {
                 Haptics.success()
                 onBroughtUp(card.id, visit)
             } catch {
-                guard appState.activeDashboardID == dashboard else { return }
+                guard appState.pulseDashboardID == dashboard else { return }
                 if PulseRefusal(error: error)?.code == "invalid" {
                     // It came up meanwhile, or the journal let it go: the list as it is now.
                     await load()
