@@ -2074,9 +2074,14 @@ extension CrossProfilePresentationCacheTests {
             sessionIDs: ["left-1"], durableSessionID: nil, title: "Left", dashboardID: mac.id,
             profile: "default", isBotChat: false, rows: [], streamingText: "Half"
         )]
+        // So does the far chat open there now, as it hands the socket on.
+        appState.activeSessionId = "far-open"
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         let runtime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
         let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertEqual(handed.client.sessionProfile(for: "left-1"), "default", "its chats on the old profile keep it")
+        XCTAssertEqual(handed.client.sessionProfile(for: "far-open"), "default", "the far chat on its old profile keeps it")
+        appState.farChat = nil
         appState.backgroundChats = []
         XCTAssertTrue(runtime === kept.runtime, "the same runtime")
         XCTAssertFalse(handed.client === outgoing)
