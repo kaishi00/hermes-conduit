@@ -2662,10 +2662,13 @@ extension CrossProfilePresentationCacheTests {
         appState.readingPulseRuntime { appState.pulseUnseen = 0 }
         XCTAssertEqual(kept.runtime.pulseUnseen, 0)
         XCTAssertEqual(appState.pulseUnseen, 1, "the one on screen's count stays")
+        kept.runtime.pulseFeedAppliedAt = (mac.id, Date())
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [0, 1], "shown, its chip counts its own runtime's")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
         // The one on screen's chip goes back to it.
         appState.openCombinedPulse(vps.id)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [3, 1], "no longer shown, the background read's count")
         XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
 
@@ -2684,6 +2687,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertTrue(appState.pulseDashboardChips.allSatisfy { $0.dashboardID != mac.id || $0.isShown },
                       "on screen, its chip is the page's own")
+
+        // One let go while shown: the page goes back to the one on screen's,
+        // so a runtime kept for it anew doesn't take the page over.
+        XCTAssertNotNil(appState.keptDashboardRuntimes[vps.id], "the one switched from is kept")
+        appState.openCombinedPulse(vps.id)
+        XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        appState.dropKeptDashboardRuntime(vps.id)
+        XCTAssertNil(appState.pulseShownDashboardID)
+        XCTAssertEqual(appState.pulseDashboardID, mac.id)
     }
 
     /// A notification from a combined dashboard kept beside the one on

@@ -261,6 +261,11 @@ struct V2PulsePage: View {
                 guard !Task.isCancelled else { break }
                 // The other combined dashboards' chips (all-live stage 4d).
                 await appState.readOtherCombinedDashboardsPulse()
+                // Another's feed shown here: the one on screen's chip and the
+                // tab's dot keep up from its own read meanwhile.
+                if appState.pulseRuntime != nil, !appState.pulseFeedIsFresh(within: 50) {
+                    await appState.refreshPulseFeed()
+                }
                 try? await Task.sleep(for: .seconds(60))
             }
         }
@@ -1694,7 +1699,8 @@ struct V2PulsePage: View {
         let client = self.client
         actingCard = card.id
         Task {
-            defer { if actingCard == card.id { actingCard = nil } }
+            // A newer step on another dashboard's card with the same id keeps its mark.
+            defer { if appState.pulseDashboardID == dashboard, actingCard == card.id { actingCard = nil } }
             // Another dashboard's Pulse: its chat opens there.
             guard await appState.switchForFarPulseStep(from: shown) else { return }
             let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
