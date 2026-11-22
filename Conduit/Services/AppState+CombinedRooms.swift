@@ -346,23 +346,12 @@ extension AppState {
     /// returns there, as this dashboard's rooms' portraits do.
     func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
         dismissSidebarDrawer()
-        if let runtime = runtime(for: tile.dashboardID), runtime !== runtimeOnScreen, runtime.isConnected {
+        if let runtime = keptRuntimeOpeningRoomsInPlace(tile.dashboardID) {
             let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
             if let mark { beginOpeningBotChat(mark) }
             defer { if let mark { endOpeningBotChat(mark) } }
-            // What its plugin serves (pictures, files, copies), then its group
-            // chats, read on its own runtime once while it's kept: signed in
-            // quietly beside this one, it read only what the lists show.
-            await readKeptPluginStatusIfUnknown(tile.dashboardID)
-            guard !Task.isCancelled else { return }
-            await actAcrossAwaits(onRuntime: runtime) {
-                if groupChatPhase != .available || groupCapabilities == nil { await refreshGroupChatSupport() }
-                guard !Task.isCancelled else { return }
-                // Its bots as its list read them, for the room's faces and
-                // names, until its own roster is read.
-                if botRoster.isEmpty, let bots = combinedDashboardBots[tile.dashboardID]?.bots { botRoster = bots }
-                await openCombinedRoomTile(tile)
-            }
+            guard await readyKeptRuntimeForRooms(runtime, tile.dashboardID) else { return }
+            await actAcrossAwaits(onRuntime: runtime) { await openCombinedRoomTile(tile) }
             return
         }
         guard !refusesCombinedSwitchDuringCall() else { return }
@@ -379,6 +368,30 @@ extension AppState {
         if let mark { beginOpeningBotChat(mark) }
         defer { if let mark { endOpeningBotChat(mark) } }
         await openCombinedRoomTile(tile)
+    }
+
+    /// Another combined dashboard's runtime when its group chats open in
+    /// place: kept beside the one on screen and connected. Nil otherwise,
+    /// and the open switches there as before.
+    func keptRuntimeOpeningRoomsInPlace(_ id: UUID) -> DashboardRuntime? {
+        guard let runtime = runtime(for: id), runtime !== runtimeOnScreen, runtime.isConnected else { return nil }
+        return runtime
+    }
+
+    /// Reads what a kept dashboard's rooms need on its own runtime, once
+    /// while it's kept: what its plugin serves (pictures, files, copies),
+    /// then its group chats, since signed in quietly beside this one it
+    /// read only what the lists show. Its bots as its list read them stand
+    /// in for its roster, for the room's faces and names, until that's
+    /// read. False when the open was cancelled meanwhile.
+    func readyKeptRuntimeForRooms(_ runtime: DashboardRuntime, _ id: UUID) async -> Bool {
+        await readKeptPluginStatusIfUnknown(id)
+        guard !Task.isCancelled else { return false }
+        await actAcrossAwaits(onRuntime: runtime) {
+            if groupChatPhase != .available || groupCapabilities == nil { await refreshGroupChatSupport() }
+            if botRoster.isEmpty, let bots = combinedDashboardBots[id]?.bots { botRoster = bots }
+        }
+        return !Task.isCancelled
     }
 
     /// A kept dashboard's plugin status on its own runtime, read through its

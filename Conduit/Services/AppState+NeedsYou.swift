@@ -389,7 +389,9 @@ extension AppState {
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
         if let roomID = item.roomID {
             // A linked room's copy is another host's room, whatever its id.
+            // Another combined dashboard's room is open in place under its id.
             return activeRoomSurface?.copy == nil && activeRoomSurface?.room.roomID == roomID
+                && activeRoomSurface?.dashboardID == (item.dashboardID ?? dashboardIDOnScreen)
         }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
@@ -402,7 +404,25 @@ extension AppState {
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
         needsYou.dismissBanner(item)
-        // Another combined dashboard's: switch to it (through its kept
+        // Another combined dashboard's group chat opens in place on its own
+        // runtime, as its tile does, with no switch (during a call too).
+        if let dashboardID = item.dashboardID, dashboardID != activeDashboardID,
+           let roomID = item.roomID, let runtime = keptRuntimeOpeningRoomsInPlace(dashboardID) {
+            dismissSidebarDrawer()
+            guard !isOpenChat(item) else { return }
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
+            Task { @MainActor [weak self] in
+                guard let self, await self.readyKeptRuntimeForRooms(runtime, dashboardID) else { return }
+                // A chat or room opened since the tap owns the screen.
+                guard self.chatViewportTransitionGeneration == viewport, self.groupRoomEpoch == roomEpoch else { return }
+                let outcome = await self.actAcrossAwaits(onRuntime: runtime) { await self.openNotificationRoom(roomID) }
+                guard outcome == .retry, self.chatViewportTransitionGeneration == viewport,
+                      self.groupRoomEpoch == roomEpoch else { return }
+                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+            }
+            return
+        }
+        // Another combined dashboard's chat: switch to it (through its kept
         // connection, no sign-in), then open as one of its own.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
             guard !refusesCombinedSwitchDuringCall() else { return }

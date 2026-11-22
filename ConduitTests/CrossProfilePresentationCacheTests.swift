@@ -2202,8 +2202,9 @@ extension CrossProfilePresentationCacheTests {
 
     /// Another combined dashboard's group chat opens in place on that
     /// dashboard's own runtime (no-switch stage 2): no switch, its reads and
-    /// sends through its kept connection, its lists on its own runtime, and
-    /// it closes when that connection is let go.
+    /// sends through its kept connection, its lists on its own runtime, a
+    /// Needs you wait in it opens it in place too, and it closes when that
+    /// connection is let go.
     func testAKeptDashboardsGroupChatOpensInPlaceOnItsRuntime() async throws {
         final class Calls { var clients: [String: [ObjectIdentifier]] = [:]; var sent: [String] = [] }
         let calls = Calls()
@@ -2264,6 +2265,21 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(calls.sent, ["Hello from VPS"])
         XCTAssertEqual(Set(calls.clients["send"] ?? []), [ObjectIdentifier(outgoing)])
         XCTAssertEqual(appState.activeDashboardID, vps.id)
+
+        // A wait in that room, from Needs you, opens it in place too.
+        appState.closeRoomSurface()
+        XCTAssertNil(appState.activeRoomSurface)
+        var wait = NeedsYouItem(waitID: "w-trip", profile: "default", kind: .approval, sessionIDs: ["s"], roomID: "trip")
+        wait.dashboardID = mac.id
+        XCTAssertFalse(appState.isOpenChat(wait))
+        appState.openNeedsYou(wait)
+        await waitUntil { appState.activeRoomSurface != nil }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
+        XCTAssertTrue(appState.isOpenChat(wait))
+        var own = wait
+        own.dashboardID = nil
+        XCTAssertFalse(appState.isOpenChat(own), "the screen's own room of that id isn't the one open")
 
         // Its connection let go, the room has nothing to act on and closes.
         appState.dropKeptDashboardRuntime(mac.id)
