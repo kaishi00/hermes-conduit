@@ -162,7 +162,9 @@ enum NotificationAvatars {
         guard let key = profileKey(profile) else { return nil }
         let handle = "conduit:\(bucket(dashboardID))/\(key)"
         let chat = conversation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let heading = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        // On one line, as the bot's name is spelled, so a title that is only
+        // the bot's name (a Bot Chat's, a reply's outside a named chat) matches it.
+        let heading = NotificationCopy.oneLine(title)
         return Sender(
             handle: handle,
             displayName: botName,

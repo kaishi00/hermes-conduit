@@ -56,9 +56,6 @@ enum NotificationCopy {
     /// name, else its profile id capitalized, and Hermes for an unnamed main
     /// bot or a push that names no profile.
     static func botName(_ content: [String: Any]) -> String {
-        func oneLine(_ value: Any?) -> String {
-            ((value as? String) ?? "").split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
-        }
         let id = oneLine(content["profile"])
         guard !id.isEmpty else { return mainBotName }
         // A name that is only the profile id says nothing more than the id.
@@ -190,15 +187,15 @@ enum NotificationCopy {
     /// profile and when the title already ends with it (a Bot Chat's).
     static func profileLine(_ content: [String: Any], title: String?) -> String? {
         // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
-        let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Spelled on one line as `botName` spells it, so a reply titled by its
+        // bot, a Bot Chat titled by its name and the bot's picture name it once.
+        let profile = nonEmpty(oneLine(content["profile"]))
         // A name that is only the id names it no more than the id (BotProfile.displayLabel).
-        // Spaces collapsed as `botName` does, so a reply titled by its bot and
-        // the bot's picture (whose sender is `botName`) name it once.
-        let given = nonEmpty(content["profile_name"]).map { $0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
+        let given = nonEmpty(oneLine(content["profile_name"]))
         guard let name = given.flatMap({ $0.lowercased() == profile?.lowercased() ? nil : $0 })
             ?? profile.flatMap({ $0.lowercased() == "default" ? nil : String($0.prefix(1)).uppercased() + String($0.dropFirst()) })
         else { return nil }
-        if let title = title?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+        if let title = title.map({ oneLine($0).lowercased() }),
            title == name.lowercased() || title.hasSuffix(" · \(name.lowercased())") { return nil }
         return name
     }
@@ -322,6 +319,14 @@ enum NotificationCopy {
             return named ? AppLocalization.string("\(name) ran into a problem with your request.")
                 : AppLocalization.string("Hermes ran into a problem with your request.")
         }
+    }
+
+    /// A name or title on one line: whitespace runs collapsed to one space
+    /// and the ends trimmed. Every spelling of a bot's name goes through it
+    /// (`botName`, `profileLine` and the bot's picture), so they agree and a
+    /// name is never shown twice in two spellings.
+    static func oneLine(_ value: Any?) -> String {
+        ((value as? String) ?? "").split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
     }
 
     private static func nonEmpty(_ value: Any?) -> String? {

@@ -130,6 +130,10 @@ extension BotModeTests {
         ))
         XCTAssertNil(call.groupName, "a title that is only the bot's name")
         XCTAssertEqual(call.conversationID, "conduit:unscoped/kaleb")
+        let spaced = try XCTUnwrap(NotificationAvatars.sender(
+            profile: "cerebro", dashboardID: nil, botName: "Segundo Cérebro", title: " Segundo  Cérebro ", conversation: nil
+        ))
+        XCTAssertNil(spaced.groupName, "the bot's name in another spacing is still only its name")
         XCTAssertNil(NotificationAvatars.sender(profile: "  ", dashboardID: dashboard, botName: "Hermes", title: "x", conversation: nil))
     }
 
