@@ -1205,6 +1205,51 @@ extension GatewayRestartTests {
         XCTAssertEqual(reports.count, 1)
     }
 
+    func testARunThatGoesQuietEndsWithWhereTheHostStands() {
+        // The download is the step that hung (Eric, 2026-11-21); the restarts have their own waits.
+        XCTAssertEqual(NotifierPluginUpdater.stallLimit(for: .updating(.downloading)), 360)
+        XCTAssertEqual(NotifierPluginUpdater.stallLimit(for: .updating(.installing)), 360)
+        XCTAssertEqual(NotifierPluginUpdater.stallLimit(for: .updating(.restartingDashboard)), 1_800)
+        XCTAssertNil(NotifierPluginUpdater.stallLimit(for: .failed(detail: nil)))
+        XCTAssertNil(NotifierPluginUpdater.stallLimit(for: .idle))
+
+        let runStarted = Date(timeIntervalSince1970: 1_000_000)
+        let current = NotifierPluginStatus.recommendedVersion
+        let reported = NotifierPluginStatus.State.reported(version: current, capabilities: Set(NotifierPluginStatus.usedCapabilities))
+        let upToDate = NotifierPluginStatus(state: reported, runtime: .init(loadedVersion: current, restartNeeded: false, bootID: nil))
+        let old = NotifierPluginStatus(state: .reported(version: "0.10.0", capabilities: Set(NotifierPluginStatus.usedCapabilities)),
+                                       runtime: .init(loadedVersion: "0.10.0", restartNeeded: false, bootID: nil))
+        // Nothing started on the host and the old plugin still runs: it never got going.
+        guard case .failed(let detail) = NotifierPluginUpdater.outcomeAfterStall(job: nil, plugin: old, runStarted: runStarted) else {
+            return XCTFail("a quiet run with nothing on the host must fail")
+        }
+        XCTAssertTrue(detail?.contains("Try again") == true)
+        // An earlier update's finished job says nothing about this run.
+        let yesterday: [String: Any] = ["id": "old", "step": "done", "loaded_version": "0.10.0", "started_at": 900_000.0]
+        if case .failed = NotifierPluginUpdater.outcomeAfterStall(job: yesterday, plugin: old, runStarted: runStarted) {} else {
+            XCTFail("yesterday's job was read as this run's")
+        }
+        // A job still running is left to the host's notification.
+        let running: [String: Any] = ["id": "j", "step": "downloading", "started_at": 1_000_010.0]
+        XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: running, plugin: old, runStarted: runStarted), .runningOnHost)
+        // One this run started that ended says how.
+        let ended: [String: Any] = ["id": "j", "step": "failed", "detail": "no route", "started_at": 1_000_010.0]
+        XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: ended, plugin: old, runStarted: runStarted), .failed(detail: "no route"))
+        // The new version runs (the update landed some other way): updated.
+        XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: nil, plugin: upToDate, runStarted: runStarted), .updated(version: current))
+        // A host that manages its plugin offers no update, but the old one still running isn't updated.
+        var managedOld = old
+        managedOld.managedBy = "nix"
+        if case .updated = NotifierPluginUpdater.outcomeAfterStall(job: nil, plugin: managedOld, runStarted: runStarted) {
+            XCTFail("a managed host still running the old plugin was read as updated")
+        }
+
+        var slot = NotifierPluginUpdateSlot()
+        let run = slot.start(on: nil)
+        XCTAssertTrue(slot.isRun(run))
+        XCTAssertFalse(slot.isRun(UUID()))
+    }
+
     func testAScanTheHostHeldIsShownAndUpdateAnywayRetriesWithForce() async throws {
         let held: [String: Any] = [
             "id": "j1", "step": "failed", "failed_step": "downloading", "code": "scan_blocked",

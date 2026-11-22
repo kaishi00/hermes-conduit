@@ -373,6 +373,7 @@ final class DashboardRuntime: ObservableObject {
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
     @Published var notifierPluginUpdate: NotifierPluginUpdateSlot = NotifierPluginUpdateSlot()
     var notifierPluginUpdateTask: Task<Void, Never>?
+    var notifierPluginUpdateWatchdog: Task<Void, Never>?
     /// Bumped per plugin status request; the accepted one is the newest
     /// request whose answer landed, so an older answer never lands over a
     /// newer one, but still lands when a newer request failed.

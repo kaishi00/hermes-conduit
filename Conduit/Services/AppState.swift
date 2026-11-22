@@ -1382,6 +1382,11 @@ final class AppState: ObservableObject {
         get { shownRuntime.notifierPluginUpdateTask }
         set { shownRuntime.notifierPluginUpdateTask = newValue }
     }
+    /// Ends a run whose steps went quiet past their limit (NotifierPluginUpdater.stallLimit).
+    var notifierPluginUpdateWatchdog: Task<Void, Never>? {
+        get { shownRuntime.notifierPluginUpdateWatchdog }
+        set { shownRuntime.notifierPluginUpdateWatchdog = newValue }
+    }
     /// Dashboard and profile pairs Conduit already tried to pair on its own
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.
