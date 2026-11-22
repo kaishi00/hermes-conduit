@@ -375,6 +375,8 @@ final class GeminiLiveToolBridge {
         return ["type": "OBJECT", "properties": properties, "required": ["title"]]
     }
 
+    static let cardsNotJSONNote = "No card was shown: cards came as a JSON string that doesn't parse. Send cards as an array of card objects, not a string, and keep the text as written: quotes, apostrophes and accents need no change."
+
     static let invalidCardsNote = "None of the cards could be shown: each needs a type and that type's field (places with names for map, place and places, people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress or callout for the others), and a forecast and media need their source."
 
     /// call_me_when_done's scope: a job_id names one job, scope all asks
@@ -829,12 +831,25 @@ final class GeminiLiveToolBridge {
         case .showOnScreen:
             guard !isEnding else { return [] }
             let markdown = call.arguments["markdown"] ?? ""
-            // Cards arrive as their JSON text (FunctionCall keeps strings).
-            let givenCards = call.arguments["cards"].flatMap { $0.data(using: .utf8) }
-                .flatMap { try? JSONSerialization.jsonObject(with: $0) }
+            // Cards arrive as their JSON text (FunctionCall keeps strings),
+            // so cards sent as a string are that string: one that doesn't
+            // parse goes to unwrappedCards as it is, which says where it broke.
+            var brokenJSON: [String] = []
+            var givenCards: Any?
+            if let raw = call.arguments["cards"] {
+                givenCards = (try? JSONSerialization.jsonObject(with: Data(raw.utf8)))
+                    ?? (RichCardSchema.looksLikeCardJSON(raw) ? raw : nil)
+            }
             // Read however the model wrapped them; what it sent decides the refusal below.
-            let cards = RichCardSchema.bundled?.normalizeCards(RichCardSchema.unwrappedCards(givenCards)) ?? []
+            let unwrapped = RichCardSchema.unwrappedCards(givenCards) { brokenJSON.append($0) }
+            let cards = RichCardSchema.bundled?.normalizeCards(unwrapped) ?? []
             let noMarkdown = markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            if noMarkdown, cards.isEmpty, !brokenJSON.isEmpty {
+                // As conduit_show's cards_not_json: say where it broke, so
+                // the model fixes that spot instead of rewriting the text.
+                let note = ([Self.cardsNotJSONNote] + brokenJSON).joined(separator: " ")
+                return [.toolResponse(id: call.id, name: call.name, result: ["error": note], scheduling: nil)]
+            }
             if noMarkdown, cards.isEmpty, let givenCards, !((givenCards as? [Any])?.isEmpty ?? false) {
                 return [.toolResponse(id: call.id, name: call.name, result: ["error": Self.invalidCardsNote], scheduling: nil)]
             }
@@ -851,6 +866,9 @@ final class GeminiLiveToolBridge {
             if markdown.trimmingCharacters(in: .whitespacesAndNewlines).count > VoiceBackgroundJobSupervisor.maximumScreenCardCharacters {
                 shown["message"] = "Only the start of it fit on the user's screen. Say it's on their screen, give the gist, and offer to show the rest separately."
             }
+            // The Markdown or the other cards went on screen; a string that
+            // didn't parse is named, as conduit_show's problems name it.
+            if !brokenJSON.isEmpty { shown["problems"] = brokenJSON.joined(separator: " ") }
             return [.toolResponse(id: call.id, name: call.name, result: shown, scheduling: nil)]
         case .listJobs:
             return [.toolResponse(id: call.id, name: call.name, result: listResult(), scheduling: nil)]
