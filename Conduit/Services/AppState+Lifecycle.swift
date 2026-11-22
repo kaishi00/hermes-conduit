@@ -552,14 +552,15 @@ extension AppState {
             // namespace would cross-contaminate profiles. switchProfile also
             // flushes and cancels before switching; this guard keeps the
             // operation safe on its own so no caller can forget it.
-            guard self.activeProfile == scheduledProfile,
-                  self.presentationCacheProfileEpoch == scheduledEpoch else {
-                presentationCacheFlushTask = nil
-                return
-            }
-            self.cacheMessagePresentation(for: [sessionId])
-            self.lastPresentationCacheFlushDate = Date()
+            // Read on the chat on screen's own runtime, as it was scheduled:
+            // another combined dashboard's for a chat opened in place there.
             self.presentationCacheFlushTask = nil
+            self.onChatRuntimeNow {
+                guard self.activeProfile == scheduledProfile,
+                      self.presentationCacheProfileEpoch == scheduledEpoch else { return }
+                self.cacheMessagePresentation(for: [sessionId])
+                self.lastPresentationCacheFlushDate = Date()
+            }
         }
     }
 

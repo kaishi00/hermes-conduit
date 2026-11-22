@@ -74,7 +74,9 @@ private struct PulseDashboardChipButton: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: chip.badge.name))
         .accessibilityValue(newCards)
-        .accessibilityHint(chip.isShown ? "" : AppLocalization.string("Shows that dashboard's Pulse, without switching", table: .pulse))
+        .accessibilityHint(chip.isShown ? "" : chip.switches
+            ? AppLocalization.string("Switches to that dashboard and shows its Pulse", table: .pulse)
+            : AppLocalization.string("Shows that dashboard's Pulse, without switching", table: .pulse))
         .accessibilityAddTraits(chip.isShown ? [.isButton, .isSelected] : .isButton)
     }
 }

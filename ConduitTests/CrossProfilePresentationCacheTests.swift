@@ -2037,6 +2037,18 @@ extension CrossProfilePresentationCacheTests {
         let wentAnyway = await appState.sendMessage("Again")
         XCTAssertFalse(wentAnyway)
         XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
+        // Unreachable, its rows still save under its own profile.
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        XCTAssertEqual(appState.activeSessionId, "mac-1")
+        // Its rows as they stand when the flush runs.
+        appState.messages = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")]
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("its dashboard is gone") }
+        appState.flushPendingPresentationCache()
+        appState.sessionPresentationCache.waitForPendingWrites()
+        let probe = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "")]
+        let savedAs = appState.presentationCacheSessionIDs(for: "mac-1")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f1",
+                       "saved under the far chat's profile (as \(savedAs))")
         // A switch makes the chat on screen that dashboard's, as before.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         var registry = appState.savedDashboardRegistry
@@ -2082,7 +2094,7 @@ extension CrossProfilePresentationCacheTests {
         // The same ids on two dashboards are two chats, each followed.
         func left(_ dashboardID: UUID) -> BackgroundChat {
             BackgroundChat(sessionIDs: ["shared"], durableSessionID: nil, title: "Shared", dashboardID: dashboardID,
-                           profile: "default", isBotChat: false, rows: [], streamingText: "Half a reply")
+                           profile: appState.activeProfile, isBotChat: false, rows: [], streamingText: "Half a reply")
         }
         let onMac = left(mac.id), onVPS = left(vps.id)
         let both = BackgroundChat.adding(onMac, to: BackgroundChat.adding(onVPS, to: []))
@@ -2090,6 +2102,10 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(BackgroundChat.adding(left(mac.id), to: both).count, 2, "one copy per chat")
         XCTAssertTrue(onMac.isRunning && onVPS.isRunning)
         appState.backgroundChats = both
+        // The pane's chat is this dashboard's, though the Mac's comes first.
+        appState.besideChatIDs = ["shared"]
+        XCTAssertEqual(appState.keptChat(answering: "shared")?.dashboardID, vps.id)
+        appState.besideChatIDs = nil
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertFalse(onMac.isRunning, "its connection gone, its reply is followed no more")
         XCTAssertTrue(onVPS.isRunning, "the screen's dashboard's goes on")
@@ -2893,6 +2909,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         XCTAssertTrue(appState.pulseRuntime === kept.runtime)
         XCTAssertEqual(appState.pulseDashboardChips.map(\.isShown), [true, false])
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.switches), [false, false], "a kept chip shows in place")
         XCTAssertEqual(appState.shownPulseClient.dashboardID, mac.id, "its requests go to its own dashboard")
         XCTAssertTrue(appState.pulseExplainsLearning, "what its plugin serves")
         appState.readingPulseRuntime { appState.pulseUnseen = 0 }
@@ -2909,6 +2926,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [3, 1], "then a newer background read's")
         XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
+
+        // A step tapped on Mac's Pulse, after the screen's chip was picked:
+        // no switch for a page that left it.
+        let leftStep = await appState.switchForFarPulseStep(for: mac.id)
+        XCTAssertFalse(leftStep, "the page left Mac's Pulse")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
 
         // A step that opens a chat there switches first, through the kept
         // connection, until far chats open in place.
@@ -2935,11 +2958,22 @@ extension CrossProfilePresentationCacheTests {
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { _, _ in ["cards": [], "unseen": 2] }
+        await appState.readOtherCombinedDashboardsPulse()
         appState.openCombinedPulse(mac.id)
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        let dropped = appState.pulseDashboardChips.first { $0.dashboardID == mac.id }
+        XCTAssertEqual(dropped?.switches, true, "its chip stays, as its last read, and switches")
+        XCTAssertEqual(dropped?.isShown, false)
+
+        appState.isNativeHermesCallActive = true
+        appState.openCombinedPulse(mac.id)
+        XCTAssertNil(appState.pulseShownDashboardID, "not shown in place: nothing to show it on")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch during a call")
+        appState.isNativeHermesCallActive = false
     }
 
     /// A notification from a combined dashboard kept beside the one on

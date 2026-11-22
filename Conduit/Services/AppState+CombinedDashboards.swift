@@ -433,7 +433,7 @@ extension AppState {
         guard isInCombinedGroup(id),
               keptClientIsOpen(kept.client),
               // On another profile, its socket is handed to a client on this
-              // one (`keptClient(_:on:)`), as a profile switch keeps it.
+              // one (`keptClient(_:of:on:)`), as a profile switch keeps it.
               (kept.client.profile ?? "default") == profile || kept.client.canHandOffSocket,
               // Still the dashboard's address (an edit since lets it go).
               let dashboard = savedDashboardRegistry.dashboard(with: id),
@@ -468,11 +468,12 @@ extension AppState {
     /// (Eric, 2026-11-16). Nil, with the connection let go, when the socket
     /// can't be handed on; the switch then signs in as before. Sets the
     /// kept bridge as the dashboard's, which the new client authorizes by.
-    func keptClient(_ kept: KeptDashboardRuntime, on profile: String) -> HermesClient? {
+    func keptClient(_ kept: KeptDashboardRuntime, of id: UUID, on profile: String) -> HermesClient? {
         dashboardTicketBridge = kept.bridge
         guard (kept.client.profile ?? "default") != profile else { return kept.client }
         let next = makeClient(connection: kept.connection, profile: profile)
         next.inheritSessionProfiles(from: kept.client)
+        noteFollowedChatProfiles(of: id, on: next)
         // A live call that went on through this connection (the switch back
         // to its dashboard) keeps its requests in flight and its sessions
         // on its own profile, as across a profile switch.
