@@ -113,7 +113,7 @@ extension AppState {
         let path = DashboardPath.withProfile(Self.voiceContextPath, profile: profile)
         do {
             let response = try await bridge.requestJSON(
-                path: path + "\(path.contains("?") ? "&" : "?")reader=\(mode.storageID)",
+                path: path + "\(path.contains("?") ? "&" : "?")reader=\(DashboardPath.encodedQueryComponent(mode.storageID) ?? mode.storageID)",
                 method: "GET", body: nil, timeoutMilliseconds: 5_000)
             return Self.voiceCallContext(from: response)
         } catch {
