@@ -3709,10 +3709,22 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual((opened as? [Any])?.count, 2, "the good card stays beside the string")
         XCTAssertEqual(problems.count, 1)
         XCTAssertTrue(problems.first?.hasPrefix("cards[1]: \(RichCardSchema.notJSONMark)") == true, "\(problems)")
+        // Markdown beside the broken string still goes on screen, and so
+        // does a good card beside it; the answer names the string.
+        let withMarkdown = await bridge.handle(.init(id: "j-md", name: "show_on_screen", arguments: ["title": "Bruit", "markdown": "| Jour | Max |", "cards": broken]))
+        guard case .toolResponse(_, _, let shownMarkdown, _)? = withMarkdown.first else { return XCTFail("\(withMarkdown)") }
+        XCTAssertEqual(shownMarkdown["status"], "shown")
+        XCTAssertTrue(shownMarkdown["problems"]?.hasPrefix("cards: \(RichCardSchema.notJSONMark)") == true, "\(shownMarkdown)")
+        let mixedText = String(decoding: try JSONSerialization.data(withJSONObject: [placeCard, "[{\"type\""]), as: UTF8.self)
+        let mixed = await bridge.handle(.init(id: "j-mixed", name: "show_on_screen", arguments: ["title": "Breakfast", "cards": mixedText]))
+        guard case .toolResponse(_, _, let shownMixed, _)? = mixed.first else { return XCTFail("\(mixed)") }
+        XCTAssertEqual(shownMixed["status"], "shown")
+        XCTAssertTrue(shownMixed["problems"]?.hasPrefix("cards[1]: \(RichCardSchema.notJSONMark)") == true, "\(shownMixed)")
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 2)
         let parsedButInvalid = await bridge.handle(.init(id: "j-invalid", name: "show_on_screen", arguments: ["title": "Weather", "cards": #"[{"type": "weather"}]"#]))
         guard case .toolResponse(_, _, let invalid, _)? = parsedButInvalid.first else { return XCTFail("\(parsedButInvalid)") }
         XCTAssertEqual(invalid["error"], GeminiLiveToolBridge.invalidCardsNote)
-        XCTAssertTrue(supervisor.callScreenCards(supervisor.liveCallID).isEmpty, "nothing reached the screen")
+        XCTAssertEqual(supervisor.callScreenCards(supervisor.liveCallID).count, 2, "only the two shown above")
     }
 }
 
