@@ -256,14 +256,32 @@ enum KanbanFullTextFormatter {
                     .split(separator: "`", omittingEmptySubsequences: false)
                     .enumerated()
                     .map { index, piece in
-                        index.isMultiple(of: 2)
-                            ? piece.replacingOccurrences(of: "**", with: "").replacingOccurrences(of: "__", with: "")
-                            : String(piece)
+                        index.isMultiple(of: 2) ? withoutPairedEmphasis(String(piece)) : String(piece)
                     }
                     .joined()
                 return line.isEmpty ? nil : line
             }
             .joined(separator: "\n")
+    }
+
+    /// `**` and `__` taken out only where they pair up; an odd one out
+    /// (`my__var`) leaves that marker's runs as written, as the sheet shows it.
+    private static func withoutPairedEmphasis(_ text: String) -> String {
+        var line = text
+        for marker in ["**", "__"] where line.components(separatedBy: marker).count.isMultiple(of: 2) == false {
+            line = line.replacingOccurrences(of: marker, with: "")
+        }
+        return line
+    }
+
+    /// A child's result as its parent received it (`child_results`): its
+    /// task result, else its latest run summary, as a row preview. Nil when
+    /// it handed back neither.
+    static func childResultPreview(_ child: KanbanChildResult) -> String? {
+        let text = [child.result, child.latestSummary]
+            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        return text.map(plainPreview).flatMap { $0.isEmpty ? nil : $0 }
     }
 
     static func display(_ value: AnyCodable) -> String {

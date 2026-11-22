@@ -10408,7 +10408,7 @@ board a 200-character preview)
 
 **Code**
 - The sheet and the text it shows: `Conduit/Views/Kanban/KanbanFullTextSheet.swift` (KanbanFullText, KanbanFullTextSheet, KanbanFullTextFormatter: runText, eventText)
-- The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (resultSection, runsSection, runRow, activityRow, showsAllEvents, commentsSection, attachmentsSection, openAttachment, childResultPreview, previewLineLimit)
+- The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (resultSection, runsSection, runRow, activityRow, showsAllEvents, commentsSection, attachmentsSection, openAttachment, childResultPreview, previewLineLimit); the child preview: `KanbanFullTextFormatter.childResultPreview`
 - Attachments: `Conduit/Services/KanbanService.swift` (DashboardFileDownloading, downloadAttachment), `Conduit/Services/KanbanStore.swift` (downloadAttachment), opened with `Conduit/Views/Components/MediaPreviewPresenter.swift`
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 

@@ -884,6 +884,21 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead([line, line, line, line].joined(separator: "\n")))
     }
 
+    func testChildResultPreviewTakesResultThenSummary() throws {
+        func child(_ fields: [String: Any]) throws -> KanbanChildResult {
+            var object: [String: Any] = ["id": "c1"]
+            for (key, value) in fields { object[key] = value }
+            return try JSONDecoder().decode(KanbanChildResult.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        XCTAssertEqual(KanbanFullTextFormatter.childResultPreview(try child(["result": "## Done\n\nShipped", "latest_summary": "run"])), "Done\nShipped")
+        XCTAssertEqual(KanbanFullTextFormatter.childResultPreview(try child(["result": "  ", "latest_summary": "Half done"])), "Half done")
+        XCTAssertNil(KanbanFullTextFormatter.childResultPreview(try child([:])))
+    }
+
+    func testRowPreviewLeavesUnpairedEmphasisMarkers() {
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("use my__var **here**"), "use my__var here")
+    }
+
     func testRowPreviewKeepsCodeSpansWhole() {
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("Call `__init__` **first**."), "Call __init__ first.")
     }

@@ -902,10 +902,7 @@ struct KanbanTaskDetailView: View {
     /// one tap away, has it whole.
     private func childResultPreview(for id: String) -> String? {
         guard let child = detail?.childResults.first(where: { $0.id == id }) else { return nil }
-        let text = [child.result, child.latestSummary]
-            .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty }
-        return text.map(KanbanFullTextFormatter.plainPreview)
+        return KanbanFullTextFormatter.childResultPreview(child)
     }
 
     private func dependencyGroup(title: String, ids: [String]) -> some View {
@@ -970,11 +967,9 @@ struct KanbanTaskDetailView: View {
     private var commentsSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Comments", table: .tasks), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
             if let comments = detail?.comments, !comments.isEmpty {
+                let lineWidth = KanbanFullTextFormatter.lineWidth(for: .footnote, at: dynamicTypeSize)
                 ForEach(comments) { value in
-                    if KanbanFullTextFormatter.textHasMoreToRead(
-                        KanbanFullTextFormatter.plainPreview(value.body),
-                        lineWidth: KanbanFullTextFormatter.lineWidth(for: .footnote, at: dynamicTypeSize)
-                    ) {
+                    if KanbanFullTextFormatter.textHasMoreToRead(KanbanFullTextFormatter.plainPreview(value.body), lineWidth: lineWidth) {
                         Button {
                             fullText = KanbanFullText(
                                 title: AppLocalization.string("Comment from \(value.author)", table: .tasks),
@@ -1176,8 +1171,8 @@ struct KanbanTaskDetailView: View {
             .accessibilityHidden(true)
     }
 
-    /// How many lines of a run summary or comment a row shows; the rest is
-    /// a tap away.
+    /// How many lines of a run summary, comment or the result a row shows;
+    /// the rest is a tap away.
     private static let previewLineLimit = 4
 
     /// Activity events listed before "Show earlier events".
@@ -1325,12 +1320,10 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var runsSection: some View {
         if let runs = detail?.runs, !runs.isEmpty {
+            let lineWidth = KanbanFullTextFormatter.lineWidth(for: .caption1, at: dynamicTypeSize)
             ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))", table: .tasks), symbol: "terminal", tint: .orange) {
                 ForEach(runs) { run in
-                    if KanbanFullTextFormatter.runHasMoreToRead(
-                        run,
-                        lineWidth: KanbanFullTextFormatter.lineWidth(for: .caption1, at: dynamicTypeSize)
-                    ) {
+                    if KanbanFullTextFormatter.runHasMoreToRead(run, lineWidth: lineWidth) {
                         Button {
                             guard let text = KanbanFullTextFormatter.runText(run) else { return }
                             fullText = KanbanFullText(
