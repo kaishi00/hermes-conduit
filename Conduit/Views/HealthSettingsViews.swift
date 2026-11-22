@@ -185,6 +185,9 @@ struct HealthSettingsPage: View {
             Text("Let a live voice call read your health data when you ask about it, straight from your Hermes host. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            Text("Conduit on your computer follows these switches too: its live calls on the same Hermes profile may read this, once your iPhone has told your Hermes host.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
             if !voiceReads.entries.isEmpty {
                 Text("Read by voice in the last 7 days")
                     .scaledFont(.subheadline.weight(.semibold))

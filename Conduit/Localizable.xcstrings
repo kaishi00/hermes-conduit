@@ -82042,6 +82042,88 @@
         }
       }
     },
+    "Conduit on your computer follows these switches too: its live calls on the same Hermes profile may read this, once your iPhone has told your Hermes host." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit auf deinem Computer folgt diesen Schaltern auch: Seine Live-Anrufe im selben Hermes-Profil dürfen dies lesen, sobald dein iPhone es deinem Hermes-Host mitgeteilt hat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit en tu ordenador también sigue estos interruptores: sus llamadas en vivo en el mismo perfil de Hermes pueden leer esto, en cuanto tu iPhone se lo haya indicado a tu host de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sur ton ordinateur suit aussi ces réglages : ses appels en direct sur le même profil Hermes peuvent lire ceci, une fois que ton iPhone l'a indiqué à ton hôte Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit di komputermu juga mengikuti tombol ini: panggilan langsungnya di profil Hermes yang sama boleh membaca ini, setelah iPhone-mu memberi tahu host Hermes-mu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anche Conduit sul tuo computer segue questi interruttori: le sue chiamate dal vivo sullo stesso profilo Hermes possono leggere questi dati, una volta che il tuo iPhone l'ha comunicato al tuo host Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "コンピュータ上のConduitもこれらのスイッチに従います。iPhoneがHermesホストに伝えた後は、同じHermesプロファイルでのライブ通話がこれを読み取れます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "컴퓨터의 Conduit도 이 스위치를 따라요. iPhone이 Hermes 호스트에 알린 뒤에는 같은 Hermes 프로필의 라이브 통화가 이 내용을 읽을 수 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit na komputerze też stosuje te przełączniki: jego rozmowy na żywo w tym samym profilu Hermes mogą to odczytać, gdy iPhone przekaże to hostowi Hermes."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit no seu computador também segue estas opções: as chamadas ao vivo dele no mesmo perfil do Hermes podem ler isto, assim que seu iPhone tiver avisado seu host do Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit на компьютере тоже следует этим переключателям: его живые звонки в том же профиле Hermes могут это читать, как только iPhone сообщит об этом хосту Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilgisayarınızdaki Conduit de bu anahtarlara uyar: iPhone'unuz Hermes sunucunuza bildirdikten sonra aynı Hermes profilindeki canlı aramaları bunu okuyabilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "电脑上的 Conduit 也遵循这些开关：在你的 iPhone 告知 Hermes 主机后，同一 Hermes 配置下的实时通话可以读取这些内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "電腦上的 Conduit 也會遵循這些開關：在你的 iPhone 告知 Hermes 主機後，同一 Hermes 設定檔中的即時通話可以讀取這些內容。"
+          }
+        }
+      }
+    },
     "Let your Hermes agent know which Focus you're in, and hold its calls while it's on." : {
       "localizations" : {
         "de" : {

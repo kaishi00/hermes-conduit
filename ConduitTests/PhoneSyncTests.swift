@@ -341,6 +341,11 @@ extension HermesVoiceGatewayTimeoutTests {
         choices.focus = true
         XCTAssertTrue(choices.turnStatus, "The choice is kept while neither is shared")
 
+        // The voice modes that may use the calendar and phone go with every
+        // upload, for Conduit for desktop's calls; none is an empty list.
+        XCTAssertEqual(choices.sharingJSON["voice_readers"] as? [String], [])
+        choices.voiceReaders = ["grok-live"]
+        XCTAssertEqual(choices.sharingJSON["voice_readers"] as? [String], ["grok-live"])
         // Share with this host's other profiles: off until chosen, and in
         // every upload's sharing, so the host's other profiles read it only then.
         XCTAssertEqual(choices.sharingJSON["other_profiles"] as? Bool, false)

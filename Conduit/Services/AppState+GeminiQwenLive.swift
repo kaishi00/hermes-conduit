@@ -252,6 +252,7 @@ extension AppState {
                             + (self?.liveAskedQuestionsInstructions() ?? "")
                             + (self.map { $0.liveVoiceThreadInstructions(delegation: false) + $0.phoneVoiceSettingHint(for: mode) } ?? "")
                             + VoiceHostTool.functionToolsFirst(self?.voiceBackgroundJobSupervisor.hostTools ?? [])
+                            + VoiceHostTool.contextBlock(self?.voiceBackgroundJobSupervisor.hostContext ?? "")
                             + LiveVoiceStyle.askFirstInstructions(on: self?.voiceBackgroundJobSupervisor.asksBeforeSending == true)
                             + (self?.liveCallStyle.instructions ?? "")
                     ),

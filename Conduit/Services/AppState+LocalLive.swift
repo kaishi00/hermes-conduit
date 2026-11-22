@@ -78,6 +78,7 @@ extension AppState {
         tail += liveVoiceThreadInstructions(delegation: false)
         tail += phoneVoiceSettingHint(for: .localLive)
         tail += VoiceHostTool.functionToolsFirst(supervisor.hostTools)
+        tail += VoiceHostTool.contextBlock(supervisor.hostContext)
         tail += LiveVoiceStyle.askFirstInstructions(on: supervisor.asksBeforeSending)
         tail += liveCallStyle.instructions
         let instructions = GeminiLiveConversationController.instructions(

@@ -542,6 +542,9 @@ struct LocationSettingsPage: View {
             Text("Let a live voice call read your location when you ask about it, straight from your Hermes host: the saved place you're at, your area and distances to your saved places, never coordinates. What it reads goes to the company that runs that voice mode, under its terms. Each read is listed under When Hermes read your location. Classic voice is Hermes itself and needs nothing here.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            Text("Conduit on your computer follows these switches too: its live calls on the same Hermes profile may read this, once your iPhone has told your Hermes host.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 

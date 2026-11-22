@@ -1473,6 +1473,13 @@ extension NotificationE2ETests {
         settings.otherProfiles = true
         sharing = try XCTUnwrap(LocationBatch(sentAt: LocationFixtures.at, settings: settings).json()["sharing"] as? [String: Any])
         XCTAssertEqual(sharing["other_profiles"] as? Bool, true)
+        // The voice modes that may read it go every time, so the host can
+        // answer Conduit for desktop's calls; none is an empty list.
+        XCTAssertEqual(sharing["voice_readers"] as? [String], [])
+        var batch = LocationBatch(sentAt: LocationFixtures.at, settings: settings)
+        batch.voiceReaders = ["gemini-live"]
+        sharing = try XCTUnwrap(batch.json()["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["voice_readers"] as? [String], ["gemini-live"])
         // Saved before the switch existed: the bound profile alone (notifier #287).
         let old = try JSONDecoder().decode(LocationSharingSettings.self, from: Data(#"{"talking": true}"#.utf8))
         XCTAssertFalse(old.otherProfiles)

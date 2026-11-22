@@ -737,6 +737,7 @@ final class LocationSharingController: ObservableObject {
         }
         var batch = LocationBatch(sentAt: at, settings: settings)
         batch.approximateOnly = approximate || config.approximateOnly
+        batch.voiceReaders = config.voiceReaders ?? []
         batch.knownPlaces = places
         batch.fix = pending.fix?.record
         batch.events = pending.events
@@ -940,6 +941,9 @@ final class LocationSharingController: ObservableObject {
         guard readConfigIfNeeded(), config.binding != nil, settings.isOn || !allowed else { return }
         save { $0.setVoiceRead(mode.storageID, allowed: allowed) }
         if allowed { await prepareVoiceReads() }
+        // The host learns the choice too (sharing.voice_readers), for
+        // Conduit for desktop's calls; pending until it's reachable.
+        await flush(settingsOnly: true)
     }
 
     /// This phone's key for a voice read of its own location; nil until a

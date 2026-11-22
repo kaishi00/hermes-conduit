@@ -49,6 +49,10 @@ struct HealthSyncState: Codable, Equatable {
     /// moves its `last_seen`, so a pass with nothing to send still posts
     /// one every so often (ContextUploadPolicy.healthKeepalive).
     var lastIngest: Date?
+    /// The voice modes the last upload the host took named
+    /// (HealthBatch.voiceReaders): a change sends an upload, empty if need
+    /// be, so the host learns it. Nil before one went.
+    var sentVoiceReaders: [String]?
     /// "Share with this host's other profiles" as the host last took it
     /// (every upload carries it); a change sends an upload even when
     /// nothing else is new. Nil: unknown (never sent, or a change sent
@@ -334,6 +338,7 @@ final class HealthSyncEngine: ObservableObject {
             if !options.lowData { try await session.sendHistory() }
             // Unknown (nil: never sent, or sent without an answer) counts as different.
             if state.sentOtherProfiles != preferences.otherProfiles
+                || state.sentVoiceReaders != Self.voiceReaders(preferences)
                 || (state.lastIngest == postedBefore
                     && ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now())) {
                 try await session.sendKeepalive()
@@ -453,6 +458,11 @@ final class HealthSyncEngine: ObservableObject {
         state.history = depth
     }
 
+    /// What an upload says the user lets read health on a call.
+    static func voiceReaders(_ preferences: HealthSyncPreferences) -> [String] {
+        preferences.isOn ? (preferences.voiceReaders ?? []).sorted() : []
+    }
+
     fileprivate func acknowledged(_ update: (inout HealthSyncState) -> Void) {
         update(&state)
         store.save(state)
@@ -518,6 +528,7 @@ private struct Session {
         HealthBatch(computedAt: engine.currentNow, deviceName: engine.currentDeviceName, timeZone: calendar.timeZone,
                     categories: HealthCategory.allCases.filter(categories.contains),
                     detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) },
+                    voiceReaders: HealthSyncEngine.voiceReaders(preferences),
                     otherProfiles: preferences.otherProfiles)
     }
 
@@ -547,6 +558,7 @@ private struct Session {
                 engine.noteSending(otherProfiles: part.otherProfiles)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
                 engine.notePosted(otherProfiles: part.otherProfiles)
+                engine.acknowledged { $0.sentVoiceReaders = part.voiceReaders }
                 return answer
             } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {
                 // The host takes so many uploads a minute (120 per profile):

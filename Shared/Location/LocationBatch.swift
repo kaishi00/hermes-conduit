@@ -182,6 +182,11 @@ struct LocationBatch {
     /// Pulse, so the host's answer carries a sealed list of what to watch.
     var spotEntries: [LocationSpotEntry]?
     var spotsRoom: Int?
+    /// The live voice modes the user lets read the shared location
+    /// (`sharing.voice_readers`), so the host can answer a call signed in to
+    /// the dashboard alone, Conduit for desktop's, for those modes. Sent
+    /// every batch: an empty list takes it back.
+    var voiceReaders: [String] = []
 
     static let phoneFeatures = ["maps"]
 
@@ -189,6 +194,7 @@ struct LocationBatch {
         let formatter = LocationTime.formatter(timeZone: timeZone)
         var sharing = settings.json(at: sentAt, timeZone: timeZone, formatter: formatter)
         if !features.isEmpty { sharing["features"] = features }
+        sharing["voice_readers"] = voiceReaders
         var object: [String: Any] = [
             "batch_id": batchID,
             "sent_at": formatter.string(from: sentAt),

@@ -194,6 +194,9 @@ extension AppState {
         guard preferences.isOn else { return }
         preferences.setVoiceUse(mode, allowed: allowed)
         phoneSync.savePreferences(preferences)
+        // The host learns the choice too (sharing.voice_readers), for
+        // Conduit for desktop's calls: the changed sharing makes the pass send.
+        Task { await runPhoneSync(reason: .manual) }
     }
 
     /// Turns sharing off. With `deleteFromHost`, this phone's data is
