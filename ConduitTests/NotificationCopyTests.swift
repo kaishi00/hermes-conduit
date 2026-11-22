@@ -59,7 +59,28 @@ final class NotificationCopyTests: XCTestCase {
         ]).title, "Trip plan")
         XCTAssertEqual(NotificationCopy.preview([
             "title_label": "response.ready", "body": "Done.",
-        ]).title, "Response ready")
+        ]).title, "Response ready", "a push that names no profile")
+    }
+
+    func testReplyOutsideANamedChatIsTitledByItsBot() {
+        let preview = NotificationCopy.preview([
+            "title_label": "response.ready", "profile": "kaleb", "profile_name": "Kaleb", "body": "Done.",
+        ])
+        XCTAssertEqual(preview.title, "Kaleb")
+        XCTAssertNil(preview.subtitle, "the title already names the bot")
+        XCTAssertEqual(preview.body, "Done.")
+        XCTAssertEqual(NotificationCopy.preview(["title_label": "response.ready", "profile": "angelos"]).title, "Angelos")
+        XCTAssertEqual(NotificationCopy.chatNames(["title_label": "response.ready", "profile": "kaleb", "profile_name": "Kaleb"]).title,
+                       "Kaleb")
+        let main = NotificationCopy.named(["title_label": "response.ready", "profile": "default"], mainName: nil)
+        XCTAssertEqual(NotificationCopy.preview(main).title, "Hermes")
+        // A chat's title still wins, with the bot under it; other kinds keep their label.
+        let chat = NotificationCopy.preview(["title_label": "response.ready", "profile": "kaleb", "session_title": "Trip plan"])
+        XCTAssertEqual(chat.title, "Trip plan")
+        XCTAssertEqual(chat.subtitle, "Kaleb")
+        let approval = NotificationCopy.preview(["title_label": "approval.needed", "profile": "kaleb"])
+        XCTAssertEqual(approval.title, "Approval needed")
+        XCTAssertEqual(approval.subtitle, "Kaleb")
     }
 
     func testPulsePushesAreTitledByWhatTheyBring() {

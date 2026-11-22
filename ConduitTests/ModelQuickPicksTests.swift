@@ -133,6 +133,13 @@ final class ModelQuickPicksTests: XCTestCase {
         XCTAssertTrue(visibility.isHidden(model: "glm", provider: zai))
         XCTAssertTrue(visibility.isHidden(model: "deepseek", provider: openrouter))
         XCTAssertFalse(visibility.isHidden(model: "opus", provider: openrouter))
+    
+        // A provider's page in Models & providers leaves them out too, but
+        // keeps the profile's default so it still shows which one runs.
+        XCTAssertEqual(ProviderDetailPage.listedModels(row: openrouter, selection: nil, visibility: visibility).map(\.id), ["opus", "sonnet"])
+        XCTAssertEqual(ProviderDetailPage.listedModels(row: openrouter, selection: ("openrouter", "deepseek"), visibility: visibility).map(\.id),
+                       openrouter.models.map(\.id))
+        XCTAssertEqual(ProviderDetailPage.listedModels(row: zai, selection: nil, visibility: visibility).map(\.id), [])
     }
 
     /// A setting's row names the model and the provider it runs on, as the

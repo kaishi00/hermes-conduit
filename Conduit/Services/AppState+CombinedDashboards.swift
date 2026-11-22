@@ -40,6 +40,7 @@ struct KeptDashboardRuntime {
         runtime.dashboardTicketBridge = bridge
         runtime.isConnected = true
         runtime.isConnecting = false
+        runtime.activeProfile = client.profile ?? "default"
         self.runtime = runtime
     }
 
