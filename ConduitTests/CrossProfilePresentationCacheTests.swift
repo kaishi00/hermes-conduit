@@ -1628,6 +1628,46 @@ extension CrossProfilePresentationCacheTests {
         } catch {}
     }
 
+    func testAKeptDashboardsChatsChangeReadsItsChatsAtOnce() async throws {
+        final class Reads { var paths: [String] = [] }
+        let reads = Reads()
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardChatsChangeWait = .zero
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" { return ["profiles": ["default"]] }
+            guard path.contains("/api/profiles/sessions"), !path.contains("source=cron") else { return ["sessions": []] }
+            reads.paths.append(path)
+            return ["sessions": [
+                ["id": "mac-new", "title": "Made there", "message_count": 1, "profile": "default", "last_active": 2_000],
+            ]]
+        }
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(reads.paths.count, 1)
+
+        // A chat made on its Hermes: its own sessions.changed reads its
+        // chats now, inside the minute the poll would wait.
+        kept.client.onEvent?(.sessionsChanged)
+        kept.client.onEvent?(.sessionsChanged)
+        let read = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id], "a read on its way")
+        await read.value
+        XCTAssertEqual(reads.paths.count, 2, "a burst is one read")
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertEqual(appState.otherCombinedDashboardsChats(excluding: []).map(\.id), ["mac-new"])
+        // Never the screen's: its list and its catalog stay as they were.
+        XCTAssertFalse(appState.sessions.contains { $0.id == "mac-new" })
+
+        // Taken up, the switch back's sync reads it; a change noted before
+        // goes with the kept connection.
+        appState.keptDashboardChatsChangeWait = .seconds(60)
+        kept.client.onEvent?(.sessionsChanged)
+        let waiting = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id])
+        await appState.switchDashboard(to: mac.id)
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertTrue(waiting.isCancelled)
+    }
+
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
         final class Counts { var connects = 0; var mints = 0; var reads: [String] = []; var cronReads: [String] = [] }
         let counts = Counts()

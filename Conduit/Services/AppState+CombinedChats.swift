@@ -50,9 +50,11 @@ extension AppState {
     /// profiles (Eric, 2026-11-16: All combines all of it), through its
     /// kept connection. Quiet on failure: a profile that can't be read
     /// keeps what it showed, and a dashboard let go or opened says nothing
-    /// more.
-    func readOtherCombinedDashboardsChats(force: Bool = false, now: Date = Date()) async {
-        let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
+    /// more. `only`: that dashboard's alone (its own `sessions.changed`).
+    func readOtherCombinedDashboardsChats(force: Bool = false, only: UUID? = nil, now: Date = Date()) async {
+        let kept = keptDashboardRuntimes.filter {
+            isInCombinedGroup($0.key) && $0.key != activeDashboardID && (only == nil || $0.key == only)
+        }
         // One that dropped by itself keeps its last list until it's back;
         // out of the group or opened here, it goes.
         let gone = combinedDashboardChats.keys.filter { !isInCombinedGroup($0) || $0 == activeDashboardID }
