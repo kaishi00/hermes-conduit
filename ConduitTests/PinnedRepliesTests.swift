@@ -819,4 +819,77 @@ final class PinnedRepliesTests: XCTestCase {
         ]
         XCTAssertEqual(PinnedReplies.messageID(for: pinned, in: reloaded), "r-1")
     }
+
+    /// Another combined dashboard's chat opened in place keeps its pins
+    /// under its own dashboard and profile, never the screen's: the screen's
+    /// chat under the same id shows none of them.
+    @MainActor
+    func testAFarChatsPinsAreKeptUnderItsOwnDashboardAndProfile() throws {
+        let defaults = freshDefaults()
+        let appState = makeAppState(defaults)
+        let far = UUID()
+        appState.activeSessionId = "chat-1"
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "work")
+        let answer = reply("a", "The far plan", rowId: 7)
+        appState.messages = [answer]
+
+        appState.togglePinnedReply(answer)
+
+        XCTAssertEqual(appState.openChatPinnedReplies.map(\.sessionID), ["chat-1"])
+        XCTAssertEqual(appState.pinnedRepliesByDashboard[far.uuidString]?["work"]?.count, 1)
+        XCTAssertTrue(appState.activePinnedReplies.isEmpty, "the screen's profile keeps none of them")
+        XCTAssertEqual(appState.pinnedRepliesOverview(fromOpenChat: true).count, 1)
+        XCTAssertEqual(makeAppState(defaults).pinnedRepliesByDashboard[far.uuidString]?["work"]?.count, 1,
+                       "and they stay after a relaunch")
+
+        appState.farChat = nil
+        XCTAssertTrue(appState.openChatPinnedReplies.isEmpty, "the screen's chat under the same id has none")
+
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "work")
+        let pin = try XCTUnwrap(appState.openChatPinnedReplies.first)
+        appState.setPinnedReplyLabel(pin, to: "Far")
+        XCTAssertEqual(appState.openChatPinnedReplies.first?.label, "Far")
+        appState.unpinReply(pin)
+        XCTAssertNil(appState.pinnedRepliesByDashboard[far.uuidString])
+
+        // A pin of the screen's chat under the same id isn't the far chat's:
+        // showing it opens the screen's chat rather than jumping in this one.
+        appState.farChat = nil
+        appState.togglePinnedReply(answer)
+        let screenPin = try XCTUnwrap(appState.activePinnedReplies.first)
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "work")
+        XCTAssertFalse(appState.isShowingChat(for: PinnedReplyReveal(pin: screenPin)))
+        appState.togglePinnedReply(answer)
+        let farPin = try XCTUnwrap(appState.openChatPinnedReplies.first)
+        XCTAssertEqual(appState.pinnedReplyChatTitle(farPin), farPin.chatTitle,
+                       "its title is its own, not a same-id row's on the dashboard on screen")
+    }
+
+    /// Pins kept per profile alone (builds that cleared them on every
+    /// dashboard switch) move to the dashboard selected at launch, once;
+    /// a switch to another saved dashboard keeps each one's own.
+    @MainActor
+    func testPinsKeptPerProfileMoveToTheLaunchDashboardAndSurviveASwitch() throws {
+        let defaults = freshDefaults()
+        let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
+        let two = SavedDashboard(id: UUID(), label: "Two", normalizedURL: "https://two.example")
+        let legacy = ["default": [PinnedReply(sessionID: "chat-1", message: reply("a", "Old plan", rowId: 7), chatTitle: "Plans")]]
+        defaults.set(try JSONEncoder().encode(legacy), forKey: "conduit.pinnedRepliesByProfile.v1")
+
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: one.id, dashboards: [one, two])
+        )
+        appState.setActiveProfileForTesting("default")
+
+        XCTAssertEqual(appState.pinnedRepliesByDashboard[one.id.uuidString]?["default"]?.count, 1)
+        XCTAssertNil(defaults.data(forKey: "conduit.pinnedRepliesByProfile.v1"), "moved once")
+
+        _ = appState.prepareChatResumeForConnection(to: "https://one.example", dashboardID: one.id)
+        _ = appState.prepareChatResumeForConnection(to: "https://two.example", dashboardID: two.id)
+        XCTAssertEqual(appState.pinnedRepliesByDashboard[one.id.uuidString]?["default"]?.count, 1,
+                       "the dashboard left keeps its pins for the return")
+    }
+
 }

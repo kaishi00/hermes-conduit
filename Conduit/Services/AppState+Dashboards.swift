@@ -500,6 +500,7 @@ extension AppState {
             profileAppearanceStore.adoptLegacyAppearance(into: id)
             adoptLegacyProfilePreferences(into: id)
             adoptLegacyDashboardLists(into: id)
+            adoptUnscopedPinnedReplies(into: id)
             // No reload: a registered dashboard is not selected yet, and
             // selecting it (adoptDashboard/switch) reloads through didSet.
         }
@@ -638,6 +639,9 @@ extension AppState {
             closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         }
         forgetDrafts(ofDashboard: id)
+        // And its pinned replies, kept per dashboard: they name the old
+        // host's chats.
+        clearPinnedReplies(inDashboard: id)
         return registry.dashboards[index]
     }
 

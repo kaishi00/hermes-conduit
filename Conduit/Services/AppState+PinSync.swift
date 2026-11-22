@@ -27,8 +27,62 @@ extension AppState {
 
     func persistPinnedReplies() {
         PinnedRepliesRevision.value &+= 1
-        guard let data = try? JSONEncoder().encode(pinnedRepliesByProfile) else { return }
-        defaults.set(data, forKey: pinnedRepliesByProfileKey)
+        guard let data = try? JSONEncoder().encode(pinnedRepliesByDashboard) else { return }
+        defaults.set(data, forKey: pinnedRepliesByDashboardKey)
+    }
+
+    /// Reads the pins kept per dashboard and profile. Pins kept per profile
+    /// alone, by builds that cleared them on every dashboard switch, are the
+    /// dashboard selected at launch's: they move there once.
+    func loadPinnedReplies(adoptingLegacyInto dashboardID: UUID?) {
+        if let data = defaults.data(forKey: pinnedRepliesByDashboardKey),
+           let stored = try? JSONDecoder().decode([String: [String: [PinnedReply]]].self, from: data) {
+            pinnedRepliesByDashboard = stored
+        }
+        guard let data = defaults.data(forKey: pinnedRepliesByProfileKey) else { return }
+        defaults.removeObject(forKey: pinnedRepliesByProfileKey)
+        guard let legacy = try? JSONDecoder().decode([String: [PinnedReply]].self, from: data),
+              !legacy.isEmpty else { return }
+        let bucket = Self.dashboardPreferenceBucket(dashboardID)
+        var kept = pinnedRepliesByDashboard[bucket] ?? [:]
+        for (profile, pins) in legacy where kept[profile] == nil {
+            kept[profile] = pins
+        }
+        pinnedRepliesByDashboard[bucket] = kept
+        persistPinnedReplies()
+    }
+
+    /// Pins kept before any dashboard was saved belong to the first one.
+    func adoptUnscopedPinnedReplies(into dashboardID: UUID) {
+        let unscoped = Self.dashboardPreferenceBucket(nil)
+        guard let pins = pinnedRepliesByDashboard.removeValue(forKey: unscoped) else { return }
+        let bucket = Self.dashboardPreferenceBucket(dashboardID)
+        pinnedRepliesByDashboard[bucket] = (pinnedRepliesByDashboard[bucket] ?? [:]).merging(pins) { kept, _ in kept }
+        persistPinnedReplies()
+    }
+
+    /// The open chat's pins are kept under its own dashboard and profile:
+    /// another combined dashboard's chat opened in place keeps them there.
+    var openChatPinOwner: PinnedReplyOwner {
+        PinnedReplyOwner(
+            dashboard: Self.dashboardPreferenceBucket(composerOwnerDashboardID),
+            profile: composerOwnerProfile
+        )
+    }
+
+    /// The pins of the dashboard on screen's profile in use (the overview's).
+    var screenPinOwner: PinnedReplyOwner {
+        PinnedReplyOwner(dashboard: Self.dashboardPreferenceBucket(activeDashboardID), profile: activeProfile)
+    }
+
+    func pinnedReplies(of owner: PinnedReplyOwner) -> [PinnedReply] {
+        pinnedRepliesByDashboard[owner.dashboard]?[owner.profile] ?? []
+    }
+
+    func setPinnedReplies(_ pins: [PinnedReply], of owner: PinnedReplyOwner) {
+        var bucket = pinnedRepliesByDashboard[owner.dashboard] ?? [:]
+        bucket[owner.profile] = pins.isEmpty ? nil : pins
+        pinnedRepliesByDashboard[owner.dashboard] = bucket.isEmpty ? nil : bucket
     }
 
     /// The open chat's pinned replies and the rows they show, worked out
@@ -36,10 +90,11 @@ extension AppState {
     /// every publish, streaming included.
     var pinnedRepliesForOpenChat: (pins: [PinnedReply], messageIDs: Set<String>) {
         guard canPinReplies, let active = activeSessionId else { return ([], []) }
-        let stored = pinnedRepliesByProfile[activeProfile] ?? []
+        let owner = openChatPinOwner
+        let stored = pinnedReplies(of: owner)
         guard !stored.isEmpty else { return ([], []) }
         let key = OpenChatPinnedRepliesKey(
-            profile: activeProfile,
+            profile: "\(owner.dashboard)|\(owner.profile)",
             active: active,
             stored: stored,
             transcriptRevision: chatTranscriptRevision,
@@ -60,6 +115,9 @@ extension AppState {
     /// another chat's pins never show in this one's bar.
     func openChatPinIDs() -> (store: String, own: Set<String>) {
         guard let active = activeSessionId, !active.isEmpty else { return ("", []) }
+        // Another combined dashboard's chat: this dashboard's rows and ids
+        // aren't its own, and one id can name chats on both.
+        guard chatOnScreenIsInScope else { return (active, [active]) }
         let durable = confirmedDurableSessionID(forRuntime: active)
         let summary = activeChatSessionSummary
         var own = chatOwnSessionIDs(for: active)
@@ -82,9 +140,22 @@ extension AppState {
 
     /// Signed out or reset: pinned replies belong to the chats that went.
     func clearPinnedReplies() {
-        pinnedRepliesByProfile = [:]
+        pinnedRepliesByDashboard = [:]
         pendingPinnedReplyReveal = nil
+        defaults.removeObject(forKey: pinnedRepliesByDashboardKey)
         defaults.removeObject(forKey: pinnedRepliesByProfileKey)
+    }
+
+    /// One dashboard's pinned replies go (its sign-out, or another account
+    /// signing in to it); every other dashboard keeps its own.
+    func clearPinnedReplies(inDashboard dashboardID: UUID?) {
+        let bucket = Self.dashboardPreferenceBucket(dashboardID)
+        guard pinnedRepliesByDashboard[bucket] != nil else { return }
+        pinnedRepliesByDashboard.removeValue(forKey: bucket)
+        if composerOwnerDashboardID == dashboardID || activeDashboardID == dashboardID {
+            pendingPinnedReplyReveal = nil
+        }
+        persistPinnedReplies()
     }
 
     func pinID(for session: SessionSummary) -> String {
