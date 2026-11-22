@@ -374,6 +374,8 @@ extension AppState {
             // A launch a newer one replaced while the list was read
             // neither switches nor ends a call.
             guard stillWanted() else { return false }
+            // A call may have started while the list was read.
+            guard endingTheCall || !refusesCombinedSwitchDuringCall(to: dashboardID) else { return false }
             // The switch resumes on the picked profile, not first on the
             // one it last used there (Eric, 2026-11-16).
             rememberActiveProfile(profile, for: dashboardID)
