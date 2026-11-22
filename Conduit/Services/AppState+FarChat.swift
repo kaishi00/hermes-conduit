@@ -155,7 +155,15 @@ extension AppState {
         )
         next.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         next.inheritSessionProfiles(from: kept.client)
-        guard kept.client.handOffSocket(to: next) else {
+        // A live call held on this dashboard keeps its requests in flight
+        // and its sessions on its own profile, as `keptClient(_:on:)` and a
+        // profile switch carry it (`keep` below names the call's profile
+        // for its sessions). Asked directly, not through `liveCallHolds`,
+        // so it holds whichever dashboard is in scope.
+        let carriesCall = isLiveCallUp && liveCallDashboardID == dashboardID
+        guard kept.client.handOffSocket(
+            to: next, carryingSessions: carriesCall ? callSessionIDs : [], carryingCallRequests: carriesCall
+        ) else {
             next.disconnect()
             return nil
         }
