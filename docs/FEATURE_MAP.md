@@ -592,7 +592,7 @@ instructions isn't offered, agent settings take only switches and choices) ·
 the notifier (not needed: Local Live's plugin passes the phone's
 instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
-**Desktop app:** has it: each live mode's "Use Hermes personality" (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32) and Settings > Voice's Live call style, kept on the computer: tone, answer length, backchannels and Your instructions, sent in the phone's words in every live mode (`desktop/src/renderer/src/state/liveStyle.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#335); gap: no What Conduit sends preview.
+**Desktop app:** has it: each live mode's "Use Hermes personality" (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32) and Settings > Voice's Live call style, kept on the computer: tone, answer length, backchannels and Your instructions, sent in the phone's words in every live mode (`desktop/src/renderer/src/state/liveStyle.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#335), and What Conduit sends, built by the calls' own code (`desktop/src/renderer/src/state/livePreview.ts`, `desktop/src/renderer/src/components/LivePreviewSheet.tsx`, desktop#339).
 
 **Code**
 - The user's instructions: `Conduit/Voice/LiveVoiceStyle.swift` (extraInstructions, cleanedExtraInstructions, instructions), stored in `Conduit/Voice/VoiceTypes.swift` (liveVoiceExtraInstructions), saved by `Conduit/Services/AppState+Voice.swift` (setLiveVoiceStyle)
