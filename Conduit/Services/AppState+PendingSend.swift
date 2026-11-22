@@ -616,7 +616,18 @@ extension AppState {
         if lhs == rhs { return true }
         // A kept dashboard's draft: told from its own list, on its runtime.
         if let farRuntime = composerDraftFarRuntime(for: lhs) {
-            return act(onRuntime: farRuntime) { composerDraftKeysAreSameChat(lhs, rhs) }
+            // Its chat on screen: every check below is its own.
+            if farChat?.dashboardID == lhs.dashboard {
+                return act(onRuntime: farRuntime) { composerDraftKeysAreSameChat(lhs, rhs) }
+            }
+            // Left: only its list says. The chat state on screen (a New
+            // Chat, a lost chat's replacement) is another chat's.
+            return act(onRuntime: farRuntime) {
+                let rows = composerDraftRows(profile: lhs.profile)
+                guard let left = Self.composerDraftOwningRow(of: lhs.sessionID, in: rows).row,
+                      let right = Self.composerDraftOwningRow(of: rhs.sessionID, in: rows).row else { return false }
+                return left.durableKey == right.durableKey
+            }
         }
         // The lists and ids below are the dashboard on screen's: another
         // dashboard's draft is only ever its own key.
@@ -697,8 +708,8 @@ extension AppState {
         return owning.row?.durableKey != owner
     }
 
-    /// The runtime of the far chat on screen when `key` is its draft: its
-    /// list is that dashboard's, read there.
+    /// The kept dashboard's runtime when `key` is its draft, its chat on
+    /// screen or not: its list is that dashboard's, read there.
     private func composerDraftFarRuntime(for key: ComposerDraftKey) -> DashboardRuntime? {
         // Its chat may have been left since: its dashboard's list still
         // names it while that dashboard is kept.

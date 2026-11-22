@@ -203,6 +203,20 @@ struct ComposerBar: View {
         return draftKeysAreEquivalent(target, loaded, identity: identity)
     }
 
+    /// Whether the composer showing `draftDashboard`'s draft takes this
+    /// restore now: its own dashboard's, or another's refused words (kept
+    /// only in memory, so they go to their chat's stored draft). One kept
+    /// in a file (a waiting message, a share, a dictation retry) waits for
+    /// its own dashboard's composer.
+    static func handlesRestoreRequest(_ request: ComposerRestoreRequest, draftDashboard: UUID?, activeDashboard: UUID?) -> Bool {
+        if request.dashboardID == draftDashboard { return true }
+        let livesInMemory = request.pending == nil && request.sharedDraftID == nil && request.dictationClipID == nil
+        // The dashboard on screen's while a far chat's draft is loaded: its
+        // file waits for its own composer too.
+        if request.dashboardID == activeDashboard { return livesInMemory }
+        return request.dashboardID == request.key.dashboard && livesInMemory
+    }
+
     static func draftKeysAreEquivalent(
         _ lhs: ComposerDraftKey,
         _ rhs: ComposerDraftKey,
@@ -2010,10 +2024,7 @@ struct ComposerBar: View {
         // restart, the store doesn't.
         let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
         for request in appState.composerRestoreRequests
-        where request.dashboardID == draftDashboardID
-            || request.dashboardID == appState.activeDashboardID
-            || (request.dashboardID == request.key.dashboard && request.pending == nil
-                && request.sharedDraftID == nil && request.dictationClipID == nil) {
+        where Self.handlesRestoreRequest(request, draftDashboard: draftDashboardID, activeDashboard: appState.activeDashboardID) {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 // Only a send's own words can be the refused message: a
                 // shared draft, a dictation retry or a waiting message's
@@ -2389,7 +2400,8 @@ struct ComposerBar: View {
                     composerErrorMessage = AppLocalization.string("No speech was captured.")
                     return
                 }
-                appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: dashboardID, key: key)
+                // A far chat's words name its own dashboard, as its draft does.
+                appState.restoreRetriedDictation(words, clipID: clip.id, dashboardID: key.dashboard ?? dashboardID, key: key)
             } catch is CancellationError {
                 return
             } catch is DictationClipUnreadable {
