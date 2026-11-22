@@ -385,6 +385,12 @@ final class NeedsYouStore: ObservableObject {
             otherDashboards[dashboardID] = merged.isEmpty ? nil : merged
         }
         dropBannerNoLongerListed()
+        // A banner up for a wait whose room is now open (another
+        // dashboard's room opened in place): its card is on screen.
+        if let banner, banner.dashboardID == dashboardID,
+           tagged.contains(where: { Self.sameWait($0, banner) && isOpenChat($0) }) {
+            self.banner = nil
+        }
         guard !firstRead,
               let newest = fresh.filter({ !heldElsewhere($0, than: dashboardID) && !isOpenChat($0) })
                 .max(by: { $0.since < $1.since }) else { return }
