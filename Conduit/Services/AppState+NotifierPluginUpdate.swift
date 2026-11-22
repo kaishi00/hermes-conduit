@@ -55,6 +55,10 @@ extension AppState {
         let runID = notifierPluginUpdate.start(on: dashboardID, first: restartOnly ? .restartingGateway(nil) : .downloading)
         let heard = NotifierPluginUpdateHeartbeat()
         let updater = NotifierPluginUpdater(request: { [weak self] path, method, body in
+            // A run its watchdog stopped sends nothing more: a pull still
+            // waiting in the profile config queue would start after the
+            // run was reported as never started.
+            guard !heard.stopped else { throw CancellationError() }
             guard let self, self.activeDashboardID == dashboardID, let bridge = self.dashboardTicketBridge else {
                 throw DashboardTicketBridgeError.notReady
             }
@@ -132,7 +136,9 @@ extension AppState {
                 guard let self, let runtime, !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID),
                       let limit = NotifierPluginUpdater.stallLimit(for: runtime.notifierPluginUpdate.state) else { return }
                 guard Date().timeIntervalSince(heard.at) > limit else { continue }
-                // The run stops here: whatever it waits on can't land on the slot any more.
+                // The run stops here: whatever it waits on can't land on the slot any more,
+                // and a request it hasn't sent yet won't go out.
+                heard.stopped = true
                 runtime.notifierPluginUpdateTask?.cancel()
                 runtime.notifierPluginUpdateTask = nil
                 // Another dashboard on screen: its requests aren't this run's to ask.
@@ -504,8 +510,10 @@ extension NotifierPluginStatus {
     }
 }
 
-/// When a plugin update's run last said where it stands, for its watchdog.
+/// When a plugin update's run last said where it stands, for its watchdog,
+/// and whether the watchdog stopped it.
 @MainActor
 final class NotifierPluginUpdateHeartbeat {
     var at = Date()
+    var stopped = false
 }
