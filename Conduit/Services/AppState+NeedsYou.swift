@@ -101,7 +101,10 @@ extension AppState {
                     listed,
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
+                    isOpenChat: {
+                        Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat,
+                                                      openRoomDashboardID: self.activeRoomSurface?.dashboardID)
+                    }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
@@ -113,13 +116,16 @@ extension AppState {
     /// Whether another combined dashboard's wait is the chat on screen's, so
     /// it doesn't banner: a room wait only from a dashboard of this one's
     /// Hermes, since another Hermes' room can share the open room's id
-    /// (issue 2631, tested in issue 2655).
+    /// (issue 2631, tested in issue 2655), or from the dashboard whose room
+    /// is open in place (`openRoomDashboardID`, no-switch stage 2).
     static func otherDashboardWaitIsOpen(
         _ item: NeedsYouItem,
         sameHermes: () -> Bool,
-        isOpenChat: (NeedsYouItem) -> Bool
+        isOpenChat: (NeedsYouItem) -> Bool,
+        openRoomDashboardID: UUID? = nil
     ) -> Bool {
-        (item.roomID == nil || sameHermes()) && isOpenChat(item)
+        let ownRoomOpen = item.dashboardID != nil && item.dashboardID == openRoomDashboardID
+        return (item.roomID == nil || ownRoomOpen || sameHermes()) && isOpenChat(item)
     }
 
     /// A kept dashboard's profiles as last read, a read since the pass
@@ -389,9 +395,14 @@ extension AppState {
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
         if let roomID = item.roomID {
             // A linked room's copy is another host's room, whatever its id.
-            // Another combined dashboard's room is open in place under its id.
-            return activeRoomSurface?.copy == nil && activeRoomSurface?.room.roomID == roomID
-                && activeRoomSurface?.dashboardID == (item.dashboardID ?? dashboardIDOnScreen)
+            guard let surface = activeRoomSurface, surface.copy == nil, surface.room.roomID == roomID else { return false }
+            // Another combined dashboard's room can be open in place under
+            // the same id: the wait's is open when it's its dashboard's, or
+            // one of that Hermes' (one Hermes saved twice, issue 2631).
+            let dashboard = item.dashboardID ?? dashboardIDOnScreen
+            guard surface.dashboardID != dashboard else { return true }
+            let hermes = combinedHermesGroups
+            return hermes[surface.dashboardID] != nil && hermes[surface.dashboardID] == hermes[dashboard]
         }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),

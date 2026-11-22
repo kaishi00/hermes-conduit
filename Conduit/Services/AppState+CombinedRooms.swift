@@ -350,7 +350,15 @@ extension AppState {
             let mark = inBots ? BotZoomArm.roomKey(tile.roomID) : nil
             if let mark { beginOpeningBotChat(mark) }
             defer { if let mark { endOpeningBotChat(mark) } }
-            guard await readyKeptRuntimeForRooms(runtime, tile.dashboardID) else { return }
+            // A chat or room opened while its support is read owns the screen.
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
+            guard await readyKeptRuntimeForRooms(runtime, tile.dashboardID),
+                  chatViewportTransitionGeneration == viewport, groupRoomEpoch == roomEpoch else { return }
+            // Its kept connection went meanwhile: say so, rather than nothing.
+            guard keptRuntimeOpeningRoomsInPlace(tile.dashboardID) === runtime else {
+                errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+                return
+            }
             await actAcrossAwaits(onRuntime: runtime) { await openCombinedRoomTile(tile) }
             return
         }

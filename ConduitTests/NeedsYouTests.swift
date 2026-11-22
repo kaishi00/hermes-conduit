@@ -332,6 +332,13 @@ extension ChatOnScreenTests {
         XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: { false }, isOpenChat: open), "another Hermes' room")
         XCTAssertTrue(AppState.otherDashboardWaitIsOpen(chat, sameHermes: { false }, isOpenChat: open))
         XCTAssertFalse(AppState.otherDashboardWaitIsOpen(room, sameHermes: { true }, isOpenChat: { _ in false }))
+        // Another Hermes' room open in place on its own dashboard: its wait is the open room's.
+        var inPlace = room
+        inPlace.dashboardID = elsewhere
+        XCTAssertTrue(AppState.otherDashboardWaitIsOpen(inPlace, sameHermes: { false }, isOpenChat: open,
+                                                        openRoomDashboardID: elsewhere))
+        XCTAssertFalse(AppState.otherDashboardWaitIsOpen(inPlace, sameHermes: { false }, isOpenChat: open,
+                                                         openRoomDashboardID: twin), "another dashboard's room open")
 
         // Through the store: the twin's room wait for the room on screen
         // doesn't banner; another Hermes' wait under the same room id does.

@@ -730,6 +730,8 @@ struct GroupRoomComposer: View {
         }
         isUploading = true
         let roomID = surface?.room.roomID
+        // A room of another dashboard can share its id.
+        let roomDashboardID = surface?.dashboardID
         uploadTask = Task {
             defer { isUploading = false }
             let message: AppState.RoomMessage
@@ -746,7 +748,8 @@ struct GroupRoomComposer: View {
             // Left for another room while the files went up: they never go
             // to the room open now. The typed text and the files stay in
             // this room's draft.
-            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
+            guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID,
+                  appState.activeRoomSurface?.dashboardID == roomDashboardID else { return }
             // Uploaded: the composer hands over its text and files now, so a
             // second tap can't send them twice.
             // Typed on after it while the files went up: only the sent

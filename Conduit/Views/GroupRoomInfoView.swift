@@ -219,6 +219,8 @@ struct GroupRoomInfoSheet: View {
     /// shows no line rather than a wrong one.
     private func loadAgentTools(roomID: String, profiles: [String]) async {
         let client = appState.readingRoomRuntime { appState.roomChoicesClient }
+        // A room of another dashboard can share its id.
+        let dashboardID = appState.activeRoomSurface?.dashboardID
         // All at once, not one after another (issue 2359): a room holds at
         // most six agents.
         var read: [String: RoomChoices] = [:]
@@ -231,7 +233,8 @@ struct GroupRoomInfoSheet: View {
             }
         }
         // Left (or a newer read started), or another room opened meanwhile.
-        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
+        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID,
+              appState.activeRoomSurface?.dashboardID == dashboardID else { return }
         if read != agentTools { agentTools = read }
     }
 }

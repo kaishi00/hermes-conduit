@@ -218,6 +218,13 @@ extension AppState {
     func roomMessage(
         _ text: String, attachments: [Attachment], pictureCache: URL = TranscriptImageCache.defaultDirectory
     ) async throws -> RoomMessage {
+        // Another dashboard's room open in place: its files go to its Hermes,
+        // where the message that names them is sent.
+        if let runtime = roomRuntimeToEnter {
+            return try await actAcrossAwaits(onRuntime: runtime) {
+                try await roomMessage(text, attachments: attachments, pictureCache: pictureCache)
+            }
+        }
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !attachments.isEmpty else { return RoomMessage(text: text) }
         var sent: [(Attachment, GroupRoomAttachment)] = []
