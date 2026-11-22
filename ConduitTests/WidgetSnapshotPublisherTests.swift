@@ -162,12 +162,12 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
         let onScreen = workspace(dashboard: dashboardA, profile: "work", title: "A")
         try publisher.publish(onScreen, current: onScreen.id, language: "en")
         let other = workspace(dashboard: dashboardB, profile: "home", title: "B")
-        try publisher.publish(others: [other], language: "en")
+        try publisher.publish(others: [other], over: store.read(), language: "en")
 
         let saved = try XCTUnwrap(store.read())
         XCTAssertEqual(saved.currentWorkspaceID, onScreen.id)
         XCTAssertEqual(Set(saved.workspaces.map(\.id)), [onScreen.id, other.id])
-        try publisher.publish(others: [other], language: "en")
+        try publisher.publish(others: [other], over: store.read(), language: "en")
         XCTAssertEqual(writeCount, 2, "the same workspaces again write nothing")
     }
 

@@ -114,7 +114,8 @@ extension AppState {
     func publishCombinedWidgetWorkspaces() {
         guard widgetSnapshotPublicationSuppressionDepth == 0, let store = widgetStore,
               isInCombinedGroup(activeDashboardID) else { return }
-        let previous = Dictionary((store.read()?.workspaces ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        let stored = store.read()
+        let previous = Dictionary((stored?.workspaces ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         var workspaces: [WidgetWorkspaceSnapshot] = []
         for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID {
             guard isInCombinedGroup(dashboard.id), let chats = combinedDashboardChats[dashboard.id] else { continue }
@@ -130,7 +131,7 @@ extension AppState {
         }
         guard !workspaces.isEmpty else { return }
         let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)
-        do { try publisher.publish(others: workspaces, language: AppLanguageStore.shared.selection.rawValue) }
+        do { try publisher.publish(others: workspaces, over: stored, language: AppLanguageStore.shared.selection.rawValue) }
         catch { /* Widget data is a best-effort cache; the last valid one stays. */ }
     }
 
