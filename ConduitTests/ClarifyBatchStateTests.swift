@@ -842,8 +842,8 @@ final class ClarifyBatchStateTests: XCTestCase {
         // ended does the same, and says the questions are no longer active
         // (issue 2942).
         let cases: [(HermesClient.ClarifyResponseOutcome, String)] = [
-            (.answeredElsewhere, "These questions were answered elsewhere."),
-            (.ended, "These questions are no longer active."),
+            (.answeredElsewhere, AppLocalization.string("These questions were answered elsewhere.")),
+            (.ended, AppLocalization.string("These questions are no longer active.")),
         ]
         for (outcome, notice) in cases {
             var operations = ChatResumeLifecycleOperations.live
@@ -869,7 +869,7 @@ final class ClarifyBatchStateTests: XCTestCase {
             XCTAssertEqual(appState.messages.map(\.id), ["clarify-req-batch"], "\(outcome): the copy goes")
             let settled = try XCTUnwrap(clarifyCard(in: appState, requestId: "req-batch"))
             XCTAssertTrue(settled.isExpired)
-            XCTAssertEqual(settled.error, AppLocalization.string(notice))
+            XCTAssertEqual(settled.error, notice)
         }
     }
 
