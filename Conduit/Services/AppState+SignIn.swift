@@ -608,7 +608,10 @@ extension AppState {
         let pendingFailure = Self.signInRequiredPresentation(
             pendingFailure,
             endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: activeDashboardID, in: defaults),
-            nativeSignIn: dashboardTicketBridge?.usesNativeOAuth ?? false
+            // A repeat forced sign-in finds the bridge already gone; the
+            // native grant it kept says the same.
+            nativeSignIn: dashboardTicketBridge?.usesNativeOAuth
+                ?? activeDashboardID.map { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) != nil } ?? false
         )
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()
