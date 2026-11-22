@@ -1848,7 +1848,8 @@ struct V2PulsePage: View {
         let client = self.client
         let visit = self.visit
         Task {
-            defer { ratingCards.remove(card.id) }
+            // Another dashboard shown meanwhile cleared it, and may own that id now.
+            defer { if appState.pulseDashboardID == dashboard { ratingCards.remove(card.id) } }
             do {
                 let rated = try await client.rate(card: card.id, up: up, reason: reason)
                 guard appState.pulseDashboardID == dashboard else { return }
@@ -1913,7 +1914,7 @@ struct V2PulsePage: View {
         let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
                 guard appState.pulseDashboardID == dashboard else { return }
@@ -1950,7 +1951,7 @@ struct V2PulsePage: View {
         let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let changed = try await client.markDone(card: card.id, done: done)
                 guard appState.pulseDashboardID == dashboard else { return }
@@ -1998,7 +1999,7 @@ struct V2PulsePage: View {
         let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             // Another dashboard's Pulse: this phone shares with the one on
             // screen, so the change is made there.
             guard await appState.switchForFarPulseStep(from: shown) else { return }
@@ -2051,7 +2052,7 @@ struct V2PulsePage: View {
         let client = self.client
         let visit = self.visit
         Task {
-            defer { finishingCards.remove(card.id) }
+            defer { if appState.pulseDashboardID == dashboard { finishingCards.remove(card.id) } }
             do {
                 let answer = try await client.dismissProposal(proposal.id)
                 guard appState.pulseDashboardID == dashboard else { return }

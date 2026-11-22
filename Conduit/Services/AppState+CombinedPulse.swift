@@ -82,9 +82,12 @@ extension AppState {
                 return PulseDashboardChip(dashboardID: active, badge: mark, unseen: pulseUnseen, isShown: shown == active)
             }
             guard let pulse = combinedDashboardPulse[dashboard.id] else { return nil }
-            // Its feed read on its own runtime (shown here) knows best.
+            // Shown here, its feed read on its own runtime knows best; once
+            // another is shown, only the background read keeps up with it.
             var unseen = pulse.unseen
-            if let runtime = runtime(for: dashboard.id), runtime.pulseFeedAppliedAt != nil { unseen = runtime.pulseUnseen }
+            if shown == dashboard.id, let runtime = runtime(for: dashboard.id), runtime.pulseFeedAppliedAt != nil {
+                unseen = runtime.pulseUnseen
+            }
             return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id)
         }
         return chips.count > 1 ? chips : []
@@ -111,12 +114,6 @@ extension AppState {
     func readingPulseRuntime<T>(_ body: () -> T) -> T {
         guard let runtime = pulseRuntime, runtime !== shownRuntime else { return body() }
         return act(onRuntime: runtime, body)
-    }
-
-    /// A step of the Pulse page on the dashboard it shows.
-    func onPulseRuntime<T>(_ body: () async -> T) async -> T {
-        guard let runtime = pulseRuntime, runtime !== shownRuntime else { return await body() }
-        return await actAcrossAwaits(onRuntime: runtime, body)
     }
 
     /// Shows another combined dashboard's Pulse in place: the page reads

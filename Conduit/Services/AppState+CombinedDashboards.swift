@@ -497,6 +497,9 @@ extension AppState {
         // Its group chat open in place has nothing left to act on: it closes,
         // its send parked with its dashboard as a switch's is.
         if activeRoomSurface?.dashboardID == id, id != dashboardIDOnScreen { closeRoomSurface(clearingRoomError: false) }
+        // Its Pulse shown in place goes back to the one on screen's, so a
+        // runtime kept anew later doesn't take the page over unannounced.
+        if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         release(kept)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
