@@ -78,6 +78,15 @@ final class NotificationCopyTests: XCTestCase {
         let chat = NotificationCopy.preview(["title_label": "response.ready", "profile": "kaleb", "session_title": "Trip plan"])
         XCTAssertEqual(chat.title, "Trip plan")
         XCTAssertEqual(chat.subtitle, "Kaleb")
+        // Spelled as the bot's picture spells its sender, so it's named once.
+        let spaced: [String: Any] = ["title_label": "response.ready", "profile": "cerebro", "profile_name": " Segundo  Cérebro "]
+        XCTAssertEqual(NotificationCopy.preview(spaced).title, NotificationCopy.botName(spaced))
+        XCTAssertEqual(NotificationCopy.preview(spaced).title, "Segundo Cérebro")
+        XCTAssertEqual(NotificationCopy.preview(spaced.merging(["session_title": "Trip"]) { $1 }).subtitle, "Segundo Cérebro")
+        // A Bot Chat titled with the same doubled spelling names it once.
+        let botChat = NotificationCopy.preview(spaced.merging(["session_title": "Segundo  Cérebro"]) { $1 })
+        XCTAssertNil(botChat.subtitle)
+        XCTAssertEqual(NotificationCopy.preview(["title_label": "response.ready", "profile": " second  brain "]).title, "Second brain")
         let approval = NotificationCopy.preview(["title_label": "approval.needed", "profile": "kaleb"])
         XCTAssertEqual(approval.title, "Approval needed")
         XCTAssertEqual(approval.subtitle, "Kaleb")

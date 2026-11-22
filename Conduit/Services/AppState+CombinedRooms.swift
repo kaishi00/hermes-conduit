@@ -296,7 +296,7 @@ extension AppState {
     /// the room) or settled, since a switch clears Bot Mode's state, an
     /// open on its way included.
     func openCombinedRoom(_ tile: CombinedRoomTile, inBots: Bool = false) async {
-        guard !refusesCombinedSwitchDuringCall() else { return }
+        guard !refusesCombinedSwitchDuringCall(to: tile.dashboardID) else { return }
         dismissSidebarDrawer()
         // Opens once the dashboard is connected if it still lists the room
         // as it was left (its kept lists show at once on the switch back),

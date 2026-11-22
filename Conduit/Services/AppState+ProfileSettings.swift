@@ -40,7 +40,7 @@ extension AppState {
     /// reach this path: `prepareDashboardBridge(for:)` keeps the bridge (and
     /// therefore the gateways) when the normalized URL is unchanged, and the
     /// capability refresh intentionally keeps equivalent gateways alive.
-    func retireSpeechOperationsForServerReplacement(previousIdentity: String, identity: String) {
+    func retireSpeechOperationsForServerReplacement(previousIdentity: String, identity: String, keepingLiveCall: Bool = false) {
         let voiceWasLive = voiceConversationController.hasLiveVoiceSession
         let readAloudWasActive: Bool
         if case .idle = messageReadAloudController.state {
@@ -52,12 +52,17 @@ extension AppState {
             "Server replacement \(previousIdentity, privacy: .private) -> \(identity, privacy: .private): retiring speech ownership (voiceLive=\(voiceWasLive ? "yes" : "no", privacy: .public), readAloudActive=\(readAloudWasActive ? "yes" : "no", privacy: .public))"
         )
         voiceConversationController.stop()
-        stopQwenLiveConversation()
-        stopGeminiLiveConversation()
-        stopGPTLiveConversation()
-        stopGrokLiveConversation()
-        stopLocalLiveConversation()
-        retireVoiceBackgroundJobs()
+        // A live call that goes on across a switch between combined
+        // dashboards keeps its engine and its jobs: it runs on its own
+        // dashboard's runtime, kept connected (no-switch stage 2).
+        if !keepingLiveCall {
+            stopQwenLiveConversation()
+            stopGeminiLiveConversation()
+            stopGPTLiveConversation()
+            stopGrokLiveConversation()
+            stopLocalLiveConversation()
+            retireVoiceBackgroundJobs()
+        }
         // Read Aloud teardown flows through the controller's own pinned
         // Option-A semantics: replacing a non-nil gateway performs the single
         // authoritative stop. A nil gateway means nothing can be live — an

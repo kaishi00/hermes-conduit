@@ -197,7 +197,7 @@ struct SavedDashboardsSettingsDetail: View {
     }
 
     private func switchTo(_ row: SavedDashboardRowModel) {
-        appState.switchEndingCall(to: row.dashboard.label, pending: &pendingCallEndingSwitch) {
+        appState.switchEndingCall(to: row.dashboard.label, dashboard: row.dashboard.id, pending: &pendingCallEndingSwitch) {
             startSwitch(to: row)
         }
     }

@@ -1053,8 +1053,9 @@ extension AppState {
         resetLineBoards()
         botRosterRetry.succeeded()
         // Background jobs keep running on the server as ordinary chats; the
-        // signed-out ledger just stops following them.
-        retireVoiceBackgroundJobs()
+        // signed-out ledger just stops following them. A live call on
+        // another combined dashboard keeps its own: they're that one's.
+        if callDashboardOffScreen == nil { retireVoiceBackgroundJobs() }
         // Unsent drafts belong to the signed-out user; AppState owns the
         // store (it outlives the composer view), so sign-out must clear it:
         // this dashboard's, a room's words and files and words on their way
@@ -1122,11 +1123,15 @@ extension AppState {
         // A status read from the outgoing visit never answers this one (#2620's review).
         notifierPluginStatusSharedRefresh = nil
         voiceConversationController.stop()
-        stopQwenLiveConversation()
-        stopGeminiLiveConversation()
-        stopGPTLiveConversation()
-        stopGrokLiveConversation()
-        stopLocalLiveConversation()
+        // A live call on another combined dashboard goes on: it isn't this
+        // one's (no-switch stage 2).
+        if callDashboardOffScreen == nil {
+            stopQwenLiveConversation()
+            stopGeminiLiveConversation()
+            stopGPTLiveConversation()
+            stopGrokLiveConversation()
+            stopLocalLiveConversation()
+        }
         messageReadAloudController.stop()
         // The bridge is invalidated above; a gateway built against it can
         // never open a stream again, so it must not survive the re-login.

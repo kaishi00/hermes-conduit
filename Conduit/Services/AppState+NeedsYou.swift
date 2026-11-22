@@ -405,7 +405,7 @@ extension AppState {
         // Another combined dashboard's: switch to it (through its kept
         // connection, no sign-in), then open as one of its own.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
-            guard !refusesCombinedSwitchDuringCall() else { return }
+            guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 // Open as soon as its sync settles, as its bots do.

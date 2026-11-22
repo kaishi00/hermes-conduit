@@ -1276,6 +1276,9 @@ extension AppState {
     /// nothing waits, and the result is what it was before: the current
     /// client, or `notConnected` without one.
     func clientForVoiceRequest() async throws -> HermesClient {
+        // A call off its dashboard goes on through that dashboard's own
+        // connection, never the screen's (no-switch stage 2).
+        if let client = try clientOfCallOffScreen() { return client }
         if await waitForTransportIfDropped(), !isConnected || isResumingAfterDrop {
             throw HermesError.notConnected
         }

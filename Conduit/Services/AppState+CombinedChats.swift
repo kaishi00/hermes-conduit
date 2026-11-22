@@ -203,11 +203,14 @@ extension AppState {
         return V2DashboardBadge(letter: badge.letter, colorIndex: badge.colorIndex, name: badge.name)
     }
 
-    /// A switch to another combined dashboard during a call says to end the
-    /// call first, as a notification from that dashboard does: the switch
-    /// would end it.
-    func refusesCombinedSwitchDuringCall() -> Bool {
-        guard isVoiceCallInProgress else { return false }
+    /// A switch to another combined dashboard during a call it would end
+    /// says to end the call first, as a notification from that dashboard
+    /// does. A live call on the phone goes on across it, on its own
+    /// dashboard (no-switch stage 2), so that switch goes ahead: only
+    /// Classic voice, CarPlay, the Watch and a ringing call from Hermes
+    /// still refuse.
+    func refusesCombinedSwitchDuringCall(to dashboardID: UUID?) -> Bool {
+        guard isCallEndingDashboardSwitch(to: dashboardID) else { return false }
         showCallRefusal(AppLocalization.string("End the call to open a chat in another workspace."))
         return true
     }
@@ -221,7 +224,7 @@ extension AppState {
         if openFarChatInPlace(session, in: dashboardID) { return }
         // The notification path refuses during a call too; saying so here
         // keeps it to the tap.
-        guard !refusesCombinedSwitchDuringCall() else { return }
+        guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         PushNotificationService.shared.routeChatLink(combinedChatTarget(session, in: dashboardID))
     }
 
@@ -352,7 +355,7 @@ extension AppState {
     /// the switch's own profile list doesn't name leaves its All as it was
     /// (issue 2646).
     func switchForCombinedProfile(in dashboardID: UUID, profile: String? = nil) async -> Bool {
-        guard !refusesCombinedSwitchDuringCall() else { return false }
+        guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return false }
         if let profile {
             guard await combinedProfileStillListed(profile, in: dashboardID) else { return false }
             // The switch resumes on the picked profile, not first on the

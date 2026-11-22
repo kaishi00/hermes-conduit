@@ -764,6 +764,10 @@ extension AppState {
         // What it shows, for a switch back to show at once if it's kept.
         let outgoingLists = isInCombinedGroup(previousDashboardID)
             ? DashboardRuntime(keepingListsOf: runtimeOnScreen, profile: activeProfile) : nil
+        // A live call on a combined dashboard goes on across a switch to
+        // another one, or back to its own: its dashboard stays connected in
+        // its runtime (no-switch stage 2). Read before anything changes.
+        let keepsCall = callSurvivesDashboardSwitch(to: id)
         selectDashboardTarget(id)
         // Pulse's badge, marks and chat are the outgoing dashboard's.
         pulseUnseen = 0
@@ -776,7 +780,7 @@ extension AppState {
             removeUsageWidget(dashboardID: previousDashboardID)
         }
         rememberDashboardURL(dashboard.normalizedURL)
-        let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id)
+        let crossedServer = prepareChatResumeForConnection(to: dashboard.normalizedURL, dashboardID: id, keepingLiveCall: keepsCall)
         // A combined dashboard left while connected stays connected, so a
         // switch back is at once (multi-instance stage 3).
         keepOutgoingDashboardRuntimeIfCombined(
@@ -1048,6 +1052,8 @@ extension AppState {
         guard let removed = savedDashboardRegistry.dashboard(with: id) else { return }
         // Read before the sign-out below, which forgets them.
         let reportedGatewayIDs = relayGatewayIDs(of: id)
+        // A live call going on through it ends with it.
+        endLiveCallLosingItsDashboard(id)
         dropKeptDashboardRuntime(id)
         let wasActive = id == activeDashboardID
         if wasActive {

@@ -676,8 +676,11 @@ extension AppState {
     /// treated as a server switch; every identity change retires the
     /// outgoing server's runtime ownership exactly once, through this one
     /// state machine.
+    /// `keepingLiveCall`: a switch between combined dashboards a live call
+    /// goes on across (`callSurvivesDashboardSwitch`): the call, its jobs
+    /// and its audio stay; everything else of the outgoing server retires.
     @discardableResult
-    func prepareChatResumeForConnection(to baseURL: String, dashboardID: UUID?) -> Bool {
+    func prepareChatResumeForConnection(to baseURL: String, dashboardID: UUID?, keepingLiveCall: Bool = false) -> Bool {
         let identity: String
         if let dashboardID {
             identity = dashboardID.uuidString
@@ -697,7 +700,7 @@ extension AppState {
         stopWaitingForPredictiveFollowUp()
         guard let previousIdentity, previousIdentity != identity else { return false }
 
-        retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
+        retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity, keepingLiveCall: keepingLiveCall)
         owedPostConnectBootstrap = nil
         // The chat you left there waits for your return to that dashboard.
         chatResumeCoordinator.switchServer(from: previousIdentity, to: identity)
