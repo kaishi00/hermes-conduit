@@ -2677,7 +2677,7 @@ group rooms (no Artifacts list) · a Bot Chat's Work panel (done: it shares the 
 the chat, one at a time; see Bot workstreams) · the Folder's Markdown reader (Workspace files) ·
 the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's artifacts route · Saved (done: every list above, the page, a bot's overview, a chat's sheet and the panel, each over the stores it reads; the notifier's saved-artifacts route and its README; the app's README) · README.md
 
-**Desktop app:** has it: Artifacts beside the chat and across every chat (`desktop/src/renderer/src/components/ArtifactsPanel.tsx`, desktop#38, desktop#39), the page listing every combined dashboard's profiles too, badged, with a chip per dashboard; another dashboard's page or text file opens as text, not rendered (`desktop/src/renderer/src/state/keptHosts.ts`, desktop#143).
+**Desktop app:** has it: Artifacts beside the chat and across every chat (`desktop/src/renderer/src/components/ArtifactsPanel.tsx`, desktop#38, desktop#39), the page listing every combined dashboard's profiles too, badged, with a chip per dashboard; another dashboard's page or text file opens as text, not rendered (`desktop/src/renderer/src/state/keptHosts.ts`, desktop#143). Every store pages from its own cursor and merges newest first as ArtifactFeed does (feedItems and nextStore in `desktop/src/renderer/src/state/artifacts.ts`), reaching the end reads the next page, and missing files are hidden until Show Missing Files is on (desktop#304).
 
 **Code**
 - List model and merge: `Conduit/Services/Artifacts.swift` (ArtifactItem, ArtifactSource, ArtifactFeed, ArtifactsClient, its keptRoute, keptPage and answer(_:withoutRowsOf:))
