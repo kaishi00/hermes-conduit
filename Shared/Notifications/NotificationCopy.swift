@@ -192,7 +192,9 @@ enum NotificationCopy {
         // Routing reads a profile id trimmed and lowercased, so "Default" is the default too.
         let profile = nonEmpty(content["profile"])?.trimmingCharacters(in: .whitespacesAndNewlines)
         // A name that is only the id names it no more than the id (BotProfile.displayLabel).
-        let given = nonEmpty(content["profile_name"])?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Spaces collapsed as `botName` does, so a reply titled by its bot and
+        // the bot's picture (whose sender is `botName`) name it once.
+        let given = nonEmpty(content["profile_name"]).map { $0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
         guard let name = given.flatMap({ $0.lowercased() == profile?.lowercased() ? nil : $0 })
             ?? profile.flatMap({ $0.lowercased() == "default" ? nil : String($0.prefix(1)).uppercased() + String($0.dropFirst()) })
         else { return nil }
