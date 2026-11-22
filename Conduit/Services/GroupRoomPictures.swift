@@ -159,6 +159,9 @@ extension AppState {
     /// room list answers, #1533), else the one Hermes Desktop synced for the
     /// same room.
     func groupRoomPicture(roomID: String) -> UIImage? {
+        if isOpenFarRoom(roomID), let runtime = farRoomRuntime, runtime !== shownRuntime {
+            return act(onRuntime: runtime) { groupRoomPicture(roomID: roomID) }
+        }
         if let data = groupRoomPictureData[roomID] { return GroupRoomPictureImages.image(from: data) }
         if !groupRoomsListed, let kept = keptGroupRooms()?.pictures.first(where: { $0.roomID == roomID }) {
             return GroupRoomPictureImages.image(from: kept.data)
@@ -200,7 +203,10 @@ extension AppState {
     }
 
     func hasCustomGroupRoomPicture(roomID: String) -> Bool {
-        groupRoomPictureData[roomID] != nil
+        if isOpenFarRoom(roomID), let runtime = farRoomRuntime, runtime !== shownRuntime {
+            return act(onRuntime: runtime) { groupRoomPictureData[roomID] != nil }
+        }
+        return groupRoomPictureData[roomID] != nil
     }
 
     /// Fetches the pictures that changed since the last look. Runs with the
@@ -244,6 +250,10 @@ extension AppState {
     /// Sets the room's picture, or removes it with nil. Failures land in
     /// `errorMessage`.
     func setGroupRoomPicture(_ image: UIImage?, roomID: String) async {
+        // A far room's picture is kept by its own dashboard's plugin.
+        if isOpenFarRoom(roomID), let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await setGroupRoomPicture(image, roomID: roomID) }
+        }
         guard let bridge = dashboardTicketBridge, let path = GroupRoomPictures.path(for: roomID) else {
             errorMessage = AppLocalization.string("Connect to Hermes to change the group picture.", table: .rooms)
             return

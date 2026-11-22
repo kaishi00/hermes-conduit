@@ -101,14 +101,31 @@ final class GatewayMediaDataURLResolver {
 
     private var currentAppState: AppState? {
         guard let appState, bridge(in: appState) != nil || !readsKeptDashboard,
-              readsKeptDashboard || appState.activeDashboardID == dashboardID else { return nil }
+              readsKeptDashboard || appState.activeDashboardID == dashboardID || farRuntime(appState) != nil
+        else { return nil }
         return appState
     }
 
+    /// The runtime of the dashboard it was built for, when that's another
+    /// combined dashboard's surface on screen (a far group chat opened in
+    /// place, no-switch stage 2): its reads run on that runtime.
+    private func farRuntime(_ appState: AppState) -> DashboardRuntime? {
+        guard !readsKeptDashboard, let dashboardID, dashboardID != appState.dashboardIDOnScreen,
+              let runtime = appState.runtime(for: dashboardID), runtime !== appState.runtimeOnScreen else { return nil }
+        return runtime
+    }
+
+    /// Runs a read on its far dashboard's runtime when it has one and the
+    /// read isn't on it already.
+    private func onItsRuntime<T>(_ appState: AppState, _ body: () async -> T) async -> T {
+        guard let runtime = farRuntime(appState), runtime !== appState.shownRuntime else { return await body() }
+        return await appState.actAcrossAwaits(onRuntime: runtime, body)
+    }
+
     /// Where its reads go: the kept connection of the dashboard it reads, or
-    /// the one on screen's.
+    /// the one on screen's (a far surface's, its own dashboard's).
     private func bridge(in appState: AppState) -> DashboardTicketBridge? {
-        guard readsKeptDashboard else { return appState.dashboardTicketBridge }
+        guard readsKeptDashboard else { return farRuntime(appState)?.dashboardTicketBridge ?? appState.dashboardTicketBridge }
         guard let dashboardID, appState.activeDashboardID != dashboardID else { return nil }
         return appState.keptDashboardRuntimes[dashboardID]?.bridge
     }
@@ -133,6 +150,9 @@ final class GatewayMediaDataURLResolver {
     /// As `dataURL(for:)`, saying why there's none (issue 2015).
     func read(for path: String) async -> GatewayMediaRead {
         guard let appState = currentAppState else { return .failed }
+        if let runtime = farRuntime(appState), runtime !== appState.shownRuntime {
+            return await onItsRuntime(appState) { await read(for: path) }
+        }
         let result: GatewayMediaRead
         switch source {
         case .hermes: result = await appState.gatewayMediaRead(for: path, profile: profile, through: bridge(in: appState))
@@ -144,6 +164,9 @@ final class GatewayMediaDataURLResolver {
     /// The file itself on disk, for media too large for a data URL (#569).
     func file(for path: String, maxBytes: Int = DashboardFileDownloadLimits.maxBytes) async -> GatewayMediaFileResult {
         guard source == .hermes, let appState = currentAppState else { return .unavailable }
+        if let runtime = farRuntime(appState), runtime !== appState.shownRuntime {
+            return await onItsRuntime(appState) { await file(for: path, maxBytes: maxBytes) }
+        }
         let result = await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes,
                                                      through: bridge(in: appState))
         guard stillCurrent(appState) else {
@@ -159,6 +182,9 @@ final class GatewayMediaDataURLResolver {
     /// gone from the server (#652).
     func inlineImageDataURL(_ ref: InlineImageRef) async -> String? {
         guard source == .hermes, !readsKeptDashboard, let appState = currentAppState else { return nil }
+        if let runtime = farRuntime(appState), runtime !== appState.shownRuntime {
+            return await onItsRuntime(appState) { await inlineImageDataURL(ref) }
+        }
         let result = await appState.transcriptInlineImageDataURL(ref)
         return appState.activeDashboardID == dashboardID ? result : nil
     }

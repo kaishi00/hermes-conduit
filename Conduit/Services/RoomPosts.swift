@@ -250,6 +250,7 @@ extension AppState {
     /// Whether the open room is someone else's that takes your posts: still
     /// going, with an agent of yours in it, or you in it with Just me.
     var activeRoomCopyTakesPosts: Bool {
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { activeRoomCopyTakesPosts } }
         guard canPostInRoomCopies, let copy = activeRoomSurface?.copy else { return false }
         return copy.status == "started" && (!copy.yours.isEmpty || copy.justMe)
     }

@@ -494,6 +494,9 @@ extension AppState {
     /// would ask for an answer that may be given.
     func dropKeptDashboardRuntime(_ id: UUID, keepingLists: Bool = false) {
         guard let kept = keptDashboardRuntimes.removeValue(forKey: id) else { return }
+        // Its group chat open in place has nothing left to act on: it closes,
+        // its send parked with its dashboard as a switch's is.
+        if activeRoomSurface?.dashboardID == id, id != dashboardIDOnScreen { closeRoomSurface(clearingRoomError: false) }
         release(kept)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.

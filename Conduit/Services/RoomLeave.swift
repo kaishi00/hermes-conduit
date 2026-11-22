@@ -208,6 +208,10 @@ extension AppState {
     /// Takes `member` out of the open room: your agent out of a room someone
     /// else hosts, or another person's out of yours. Who's in is read again.
     func takeOut(_ member: GroupMember) async -> RoomLeaveResult {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await takeOut(member) }
+        }
         guard canTakeOut(member), let surface = activeRoomSurface, let memberID = member.memberID else {
             return .refused(RoomLeaveText.takeOutRefusal(for: HermesError.invalidResponse))
         }
@@ -231,6 +235,10 @@ extension AppState {
     /// All your agents out of the open room someone else hosts. Its copy
     /// stays, ended for you, to delete when you like.
     func leaveActiveRoom() async -> RoomLeaveResult {
+        // A far room acts on its own dashboard's runtime.
+        if let runtime = roomRuntimeToEnter {
+            return await actAcrossAwaits(onRuntime: runtime) { await leaveActiveRoom() }
+        }
         guard canLeaveActiveRoom, let surface = activeRoomSurface, let copy = surface.copy else {
             return .refused(RoomLeaveText.leaveRefusal(for: HermesError.invalidResponse))
         }

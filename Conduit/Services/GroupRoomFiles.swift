@@ -171,7 +171,8 @@ extension AppState {
     /// The room composer offers files only when the host can store them,
     /// and not in a room someone else hosts, whose home can't open them.
     var canAttachRoomFiles: Bool {
-        (notifierPlugin.reports(GroupRoomFilesClient.capability) || roomTakesHermesAttachments)
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { canAttachRoomFiles } }
+        return (notifierPlugin.reports(GroupRoomFilesClient.capability) || roomTakesHermesAttachments)
             && activeRoomSurface?.copy == nil
     }
 
@@ -184,13 +185,15 @@ extension AppState {
     /// (`attachments_unsupported_on_route`), so a linked room's files go
     /// through the plugin as `@file:` lines, which notifier #629 carries.
     var roomTakesHermesAttachments: Bool {
-        groupCapabilities?.supports("groups.attachment.upload") == true
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { roomTakesHermesAttachments } }
+        return groupCapabilities?.supports("groups.attachment.upload") == true
             && activeRoomSurface?.copy == nil
             && activeRoomSurface?.room.isLinked != true
     }
 
     /// The largest file the room composer stages, in MB.
     var roomFileCapMegabytes: Int {
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { roomFileCapMegabytes } }
         guard notifierPlugin.reports(GroupRoomFilesClient.capability) else { return GroupRoomFilesClient.hermesMaximumMegabytes }
         // With other people's agents in it, a file has to reach their hosts.
         // (A copy of a room hosted elsewhere takes no files: canAttachRoomFiles.)
@@ -215,6 +218,13 @@ extension AppState {
     func roomMessage(
         _ text: String, attachments: [Attachment], pictureCache: URL = TranscriptImageCache.defaultDirectory
     ) async throws -> RoomMessage {
+        // Another dashboard's room open in place: its files go to its Hermes,
+        // where the message that names them is sent.
+        if let runtime = roomRuntimeToEnter {
+            return try await actAcrossAwaits(onRuntime: runtime) {
+                try await roomMessage(text, attachments: attachments, pictureCache: pictureCache)
+            }
+        }
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !attachments.isEmpty else { return RoomMessage(text: text) }
         var sent: [(Attachment, GroupRoomAttachment)] = []
@@ -339,12 +349,14 @@ extension AppState {
     /// doesn't keep its files (before 0.149, `room-files-linked`). One
     /// instance per dashboard, so the rows reading it compare equal.
     var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
-        roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { roomFilePicturesResolver } }
+        return roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)
     }
 
     /// Where a room's other files are read (plugin 0.143+), as pictures are.
     var roomFileReadsResolver: GatewayMediaDataURLResolver? {
-        roomFilesResolver(reporting: GroupRoomFilesClient.readCapability)
+        if let runtime = farRoomRuntime, runtime !== shownRuntime { return act(onRuntime: runtime) { roomFileReadsResolver } }
+        return roomFilesResolver(reporting: GroupRoomFilesClient.readCapability)
     }
 
     private func roomFilesResolver(reporting capability: String) -> GatewayMediaDataURLResolver? {

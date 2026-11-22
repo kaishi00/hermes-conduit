@@ -85,7 +85,9 @@ extension AppState {
             // the shared wait that makes the two one Hermes.
             func sameHermes() -> Bool {
                 let hermes = combinedHermesGroups
-                return hermes[activeDashboardID] != nil && hermes[activeDashboardID] == hermes[id]
+                // The open room's dashboard: another one's, open in place, or this one.
+                let open = activeRoomSurface?.dashboardID ?? activeDashboardID
+                return hermes[open] != nil && hermes[open] == hermes[id]
             }
             for profile in profiles {
                 guard isSceneActive else { return }
@@ -101,7 +103,10 @@ extension AppState {
                     listed,
                     profile: profile,
                     dashboardID: id,
-                    isOpenChat: { Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat) }
+                    isOpenChat: {
+                        Self.otherDashboardWaitIsOpen($0, sameHermes: sameHermes, isOpenChat: self.isOpenChat,
+                                                      openRoomDashboardID: self.activeRoomSurface?.dashboardID)
+                    }
                 )
             }
             if keptDashboardRuntimes[id]?.bridge === runtime.bridge {
@@ -113,13 +118,16 @@ extension AppState {
     /// Whether another combined dashboard's wait is the chat on screen's, so
     /// it doesn't banner: a room wait only from a dashboard of this one's
     /// Hermes, since another Hermes' room can share the open room's id
-    /// (issue 2631, tested in issue 2655).
+    /// (issue 2631, tested in issue 2655), or from the dashboard whose room
+    /// is open in place (`openRoomDashboardID`, no-switch stage 2).
     static func otherDashboardWaitIsOpen(
         _ item: NeedsYouItem,
         sameHermes: () -> Bool,
-        isOpenChat: (NeedsYouItem) -> Bool
+        isOpenChat: (NeedsYouItem) -> Bool,
+        openRoomDashboardID: UUID? = nil
     ) -> Bool {
-        (item.roomID == nil || sameHermes()) && isOpenChat(item)
+        let ownRoomOpen = item.dashboardID != nil && item.dashboardID == openRoomDashboardID
+        return (item.roomID == nil || ownRoomOpen || sameHermes()) && isOpenChat(item)
     }
 
     /// A kept dashboard's profiles as last read, a read since the pass
@@ -389,7 +397,14 @@ extension AppState {
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
         if let roomID = item.roomID {
             // A linked room's copy is another host's room, whatever its id.
-            return activeRoomSurface?.copy == nil && activeRoomSurface?.room.roomID == roomID
+            guard let surface = activeRoomSurface, surface.copy == nil, surface.room.roomID == roomID else { return false }
+            // Another combined dashboard's room can be open in place under
+            // the same id: the wait's is open when it's its dashboard's, or
+            // one of that Hermes' (one Hermes saved twice, issue 2631).
+            let dashboard = item.dashboardID ?? dashboardIDOnScreen
+            guard surface.dashboardID != dashboard else { return true }
+            let hermes = combinedHermesGroups
+            return hermes[surface.dashboardID] != nil && hermes[surface.dashboardID] == hermes[dashboard]
         }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
@@ -402,7 +417,26 @@ extension AppState {
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
         needsYou.dismissBanner(item)
-        // Another combined dashboard's: switch to it (through its kept
+        // Another combined dashboard's group chat opens in place on its own
+        // runtime, as its tile does, with no switch (during a call too).
+        if let dashboardID = item.dashboardID, dashboardID != activeDashboardID,
+           let roomID = item.roomID, let runtime = keptRuntimeOpeningRoomsInPlace(dashboardID) {
+            dismissSidebarDrawer()
+            guard !isOpenChat(item) else { return }
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch
+            Task { @MainActor [weak self] in
+                guard let self, await self.readyKeptRuntimeForRooms(runtime, dashboardID) else { return }
+                // A chat or room opened since the tap owns the screen.
+                guard self.chatViewportTransitionGeneration == viewport, self.groupRoomEpoch == roomEpoch else { return }
+                let outcome = await self.actAcrossAwaits(onRuntime: runtime) { await self.openNotificationRoom(roomID) }
+                self.closeFarRoomIfLetGo(runtime, dashboardID)
+                guard outcome == .retry, self.chatViewportTransitionGeneration == viewport,
+                      self.groupRoomEpoch == roomEpoch else { return }
+                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+            }
+            return
+        }
+        // Another combined dashboard's chat: switch to it (through its kept
         // connection, no sign-in), then open as one of its own.
         if let dashboardID = item.dashboardID, dashboardID != activeDashboardID {
             guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
