@@ -752,13 +752,15 @@ final class LocationSharingController: ObservableObject {
         defer { isSending = false }
         let sentSettings = config.settings
         let sentPlaces = config.places
+        let sentReaders = config.voiceReaders
         spotsSentAt = spotsForgotten
         let outcome = await engine.send(batch, config: config, request: request)
         guard outcome != .failed else { return false }
         if outcome == .sent { noteSent(batch.fix, at: at) }
         // The host has these choices (or won't take them: retrying the same
         // batch wouldn't help). A change made meanwhile stays pending.
-        if config.settingsPending, config.settings == sentSettings, config.places == sentPlaces {
+        if config.settingsPending, config.settings == sentSettings, config.places == sentPlaces,
+           config.voiceReaders == sentReaders {
             save { $0.settingsPending = false }
         }
         unsent.remove(fixID: pending.fix?.id, eventIDs: Set(pending.events.map(\.id)),

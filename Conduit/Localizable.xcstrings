@@ -7353,6 +7353,170 @@
         }
       }
     },
+    "A call starts knowing the saved place you're at or your area, from the last 6 hours, so it doesn't have to ask." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anruf weiß von Anfang an, an welchem gespeicherten Ort oder in welcher Gegend du bist, aus den letzten 6 Stunden, und muss nicht fragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una llamada empieza sabiendo en qué lugar guardado o en qué zona estás, de las últimas 6 horas, así que no tiene que preguntar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel commence en sachant dans quel lieu enregistré ou quelle zone vous êtes, d'après les 6 dernières heures, sans avoir à demander."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dimulai dengan mengetahui tempat tersimpan atau area tempat kamu berada, dari 6 jam terakhir, jadi tidak perlu bertanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una chiamata inizia sapendo in quale luogo salvato o in quale zona ti trovi, dalle ultime 6 ore, così non deve chiedertelo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話は、過去6時間以内のあなたがいる保存済みの場所またはエリアを最初から把握しているため、尋ねる必要がありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화는 지난 6시간 이내에 당신이 있는 저장된 장소나 지역을 처음부터 알고 있어 따로 물어볼 필요가 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa od początku wie, w którym zapisanym miejscu lub okolicy jesteś, na podstawie ostatnich 6 godzin, więc nie musi pytać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma chamada começa sabendo em qual lugar salvo ou região você está, das últimas 6 horas, então não precisa perguntar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонок с самого начала знает, в каком сохранённом месте или районе вы находитесь, по данным за последние 6 часов, и ему не нужно спрашивать."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir arama, son 6 saate göre bulunduğun kayıtlı yeri veya bölgeyi baştan bilir, bu yüzden sormasına gerek kalmaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话一开始就知道你所在的已保存地点或区域（过去 6 小时内），无需再问。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話一開始就知道你所在的已儲存地點或區域（過去 6 小時內），無需再問。"
+          }
+        }
+      }
+    },
+    "A call starts knowing your phone's battery, CarPlay and Focus, as you share them, so it can keep things short while you drive or focus." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Anruf kennt von Anfang an den Akku, CarPlay und Fokus deines iPhones, so wie du sie teilst, und fasst sich kurz, während du fährst oder dich konzentrierst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una llamada empieza sabiendo la batería, CarPlay y Concentración de tu teléfono, según lo que compartes, para ir al grano mientras conduces o te concentras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un appel commence en connaissant la batterie, CarPlay et la concentration de votre téléphone, selon ce que vous partagez, pour rester bref quand vous conduisez ou êtes concentré."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panggilan dimulai dengan mengetahui baterai, CarPlay, dan Fokus ponselmu, sesuai yang kamu bagikan, agar tetap singkat saat kamu menyetir atau fokus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Una chiamata inizia conoscendo la batteria, CarPlay e la modalità Full immersion del telefono, come li condividi, per essere breve mentre guidi o sei concentrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話は、共有している範囲で電話のバッテリー、CarPlay、集中モードを最初から把握しているため、運転中や集中しているときは手短にできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화는 공유한 범위 내에서 휴대폰의 배터리, CarPlay, 집중 모드를 처음부터 알고 있어 운전 중이거나 집중할 때 짧게 말할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa od początku zna baterię, CarPlay i tryb skupienia twojego telefonu, tak jak je udostępniasz, więc może mówić krótko, gdy prowadzisz lub się skupiasz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma chamada começa sabendo a bateria, o CarPlay e o Foco do seu telefone, como você os compartilha, para ser breve enquanto você dirige ou se concentra."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Звонок с самого начала знает заряд, CarPlay и фокусирование вашего телефона, насколько вы ими делитесь, и может говорить кратко, пока вы за рулём или сосредоточены."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir arama, paylaştığın kadarıyla telefonunun pilini, CarPlay'i ve Odak durumunu baştan bilir; böylece araç kullanırken veya odaklanmışken kısa tutabilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话一开始就知道你的手机电量、CarPlay 和专注模式（按你的共享设置），以便在你开车或专注时长话短说。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話一開始就知道你的手機電量、CarPlay 和專注模式（依你的分享設定），以便在你開車或專注時長話短說。"
+          }
+        }
+      }
+    },
     "A chat with an unread reply also opens at the start of that reply." : {
       "localizations" : {
         "de" : {
@@ -117069,84 +117233,84 @@
         }
       }
     },
-    "Read by voice in the last 7 days" : {
+    "Read by this iPhone's calls in the last 7 days" : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "In den letzten 7 Tagen per Sprache gelesen"
+            "value" : "In den letzten 7 Tagen von Anrufen auf diesem iPhone gelesen"
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Leído por voz en los últimos 7 días"
+            "value" : "Leído por llamadas de este iPhone en los últimos 7 días"
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lu par la voix ces 7 derniers jours"
+            "value" : "Lu par les appels de cet iPhone ces 7 derniers jours"
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dibaca lewat suara dalam 7 hari terakhir"
+            "value" : "Dibaca oleh panggilan di iPhone ini dalam 7 hari terakhir"
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Letto dalla voce negli ultimi 7 giorni"
+            "value" : "Letto dalle chiamate di questo iPhone negli ultimi 7 giorni"
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "過去 7 日間に音声で読み取られた内容"
+            "value" : "過去 7 日間にこの iPhone の通話で読み取られた内容"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "지난 7일 동안 음성으로 읽은 기록"
+            "value" : "지난 7일 동안 이 iPhone의 통화가 읽은 기록"
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Odczytane głosowo w ciągu ostatnich 7 dni"
+            "value" : "Odczytane przez rozmowy na tym iPhonie w ciągu ostatnich 7 dni"
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lido por voz nos últimos 7 dias"
+            "value" : "Lido por chamadas deste iPhone nos últimos 7 dias"
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Прочитано голосом за последние 7 дней"
+            "value" : "Прочитано звонками с этого iPhone за последние 7 дней"
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Son 7 günde sesle okunanlar"
+            "value" : "Son 7 günde bu iPhone'daki aramalarca okunanlar"
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "过去 7 天内语音读取的记录"
+            "value" : "过去 7 天内此 iPhone 上的通话读取的记录"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "過去 7 天內語音讀取的紀錄"
+            "value" : "過去 7 天內此 iPhone 上的通話讀取的紀錄"
           }
         }
       }

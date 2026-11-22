@@ -189,7 +189,7 @@ struct HealthSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !voiceReads.entries.isEmpty {
-                Text("Read by voice in the last 7 days")
+                Text("Read by this iPhone's calls in the last 7 days")
                     .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 4)
                 ForEach(voiceReads.entries.suffix(20).reversed()) { entry in

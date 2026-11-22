@@ -332,6 +332,13 @@ final class HealthSyncEngine: ObservableObject {
             prepareHistory(preferences.history)
             var session = Session(engine: self, key: key, preferences: preferences, options: options, request: request,
                                   deadline: deadline)
+            // A voice-reader list the host has, changed since, goes first,
+            // with no health read that a locked phone could stop: a revoked
+            // mode reaches the host even when the rest of the pass can't run.
+            // (Unknown, nil, rides the pass's uploads and the check below.)
+            if let sent = state.sentVoiceReaders, sent != Self.voiceReaders(preferences) {
+                try await session.sendKeepalive()
+            }
             try await session.sendRecentDays()
             try await session.sendEvents()
             // Low Data Mode: older history waits for another network.
@@ -471,9 +478,12 @@ final class HealthSyncEngine: ObservableObject {
     /// An upload that would change what the host has for the choice is
     /// about to go: until it's answered, whether the host took it is
     /// unknown, so a lost answer can't leave a later change unsent.
-    fileprivate func noteSending(otherProfiles: Bool) {
-        guard state.sentOtherProfiles != otherProfiles, state.sentOtherProfiles != nil else { return }
-        state.sentOtherProfiles = nil
+    fileprivate func noteSending(otherProfiles: Bool, voiceReaders: [String]) {
+        let profilesChange = state.sentOtherProfiles != otherProfiles && state.sentOtherProfiles != nil
+        let readersChange = state.sentVoiceReaders != voiceReaders && state.sentVoiceReaders != nil
+        guard profilesChange || readersChange else { return }
+        if profilesChange { state.sentOtherProfiles = nil }
+        if readersChange { state.sentVoiceReaders = nil }
         // Saved before the upload goes, so an app closed while it waits
         // still finds the choice unknown on its next launch.
         store.save(state)
@@ -555,7 +565,7 @@ private struct Session {
         var busyWait = HealthSyncLimits.firstBusyWait
         while true {
             do {
-                engine.noteSending(otherProfiles: part.otherProfiles)
+                engine.noteSending(otherProfiles: part.otherProfiles, voiceReaders: part.voiceReaders)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
                 engine.notePosted(otherProfiles: part.otherProfiles)
                 engine.acknowledged { $0.sentVoiceReaders = part.voiceReaders }

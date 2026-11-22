@@ -124,6 +124,16 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.voiceCallContext(from: ["ok": false, "context": "at Home"]), "")
         XCTAssertEqual(AppState.voiceCallContext(from: ["ok": true, "context": String(repeating: "a", count: 2_000)]).count,
                        AppState.voiceContextLimit)
+
+        // A prepare that can't reach the host keeps a reconnect's context,
+        // never an earlier call's.
+        let fetched = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertEqual(AppState.keptHostContext("at Work", previous: "at Home", fetchedAt: fetched, now: fetched), "at Work")
+        XCTAssertEqual(AppState.keptHostContext("", previous: "at Home", fetchedAt: fetched, now: fetched), "", "The host said nothing now")
+        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: fetched, now: fetched.addingTimeInterval(60)), "at Home")
+        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: fetched,
+                                                now: fetched.addingTimeInterval(AppState.hostContextKeptFor)), "")
+        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: nil, now: fetched), "")
     }
 
     func testTheToolListNamesThisIPhonesDevicePerStore() {
