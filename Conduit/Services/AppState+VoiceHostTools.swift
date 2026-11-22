@@ -360,11 +360,24 @@ extension AppState {
     /// can't reach the host (a reconnect within a call).
     static let hostContextKeptFor: TimeInterval = 10 * 60
 
+    /// What a call's context may hold for a mode: "location", "phone".
+    static func voiceContextReads(location: Bool, phone: Bool) -> Set<String> {
+        var reads: Set<String> = []
+        if location { reads.insert("location") }
+        if phone { reads.insert("phone") }
+        return reads
+    }
+
     /// The call context to use: what the host just sent, else the previous
-    /// one while it's fresh, else nothing.
-    static func keptHostContext(_ fetched: String?, previous: String, fetchedAt: Date?, now: Date) -> String {
-        if let fetched { return fetched }
-        guard let fetchedAt, now.timeIntervalSince(fetchedAt) < hostContextKeptFor else { return "" }
+    /// one while it's fresh, else nothing. Each is kept only while every
+    /// read it was fetched under (`fetchedReads`, `previousReads`) is still
+    /// on (`reads`), so a read turned off meanwhile keeps nothing it gave.
+    static func keptHostContext(_ fetched: String?, fetchedReads: Set<String>, previous: String,
+                                previousReads: Set<String>, fetchedAt: Date?, now: Date,
+                                reads: Set<String>) -> String {
+        if let fetched { return fetchedReads.isSubset(of: reads) ? fetched : "" }
+        guard let fetchedAt, now.timeIntervalSince(fetchedAt) < hostContextKeptFor,
+              previousReads.isSubset(of: reads) else { return "" }
         return previous
     }
 
@@ -385,8 +398,11 @@ extension AppState {
             supervisor.hostToolsMode = nil
             supervisor.hostContext = ""
             supervisor.hostContextAt = nil
+            supervisor.hostContextReads = []
             supervisor.hostToolsWatch = nil
         }
+        let readsAsked = Self.voiceContextReads(location: LocationSharingController.shared.letsVoiceRead(mode),
+                                                phone: phoneSync.preferences.letsVoiceUse(mode))
         async let context = voiceCallContext(for: mode)
         let fetched = await voiceHostTools(for: mode)
         let opening = await context
@@ -401,14 +417,18 @@ extension AppState {
         supervisor.hostTools = host + fetched.local
         // The host couldn't be asked: a reconnect on the same mode keeps what
         // it had, but a later call never starts on an old place or status.
-        // Consent is asked again now: a mode turned off while the context
-        // was on its way keeps nothing from before.
-        let stillReads = LocationSharingController.shared.letsVoiceRead(mode) || phoneSync.preferences.letsVoiceUse(mode)
+        // Consent is asked again now: a read turned off while the context was
+        // on its way, or since the kept one was fetched, keeps none of it.
+        let reads = Self.voiceContextReads(location: LocationSharingController.shared.letsVoiceRead(mode),
+                                           phone: phoneSync.preferences.letsVoiceUse(mode))
         let now = Date()
-        supervisor.hostContext = stillReads
-            ? Self.keptHostContext(opening, previous: supervisor.hostContext, fetchedAt: supervisor.hostContextAt, now: now)
-            : ""
-        if opening != nil, stillReads { supervisor.hostContextAt = now }
+        supervisor.hostContext = Self.keptHostContext(
+            opening, fetchedReads: readsAsked, previous: supervisor.hostContext,
+            previousReads: supervisor.hostContextReads, fetchedAt: supervisor.hostContextAt, now: now, reads: reads)
+        if opening != nil {
+            supervisor.hostContextAt = now
+            supervisor.hostContextReads = readsAsked
+        }
         supervisor.runHostTool = { [weak self] tool, arguments in
             await self?.callVoiceHostTool(tool, arguments: arguments, mode: mode)
                 ?? ["error": "That isn't available on this call."]

@@ -128,12 +128,30 @@ extension HermesVoiceGatewayTimeoutTests {
         // A prepare that can't reach the host keeps a reconnect's context,
         // never an earlier call's.
         let fetched = Date(timeIntervalSince1970: 1_000_000)
-        XCTAssertEqual(AppState.keptHostContext("at Work", previous: "at Home", fetchedAt: fetched, now: fetched), "at Work")
-        XCTAssertEqual(AppState.keptHostContext("", previous: "at Home", fetchedAt: fetched, now: fetched), "", "The host said nothing now")
-        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: fetched, now: fetched.addingTimeInterval(60)), "at Home")
-        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: fetched,
-                                                now: fetched.addingTimeInterval(AppState.hostContextKeptFor)), "")
-        XCTAssertEqual(AppState.keptHostContext(nil, previous: "at Home", fetchedAt: nil, now: fetched), "")
+        let both = AppState.voiceContextReads(location: true, phone: true)
+        let phone = AppState.voiceContextReads(location: false, phone: true)
+        XCTAssertEqual(AppState.keptHostContext("at Work", fetchedReads: both, previous: "at Home", previousReads: both,
+                                                fetchedAt: fetched, now: fetched, reads: both), "at Work")
+        XCTAssertEqual(AppState.keptHostContext("", fetchedReads: both, previous: "at Home", previousReads: both,
+                                                fetchedAt: fetched, now: fetched, reads: both), "", "The host said nothing now")
+        XCTAssertEqual(AppState.keptHostContext(nil, fetchedReads: both, previous: "at Home", previousReads: both,
+                                                fetchedAt: fetched, now: fetched.addingTimeInterval(60), reads: both), "at Home")
+        XCTAssertEqual(AppState.keptHostContext(nil, fetchedReads: both, previous: "at Home", previousReads: both,
+                                                fetchedAt: fetched, now: fetched.addingTimeInterval(AppState.hostContextKeptFor),
+                                                reads: both), "")
+        XCTAssertEqual(AppState.keptHostContext(nil, fetchedReads: both, previous: "at Home", previousReads: both,
+                                                fetchedAt: nil, now: fetched, reads: both), "")
+        // A read turned off while the context was on its way, or since the
+        // kept one was fetched, keeps none of it, even with another still on.
+        XCTAssertEqual(AppState.keptHostContext("at Work", fetchedReads: both, previous: "", previousReads: [],
+                                                fetchedAt: nil, now: fetched, reads: phone), "")
+        XCTAssertEqual(AppState.keptHostContext("40% battery", fetchedReads: phone, previous: "", previousReads: [],
+                                                fetchedAt: nil, now: fetched, reads: phone), "40% battery")
+        XCTAssertEqual(AppState.keptHostContext(nil, fetchedReads: phone, previous: "at Home", previousReads: both,
+                                                fetchedAt: fetched, now: fetched.addingTimeInterval(60), reads: phone), "")
+        XCTAssertEqual(AppState.keptHostContext(nil, fetchedReads: both, previous: "40% battery", previousReads: phone,
+                                                fetchedAt: fetched, now: fetched.addingTimeInterval(60), reads: both),
+                       "40% battery", "A read turned on since keeps what the others gave")
     }
 
     func testTheToolListNamesThisIPhonesDevicePerStore() {

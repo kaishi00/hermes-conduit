@@ -616,6 +616,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// When `hostContext` was fetched: a later call on the same mode that
     /// can't reach the host keeps it only while it's this fresh.
     var hostContextAt: Date?
+    /// The reads ("location", "phone") `hostContext` was fetched under.
+    var hostContextReads: Set<String> = []
     /// Runs one of `hostTools` (AppState: a sealed /voice-tools/call).
     var runHostTool: (@MainActor (_ tool: VoiceHostTool, _ arguments: [String: Any]) async -> [String: String])?
     /// What keeps an eye on the phone for the running call (Hermes' calendar
@@ -2847,6 +2849,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         hostToolsMode = nil
         hostContext = ""
         hostContextAt = nil
+        hostContextReads = []
         runHostTool = nil
         hostToolsWatch = nil
         pollTask?.cancel()

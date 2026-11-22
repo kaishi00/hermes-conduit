@@ -440,8 +440,10 @@ final class HealthSyncEngine: ObservableObject {
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
-        // A new key starts the host's copy over, its other profiles choice too.
+        // A new key starts the host's copy over, its other profiles choice
+        // and voice readers too.
         state.sentOtherProfiles = nil
+        state.sentVoiceReaders = nil
     }
 
     /// Fixes how far back sharing reaches. Another choice starts the
