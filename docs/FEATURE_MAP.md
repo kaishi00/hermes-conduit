@@ -5767,8 +5767,8 @@ a hidden model stays kept but isn't shown, see Pinned and recent models) ·
 search (done: the sheet leaves hidden ones out, a Model page finds them marked
 Hidden, Edit's own search finds every one, see Searching for a model) · a typed model id (done: the sheet never
 offers it on a hidden provider or as a hidden model) · a provider's page in
-Models & providers (gap: it lists every model the provider serves, hidden ones
-included, and a tap makes one the profile's default) · Local Live's and
+Models & providers (done: its Models list leaves hidden ones out but keeps the
+profile's default; the desktop's provider page lists no models) · Local Live's and
 ElevenLabs' model fields (not needed: typed names, not Hermes' lists) · Watch,
 CarPlay, rooms and the notifier (not needed: no model lists; the filters never
 reach Hermes) ·
@@ -5780,6 +5780,7 @@ Text (done: Edit's own caption says where the filters stay)
 - Editor and filters: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.key, isHidden, visible, ModelVisibilityEditor, ModelVisibilityEditorPage)
 - Store: `Conduit/Models/Models.swift` (ModelVisibility), `Conduit/Services/AppState+Dashboards.swift` (saveModelVisibility, scopedModelVisibility)
 - Pickers: `Conduit/Views/ModelPickerView.swift` (editingVisibility, startEditingVisibility, visibleProviders), `Conduit/Views/ModelChooserPage.swift` (visibleProviders, searchResults' Hidden)
+- A provider's page: `Conduit/Views/ProviderSettingsViews.swift` (ProviderModelContext.visibility, ProviderDetailPage.listedModels)
 - Tests: `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
 
 **Rulings**
@@ -5787,11 +5788,12 @@ Text (done: Edit's own caption says where the filters stay)
 - Hiding a provider keeps its models' own choices for when it's shown again; a provider's count says how many of its models are shown.
 - Hidden ones leave the lists the person picks from; a setting's Model page still finds them marked Hidden, and a setting on one shows it on top marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
 - With every provider hidden, the list says "All providers are hidden. Tap Edit to restore one." (the desktop says Click).
+- A provider's page in Models & providers follows Edit: its Models list leaves hidden models out, keeping the profile's default so the page still shows which one runs (Eric 2026-11-22, #3038).
 
 **Open gaps**
-- A provider's page in Models & providers lists hidden models and makes one the profile's default on a tap (found 2026-11-22, #3022); whether it follows Edit is Eric's call.
+- None known.
 
-**Checked:** 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
+**Checked:** 2026-11-22, #3038 (a provider's page in Models & providers leaves hidden models out, Eric's call on the gap #3022 recorded); 2026-11-22, #3022 (entry added, with desktop#305 bringing Edit to the desktop)
 
 ## One Model page for every model setting
 
