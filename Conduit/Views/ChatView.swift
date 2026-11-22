@@ -465,7 +465,7 @@ struct ChatView: View {
         // that lands, or a setting that hides more, looks again. The read
         // runs in a task of its own, as the button's does: arming its
         // progress line redraws the chat, which would cancel it here.
-        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)|\(appState.displayPreferences.showReviews)") {
+        .task(id: "\(Self.drawnConversation(in: appState))|\(scroller.targetCache.renderingRevision)|\(appState.displayPreferences.showToolProgress)|\(appState.displayPreferences.showReasoning)|\(appState.displayPreferences.thinkingOnRequest)|\(stepToggleRevision)|\(appState.displayPreferences.showReviews)") {
             guard transcript.drawsOnlyLoadEarlier, !transcriptBackfillIsLoading,
                   !transcriptInput.rowsOnTheirWay else { return }
             let conversation = Self.drawnConversation(in: appState)
@@ -474,14 +474,20 @@ struct ChatView: View {
             ChatViewportWatch.shared.command("loadEarlier")
             backfillTask = Task { @MainActor in
                 // Only a page that landed counts: a failed read leaves the
-                // budget, and the next change of rows tries again.
-                var landed = await appState.loadEarlierMessages()
+                // budget, isn't read again here, and the next change of
+                // rows tries again.
+                var outcome = await appState.loadEarlierPage()
                 // A page of rows already held lands nothing but moves the
-                // window on: the page after it is read once more.
-                if !landed, !Task.isCancelled, appState.canLoadEarlierMessagesForActiveConversation {
-                    landed = await appState.loadEarlierMessages()
+                // window on: the page after it is read, a few in a row at
+                // most, while this chat still draws only Load earlier.
+                var heldPages = 0
+                while outcome == .dedupedToNothing, heldPages < TranscriptModel.autoEarlierHeldPageRetries,
+                      !Task.isCancelled, Self.drawnConversation(in: appState) == conversation,
+                      transcript.drawsOnlyLoadEarlier, appState.canLoadEarlierMessagesForActiveConversation {
+                    heldPages += 1
+                    outcome = await appState.loadEarlierPage()
                 }
-                if landed {
+                if outcome == .landed {
                     autoEarlierPages = (conversation, read + 1)
                 }
             }

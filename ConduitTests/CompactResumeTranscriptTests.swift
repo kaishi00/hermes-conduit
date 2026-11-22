@@ -2015,8 +2015,8 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertTrue(opened)
 
         shouldFail.isOn = true
-        let didPrependFailure = await harness.appState.loadEarlierMessages()
-        XCTAssertFalse(didPrependFailure)
+        let failure = await harness.appState.loadEarlierPage()
+        XCTAssertEqual(failure, .failed, "ChatView's own reads don't read again on a failure (issue 2967)")
         XCTAssertEqual(backfillCalls.value, 1)
         XCTAssertEqual(
             harness.appState.persistedTranscriptWindow?.canLoadEarlier,
@@ -2026,8 +2026,8 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.count, 120, "A failed backfill must not touch the transcript")
 
         shouldFail.isOn = false
-        let didPrependRetry = await harness.appState.loadEarlierMessages()
-        XCTAssertTrue(didPrependRetry)
+        let retry = await harness.appState.loadEarlierPage()
+        XCTAssertEqual(retry, .landed)
         XCTAssertEqual(backfillCalls.value, 2)
         XCTAssertEqual(harness.appState.messages.count, 240)
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
@@ -2064,6 +2064,10 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertEqual(harness.appState.messages.count, 120)
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 240, "Coverage still advances past the held rows")
         XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        // Told apart from a failure, so ChatView reads the page after it (issue 2967).
+        let held = await harness.appState.loadEarlierPage()
+        XCTAssertEqual(held, .dedupedToNothing)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 360)
     }
 
     /// A malformed backfill payload retires the affordance without touching

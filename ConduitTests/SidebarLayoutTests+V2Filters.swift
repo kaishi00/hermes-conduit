@@ -8,6 +8,7 @@
 //  beside each filter, and how stars are kept.
 //
 
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -375,6 +376,100 @@ extension SidebarLayoutTests {
         appState.refreshChatDoneMarks(profiles: [profile])
         XCTAssertFalse(appState.chatDoneMarksReads.isEmpty, "read again at once")
         try await held.waitForRequests(2)
+    }
+
+    /// An AppState that offers Mute (a plugin with the route) over a bridge
+    /// whose requests wait for the test.
+    @MainActor
+    private func chatMuteAppState() throws -> (AppState, HeldDashboardRequests) {
+        let (appState, held) = try chatDoneAppState()
+        appState.notifierPlugin = NotifierPluginStatus(state: .reported(
+            version: NotifierPluginStatus.recommendedVersion, capabilities: [ChatDoneMarks.capability, ChatMutes.capability]))
+        XCTAssertTrue(appState.chatMuteAvailable)
+        return (appState, held)
+    }
+
+    /// Issue 3032: mute writes and reads fenced as Done marks are. A write's
+    /// answer replaces what showed at once; writes go one at a time; a read
+    /// from before a write is dropped, and read again when the write's
+    /// answer came while it was out.
+    @MainActor
+    func testChatMuteWritesAndReadsAreFencedAsDoneMarksAre() async throws {
+        let (appState, held) = try chatMuteAppState()
+        defer { held.shutdown() }
+        let chat = filterRow("chat-1", source: .chat)
+        let mutedByHost: [String: Any] = ["chats": [["session_ids": ["chat-1"], "until": NSNull(), "remaining_s": NSNull()]]]
+
+        // A read goes out, then a mute: shown at once.
+        appState.refreshChatMutes(profiles: [appState.activeProfile], force: true)
+        try await held.waitForRequests(1)
+        appState.setSessionMute(chat, duration: .oneHour)
+        XCTAssertNotNil(appState.sessionMute(chat)?.until, "muted at once, for an hour")
+        try await held.waitForRequests(2)
+        XCTAssertEqual(held.sent.map(\.method), ["GET", "PUT"])
+        // The write's answer replaces it: the host kept it until unmuted.
+        try await held.answer(mutedByHost, at: 1)
+        try await untilChatDone({ appState.sessionMute(chat)?.until == nil && appState.sessionMute(chat) != nil },
+                                "the host's answer shows")
+        // The read from before the write is dropped, and read again.
+        try await held.answer(["chats": [Any]()], at: 0)
+        try await held.waitForRequests(3)
+        XCTAssertEqual(held.sent.last?.method, "GET")
+        XCTAssertNotNil(appState.sessionMute(chat), "the dropped read took nothing away")
+        try await held.answer(mutedByHost)
+        try await untilChatDone({ appState.chatMutesReads.isEmpty }, "read again")
+        XCTAssertNotNil(appState.sessionMute(chat))
+
+        // Two writes: the second waits for the first, the last one shows.
+        appState.setSessionMute(chat, duration: nil)
+        appState.setSessionMute(chat, duration: .fifteenMinutes)
+        XCTAssertNotNil(appState.sessionMute(chat)?.until)
+        try await held.waitForRequests(4)
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertEqual(held.sent.count, 4, "the second waits for the first")
+        try await held.answer(["chats": [Any]()])
+        try await held.waitForRequests(5)
+        XCTAssertEqual(held.sent.last?.method, "PUT")
+        XCTAssertNotNil(appState.sessionMute(chat), "the first's answer doesn't replace the second's mute")
+
+        // Signed in again before the answer: it isn't this bridge's.
+        let other = HeldDashboardRequests(baseURL: "http://127.0.0.1:1")
+        defer { other.shutdown() }
+        appState.dashboardTicketBridge = other.bridge
+        try await held.answer(["chats": [Any]()])
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertNotNil(appState.sessionMute(chat), "an answer from the bridge before is dropped")
+    }
+
+    /// Issue 3032: a timed mute that ends takes its bell with it then, not
+    /// at the next read.
+    @MainActor
+    func testATimedMuteEndsOnTheRowWhenItEnds() async throws {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let chat = filterRow("chat-1", source: .chat)
+        let mutes = ChatMutes().replacing([
+            ChatMutes.Mute(ids: ["chat-1"], until: now.addingTimeInterval(60)),
+            ChatMutes.Mute(ids: ["chat-2"], until: now.addingTimeInterval(600)),
+            ChatMutes.Mute(ids: ["chat-3"], until: nil),
+        ], profile: "default", dashboardID: nil)
+        XCTAssertEqual(mutes.nextEnd(after: now), now.addingTimeInterval(60))
+        XCTAssertEqual(mutes.nextEnd(after: now.addingTimeInterval(60)), now.addingTimeInterval(600))
+        XCTAssertNil(mutes.nextEnd(after: now.addingTimeInterval(600)), "until unmuted never ends")
+        let later = mutes.droppingEnded(at: now.addingTimeInterval(60))
+        XCTAssertNil(later.mute(for: chat, profile: "default", now: now))
+        XCTAssertNotNil(later.mute(for: filterRow("chat-3", source: .chat), profile: "default", now: now))
+
+        let (appState, held) = try chatMuteAppState()
+        defer { held.shutdown() }
+        appState.chatMutes = ChatMutes().replacing([ChatMutes.Mute(ids: ["chat-1"], until: Date().addingTimeInterval(0.3))],
+                                                   profile: appState.activeProfile, dashboardID: appState.activeDashboardID)
+        XCTAssertNotNil(appState.sessionMute(chat))
+        var published = 0
+        let changes = appState.$chatMutes.dropFirst().sink { _ in published += 1 }
+        defer { changes.cancel() }
+        try await untilChatDone({ published > 0 }, "published when it ends")
+        XCTAssertNil(appState.sessionMute(chat))
+        XCTAssertNil(appState.chatMutesEnd, "nothing left to end")
     }
 
     func testSessionStarsFollowTheConversationPerProfile() throws {

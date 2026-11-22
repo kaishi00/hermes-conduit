@@ -13,6 +13,9 @@
 //  when the user changes what's shared, or when the host's store is new.
 //  Hashes move only after the host took the batch, so a lost answer just
 //  means the next pass sends it again (the host's writes are idempotent).
+//  The frame (what's shared, the time zone) is the one thing an upload
+//  can change before it's answered: it's cleared to unknown, on disk,
+//  before an upload that changes it goes.
 //  Changes Hermes asks for come back from the exchange: new items apply
 //  straight away when the user chose "Add without asking", everything else
 //  waits for the user's answer on a card (or, in a live voice call, out
@@ -46,8 +49,10 @@ struct PhoneSyncState: Codable, Equatable {
     var lastFullSync: Date?
     /// The time zone and sharing the last upload the host took reported,
     /// hashed, and when it went: a pass with nothing new sends nothing
-    /// until the keepalive (ContextUploadPolicy). Optional so a state file
-    /// from before still reads.
+    /// until the keepalive (ContextUploadPolicy). Nil: unknown (never sent,
+    /// or an upload that changes it went without an answer; it's cleared,
+    /// and written, before that upload goes). Optional so a state file from
+    /// before still reads.
     var frameHash: String?
     var lastIngest: Date?
     var lastSync: Date?
@@ -132,6 +137,12 @@ final class PhoneSyncStateWriter: @unchecked Sendable {
             guard !store.save(state) else { return }
             Task { @MainActor in failed() }
         }
+    }
+
+    /// Writes now, after any write queued before it, for a change that must
+    /// be on disk before a request goes. False when it couldn't be written.
+    func saveNow(_ state: PhoneSyncState, to store: PhoneSyncStateStore) -> Bool {
+        queue.sync { store.save(state) }
     }
 }
 
@@ -376,6 +387,13 @@ final class PhoneSyncEngine: ObservableObject {
             // Not on disk (still locked, or full): the next change writes again.
             if self?.saved == written { self?.saved = nil }
         }
+    }
+
+    /// Writes the state before going on, for a change an app closed in the
+    /// next moment must still find on its next launch.
+    private func persistNow() {
+        guard state != saved else { return }
+        if writer.saveNow(state, to: store) { saved = state }
     }
 
     @discardableResult
@@ -733,9 +751,11 @@ final class PhoneSyncEngine: ObservableObject {
             // A new frame (what's shared, the time zone) may reach the host
             // even if its answer doesn't: until one is answered, what the
             // host has is unknown, so turning a choice back still sends.
+            // Written before the upload goes, so an app closed while it
+            // waits still finds the frame unknown on its next launch.
             if frame != state.frameHash, state.frameHash != nil {
                 state.frameHash = nil
-                persist()
+                persistNow()
             }
             for var part in parts {
                 // Photos turned off (or its access taken away) while this

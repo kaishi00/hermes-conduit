@@ -379,7 +379,11 @@ final class AppState: ObservableObject {
     @Published var appIconChoice: AppIconChoice
     var dashboardTicketBridge: DashboardTicketBridge? {
         get { shownRuntime.dashboardTicketBridge }
-        set { shownRuntime.dashboardTicketBridge = newValue }
+        set {
+            shownRuntime.dashboardTicketBridge = newValue
+            // A new sign-in: the next forced one asks this bridge.
+            if newValue != nil, let dashboardID = activeDashboardID { forcedSignInWasNative[dashboardID] = nil }
+        }
     }
     /// Combined dashboards left while connected, each still holding its
     /// socket and bridge so a switch back takes it up at once
@@ -445,6 +449,13 @@ final class AppState: ObservableObject {
     /// plugin without the route isn't asked on every poll (Dashboard names).
     /// One that didn't answer is asked again from `retryAt` (issue 2948).
     var combinedDashboardNameReads: [UUID: (bridge: ObjectIdentifier, retryAt: Date?)] = [:]
+    /// Whether the last forced sign-in of each dashboard was a native one,
+    /// decided while its bridge was still there: a repeat finds the bridge
+    /// gone and, after a silent renewal, the native grant cleared too.
+    var forcedSignInWasNative: [UUID: Bool] = [:]
+    /// Tests answer the Desktop group projection's read and write
+    /// (removeDesktopGroupChat); nil goes through the client.
+    var desktopGroupProjectionForTesting: DesktopGroupProjectionAccess?
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).
@@ -683,7 +694,12 @@ final class AppState: ObservableObject {
     /// their reads and writes' bookkeeping (AppState+ChatMute, keyed by
     /// chatDoneMarksKey). Each write moves `chatMutesWrites`, so a read from
     /// before it is dropped.
-    @Published var chatMutes = ChatMutes()
+    @Published var chatMutes = ChatMutes() {
+        // A timed mute that ends takes its bell and menu with it then.
+        didSet { scheduleChatMuteEnd() }
+    }
+    var chatMutesEnd: (at: Date, task: Task<Void, Never>)?
+    var chatMutesReadFailureLogged: Set<String> = []
     var chatMutesReadAt: [String: Date] = [:]
     var chatMutesReads: Set<String> = []
     var chatMutesPendingWrites: [String: Int] = [:]

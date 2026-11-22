@@ -241,34 +241,43 @@ enum KanbanFullTextFormatter {
     static func plainPreview(_ markdown: String) -> String {
         // Each kept line split on backticks: even pieces are prose, odd ones
         // the inside of a code span, left as written. A fenced block's lines
-        // are kept as written, and emphasis pairs only within a paragraph
-        // (lines between blank lines or fences), as the sheet pairs it.
+        // (blank ones too) are kept as written, and emphasis pairs only
+        // within a paragraph (lines between blank lines or fences), as the
+        // sheet pairs it.
         var lines: [(pieces: [String], paragraph: Int, literal: Bool)] = []
-        var prose: [Int: [String]] = [:]
         var paragraph = 0
         // The open fence's character and length: only a run of the same
-        // character, at least as long, with nothing after it closes it.
-        var fence: (mark: Character, length: Int)?
+        // character, at least as long, with nothing after it closes it. One
+        // opened in a list item or a quote keeps its lines' indentation past
+        // the item's, or their quote markers, out of the block.
+        var fence: (mark: Character, length: Int, indent: Int, quoted: Bool)?
         for raw in markdown.replacingOccurrences(of: "\r\n", with: "\n").components(separatedBy: .newlines) {
-            var line = raw.trimmingCharacters(in: .whitespaces)
             if let open = fence {
-                let run = line.prefix { $0 == open.mark }.count
-                if run >= open.length, line.dropFirst(run).allSatisfy(\.isWhitespace) {
+                let content = open.quoted ? quoteStripped(Substring(raw)).content : Substring(raw)
+                let (columns, rest) = leadingColumns(content)
+                let run = rest.prefix { $0 == open.mark }.count
+                if max(0, columns - open.indent) <= 3, run >= open.length, rest.dropFirst(run).allSatisfy(\.isWhitespace) {
                     fence = nil
                     paragraph += 1
-                } else if !line.isEmpty {
-                    lines.append(([raw], paragraph, true))
+                } else {
+                    let indented = content.prefix(open.indent).prefix { $0 == " " }.count
+                    lines.append(([String(content.dropFirst(indented))], paragraph, true))
                 }
                 continue
             }
-            if let mark = line.first, mark == "`" || mark == "~" {
-                let run = line.prefix { $0 == mark }.count
-                if run >= 3, mark == "~" || !line.dropFirst(run).contains("`") {
-                    fence = (mark, run)
+            // A fence opens indented at most 3 columns, in a list item or a
+            // quote as at the top.
+            let container = fenceContainer(raw)
+            let (columns, rest) = leadingColumns(container.content)
+            if columns <= 3, let mark = rest.first, mark == "`" || mark == "~" {
+                let run = rest.prefix { $0 == mark }.count
+                if run >= 3, mark == "~" || !rest.dropFirst(run).contains("`") {
+                    fence = (mark, run, container.indent, container.quoted)
                     paragraph += 1
                     continue
                 }
             }
+            var line = raw.trimmingCharacters(in: .whitespaces)
             if line.isEmpty {
                 paragraph += 1
                 continue
@@ -281,47 +290,135 @@ enum KanbanFullTextFormatter {
             }
             let pieces = line.split(separator: "`", omittingEmptySubsequences: false).map(String.init)
             lines.append((pieces, paragraph, false))
-            prose[paragraph, default: []] += pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element)
         }
-        let stripped = prose.mapValues(pairedEmphasisMarkers(in:))
-        return lines
-            .map { line -> String in
+        let removals = pairedEmphasis(in: lines)
+        return lines.enumerated()
+            .compactMap { index, line -> String? in
                 guard !line.literal else { return line.pieces.joined() }
-                let markers = stripped[line.paragraph] ?? []
-                return line.pieces.enumerated().map { index, piece -> String in
-                    guard index.isMultiple(of: 2) else { return piece }
-                    return markers.reduce(piece) { removingEmphasis($1, from: $0) }
+                let text = line.pieces.enumerated().map { piece, written -> String in
+                    var text = written
+                    for range in (removals[PiecePosition(line: index, piece: piece)] ?? []).sorted(by: { $0.location > $1.location }) {
+                        text = (text as NSString).replacingCharacters(in: range, with: "")
+                    }
+                    return text
                 }
                 .joined()
+                return text.isEmpty ? nil : text
             }
-            .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
 
-    /// The emphasis markers (`**`, `__`) that pair up across a paragraph's
-    /// prose, so bold that spans a code span or a line break still goes. An
-    /// odd one out (`my__var`) leaves that marker's runs as written, as the
-    /// sheet shows it.
-    static func pairedEmphasisMarkers(in prose: [String]) -> [String] {
-        ["**", "__"].filter { marker in
-            let count = prose.reduce(0) { total, text in
-                total + emphasisPattern(marker).numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text))
+    /// A piece of a preview line: the line's index, and the piece's among
+    /// the line's backtick-split pieces.
+    struct PiecePosition: Hashable {
+        let line: Int
+        let piece: Int
+    }
+
+    /// The emphasis markers (`**`, `__`) that pair up within a paragraph's
+    /// prose, as CommonMark pairs them: a run opens only where it's
+    /// left-flanking and closes only where it's right-flanking (`a ** b`
+    /// does neither; `__` between two letters or digits, `my__var`, never
+    /// does), and a closer pairs with the nearest opener before it. Bold
+    /// that spans a code span or a line break still pairs; an odd one out
+    /// stays as written, as the sheet shows it. By piece, the ranges to
+    /// take out.
+    static func pairedEmphasis(in lines: [(pieces: [String], paragraph: Int, literal: Bool)]) -> [PiecePosition: [NSRange]] {
+        var order: [Int: [PiecePosition]] = [:]
+        for (index, line) in lines.enumerated() where !line.literal {
+            for piece in stride(from: 0, to: line.pieces.count, by: 2) {
+                order[line.paragraph, default: []].append(PiecePosition(line: index, piece: piece))
             }
-            return count > 0 && count.isMultiple(of: 2)
+        }
+        var removals: [PiecePosition: [NSRange]] = [:]
+        for positions in order.values {
+            for marker in ["**", "__"] {
+                var openers: [(position: PiecePosition, range: NSRange)] = []
+                for position in positions {
+                    let pieces = lines[position.line].pieces
+                    let text = pieces[position.piece] as NSString
+                    var searched = NSRange(location: 0, length: text.length)
+                    while searched.length > 0 {
+                        let found = text.range(of: marker, options: .literal, range: searched)
+                        guard found.location != NSNotFound else { break }
+                        searched = NSRange(location: found.upperBound, length: text.length - found.upperBound)
+                        // A line's edge reads as a space; a code span's backtick as punctuation.
+                        let before: Character = found.location > 0
+                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: found.location - 1)).first ?? " "
+                            : position.piece > 0 ? "`" : " "
+                        let after: Character = found.upperBound < text.length
+                            ? text.substring(with: text.rangeOfComposedCharacterSequence(at: found.upperBound)).first ?? " "
+                            : position.piece < pieces.count - 1 ? "`" : " "
+                        let (opens, closes) = emphasisFlanking(marker, before: before, after: after)
+                        if closes, let opener = openers.popLast() {
+                            removals[opener.position, default: []].append(opener.range)
+                            removals[position, default: []].append(found)
+                        } else if opens {
+                            openers.append((position, found))
+                        }
+                    }
+                }
+            }
+        }
+        return removals
+    }
+
+    /// Whether a `**` or `__` run between these characters can open and
+    /// close emphasis (CommonMark's flanking rules).
+    static func emphasisFlanking(_ marker: String, before: Character, after: Character) -> (opens: Bool, closes: Bool) {
+        func isPunctuation(_ character: Character) -> Bool { character.isPunctuation || character.isSymbol }
+        let left = !after.isWhitespace
+            && !(isPunctuation(after) && !(before.isWhitespace || isPunctuation(before)))
+        let right = !before.isWhitespace
+            && !(isPunctuation(before) && !(after.isWhitespace || isPunctuation(after)))
+        guard marker == "__" else { return (left, right) }
+        return (left && (!right || isPunctuation(before)), right && (!left || isPunctuation(after)))
+    }
+
+    /// Spaces and tabs (a tab to the next multiple of 4) before the text,
+    /// and what follows them.
+    private static func leadingColumns(_ text: Substring) -> (columns: Int, rest: Substring) {
+        var columns = 0
+        var rest = text
+        while let first = rest.first, first == " " || first == "\t" {
+            columns = first == " " ? columns + 1 : columns + 4 - columns % 4
+            rest = rest.dropFirst()
+        }
+        return (columns, rest)
+    }
+
+    /// The line past its quote markers (`> `, each indented at most 3).
+    private static func quoteStripped(_ line: Substring) -> (content: Substring, quoted: Bool) {
+        var content = line
+        var quoted = false
+        while true {
+            let (columns, rest) = leadingColumns(content)
+            guard columns <= 3, rest.first == ">" else { return (content, quoted) }
+            content = rest.dropFirst()
+            if content.first == " " { content = content.dropFirst() }
+            quoted = true
         }
     }
 
-    /// Where a marker can open or close emphasis. `__` between two letters
-    /// or digits (`my__var`, `snake__case__var`) never does, as in the sheet.
-    private static func emphasisPattern(_ marker: String) -> NSRegularExpression {
-        marker == "__" ? underscoreEmphasis : starEmphasis
-    }
-
-    private static let starEmphasis = try! NSRegularExpression(pattern: #"\*\*"#)
-    private static let underscoreEmphasis = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])__|__(?![\p{L}\p{N}])"#)
-
-    private static func removingEmphasis(_ marker: String, from text: String) -> String {
-        emphasisPattern(marker).stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
+    /// The line past a quote's markers and a list item's marker, where a
+    /// fence in them starts, and the item's content indentation.
+    private static func fenceContainer(_ raw: String) -> (content: Substring, quoted: Bool, indent: Int) {
+        let (content, quoted) = quoteStripped(Substring(raw))
+        let (columns, rest) = leadingColumns(content)
+        guard columns <= 3 else { return (content, quoted, 0) }
+        var marker = rest.prefix { $0.isASCII && $0.isNumber }
+        if marker.isEmpty {
+            marker = rest.prefix(1)
+            guard let bullet = marker.first, bullet == "-" || bullet == "+" || bullet == "*" else { return (content, quoted, 0) }
+        } else {
+            guard marker.count <= 9, let end = rest.dropFirst(marker.count).first, end == "." || end == ")" else {
+                return (content, quoted, 0)
+            }
+            marker = rest.prefix(marker.count + 1)
+        }
+        let afterMarker = rest.dropFirst(marker.count)
+        guard afterMarker.first == " " else { return (content, quoted, 0) }
+        return (afterMarker.dropFirst(), quoted, columns + marker.count + 1)
     }
 
     /// Whether the Result row opens the whole text: its preview runs past

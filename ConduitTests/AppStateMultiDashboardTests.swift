@@ -3484,6 +3484,65 @@ extension AppStateMultiDashboardTests {
         )
     }
 
+    /// Issue 3010: removing a Hermes Desktop group writes the selected
+    /// room's identity (here only in its `id:` key, the room re-keyed by
+    /// name since), and a switch before the write returns leaves the other
+    /// dashboard's list alone, even a room there with the same id.
+    func testRemovingADesktopGroupWritesItsIdentityAndLeavesAnotherDashboardsList() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac, vps])
+        var rosterFails = false
+        let appState = rosterAppState(registry, roster: {
+            if rosterFails { throw URLError(.notConnectedToInternet) }
+            return BotRosterSnapshot(bots: [], supportsBotProtocol: true)
+        })
+        connectRoster(appState, to: mac)
+        defer { appState.isConnected = false }
+        let council = DesktopGroupChat(key: "id:r9", name: "Council", members: [], messages: [], omitted: 0)
+        appState.desktopGroupChats = [council]
+        let snapshot = AnyCodable.from([
+            "version": 3,
+            "rooms": ["name:Council": ["name": "Council", "roomId": "r9", "revision": 4, "log": [], "members": []]],
+        ] as [String: Any])
+        var written: [[String: Any]] = []
+        var release: CheckedContinuation<Void, Never>?
+        appState.desktopGroupProjectionForTesting = DesktopGroupProjectionAccess(
+            read: { (snapshot, 4) },
+            write: { envelope, revision in
+                XCTAssertEqual(revision, 4)
+                written.append(envelope)
+                await withCheckedContinuation { release = $0 }
+                return .object(["applied": .object(["ui_meta": .bool(true)])])
+            }
+        )
+        let removal = Task { await appState.removeDesktopGroupChat(council) }
+        try await waitUntil { release != nil }
+        let envelope = try XCTUnwrap(written.first)
+        XCTAssertEqual((envelope["deleted"] as? [String: Any])?["id:r9"] as? Double, 4, "the followed id")
+        XCTAssertNil((envelope["rooms"] as? [String: Any])?["name:Council"], "the room left the projection")
+        XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: AnyCodable.from(envelope)).isEmpty)
+
+        // Switched to the VPS before the write returns; its roster read
+        // fails, so only the removal could touch its list.
+        appState.savedDashboardRegistry.activeDashboardID = vps.id
+        let vpsCouncil = DesktopGroupChat(key: "id:r9", name: "Council", members: [], messages: [], omitted: 0)
+        appState.desktopGroupChats = [vpsCouncil]
+        rosterFails = true
+        release?.resume()
+        let failure = await removal.value
+        XCTAssertNil(failure)
+        XCTAssertEqual(appState.desktopGroupChats, [vpsCouncil], "the other dashboard keeps its groups")
+    }
+
+    private func waitUntil(timeout: Duration = .seconds(5), _ condition: @MainActor () -> Bool) async throws {
+        let deadline = ContinuousClock.now + timeout
+        while !condition() {
+            guard ContinuousClock.now < deadline else { return XCTFail("Timed out") }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
     /// Connected to the dashboard, its requests held for the test.
     @discardableResult
     private func connectRoster(_ appState: AppState, to dashboard: SavedDashboard) -> HeldDashboardRequests {

@@ -2381,6 +2381,10 @@ extension CrossProfilePresentationCacheTests {
             return "fresh-ticket"
         }
         let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        // The kept dashboard's roster is set by hand below: a read through
+        // its connection that lands late finds no bots, so it can't link
+        // the two Hermes by a Bot Chat (issue 3072).
+        appState.keptDashboardBotRosterReader = { _ in BotRosterSnapshot(bots: [], supportsBotProtocol: true) }
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
         XCTAssertEqual(appState.rememberedActiveProfile(for: mac.id) ?? "default", "default")
@@ -2508,6 +2512,14 @@ extension CrossProfilePresentationCacheTests {
                                                 updatedLabel: "now", profile: "default", source: .cron, isActive: false,
                                                 isArchived: false, lineageRootId: nil)]
         XCTAssertFalse(appState.combinedHermesEvidence[mac.id]?.contains("cron-run-7f3a") ?? false)
+        // Nothing yet links them: no list ids, waits or Bot Chats in common.
+        // Said whole, so a failure names what did (issue 3072).
+        let before = appState.combinedHermesEvidence
+        let botChats = appState.shownBotRoster.compactMap(\.canonicalSession?.id)
+            + appState.otherCombinedDashboardsBots.flatMap { $0.bots.compactMap(\.canonicalSession?.id) }
+        XCTAssertTrue((before[mac.id] ?? []).isDisjoint(with: before[vps.id] ?? []),
+                      "evidence: \(before), Bot Chats: \(botChats), waits: \(appState.needsYou.items.map(\.hostKey))")
+        XCTAssertTrue(appState.otherCombinedDashboardsBots.isEmpty, "a late roster read: \(botChats)")
         XCTAssertNotEqual(appState.combinedHermesGroups[mac.id], appState.combinedHermesGroups[vps.id])
         appState.combinedDashboardChats[mac.id]?.cronIDs = ["cron-run-7f3a", "42"]
         let evidence = appState.combinedHermesEvidence

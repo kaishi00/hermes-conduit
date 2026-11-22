@@ -21,6 +21,8 @@ final class ConduitTestBundleObserver: NSObject, XCTestObservation {
     /// The test XCTest last told this observer about, so a test can check
     /// the callbacks really arrive and not just that the observer exists.
     private(set) var lastStartedTest: String?
+    /// The same for the test XCTest last said finished (issue 3061).
+    private(set) var lastFinishedTest: String?
 
     override init() {
         super.init()
@@ -45,6 +47,7 @@ final class ConduitTestBundleObserver: NSObject, XCTestObservation {
     }
 
     func testCaseDidFinish(_ testCase: XCTestCase) {
+        lastFinishedTest = testCase.name
         // Every test starts with the key cleared, so a value here is this
         // test's own: a restore-style defer puts back the nil it found.
         if let left = UserDefaults.standard.string(forKey: AppLanguageStore.defaultsKey) {
@@ -56,13 +59,13 @@ final class ConduitTestBundleObserver: NSObject, XCTestObservation {
     /// Clears the persisted selection and the shared store, which caches
     /// it: a test (or the Settings picker it drives) may pin through the
     /// store, and views and the root's locale follow the store.
+    /// XCTest calls its observers on the main thread; a hop to it from a
+    /// queue the main thread waits on would deadlock, so it isn't tried.
     private static func resetAppLanguage() {
-        let reset = {
-            MainActor.assumeIsolated { AppLanguageStore.shared.select(.system) }
-            // select writes "system"; System Default is the missing key.
-            UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey)
-        }
-        if Thread.isMainThread { reset() } else { DispatchQueue.main.sync(execute: reset) }
+        assert(Thread.isMainThread, "XCTest calls test observers on the main thread")
+        MainActor.assumeIsolated { AppLanguageStore.shared.select(.system) }
+        // select writes "system"; System Default is the missing key.
+        UserDefaults.standard.removeObject(forKey: AppLanguageStore.defaultsKey)
     }
 }
 
@@ -86,7 +89,8 @@ extension AppLanguageTests {
     /// A language pinned through the shared store (as the Settings picker
     /// does), or left before the bundle loaded, is reset in both places.
     func testABundleStartClearsTheStoreAndTheKey() throws {
-        let observer = try XCTUnwrap(ConduitTestBundleObserver.current)
+        let observer = try XCTUnwrap(ConduitTestBundleObserver.current,
+                                     "ConduitTests' NSPrincipalClass must be ConduitTestBundleObserver")
         let pinned = try XCTUnwrap(AppLanguage.selectable.first { $0 != .system && $0 != .source })
         AppLanguageStore.shared.select(pinned)
         XCTAssertEqual(AppLanguage.current, pinned)
@@ -98,6 +102,15 @@ extension AppLanguageTests {
 
         AppLanguageStore.shared.select(pinned)
         observer.testCaseWillStart(self)
+        XCTAssertNil(UserDefaults.standard.string(forKey: AppLanguageStore.defaultsKey))
+        XCTAssertEqual(AppLanguageStore.shared.selection, .system)
+
+        // A test that finishes with a language pinned leaves none behind
+        // (issue 3061): the store and the key both go back.
+        AppLanguageStore.shared.select(pinned)
+        UserDefaults.standard.set(pinned.rawValue, forKey: AppLanguageStore.defaultsKey)
+        observer.testCaseDidFinish(self)
+        XCTAssertEqual(observer.lastFinishedTest, name)
         XCTAssertNil(UserDefaults.standard.string(forKey: AppLanguageStore.defaultsKey))
         XCTAssertEqual(AppLanguageStore.shared.selection, .system)
     }

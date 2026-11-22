@@ -496,6 +496,31 @@ extension AppState {
         )
     }
 
+    /// What reading the page before did (`loadEarlierPage`).
+    enum EarlierPageOutcome: Equatable {
+        /// Rows landed above the chat's.
+        case landed
+        /// Hermes answered, but with rows already held: nothing landed, and
+        /// the window moved past them, so the page before that may land.
+        case dedupedToNothing
+        /// Nothing read: a failed or refused request, a departed chat, or
+        /// no older page.
+        case failed
+    }
+
+    /// `loadEarlierMessages`, telling a page of rows already held from a
+    /// read that failed, so ChatView reads on only past the first.
+    func loadEarlierPage() async -> EarlierPageOutcome {
+        if let done = await onChatRuntime(unreachable: false, { await self.loadEarlierPage() }) { return done }
+        let before = persistedTranscriptWindow
+        if await loadEarlierMessages() { return .landed }
+        guard let before, let after = persistedTranscriptWindow,
+              after.requestedSessionID == before.requestedSessionID,
+              after.profile == before.profile,
+              after.nextOffset > before.nextOffset else { return .failed }
+        return .dedupedToNothing
+    }
+
     /// Fetches the next older persisted-history page for the active
     /// conversation and prepends it, keeping the user's visible position
     /// stable (ChatView anchors the prepend through the viewport controller).

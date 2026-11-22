@@ -66,11 +66,29 @@ enum NotificationSenderPicture {
         picture: Data?,
         timeout: TimeInterval = 1.5
     ) async -> UNMutableNotificationContent {
-        guard sender != nil, picture != nil else { return content }
-        return await withCheckedContinuation { continuation in
+        guard let sender, let picture else { return content }
+        return await applied(to: content, timeout: timeout) { content, done in
+            apply(to: content, sender: sender, picture: picture, completion: done)
+        }
+    }
+
+    /// The race itself: `update`'s answer, or `content` unchanged once
+    /// `timeout` passes, whichever comes first; the other resumes nothing.
+    /// The answer cancels the timer. Apart from the donation so tests can
+    /// hold it.
+    static func applied(
+        to content: UNMutableNotificationContent,
+        timeout: TimeInterval,
+        update: (UNMutableNotificationContent, @escaping (UNMutableNotificationContent) -> Void) -> Void
+    ) async -> UNMutableNotificationContent {
+        await withCheckedContinuation { continuation in
             let once = ResumeOnce(continuation)
-            DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { once.resume(content) }
-            apply(to: content, sender: sender, picture: picture) { once.resume($0) }
+            let fallback = DispatchWorkItem { once.resume(content) }
+            DispatchQueue.global().asyncAfter(deadline: .now() + timeout, execute: fallback)
+            update(content) { updated in
+                fallback.cancel()
+                once.resume(updated)
+            }
         }
     }
 

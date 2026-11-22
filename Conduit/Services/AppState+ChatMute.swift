@@ -58,7 +58,8 @@ extension AppState {
             guard let self else { return }
             let pending = max((self.chatMutesPendingWrites[key] ?? 1) - 1, 0)
             self.chatMutesPendingWrites[key] = pending == 0 ? nil : pending
-            guard pending == 0, self.activeDashboardID == dashboardID else { return }
+            // A dashboard switched or signed in again meanwhile has mutes of its own.
+            guard pending == 0, self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge else { return }
             if let answer, let mutes = ChatMutes.mutes(from: answer) {
                 let kept = self.chatMutes.replacing(mutes, profile: profile, dashboardID: dashboardID)
                 if kept != self.chatMutes { self.chatMutes = kept }
@@ -90,7 +91,16 @@ extension AppState {
             chatMutesReadAt[key] = now
             let writes = chatMutesWrites[key] ?? 0
             Task { @MainActor [weak self] in
-                let answer = try? await bridge.requestJSON(path: ChatMutes.path(profile: profile))
+                let answer: [String: Any]?
+                do {
+                    answer = try await bridge.requestJSON(path: ChatMutes.path(profile: profile))
+                } catch {
+                    answer = nil
+                    // Once per profile, as Done marks do: a missing bell is then explained.
+                    if self?.chatMutesReadFailureLogged.insert(key).inserted == true {
+                        sessionCatalogLog.notice("Chat mutes not read: \(LogRedaction.describing(error), privacy: .public)")
+                    }
+                }
                 guard let self else { return }
                 self.chatMutesReads.remove(key)
                 guard self.activeDashboardID == dashboardID, self.dashboardTicketBridge === bridge,
@@ -108,5 +118,24 @@ extension AppState {
                 if next != self.chatMutes { self.chatMutes = next }
             }
         }
+    }
+
+    /// Drops the mutes that ended when the next one ends, so its row's bell
+    /// and "Unmute (Muted Until …)" go then, not at the next read.
+    func scheduleChatMuteEnd(now: Date = Date()) {
+        let next = chatMutes.nextEnd(after: now)
+        guard chatMutesEnd?.at != next else { return }
+        chatMutesEnd?.task.cancel()
+        guard let next else {
+            chatMutesEnd = nil
+            return
+        }
+        chatMutesEnd = (next, Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(max(0, next.timeIntervalSinceNow) + 0.05))
+            guard !Task.isCancelled, let self else { return }
+            self.chatMutesEnd = nil
+            let lasting = self.chatMutes.droppingEnded(at: Date())
+            if lasting != self.chatMutes { self.chatMutes = lasting } else { self.scheduleChatMuteEnd() }
+        })
     }
 }
