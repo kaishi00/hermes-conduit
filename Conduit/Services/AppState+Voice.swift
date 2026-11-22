@@ -1192,7 +1192,11 @@ extension AppState {
             guard let workspace = link.workspace, workspace.dashboardID == activeDashboardID else { return }
             presentWaitingCall(owner: .widget, profile: workspace.profile)
         } else if let intent = PendingVoiceIntentStore.shared.peekClaim().map({ applyingHandsFreeProfile(to: $0.intent) }),
-                  intent.source == .siri, intent.startsFreshConversation {
+                  intent.source == .siri, intent.startsFreshConversation,
+                  intent.dashboardID == nil || intent.dashboardID == activeDashboardID {
+            // Not for another combined dashboard's profile: its call opens
+            // its own screen there, or a switch comes first, which would
+            // close this one.
             let profile = intent.profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             presentWaitingCall(owner: .siri, profile: profile.isEmpty ? activeProfile : profile)
         }

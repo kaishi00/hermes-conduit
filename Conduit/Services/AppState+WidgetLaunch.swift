@@ -51,8 +51,12 @@ extension AppState {
     /// sign-in instead).
     @discardableResult
     func startNewChatFromShortcut(profile: String?) -> Bool {
-        let asked = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let dashboardID = activeDashboardID,
+        // Another combined dashboard's profile ("New Atlas chat") starts it
+        // there, the widget's New Chat switching as it does for a far
+        // workspace.
+        let parts = profile.map { ConduitProfileEntity.parts(of: $0) }
+        let asked = parts?.profile.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard let dashboardID = parts?.dashboardID ?? activeDashboardID,
               let link = WidgetLaunchLink(
                   action: .newChat,
                   workspace: WidgetWorkspaceID(dashboardID: dashboardID, profile: asked.isEmpty ? activeProfile : asked),

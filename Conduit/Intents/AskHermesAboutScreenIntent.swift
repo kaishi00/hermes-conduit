@@ -188,7 +188,9 @@ struct AskHermesAboutScreenIntent: AppIntent {
             enqueuedAt: Date(),
             startsNewChat: chat == .new
         )
-        let pending = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request, profile: profile?.id)
+        // Another combined dashboard's profile: Conduit switches there first.
+        let parts = profile.map { ConduitProfileEntity.parts(of: $0.id) }
+        let pending = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request, profile: parts?.profile, dashboardID: parts?.dashboardID)
         await MainActor.run {
             PendingVoiceIntentStore.shared.enqueue(pending)
         }

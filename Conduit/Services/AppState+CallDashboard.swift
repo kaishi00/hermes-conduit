@@ -218,6 +218,85 @@ extension AppState {
         return VoiceModeChoice(engine: engine, localAgent: preferences.localLiveAgent)
     }
 
+    /// A Siri launch or screen question naming another combined
+    /// dashboard's profile (`PendingVoiceIntent.dashboardID`). Siri's call
+    /// starts there in place, on that dashboard's runtime in its mode there
+    /// (`openLiveCallOnFarDashboard`), with no switch. Anything else, or a
+    /// call that can't start there (not kept connected, Classic voice
+    /// there, CarPlay or the Watch on the line), switches there first as
+    /// Chats' strip does, then hands the launch back to the pending store
+    /// as one on screen, so the scene routes it afresh once connected: the
+    /// route's own task is restarted by the switch's connection change, and
+    /// a start on it would run cancelled (issue 1888). A call running ends
+    /// with that switch, as a Siri start on another profile replaces it. A
+    /// switch that can't be made says so, and a screenshot is kept for when
+    /// Hermes is reached, as its other failures keep it. True when this
+    /// handled the launch; false when it goes on as usual, on screen.
+    func handledVoiceLaunchOnFarDashboard(_ intent: PendingVoiceIntent) async -> Bool {
+        guard let dashboardID = intent.dashboardID, dashboardID != activeDashboardID else { return false }
+        let profile = Self.farCallProfile(intent.profile ?? "")
+        if intent.source == .siri, intent.startsFreshConversation,
+           openLiveCallOnFarDashboard(dashboardID, profile: profile) {
+            return true
+        }
+        // A screenshot asked for during a call that the switch would end
+        // stays on the dashboard on screen and the call goes on, as one
+        // naming another profile here does (A switch during a call). Only a
+        // Siri start replaces the call.
+        if intent.source == .screenQuestion, isCallEndingDashboardSwitch(to: dashboardID) {
+            showCallRefusal(AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone))
+            var onScreen = intent
+            onScreen.dashboardID = nil
+            onScreen.profile = nil
+            // Hermes here gone: kept for when it's back, as the route keeps one.
+            if !(await openScreenQuestion(onScreen)), let request = intent.screenQuestion {
+                parkScreenQuestion(request, profile: nil)
+                if !isConnected { errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage }
+            }
+            return true
+        }
+        let store = PendingVoiceIntentStore.shared
+        let revision = store.revision
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // A newer launch took over: this one goes quietly, neither
+            // switching nor ending a call, and its screenshot is settled
+            // as any superseded one is (kept unless a newer one waits).
+            // The screenshot was taken on the dashboard in use, so it never
+            // carries the other dashboard's profile.
+            @MainActor func superseded() -> Bool {
+                guard store.revision != revision else { return false }
+                if let request = intent.screenQuestion {
+                    self.settleSupersededScreenQuestion(
+                        request, profile: nil,
+                        newerScreenQuestionPending: store.peekClaim()?.intent.screenQuestion != nil
+                    )
+                }
+                return true
+            }
+            guard !superseded() else { return }
+            var switched = false
+            if self.savedDashboardRegistry.dashboard(with: dashboardID) != nil {
+                switched = await self.switchForCombinedProfile(
+                    in: dashboardID, profile: profile, endingTheCall: intent.source == .siri,
+                    stillWanted: { store.revision == revision }
+                )
+            }
+            guard !superseded() else { return }
+            guard switched, self.activeDashboardID == dashboardID else {
+                if let request = intent.screenQuestion {
+                    self.parkScreenQuestion(request, profile: nil)
+                }
+                self.errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+                return
+            }
+            var onScreen = intent
+            onScreen.dashboardID = nil
+            store.enqueue(onScreen)
+        }
+        return true
+    }
+
     /// The kept runtime a call on another combined dashboard starts on.
     private func farCallRuntime(_ dashboardID: UUID, profile: String) -> DashboardRuntime? {
         guard farCallGateway(dashboardID) != nil else { return nil }

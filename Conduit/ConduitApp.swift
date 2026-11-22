@@ -729,6 +729,9 @@ struct ConduitApp: App {
         let routed = pendingVoiceIntents.peekClaim()?.intent
         var screenQuestionOpened: Bool?
         let outcome = await router.routePending(connection: connection) { intent in
+            // Another combined dashboard's profile: Siri's call starts there
+            // in place, else Conduit switches there and goes on below.
+            if await appState.handledVoiceLaunchOnFarDashboard(intent) { return true }
             if intent.source == .screenQuestion {
                 let opened = await appState.openScreenQuestion(intent)
                 screenQuestionOpened = opened

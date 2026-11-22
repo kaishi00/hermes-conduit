@@ -577,6 +577,8 @@ extension AppState {
     /// Caches the profile list and, when it changed, tells Siri so the
     /// "Start <profile> voice in Conduit" phrases can match the new names.
     private func persistKnownProfiles(_ names: [String]) {
+        // The other combined dashboards' follow the one on screen's.
+        persistSiriCombinedProfiles()
         guard defaults.stringArray(forKey: knownProfilesKey) != names else { return }
         defaults.set(names, forKey: knownProfilesKey)
         persistSiriProfileNames()
@@ -591,6 +593,32 @@ extension AppState {
         for id in ids { names[id] = profileDisplayName(id) }
         guard defaults.dictionary(forKey: knownProfileNamesKey) as? [String: String] != names else { return }
         defaults.set(names, forKey: knownProfileNamesKey)
+        refreshSiriProfileShortcuts()
+    }
+
+    /// The other combined dashboards' profiles for Siri's profile phrases
+    /// and the Shortcuts profile pickers, as Chats' strip lists them, each
+    /// named with its dashboard ("Atlas · Studio", as CarPlay's agent list
+    /// names it), its id carrying that dashboard
+    /// (`ConduitProfileEntity.farID`). Written with each read of their
+    /// chats and each profile list read here, so a switch hands the list
+    /// over; none outside a group. Siri is told only when it changed.
+    func persistSiriCombinedProfiles() {
+        let rows: [[String: String]] = combinedProfileStrip(own: profiles).compactMap { chip in
+            guard chip.isOther, let dashboardID = chip.dashboardID else { return nil }
+            let dashboard = combinedDashboardBadge(dashboardID)?.name ?? ""
+            return [
+                ConduitProfileEntity.farIDKey: ConduitProfileEntity.farID(profile: chip.profile, dashboardID: dashboardID),
+                ConduitProfileEntity.farNameKey: dashboard.isEmpty ? chip.profile : "\(chip.profile) · \(dashboard)"
+            ]
+        }
+        let stored = defaults.array(forKey: ConduitProfileEntity.combinedProfilesKey) as? [[String: String]] ?? []
+        guard stored != rows else { return }
+        if rows.isEmpty {
+            defaults.removeObject(forKey: ConduitProfileEntity.combinedProfilesKey)
+        } else {
+            defaults.set(rows, forKey: ConduitProfileEntity.combinedProfilesKey)
+        }
         refreshSiriProfileShortcuts()
     }
 

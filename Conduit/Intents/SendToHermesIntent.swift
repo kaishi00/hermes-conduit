@@ -35,6 +35,11 @@ struct ShortcutSendRequest: Equatable {
     /// The title a new chat gets in place of "Shortcut: …" (a Pulse
     /// widget's Do it names its card).
     var newChatTitle: String? = nil
+    /// The dashboard a Profile naming one of a combined group's dashboards
+    /// was checked on: the run stops with `chatOnAnotherDashboard` if
+    /// another opens while it waits, rather than sending under a profile
+    /// of the same name there.
+    var onlyOnDashboard: UUID? = nil
 }
 
 /// A chat the action was given, as the widget snapshot names it.
@@ -101,6 +106,11 @@ struct ShortcutSendError: LocalizedError, Equatable {
     /// The picked chat is on a dashboard Conduit isn't connected to.
     static var chatOnAnotherDashboard: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
+    }
+
+    /// The Profile set is another combined dashboard's.
+    static var profileOnAnotherDashboard: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("That profile is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
     }
 
     /// The chat's runtime was gone and reopening it failed too: Hermes's
@@ -508,7 +518,8 @@ struct SendToHermesIntent: AppIntent {
     @Parameter(title: "Chat Name")
     var chatName: String?
 
-    @Parameter(title: "Profile")
+    /// The dashboard in use's profiles: a send goes out on it.
+    @Parameter(title: "Profile", optionsProvider: ConduitLocalProfileOptions())
     var profile: ConduitProfileEntity?
 
     /// A chat to send to, picked from Conduit's chats. Wins over Chat Name
@@ -532,11 +543,29 @@ struct SendToHermesIntent: AppIntent {
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let picked = chat.map { ShortcutPickedChat(dashboardID: $0.workspace.dashboardID, reference: $0.reference, title: $0.title) }
-        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: profile?.id,
+        // A picked chat wins over Profile, so Profile isn't checked then.
+        var onScreen: (profile: String?, dashboardID: UUID?) = (nil, nil)
+        if picked == nil { onScreen = try await Self.profileOnScreen(profile?.id) }
+        var request = ShortcutSendRequest(text: message, chatName: chatName, profile: onScreen.profile,
                                           waitsForAnswer: waitForAnswer, chat: picked)
+        request.onlyOnDashboard = onScreen.dashboardID
         let deadline = Date().addingTimeInterval(Self.runTime)
         let text = try await Self.run(request, deadline: deadline).text
         return .result(value: text, dialog: "\(Self.spoken(text))")
+    }
+
+    /// The profile a send names, on the dashboard in use. Another combined
+    /// dashboard's (Siri's list holds them too) is refused as a chat there
+    /// is, since a send goes out on the dashboard in use.
+    @MainActor
+    static func profileOnScreen(_ id: String?) throws -> (profile: String?, dashboardID: UUID?) {
+        guard let id else { return (nil, nil) }
+        let parts = ConduitProfileEntity.parts(of: id)
+        guard let dashboardID = parts.dashboardID else { return (id, nil) }
+        guard AppStateRuntimeRegistry.shared.appState.activeDashboardID == dashboardID else {
+            throw ShortcutSendError.profileOnAnotherDashboard
+        }
+        return (parts.profile, dashboardID)
     }
 
     /// What Siri says: a long answer is cut, the shortcut still gets it whole.

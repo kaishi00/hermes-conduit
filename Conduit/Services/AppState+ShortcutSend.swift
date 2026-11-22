@@ -18,7 +18,7 @@ extension AppState {
         shortcutSendsRunning += 1
         defer { endShortcutSend() }
         releaseLaunchDashboardChoice(for: "a shortcut")
-        return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
+        return try await ShortcutSender(backend: makeShortcutSendBackend(onlyOn: request.onlyOnDashboard)).send(request, deadline: deadline)
     }
 
     /// Connects for a run that may start with Conduit in the background or
