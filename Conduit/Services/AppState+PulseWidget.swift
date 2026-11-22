@@ -182,7 +182,8 @@ extension AppState {
         if notifierPlugin.state == .unknown { await refreshNotifierPluginStatus() }
         guard showsPulseScreen, activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
         let client = pulseClient
-        let page = try await client.feed(proposals: pulseSuggests, looks: pulseLooks)
+        let page = try await client.feed(proposals: notifierPlugin.reports(PulseClient.proposalsCapability),
+                                        looks: notifierPlugin.reports(PulseClient.looksCapability))
         guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
         // Pulse's chat and profile as the host names them now, which a card
         // from no chat goes to.
