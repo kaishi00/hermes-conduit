@@ -153,18 +153,13 @@ struct ConduitPluginSettingsDetail: View {
                     .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.16))
                     .accessibilityIdentifier("settings.plugin.update")
                     if let blocker = appState.notifierPluginUpdateBlocker {
-                        Text(verbatim: blocker)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                        blockerText(blocker, identifier: "settings.plugin.updateBlocker")
                     }
                 }
                 NotifierPluginUpdateStatusView()
                 // A held scan's Update Anyway says why it can't run now too (a call, a restart).
                 if update.isScanHeld, let blocker = appState.notifierPluginUpdateBlocker {
-                    Text(verbatim: blocker)
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                        .accessibilityIdentifier("settings.plugin.updateAnywayBlocker")
+                    blockerText(blocker, identifier: "settings.plugin.updateAnywayBlocker")
                 }
             }
 
@@ -309,6 +304,15 @@ struct ConduitPluginSettingsDetail: View {
             if let managedBy = status.managedBy { return NotifierPluginStatus.managedText(managedBy) }
             return AppLocalization.string("Up to date on this dashboard's host")
         }
+    }
+
+    /// Why an update can't run now, under the button that would start it:
+    /// one look for both, Update and a held scan's Update Anyway (issue 3042).
+    private func blockerText(_ blocker: String, identifier: String) -> some View {
+        Text(verbatim: blocker)
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+            .accessibilityIdentifier(identifier)
     }
 }
 

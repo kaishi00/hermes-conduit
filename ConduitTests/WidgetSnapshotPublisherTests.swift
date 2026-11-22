@@ -222,6 +222,16 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
             bots: nil, botsProfile: "default", previous: [:]
         )
         XCTAssertTrue(unread[0].choices.allSatisfy { $0.reference.isUnverified && $0.reference.kind == .dashboard })
+
+        // A profile whose chats couldn't be read, with none read before,
+        // keeps what the widgets stored; one with nothing stored is built
+        // as read (issue 3034).
+        let failed = AppState.combinedWidgetWorkspaces(
+            dashboardID: dashboardB, dashboardLabel: "Studio", profiles: ["default", "coder"], sessions: [],
+            bots: [bot], botsProfile: "default", unreadProfiles: ["default", "coder"], previous: [before.id: before]
+        )
+        XCTAssertEqual(failed.first { $0.id.profile == "default" }, before, "what was stored stands")
+        XCTAssertEqual(failed.first { $0.id.profile == "coder" }?.choices.isEmpty, true)
     }
 
     private let dashboardA = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
