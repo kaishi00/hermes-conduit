@@ -8,6 +8,7 @@ A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/
 [![App Store](https://img.shields.io/badge/App_Store-Hermes_Conduit-blue)](https://apps.apple.com/us/app/hermes-conduit/id6790977764)
 [![TestFlight](https://img.shields.io/badge/TestFlight-Beta-blue)](https://testflight.apple.com/join/gcF9BBJ3)
 [![Website](https://img.shields.io/badge/Website-hermesconduit.app-blue)](https://hermesconduit.app)
+[![Desktop](https://img.shields.io/badge/Desktop-Mac_%C2%B7_Windows_%C2%B7_Linux-blue)](https://github.com/kaishi00/hermes-conduit-desktop)
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/agrias)
 
 ## See it in action
@@ -26,6 +27,8 @@ A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/
 </table>
 
 More on [hermesconduit.app](https://hermesconduit.app): [live voice](https://hermesconduit.app/voice/), [Apple Watch](https://hermesconduit.app/watch/), [CarPlay](https://hermesconduit.app/carplay/), [Multiplayer](https://hermesconduit.app/multiplayer/) (your bots and a friend's in one room, set up in Settings > Multiplayer) and [privacy](https://hermesconduit.app/privacy/).
+
+On a computer? [Conduit for desktop](https://github.com/kaishi00/hermes-conduit-desktop) brings the same chats, bots and group chats to Mac, Windows and Linux, on its own or paired with this app.
 
 Want new features sooner? The [TestFlight beta](https://testflight.apple.com/join/gcF9BBJ3) gets newer builds before they reach the App Store.
 
@@ -249,6 +252,8 @@ The full [privacy policy](https://kaishi00.github.io/hermes-conduit-notifier/pri
 ## Support
 
 - Website: [hermesconduit.app](https://hermesconduit.app)
+- Conduit for desktop: [hermes-conduit-desktop](https://github.com/kaishi00/hermes-conduit-desktop)
+- The Conduit plugin for your Hermes host: [hermes-conduit-notifier](https://github.com/kaishi00/hermes-conduit-notifier)
 - Bug reports: [GitHub issues](https://github.com/kaishi00/hermes-conduit/issues)
 - Email: [developer@hermesconduit.app](mailto:developer@hermesconduit.app)
 
