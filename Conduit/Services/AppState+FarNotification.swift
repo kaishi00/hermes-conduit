@@ -45,14 +45,16 @@ extension AppState {
                   recordNotificationDecision(decision, sessionIDs: ids, cacheSessionIDs: Array(Set([requested, session.id])))
               }) else { return nil }
         // An approval's or a question's push lands on its card, as on screen.
-        let reveals = target.type.map { NeedsYouStore.notificationTypes.contains($0) } ?? false
-        if reveals {
-            pendingNeedsYouReveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
+        var reveal: NeedsYouReveal?
+        if let type = target.type, NeedsYouStore.notificationTypes.contains(type) {
+            reveal = NeedsYouReveal(opening: target.durableSessionID ?? target.sessionId)
+            pendingNeedsYouReveal = reveal
         }
         let opened = await open.value
         // One that didn't open is tried again: its card's reveal waits for
-        // that try rather than land on another chat.
-        if !opened, reveals { pendingNeedsYouReveal = nil }
+        // that try rather than land on another chat. A newer tap's reveal
+        // stays.
+        if !opened, let reveal, pendingNeedsYouReveal == reveal { pendingNeedsYouReveal = nil }
         return opened
     }
 
