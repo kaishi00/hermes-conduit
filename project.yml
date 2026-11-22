@@ -390,6 +390,8 @@ targets:
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
+        # Resets the App Language before every test (TestBundleObserver.swift).
+        INFOPLIST_KEY_NSPrincipalClass: ConduitTestBundleObserver
     dependencies:
       - target: Conduit
   ConduitUITests:
