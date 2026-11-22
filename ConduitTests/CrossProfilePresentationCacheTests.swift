@@ -3028,4 +3028,56 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.connects, 0, "no socket is opened")
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
     }
+
+    func testAWidgetOrSiriChatOfAKeptDashboardOpensInPlaceThroughItsKeptConnection() async throws {
+        final class Counts { var connects = 0; var opened: [(ObjectIdentifier, String)] = [] }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.openSession = { client, sessionID, _ in
+            counts.opened.append((ObjectIdentifier(client), sessionID))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-w1", role: .assistant, content: "From the Mac", timestamp: "ts-w1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "session-a", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        func link(_ sessionID: String) throws -> WidgetLaunchLink {
+            try XCTUnwrap(WidgetLaunchLink(
+                action: .resume,
+                workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
+                reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil,
+                                                       botLabel: nil, sessionID: sessionID, isUnverified: false)
+            ))
+        }
+
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "its bots unread, it switches")
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [], avatars: [:], at: Date()
+        )
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-unlisted")), "a chat its list doesn't hold switches")
+        appState.pulseRememberedHomes[mac.id.uuidString] = "session-a"
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "its Pulse chat switches")
+        appState.pulseRememberedHomes[mac.id.uuidString] = nil
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "during a call it refuses, as the switch's launch does")
+        appState.showVoiceSheet = false
+        XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
+        await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
+
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(counts.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
+        XCTAssertEqual(counts.connects, 0, "no socket is opened")
+    }
 }
