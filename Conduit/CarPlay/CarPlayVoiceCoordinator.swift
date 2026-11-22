@@ -1275,7 +1275,7 @@ final class CarPlayVoiceCoordinator {
         // (a failed one is tried again, `loadChatsIfMissing`) (issue 3077).
         if let far = farAgent?.dashboardID {
             if !appState.farDashboardKeptForCalls(far) { return AppLocalization.string("Connecting…") }
-            if chatCatalogLoad != nil || !didRequestChatCatalog || appState.combinedDashboardChats[far] == nil {
+            if chatCatalogLoad != nil || !didRequestChatCatalog || !farChatsRead(far, in: appState) {
                 return AppLocalization.string("Loading chats…")
             }
             return nil
@@ -1283,6 +1283,15 @@ final class CarPlayVoiceCoordinator {
         if !appState.isConnected { return AppLocalization.string("Connecting…") }
         if chatCatalogLoad != nil || !didRequestChatCatalog { return AppLocalization.string("Loading chats…") }
         return nil
+    }
+
+    /// Whether a read of the far agent's own profile has landed: its
+    /// dashboard has a kept read and the agent's profile isn't among those
+    /// whose read failed (another profile answering isn't enough).
+    private func farChatsRead(_ far: UUID, in appState: AppState) -> Bool {
+        guard let chats = appState.combinedDashboardChats[far] else { return false }
+        guard let profile = farAgent?.profile else { return true }
+        return !chats.unreadProfiles.contains { AppState.profilesMatch($0, profile) }
     }
 
     /// Asks for the chats once while the list shows none and Hermes is
@@ -1311,7 +1320,7 @@ final class CarPlayVoiceCoordinator {
             self.chatCatalogLoad = nil
             // A far read that brought nothing back is tried again while the
             // list shows, rather than leave a bare list until it's reopened.
-            if let far, appState.combinedDashboardChats[far] == nil {
+            if let far, !self.farChatsRead(far, in: appState) {
                 try? await Task.sleep(for: CarPlayVoiceCoordinator.farChatsRetryDelay)
                 guard self.chatCatalogLoad == nil, self.farAgent?.dashboardID == far else { return }
                 self.didRequestChatCatalog = false

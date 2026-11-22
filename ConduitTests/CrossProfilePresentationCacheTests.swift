@@ -1995,7 +1995,7 @@ extension CrossProfilePresentationCacheTests {
     /// the profile list can't be read; a profile whose chats couldn't be
     /// read, with none read before, keeps what the widgets stored.
     func testKeptChatReadsPublishAndPruneAFarProfilesWidgetWorkspace() async throws {
-        final class Hermes { var profiles: [String]? = ["default", "atlas"]; var atlasFails = false }
+        final class Hermes { var profiles: [String]? = ["default", "atlas"]; var atlasFails = false; var allFail = false }
         let hermes = Hermes()
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
         await appState.switchDashboard(to: vps.id)
@@ -2011,7 +2011,7 @@ extension CrossProfilePresentationCacheTests {
             }
             guard path.contains("/api/profiles/sessions"), !path.contains("source=cron") else { return ["sessions": []] }
             let profile = path.contains("profile=atlas") ? "atlas" : "default"
-            if profile == "atlas", hermes.atlasFails { throw URLError(.timedOut) }
+            if hermes.allFail || (profile == "atlas" && hermes.atlasFails) { throw URLError(.timedOut) }
             return ["sessions": [
                 ["id": "\(profile)-1", "title": "Chat", "message_count": 1, "profile": profile, "last_active": 2_000],
             ]]
@@ -2053,6 +2053,16 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(farWorkspaces()["atlas"], atlas, "an unread profile keeps what was stored, not an empty list")
         XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.unreadProfiles, ["atlas"])
+
+        // Atlas deleted again while no chat read answers at all: the pass
+        // narrows the kept list and publishes, so its workspace leaves now
+        // rather than at a later successful read (#3133 review).
+        hermes.profiles = ["default"]
+        hermes.allFail = true
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.profiles, ["default"])
+        XCTAssertEqual(Set(farWorkspaces().keys), ["default"], "a narrowed pass with no answers still publishes")
     }
 
     /// A pass whose chat reads all fail still narrows the kept list to the
