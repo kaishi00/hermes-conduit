@@ -805,7 +805,7 @@ entry: Calls from Hermes) · the notifier's GPT-Live session route
 start · the call trace · text that describes it: Live call style's "What
 Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
-**Desktop app:** has it: each live mode opens in the open chat (`desktop/src/renderer/src/state/liveCall.ts`, desktop#32 to desktop#37).
+**Desktop app:** has it: Settings > Voice's "Greet me when a call connects", kept on the computer, opens every live mode with the greeting turn once per call: GPT-Live asks again after 4 s, Local Live's server reads it as the readiness check's answer (`desktop/src/renderer/src/state/liveGreeting.ts`, `desktop/src/renderer/src/components/LiveGreetingSetting.tsx`, desktop#331); a call answered from a ring opens with the greeting, not why Hermes called (see Calls from Hermes' gaps).
 
 **Code**
 - The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
