@@ -2944,6 +2944,7 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         XCTAssertTrue(appState.pulseRuntime === kept.runtime)
         XCTAssertEqual(appState.pulseDashboardChips.map(\.isShown), [true, false])
+        XCTAssertEqual(appState.pulseDashboardChips.map(\.switches), [false, false], "a kept chip shows in place")
         XCTAssertEqual(appState.shownPulseClient.dashboardID, mac.id, "its requests go to its own dashboard")
         XCTAssertTrue(appState.pulseExplainsLearning, "what its plugin serves")
         appState.readingPulseRuntime { appState.pulseUnseen = 0 }
@@ -2960,6 +2961,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.pulseDashboardChips.map(\.unseen), [3, 1], "then a newer background read's")
         XCTAssertFalse(appState.pulseExplainsLearning, "the one on screen's plugin")
         appState.isNativeHermesCallActive = false
+
+        // A step tapped on Mac's Pulse, after the screen's chip was picked:
+        // no switch for a page that left it.
+        let leftStep = await appState.switchForFarPulseStep(for: mac.id)
+        XCTAssertFalse(leftStep, "the page left Mac's Pulse")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
 
         // A step that opens a chat there switches first, through the kept
         // connection, until far chats open in place.
@@ -2986,11 +2993,22 @@ extension CrossProfilePresentationCacheTests {
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
         XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id])
+        appState.keptDashboardJSONReader = { _, _ in ["cards": [], "unseen": 2] }
+        await appState.readOtherCombinedDashboardsPulse()
         appState.openCombinedPulse(mac.id)
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.pulseShownDashboardID)
         XCTAssertEqual(appState.pulseDashboardID, vps.id)
+        let dropped = appState.pulseDashboardChips.first { $0.dashboardID == mac.id }
+        XCTAssertEqual(dropped?.switches, true, "its chip stays, as its last read, and switches")
+        XCTAssertEqual(dropped?.isShown, false)
+
+        appState.isNativeHermesCallActive = true
+        appState.openCombinedPulse(mac.id)
+        XCTAssertNil(appState.pulseShownDashboardID, "not shown in place: nothing to show it on")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch during a call")
+        appState.isNativeHermesCallActive = false
     }
 
     /// A notification from a combined dashboard kept beside the one on
