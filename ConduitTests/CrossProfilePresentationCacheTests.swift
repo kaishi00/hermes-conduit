@@ -2035,11 +2035,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
         // Unreachable, its rows still save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
+        XCTAssertEqual(appState.activeSessionId, "mac-1")
+        XCTAssertTrue(appState.messages.contains { $0.id == "far-1" }, "its rows still on screen")
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("its dashboard is gone") }
         appState.flushPendingPresentationCache()
         appState.sessionPresentationCache.waitForPendingWrites()
         let probe = [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "")]
-        XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: ["mac-1"]).first?.timestamp, "ts-f1",
-                       "saved under the far chat's profile")
+        let savedAs = appState.presentationCacheSessionIDs(for: "mac-1")
+        XCTAssertEqual(appState.sessionPresentationCache.merge(probe, profile: "work", sessionIDs: savedAs).first?.timestamp, "ts-f1",
+                       "saved under the far chat's profile (as \(savedAs))")
         // A switch makes the chat on screen that dashboard's, as before.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
         var registry = appState.savedDashboardRegistry
