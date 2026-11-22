@@ -130,11 +130,12 @@ extension AppState {
                 sessions = V2FilterSelection.mergedByRecency(sessions, rows)
             }
             // No chat read answered, but its Hermes listed its profiles: the
-            // kept list drops the ones it no longer lists, so a later publish
-            // doesn't bring them back into the widgets, and reads the new
-            // ones on the next pass.
+            // kept list drops the ones it no longer lists, and the widgets
+            // publish without them now, and reads the new ones on the next
+            // pass.
             if !stale, !answered, let listed, let last = combinedDashboardChats[id], last.profiles != listed {
                 combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread, at: now)
+                wroteAny = true
             }
             guard !stale, answered else { continue }
             // Its cron runs' ids, so it counts them as the dashboard on
