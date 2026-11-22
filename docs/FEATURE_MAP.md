@@ -10404,7 +10404,7 @@ whole and selectable, see A blocked Kanban task) · Hermes' own board drawer
 (upstream; `GET /tasks/{id}` sends the full latest summary, cards on the
 board a 200-character preview)
 
-**Desktop app:** partly: the task panel (`desktop/src/renderer/src/components/KanbanBoard.tsx`) shows the latest summary, the result, comments and each child's result whole as Markdown (child results desktop#341); gap: it lists no runs, no activity payloads and no attachments.
+**Desktop app:** has it: the task panel (`desktop/src/renderer/src/components/KanbanBoard.tsx`, desktop#341) shows the latest summary, the result, comments, each child's result, every run (error, summary, metadata) and every activity event's payload whole, and saves each attachment from the board's `/attachments/{id}`.
 
 **Code**
 - The sheet and the text it shows: `Conduit/Views/Kanban/KanbanFullTextSheet.swift` (KanbanFullText, KanbanFullTextSheet, KanbanFullTextFormatter: runText, eventText)
