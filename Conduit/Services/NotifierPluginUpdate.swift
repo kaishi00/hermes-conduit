@@ -137,6 +137,9 @@ struct NotifierPluginUpdateSlot: Equatable {
         dashboardID == activeDashboardID ? state : .idle
     }
 
+    /// Whether `id` is the run this slot shows.
+    func isRun(_ id: UUID) -> Bool { runID == id }
+
     /// A restart-only run starts at the gateway restart: nothing downloads.
     mutating func start(on dashboardID: UUID?, first: NotifierPluginUpdateStep = .downloading) -> UUID {
         let id = UUID()
@@ -199,6 +202,43 @@ struct NotifierPluginUpdater {
     /// How long Conduit follows an update the host runs before it leaves
     /// the host's notification to say how it ended.
     static let hostFollowLimit: TimeInterval = 900
+
+    /// How long a run may go without a word from its steps before Conduit
+    /// stops waiting on it (AppState's watchdog). Every request has its own
+    /// timeout, and a followed job is read every few seconds, so the longest
+    /// quiet stretch is a Hermes pull's three minutes plus a sign-in: past
+    /// that the screen would otherwise sit on its step for good.
+    static func stallLimit(for state: NotifierPluginUpdateState) -> TimeInterval? {
+        guard case .updating(let step) = state else { return nil }
+        switch step {
+        case .downloading, .installing: return 360
+        // The restarts wait for running chats, on the host or from here, up to their own limits.
+        default: return 1_800
+        }
+    }
+
+    /// How a run that went quiet ended, from the host's job (`job`, nil when
+    /// it couldn't be read) and the plugin's report read after it: a job
+    /// still running is left to the host's notification, one this run
+    /// started (after `runStarted`) says how it ended, a plugin that runs
+    /// the new version is updated, and anything else never got going.
+    static func outcomeAfterStall(job: [String: Any]?, plugin: NotifierPluginStatus,
+                                  runStarted: Date) -> NotifierPluginUpdateState {
+        if let job {
+            if hostStep(job) != nil { return .runningOnHost }
+            // An earlier update's job (yesterday's "done") says nothing about this one.
+            let started = (job["started_at"] as? Double) ?? (job["started_at"] as? Int).map(Double.init)
+            if let started, started >= runStarted.timeIntervalSince1970 - 5, let outcome = hostOutcome(job) {
+                return outcome
+            }
+        }
+        // By version, as a failed run's report is read: a host that manages
+        // its plugin never offers an update, but may still run the old one.
+        if plugin.settles(.runningOnHost), !plugin.updateAvailable {
+            return .updated(version: plugin.runningVersion)
+        }
+        return .failed(detail: AppLocalization.string("The update didn't get going on the host, so Conduit stopped waiting for it. Try again.", table: .notifications))
+    }
 
     /// How long Conduit waits for running chats before the dashboard
     /// restarts. The update is already in place by then.
@@ -490,10 +530,13 @@ struct NotifierPluginUpdater {
         }
         guard let jobID = job["id"] as? String else { return nil }
         let started = now()
+        // Each answer from the host is progress, even on the same step; a read that
+        // failed isn't, so reads that keep failing let the run's watchdog end it.
+        var answered = true
         while true {
             if let step = Self.hostStep(job) {
                 // A restart-only job opens on "downloading" for its no-op pull.
-                progress(.updating(restartOnly && step == .downloading ? firstStep : step))
+                if answered { progress(.updating(restartOnly && step == .downloading ? firstStep : step)) }
             } else if let outcome = Self.hostOutcome(job) {
                 let pullFailed = job["failed_step"] as? String == "downloading"
                 if pullFailed, case .failed(let detail) = outcome, Self.ranMixedHermes(detail) {
@@ -507,7 +550,7 @@ struct NotifierPluginUpdater {
                 return await finishHostUpdate(outcome, pullFailed: pullFailed, request: request)
             } else {
                 // A step this Conduit doesn't know (a newer plugin's).
-                progress(.updating(firstStep))
+                if answered { progress(.updating(firstStep)) }
             }
             guard now().timeIntervalSince(started) < Self.hostFollowLimit else {
                 return .runningOnHost
@@ -522,8 +565,10 @@ struct NotifierPluginUpdater {
             } catch DashboardTicketBridgeError.signInRequired {
                 return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
             } catch {
+                answered = false
                 continue
             }
+            answered = true
             guard let latest = json["job"] as? [String: Any], latest["id"] as? String == jobID else {
                 // The restarted dashboard lost the job: its report says where it stands.
                 return await finishHostUpdate(nil, pullFailed: false, request: request)

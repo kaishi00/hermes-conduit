@@ -126,6 +126,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.state.anchors["workouts"], Data("w-anchor".utf8))
         XCTAssertNil(engine.state.anchors["samples.steps"], "No raw readings without detailed readings")
         XCTAssertNotNil(engine.state.lastSync)
+        // A page fills a batch, so a long history takes as few uploads as it can (notifier issue 975).
+        XCTAssertEqual(Set(source.limits), [HealthSyncLimits.maxItemsPerBatch])
 
         // The next pass reuses the key.
         _ = await engine.sync(preferences: preferences, deadline: .distantFuture, request: host.handle)
@@ -414,16 +416,38 @@ extension HermesVoiceGatewayTimeoutTests {
         let host = FakeHealthHost()
         host.busyIngests = .max
         let start = date("2026-10-13T12:00:00Z")
+        // The clock moves by each wait, so the waits add up against the deadline.
+        var clock = start
         var waits = 0
-        let engine = makeHealthEngine(source: source, now: { start }, wait: { _ in waits += 1 })
+        let engine = makeHealthEngine(source: source, now: { clock }, wait: { clock += $0; waits += 1 })
         let outcome = await engine.sync(preferences: healthPreferences(history: .days30),
                                         deadline: start.addingTimeInterval(20), request: host.handle)
         XCTAssertEqual(outcome, .unfinished)
         XCTAssertNil(engine.lastError)
         XCTAssertNil(engine.state.pause)
         XCTAssertNil(engine.state.backfillCursor, "Nothing taken, nothing moves")
-        XCTAssertGreaterThan(waits, 0)
-        XCTAssertLessThan(waits, 5, "Stops before a wait would run past the deadline")
+        // About 2, 4 and 8 seconds fit in 20; the next would run past it.
+        XCTAssertTrue((2...4).contains(waits), "waits: \(waits)")
+        XCTAssertLessThan(clock, start.addingTimeInterval(20), "No wait starts that would end past the deadline")
+        XCTAssertEqual(host.busyRefusals, waits + 1, "One upload after each wait")
+    }
+
+    /// A wait that ends past the deadline (the phone slept through it) sends
+    /// nothing more: the pass ends unfinished at once.
+    func testAWaitThatEndsPastTheDeadlineSendsNothingMore() async {
+        let source = FakeHealthSource()
+        let host = FakeHealthHost()
+        host.busyIngests = .max
+        let start = date("2026-10-13T12:00:00Z")
+        var clock = start
+        var waits = 0
+        let engine = makeHealthEngine(source: source, now: { clock }, wait: { clock += $0 + 60; waits += 1 })
+        let outcome = await engine.sync(preferences: healthPreferences(history: .days30),
+                                        deadline: start.addingTimeInterval(20), request: host.handle)
+        XCTAssertEqual(outcome, .unfinished)
+        XCTAssertNil(engine.lastError)
+        XCTAssertEqual(waits, 1)
+        XCTAssertEqual(host.busyRefusals, 1, "No upload after the deadline")
     }
 
     /// Only a 409 that says the host lost the key clears it. The notifier's
@@ -574,7 +598,11 @@ private final class FakeHealthSource: HealthDataSource {
 
     func sleepSegments(from: Date, to: Date) async throws -> [HealthSleepSegment] { [] }
 
+    /// Each changes query's page size.
+    private(set) var limits: [Int] = []
+
     func changes(_ stream: HealthEventStream, since: Date, anchor: Data?, limit: Int) async throws -> HealthEventChanges {
+        limits.append(limit)
         guard stream == .workouts, anchor == nil else { return HealthEventChanges(added: [], deleted: [], anchor: anchor ?? Data("\(stream.key)".utf8), more: false) }
         let workout = HealthEvent(id: "W1", kind: .workout, metric: "workout", start: since, end: since.addingTimeInterval(1800),
                                   data: ["activity": .text("running")])
@@ -612,6 +640,7 @@ private final class FakeHealthHost {
     var ingestError: Error?
     /// Uploads refused as over the host's per-minute limit before one is taken.
     var busyIngests = 0
+    private(set) var busyRefusals = 0
     /// health_store's count of windows it kept a newer computation of.
     var staleWindows = 0
 
@@ -643,6 +672,7 @@ private final class FakeHealthHost {
             if let ingestError { throw ingestError }
             if busyIngests > 0 {
                 busyIngests -= 1
+                busyRefusals += 1
                 throw DashboardTicketBridgeError.http(status: 429, detail: "Too many health uploads; try again shortly")
             }
             let body = try XCTUnwrap(body)

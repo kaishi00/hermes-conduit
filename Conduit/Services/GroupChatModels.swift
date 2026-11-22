@@ -2230,10 +2230,13 @@ struct DesktopGroupChat: Equatable, Identifiable, Codable {
         return key == other.key
     }
 
-    /// Its `roomId`, else the id its v3 `id:` key names.
-    private var roomIdentity: String? {
+    /// Its `roomId`, else the id its v3 `id:` key names, trimmed as
+    /// `DesktopGroupChatDecoder.removing` trims it.
+    var roomIdentity: String? {
         if let roomID, !roomID.isEmpty { return roomID }
-        return key.hasPrefix("id:") ? String(key.dropFirst(3)) : nil
+        guard key.hasPrefix("id:") else { return nil }
+        let id = String(key.dropFirst(3)).trimmingCharacters(in: .whitespacesAndNewlines)
+        return id.isEmpty ? nil : id
     }
 }
 

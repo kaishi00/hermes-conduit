@@ -53,7 +53,12 @@ extension AppState {
         let dashboardID = activeDashboardID
         let restartOnly = notifierPlugin.updateRunsOnlyRestarts(install: install)
         let runID = notifierPluginUpdate.start(on: dashboardID, first: restartOnly ? .restartingGateway(nil) : .downloading)
+        let heard = NotifierPluginUpdateHeartbeat()
         let updater = NotifierPluginUpdater(request: { [weak self] path, method, body in
+            // A run its watchdog stopped sends nothing more: a pull still
+            // waiting in the profile config queue would start after the
+            // run was reported as never started.
+            guard !heard.stopped else { throw CancellationError() }
             guard let self, self.activeDashboardID == dashboardID, let bridge = self.dashboardTicketBridge else {
                 throw DashboardTicketBridgeError.notReady
             }
@@ -72,6 +77,7 @@ extension AppState {
         })
         notifierPluginUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in
+                heard.at = Date()
                 guard let self, !Task.isCancelled else { return }
                 guard self.activeDashboardID == dashboardID else {
                     // Another dashboard is in use now: stop following this one.
@@ -104,11 +110,59 @@ extension AppState {
             // The dashboard restart dropped the chat connection: the notice
             // keeps its progress until Conduit is back and has read the new
             // plugin, so "ready" means ready.
+            heard.at = Date()
             self.notifierPluginUpdate.update(.updating(.reconnecting), run: runID)
             let ended = await self.reconnectAfterNotifierPluginUpdate(outcome, dashboardID: dashboardID)
             guard !Task.isCancelled else { return }
             self.notifierPluginUpdateTask = nil
             self.notifierPluginUpdate.finish(ended, run: runID, activeDashboardID: self.activeDashboardID)
+        }
+        watchNotifierPluginUpdate(run: runID, heard: heard, dashboardID: dashboardID, profile: activeProfile)
+    }
+
+    /// Ends run `runID` when its steps go quiet past their limit, so the
+    /// screen can't sit on a step for good (Eric, 2026-11-21: it stayed on
+    /// "Downloading the plugin…" with nothing started on the host). It asks
+    /// the host where the update stands and says so. `profile` is the one
+    /// the run asked the host under.
+    private func watchNotifierPluginUpdate(run runID: UUID, heard: NotifierPluginUpdateHeartbeat, dashboardID: UUID?, profile: String) {
+        // The run's own dashboard's state, wherever the screen goes meanwhile.
+        let runtime = shownRuntime
+        runtime.notifierPluginUpdateWatchdog?.cancel()
+        let runStarted = Date()
+        runtime.notifierPluginUpdateWatchdog = Task { [weak self, weak runtime] in
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(15))
+                guard let self, let runtime, !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID),
+                      let limit = NotifierPluginUpdater.stallLimit(for: runtime.notifierPluginUpdate.state) else { return }
+                guard Date().timeIntervalSince(heard.at) > limit else { continue }
+                // The run stops here: whatever it waits on can't land on the slot any more,
+                // and a request it hasn't sent yet won't go out.
+                heard.stopped = true
+                runtime.notifierPluginUpdateTask?.cancel()
+                runtime.notifierPluginUpdateTask = nil
+                // Another dashboard on screen: its requests aren't this run's to ask.
+                let stillHere = { self.activeDashboardID == dashboardID && self.shownRuntime === runtime }
+                guard stillHere() else {
+                    runtime.notifierPluginUpdate.finish(.idle, run: runID, activeDashboardID: self.activeDashboardID)
+                    return
+                }
+                await self.refreshNotifierPluginStatus()
+                let path = NotifierPluginUpdater.selfUpdateRequestPath(profile: profile, acceptScan: false)
+                var probe: [String: Any]?
+                if stillHere() { probe = try? await self.dashboardTicketBridge?.requestJSON(path: path) }
+                guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
+                var outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
+                                                                      plugin: self.notifierPlugin, runStarted: runStarted)
+                // Ready means the gateway serves too, as after a run that ended on its own.
+                if stillHere(), case .updated = outcome, !(await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)) {
+                    outcome = .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
+                }
+                guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
+                // Left mid-check: the run ends without a verdict (finish clears it), never stuck on its step.
+                runtime.notifierPluginUpdate.finish(stillHere() ? outcome : .idle, run: runID, activeDashboardID: self.activeDashboardID)
+                return
+            }
         }
     }
 
@@ -249,6 +303,8 @@ extension AppState {
     func stopFollowingNotifierPluginUpdate() {
         notifierPluginUpdateTask?.cancel()
         notifierPluginUpdateTask = nil
+        notifierPluginUpdateWatchdog?.cancel()
+        notifierPluginUpdateWatchdog = nil
         notifierPluginUpdate = NotifierPluginUpdateSlot()
     }
 
@@ -452,4 +508,12 @@ extension NotifierPluginStatus {
             return false
         }
     }
+}
+
+/// When a plugin update's run last said where it stands, for its watchdog,
+/// and whether the watchdog stopped it.
+@MainActor
+final class NotifierPluginUpdateHeartbeat {
+    var at = Date()
+    var stopped = false
 }

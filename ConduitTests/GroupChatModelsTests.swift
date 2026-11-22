@@ -348,6 +348,16 @@ final class GroupChatModelsTests: XCTestCase {
         let shown = DesktopGroupChatDecoder.decode(snapshot: any(reused))
         let asked = DesktopGroupChat(key: "name:Council", name: "Council", members: [], messages: [], omitted: 0, roomID: "r9")
         XCTAssertEqual(shown.filter { $0.isSameRoom(as: asked) }.map(\.key), ["id:r9"])
+        // An id only in the key is the room's id, trimmed like the remover's.
+        let keyOnly = DesktopGroupChat(key: "id: r9 ", name: "Council", members: [], messages: [], omitted: 0)
+        XCTAssertEqual(keyOnly.roomIdentity, "r9")
+        XCTAssertTrue(keyOnly.isSameRoom(as: asked))
+        // Selected by an id: key alone, the remover follows that id to a
+        // room re-keyed by name, not the key.
+        let renamed: [String: Any] = ["version": 3, "rooms": ["name:Council": desktopRoom(name: "Council", roomId: "r9", revision: 4)]]
+        let selected = DesktopGroupChat(key: "id:r9", name: "Council", members: [], messages: [], omitted: 0)
+        let followed = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: selected.key, roomID: selected.roomIdentity, from: any(renamed)))
+        XCTAssertEqual((followed["deleted"] as? [String: Any])?["id:r9"] as? Double, 4)
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:r1", from: nil))
