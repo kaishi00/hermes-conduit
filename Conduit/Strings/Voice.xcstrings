@@ -50886,6 +50886,88 @@
           }
         }
       }
+    },
+    "Your speech server says this when the call connects:" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dein Sprachserver sagt das, wenn der Anruf verbunden wird:"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tu servidor de voz dice esto cuando se conecta la llamada:"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Votre serveur vocal dit ceci à la connexion de l'appel :"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server suara Anda mengucapkan ini saat panggilan terhubung:"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il tuo server vocale dice questo quando la chiamata si connette:"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話の接続時に音声サーバーがこれを話します："
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "통화가 연결되면 음성 서버가 이렇게 말해요:"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Twój serwer mowy mówi to po nawiązaniu połączenia:"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seu servidor de voz diz isto quando a chamada conecta:"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ваш речевой сервер произносит это при подключении звонка:"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma sunucunuz arama bağlandığında bunu söyler:"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通话接通时，你的语音服务器会说："
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通話接通時，你的語音伺服器會說："
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

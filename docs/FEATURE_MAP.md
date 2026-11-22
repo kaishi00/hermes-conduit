@@ -612,7 +612,7 @@ instructions isn't offered, agent settings take only switches and choices) ·
 the notifier (not needed: Local Live's plugin passes the phone's
 instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
-**Desktop app:** has it: each live mode's "Use Hermes personality" (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32) and Settings > Voice's Live call style, kept on the computer: tone, answer length, backchannels and Your instructions, sent in the phone's words in every live mode (`desktop/src/renderer/src/state/liveStyle.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#335), and What Conduit sends, built by the calls' own code (`desktop/src/renderer/src/state/livePreview.ts`, `desktop/src/renderer/src/components/LivePreviewSheet.tsx`, desktop#339).
+**Desktop app:** has it: each live mode's "Use Hermes personality" (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32) and Settings > Voice's Live call style, kept on the computer: tone, answer length, backchannels and Your instructions, sent in the phone's words in every live mode (`desktop/src/renderer/src/state/liveStyle.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#335), and What Conduit sends, built by the calls' own code (`desktop/src/renderer/src/state/livePreview.ts`, `desktop/src/renderer/src/components/LivePreviewSheet.tsx`, desktop#339), GPT-Live's phone-read rules shown only where the dashboard's last ChatGPT-plan call didn't answer with GA events (desktop#363).
 
 **Code**
 - The user's instructions: `Conduit/Voice/LiveVoiceStyle.swift` (extraInstructions, cleanedExtraInstructions, instructions), stored in `Conduit/Voice/VoiceTypes.swift` (liveVoiceExtraInstructions), saved by `Conduit/Services/AppState+Voice.swift` (setLiveVoiceStyle)
@@ -825,7 +825,7 @@ entry: Calls from Hermes) · the notifier's GPT-Live session route
 start · the call trace · text that describes it: Live call style's "What
 Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
-**Desktop app:** has it: Settings > Voice's "Greet me when a call connects", kept on the computer, opens every live mode with the greeting turn once per call: GPT-Live asks again after 4 s, Local Live's server reads it as the readiness check's answer (`desktop/src/renderer/src/state/liveGreeting.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#331); a call answered from a ring opens with the greeting, not why Hermes called (see Calls from Hermes' gaps).
+**Desktop app:** has it: Settings > Voice's "Greet me when a call connects", kept on the computer, opens every live mode with the greeting turn once per call: GPT-Live asks again after 4 s, Local Live's server reads it as the readiness check's answer (`desktop/src/renderer/src/state/liveGreeting.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#331); What Conduit sends shows Local Live's greeting as what its speech server says, and while Hermes answers each turn (agent mode off, or no fast model on the host) shows that greeting under a line saying no instructions go (`desktop/src/renderer/src/components/LivePreviewSheet.tsx`, desktop#340); a call answered from a ring opens with the greeting, not why Hermes called (see Calls from Hermes' gaps).
 
 **Code**
 - The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
@@ -833,7 +833,7 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 - Watch: `ConduitWatch/WatchBridgeCallModel.swift` (the opening at "started"), `Shared/WatchVoice/WatchAudioBridgeWire.swift` (sendsOpeningTurn), `ConduitWatch/WatchDirectCallModel.swift` (sendOpeningIfNeeded)
 - A call from Hermes' opening turn: `Conduit/Voice/HermesCalls.swift` (openingTurn, watchOpeningTurn)
 - Notifier: `notifier/dashboard/api/gpt_live.py` (create_gpt_live_session, GPT_LIVE_WAIT_FOR_USER), `notifier/dashboard/api/watch_audio.py`
-- Preview: `Conduit/Views/LiveVoiceStyleViews.swift`
+- Preview: `Conduit/Views/LiveVoiceStyleViews.swift` (Local Live's greeting captioned as its speech server's)
 
 **Rulings**
 - Every live mode opens with a turn Conduit sends: the greeting, or a call from Hermes' reason, as a speakable first turn, once, never on a rejoin or reconnect. GPT-Live too: gpt-live-1-codex doesn't speak first from its instructions (it stays silent until the session idles out, checked 2026-11-04 on a real session), so the plugin no longer asks it to and always answers `greeting_applied: false`. Its only opening policy is "don't speak first", for a call with no greeting (Eric 2026-11-04, carried from notifier #541 by fasavard).
@@ -843,7 +843,7 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 **Open gaps**
 - An older plugin still reports `greeting_applied: true` for a greeting or a call from Hermes, so a GPT-Live call there waits about 4 seconds for the phone's second ask; the Watch has no second ask and stays silent until the user speaks. Updating the plugin fixes both.
 
-**Checked:** 2026-11-15, #2528 (Local Live holds the opening until the check's response ends, issue 2524; the Watch's Local Live opens with the check's own answer and needed no change; the other live modes run no readiness check; the notifier, CarPlay and the texts needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
+**Checked:** 2026-11-22, #PRNUM (What Conduit sends captions Local Live's greeting as what its speech server says, not a turn sent, on the phone and the desktop, desktop#340; the phone shows no preview while Hermes answers each turn, since Live call style is hidden then, so only the desktop shows that greeting; the calls, the Watch, CarPlay and the notifier unchanged); 2026-11-15, #2528 (Local Live holds the opening until the check's response ends, issue 2524; the Watch's Local Live opens with the check's own answer and needed no change; the other live modes run no readiness check; the notifier, CarPlay and the texts needed no change); 2026-11-12, #2301 (the code it lists moved out of AppState.swift, issue 828); 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
 
 ## Showing a voice conversation a photo
 
