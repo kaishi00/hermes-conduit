@@ -3737,6 +3737,10 @@ final class OfflineChatCacheTests: XCTestCase {
         seedCopy(store, dashboard: dashboard)
         appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
         appState.offlineChatPresentation = nil
+        // The dashboard on screen lists a chat under the same open id.
+        var screenRow = session("stored-b")
+        screenRow.storedSessionId = "screen-durable"
+        appState.sessions = [screenRow]
         appState.activeSessionId = "stored-b"
         let far = FarChatOwner(dashboardID: UUID(), profile: "work")
         appState.farChat = far
@@ -3746,11 +3750,27 @@ final class OfflineChatCacheTests: XCTestCase {
 
         XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
         XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("stored-a"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("screen-durable"))
+
+        // A message it keeps meanwhile records the same identity.
+        appState.isConnected = true
+        appState.turnState = .reconnecting
+        XCTAssertTrue(appState.sendWhenConnected("While it's down", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        XCTAssertEqual(pending.draftSessionID, "far-durable")
+        XCTAssertEqual(pending.chatSessionIDs, ["far-durable", "stored-b"])
+        XCTAssertTrue(appState.isOnScreen(pending))
 
         // With no row of its own recorded, only its open id says.
+        appState.pendingComposerSend = nil
         appState.rowOfChatOnScreen = nil
         XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
         XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("far-durable"))
+        XCTAssertFalse(appState.liveChatOwnsComposerDraftSessionID("screen-durable"))
+        XCTAssertTrue(appState.sendWhenConnected("Again", replyReference: nil))
+        let bare = try XCTUnwrap(appState.pendingComposerSend)
+        XCTAssertEqual(bare.draftSessionID, "stored-b")
+        XCTAssertEqual(bare.chatSessionIDs, ["stored-b"])
     }
 
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
