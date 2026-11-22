@@ -674,6 +674,49 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
     }
 
+    /// A kept dashboard keeps what it showed, and a switch back shows it
+    /// at once (no-switch plan, slice 5): its bots, chats, group rooms and
+    /// Pulse badge, before its sync reads them anew. Lists read on another
+    /// profile than the one it resumes stay unused.
+    func testAKeptDashboardsListsShowAtOnceOnTheSwitchBack() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
+        let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
+                                provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
+                                appearanceColor: nil, canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        let chat = SessionSummary(id: "session-a", alternateIds: [], title: "Plans", model: "Hermes",
+                                  updatedLabel: "now", profile: "default", source: .chat, isActive: false,
+                                  isArchived: false, lineageRootId: nil)
+        appState.botModePhase = .available
+        appState.botRoster = [raiden]
+        appState.sessions = [chat]
+        appState.groupChatPhase = .available
+        appState.groupRoomsListed = true
+        appState.pulseUnseen = 3
+
+        await appState.switchDashboard(to: vps.id)
+
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id]?.lists, "what it showed is kept with it")
+        XCTAssertEqual(kept.keptListsProfile, "default")
+        XCTAssertEqual(kept.botRoster.map(\.name), ["raiden"])
+        XCTAssertTrue(appState.botRoster.isEmpty, "the dashboard switched to shows none of it")
+        XCTAssertEqual(appState.pulseUnseen, 0)
+
+        appState.showKeptLists(of: kept)
+
+        XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"])
+        XCTAssertEqual(appState.botModePhase, .available)
+        XCTAssertEqual(appState.sessions.map(\.id), ["session-a"])
+        XCTAssertEqual(appState.groupChatPhase, .available)
+        XCTAssertTrue(appState.groupRoomsListed)
+        XCTAssertEqual(appState.pulseUnseen, 3)
+
+        appState.botRoster = []
+        kept.keptListsProfile = "coder"
+        appState.showKeptLists(of: kept)
+        XCTAssertTrue(appState.botRoster.isEmpty, "read on another profile: unused")
+    }
+
     /// A kept socket that dropped is let go, and the switch back signs in
     /// as before. Leaving the group lets a kept one go too.
     func testAKeptDashboardThatDroppedOrLeftTheGroupIsLetGo() async throws {
