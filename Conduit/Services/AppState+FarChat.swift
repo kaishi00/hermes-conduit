@@ -156,7 +156,10 @@ extension AppState {
     /// dashboard. Nothing is saved while a far chat's connection is down.
     func saveChatModelVisibility(_ visibility: ModelVisibility) {
         guard let farChat else { return saveModelVisibility(visibility) }
-        guard let chatRuntime = runtime(for: farChat.dashboardID) else { return }
+        guard let chatRuntime = runtime(for: farChat.dashboardID) else {
+            // Its runtime has gone: kept for its dashboard all the same.
+            return saveModelVisibility(visibility, dashboardID: farChat.dashboardID)
+        }
         act(onRuntime: chatRuntime) { saveModelVisibility(visibility) }
     }
 
@@ -170,7 +173,10 @@ extension AppState {
     /// Changes the chat on screen's dashboard's pinned and recent models.
     func updateChatModelQuickPicks(_ change: (inout ModelQuickPicks) -> Void) {
         guard let farChat else { return updateModelQuickPicks(change) }
-        guard let chatRuntime = runtime(for: farChat.dashboardID) else { return }
+        guard let chatRuntime = runtime(for: farChat.dashboardID) else {
+            // Its runtime has gone: kept for its dashboard all the same.
+            return updateModelQuickPicks(change, dashboardID: farChat.dashboardID)
+        }
         act(onRuntime: chatRuntime) {
             // Its runtime's copy may not have been read from what's kept.
             chatRuntime.modelQuickPicks = chatModelQuickPicks

@@ -135,6 +135,18 @@ extension AppState {
         persistModelQuickPicks(stored)
     }
 
+    /// Changes a dashboard's kept Quick picks without its runtime (a far
+    /// chat's, after its runtime has gone).
+    func updateModelQuickPicks(_ change: (inout ModelQuickPicks) -> Void, dashboardID: UUID) {
+        var stored = storedModelQuickPicks()
+        let bucket = Self.dashboardPreferenceBucket(dashboardID)
+        var picks = stored[bucket] ?? ModelQuickPicks()
+        change(&picks)
+        guard picks != stored[bucket] else { return }
+        stored[bucket] = picks
+        persistModelQuickPicks(stored)
+    }
+
     func rememberedActiveProfile(for dashboardID: UUID) -> String? {
         let map = defaults.dictionary(forKey: activeProfileByDashboardKey) as? [String: String] ?? [:]
         guard let profile = map[dashboardID.uuidString]?.trimmingCharacters(in: .whitespacesAndNewlines),
@@ -410,13 +422,27 @@ extension AppState {
     }
 
     func saveModelVisibility(_ visibility: ModelVisibility) {
-        let normalized = ModelVisibility(
+        let normalized = Self.normalizedModelVisibility(visibility)
+        modelVisibility = normalized
+        keepModelVisibility(normalized, dashboardID: activeDashboardID)
+    }
+
+    /// Keeps a dashboard's hidden models without its runtime (a far
+    /// chat's, after its runtime has gone).
+    func saveModelVisibility(_ visibility: ModelVisibility, dashboardID: UUID) {
+        keepModelVisibility(Self.normalizedModelVisibility(visibility), dashboardID: dashboardID)
+    }
+
+    private static func normalizedModelVisibility(_ visibility: ModelVisibility) -> ModelVisibility {
+        ModelVisibility(
             hiddenProviders: Array(Set(visibility.hiddenProviders.filter { !$0.isEmpty })).sorted(),
             hiddenModels: Array(Set(visibility.hiddenModels.filter { !$0.isEmpty })).sorted()
         )
-        modelVisibility = normalized
+    }
+
+    private func keepModelVisibility(_ visibility: ModelVisibility, dashboardID: UUID?) {
         var visibilities = storedModelVisibilities()
-        visibilities[Self.dashboardPreferenceBucket(activeDashboardID)] = normalized
+        visibilities[Self.dashboardPreferenceBucket(dashboardID)] = visibility
         persistModelVisibilities(visibilities)
     }
 

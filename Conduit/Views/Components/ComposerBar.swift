@@ -1923,7 +1923,8 @@ struct ComposerBar: View {
         let submittedDraftKey = loadedDraftKey ?? activeDraftKey
         let submittedDraftBucket = draftStore.submissionBucket(for: submittedDraftKey)
         let submittedClearCount = draftStore.clearCount(for: submittedDraftKey.dashboard)
-        let submittedDashboardID = appState.activeDashboardID
+        // A far chat's draft is its own dashboard's, not the screen's.
+        let submittedDashboardID = submittedDraftKey.dashboard ?? appState.activeDashboardID
         let submittedChatTitle = appState.displayedChatTitle
         // The words may come back after the chat's runtime id has moved on:
         // they go back by its durable id, as a waiting message's do.
@@ -2001,7 +2002,9 @@ struct ComposerBar: View {
     private func applyComposerRestoreRequests() {
         guard let loadedDraftKey else { return }
         var restoredIntoField = false
-        for request in appState.composerRestoreRequests where request.dashboardID == appState.activeDashboardID {
+        // Its words are its chat's dashboard's: a far chat's, not the screen's.
+        let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
+        for request in appState.composerRestoreRequests where request.dashboardID == draftDashboardID {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
                 // Only a send's own words can be the refused message: a
                 // shared draft, a dictation retry or a waiting message's

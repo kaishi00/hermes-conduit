@@ -2078,6 +2078,13 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
         let unreachableCatalog = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
         XCTAssertNil(unreachableCatalog, "no catalog while its connection is down, never the screen's")
+        // Its filters and Quick picks still keep under the Mac, never the screen.
+        appState.saveChatModelVisibility(ModelVisibility(hiddenProviders: ["mac-gone"], hiddenModels: []))
+        XCTAssertEqual(appState.chatModelVisibility.hiddenProviders, ["mac-gone"])
+        XCTAssertEqual(appState.modelVisibility, screenVisibility, "the dashboard on screen's filters are untouched")
+        appState.updateChatModelQuickPicks { $0.recordSwitch(to: ModelQuickPick(provider: "mac-provider", model: "mac-later"), from: nil) }
+        XCTAssertEqual(appState.storedModelQuickPicks()[AppState.dashboardPreferenceBucket(mac.id)]?.recent.first?.model, "mac-later")
+        XCTAssertEqual(appState.modelQuickPicks, screenPicks, "the dashboard on screen's Quick picks are untouched")
         // Unreachable, its rows still save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         XCTAssertEqual(appState.activeSessionId, "mac-1")
