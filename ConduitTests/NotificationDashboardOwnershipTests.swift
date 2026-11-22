@@ -46,6 +46,14 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
                        "a call's")
         XCTAssertFalse(opens(target("pulse")), "its Pulse")
         XCTAssertFalse(opens(target("bot-chat")), "a Bot Chat")
+        XCTAssertNil(AppState.farNotificationChat(
+            ConduitNotificationTarget(profile: "atlas", sessionId: "chat", type: "response.ready"),
+            listed: listed, botChats: [], pulseHome: nil
+        ), "a push for another profile than the listed chat's switches")
+        XCTAssertEqual(AppState.farNotificationChat(
+            ConduitNotificationTarget(profile: nil, sessionId: "chat", type: "response.ready"),
+            listed: listed, botChats: [], pulseHome: nil
+        )?.id, "chat", "a push naming no profile opens the chat on its own")
     }
 
     override func setUp() {
