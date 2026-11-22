@@ -1452,6 +1452,11 @@ struct SessionActionMenuItems: View {
 
         ReadStateToggleButton(session: session, nest: nest)
 
+        // Muted chats: kept on the host, which skips the pushes (ChatMutes).
+        if appState.canMuteSession(session) {
+            ChatMuteMenu(session: session)
+        }
+
         // The chat's tokens and cost (issue 2699).
         Button {
             Haptics.selection()
@@ -1487,6 +1492,52 @@ struct SessionActionMenuItems: View {
             Label(AppLocalization.string("Delete"), systemImage: "trash")
         }
         .disabled(appState.isSessionMutationInFlight(session))
+    }
+}
+
+/// Mute Notifications (for 15 minutes, an hour, a day or until unmuted) or
+/// Unmute Notifications for one conversation (ChatMutes).
+struct ChatMuteMenu: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    let session: SessionSummary
+
+    var body: some View {
+        if let mute = appState.sessionMute(session) {
+            Button {
+                Haptics.light()
+                appState.setSessionMute(session, duration: nil)
+            } label: {
+                Label(unmuteTitle(mute), systemImage: "bell")
+            }
+        } else {
+            Menu {
+                ForEach(ChatMutes.Duration.allCases) { duration in
+                    Button(title(duration)) {
+                        Haptics.light()
+                        appState.setSessionMute(session, duration: duration)
+                    }
+                }
+            } label: {
+                Label(AppLocalization.string("Mute Notifications", table: .chat), systemImage: "bell.slash")
+            }
+        }
+    }
+
+    /// Says until when, for a timed mute.
+    private func unmuteTitle(_ mute: ChatMutes.Mute) -> String {
+        guard let until = mute.until else { return AppLocalization.string("Unmute Notifications", table: .chat) }
+        let time = until.formatted(date: Calendar.current.isDateInToday(until) ? .omitted : .abbreviated, time: .shortened)
+        return AppLocalization.string("Unmute (Muted Until \(time))", table: .chat)
+    }
+
+    private func title(_ duration: ChatMutes.Duration) -> String {
+        switch duration {
+        case .fifteenMinutes: AppLocalization.string("For 15 Minutes", table: .chat)
+        case .oneHour: AppLocalization.string("For 1 Hour", table: .chat)
+        case .oneDay: AppLocalization.string("For 1 Day", table: .chat)
+        case .untilUnmuted: AppLocalization.string("Until I Unmute", table: .chat)
+        }
     }
 }
 

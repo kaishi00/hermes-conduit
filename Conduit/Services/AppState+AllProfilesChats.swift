@@ -183,6 +183,7 @@ extension AppState {
         let next = AllProfilesCatalog(dashboardID: dashboardID, sessions: kept, isLoaded: true)
         if next != allProfilesCatalog { allProfilesCatalog = next }
         refreshChatDoneMarks()
+        refreshChatMutes()
     }
 
     func updateAllProfilesCatalogRow(_ session: SessionSummary, _ change: (inout SessionSummary) -> Void) {
