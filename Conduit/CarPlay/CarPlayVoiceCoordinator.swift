@@ -76,6 +76,18 @@ enum CarPlayVoiceMode: Equatable {
     /// speech server, which runs on the same controller as on the phone.
     case localLive
 
+    /// The mode a saved choice is, as the car's voice list shows it.
+    init(_ choice: VoiceModeChoice) {
+        switch choice {
+        case .classic: self = .classic
+        case .gemini: self = .geminiLive
+        case .qwen: self = .qwenLive
+        case .gpt: self = .gptLive
+        case .grok: self = .grokLive
+        case .local: self = .localLive
+        }
+    }
+
     @MainActor
     static func current(in appState: AppState) -> CarPlayVoiceMode {
         if appState.isGeminiLiveEnabled { return .geminiLive }
@@ -757,7 +769,8 @@ final class CarPlayVoiceCoordinator {
     /// A live mode setting changed: show the controller now in use.
     func voiceModeChanged(in appState: AppState) {
         guard isConnected, lastBoundAppState === appState else { return }
-        observeCurrentVoiceMode(appState)
+        // A call to another combined dashboard's agent stays followed.
+        onCallDashboard { observeCurrentVoiceMode(appState) }
     }
 
     private func beginObservingController(_ controller: VoiceConversationController) {
@@ -773,9 +786,11 @@ final class CarPlayVoiceCoordinator {
     /// A call from Hermes on Classic's hands-free option ran on classic
     /// voice; once it ends, the car goes back to the profile's mode.
     private func followProfileModeAfterClassic() {
-        guard isConnected, observedVoiceMode == .classic, let appState = lastBoundAppState,
-              CarPlayVoiceMode.current(in: appState) != .classic else { return }
-        observeCurrentVoiceMode(appState)
+        guard isConnected, observedVoiceMode == .classic, let appState = lastBoundAppState else { return }
+        onCallDashboard {
+            guard CarPlayVoiceMode.current(in: appState) != .classic else { return }
+            observeCurrentVoiceMode(appState)
+        }
     }
 
     /// Gemini Live and Grok Live mode: CarPlay shows the conversation's phase
@@ -1194,7 +1209,9 @@ final class CarPlayVoiceCoordinator {
             appState.activeProfileValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.botRosterValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chat is Pulse's, left out (the feed names it).
-            appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
+            // Another combined dashboard's agent's chats, from its kept read.
+            appState.$combinedDashboardChats.map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)
@@ -1257,8 +1274,15 @@ final class CarPlayVoiceCoordinator {
         didRequestChatCatalog = true
         let load = UUID()
         chatCatalogLoad = load
+        // Another combined dashboard's agent's chats come from its kept
+        // read, never the screen's catalog.
+        let far = farAgent?.dashboardID
         Task { @MainActor [weak self, loader = chatCatalogLoader] in
-            await loader(appState)
+            if let far {
+                await appState.readOtherCombinedDashboardsChats(force: true, only: far)
+            } else {
+                await loader(appState)
+            }
             guard let self, self.chatCatalogLoad == load else { return }
             self.chatCatalogLoad = nil
             self.scheduleChatsRefresh()
@@ -1391,7 +1415,7 @@ final class CarPlayVoiceCoordinator {
         let agents = Self.agents(in: appState)
         listedAgents = agents.count > 1 ? agents : []
         push(CarPlayBrowseTemplateFactory.voiceTemplate(
-            modes: CarPlayBrowse.modeRows(current: CarPlayVoiceMode.listed(in: appState)),
+            modes: CarPlayBrowse.modeRows(current: listedVoiceMode(in: appState)),
             agents: CarPlayBrowse.agentRows(
                 agents: agents,
                 active: appState.activeProfile,
@@ -1528,16 +1552,21 @@ final class CarPlayVoiceCoordinator {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
             guard let self, self.isCurrent(generation), self.isConnected else { return }
-            let appState = self.lastBoundAppState ?? self.appStateProvider()
-            // The conversation opens first, so the replayed notice meets a
-            // session that can speak it (a live call takes it once ready).
-            await self.performStartListeningTurn(generation: generation)
-            // A conversation that did not open shows its error; the outcome
-            // is not queued for whichever chat Voice opens next.
-            guard self.isCurrent(generation), self.isConnected,
-                  self.hasOpenConversation(in: appState),
-                  let shown = self.shownState, shown != .error else { return }
-            appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
+            // On the picked agent's dashboard, as every start from the car.
+            await self.onAgentDashboard(generation: generation) { [weak self] in
+                guard let self else { return }
+                let appState = self.lastBoundAppState ?? self.appStateProvider()
+                // The conversation opens first, so the replayed notice meets
+                // a session that can speak it (a live call takes it once
+                // ready).
+                await self.performStartListeningTurn(generation: generation)
+                // A conversation that did not open shows its error; the
+                // outcome is not queued for whichever chat Voice opens next.
+                guard self.isCurrent(generation), self.isConnected,
+                      self.hasOpenConversation(in: appState),
+                      let shown = self.shownState, shown != .error else { return }
+                appState.voiceBackgroundJobSupervisor.replayOutcome(jobID: jobID)
+            }
         }
     }
 
@@ -1548,7 +1577,11 @@ final class CarPlayVoiceCoordinator {
         driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            await self?.performRunShortcut(shortcut, generation: generation)
+            // On the picked agent's dashboard: its job and the call that
+            // speaks it, as every start from the car.
+            await self?.onAgentDashboard(generation: generation) { [weak self] in
+                await self?.performRunShortcut(shortcut, generation: generation)
+            }
         }
     }
 
@@ -1578,11 +1611,41 @@ final class CarPlayVoiceCoordinator {
         guard isConnected else { return }
         returnToVoiceScreen()
         let appState = lastBoundAppState ?? appStateProvider()
-        guard mode != CarPlayVoiceMode.listed(in: appState) else { return }
+        guard mode != listedVoiceMode(in: appState) else { return }
         endConversation()
-        // Saved as Settings > Voice > Voice mode saves it.
-        appState.applyVoiceMode(mode.choice)
-        observeCurrentVoiceMode(appState)
+        guard let far = farAgent, let dashboardID = far.dashboardID else {
+            // Saved as Settings > Voice > Voice mode saves it.
+            appState.applyVoiceMode(mode.choice)
+            observeCurrentVoiceMode(appState)
+            return
+        }
+        // Another combined dashboard's agent: saved there, as its Settings
+        // keep it (Settings stay per instance). Classic talks through the
+        // chat on screen, so its agent is then switched to.
+        let generation = connectionGeneration
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.onAgentDashboard(generation: generation) { [weak self] in
+                guard let self else { return }
+                (self.lastBoundAppState ?? self.appStateProvider()).applyVoiceMode(mode.choice)
+            }
+            guard self.isCurrent(generation), self.isConnected, self.farAgent == far else { return }
+            let appState = self.lastBoundAppState ?? self.appStateProvider()
+            if appState.canStartLiveCallOnFarDashboard(dashboardID, profile: far.profile) { return }
+            self.farAgent = nil
+            self.chosenChat = nil
+            _ = await self.switchToAgent(far.profile, on: dashboardID, appState: appState, generation: generation)
+        }
+    }
+
+    /// The mode the voice list marks: another combined dashboard's agent's
+    /// as set there, else the dashboard on screen's.
+    private func listedVoiceMode(in appState: AppState) -> CarPlayVoiceMode {
+        guard let far = farAgent, let dashboardID = far.dashboardID,
+              let choice = appState.voiceModeOnFarDashboard(dashboardID, profile: far.profile) else {
+            return CarPlayVoiceMode.listed(in: appState)
+        }
+        return CarPlayVoiceMode(choice)
     }
 
     /// Switches the agent (Hermes profile) from the car.
@@ -2003,13 +2066,17 @@ final class CarPlayVoiceCoordinator {
         // the phone kept.
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
-        switch CarPlayVoiceMode.current(in: appState) {
-        case .classic: appState.closeVoiceConversation()
-        case .geminiLive: appState.closeGeminiLiveConversation()
-        case .qwenLive: appState.closeQwenLiveConversation()
-        case .gptLive: appState.closeGPTLiveConversation()
-        case .grokLive: appState.closeGrokLiveConversation()
-        case .localLive: appState.closeLocalLiveConversation()
+        // A call to another combined dashboard's agent is closed in its
+        // own mode there, whichever path ends it (End, a pick, a switch).
+        onCallDashboard {
+            switch CarPlayVoiceMode.current(in: appState) {
+            case .classic: appState.closeVoiceConversation()
+            case .geminiLive: appState.closeGeminiLiveConversation()
+            case .qwenLive: appState.closeQwenLiveConversation()
+            case .gptLive: appState.closeGPTLiveConversation()
+            case .grokLive: appState.closeGrokLiveConversation()
+            case .localLive: appState.closeLocalLiveConversation()
+            }
         }
     }
 

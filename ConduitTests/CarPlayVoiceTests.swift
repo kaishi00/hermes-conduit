@@ -425,6 +425,11 @@ extension CarPlayVoiceTemplateFactoryTests {
     }
 
     func testAgentsOfEveryCombinedDashboardAreOfferedAndOnlyOneOnScreenIsSelected() {
+        // Another dashboard's agent's mode, as saved there, marks the
+        // voice list's row it is.
+        for choice in VoiceModeChoice.allCases {
+            XCTAssertEqual(CarPlayVoiceMode(choice).choice, choice)
+        }
         let mac = UUID()
         let one = [CarPlayAgent(dashboardID: nil, profile: "default")]
         XCTAssertTrue(CarPlayBrowse.agentRows(agents: one, active: "default", displayName: { $0.profile }).isEmpty)

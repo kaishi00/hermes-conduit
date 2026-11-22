@@ -2192,6 +2192,7 @@ extension CrossProfilePresentationCacheTests {
         // in place (Classic voice talks through the chat on screen).
         XCTAssertEqual(CarPlayVoiceCoordinator.farChatList("atlas", in: mac.id, appState: appState).recent.map(\.sessionID), ["atlas-1"])
         XCTAssertFalse(appState.canStartLiveCallOnFarDashboard(mac.id, profile: "atlas"))
+        XCTAssertNil(appState.voiceModeOnFarDashboard(mac.id, profile: "atlas"), "no mode to mark where it can't start")
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).

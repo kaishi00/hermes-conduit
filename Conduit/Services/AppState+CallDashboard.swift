@@ -204,6 +204,18 @@ extension AppState {
         return configuredLiveVoiceEngine(profile: Self.farCallProfile(profile), gateway: gateway) != nil
     }
 
+    /// The voice mode `profile` is set to on another combined dashboard,
+    /// read by its address as its Settings > Voice shows it, so asking
+    /// hands nothing over; nil where a far start can't run there.
+    /// CarPlay's voice list marks it while that agent is picked.
+    func voiceModeOnFarDashboard(_ dashboardID: UUID, profile: String) -> VoiceModeChoice? {
+        guard let gateway = farCallGateway(dashboardID) else { return nil }
+        let profile = Self.farCallProfile(profile)
+        let preferences = loadVoiceProfilePreferences(profile: profile, gateway: gateway)
+        return VoiceModeChoice(engine: configuredLiveVoiceEngine(profile: profile, gateway: gateway),
+                               localAgent: preferences.localLiveAgent)
+    }
+
     /// The kept runtime a call on another combined dashboard starts on.
     private func farCallRuntime(_ dashboardID: UUID, profile: String) -> DashboardRuntime? {
         guard farCallGateway(dashboardID) != nil else { return nil }
