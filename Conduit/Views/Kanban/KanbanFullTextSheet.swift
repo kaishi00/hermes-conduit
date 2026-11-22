@@ -287,7 +287,7 @@ enum KanbanFullTextFormatter {
 
     /// Activity rows shown and hidden behind "Show N earlier events": the
     /// newest `newest` until the person asks for all of them.
-    static func activityShown(total: Int, newest: Int, showsAll: Bool) -> (shown: Int, hidden: Int) {
+    static func activityShown(total: Int, newest: Int, showsAll: Bool) -> (shownCount: Int, hiddenCount: Int) {
         let shown = showsAll ? total : min(total, newest)
         return (shown, total - shown)
     }

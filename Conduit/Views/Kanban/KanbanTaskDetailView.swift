@@ -1096,14 +1096,14 @@ struct KanbanTaskDetailView: View {
         if let events = detail?.events, !events.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Activity (\(events.count))", table: .tasks), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
                 let window = KanbanFullTextFormatter.activityShown(total: events.count, newest: Self.newestEventCount, showsAll: showsAllEvents)
-                ForEach(events.prefix(window.shown)) { event in
+                ForEach(events.prefix(window.shownCount)) { event in
                     activityRow(event)
                 }
-                if window.hidden > 0 {
+                if window.hiddenCount > 0 {
                     Button {
                         showsAllEvents = true
                     } label: {
-                        Text(AppLocalization.string("Show \(window.hidden) earlier events", table: .tasks))
+                        Text(AppLocalization.string("Show \(window.hiddenCount) earlier events", table: .tasks))
                             .scaledFont(.caption.weight(.medium))
                             .foregroundStyle(.conduitAccent)
                             .frame(maxWidth: .infinity, alignment: .leading)
