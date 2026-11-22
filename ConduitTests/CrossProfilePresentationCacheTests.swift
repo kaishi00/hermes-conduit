@@ -2236,6 +2236,19 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedBotsHomeOrder = [CombinedBotsHomeOrder.key(vps.id, "default"), CombinedBotsHomeOrder.key(mac.id, "atlas")]
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.profile), ["default", "atlas", "default"])
         XCTAssertEqual(appState.combinedProfileStrip(own: ["default"]).map(\.isOther), [false, true, true])
+        // CarPlay's Voice list offers the same agents (no-switch stage 2):
+        // another dashboard's carries it, and is named with it.
+        let agents = CarPlayVoiceCoordinator.agents(in: appState)
+        XCTAssertEqual(agents.map(\.profile), appState.combinedProfileStrip(own: appState.profiles).map(\.profile))
+        XCTAssertEqual(agents.filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas", "default"])
+        XCTAssertFalse(agents.contains { $0.dashboardID == vps.id }, "the dashboard on screen's carry none")
+        XCTAssertTrue(CarPlayVoiceCoordinator.agentTitle(CarPlayAgent(dashboardID: mac.id, profile: "atlas"), in: appState).hasPrefix("atlas"))
+        // Its chats in the car are that agent's, from the kept read; with
+        // no live mode set there, the car switches rather than calling it
+        // in place (Classic voice talks through the chat on screen).
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatList("atlas", in: mac.id, appState: appState).recent.map(\.sessionID), ["atlas-1"])
+        XCTAssertFalse(appState.canStartLiveCallOnFarDashboard(mac.id, profile: "atlas"))
+        XCTAssertNil(appState.voiceModeOnFarDashboard(mac.id, profile: "atlas"), "no mode to mark where it can't start")
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).
@@ -2324,6 +2337,18 @@ extension CrossProfilePresentationCacheTests {
         await appState.readOtherCombinedDashboardsChats(force: true)
         XCTAssertEqual(counts.reads.count, 4)
         XCTAssertEqual(counts.cronReads.count, 2, "cron ids stand for half an hour on one connection")
+        // With the phone's scene in the background no read runs, except
+        // the one CarPlay's list of a far agent's chats asks for while the
+        // car's voice screen is up.
+        appState.isSceneActive = false
+        let readsBefore = counts.reads.count
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id)
+        XCTAssertEqual(counts.reads.count, readsBefore)
+        appState.isCarPlayVoiceSurfaceActive = true
+        await appState.readOtherCombinedDashboardsChats(force: true, only: mac.id, forCar: true)
+        XCTAssertGreaterThan(counts.reads.count, readsBefore, "the car's read runs")
+        appState.isCarPlayVoiceSurfaceActive = false
+        appState.isSceneActive = true
         // A failed read keeps what the list showed.
         let reader = try XCTUnwrap(appState.keptDashboardJSONReader)
         appState.keptDashboardJSONReader = { _, _ in throw URLError(.timedOut) }
