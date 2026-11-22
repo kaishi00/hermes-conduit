@@ -191,7 +191,8 @@ extension AppState {
             break
         case .switchFirst(let id):
             guard switching else { return false }
-            guard !isVoiceCallInProgress else {
+            // A live call goes on across a switch inside the combined group.
+            guard !isCallEndingDashboardSwitch(to: id) else {
                 showCallRefusal(AppLocalization.string("Pulse goes quiet in the other workspace when the call ends.", table: .pulse))
                 if let target { PushNotificationService.shared.pulseQuietAwaitsCall(target) }
                 return false

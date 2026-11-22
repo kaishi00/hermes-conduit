@@ -926,6 +926,108 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.keptDashboardRuntimes[dashboards[1].id])
         XCTAssertFalse(kept[1].isConnected)
     }
+
+    /// A live call keeps its dashboard (no-switch stage 2): while another
+    /// combined dashboard shows, its requests, host routes, chat link and
+    /// job ledger are its own dashboard's, a switch inside the group
+    /// neither asks nor refuses, its connection is never let go to make
+    /// room, and signing out of its dashboard ends it.
+    func testALiveCallGoesOnThroughItsDashboardWhileAnotherCombinedOneShows() async throws {
+        KeychainHelper.useBackendForTesting(InMemoryKeychainBackend())
+        addTeardownBlock { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let appState = makeHarness(lifecycleOperations: operations) { _ in }.appState
+        let mac = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
+        let vps = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
+        let solo = SavedDashboard(id: UUID(), label: "Solo", normalizedURL: "https://127.0.0.3:1")
+        let spare = SavedDashboard(id: UUID(), label: "Spare", normalizedURL: "https://127.0.0.4:1", combined: true)
+        let extra = SavedDashboard(id: UUID(), label: "Extra", normalizedURL: "https://127.0.0.5:1", combined: true)
+        appState.savedDashboardRegistry = SavedDashboardRegistry(
+            activeDashboardID: vps.id, dashboards: [mac, vps, solo, spare, extra]
+        )
+        addTeardownBlock { @MainActor in appState.dropAllKeptDashboardRuntimes() }
+        let callClient = try await openClient(mac.normalizedURL)
+        let macBridge = DashboardTicketBridge(baseURL: mac.normalizedURL, dashboardID: mac.id)
+        // Kept longest, so the cap would let it go first.
+        appState.keep(KeptDashboardRuntime(
+            client: callClient, bridge: macBridge, connection: callClient.connection, keptAt: .distantPast
+        ), for: mac.id)
+        for (index, dashboard) in [spare, extra].enumerated() {
+            let client = try await openClient(dashboard.normalizedURL)
+            appState.keep(KeptDashboardRuntime(
+                client: client,
+                bridge: DashboardTicketBridge(baseURL: dashboard.normalizedURL, dashboardID: dashboard.id),
+                connection: client.connection,
+                keptAt: Date(timeIntervalSince1970: TimeInterval(index + 1))
+            ), for: dashboard.id)
+        }
+        let onScreen = try await openClient(vps.normalizedURL)
+        let vpsBridge = DashboardTicketBridge(baseURL: vps.normalizedURL, dashboardID: vps.id)
+        appState.client = onScreen
+        appState.connection = onScreen.connection
+        appState.installDashboardTicketBridgeForTesting(vpsBridge)
+        appState.isConnected = true
+
+        // A GPT-Live call started on Mac, minimised, with VPS on screen.
+        appState.liveCallProfile = "default"
+        appState.liveCallDashboardID = mac.id
+        appState.minimisedLiveVoice = .gptLive
+
+        XCTAssertEqual(appState.callDashboardOffScreen, mac.id)
+        XCTAssertTrue(appState.callBridge === macBridge, "its host routes go to Mac")
+        XCTAssertEqual(appState.callConnection?.baseUrl, mac.normalizedURL)
+        let requests = try await appState.clientForVoiceRequest()
+        XCTAssertTrue(requests === callClient, "its requests go through Mac's own connection")
+        XCTAssertEqual(appState.callProfileOffScreen, "default", "it names its profile: Mac's client may be on another")
+        XCTAssertTrue(appState.voiceJobLedgerKey.contains(mac.id.uuidString), "its jobs' ledger is Mac's")
+        XCTAssertEqual(
+            appState.callChatLink(.session(id: "chat-1")),
+            .session(id: "chat-1", profile: "default", dashboard: mac.id.uuidString),
+            "its chat's link opens on Mac"
+        )
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "default · Mac · Trip")
+
+        // A switch inside the group goes on; one outside it asks first.
+        XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
+        XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: spare.id))
+        XCTAssertFalse(appState.refusesCombinedSwitchDuringCall(to: spare.id))
+        XCTAssertTrue(appState.isCallEndingDashboardSwitch(to: solo.id))
+        XCTAssertTrue(appState.callSurvivesProfileSwitch, "a profile switch on VPS touches nothing of Mac's call")
+        XCTAssertFalse(appState.isCallEndingProfileSwitch)
+        var asked: CallEndingSwitch?
+        var switched = false
+        appState.switchEndingCall(to: "Mac", dashboard: mac.id, pending: &asked) { switched = true }
+        XCTAssertTrue(switched)
+        XCTAssertNil(asked)
+        appState.switchEndingCall(to: "Solo", dashboard: solo.id, pending: &asked) { XCTFail("Solo isn't combined: the call would end") }
+        XCTAssertNotNil(asked)
+        // Classic voice can't go on: it covers the screen it talks through.
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isCallEndingDashboardSwitch(to: mac.id))
+        appState.showVoiceSheet = false
+
+        // Past the cap, VPS kept lets the oldest go: Spare, never the
+        // call's Mac, kept longer still.
+        appState.keepOutgoingDashboardRuntimeIfCombined(vps.id, switchingTo: solo.id, roster: [])
+        XCTAssertNotNil(appState.keptDashboardRuntimes[mac.id], "the call's dashboard stays")
+        XCTAssertNil(appState.keptDashboardRuntimes[spare.id])
+        XCTAssertNotNil(appState.keptDashboardRuntimes[extra.id])
+        XCTAssertTrue(callClient.isConnected)
+
+        // The switch's speech boundary keeps a call that goes on across it.
+        appState.retireSpeechOperationsForServerReplacement(
+            previousIdentity: vps.id.uuidString, identity: solo.id.uuidString, keepingLiveCall: true
+        )
+        XCTAssertEqual(appState.minimisedLiveVoice, .gptLive)
+        XCTAssertEqual(appState.liveCallDashboardID, mac.id)
+
+        // Signing out of Mac ends the call: nothing carries it now.
+        appState.signOutDashboard(mac.id)
+        XCTAssertFalse(appState.isLiveCallUp)
+        XCTAssertNil(appState.liveCallDashboardID)
+        XCTAssertFalse(callClient.isConnected)
+        XCTAssertNil(appState.callDashboardOffScreen)
+    }
 }
 
 // MARK: - A kept socket that drops

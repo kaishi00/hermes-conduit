@@ -741,7 +741,7 @@ private struct DashboardSwitchMenu: ViewModifier {
                     ForEach(others) { dashboard in
                         Button {
                             Haptics.medium()
-                            appState.switchEndingCall(to: dashboard.label, pending: &pendingCallEndingSwitch) {
+                            appState.switchEndingCall(to: dashboard.label, dashboard: dashboard.id, pending: &pendingCallEndingSwitch) {
                                 Task { await appState.switchDashboard(to: dashboard.id) }
                             }
                         } label: {

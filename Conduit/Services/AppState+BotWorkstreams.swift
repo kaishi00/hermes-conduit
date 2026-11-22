@@ -235,21 +235,46 @@ extension AppState {
         )
     }
 
+    /// `botWorkClient` on the call's own dashboard: its plugin's parameter,
+    /// and its bridge, held for the client's requests, so they reach that
+    /// dashboard whichever shows by then.
+    func callBotWorkClient(profile: String) -> BotWorkstreamsClient {
+        let bridge = callBridge
+        return BotWorkstreamsClient(
+            profile: profile,
+            parameter: onCallRuntime { notifierPlugin.dashboardProfileParameter },
+            request: { path, method, body in
+                guard let bridge else { throw DashboardTicketBridgeError.notReady }
+                return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 30_000)
+            }
+        )
+    }
+
+    /// `id` while its dashboard is connected here (on screen or kept), nil
+    /// once it isn't: what a call's request made for it checks it's still
+    /// for.
+    func liveDashboard(_ id: UUID?) -> UUID? {
+        guard let id else { return activeDashboardID }
+        return runtime(for: id) == nil ? nil : id
+    }
+
     /// A voice call's job kept in its bot's registry (M5), so the Work
     /// panel lists it as a call's. Best effort, off the job's path: a
     /// plugin without the route, or a bot whose work is off, keeps none.
     func keepVoiceJobInRegistry(profile: String?, sessionID: String, title: String, instructions: String,
                                 fromWatch: Bool, callChat: String? = nil, endedWith: String? = nil,
                                 call: String? = nil) {
-        guard let via = Self.voiceJobAdoptVia(plugin: notifierPlugin, sessionID: sessionID, fromWatch: fromWatch)
+        // The call's own dashboard's plugin and registry, which another
+        // combined dashboard may cover meanwhile (no-switch stage 2).
+        guard let via = Self.voiceJobAdoptVia(plugin: onCallRuntime { notifierPlugin }, sessionID: sessionID, fromWatch: fromWatch)
         else { return }
         let bot = profile ?? voiceCallProfile
-        let client = botWorkClient(profile: bot)
-        let dashboard = activeDashboardID
+        let client = callBotWorkClient(profile: bot)
+        let dashboard = voiceCallDashboardID
         Task { @MainActor [weak self] in
             var kept = false
             _ = await AppState.adoptOnce(
-                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.liveDashboard(dashboard), appAlive: self != nil) },
                 send: { _ = try await client.adopt(sessionID: sessionID, title: title, via: via, goal: instructions,
                                                    chat: callChat, result: endedWith, call: call)
                         kept = true },
@@ -258,8 +283,9 @@ extension AppState {
                     botWorkLogger.notice("Keeping a voice job in its bot's work registry failed (try \(attempt, privacy: .public)): \(String(describing: type(of: error)), privacy: .public) \(String(describing: error))")
                 }
             )
-            // The Work panel shows it now rather than at its next read.
-            if kept { await self?.refreshBotWork(profile: bot) }
+            // The Work panel shows it now rather than at its next read, when
+            // it's the dashboard on screen's.
+            if kept, self?.activeDashboardID == dashboard { await self?.refreshBotWork(profile: bot) }
         }
     }
 
@@ -267,12 +293,12 @@ extension AppState {
     /// its Bot Chat's call held (Classic never saves its turns with the
     /// chat, so this is its only end). Best effort, on the dashboard in use.
     func voiceCallLeftChat(profile: String?, chat: String, call: String? = nil) {
-        guard notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability), !chat.isEmpty else { return }
-        let client = botWorkClient(profile: profile ?? voiceCallProfile)
-        let dashboard = activeDashboardID
+        guard onCallRuntime({ notifierPlugin.reports(BotWorkstreamsClient.callEndedCapability) }), !chat.isEmpty else { return }
+        let client = callBotWorkClient(profile: profile ?? voiceCallProfile)
+        let dashboard = voiceCallDashboardID
         Task { @MainActor [weak self] in
             _ = await AppState.adoptOnce(
-                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.activeDashboardID, appAlive: self != nil) },
+                stillCurrent: { AppState.sameDashboard(madeOn: dashboard, now: self?.liveDashboard(dashboard), appAlive: self != nil) },
                 send: { try await client.callEnded(chat: chat, call: call) },
                 wait: { try? await Task.sleep(for: .seconds(3)) },
                 failed: { attempt, error in
@@ -290,6 +316,9 @@ extension AppState {
     /// no job session is made. What to tell the call (for the live model, not localized), or
     /// nil when the chat isn't a workstream's.
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
+        // The work read here is the dashboard on screen's: a call off its
+        // own dashboard sends its request as a job there instead.
+        guard callDashboardOffScreen == nil else { return nil }
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
         let bot = thread.profile ?? voiceCallProfile
         if botWork.workstream(forSession: ids) == nil, botWork.snapshot(bot) == nil,

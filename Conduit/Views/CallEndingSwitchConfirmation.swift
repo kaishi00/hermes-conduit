@@ -6,7 +6,8 @@
 //  switch tears the call down (one live connection), so the pick asks
 //  first rather than ending the call without a word (issue 2390). A live
 //  call on the phone goes on across a switch to another profile on the
-//  same dashboard (all-live stage 2), so that pick doesn't ask. Moves
+//  same dashboard (all-live stage 2), or to another combined dashboard
+//  (no-switch stage 2), so that pick doesn't ask. Moves
 //  Conduit makes for a tap (a notification, a chat link, a widget, Pulse)
 //  refuse during a call instead and say so (#1297): those can wait, a
 //  pick is the user asking for the switch now.
@@ -28,13 +29,18 @@ extension AppState {
     /// `pending` so the view asks first. A switch to another profile
     /// (`profileOnly`) runs at once when the call goes on across it: a
     /// live call on the phone, through the kept socket (all-live stage 2).
+    /// So does a switch to `dashboard` inside the combined group: the call
+    /// goes on on its own dashboard (no-switch stage 2).
     func switchEndingCall(
         to destination: String,
         profileOnly: Bool = false,
+        dashboard: UUID? = nil,
         pending: inout CallEndingSwitch?,
         perform: @escaping () -> Void
     ) {
-        guard profileOnly ? isCallEndingProfileSwitch : isVoiceCallInProgress else {
+        let endsCall = profileOnly ? isCallEndingProfileSwitch
+            : dashboard.map { isCallEndingDashboardSwitch(to: $0) } ?? isVoiceCallInProgress
+        guard endsCall else {
             perform()
             return
         }

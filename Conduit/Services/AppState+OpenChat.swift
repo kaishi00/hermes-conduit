@@ -1435,9 +1435,10 @@ extension AppState {
         case .switchFirst(let dashboardID):
             traceStage = "dashboard check (switching to another saved dashboard)"
             // A notification tapped during a call, or a chat link routed
-            // before one started, stops here: switching dashboards would
-            // tear that call down.
-            if sparesCalls, isVoiceCallInProgress {
+            // before one started, stops here when switching dashboards would
+            // tear that call down. A live call on the phone goes on across a
+            // switch inside the combined group (no-switch stage 2).
+            if sparesCalls, isCallEndingDashboardSwitch(to: dashboardID) {
                 traceStage = "call in progress"
                 showCallRefusal(target.isChatLink
                     ? AppLocalization.string("End the call to open a chat in another workspace.")

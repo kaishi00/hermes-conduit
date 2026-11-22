@@ -279,7 +279,7 @@ extension AppState {
             removePulseWidget(dashboardID: link.dashboardID)
             return
         }
-        guard !isVoiceCallInProgress else {
+        guard !isCallEndingDashboardSwitch(to: link.dashboardID) else {
             showCallRefusal(AppLocalization.string("End the call to open a chat in another workspace."))
             return
         }

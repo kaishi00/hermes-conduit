@@ -217,7 +217,7 @@ extension AppState {
     /// Watch's, which may not be the one the iPhone is on (#1564).
     func makeLiveTokenClient(provider: DirectLiveProvider, profile: @escaping @MainActor () -> String) -> GeminiLiveTokenClient {
         GeminiLiveTokenClient(profile: profile, provider: { provider }, request: { [weak self] path, method, body, timeout in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         })
     }
@@ -315,7 +315,7 @@ extension AppState {
             // The same "End conversation" phrases as the classic Voice mode.
             endConversationPhrases: { [weak self] in
                 guard let self else { return [] }
-                return self.loadVoiceProfilePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
+                return self.loadCallVoicePreferences(profile: self.voiceCallProfile).resolvedSpokenEndConversationPhrases
             },
             // A call Hermes made opens with why it called, not a greeting (#449).
             openingPrompt: { [weak self] in self?.liveHermesCall?.openingTurn ?? self?.liveCallStyle.openingPrompt },

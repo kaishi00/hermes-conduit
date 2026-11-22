@@ -182,7 +182,7 @@ extension AppState {
             }
             return result
         }
-        guard let bridge = dashboardTicketBridge else {
+        guard let bridge = callBridge else {
             return ["error": "The calendar isn't reachable just now."]
         }
         do {
@@ -234,7 +234,7 @@ extension AppState {
     /// One sealed health or location read for the running call.
     private func callSealedReadTool(_ tool: VoiceHostTool, arguments: [String: Any], mode: LiveVoiceModeName?, profile: String) async -> [String: String] {
         // Checked again at each read: the user may have turned it off mid-call.
-        guard let mode, voiceReadableKeys(for: mode, profile: profile).contains(tool.key), let bridge = dashboardTicketBridge else {
+        guard let mode, voiceReadableKeys(for: mode, profile: profile).contains(tool.key), let bridge = callBridge else {
             return ["error": tool.key == "location"
                 ? "The user hasn't let this voice call read their location, or it isn't reachable now."
                 : "The user hasn't let this voice call read their health data, or it isn't reachable now."]

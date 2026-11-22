@@ -452,7 +452,7 @@ extension AppState {
     /// `zooms`: the chat grows out of the portrait (not when it opens
     /// beside the grid).
     func openCombinedBot(_ bot: BotProfile, in dashboardID: UUID, zooms: Bool = true) {
-        guard !refusesCombinedSwitchDuringCall() else { return }
+        guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         // The chat grows out of the portrait as this dashboard's do: the
         // portrait stays where it is through the switch (the group's one
         // order), now this dashboard's, under the same name.
@@ -587,7 +587,7 @@ extension AppState {
     /// Another combined dashboard's bot's overview: the switch to its
     /// dashboard, then `show` with the bot as that dashboard lists it.
     func openCombinedBotOverview(_ bot: BotProfile, in dashboardID: UUID, show: @escaping (BotProfile) -> Void) {
-        guard !refusesCombinedSwitchDuringCall() else { return }
+        guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             await self.switchToCombinedDashboardUntilSettled(dashboardID)

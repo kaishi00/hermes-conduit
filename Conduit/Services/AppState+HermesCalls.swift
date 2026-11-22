@@ -58,6 +58,11 @@ extension AppState {
     /// count as on: the host refuses the watch if they're off, and the
     /// call hears so.
     var hermesCallbackAvailability: VoiceCallbackAvailability {
+        // A call off its dashboard asks what its own dashboard's plugin
+        // serves; the status read here is the screen's.
+        if callDashboardOffScreen != nil {
+            return onCallRuntime { supportsHermesCalls } ? .available : .unsupported
+        }
         guard supportsHermesCalls else { return .unsupported }
         guard hermesCallsStatusKey == hermesCallsKey(profile: voiceCallProfile) else { return .available }
         return hermesCallsStatus?.callbackAvailability ?? .available
@@ -339,7 +344,7 @@ extension AppState {
             availability: { [weak self] in self?.hermesCallbackAvailability ?? .unsupported },
             watch: { [weak self] target, holdSeconds, endedWithinSeconds in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                return try await self.hermesCallsClient.watch(
+                return try await self.callHermesCallsClient.watch(
                     sessionIDs: target.sessionIDs,
                     title: target.title,
                     profile: target.profile ?? self.voiceCallProfile,
@@ -349,11 +354,11 @@ extension AppState {
             },
             hold: { [weak self] watchID, profile, seconds in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                return try await self.hermesCallsClient.hold(watchID: watchID, profile: profile ?? self.voiceCallProfile, seconds: seconds)
+                return try await self.callHermesCallsClient.hold(watchID: watchID, profile: profile ?? self.voiceCallProfile, seconds: seconds)
             },
             cancel: { [weak self] watchID, profile in
                 guard let self else { throw DashboardTicketBridgeError.notReady }
-                try await self.hermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.voiceCallProfile)
+                try await self.callHermesCallsClient.cancel(watchID: watchID, profile: profile ?? self.voiceCallProfile)
             },
             notify: { [weak self] target, kind in
                 guard let self else { return }
@@ -496,7 +501,8 @@ extension AppState {
         if hermesCallPresenceTask != nil, hermesCallPresenceProfile == profile { return }
         endHermesCallPresence()
         hermesCallPresenceProfile = profile
-        let client = hermesCallsClient
+        // On the call's own dashboard, which another may cover meanwhile.
+        let client = callHermesCallsClient
         // A call started right after the last one hung up: its "away" lands
         // first, never over this call's presence.
         let release = hermesCallPresenceRelease
@@ -526,7 +532,7 @@ extension AppState {
         task.cancel()
         hermesCallPresenceTask = nil
         hermesCallPresenceProfile = nil
-        let client = hermesCallsClient
+        let client = callHermesCallsClient
         let end = beginVoiceTranscriptBackgroundTask(named: "conduit.hermesCalls.presence")
         let previous = hermesCallPresenceRelease
         hermesCallPresenceRelease = Task {

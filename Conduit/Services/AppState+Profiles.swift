@@ -206,7 +206,12 @@ extension AppState {
             // A live call on the phone goes on through the kept socket, on
             // its own profile (all-live stage 2, issue 2390). Read in the
             // same step as the socket, so the two can't disagree.
-            let keepsCall = keptSocketClient != nil && callSurvivesProfileSwitch
+            // A live call on another combined dashboard goes on through that
+            // one's connection, which this switch never touches (no-switch
+            // stage 2): nothing of it moves to the next client.
+            let callElsewhere = callDashboardOffScreen != nil && callSurvivesProfileSwitch
+            let keepsCall = callElsewhere || (keptSocketClient != nil && callSurvivesProfileSwitch)
+            let carriesCall = keepsCall && !callElsewhere
             let ticket: String
             if keptSocketClient != nil {
                 ticket = savedConnection.ticket
@@ -259,7 +264,7 @@ extension AppState {
             if keepsCall {
                 // The call's own profile, which may be the one this switch
                 // goes back to.
-                keepCallSessionsOnTheirProfile(voiceCallProfile, for: nextClient)
+                if carriesCall { keepCallSessionsOnTheirProfile(voiceCallProfile, for: nextClient) }
             } else {
                 if showVoiceSheet {
                     var preferences = loadVoiceProfilePreferences(profile: activeProfile)
@@ -314,7 +319,7 @@ extension AppState {
             // that kept no socket and so holds a fresh ticket.
             // A call that goes on across the switch keeps its requests in flight.
             if let keptSocketClient, keptSocketClient.handOffSocket(
-                to: nextClient, carryingSessions: keepsCall ? callSessionIDs : [], carryingCallRequests: keepsCall
+                to: nextClient, carryingSessions: carriesCall ? callSessionIDs : [], carryingCallRequests: carriesCall
             ) {
                 noteConnectionStep("Socket kept for the switch")
             } else {
