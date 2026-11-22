@@ -538,12 +538,15 @@ extension AppState {
 
     /// What the sign-in screen says when the dashboard asks to sign in
     /// again: on a dashboard whose plugin said its password sign-ins end on
-    /// each restart, why, and what keeps them (plugin 0.193.6+).
+    /// each restart, why, and what keeps them (plugin 0.193.6+). Only for a
+    /// password sign-in: the secret doesn't keep a native sign-in's grant or
+    /// Hermes' session token, which expire for reasons of their own.
     static func signInRequiredPresentation(
         _ failure: ConnectionFailurePresentation,
-        endsOnRestart: Bool
+        endsOnRestart: Bool,
+        nativeSignIn: Bool = false
     ) -> ConnectionFailurePresentation {
-        endsOnRestart && failure == .signInExpired ? .signInEndsOnRestart : failure
+        endsOnRestart && !nativeSignIn && failure == .signInExpired ? .signInEndsOnRestart : failure
     }
 
     /// Forces the sign-in screen with a classified failure presentation.
@@ -604,7 +607,11 @@ extension AppState {
     ) {
         let pendingFailure = Self.signInRequiredPresentation(
             pendingFailure,
-            endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: activeDashboardID, in: defaults)
+            endsOnRestart: NotifierPluginStatus.Remembered.signInEndsOnRestart(for: activeDashboardID, in: defaults),
+            // A repeat forced sign-in finds the bridge already gone; the
+            // native grant it kept says the same.
+            nativeSignIn: dashboardTicketBridge?.usesNativeOAuth
+                ?? activeDashboardID.map { KeychainHelper.loadNativeOAuthTokens(dashboardID: $0) != nil } ?? false
         )
         cancelChatResumeTransportRecovery()
         invalidateReconciliation()

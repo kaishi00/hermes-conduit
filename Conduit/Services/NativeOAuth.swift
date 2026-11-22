@@ -587,11 +587,18 @@ final class NativeOAuthSession {
     /// Forgets a grant the server rejected again right after a refresh, as
     /// `requestJSON`'s replay does: the one `rejected` carried, and only
     /// while it is still this session's (another request may have renewed
-    /// it while the retry was out). A session token is kept, as `refresh`
-    /// keeps it (issue 2481).
+    /// it while the retry was out), or while the Keychain still holds it
+    /// because saving the renewal failed. A session token is kept, as
+    /// `refresh` keeps it (issue 2481).
     func discardRejectedGrant(sentIn rejected: URLRequest) {
-        guard !isInvalidated, tokens.sentAccessToken(in: rejected) == tokens.accessToken else { return }
-        forgetStoredGrant(tokens)
+        guard !isInvalidated else { return }
+        if tokens.sentAccessToken(in: rejected) == tokens.accessToken {
+            forgetStoredGrant(tokens)
+        } else if let unsavedOver, unsavedOver.sentAccessToken(in: rejected) == unsavedOver.accessToken {
+            // Renewed meanwhile, but the save failed: the Keychain still
+            // holds the refused grant, which a launch would sign in with.
+            forgetStoredGrant(unsavedOver)
+        }
     }
 
     /// Takes the Keychain's grant when another session of this dashboard

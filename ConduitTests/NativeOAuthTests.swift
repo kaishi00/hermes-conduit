@@ -790,6 +790,45 @@ final class NativeOAuthTests: XCTestCase {
         second.invalidate()
     }
 
+    @MainActor
+    func testARefusedRetryClearsTheGrantAFailedSaveLeftBehind() async throws {
+        // A download retry refused after the session renewed, when saving
+        // the renewal failed: the Keychain still holds the refused grant,
+        // which the next launch would sign in with.
+        let dashboardID = UUID()
+        let initial = tokens()
+        let failing = WriteFailingKeychainBackend()
+        KeychainHelper.useBackendForTesting(failing)
+        KeychainHelper.saveNativeOAuthTokens(initial, dashboardID: dashboardID)
+        failing.failWrites = true
+        var apiCalls = 0
+        NativeOAuthURLProtocolStub.handler = { request in
+            switch request.url?.path {
+            case "/auth/native/refresh":
+                return (200, [
+                    "access_token": "new-access", "refresh_token": "new-refresh",
+                    "expires_at": 4_000_000_100, "provider": "google", "user_id": "user",
+                ])
+            case "/api/status":
+                apiCalls += 1
+                if apiCalls == 1 { return (401, ["detail": "expired"]) }
+                return (200, ["ok": true])
+            default:
+                throw URLError(.badURL)
+            }
+        }
+        let session = NativeOAuthSession(tokens: initial, dashboardID: dashboardID, client: makeClient())
+        _ = try await session.requestJSON(path: "/api/status")
+        XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), initial)
+
+        var rejected = URLRequest(url: URL(string: "https://hermes.example/api/files/a")!)
+        initial.authorize(&rejected)
+        session.discardRejectedGrant(sentIn: rejected)
+
+        XCTAssertNil(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID))
+        session.invalidate()
+    }
+
     /// A refresh refused because another session renewed the grant while it
     /// was out keeps the renewed grant: nothing is cleared, and the request
     /// goes again with it.
