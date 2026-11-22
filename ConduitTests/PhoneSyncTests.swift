@@ -287,6 +287,21 @@ extension HermesVoiceGatewayTimeoutTests {
         let one = PhoneSyncEngine.parts(of: small, maxItems: 5_000, maxBytes: 3_000_000)
         XCTAssertEqual(one.count, 1)
         XCTAssertEqual(one.first.map { NSDictionary(dictionary: $0) }, NSDictionary(dictionary: small))
+
+        // The first part's shortcuts count too, as the host counts them (issue 3023).
+        let edge: [String: Any] = [
+            "sent_at": "2026-10-19T08:00:00Z",
+            "shortcuts": [["id": "s_1", "name": "Log water"]],
+            "photos": ["full": false, "upsert": [[String: Any]](), "delete": (0..<5_000).map { "p_\($0)" }],
+        ]
+        let split = PhoneSyncEngine.parts(of: edge, maxItems: 5_000, maxBytes: 3_000_000)
+        XCTAssertEqual(split.count, 2)
+        for part in split { XCTAssertLessThanOrEqual(FakePhoneHost.items(in: part), 5_000) }
+        XCTAssertNotNil(split.first?["shortcuts"])
+        XCTAssertNil(split.last?["shortcuts"])
+        XCTAssertEqual(((split.first?["photos"] as? [String: Any])?["delete"] as? [Any])?.count, 4_999)
+        XCTAssertEqual(split.flatMap { (($0["photos"] as? [String: Any])?["delete"] as? [String]) ?? [] },
+                       (0..<5_000).map { "p_\($0)" })
     }
 
     func testAWakeForTheStatusSendsItEvenUnchangedAndTurnStatusFollowsWhatsShared() async throws {
@@ -2210,10 +2225,12 @@ private final class FakePhoneHost {
     static func items(in batch: [String: Any]) -> Int {
         let events = batch["events"] as? [String: Any] ?? [:]
         let reminders = batch["reminders"] as? [String: Any] ?? [:]
+        let photos = batch["photos"] as? [String: Any] ?? [:]
         return (batch["calendars"] as? [Any] ?? []).count + (events["upsert"] as? [Any] ?? []).count
             + (events["delete"] as? [Any] ?? []).count + (reminders["upsert"] as? [Any] ?? []).count
             + (reminders["delete"] as? [Any] ?? []).count + (batch["alarms"] as? [Any] ?? []).count
-            + (batch["contacts"] as? [Any] ?? []).count
+            + (batch["contacts"] as? [Any] ?? []).count + (batch["shortcuts"] as? [Any] ?? []).count
+            + (photos["upsert"] as? [Any] ?? []).count + (photos["delete"] as? [Any] ?? []).count
     }
 
     func handle(path: String, method: String, body: [String: Any]?) async throws -> [String: Any] {
