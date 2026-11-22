@@ -2920,13 +2920,16 @@ final class AppStateSessionCompressTests: XCTestCase {
         let harness = controlHarness { operations in
             operations.readSessionControl = { _, _ in
                 reads += 1
-                return Self.goalSnapshot
-            }
-            operations.runSessionControl = { _, _, _ in
+                guard reads > 1 else { return Self.goalSnapshot }
+                // The dock reads again after an answer without a snapshot;
+                // meanwhile another combined dashboard's chat opens in
+                // place under the same id.
                 opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
-                // No snapshot: the dock would read it again, then show the note.
-                return (nil, "Paused.")
+                var paused = Self.goalSnapshot
+                paused.goal?.status = "paused"
+                return paused
             }
+            operations.runSessionControl = { _, _, _ in (nil, "Paused.") }
         }
         opened = harness.appState
         await harness.appState.refreshSessionControl(for: "composer-origin")
@@ -2934,8 +2937,15 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         await harness.appState.runSessionControl(.goalPause)
 
-        XCTAssertNil(harness.appState.sessionControl.notice)
-        XCTAssertEqual(reads, 1, "Nor is the moved chat's dock read from this dashboard's Hermes")
+        XCTAssertEqual(reads, 2)
+        XCTAssertNotEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true,
+                          "The read was for the chat that was on screen, not this one")
+        XCTAssertNil(harness.appState.sessionControl.notice, "Nor is its note shown under this chat's dock")
+
+        // A read once the other dashboard's chat is on screen never starts
+        // on this dashboard's Hermes.
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertEqual(reads, 2)
     }
 
     func testAProcessListReadForAChatThatMovedToAnotherDashboardIsDropped() async throws {

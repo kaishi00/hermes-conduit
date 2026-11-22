@@ -1166,6 +1166,38 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// Another combined dashboard's chat opened in place under the same id
+    /// isn't in this dashboard's catalog: Hermes' word that the chat moved
+    /// reads nothing from this dashboard's Hermes.
+    func testAnotherDashboardsChatUnderTheSameIdIsNotReadFromThisCatalog() async {
+        let server = TwoDeviceServer()
+        server.catalogCount = 1
+        let harness = twoDeviceHarness(server)
+        let box = await openTwoDeviceChat(harness)
+        let appState = harness.appState
+        let readsAtOpen = server.transcriptReads
+        await tick(appState, after: 0, server)
+        server.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+
+        server.rows += [
+            ["id": "2", "role": "user", "content": "Sent from the TUI", "timestamp": "2"],
+            ["id": "3", "role": "assistant", "content": "PAPAYA", "timestamp": "3"],
+        ]
+        server.catalogCount = 3
+        appState.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+        server.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        await appState.openChatCatalogCheck?.value
+        await appState.openChatSyncRead?.value
+
+        XCTAssertEqual(server.transcriptReads, readsAtOpen, "That chat is its own dashboard's to read")
+        XCTAssertEqual(appState.messages.map(\.content), ["Question"])
+        box.client.disconnect()
+    }
+
     /// Bounded wait for the coalesced streaming publish (33 ms cadence).
     private func waitForStreamingText(
         _ expected: String,
