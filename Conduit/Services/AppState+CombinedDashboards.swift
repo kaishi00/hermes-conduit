@@ -275,6 +275,10 @@ extension AppState {
     /// taking it up points its events back at the screen.
     func keep(_ kept: KeptDashboardRuntime, for id: UUID) {
         keptDashboardRuntimes[id] = kept
+        // A live call going on through this dashboard (signed in again
+        // quietly after its socket dropped): the client names the call's
+        // profile for its sessions, as a reconnect's does.
+        if liveCallHolds(dashboard: id) { keepCallSessionsOnTheirProfile(voiceCallProfile, for: kept.client) }
         kept.client.onDisconnected = { [weak self, weak client = kept.client] in
             Task { @MainActor in
                 guard let self, let client,

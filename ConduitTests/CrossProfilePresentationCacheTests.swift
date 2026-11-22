@@ -985,7 +985,7 @@ extension CrossProfilePresentationCacheTests {
             .session(id: "chat-1", profile: "default", dashboard: mac.id.uuidString),
             "its chat's link opens on Mac"
         )
-        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "default · Mac · Trip")
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "\(appState.defaultProfileName) · Mac · Trip")
 
         // A switch inside the group goes on; one outside it asks first.
         XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))

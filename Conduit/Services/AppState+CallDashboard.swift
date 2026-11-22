@@ -122,19 +122,25 @@ extension AppState {
     /// jobs back, as a dashboard switch outside the group ends it.
     func endLiveCallLosingItsDashboard(_ id: UUID) {
         guard liveCallHolds(dashboard: id) else { return }
+        // Each stop's hang-up hands the call's jobs back (callEndedOffItsProfile).
         stopQwenLiveConversation()
         stopGeminiLiveConversation()
         stopGPTLiveConversation()
         stopGrokLiveConversation()
         stopLocalLiveConversation()
-        handBackEndedCallJobsNow()
     }
 
     /// What the minimised call's bar and its sheet's header name while
     /// another dashboard shows: the call's profile and its dashboard's name.
     var callDashboardSubject: String? {
         guard let id = callDashboardOffScreen else { return nil }
-        let profile = voiceCallProfile
+        // The name the call's dashboard gives its profile (a bot's title,
+        // Hermes' own name), else the profile's.
+        let key = voiceCallProfile.trimmingCharacters(in: .whitespacesAndNewlines)
+        let profile = profileAppearanceStore.loadBotTitles(dashboardID: id)[key]
+            ?? profileAppearanceStore.loadHermesNames(dashboardID: id)[key]
+            ?? (key.lowercased() == "default" || key.isEmpty ? defaultProfileName
+                : String(key.prefix(1)).uppercased() + String(key.dropFirst()))
         let name = savedDashboardRegistry.dashboard(with: id)?.label.trimmingCharacters(in: .whitespacesAndNewlines)
         return [profile, name].compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
     }
