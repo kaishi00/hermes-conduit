@@ -3637,6 +3637,50 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerRestoreRequests.map(\.draft.text), [pending.draftText])
     }
 
+    /// A waiting message whose chat Hermes no longer has, failed or handed
+    /// back while another combined dashboard's chat is open in place: its
+    /// words go to their own dashboard's New Chat draft, not the far chat's,
+    /// also when rebuilt from their file after the dashboard was left, and
+    /// the far chat's composer doesn't say they're in it.
+    func testAGoneChatsWaitingWordsSkipAFarChatOnScreen() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        appState.sendWhenConnected("Words for a gone chat", replyReference: nil)
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        let key = appState.composerDraftKeyOnScreen
+        appState.pendingComposerSend = nil // Delivery has taken ownership.
+
+        // Another dashboard's chat opens in place, and Hermes says the
+        // waiting message's chat is gone.
+        let far = UUID()
+        appState.offlineChatPresentation = nil
+        appState.activeSessionId = "far-chat"
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "default")
+        XCTAssertEqual(appState.composerDraftKeyOnScreen.dashboard, far)
+        appState.deadResumeRowIDs["\(dashboard.uuidString)|default"] = [pending.draftSessionID]
+        let ownNewChat = ComposerDraftKey(dashboard: dashboard, profile: "default",
+                                          sessionID: ComposerDraftKey.newConversationSessionID)
+
+        appState.restoreFailedPendingComposerSend(pending, submittedDraftKey: key)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
+        XCTAssertNil(appState.composerNotice)
+
+        appState.composerRestoreRequests.removeAll()
+        appState.returnPendingComposerSendToDraft(pending)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
+        XCTAssertNil(appState.composerNotice)
+
+        // Left and visited again: the request rebuilt from its file goes
+        // the same way, not to the gone chat's own draft.
+        appState.leaveComposerSends(dashboardID: dashboard, keepingWordsOnTheirWay: true)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
+        XCTAssertNil(appState.composerNotice)
+    }
+
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
         let (appState, store, dashboard) = makeAppState()
         let otherDashboard = UUID()
