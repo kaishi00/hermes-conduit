@@ -3679,6 +3679,18 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [ownNewChat])
         XCTAssertNil(appState.composerNotice)
+
+        // Back on its own dashboard with another of its chats open: that
+        // chat's composer takes the words and says why.
+        appState.leaveComposerSends(dashboardID: dashboard, keepingWordsOnTheirWay: true)
+        appState.farChat = nil
+        appState.activeSessionId = "stored-b"
+        let screenKey = appState.durableComposerDraftKeyOnScreen
+        XCTAssertEqual(screenKey.dashboard, dashboard)
+        appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [screenKey])
+        XCTAssertEqual(appState.composerNotice,
+                       appState.pendingComposerSendNotice(for: pending, onScreen: false, chatIsGone: true))
     }
 
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
