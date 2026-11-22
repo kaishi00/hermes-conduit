@@ -116,14 +116,18 @@ extension AppState {
     /// read and write `runtime` meanwhile, `activeDashboardID` is its
     /// dashboard, and what reacts on screen (their side effects) stays off
     /// unless it's the one on screen. This one is synchronous;
-    /// `actAcrossAwaits(onRuntime:_:)` holds the scope across awaits.
+    /// `actAcrossAwaits(onRuntime:_:)` holds the scope across awaits. A Task
+    /// made inside carries the scope on (the reducer's deferred publishes).
     func act<T>(onRuntime runtime: DashboardRuntime, _ body: () throws -> T) rethrows -> T {
         let previous = (runtimeInScope, dashboardIDInScope)
         let id = dashboardID(of: runtime)
         runtimeInScope = runtime
         dashboardIDInScope = id
         defer { (runtimeInScope, dashboardIDInScope) = previous }
-        return try body()
+        let scoped: DashboardRuntime? = runtime === runtimeOnScreen ? nil : runtime
+        return try RuntimeScope.$runtime.withValue(scoped) {
+            try RuntimeScope.$dashboardID.withValue(scoped == nil ? nil : id) { try body() }
+        }
     }
 
     /// Runs async `body` on another dashboard's runtime, as the synchronous
