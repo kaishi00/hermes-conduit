@@ -614,6 +614,10 @@ extension AppState {
     func composerDraftKeysAreSameChat(_ lhs: ComposerDraftKey, _ rhs: ComposerDraftKey) -> Bool {
         guard lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
         if lhs == rhs { return true }
+        // A kept dashboard's draft: told from its own list, on its runtime.
+        if let farRuntime = composerDraftFarRuntime(for: lhs) {
+            return act(onRuntime: farRuntime) { composerDraftKeysAreSameChat(lhs, rhs) }
+        }
         // The lists and ids below are the dashboard on screen's: another
         // dashboard's draft is only ever its own key.
         guard lhs.dashboard == activeDashboardID else { return false }
@@ -696,8 +700,10 @@ extension AppState {
     /// The runtime of the far chat on screen when `key` is its draft: its
     /// list is that dashboard's, read there.
     private func composerDraftFarRuntime(for key: ComposerDraftKey) -> DashboardRuntime? {
-        guard let farChat, key.dashboard == farChat.dashboardID, key.dashboard != activeDashboardID,
-              let farRuntime = runtime(for: farChat.dashboardID), farRuntime !== shownRuntime else { return nil }
+        // Its chat may have been left since: its dashboard's list still
+        // names it while that dashboard is kept.
+        guard let dashboard = key.dashboard, dashboard != activeDashboardID,
+              let farRuntime = runtime(for: dashboard), farRuntime !== shownRuntime else { return nil }
         return farRuntime
     }
 
