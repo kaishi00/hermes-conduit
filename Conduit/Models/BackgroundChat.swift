@@ -183,7 +183,9 @@ struct BackgroundChat: Equatable {
     /// runs in them, and take none of the `limit` places.
     @MainActor
     static func adding(_ chat: BackgroundChat, to list: [BackgroundChat], keeping: Set<String>? = nil) -> [BackgroundChat] {
-        var kept = list.filter { $0.sessionIDs.isDisjoint(with: chat.sessionIDs) }
+        // One copy per chat: the same ids on another dashboard name another
+        // Hermes' chat.
+        var kept = list.filter { $0.dashboardID != chat.dashboardID || $0.sessionIDs.isDisjoint(with: chat.sessionIDs) }
         kept.insert(chat, at: 0)
         func isKept(_ chat: BackgroundChat) -> Bool {
             keeping.map { !chat.sessionIDs.isDisjoint(with: $0) } == true

@@ -726,9 +726,12 @@ extension AppState {
         let previousDashboardID = activeDashboardID
         chatSyncSettledDashboardID = nil
         // The outgoing dashboard's chat and Chats list as they show now are
-        // what the next visit there opens to.
-        recordOfflineChatCopy()
-        keepBotChatCopy()
+        // what the next visit there opens to; another dashboard's chat
+        // open in place keeps its copy under its own dashboard.
+        onChatRuntimeNow {
+            recordOfflineChatCopy()
+            keepBotChatCopy()
+        }
         // A chat kept beside or in a window is the outgoing dashboard's: each closes,
         // and only a reply still coming there goes on being followed.
         closeKeptChats()

@@ -520,6 +520,9 @@ extension AppState {
         // runtime kept anew later doesn't take the page over unannounced.
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         release(kept)
+        // A reply followed through its socket ends here, as its chats' do
+        // when the screen's socket closes.
+        settleKeptChatTurnsAfterDisconnect(of: id)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // A surface showing it stops republishing a runtime that's gone.
         let gone = ObjectIdentifier(kept.runtime)
