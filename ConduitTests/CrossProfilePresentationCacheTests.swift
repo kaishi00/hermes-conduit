@@ -2650,9 +2650,18 @@ extension CrossProfilePresentationCacheTests {
 
         // A chip shows its Pulse in place: no switch, so a call goes on.
         appState.isNativeHermesCallActive = true
-        kept.runtime.notifierPlugin.state = .reported(version: NotifierPluginStatus.recommendedVersion,
-                                                      capabilities: [PulseClient.explainsCapability])
+        // What its plugin serves is read on its own runtime first, signed in
+        // quietly beside this one without it.
+        XCTAssertEqual(kept.runtime.notifierPlugin.state, .unknown)
+        appState.keptDashboardJSONReader = { bridge, path in
+            XCTAssertTrue(bridge === kept.bridge, "read through the kept connection")
+            counts.reads.append(path)
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [PulseClient.explainsCapability]] }
+            return ["cards": [], "unseen": 3]
+        }
         appState.openCombinedPulse(mac.id)
+        await appState.readyShownPulseRuntime()
+        XCTAssertEqual(counts.reads.last, NotifierPluginStatus.path)
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.pulseDashboardID, mac.id)
         XCTAssertTrue(appState.pulseRuntime === kept.runtime)

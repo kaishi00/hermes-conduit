@@ -1813,6 +1813,8 @@ struct V2PulsePage: View {
     /// after its visit ended marks nothing seen.
     private func load(in visit: UUID) async {
         let dashboard = appState.pulseDashboardID
+        await appState.readyShownPulseRuntime()
+        guard appState.pulseDashboardID == dashboard else { return }
         do {
             let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.pulseDashboardID == dashboard else { return }

@@ -116,6 +116,15 @@ extension AppState {
         return act(onRuntime: runtime, body)
     }
 
+    /// Before the page reads another dashboard's feed in place: what its
+    /// plugin serves, read on its own runtime when one signed in quietly
+    /// beside this one hasn't been asked yet, so its feed is asked for
+    /// suggestions and looks, and its cards get their buttons, as there.
+    func readyShownPulseRuntime() async {
+        guard pulseRuntime != nil, let id = pulseShownDashboardID else { return }
+        await readKeptPluginStatusIfUnknown(id)
+    }
+
     /// Shows another combined dashboard's Pulse in place: the page reads
     /// and acts on its feed through its kept connection, with no switch, so
     /// no call ends either. Its own chip, or one not connected here, goes
