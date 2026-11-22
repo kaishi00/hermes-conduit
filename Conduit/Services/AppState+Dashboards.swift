@@ -143,6 +143,8 @@ extension AppState {
         var picks = stored[bucket] ?? ModelQuickPicks()
         change(&picks)
         guard picks != stored[bucket] else { return }
+        // The Model sheet reads a far chat's from what's kept.
+        objectWillChange.send()
         stored[bucket] = picks
         persistModelQuickPicks(stored)
     }
@@ -430,6 +432,7 @@ extension AppState {
     /// Keeps a dashboard's hidden models without its runtime (a far
     /// chat's, after its runtime has gone).
     func saveModelVisibility(_ visibility: ModelVisibility, dashboardID: UUID) {
+        objectWillChange.send()
         keepModelVisibility(Self.normalizedModelVisibility(visibility), dashboardID: dashboardID)
     }
 
