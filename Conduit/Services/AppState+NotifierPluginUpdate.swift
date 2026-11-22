@@ -113,14 +113,15 @@ extension AppState {
             self.notifierPluginUpdateTask = nil
             self.notifierPluginUpdate.finish(ended, run: runID, activeDashboardID: self.activeDashboardID)
         }
-        watchNotifierPluginUpdate(run: runID, heard: heard, dashboardID: dashboardID)
+        watchNotifierPluginUpdate(run: runID, heard: heard, dashboardID: dashboardID, profile: activeProfile)
     }
 
     /// Ends run `runID` when its steps go quiet past their limit, so the
     /// screen can't sit on a step for good (Eric, 2026-11-21: it stayed on
     /// "Downloading the plugin…" with nothing started on the host). It asks
-    /// the host where the update stands and says so.
-    private func watchNotifierPluginUpdate(run runID: UUID, heard: NotifierPluginUpdateHeartbeat, dashboardID: UUID?) {
+    /// the host where the update stands and says so. `profile` is the one
+    /// the run asked the host under.
+    private func watchNotifierPluginUpdate(run runID: UUID, heard: NotifierPluginUpdateHeartbeat, dashboardID: UUID?, profile: String) {
         notifierPluginUpdateWatchdog?.cancel()
         let runStarted = Date()
         notifierPluginUpdateWatchdog = Task { [weak self] in
@@ -137,11 +138,16 @@ extension AppState {
                     return
                 }
                 await self.refreshNotifierPluginStatus()
-                let path = NotifierPluginUpdater.selfUpdateRequestPath(profile: self.activeProfile, acceptScan: false)
+                let path = NotifierPluginUpdater.selfUpdateRequestPath(profile: profile, acceptScan: false)
                 let probe = try? await self.dashboardTicketBridge?.requestJSON(path: path)
                 guard !Task.isCancelled, self.notifierPluginUpdate.isRun(runID) else { return }
-                let outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
+                var outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
                                                                       plugin: self.notifierPlugin, runStarted: runStarted)
+                // Ready means the gateway serves too, as after a run that ended on its own.
+                if case .updated = outcome, !(await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)) {
+                    outcome = .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
+                }
+                guard !Task.isCancelled, self.notifierPluginUpdate.isRun(runID), self.activeDashboardID == dashboardID else { return }
                 self.notifierPluginUpdate.finish(outcome, run: runID, activeDashboardID: self.activeDashboardID)
                 return
             }

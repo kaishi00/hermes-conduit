@@ -232,7 +232,9 @@ struct NotifierPluginUpdater {
                 return outcome
             }
         }
-        if plugin.runtime != nil, !plugin.restartPending, !plugin.updateAvailable {
+        // By version, as a failed run's report is read: a host that manages
+        // its plugin never offers an update, but may still run the old one.
+        if plugin.settles(.runningOnHost), !plugin.updateAvailable {
             return .updated(version: plugin.runningVersion)
         }
         return .failed(detail: AppLocalization.string("The update didn't get going on the host, so Conduit stopped waiting for it. Try again.", table: .notifications))

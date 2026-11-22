@@ -1237,6 +1237,12 @@ extension GatewayRestartTests {
         XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: ended, plugin: old, runStarted: runStarted), .failed(detail: "no route"))
         // The new version runs (the update landed some other way): updated.
         XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: nil, plugin: upToDate, runStarted: runStarted), .updated(version: current))
+        // A host that manages its plugin offers no update, but the old one still running isn't updated.
+        var managedOld = old
+        managedOld.managedBy = "nix"
+        if case .updated = NotifierPluginUpdater.outcomeAfterStall(job: nil, plugin: managedOld, runStarted: runStarted) {
+            XCTFail("a managed host still running the old plugin was read as updated")
+        }
 
         var slot = NotifierPluginUpdateSlot()
         let run = slot.start(on: nil)
