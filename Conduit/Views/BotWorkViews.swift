@@ -829,7 +829,7 @@ struct BotQuestionDismissButton: View {
             Haptics.light()
             dismiss()
         } label: {
-            Text(AppLocalization.string("Dismiss"))
+            Text(AppLocalization.string("Dismiss question", table: .bots))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 36)
