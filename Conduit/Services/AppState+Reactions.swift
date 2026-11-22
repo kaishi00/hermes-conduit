@@ -45,7 +45,7 @@ extension AppState {
     var reactionsAvailable: Bool {
         offlineChatPresentation == nil
             && activeSessionId != nil
-            && (client != nil || messageReactionSender != nil)
+            && (chatClient != nil || messageReactionSender != nil)
     }
 
     func canReact(to message: ChatMessage) -> Bool {
@@ -60,6 +60,9 @@ extension AppState {
     /// back and says why. Hermes passes the reaction to the agent with the
     /// next message, so nothing is sent now.
     func react(to messageId: String, with emoji: String) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.react(to: messageId, with: emoji) }) != nil { return }
         guard let sessionId = activeSessionId,
               let index = messages.firstIndex(where: { $0.id == messageId }),
               canReact(to: messages[index]),
@@ -177,6 +180,9 @@ extension AppState {
     /// original conversation remains untouched; the new session becomes active
     /// and is resumed through the normal authoritative recovery path.
     func branchFromAssistantMessage(_ messageId: String) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.branchFromAssistantMessage(messageId) }) != nil { return }
         guard !isBusy, !isBranchingChat, !isProfileSwitching,
               let client,
               let parentSessionId = activeSessionId,

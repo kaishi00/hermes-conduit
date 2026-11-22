@@ -22,6 +22,9 @@ extension AppState {
     /// leave an agent "Running" for good (#492). Gateways without
     /// `subagent.list` leave the cards as they are.
     func refreshDelegateAgents() async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.refreshDelegateAgents() }) != nil { return }
         guard let client else { return }
         let cutoff = Date().addingTimeInterval(-Self.delegateAgentRosterGrace)
         let sessionIDs = Set(delegateAgents.lazy
@@ -130,6 +133,9 @@ extension AppState {
     /// Sends `text` to one running delegate agent (#820). Hermes hands it
     /// over at the agent's next tool step.
     func steerDelegateAgent(_ agent: DelegateAgentActivity, text: String) async -> DelegateAgentControlResult {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: DelegateAgentControlResult.failed, { await self.steerDelegateAgent(agent, text: text) }) { return routed }
         let text = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty, !text.isEmpty else { return .failed }
         let queued: Bool
@@ -150,6 +156,9 @@ extension AppState {
     /// at once; Hermes' own end event can't change that (`merged` keeps the
     /// first end).
     func interruptDelegateAgent(_ agent: DelegateAgentActivity) async -> DelegateAgentControlResult {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: DelegateAgentControlResult.failed, { await self.interruptDelegateAgent(agent) }) { return routed }
         guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty else { return .failed }
         let found: Bool
         do {
@@ -181,6 +190,9 @@ extension AppState {
     /// The end of one running delegate agent's live transcript (#820), or
     /// nil when it couldn't be read.
     func tailDelegateAgent(_ agent: DelegateAgentActivity) async -> SubagentTail? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: SubagentTail?.none, { await self.tailDelegateAgent(agent) }) { return routed }
         guard let client, agent.hasGatewayID, !agent.sessionId.isEmpty else { return nil }
         let tail = try? await client.tailSubagent(sessionId: agent.sessionId, subagentId: agent.id)
         return self.client === client ? tail : nil

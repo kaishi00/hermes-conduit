@@ -111,6 +111,9 @@ extension AppState {
     /// (`process.list`). Nil when Hermes can't say (an older Hermes, or a
     /// chat with no live session); the sheet then leaves them out.
     func loadBackgroundProcesses() async -> [BackgroundProcess]? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: [BackgroundProcess]?.none, { await self.loadBackgroundProcesses() }) { return routed }
         guard let client, let sessionID = backgroundProcessSessionID else { return nil }
         let processes: [BackgroundProcess]
         do {
@@ -129,6 +132,11 @@ extension AppState {
     /// Ends one background process (`process.kill`). Nil when it went, else
     /// why it couldn't.
     func killBackgroundProcess(_ process: BackgroundProcess) async -> String? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: Optional(AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)), {
+            await self.killBackgroundProcess(process)
+        }) { return routed }
         guard let client, let sessionID = backgroundProcessSessionID else {
             return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
         }
