@@ -177,6 +177,9 @@ extension AppState {
     /// The title the overview shows for a pin's chat: the chat's current
     /// one while it is listed, else the one saved with the pin.
     func pinnedReplyChatTitle(_ pin: PinnedReply) -> String {
+        // Another combined dashboard's pin: this dashboard's list isn't its
+        // chat's, though one id can name chats on both.
+        guard pinnedReplies(of: screenPinOwner).contains(where: { $0.id == pin.id }) else { return pin.chatTitle }
         let listed = sessions.first { session in
             session.id == pin.sessionID
                 || session.storedSessionId == pin.sessionID
@@ -230,14 +233,22 @@ extension AppState {
     /// reveal made in the open chat is checked too: another chat may have
     /// opened before it ran.
     func isShowingChat(for reveal: PinnedReplyReveal) -> Bool {
-        guard canPinReplies else { return false }
-        return pinBelongs(reveal.pin, toOwnIDs: openChatPinIDs().own)
+        isOpenChatsPin(reveal.pin)
+    }
+
+    /// Whether `pin` is one of the open chat's: kept under its dashboard
+    /// and profile, and one of its ids (another combined dashboard's chat
+    /// can share the id).
+    private func isOpenChatsPin(_ pin: PinnedReply) -> Bool {
+        guard canPinReplies,
+              pinnedReplies(of: openChatPinOwner).contains(where: { $0.id == pin.id }) else { return false }
+        return pinBelongs(pin, toOwnIDs: openChatPinIDs().own)
     }
 
     /// Opens the pin's chat (unless it's the open one) and scrolls to the
     /// reply.
     func showPinnedReply(_ pin: PinnedReply) {
-        let chatIsOpen = canPinReplies && pinBelongs(pin, toOwnIDs: openChatPinIDs().own)
+        let chatIsOpen = isOpenChatsPin(pin)
         pendingPinnedReplyReveal = PinnedReplyReveal(pin: pin, opening: chatIsOpen ? nil : pin.sessionID)
         guard !chatIsOpen else { return }
         dismissSidebarDrawer()

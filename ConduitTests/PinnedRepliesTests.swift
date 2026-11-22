@@ -851,6 +851,18 @@ final class PinnedRepliesTests: XCTestCase {
         XCTAssertEqual(appState.openChatPinnedReplies.first?.label, "Far")
         appState.unpinReply(pin)
         XCTAssertNil(appState.pinnedRepliesByDashboard[far.uuidString])
+
+        // A pin of the screen's chat under the same id isn't the far chat's:
+        // showing it opens the screen's chat rather than jumping in this one.
+        appState.farChat = nil
+        appState.togglePinnedReply(answer)
+        let screenPin = try XCTUnwrap(appState.activePinnedReplies.first)
+        appState.farChat = FarChatOwner(dashboardID: far, profile: "work")
+        XCTAssertFalse(appState.isShowingChat(for: PinnedReplyReveal(pin: screenPin)))
+        appState.togglePinnedReply(answer)
+        let farPin = try XCTUnwrap(appState.openChatPinnedReplies.first)
+        XCTAssertEqual(appState.pinnedReplyChatTitle(farPin), farPin.chatTitle,
+                       "its title is its own, not a same-id row's on the dashboard on screen")
     }
 
     /// Pins kept per profile alone (builds that cleared them on every

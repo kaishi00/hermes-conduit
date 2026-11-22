@@ -639,6 +639,9 @@ extension AppState {
             closeRoomSurface(clearingRoomError: false, parkingPendingSend: false)
         }
         forgetDrafts(ofDashboard: id)
+        // And its pinned replies, kept per dashboard: they name the old
+        // host's chats.
+        clearPinnedReplies(inDashboard: id)
         return registry.dashboards[index]
     }
 
