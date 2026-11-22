@@ -2886,6 +2886,23 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(killed.first?.1, "proc_1")
     }
 
+    func testAProcessListReadForAChatThatMovedToAnotherDashboardIsDropped() async throws {
+        weak var opened: AppState?
+        let harness = controlHarness { operations in
+            operations.listBackgroundProcesses = { _, _ in
+                // Meanwhile another combined dashboard's chat opens in place
+                // under the same id.
+                opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+                return [BackgroundProcess(id: "proc_1", command: "npm run dev", pid: 4242, uptimeSeconds: 90, output: "")]
+            }
+        }
+        opened = harness.appState
+
+        let processes = await harness.appState.loadBackgroundProcesses()
+
+        XCTAssertNil(processes, "The list was read for the chat that was on screen, not this one")
+    }
+
     func testAnUnreachableFarChatsActionsNeverReachTheDashboardOnScreen() async throws {
         var listed = 0
         var killed = 0

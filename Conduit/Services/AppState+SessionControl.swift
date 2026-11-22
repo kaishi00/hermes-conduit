@@ -125,7 +125,9 @@ extension AppState {
         } catch {
             return nil
         }
-        guard self.client === client, activeSessionId == sessionID else { return nil }
+        // Still this dashboard's chat on screen: one id can name chats on
+        // two combined dashboards.
+        guard self.client === client, activeSessionId == sessionID, chatOnScreenIsInScope else { return nil }
         return processes
     }
 

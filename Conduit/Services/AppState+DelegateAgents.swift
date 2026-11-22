@@ -26,6 +26,10 @@ extension AppState {
         // opened in place acts there (AppState+FarChat.swift).
         if await onChatRuntime(unreachable: (), { await self.refreshDelegateAgents() }) != nil { return }
         guard let client else { return }
+        // The chat these cards are: an answer lands only while it's still
+        // the one on screen and this dashboard's (one id can name chats on
+        // two combined dashboards).
+        let openChat = activeSessionId
         let cutoff = Date().addingTimeInterval(-Self.delegateAgentRosterGrace)
         let sessionIDs = Set(delegateAgents.lazy
             .filter { $0.status == .running && $0.hasGatewayID && !$0.sessionId.isEmpty }
@@ -33,7 +37,7 @@ extension AppState {
         shownChat.delegateAgentSeenAt = shownChat.delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
             guard let roster = try? await client.subagentRoster(sessionId: sessionID),
-                  self.client === client else { continue }
+                  self.client === client, activeSessionId == openChat, chatOnScreenIsInScope else { continue }
             let liveIDs = Set(roster.map(\.id))
             // A card's latest news is its last event, published or not.
             let seen = delegateAgents.map { agent -> DelegateAgentActivity in
