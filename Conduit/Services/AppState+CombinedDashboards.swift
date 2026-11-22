@@ -366,13 +366,15 @@ extension AppState {
         }
     }
 
-    /// A kept dashboard's event (no-switch slice 5c). Only what is its
-    /// dashboard's alone acts here: a chat made, renamed or deleted on its
-    /// Hermes reads its chats for the Chats list now, not on the minute's
-    /// poll. Its turns' events wait for the switch back, whose sync brings
-    /// its chat current, as before.
+    /// A kept dashboard's event (no-switch slice 5c). A chat made, renamed
+    /// or deleted on its Hermes reads its chats for the Chats list now, not
+    /// on the minute's poll. A live call held there hears its jobs' and
+    /// turns' events, and a chat followed there (opened in place, or left
+    /// mid-reply) takes its turn's events on the kept runtime (no-switch
+    /// stage 2). Other chats' turns wait for the switch back, whose sync
+    /// brings them current.
     func handleKeptDashboardEvent(_ event: StreamEvent, from id: UUID, client: HermesClient) {
-        guard keptDashboardRuntimes[id]?.client === client else { return }
+        guard let kept = keptDashboardRuntimes[id], kept.client === client else { return }
         if case .sessionsChanged = event { noteKeptDashboardChatsChanged(id) }
         // A live call going on here while another dashboard shows hears its
         // jobs' and its turns' events, as it does on screen (no-switch
@@ -380,6 +382,23 @@ extension AppState {
         if liveCallHolds(dashboard: id) {
             voiceBackgroundJobSupervisor.observe(event)
             if isLocalLiveActive { localLiveTurns.observe(event) }
+        }
+        if case .sessionsChanged = event { return }
+        // A chat followed there (its chat on screen, opened in place, or one
+        // left mid-reply there) takes its turn's events on its own runtime,
+        // as the one on screen's chats take theirs (no-switch stage 2).
+        // Read while the client delivers this event, as for the screen's.
+        guard keptDashboardFollowsChats(id) else { return }
+        let turnGeneration = client.deliveringEventGeneration
+        let admissionID = client.deliveringEventAdmissionID
+        Task { @MainActor [weak self, weak client] in
+            guard let self, let client, let kept = self.keptDashboardRuntimes[id], kept.client === client else { return }
+            self.act(onRuntime: kept.runtime) {
+                self.handleStreamEvent(event, turnGeneration: turnGeneration)
+                if case .messageStart(let sessionID) = event, let admissionID {
+                    self.noteQueuedTurnStarted(sessionID: sessionID, admissionID: admissionID)
+                }
+            }
         }
     }
 
@@ -502,6 +521,9 @@ extension AppState {
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         release(kept)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
+        // A surface showing it stops republishing a runtime that's gone.
+        let gone = ObjectIdentifier(kept.runtime)
+        surfaceRuntimeChanges = surfaceRuntimeChanges.filter { $0.value.runtime != gone }
         // Nothing more of its own in Needs you (stage 4a), nor its profiles.
         keptDashboardProfiles.removeValue(forKey: id)
         if !keepingLists { forgetCombinedDashboardLists(id) }
@@ -727,6 +749,8 @@ extension AppState {
                 connection: connection,
                 keptAt: Date()
             ), for: id)
+            // Its chat on screen, opened in place, resumes through it.
+            resumeFarChatAfterReconnect(id)
             lifecycleLog.notice("Combined dashboard connected in the background")
             return .connected
         } catch {

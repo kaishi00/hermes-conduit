@@ -509,6 +509,10 @@ extension AppState {
            !chatViewportTransitionIsCurrent(generation: requiredViewportTransitionGeneration) {
             return false
         }
+        // Another combined dashboard's list is the Chats list's own read of
+        // it, never written through this one's list state (a far chat's
+        // flows run on its runtime, AppState+FarChat.swift).
+        guard actingOnRuntimeOnScreen else { return false }
         let activeClient = client
         guard activeClient != nil || sessionCatalogLoaderOverride != nil else { return false }
         let profile = activeProfile
@@ -1120,6 +1124,9 @@ extension AppState {
     /// snapshot/event buffering path as foreground recovery, so a refresh
     /// during a turn cannot leave the composer with stale busy state.
     func refreshActiveSession() async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.refreshActiveSession() }) != nil { return }
         guard let client, let sessionId = activeSessionId, !isChatRefreshing else { return }
         let transitionGeneration = beginExplicitChatViewportTransition()
         markChatViewportReplacement()
@@ -1167,12 +1174,20 @@ extension AppState {
     ) {
         let leaving = activeSessionId
         if activeSessionId != id {
-            followLeftChatIfItsReplyRuns(leaving: activeSessionId, for: id)
+            // On the chat being left's own runtime, another combined
+            // dashboard's when it was opened there.
+            onChatRuntimeNow { followLeftChatIfItsReplyRuns(leaving: leaving, for: id) }
             clearPendingDecisionRestorationGuard()
             resetResponseHapticTurn()
         }
         activeSessionId = id
         noteRowOfChatOnScreen(leaving: leaving, for: id)
+        // Another combined dashboard's chat opened in place isn't this
+        // dashboard's selection: a launch or a switch here never resumes it.
+        guard actingOnRuntimeOnScreen else {
+            if let title { activeSessionTitle = title }
+            return
+        }
         if let persistedID = ChatSessionPersistenceIdentity.canonicalID(
             for: id,
             identity: activeChatScrollSessionIdentity,
@@ -1196,6 +1211,8 @@ extension AppState {
 
     func setActiveSessionTitle(_ title: String) {
         if activeSessionTitle != title { activeSessionTitle = title }
+        // Another combined dashboard's chat's title isn't this one's to keep.
+        guard actingOnRuntimeOnScreen else { return }
         activeSessionTitlesByProfile[activeProfile] = title
         persistActiveSessionTitles()
         publishWidgetSnapshot()

@@ -215,10 +215,13 @@ extension AppState {
         return true
     }
 
-    /// Opens another combined dashboard's row: the switch to its dashboard
-    /// (through its kept connection), then the chat in its own profile, as
-    /// a notification from that dashboard opens.
+    /// Opens another combined dashboard's row: in place on its own runtime
+    /// while it's kept connected, else the switch to its dashboard, then the
+    /// chat in its own profile, as a notification from that dashboard opens.
     func openCombinedChat(_ session: SessionSummary, in dashboardID: UUID) {
+        // Kept connected: it opens in place, on that dashboard's own
+        // runtime, with no switch (no-switch stage 2, AppState+FarChat.swift).
+        if openFarChatInPlace(session, in: dashboardID) { return }
         // The notification path refuses during a call too; saying so here
         // keeps it to the tap.
         guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }

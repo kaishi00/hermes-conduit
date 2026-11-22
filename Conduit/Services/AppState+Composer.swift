@@ -275,7 +275,12 @@ extension AppState {
     // MARK: - Composer actions
 
     func composerSubmissionContext() -> ComposerSubmissionContext {
-        ComposerSubmissionContext(
+        // Another combined dashboard's chat on screen: captured on its own
+        // runtime, where its send is checked (AppState+FarChat.swift).
+        if case .far(let runtime) = chatRuntimeRoute {
+            return act(onRuntime: runtime) { composerSubmissionContext() }
+        }
+        return ComposerSubmissionContext(
             profile: activeProfile,
             sessionID: activeSessionId,
             durableSessionID: activeSessionId.flatMap { canonicalSessionID(for: $0) },
@@ -290,6 +295,10 @@ extension AppState {
     /// it. One whose reply was lost after its chat was left may have gone,
     /// so it isn't announced as unsent.
     func composerSubmissionStoppedQuietly(_ context: ComposerSubmissionContext) -> Bool {
+        // Checked where it was captured: a far chat's runtime for its send.
+        if case .far(let runtime) = chatRuntimeRoute {
+            return act(onRuntime: runtime) { composerSubmissionStoppedQuietly(context) }
+        }
         if takeComposerSubmissionOfUnknownDelivery(context) { return false }
         return !isCurrentComposerSubmission(context)
     }
@@ -458,6 +467,11 @@ extension AppState {
         busyMode: BusyInputMode? = nil,
         runsSlashCommands: Bool = true
     ) async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, {
+            await self.submitComposer(text: text, attachments: attachments, context: context, onBusy: onBusy, busyMode: busyMode, runsSlashCommands: runsSlashCommands)
+        }) { return done }
         noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
         // The canvas a closed chat leaves (archive, delete) has no chat

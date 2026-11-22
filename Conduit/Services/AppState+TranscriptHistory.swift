@@ -510,6 +510,9 @@ extension AppState {
     /// re-pin on some later unrelated transcript change.
     @discardableResult
     func loadEarlierMessages() async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, { await self.loadEarlierMessages() }) { return done }
         guard let window = persistedTranscriptWindow,
               window.canLoadEarlier,
               !window.isLoadingEarlier else {

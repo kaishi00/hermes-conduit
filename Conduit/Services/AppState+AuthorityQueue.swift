@@ -20,6 +20,9 @@ extension AppState {
 
     /// Withdraws a queued message. It never runs.
     func cancelQueuedPrompt(_ row: QueuedPrompt) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.cancelQueuedPrompt(row) }) != nil { return }
         await queueAction(row) { client, sessionID in
             _ = try await client.cancelQueuedPrompt(sessionID, admissionID: row.admissionID)
             HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
@@ -31,6 +34,9 @@ extension AppState {
     /// New words for a queued message. Hermes queues the edit at the back
     /// of the line in place of the old one.
     func editQueuedPrompt(_ row: QueuedPrompt, text: String) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.editQueuedPrompt(row, text: text) }) != nil { return }
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Emptied is no edit: Remove from queue is the way to withdraw it.
         let before = BotMentions.strippingAnnotation(row.text).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -62,6 +68,9 @@ extension AppState {
 
     /// Sends a queued message into the running turn now, as a steer.
     func sendQueuedPromptNow(_ row: QueuedPrompt) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.sendQueuedPromptNow(row) }) != nil { return }
         await queueAction(row) { client, sessionID in
             let persistedTwinsBefore = self.persistedSteerIDs(matching: row.text)
             _ = try await client.sendQueuedPromptNow(sessionID, admissionID: row.admissionID)
@@ -79,6 +88,11 @@ extension AppState {
     /// interrupted, never runs it again, and the messages behind it go on.
     @discardableResult
     func discardLostPrompt(_ row: QueuedPrompt, onUnreachable: (@MainActor () -> Void)? = nil) async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, {
+            await self.discardLostPrompt(row, onUnreachable: onUnreachable)
+        }) { return done }
         guard let generation = row.executionGeneration else {
             authorityQueue.notice = AppLocalization.string("Hermes didn't say which turn this was. Reopen the chat and try again.")
             return false
@@ -95,6 +109,9 @@ extension AppState {
     /// Discards a cut-off turn and sends its words again, as a new message.
     /// The messages that waited behind it run first.
     func resendLostPrompt(_ row: QueuedPrompt) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.resendLostPrompt(row) }) != nil { return }
         let sessionID = authorityQueue.sessionID
         // Where the words go back if the resend doesn't go: this chat's
         // draft, wherever the user is by then.
