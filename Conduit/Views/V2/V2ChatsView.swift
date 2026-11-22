@@ -2706,6 +2706,7 @@ struct V2ChatsRowContent: View, Equatable {
                 isUnread: signals.isUnread,
                 isStarred: appState.isSessionStarred(session),
                 isDone: appState.isSessionDone(session),
+                isMuted: appState.sessionMute(session) != nil,
                 selection: selection(session),
                 icon: appState.sessionCategory(for: session),
                 hasNestBelow: hasChildren,
@@ -2765,6 +2766,7 @@ struct V2ChatsRowContent: View, Equatable {
         let isUnread = appState.isSessionUnread(session)
         let isStarred = appState.isSessionStarred(session)
         let isDone = appState.isSessionDone(session)
+        let isMuted = appState.sessionMute(session) != nil
         let rowSelection = selection(session, faintAlone: false)
         // Another combined dashboard's chat nested under its parent: badged,
         // and it only opens, as its own row does.
@@ -2803,6 +2805,12 @@ struct V2ChatsRowContent: View, Equatable {
                         .foregroundStyle(Color.conduitAccent)
                         .accessibilityHidden(true)
                 }
+                if isMuted {
+                    Image(systemName: "bell.slash.fill")
+                        .scaledFont(.caption2)
+                        .foregroundStyle(Color.primary.opacity(0.45))
+                        .accessibilityHidden(true)
+                }
                 Text(status.actionWord ?? session.updatedLabel)
                     .scaledFont(.footnote)
                     .foregroundStyle(status.actionWord == nil ? Color.primary.opacity(0.45) : status.color)
@@ -2824,6 +2832,7 @@ struct V2ChatsRowContent: View, Equatable {
             isUnread ? AppLocalization.string("Unread") : nil,
             isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             isDone ? AppLocalization.string("Done") : nil,
+            isMuted ? AppLocalization.string("Notifications muted", table: .chat) : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))

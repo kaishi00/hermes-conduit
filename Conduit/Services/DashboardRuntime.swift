@@ -12,6 +12,15 @@ import Combine
 import Foundation
 import UIKit
 
+/// The runtime work acts on while it's scoped to another dashboard's
+/// (`AppState.act(onRuntime:)`, `actAcrossAwaits(onRuntime:_:)`), and its
+/// dashboard. Task-local, so other work on the main actor meanwhile keeps
+/// the one on screen, and a Task made inside carries it on.
+enum RuntimeScope {
+    @TaskLocal static var runtime: DashboardRuntime?
+    @TaskLocal static var dashboardID: UUID?
+}
+
 /// One dashboard's live state.
 ///
 /// As with `ChatState` in stage 1, there is still one, `AppState`'s
