@@ -132,26 +132,41 @@ extension AppState {
     /// no call ends either. Its own chip, or one not connected here, goes
     /// back to the one on screen's (one let go shows the screen's anyway).
     func openCombinedPulse(_ dashboardID: UUID) {
-        let far = dashboardID != dashboardIDOnScreen && runtime(for: dashboardID) != nil
-        let shown: UUID? = far ? dashboardID : nil
+        let other = dashboardID != dashboardIDOnScreen
+        // A chip whose kept connection dropped (its list stays, below) signs
+        // in as a switch does, as the chip did before stage 2.
+        if other, runtime(for: dashboardID) == nil {
+            guard !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                await self.switchToCombinedDashboardUntilSettled(dashboardID)
+                // Another dashboard picked meanwhile owns the screen.
+                guard self.activeDashboardID == dashboardID else { return }
+                if self.pulseShownDashboardID != nil { self.pulseShownDashboardID = nil }
+                self.openPulse(card: nil)
+            }
+            return
+        }
+        let shown: UUID? = other ? dashboardID : nil
         if pulseShownDashboardID != shown { pulseShownDashboardID = shown }
     }
 
     /// Before a Pulse card's step that opens a chat or task, or changes
     /// this phone's calendar, on another combined dashboard's Pulse: the
     /// switch there, until chats of another dashboard open in place too
-    /// (this phone shares its calendar with the one on screen). `shown` is
-    /// the dashboard the page showed at the tap (`pulseShownDashboardID`
-    /// then). True when the step can go ahead on that dashboard: never on
-    /// another one, as a chip picked meanwhile or a connection let go would.
-    func switchForFarPulseStep(from shown: UUID?) async -> Bool {
-        guard let id = shown, id != dashboardIDOnScreen else { return pulseRuntime == nil }
+    /// (this phone shares its calendar with the one on screen). `dashboard`
+    /// is the one whose Pulse the page showed at the tap (`pulseDashboardID`
+    /// then). True when the step can go ahead on that dashboard, the page
+    /// still showing its Pulse: never on another one, as a chip picked
+    /// meanwhile, a switch or a connection let go would make it.
+    func switchForFarPulseStep(for dashboard: UUID?) async -> Bool {
+        guard let id = dashboard else { return false }
+        guard id != dashboardIDOnScreen else { return pulseDashboardID == id }
         guard runtime(for: id) != nil else { return false }
         guard !refusesCombinedSwitchDuringCall(to: id) else { return false }
         await switchToCombinedDashboardUntilSettled(id)
         guard !Task.isCancelled, activeDashboardID == id else { return false }
-        // A chip picked during the switch keeps its place.
         if pulseShownDashboardID == id { pulseShownDashboardID = nil }
-        return true
+        return pulseDashboardID == id
     }
 }
