@@ -183,6 +183,13 @@ extension AppState {
     /// nothing for 20 s, or an idle chat, is checked against the registry;
     /// a snapshot the list read in the last 5 s is reused.
     func openChatSyncTick() async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place is checked against its own Hermes' registry,
+        // never the dashboard on screen's (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.openChatSyncTick() }) != nil {
+            if case .unreachable = chatRuntimeRoute { setActiveChatRepliesElsewhere(false) }
+            return
+        }
         guard isSceneActive, isConnected, let client,
               client !== activeListUnsupportedClient,
               let local = openChatLocalTurn() else {
@@ -239,6 +246,9 @@ extension AppState {
     }
 
     private func observeOpenChat(in snapshot: (rows: [LiveSessionStatus], at: Date), chatVisible: Bool) {
+        // Another combined dashboard's chat on screen is checked by its own
+        // runtime's tick: this snapshot is another Hermes' registry.
+        guard chatOnScreenIsInScope else { return }
         // A read or a reconciliation already under way owns the transcript.
         guard let local = openChatLocalTurn() else {
             setActiveChatRepliesElsewhere(false)
@@ -378,6 +388,9 @@ extension AppState {
     /// A catalog read landed: the open chat's stored count, against the
     /// last one, says whether a turn the registry never saw ran in it.
     func observeOpenChatCatalog() {
+        // Another combined dashboard's chat on screen isn't in this
+        // dashboard's catalog: one id can name chats on two Hermes.
+        guard chatOnScreenIsInScope else { return }
         guard let local = openChatLocalTurn(),
               openChatSyncRead == nil, reconciliation == nil, !isChatRefreshing else { return }
         let accepted = acceptedIdentitySessionIDs(forRequested: local.sessionID)
@@ -404,7 +417,9 @@ extension AppState {
             guard !Task.isCancelled else { return }
             let rows = self.freshActiveListSnapshot(maxAge: 5)
                 .map { self.openChatRegistryRows($0.rows, sessionID: sessionID) } ?? []
-            guard self.activeSessionId == sessionID, self.openChatSyncRead == nil,
+            // Still this dashboard's chat: another combined dashboard's
+            // under the same id isn't read from this registry.
+            guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.openChatSyncRead == nil,
                   self.reconciliation == nil, !self.isChatRefreshing else {
                 self.openChatSync.readCalledOff()
                 return
@@ -430,7 +445,9 @@ extension AppState {
                 }
             }
             // The chat or its turn changed since the snapshot: nothing to do.
-            guard self.activeSessionId == sessionID, self.reconciliation == nil,
+            // Another combined dashboard's chat under the same id is that
+            // dashboard's to read.
+            guard self.activeSessionId == sessionID, self.chatOnScreenIsInScope, self.reconciliation == nil,
                   self.turnState == (expectsRunning ? .running : .idle) else {
                 // New rows still unread: the next check asks again.
                 if !expectsRunning, self.activeSessionId == sessionID { self.openChatSync.readCalledOff() }

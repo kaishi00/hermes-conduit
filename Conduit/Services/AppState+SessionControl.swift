@@ -23,7 +23,9 @@ extension AppState {
     /// dock shows the open chat's only, and reads a chat's again when it
     /// opens.
     func applySessionControl(_ snapshot: SessionControlSnapshot, for sessionID: String) {
-        guard sessionControlIsOpenChat(sessionID) else { return }
+        // Only the dashboard whose chat is on screen speaks for its dock:
+        // one id can name chats on two combined dashboards.
+        guard chatOnScreenIsInScope, sessionControlIsOpenChat(sessionID) else { return }
         // One key per chat: word under another of its ids (runtime or
         // stored) doesn't release an action still waiting.
         let key = sessionControl.sessionID.flatMap { sessionControlIsOpenChat($0) ? $0 : nil } ?? sessionID
@@ -35,7 +37,7 @@ extension AppState {
     /// empty on a chat just opened, since opening one clears it (issue
     /// 2372), so it never offers the last visit's controls.
     func refreshSessionControl(for sessionID: String) async {
-        guard let client, !sessionID.isEmpty else { return }
+        guard let client, !sessionID.isEmpty, chatOnScreenIsInScope else { return }
         let revision = sessionControl.revision
         let snapshot: SessionControlSnapshot
         do {
@@ -48,7 +50,7 @@ extension AppState {
             return
         }
         // Newer word (an event, an action's answer) landed meanwhile.
-        guard self.client === client, sessionControl.revision == revision else { return }
+        guard self.client === client, sessionControl.revision == revision, chatOnScreenIsInScope else { return }
         applySessionControl(snapshot, for: sessionID)
     }
 
@@ -56,6 +58,9 @@ extension AppState {
     /// Hermes' answer replaces what the dock shows; a refusal says why
     /// under it.
     func runSessionControl(_ action: SessionControlAction) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.runSessionControl(action) }) != nil { return }
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
         // Hermes counts criteria by place: one picked from a list that
@@ -81,7 +86,7 @@ extension AppState {
             }
             // Dropped once the store went to another chat, like the note.
             guard self.client === client, sessionControl.isCurrent(token),
-                  sessionControl.sessionID == sessionID else { return }
+                  sessionControl.sessionID == sessionID, chatOnScreenIsInScope else { return }
             if let snapshot = answer.snapshot {
                 sessionControl.apply(snapshot, for: sessionID)
             } else {
@@ -89,12 +94,12 @@ extension AppState {
             }
             // What Hermes said about it ("Removed criterion 2"), under the dock.
             if let note = answer.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty,
-               sessionControl.isCurrent(token), sessionControlIsOpenChat(sessionID) {
+               sessionControl.isCurrent(token), sessionControlIsOpenChat(sessionID), chatOnScreenIsInScope {
                 sessionControl.notice = note
             }
         } catch {
             guard self.client === client, sessionControl.isCurrent(token),
-                  sessionControl.sessionID == sessionID else { return }
+                  sessionControl.sessionID == sessionID, chatOnScreenIsInScope else { return }
             sessionControl.notice = UserFacingError.message(for: error)
         }
     }
@@ -107,11 +112,21 @@ extension AppState {
         return open
     }
 
+    /// The chat the process list is for: its dashboard and its id, since
+    /// one id can name chats on two combined dashboards.
+    var backgroundProcessChatKey: String? {
+        guard let open = backgroundProcessSessionID else { return nil }
+        return "\(chatOnScreenDashboardID?.uuidString ?? "")|\(open)"
+    }
+
     /// The background processes Hermes runs for the open chat
     /// (`process.list`). Nil when Hermes can't say (an older Hermes, or a
     /// chat with no live session); the sheet then leaves them out.
     func loadBackgroundProcesses() async -> [BackgroundProcess]? {
-        guard let client, let sessionID = backgroundProcessSessionID else { return nil }
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: [BackgroundProcess]?.none, { await self.loadBackgroundProcesses() }) { return routed }
+        guard let client, let sessionID = backgroundProcessSessionID, chatOnScreenIsInScope else { return nil }
         let processes: [BackgroundProcess]
         do {
             if let list = chatResumeLifecycleOperations.listBackgroundProcesses {
@@ -122,13 +137,22 @@ extension AppState {
         } catch {
             return nil
         }
-        guard self.client === client, activeSessionId == sessionID else { return nil }
+        // Still this dashboard's chat on screen: one id can name chats on
+        // two combined dashboards.
+        guard self.client === client, activeSessionId == sessionID, chatOnScreenIsInScope else { return nil }
         return processes
     }
 
     /// Ends one background process (`process.kill`). Nil when it went, else
     /// why it couldn't.
     func killBackgroundProcess(_ process: BackgroundProcess) async -> String? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        switch chatRuntimeRoute {
+        case .inScope: break
+        case .far(let runtime): return await actAcrossAwaits(onRuntime: runtime) { await killBackgroundProcess(process) }
+        case .unreachable: return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
+        }
         guard let client, let sessionID = backgroundProcessSessionID else {
             return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
         }

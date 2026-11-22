@@ -201,6 +201,34 @@ extension HermesVoiceGatewayTimeoutTests {
         let prints = batch.windowPrints().map(\.hash)
         batch.otherProfiles = true
         XCTAssertEqual(batch.windowPrints().map(\.hash), prints)
+
+        // The voice modes that may read health: a change goes before any
+        // health read, so a locked phone still takes a revoked mode back.
+        let source = FakeHealthSource()
+        let readers = makeHealthEngine(source: source)
+        var voice = healthPreferences(history: .days30)
+        voice.voiceReaders = ["gpt-live"]
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(readers.state.sentVoiceReaders, ["gpt-live"])
+        voice.voiceReaders = nil
+        source.locked = true
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.last?["voice_readers"] as? [String], [])
+        XCTAssertEqual(readers.state.sentVoiceReaders, [])
+        // A change whose answer is lost is unknown, and goes again.
+        source.locked = false
+        voice.voiceReaders = ["grok-live"]
+        host.loseAnswers = true
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(readers.state.sentVoiceReaders)
+        XCTAssertEqual(readers.state.voiceReadersInDoubt, true)
+        // Even on a locked phone, before any health read.
+        host.loseAnswers = false
+        source.locked = true
+        _ = await readers.sync(preferences: voice, deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.last?["voice_readers"] as? [String], ["grok-live"])
+        XCTAssertEqual(readers.state.sentVoiceReaders, ["grok-live"])
+        XCTAssertNil(readers.state.voiceReadersInDoubt)
     }
 
     func testRecentDaysSendOnlyTheWindowsThatChanged() async throws {
@@ -639,8 +667,12 @@ private final class FakeHealthSource: HealthDataSource {
     var sums: [HealthMetric: Double] = [:]
     func requestAuthorization(for categories: Set<HealthCategory>, detailed: Set<HealthCategory>) async throws {}
 
+    /// A locked phone: HealthKit refuses every read.
+    var locked = false
+
     func buckets(_ metric: HealthMetric, grain: HealthGrain, from: Date, to: Date, calendar: Calendar) async throws -> [HealthBucket] {
-        [HealthBucket(start: from, end: calendar.date(byAdding: grain == .hour ? .hour : .day, value: 1, to: from) ?? to,
+        if locked { throw HealthDataSourceError.locked }
+        return [HealthBucket(start: from, end: calendar.date(byAdding: grain == .hour ? .hour : .day, value: 1, to: from) ?? to,
                       sum: metric.aggregation == .sum ? (sums[metric] ?? 100) : nil)]
     }
 

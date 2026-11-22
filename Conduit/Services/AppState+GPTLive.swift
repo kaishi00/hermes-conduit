@@ -229,7 +229,9 @@ extension AppState {
                 + liveAskedQuestionsInstructions()
                 + liveVoiceThreadInstructions(delegation: true) + phoneVoiceSettingHint(for: .gptLive)
                 + hermesCallsInstructions(delegation: true)
-                + VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools)
+                // An API-key call speaks GA events, whose delegations carry no
+                // text: a marker could never match there (Tools and consent in calls).
+                + (gptLiveCallBilling == .api ? "" : VoiceHostTool.gptLiveRules(voiceBackgroundJobSupervisor.hostTools))
                 + VoiceHostTool.contextBlock(voiceBackgroundJobSupervisor.hostContext)
                 + GPTLiveConversationController.jobApprovalRule
                 + (gptLiveWebLookUps ? GPTLiveConversationController.webLookUpRule : "")

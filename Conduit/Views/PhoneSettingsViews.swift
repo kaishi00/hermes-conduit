@@ -568,11 +568,14 @@ struct PhoneSettingsPage: View {
             Text("Let a live voice call read what you share here when you ask, add events and reminders you ask for, and ask you out loud about Hermes' changes. What it reads goes to the company that runs that voice mode, under its terms. Classic voice is Hermes itself and needs nothing here.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            Text("A call starts knowing your phone's battery, CarPlay and Focus, as you share them, so it can keep things short while you drive or focus.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
             Text("Conduit on your computer follows these switches too: its live calls on the same Hermes profile may read this, once your iPhone has told your Hermes host.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !voiceUses.entries.isEmpty {
-                Text("Read by voice in the last 7 days")
+                Text("Read by this iPhone's calls in the last 7 days")
                     .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 4)
                 ForEach(voiceUses.entries.suffix(20).reversed()) { entry in

@@ -5084,9 +5084,17 @@ extension AppStateVoiceCapabilityTests {
         let appState = makeGPTLiveAppState()
         XCTAssertEqual(appState.gptLiveBilling, .subscription)
         XCTAssertEqual(appState.gptLiveCallBilling, .subscription)
+        // The phone's read markers are taught only where a delegation carries
+        // its words: never on an API-key call, which speaks GA events.
+        appState.voiceBackgroundJobSupervisor.hostTools = [
+            VoiceHostTool(name: "conduit_location", description: "Where.", parameters: [:], key: "location")
+        ]
+        XCTAssertTrue(appState.gptLiveBriefing().contains("Conduit's own tools"))
 
         appState.setGPTLiveBilling(.api)
         XCTAssertEqual(appState.gptLiveCallBilling, .api)
+        XCTAssertFalse(appState.gptLiveBriefing().contains("Conduit's own tools"))
+        appState.voiceBackgroundJobSupervisor.hostTools = []
         appState.setGPTLiveAPIVoice("cedar")
         appState.setGPTLiveVoice("ember")
         XCTAssertEqual(appState.gptLiveCallVoice, "cedar", "The API key's own voice list")

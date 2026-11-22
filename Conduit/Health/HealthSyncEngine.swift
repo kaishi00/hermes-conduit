@@ -53,6 +53,9 @@ struct HealthSyncState: Codable, Equatable {
     /// (HealthBatch.voiceReaders): a change sends an upload, empty if need
     /// be, so the host learns it. Nil before one went.
     var sentVoiceReaders: [String]?
+    /// A changed voice-reader list went and its answer was lost: whether
+    /// the host has it is unknown, so the next pass sends it first.
+    var voiceReadersInDoubt: Bool?
     /// "Share with this host's other profiles" as the host last took it
     /// (every upload carries it); a change sends an upload even when
     /// nothing else is new. Nil: unknown (never sent, or a change sent
@@ -332,6 +335,15 @@ final class HealthSyncEngine: ObservableObject {
             prepareHistory(preferences.history)
             var session = Session(engine: self, key: key, preferences: preferences, options: options, request: request,
                                   deadline: deadline)
+            // A voice-reader list the host has, changed since, goes first,
+            // with no health read that a locked phone could stop: a revoked
+            // mode reaches the host even when the rest of the pass can't run.
+            // A change whose answer was lost goes first too; never sent at
+            // all (nil) rides the pass's uploads and the check below.
+            if state.voiceReadersInDoubt == true
+                || state.sentVoiceReaders.map({ $0 != Self.voiceReaders(preferences) }) == true {
+                try await session.sendKeepalive()
+            }
             try await session.sendRecentDays()
             try await session.sendEvents()
             // Low Data Mode: older history waits for another network.
@@ -433,8 +445,11 @@ final class HealthSyncEngine: ObservableObject {
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
-        // A new key starts the host's copy over, its other profiles choice too.
+        // A new key starts the host's copy over, its other profiles choice
+        // and voice readers too.
         state.sentOtherProfiles = nil
+        state.sentVoiceReaders = nil
+        state.voiceReadersInDoubt = nil
     }
 
     /// Fixes how far back sharing reaches. Another choice starts the
@@ -471,9 +486,15 @@ final class HealthSyncEngine: ObservableObject {
     /// An upload that would change what the host has for the choice is
     /// about to go: until it's answered, whether the host took it is
     /// unknown, so a lost answer can't leave a later change unsent.
-    fileprivate func noteSending(otherProfiles: Bool) {
-        guard state.sentOtherProfiles != otherProfiles, state.sentOtherProfiles != nil else { return }
-        state.sentOtherProfiles = nil
+    fileprivate func noteSending(otherProfiles: Bool, voiceReaders: [String]) {
+        let profilesChange = state.sentOtherProfiles != otherProfiles && state.sentOtherProfiles != nil
+        let readersChange = state.sentVoiceReaders != voiceReaders && state.sentVoiceReaders != nil
+        guard profilesChange || readersChange else { return }
+        if profilesChange { state.sentOtherProfiles = nil }
+        if readersChange {
+            state.sentVoiceReaders = nil
+            state.voiceReadersInDoubt = true
+        }
         // Saved before the upload goes, so an app closed while it waits
         // still finds the choice unknown on its next launch.
         store.save(state)
@@ -555,10 +576,13 @@ private struct Session {
         var busyWait = HealthSyncLimits.firstBusyWait
         while true {
             do {
-                engine.noteSending(otherProfiles: part.otherProfiles)
+                engine.noteSending(otherProfiles: part.otherProfiles, voiceReaders: part.voiceReaders)
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
                 engine.notePosted(otherProfiles: part.otherProfiles)
-                engine.acknowledged { $0.sentVoiceReaders = part.voiceReaders }
+                engine.acknowledged {
+                    $0.sentVoiceReaders = part.voiceReaders
+                    $0.voiceReadersInDoubt = nil
+                }
                 return answer
             } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {
                 // The host takes so many uploads a minute (120 per profile):
