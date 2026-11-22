@@ -576,7 +576,11 @@ extension AppState {
         // ids do, so the copy is current if the open is overtaken.
         // An id it was left with that Hermes has since bound to another
         // chat reaches that chat's copy, never this one (issue 2603).
-        let ownIndex = backgroundChats.firstIndex(where: { $0.answers(to: id) && !idBoundToAnotherChat(id, than: $0) })
+        // The dashboard in scope's own chat first: one id can name chats on
+        // two Hermes, each followed on its own runtime.
+        let answers: (BackgroundChat) -> Bool = { $0.answers(to: id) && !self.idBoundToAnotherChat(id, than: $0) }
+        let ownIndex = backgroundChats.firstIndex(where: { $0.dashboardID == self.activeDashboardID && answers($0) })
+            ?? backgroundChats.firstIndex(where: answers)
         guard let index = ownIndex ?? followedChatIndex(reboundTo: id) else { return false }
         let chat = backgroundChats[index]
         // Hermes bound the chat being opened to a new runtime id while it
