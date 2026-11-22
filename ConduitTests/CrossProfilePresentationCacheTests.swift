@@ -1911,6 +1911,24 @@ extension CrossProfilePresentationCacheTests {
         botChat.title = BotMode.canonicalChatTitle
         XCTAssertFalse(appState.openFarChatInPlace(botChat, in: mac.id), "a far Bot Chat still opens through a switch")
         XCTAssertNil(appState.farChatDashboardID)
+        // Named by that dashboard's bots: by its id, or by the lineage root
+        // a compacted Bot Chat keeps.
+        let atlas = BotProfile(name: "atlas", botTitle: nil, displayName: "Atlas", profileDescription: "", model: nil,
+                               provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: nil,
+                               canonicalSession: BotCanonicalSession(id: "atlas-chat", resolvedID: nil, lastActive: nil, preview: nil),
+                               lastActive: nil, lastPreview: nil)
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [atlas], avatars: [:], at: Date()
+        )
+        func farRow(_ id: String, lineageRoot: String?) -> SessionSummary {
+            SessionSummary(id: id, alternateIds: [], title: "Atlas notes", model: "Hermes", updatedLabel: "now",
+                           profile: "atlas", source: .chat, isActive: false, isArchived: false, lineageRootId: lineageRoot)
+        }
+        XCTAssertTrue(appState.isFarBotChat(farRow("atlas-chat", lineageRoot: nil), in: mac.id))
+        let compacted = farRow("atlas-chat-2", lineageRoot: "atlas-chat")
+        XCTAssertTrue(appState.isFarBotChat(compacted, in: mac.id))
+        XCTAssertFalse(appState.isFarBotChat(row, in: mac.id), "an ordinary chat opens in place")
+        appState.combinedDashboardBots[mac.id] = nil
 
         appState.openCombinedChat(row, in: mac.id)
         await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
@@ -1958,6 +1976,50 @@ extension CrossProfilePresentationCacheTests {
         registry.activeDashboardID = mac.id
         appState.savedDashboardRegistry = registry
         XCTAssertNil(appState.farChatDashboardID)
+    }
+
+    /// A far chat on another profile takes the kept socket on a client of
+    /// its profile, as a profile switch does: its runtime is on that
+    /// profile and the screen's isn't touched. Its followed chats settle
+    /// when that connection goes, and only theirs.
+    func testAKeptDashboardsChatOnAnotherProfileTakesItsSocket() async throws {
+        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        let (appState, mac, vps, outgoing, socket) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(kept.client === outgoing)
+        let screenClient = appState.client
+
+        let runtime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
+        let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(runtime === kept.runtime, "the same runtime")
+        XCTAssertFalse(handed.client === outgoing)
+        XCTAssertEqual(handed.client.profile, "work")
+        XCTAssertTrue(handed.client.isConnected)
+        XCTAssertFalse(outgoing.isConnected)
+        XCTAssertEqual(socket.closeCode, .invalid, "the socket stays open for the new profile")
+        XCTAssertEqual(runtime.activeProfile, "work")
+        XCTAssertTrue(runtime.client === handed.client)
+        XCTAssertTrue(appState.client === screenClient, "the screen's client isn't touched")
+        XCTAssertNotEqual(appState.activeProfile, "work")
+        XCTAssertTrue(appState.keptRuntime(mac.id, on: "work") === runtime, "on its profile already, kept as it is")
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === handed.client)
+
+        // The same ids on two dashboards are two chats, each followed.
+        func left(_ dashboardID: UUID) -> BackgroundChat {
+            BackgroundChat(sessionIDs: ["shared"], durableSessionID: nil, title: "Shared", dashboardID: dashboardID,
+                           profile: "default", isBotChat: false, rows: [], streamingText: "Half a reply")
+        }
+        let onMac = left(mac.id), onVPS = left(vps.id)
+        let both = BackgroundChat.adding(onMac, to: BackgroundChat.adding(onVPS, to: []))
+        XCTAssertEqual(both.count, 2)
+        XCTAssertEqual(BackgroundChat.adding(left(mac.id), to: both).count, 2, "one copy per chat")
+        XCTAssertTrue(onMac.isRunning && onVPS.isRunning)
+        appState.backgroundChats = both
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertFalse(onMac.isRunning, "its connection gone, its reply is followed no more")
+        XCTAssertTrue(onVPS.isRunning, "the screen's dashboard's goes on")
+        appState.backgroundChats = []
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {

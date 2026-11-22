@@ -127,8 +127,12 @@ extension AppState {
     func isFarBotChat(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
         let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
             + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        // A Bot Chat compacted into a new row keeps its first id as its
+        // lineage root, which is the id the roster names.
+        let lineageRoot = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID)
         return BotChatHygiene.isCanonicalBotChatRow(session, roster: roster)
             || BotChatHygiene.isReservedCanonicalTitleRow(session)
+            || (lineageRoot.map { root in roster.contains { $0.canonicalSessionID == root } } ?? false)
     }
 
     /// A kept dashboard's runtime on `profile`: as kept, or with its socket

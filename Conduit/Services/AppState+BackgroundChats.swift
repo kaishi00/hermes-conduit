@@ -141,8 +141,11 @@ extension AppState {
     /// socket isn't attached to it, and Hermes doesn't replay its end), so
     /// it stops counting as running and its message box sends again. Its
     /// words so far stay; opening it reads the rest.
-    func settleKeptChatTurnsAfterDisconnect() {
-        for chat in backgroundChats where chat.isRunning {
+    /// Only the chats of the dashboard whose socket closed (the one in
+    /// scope by default): another combined dashboard's go on streaming.
+    func settleKeptChatTurnsAfterDisconnect(of dashboardID: UUID? = nil) {
+        let closed = dashboardID ?? activeDashboardID
+        for chat in backgroundChats where chat.isRunning && (closed == nil || chat.dashboardID == closed) {
             act(on: chat) { settleKeptChatTurn() }
         }
         besideChatLive.moved(keeping: backgroundChats)

@@ -583,10 +583,19 @@ extension AppState {
         lastPresentationCacheFlushDate = Date()
         // Kept under the chat's own dashboard and profile: another combined
         // dashboard's for a chat opened in place there (AppState+FarChat.swift).
-        onChatRuntimeNow {
-            cacheMessagePresentation(for: sessionIDs)
-            recordOfflineChatCopy()
-            keepBotChatCopy()
+        if case .unreachable = chatRuntimeRoute, let farChat {
+            // Its connection dropped: the rows still save under its own
+            // profile. The offline and Bot Chat copies wait for a
+            // connection, as they do on screen.
+            let standIn = DashboardRuntime()
+            standIn.activeProfile = farChat.profile
+            act(onRuntime: standIn) { cacheMessagePresentation(for: sessionIDs) }
+        } else {
+            onChatRuntimeNow {
+                cacheMessagePresentation(for: sessionIDs)
+                recordOfflineChatCopy()
+                keepBotChatCopy()
+            }
         }
         // Kept while that chat is still the one on screen: a flush can run
         // while a bot open awaits its lookup.
