@@ -1231,7 +1231,8 @@ extension AppState {
         let dashboard = activeDashboardID
         // Looks off: this read keeps only the counts and sources; the Pulse
         // screen's own load asks for them.
-        guard let page = try? await pulseClient.feed(proposals: pulseSuggests, looks: false),
+        // The one on screen's own plugin, whichever Pulse the page shows.
+        guard let page = try? await pulseClient.feed(proposals: notifierPlugin.reports(PulseClient.proposalsCapability), looks: false),
               activeDashboardID == dashboard else {
             return
         }

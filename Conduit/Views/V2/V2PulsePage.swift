@@ -1352,7 +1352,8 @@ struct V2PulsePage: View {
     private func taskLink(_ card: PulseCard, task: String) -> some View {
         Button {
             // Another dashboard's Pulse: its task opens there.
-            Task { if await appState.switchForFarPulseStep() { appState.openPulseCardTask(card) } }
+            let shown = appState.pulseShownDashboardID
+            Task { if await appState.switchForFarPulseStep(from: shown) { appState.openPulseCardTask(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checklist")
@@ -1373,7 +1374,8 @@ struct V2PulsePage: View {
     private func chatLink(_ card: PulseCard) -> some View {
         Button {
             // Another dashboard's Pulse: its chat opens there.
-            Task { if await appState.switchForFarPulseStep() { appState.openPulseCardChat(card) } }
+            let shown = appState.pulseShownDashboardID
+            Task { if await appState.switchForFarPulseStep(from: shown) { appState.openPulseCardChat(card) } }
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left")
@@ -1688,11 +1690,13 @@ struct V2PulsePage: View {
             : bot.map { AppLocalization.string("Could not open \($0.displayLabel)'s Bot Chat.") }
                 ?? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
         let dashboard = appState.pulseDashboardID
+        let shown = appState.pulseShownDashboardID
+        let client = self.client
         actingCard = card.id
         Task {
             defer { if actingCard == card.id { actingCard = nil } }
             // Another dashboard's Pulse: its chat opens there.
-            guard await appState.switchForFarPulseStep() else { return }
+            guard await appState.switchForFarPulseStep(from: shown) else { return }
             let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
             guard appState.pulseDashboardID == dashboard else { return }
             guard let opened else {
@@ -1841,6 +1845,7 @@ struct V2PulsePage: View {
     private func rate(_ card: PulseCard, up: Bool, reason: PulseDownReason?) {
         ratingCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
             defer { ratingCards.remove(card.id) }
@@ -1905,6 +1910,7 @@ struct V2PulsePage: View {
     private func dismiss(_ card: PulseCard, _ dismissed: Bool, until: PulseRest? = nil) {
         finishingCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
@@ -1941,6 +1947,7 @@ struct V2PulsePage: View {
     private func markDone(_ card: PulseCard, _ done: Bool) {
         finishingCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
@@ -1987,12 +1994,14 @@ struct V2PulsePage: View {
         finishingCards.insert(card.id)
         keptCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
+        let shown = appState.pulseShownDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }
             // Another dashboard's Pulse: this phone shares with the one on
             // screen, so the change is made there.
-            guard await appState.switchForFarPulseStep() else { return }
+            guard await appState.switchForFarPulseStep(from: shown) else { return }
             // The sharing the tap was made in: turned off before the answer
             // comes, the tap applies nothing here.
             let sharing = appState.phoneSync.sharingSession
@@ -2039,6 +2048,7 @@ struct V2PulsePage: View {
         guard let proposal = card.proposal else { return }
         finishingCards.insert(card.id)
         let dashboard = appState.pulseDashboardID
+        let client = self.client
         let visit = self.visit
         Task {
             defer { finishingCards.remove(card.id) }

@@ -132,14 +132,18 @@ extension AppState {
     /// Before a Pulse card's step that opens a chat or task, or changes
     /// this phone's calendar, on another combined dashboard's Pulse: the
     /// switch there, until chats of another dashboard open in place too
-    /// (this phone shares its calendar with the one on screen). True when
-    /// the step can go ahead on the dashboard the page showed.
-    func switchForFarPulseStep() async -> Bool {
-        guard let id = pulseShownDashboardID, pulseRuntime != nil else { return true }
+    /// (this phone shares its calendar with the one on screen). `shown` is
+    /// the dashboard the page showed at the tap (`pulseShownDashboardID`
+    /// then). True when the step can go ahead on that dashboard: never on
+    /// another one, as a chip picked meanwhile or a connection let go would.
+    func switchForFarPulseStep(from shown: UUID?) async -> Bool {
+        guard let id = shown, id != dashboardIDOnScreen else { return pulseRuntime == nil }
+        guard runtime(for: id) != nil else { return false }
         guard !refusesCombinedSwitchDuringCall(to: id) else { return false }
         await switchToCombinedDashboardUntilSettled(id)
         guard !Task.isCancelled, activeDashboardID == id else { return false }
-        pulseShownDashboardID = nil
+        // A chip picked during the switch keeps its place.
+        if pulseShownDashboardID == id { pulseShownDashboardID = nil }
         return true
     }
 }
