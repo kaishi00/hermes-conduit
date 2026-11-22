@@ -2165,8 +2165,8 @@ extension CrossProfilePresentationCacheTests {
         if case .hosted = tiles[0].kind {} else { XCTFail("Mac's own room opens as Mac's") }
         if case .copy = tiles[2].kind {} else { XCTFail("Sam's room opens from Mac's copy") }
         // Mac comes before VPS in Saved Dashboards, so its group chats show
-        // before VPS' own, in Mac's own room order: opening one, which
-        // switches to Mac, moves nothing (Eric, 2026-11-21).
+        // before VPS' own, in Mac's own room order: opening one, in place
+        // or through a switch, moves nothing (Eric, 2026-11-21).
         let macOrderKey = BotOrder.roomStorageKey(scope: AppState.dashboardPreferenceBucket(mac.id))
         BotOrder(names: ["plans", "trip"], kind: .rooms).save(to: appState.defaults, key: macOrderKey)
         let around = appState.combinedRoomTilesAroundThisDashboard
