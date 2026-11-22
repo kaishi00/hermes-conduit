@@ -3034,6 +3034,10 @@ extension CrossProfilePresentationCacheTests {
         appState.pulseRememberedHomes[mac.id.uuidString] = "session-a"
         XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "its Pulse chat switches")
         appState.pulseRememberedHomes[mac.id.uuidString] = nil
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "during a call it refuses, as the switch's launch does")
+        appState.showVoiceSheet = false
         XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
 

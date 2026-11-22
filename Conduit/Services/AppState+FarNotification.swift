@@ -121,12 +121,16 @@ extension AppState {
     /// Opens a widget's or Siri's chat of another combined dashboard in
     /// place, on that dashboard's runtime, as its Chats row does: the chat
     /// its kept read lists for that profile. False when the launch goes on
-    /// as before (through a switch): not a chat's resume, the dashboard on
+    /// as before (through a switch, or its refusal during a call): a call
+    /// going on, not a chat's resume, the dashboard on
     /// screen's, not kept connected, its bots not read yet, not listed, its
     /// Pulse chat, or a Bot Chat (startFarChatOpen's isFarBotChat). An open
     /// that fails later shows the launch's error.
     func openWidgetChatInPlace(_ link: WidgetLaunchLink) -> Bool {
-        guard link.action == .resume, let workspace = link.workspace,
+        // During a call a widget's chat refuses, as the switch's launch
+        // does (A switch during a call): end the call first.
+        guard !isVoiceCallInProgress,
+              link.action == .resume, let workspace = link.workspace,
               let reference = link.reference, reference.kind == .dashboard,
               workspace.dashboardID != dashboardIDOnScreen,
               let kept = keptDashboardRuntimes[workspace.dashboardID],
