@@ -1941,6 +1941,27 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-form1")).questions.allSatisfy(\.isSkipped))
     }
 
+    /// Skip all shows for two open questions that may go blank, and on a
+    /// form for its last one too, whose field has no Skip of its own (#3099
+    /// review).
+    func testSkipAllShowsForAFormsLastOpenField() {
+        var form = makeRelayBatchCard()
+        XCTAssertTrue(form.isForm)
+        XCTAssertTrue(form.offersSkipAll)
+        for index in form.questions.indices.dropLast() { form.questions[index].status = .answered }
+        XCTAssertTrue(form.offersSkipAll, "One blank field left")
+        form.questions[form.questions.count - 1].status = .answered
+        XCTAssertFalse(form.offersSkipAll)
+
+        var choicesOnly = makeRelayBatchCard()
+        choicesOnly.questions.removeLast()
+        choicesOnly.questions.append(ClarifyQuestion(id: "region", question: "Which region?", choices: [ClarifyChoice(label: "east", value: "east"), ClarifyChoice(label: "west", value: "west")]))
+        XCTAssertFalse(choicesOnly.isForm)
+        XCTAssertTrue(choicesOnly.offersSkipAll)
+        for index in choicesOnly.questions.indices.dropLast() { choicesOnly.questions[index].status = .answered }
+        XCTAssertFalse(choicesOnly.offersSkipAll, "One left has its own Skip")
+    }
+
     // MARK: - Model helpers
 
     func testMultiSelectAnswerSerializationRoundTrips() throws {

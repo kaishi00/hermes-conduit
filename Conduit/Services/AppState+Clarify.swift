@@ -24,7 +24,8 @@ extension AppState {
     /// `answer` leaves the question blank, which Hermes reads as skipped:
     /// its Skip button, a form's blank field or a spoken "skip", wherever
     /// the question may go blank (`ClarifyActivity.mayLeaveBlank`), so the
-    /// user can decline instead of answering and the agent goes on.
+    /// user can decline instead of answering and the agent goes on. Only nil
+    /// skips: an empty or blank string is ignored.
     func respondToClarify(requestId: String, questionId: String? = nil, answer: String?) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).

@@ -4188,9 +4188,9 @@ struct ClarifyCard: View {
                     .accessibilityHint("Fill in what you know, and leave the rest blank.")
                 }
 
-                if clarify.questions.filter({ $0.isAnswerable && clarify.mayLeaveBlank($0) }).count > 1 {
+                if clarify.offersSkipAll {
                     // Dismisses the questions still open in one tap; on a
-                    // form, one with nothing filled in too, which Send can't.
+                    // form, ones with nothing filled in too, which Send can't.
                     Button {
                         Task { await appState.skipRemainingClarify(requestId: clarify.requestId) }
                     } label: {
@@ -4398,6 +4398,8 @@ struct ClarifyQuestionRow: View {
                     .buttonStyle(.borderless)
                     .foregroundStyle(.secondary)
                     .disabled(!isAnswerable)
+                    // Several rows each have a Skip: VoiceOver names the question.
+                    .accessibilityLabel(Text(AppLocalization.string("Skip")) + Text(verbatim: ": \(question.question)"))
                     .accessibilityHint(AppLocalization.string("Hermes goes on without an answer to this question.", table: .chat))
                 }
                 if let error = question.error, !error.isEmpty {
