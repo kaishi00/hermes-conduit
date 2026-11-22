@@ -639,12 +639,16 @@ extension AppState {
             saveVoiceProfilePreferences(preferences, profile: activeProfile)
         }
         voiceConversationController.stop()
-        stopQwenLiveConversation()
-        stopGeminiLiveConversation()
-        stopGPTLiveConversation()
-        stopGrokLiveConversation()
-        stopLocalLiveConversation()
-        retireVoiceBackgroundJobs()
+        // A live call on another combined dashboard goes on: the fallback
+        // is this dashboard's (no-switch stage 2).
+        if callDashboardOffScreen == nil {
+            stopQwenLiveConversation()
+            stopGeminiLiveConversation()
+            stopGPTLiveConversation()
+            stopGrokLiveConversation()
+            stopLocalLiveConversation()
+            retireVoiceBackgroundJobs()
+        }
         showVoiceSheet = false
         clearClassicVoiceCards()
         suspendedVoiceConversation = nil

@@ -1021,6 +1021,13 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(appState.minimisedLiveVoice, .gptLive)
         XCTAssertEqual(appState.liveCallDashboardID, mac.id)
 
+        // Mac's socket drops: the call goes on, and switching back to Mac
+        // still keeps it (the switch signs in again); away from it, nothing
+        // would carry it.
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
+        XCTAssertFalse(appState.callSurvivesDashboardSwitch(to: extra.id))
+
         // Signing out of Mac ends the call: nothing carries it now.
         appState.signOutDashboard(mac.id)
         XCTAssertFalse(appState.isLiveCallUp)

@@ -85,12 +85,16 @@ extension AppState {
         guard liveCallGoesOnWithoutTheScreen,
               let callDashboard = liveCallDashboardID, let target,
               isInCombinedGroup(callDashboard), isInCombinedGroup(target),
-              let runtime = runtime(for: callDashboard), runtime.client?.isConnected == true,
               // Its address edited since: its connection is to the old one,
               // and the switch lets it go.
               savedDashboardRegistry.dashboard(with: callDashboard)?.pendingURL == nil
         else { return false }
-        return true
+        // Back to its own dashboard: the call goes on there whether its
+        // kept socket is open or dropped meanwhile (the switch signs in
+        // again, and its requests wait for it as on any reconnect).
+        if target == callDashboard { return true }
+        // Away from it, its connection must stay to carry it.
+        return runtime(for: callDashboard)?.client?.isConnected == true
     }
 
     /// A live call on the phone that needs no particular screen: shown or

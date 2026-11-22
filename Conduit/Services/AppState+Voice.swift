@@ -2009,8 +2009,11 @@ extension AppState {
                 // would pass a middle stretch off as the earlier conversation.
                 return VoiceResumeContext(summary: stored?.text, recent: recent)
             }
-            guard let client,
-                  let text = try? await client.oneshot(
+            // Summarized by the Hermes the chat is on: the call's own
+            // dashboard's, never the screen's (the turns are that one's).
+            let summarizer = callDashboardOffScreen == nil ? client : callRuntimeOffScreen?.client
+            guard let summarizer,
+                  let text = try? await summarizer.oneshot(
                     task: "compression",
                     instructions: VoiceResumePlan.summaryInstructions,
                     input: VoiceResumePlan.summaryInput(older),
