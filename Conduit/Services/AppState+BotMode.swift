@@ -1883,6 +1883,9 @@ extension AppState {
         let encodedName = bot.name.addingPercentEncoding(withAllowedCharacters: allowed) ?? bot.name
         let dashboardID = activeDashboardID
         let rosterOwner = currentDashboardRuntimeOwner()
+        // Its chats' ids, read before the await: the screen may move to
+        // another dashboard meanwhile.
+        let botChatIDs = botChatPinSessionIDs(of: bot)
         do {
             // The gateway waits up to 10 s for a running profile gateway to
             // stop before removing the directory.
@@ -1898,7 +1901,7 @@ extension AppState {
         // was deleted on, even if the screen moved to another one meanwhile.
         let pinsBucket = Self.dashboardPreferenceBucket(dashboardID)
         forgetPinnedReplies(profile: bot.name, dashboard: pinsBucket)
-        forgetBotChatPinnedReplies(of: bot, dashboard: pinsBucket)
+        forgetBotChatPinnedReplies(of: bot, dashboard: pinsBucket, sessionIDs: botChatIDs)
         // Its chats' raw rows, kept for the history page, go on any
         // dashboard, and so do its settings pages' kept answers.
         if let dashboardID {
@@ -1941,27 +1944,36 @@ extension AppState {
     /// profile (a pin made while another profile was active stays under
     /// that one): the sessions this process saw opened as the bot's, and
     /// its canonical chat.
-    func forgetBotChatPinnedReplies(of bot: BotProfile, dashboard: String? = nil) {
+    func forgetBotChatPinnedReplies(of bot: BotProfile, dashboard: String? = nil, sessionIDs: Set<String>? = nil) {
+        let ids = sessionIDs ?? botChatPinSessionIDs(of: bot)
+        guard !ids.isEmpty else { return }
+        let bucket = dashboard ?? Self.dashboardPreferenceBucket(activeDashboardID)
+        var removed: Set<String> = []
+        for (profile, stored) in pinnedRepliesByDashboard[bucket] ?? [:] {
+            let remaining = stored.filter { !ids.contains($0.sessionID) }
+            guard remaining.count != stored.count else { continue }
+            removed.formUnion(stored.filter { ids.contains($0.sessionID) }.map(\.id))
+            setPinnedReplies(remaining, of: PinnedReplyOwner(dashboard: bucket, profile: profile))
+        }
+        guard !removed.isEmpty else { return }
+        // Only a reveal of a pin that went: another dashboard's chat can
+        // share the id.
+        if let reveal = pendingPinnedReplyReveal, removed.contains(reveal.pin.id) {
+            pendingPinnedReplyReveal = nil
+        }
+        persistPinnedReplies()
+    }
+
+    /// The ids of a bot's chats its pins are kept under: the sessions this
+    /// process saw opened as the bot's, and its canonical chat.
+    func botChatPinSessionIDs(of bot: BotProfile) -> Set<String> {
         var ids = Set(botChatSessionProfiles.compactMap { id, owner in
             owner.caseInsensitiveCompare(bot.name) == .orderedSame ? id : nil
         })
         for id in [bot.canonicalSession?.id, bot.canonicalSession?.resolvedID] {
             if let id = ChatScrollIdentityNormalization.sessionID(id) { ids.insert(id) }
         }
-        guard !ids.isEmpty else { return }
-        let bucket = dashboard ?? Self.dashboardPreferenceBucket(activeDashboardID)
-        var changed = false
-        for (profile, stored) in pinnedRepliesByDashboard[bucket] ?? [:] {
-            let remaining = stored.filter { !ids.contains($0.sessionID) }
-            guard remaining.count != stored.count else { continue }
-            setPinnedReplies(remaining, of: PinnedReplyOwner(dashboard: bucket, profile: profile))
-            changed = true
-        }
-        guard changed else { return }
-        if let reveal = pendingPinnedReplyReveal, ids.contains(reveal.pin.sessionID) {
-            pendingPinnedReplyReveal = nil
-        }
-        persistPinnedReplies()
+        return ids
     }
 
     /// The largest bot face is 72 pt (Bots Home), and Dynamic Type grows

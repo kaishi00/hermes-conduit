@@ -758,10 +758,11 @@ extension AppState {
             return true
         } catch DashboardTicketBridgeError.answeredAfterSwitch {
             // Hermes deleted it after the screen moved to another dashboard:
-            // only the old dashboard's saved copy follows (#1040).
+            // only the old dashboard's saved copy and pins follow (#1040).
             if let dashboardID {
                 removeSavedCopies(ofDeleted: Set(session.nestingIDs), dashboardID: dashboardID, profile: profile)
             }
+            dropPinnedReplies(forDeleted: session, profile: profile, dashboard: Self.dashboardPreferenceBucket(dashboardID))
             return false
         } catch {
             guard sessionMutationResultIsCurrent(profile: profile, owner: owner) else { return false }
