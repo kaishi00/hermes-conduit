@@ -239,9 +239,11 @@ enum KanbanFullTextFormatter {
     /// line. A code span keeps what's inside it whole (`__init__`), only its
     /// backticks go. The sheet renders the Markdown itself.
     static func plainPreview(_ markdown: String) -> String {
-        markdown
+        // Each kept line split on backticks: even pieces are prose, odd ones
+        // the inside of a code span, left as written.
+        let lines: [[String]] = markdown
             .components(separatedBy: .newlines)
-            .compactMap { raw -> String? in
+            .compactMap { raw -> [String]? in
                 var line = raw.trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("```") || line.isEmpty { return nil }
                 // A heading or quote marker counts only with its space, so
@@ -250,28 +252,44 @@ enum KanbanFullTextFormatter {
                       marker > line.startIndex, line[marker] == " " {
                     line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
                 }
-                // Split on backticks: even pieces are prose, odd ones the
-                // inside of a code span, left as written.
-                line = line
-                    .split(separator: "`", omittingEmptySubsequences: false)
-                    .enumerated()
-                    .map { index, piece in
-                        index.isMultiple(of: 2) ? withoutPairedEmphasis(String(piece)) : String(piece)
-                    }
-                    .joined()
-                return line.isEmpty ? nil : line
+                return line.split(separator: "`", omittingEmptySubsequences: false).map(String.init)
             }
+        let prose = lines.flatMap { pieces in pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element) }
+        let stripped = pairedEmphasisMarkers(in: prose)
+        return lines
+            .map { pieces -> String in
+                pieces.enumerated().map { index, piece -> String in
+                    guard index.isMultiple(of: 2) else { return piece }
+                    return stripped.reduce(piece) { $0.replacingOccurrences(of: $1, with: "") }
+                }
+                .joined()
+            }
+            .filter { !$0.isEmpty }
             .joined(separator: "\n")
     }
 
-    /// `**` and `__` taken out only where they pair up; an odd one out
-    /// (`my__var`) leaves that marker's runs as written, as the sheet shows it.
-    private static func withoutPairedEmphasis(_ text: String) -> String {
-        var line = text
-        for marker in ["**", "__"] where line.components(separatedBy: marker).count.isMultiple(of: 2) == false {
-            line = line.replacingOccurrences(of: marker, with: "")
+    /// The emphasis markers (`**`, `__`) that pair up across the whole text's
+    /// prose, so bold that spans a code span or a line break still goes. An
+    /// odd one out (`my__var`) leaves that marker's runs as written, as the
+    /// sheet shows it.
+    static func pairedEmphasisMarkers(in prose: [String]) -> [String] {
+        ["**", "__"].filter { marker in
+            let count = prose.reduce(0) { $0 + $1.components(separatedBy: marker).count - 1 }
+            return count > 0 && count.isMultiple(of: 2)
         }
-        return line
+    }
+
+    /// Whether the Result row opens the whole text: its preview runs past
+    /// the row's lines, or the preview had Markdown taken out.
+    static func resultOpensFullText(_ result: String, preview: String, lineWidth: Int) -> Bool {
+        textHasMoreToRead(preview, lineWidth: lineWidth) || preview != result
+    }
+
+    /// Activity rows shown and hidden behind "Show N earlier events": the
+    /// newest `newest` until the person asks for all of them.
+    static func activityShown(total: Int, newest: Int, showsAll: Bool) -> (shown: Int, hidden: Int) {
+        let shown = showsAll ? total : min(total, newest)
+        return (shown, total - shown)
     }
 
     /// A child's result as its parent received it (`child_results`): its

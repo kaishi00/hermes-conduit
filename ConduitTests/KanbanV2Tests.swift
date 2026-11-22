@@ -901,6 +901,28 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("use my__var **here**"), "use my__var here")
     }
 
+    func testRowPreviewPairsEmphasisAcrossCodeSpansAndLines() {
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**Run `make` first**"), "Run make first")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("**Started here\nended here**"), "Started here\nended here")
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("my__var\n**bold**"), "my__var\nbold")
+    }
+
+    func testResultOpensWhenLongOrWhenMarkdownWasTakenOut() {
+        let width = KanbanFullTextFormatter.lineWidth(points: 13)
+        XCTAssertFalse(KanbanFullTextFormatter.resultOpensFullText("Done.", preview: "Done.", lineWidth: width))
+        let bold = "**Done.**"
+        XCTAssertTrue(KanbanFullTextFormatter.resultOpensFullText(bold, preview: KanbanFullTextFormatter.plainPreview(bold), lineWidth: width))
+        let long = String(repeating: "word ", count: 200)
+        XCTAssertTrue(KanbanFullTextFormatter.resultOpensFullText(long, preview: long, lineWidth: width))
+    }
+
+    func testActivityShowsNewestSixtyThenTheRest() {
+        XCTAssertTrue(KanbanFullTextFormatter.activityShown(total: 59, newest: 60, showsAll: false) == (59, 0))
+        XCTAssertTrue(KanbanFullTextFormatter.activityShown(total: 60, newest: 60, showsAll: false) == (60, 0))
+        XCTAssertTrue(KanbanFullTextFormatter.activityShown(total: 61, newest: 60, showsAll: false) == (60, 1))
+        XCTAssertTrue(KanbanFullTextFormatter.activityShown(total: 61, newest: 60, showsAll: true) == (61, 0))
+    }
+
     func testRowPreviewKeepsCodeSpansWhole() {
         XCTAssertEqual(KanbanFullTextFormatter.plainPreview("Call `__init__` **first**."), "Call __init__ first.")
     }

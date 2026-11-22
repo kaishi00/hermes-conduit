@@ -911,6 +911,7 @@ struct KanbanTaskDetailView: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
             ForEach(ids, id: \.self) { linkedID in
+                let preview = childResultPreview(for: linkedID)
                 Button {
                     // Replace-current-detail navigation: safe on iPhone, no
                     // recursive sheet stacks.
@@ -933,7 +934,7 @@ struct KanbanTaskDetailView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            if let preview = childResultPreview(for: linkedID), !preview.isEmpty {
+                            if let preview, !preview.isEmpty {
                                 Text(preview)
                                     .scaledFont(.caption)
                                     .foregroundStyle(.secondary)
@@ -950,7 +951,7 @@ struct KanbanTaskDetailView: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open linked task \(linkedTaskTitle(for: linkedID))")
                 // The child's result reads with the row, not only after opening it.
-                .accessibilityValue(childResultPreview(for: linkedID) ?? "")
+                .accessibilityValue(preview ?? "")
             }
         }
     }
@@ -1094,14 +1095,15 @@ struct KanbanTaskDetailView: View {
     private var activitySection: some View {
         if let events = detail?.events, !events.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Activity (\(events.count))", table: .tasks), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
-                ForEach(showsAllEvents ? events[...] : events.prefix(Self.newestEventCount)) { event in
+                let window = KanbanFullTextFormatter.activityShown(total: events.count, newest: Self.newestEventCount, showsAll: showsAllEvents)
+                ForEach(events.prefix(window.shown)) { event in
                     activityRow(event)
                 }
-                if !showsAllEvents, events.count > Self.newestEventCount {
+                if window.hidden > 0 {
                     Button {
                         showsAllEvents = true
                     } label: {
-                        Text(AppLocalization.string("Show \(events.count - Self.newestEventCount) earlier events", table: .tasks))
+                        Text(AppLocalization.string("Show \(window.hidden) earlier events", table: .tasks))
                             .scaledFont(.caption.weight(.medium))
                             .foregroundStyle(.conduitAccent)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1188,10 +1190,11 @@ struct KanbanTaskDetailView: View {
     private func resultSection(_ task: KanbanTask) -> some View {
         if let result = task.result?.trimmingCharacters(in: .whitespacesAndNewlines), !result.isEmpty {
             let preview = KanbanFullTextFormatter.plainPreview(result)
-            let opens = KanbanFullTextFormatter.textHasMoreToRead(
-                preview,
+            let opens = KanbanFullTextFormatter.resultOpensFullText(
+                result,
+                preview: preview,
                 lineWidth: KanbanFullTextFormatter.lineWidth(for: .footnote, at: dynamicTypeSize)
-            ) || preview != result
+            )
             ConduitSettingsSection(title: AppLocalization.string("Result", table: .tasks), symbol: "flag.checkered", tint: .green) {
                 if opens {
                     Button {
