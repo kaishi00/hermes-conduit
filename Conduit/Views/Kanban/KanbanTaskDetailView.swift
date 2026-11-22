@@ -92,6 +92,10 @@ struct KanbanTaskDetailView: View {
     /// The attachment download in flight, cancelled when the screen moves
     /// to another task or goes away, so its file never opens over them.
     @State private var attachmentDownload: Task<Void, Never>?
+    /// Which download owns the spinner and the handle above: going to
+    /// another task and back starts a new one, and the old one's late
+    /// cleanup must leave the new one alone.
+    @State private var attachmentDownloadToken: UUID?
 
     init(task: KanbanTask) {
         initialTask = task
@@ -360,6 +364,7 @@ struct KanbanTaskDetailView: View {
                 refreshErrorMessage = nil
                 attachmentDownload?.cancel()
                 attachmentDownload = nil
+                attachmentDownloadToken = nil
                 openingAttachmentID = nil
                 attachmentError = nil
                 fullText = nil
@@ -1149,8 +1154,9 @@ struct KanbanTaskDetailView: View {
                 ForEach(attachments) { attachment in
                     Button {
                         guard attachmentDownload == nil else { return }
-                        let taskID = displayedTaskID
-                        attachmentDownload = Task { await openAttachment(attachment, forTask: taskID) }
+                        let token = UUID()
+                        attachmentDownloadToken = token
+                        attachmentDownload = Task { await openAttachment(attachment, token: token) }
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "doc.text")
@@ -1201,14 +1207,15 @@ struct KanbanTaskDetailView: View {
     /// Look must not render goes to the share sheet. A download the screen
     /// moved on from (another task, or closed) is dropped with its file,
     /// never shown over what's there now.
-    private func openAttachment(_ attachment: KanbanAttachment, forTask taskID: String) async {
+    private func openAttachment(_ attachment: KanbanAttachment, token: UUID) async {
         openingAttachmentID = attachment.id
         attachmentError = nil
-        let stillCurrent = { !Task.isCancelled && displayedTaskID == taskID }
+        let stillCurrent = { !Task.isCancelled && attachmentDownloadToken == token }
         defer {
-            if displayedTaskID == taskID {
+            if attachmentDownloadToken == token {
                 openingAttachmentID = nil
                 attachmentDownload = nil
+                attachmentDownloadToken = nil
             }
         }
         do {
