@@ -581,9 +581,13 @@ extension AppState {
         presentationCacheFlushTask?.cancel()
         presentationCacheFlushTask = nil
         lastPresentationCacheFlushDate = Date()
-        cacheMessagePresentation(for: sessionIDs)
-        recordOfflineChatCopy()
-        keepBotChatCopy()
+        // Kept under the chat's own dashboard and profile: another combined
+        // dashboard's for a chat opened in place there (AppState+FarChat.swift).
+        onChatRuntimeNow {
+            cacheMessagePresentation(for: sessionIDs)
+            recordOfflineChatCopy()
+            keepBotChatCopy()
+        }
         // Kept while that chat is still the one on screen: a flush can run
         // while a bot open awaits its lookup.
         if outgoingBotChatCopyOwner?.sessionID != activeSessionId {

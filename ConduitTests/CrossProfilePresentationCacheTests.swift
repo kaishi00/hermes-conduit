@@ -730,6 +730,12 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.runtime(for: nil), "nor for no dashboard")
         // Acting on it reads and writes its own, and leaves the screen's.
         XCTAssertEqual(kept.activeProfile, keptConnection.client.profile ?? "default", "its profile is its kept client's")
+        let onWork = KeptDashboardRuntime(
+            client: HermesClient(connection: keptConnection.connection, profile: "work"),
+            bridge: keptConnection.bridge, connection: keptConnection.connection, keptAt: Date()
+        )
+        XCTAssertEqual(onWork.runtime.activeProfile, "work", "a kept client on another profile gives its runtime that one")
+        XCTAssertNotEqual(appState.activeProfile, "work", "and the screen keeps its own")
         let profileOnScreen = appState.activeProfile
         var syncTask: Task<Int, Never>?
         appState.act(onRuntime: kept) {
@@ -1868,6 +1874,90 @@ extension CrossProfilePresentationCacheTests {
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
         XCTAssertTrue(dropped.isCancelled)
+    }
+
+    /// Another combined dashboard's Chats row opens in place (no-switch
+    /// stage 2): no switch, the chat read and sent through that dashboard's
+    /// kept connection on its own runtime, the dashboard on screen's
+    /// events and selection left alone.
+    func testAKeptDashboardsChatOpensInPlaceAndSendsThroughIt() async throws {
+        final class Seen { var opened: [(ObjectIdentifier, String)] = []; var sent: [(ObjectIdentifier, String, String)] = [] }
+        let seen = Seen()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.openSession = { client, sessionID, _ in
+            seen.opened.append((ObjectIdentifier(client), sessionID))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        operations.sendPrompt = { client, sessionID, text in
+            seen.sent.append((ObjectIdentifier(client), sessionID, text))
+            return .accepted
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(kept.client === outgoing)
+        var row = SessionSummary(id: "mac-1", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+
+        var botChat = row
+        botChat.title = BotMode.canonicalChatTitle
+        XCTAssertFalse(appState.openFarChatInPlace(botChat, in: mac.id), "a far Bot Chat still opens through a switch")
+        XCTAssertNil(appState.farChatDashboardID)
+
+        appState.openCombinedChat(row, in: mac.id)
+        await waitUntil { appState.activeSessionId == "mac-1" && appState.messages.contains { $0.id == "far-1" } }
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(seen.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
+        XCTAssertEqual(seen.opened.last?.1, "mac-1")
+        XCTAssertTrue(appState.runtime(for: mac.id) === kept.runtime)
+        XCTAssertTrue(appState.chatIsConnected, "its own connection's")
+        XCTAssertEqual(kept.runtime.sessions.first?.id, "mac-1", "its runtime holds its row as the Chats list read it")
+        XCTAssertNil(kept.runtime.sessions.first?.combinedDashboardID, "as a row of its own")
+        XCTAssertNotEqual(appState.chatResumeLastSessionReference(for: "default")?.sessionID, "mac-1",
+                          "not this dashboard's selection")
+        // Only its own dashboard's events reach it.
+        XCTAssertFalse(appState.eventBelongsToActiveSession("mac-1"), "the dashboard on screen's events don't")
+        appState.act(onRuntime: kept.runtime) {
+            XCTAssertTrue(appState.eventBelongsToActiveSession("mac-1"), "its own do")
+        }
+        XCTAssertTrue(appState.keptDashboardFollowsChats(mac.id))
+        XCTAssertFalse(appState.keptDashboardFollowsChats(vps.id))
+
+        // A message goes through the kept connection, to the chat.
+        _ = await appState.sendMessage("Ship it")
+        XCTAssertEqual(seen.sent.last?.0, ObjectIdentifier(outgoing))
+        XCTAssertEqual(seen.sent.last?.1, "mac-1")
+        XCTAssertEqual(seen.sent.last?.2, "Ship it")
+        XCTAssertTrue(appState.messages.contains { $0.role == .user && $0.content == "Ship it" })
+        // The composer's context, captured on screen, is the far chat's, so
+        // its send is checked there and goes.
+        let composerContext = appState.composerSubmissionContext()
+        XCTAssertEqual(composerContext.clientIdentity, kept.runtime.client.map(ObjectIdentifier.init))
+        XCTAssertTrue(appState.act(onRuntime: kept.runtime) { appState.isCurrentComposerSubmission(composerContext) },
+                      "a context captured on screen is the far chat's")
+
+        // Its kept connection gone, nothing reaches another dashboard's.
+        let sentBefore = seen.sent.count
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertFalse(appState.chatIsConnected)
+        let wentAnyway = await appState.sendMessage("Again")
+        XCTAssertFalse(wentAnyway)
+        XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
+        // A switch makes the chat on screen that dashboard's, as before.
+        appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "default")
+        var registry = appState.savedDashboardRegistry
+        registry.activeDashboardID = mac.id
+        appState.savedDashboardRegistry = registry
+        XCTAssertNil(appState.farChatDashboardID)
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {

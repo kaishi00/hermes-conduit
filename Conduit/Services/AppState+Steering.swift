@@ -474,6 +474,9 @@ extension AppState {
     /// (voice's interrupts and cleanups don't).
     @discardableResult
     func cancelCurrent(stopsWorkstream: Bool = false) async -> Bool {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let done = await onChatRuntime(unreachable: false, { await self.cancelCurrent(stopsWorkstream: stopsWorkstream) }) { return done }
         guard isBusy else {
             if stopsWorkstream, let open = workstreamStoppedByComposer {
                 return await actOnWorkstream(open.item, profile: open.profile, action: .stop)

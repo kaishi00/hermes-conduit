@@ -330,7 +330,9 @@ extension AppState {
     }
 
     private func bufferIfReconciling(_ event: StreamEvent, turnGeneration: Int?) -> Bool {
-        guard var reconciliation else { return false }
+        // The open's reconcile is the chat on screen's: another dashboard's
+        // events never join it (a far chat's open is its own dashboard's).
+        guard chatOnScreenIsInScope, var reconciliation else { return false }
         guard reconciliation.accepts(sessionID(for: event)) else { return false }
         if case .sideAgentComplete = event {
             shownChat.heldSideAgentCompletions.append(event)
@@ -374,7 +376,10 @@ extension AppState {
     }
 
     func eventBelongsToActiveSession(_ sessionId: String) -> Bool {
-        guard let activeSessionId, !sessionId.isEmpty else { return false }
+        // Only the chat's own dashboard's events: one id can name chats on
+        // two Hermes, and a chat opened on another combined dashboard's
+        // runtime hears from that one alone (no-switch stage 2).
+        guard chatOnScreenIsInScope, let activeSessionId, !sessionId.isEmpty else { return false }
         if sessionId == activeSessionId { return true }
         // A rebound id the identity index gave another chat is that chat's,
         // though the catalog may still list it here (#2613's review).

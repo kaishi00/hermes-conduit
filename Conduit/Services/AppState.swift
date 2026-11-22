@@ -48,6 +48,18 @@ final class AppState: ObservableObject {
     /// screen (the forwarders' side effects) runs only then.
     var actingOnRuntimeOnScreen: Bool { shownRuntime === runtimeOnScreen }
     var runtimeOnScreenChanges: AnyCancellable?
+    /// The combined dashboard whose chat is on screen when it isn't the
+    /// dashboard on screen's (no-switch stage 2): opened in that
+    /// dashboard's scope, it reads, streams and sends on that dashboard's
+    /// own runtime (AppState+FarChat.swift). Nil for the dashboard on
+    /// screen's chat, or none.
+    var farChat: FarChatOwner? {
+        didSet {
+            guard farChat != oldValue else { return }
+            // Its runtime's changes (connected, its client) redraw the chat.
+            republishRuntime(farChat.flatMap { runtime(for: $0.dashboardID) }, for: Self.farChatSurface)
+        }
+    }
     /// Other dashboards' runtimes a surface shows (a far group chat), whose
     /// changes publish as AppState's while it does, keyed by the surface.
     var surfaceRuntimeChanges: [String: (runtime: ObjectIdentifier, changes: AnyCancellable)] = [:]
@@ -252,6 +264,9 @@ final class AppState: ObservableObject {
     @Published var savedDashboardRegistry: SavedDashboardRegistry {
         didSet {
             if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
+                // A switch makes the chat on screen this dashboard's until
+                // it clears it, as before.
+                farChat = nil
                 composerNotice = nil
                 botsListNotice = nil
                 widgetSettledCatalogOwner = nil
@@ -774,6 +789,9 @@ final class AppState: ObservableObject {
     var sessionCatalogFirstRead: SessionCatalogFirstRead?
     @Published var activeSessionId: String? {
         didSet {
+            // Whose chat it is: the dashboard in scope as it opened, so a
+            // chat opened on another combined dashboard's runtime acts there.
+            noteChatOnScreenDashboard()
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeSessionId {
                 // Read replies aloud follows only the open chat's turn.
