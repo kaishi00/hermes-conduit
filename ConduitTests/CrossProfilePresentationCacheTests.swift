@@ -2050,6 +2050,24 @@ extension CrossProfilePresentationCacheTests {
         _ = await appState.setYoloModeReportingFailure(true)
         XCTAssertTrue(socket.sentTexts.dropFirst(yoloFrames).contains { $0.contains("mac-1") },
                       "its YOLO goes through the kept connection too")
+        // The Model sheet's catalog is read through it, and its Edit
+        // filters and Quick picks are the Mac's own.
+        let catalogFrames = socket.sentTexts.count
+        _ = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
+        XCTAssertTrue(socket.sentTexts.dropFirst(catalogFrames).contains { $0.contains("model.options") },
+                      "the catalog is the Mac's, read through its kept connection")
+        let screenVisibility = appState.modelVisibility
+        let screenPicks = appState.modelQuickPicks
+        appState.saveChatModelVisibility(ModelVisibility(hiddenProviders: ["mac-hidden"], hiddenModels: []))
+        XCTAssertEqual(appState.chatModelVisibility.hiddenProviders, ["mac-hidden"])
+        XCTAssertEqual(appState.modelVisibility, screenVisibility, "the dashboard on screen's filters are untouched")
+        appState.updateChatModelQuickPicks { $0.recordSwitch(to: ModelQuickPick(provider: "mac-provider", model: "mac-model"), from: nil) }
+        XCTAssertEqual(appState.chatModelQuickPicks.recent.first?.model, "mac-model")
+        XCTAssertEqual(appState.modelQuickPicks, screenPicks, "the dashboard on screen's Quick picks are untouched")
+        XCTAssertEqual(appState.storedModelQuickPicks()[AppState.dashboardPreferenceBucket(mac.id)]?.recent.first?.model, "mac-model",
+                       "kept under the Mac")
+        // Its draft's owner comes from the Mac's own list.
+        XCTAssertEqual(appState.composerDraftOwner(for: appState.composerDraftKeyOnScreen), "mac-1")
 
         // Its kept connection gone, nothing reaches another dashboard's.
         let sentBefore = seen.sent.count
@@ -2058,6 +2076,8 @@ extension CrossProfilePresentationCacheTests {
         let wentAnyway = await appState.sendMessage("Again")
         XCTAssertFalse(wentAnyway)
         XCTAssertEqual(seen.sent.count, sentBefore, "never sent to the dashboard on screen")
+        let unreachableCatalog = await appState.loadChatModelProviders(sessionId: "mac-1", refresh: false)
+        XCTAssertNil(unreachableCatalog, "no catalog while its connection is down, never the screen's")
         // Unreachable, its rows still save under its own profile.
         appState.farChat = FarChatOwner(dashboardID: mac.id, profile: "work")
         XCTAssertEqual(appState.activeSessionId, "mac-1")

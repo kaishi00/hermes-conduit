@@ -669,6 +669,10 @@ extension AppState {
     /// on screen: the owning row's stored id (else its id). Nil when no row
     /// owns the key's id, an alias two rows carry included (issue 2782).
     func composerDraftOwner(for key: ComposerDraftKey) -> String? {
+        // A far chat's draft: from its own dashboard's list, on its runtime.
+        if let farRuntime = composerDraftFarRuntime(for: key) {
+            return act(onRuntime: farRuntime) { composerDraftOwner(for: key) }
+        }
         guard !key.isNewConversation, key.dashboard == activeDashboardID else { return nil }
         return Self.composerDraftOwningRow(of: key.sessionID, in: composerDraftRows(profile: key.profile)).row?.durableKey
     }
@@ -678,10 +682,21 @@ extension AppState {
     /// list names otherwise, or two rows carry it (issue 2782). An id no
     /// row lists says nothing, and the draft stays.
     func composerDraftKey(_ key: ComposerDraftKey, isNotChatOf owner: String) -> Bool {
+        if let farRuntime = composerDraftFarRuntime(for: key) {
+            return act(onRuntime: farRuntime) { composerDraftKey(key, isNotChatOf: owner) }
+        }
         guard !key.isNewConversation, key.sessionID != owner, key.dashboard == activeDashboardID else { return false }
         let owning = Self.composerDraftOwningRow(of: key.sessionID, in: composerDraftRows(profile: key.profile))
         guard owning.isListed else { return false }
         return owning.row?.durableKey != owner
+    }
+
+    /// The runtime of the far chat on screen when `key` is its draft: its
+    /// list is that dashboard's, read there.
+    private func composerDraftFarRuntime(for key: ComposerDraftKey) -> DashboardRuntime? {
+        guard let farChat, key.dashboard == farChat.dashboardID, key.dashboard != activeDashboardID,
+              let farRuntime = runtime(for: farChat.dashboardID), farRuntime !== shownRuntime else { return nil }
+        return farRuntime
     }
 
     private func composerDraftRows(profile: String) -> [SessionSummary] {

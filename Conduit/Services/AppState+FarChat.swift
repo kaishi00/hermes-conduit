@@ -145,6 +145,39 @@ extension AppState {
         }
     }
 
+    /// The Model sheet's Edit filters for the chat on screen: its own
+    /// dashboard's, as kept for it (per dashboard).
+    var chatModelVisibility: ModelVisibility {
+        guard let farChat else { return modelVisibility }
+        return storedModelVisibilities()[Self.dashboardPreferenceBucket(farChat.dashboardID)] ?? ModelVisibility()
+    }
+
+    /// Saves the Model sheet's Edit filters under the chat on screen's own
+    /// dashboard. Nothing is saved while a far chat's connection is down.
+    func saveChatModelVisibility(_ visibility: ModelVisibility) {
+        guard let farChat else { return saveModelVisibility(visibility) }
+        guard let chatRuntime = runtime(for: farChat.dashboardID) else { return }
+        act(onRuntime: chatRuntime) { saveModelVisibility(visibility) }
+    }
+
+    /// The pinned and recent models for the chat on screen: its own
+    /// dashboard's, as kept for it (per dashboard).
+    var chatModelQuickPicks: ModelQuickPicks {
+        guard let farChat else { return modelQuickPicks }
+        return storedModelQuickPicks()[Self.dashboardPreferenceBucket(farChat.dashboardID)] ?? ModelQuickPicks()
+    }
+
+    /// Changes the chat on screen's dashboard's pinned and recent models.
+    func updateChatModelQuickPicks(_ change: (inout ModelQuickPicks) -> Void) {
+        guard let farChat else { return updateModelQuickPicks(change) }
+        guard let chatRuntime = runtime(for: farChat.dashboardID) else { return }
+        act(onRuntime: chatRuntime) {
+            // Its runtime's copy may not have been read from what's kept.
+            chatRuntime.modelQuickPicks = chatModelQuickPicks
+            updateModelQuickPicks(change)
+        }
+    }
+
     // MARK: - Opening
 
     /// Opens another combined dashboard's Chats row in place, on that

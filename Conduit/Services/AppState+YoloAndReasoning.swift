@@ -85,7 +85,8 @@ extension AppState {
         let submissionContext = context ?? composerSubmissionContext()
         // Another combined dashboard's chat on screen: written on its own
         // runtime, where its context was captured (AppState+FarChat.swift).
-        if let routed = await onChatRuntime(unreachable: Optional(YoloWriteFailure(message: nil)), {
+        let unreachable = YoloWriteFailure(message: AppLocalization.string("Not connected to a conversation."))
+        if let routed = await onChatRuntime(unreachable: Optional(unreachable), {
             await setYoloModeReportingFailure(enabled, context: submissionContext)
         }) {
             return routed

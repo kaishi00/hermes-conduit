@@ -96,7 +96,7 @@ extension AppState {
         }
     }
 
-    private func storedModelVisibilities() -> [String: ModelVisibility] {
+    func storedModelVisibilities() -> [String: ModelVisibility] {
         guard let data = defaults.data(forKey: modelVisibilityByDashboardKey),
               let stored = try? JSONDecoder().decode([String: ModelVisibility].self, from: data) else { return [:] }
         return stored

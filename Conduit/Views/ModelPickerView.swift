@@ -408,7 +408,7 @@ struct ModelPickerView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(editingVisibility ? AppLocalization.string("Done") : AppLocalization.string("Edit")) {
                         if editingVisibility {
-                            appState.saveModelVisibility(visibility)
+                            appState.saveChatModelVisibility(visibility)
                             editingVisibility = false
                         } else {
                             startEditingVisibility()
@@ -444,7 +444,7 @@ struct ModelPickerView: View {
             // Seeded here, not after the catalog loads: a failed fetch would
             // leave it empty for Done to save, and a late one would replace
             // edits already made.
-            visibility = appState.modelVisibility
+            visibility = appState.chatModelVisibility
             // The models Hermes gave last, kept on the phone, with the
             // chat's model checked, before the first frame; Hermes' answer
             // follows (#1533).
@@ -753,8 +753,8 @@ struct ModelPickerView: View {
     private var quickPicksSection: some View {
         let providers = visibleProviders
         let current = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
-        let pinned = appState.modelQuickPicks.pinnedRows(in: providers)
-        let recent = appState.modelQuickPicks.recentRows(in: providers, excluding: current)
+        let pinned = appState.chatModelQuickPicks.pinnedRows(in: providers)
+        let recent = appState.chatModelQuickPicks.recentRows(in: providers, excluding: current)
         if catalog.state != .ready {
             ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
                 catalogStateRows
@@ -807,7 +807,7 @@ struct ModelPickerView: View {
 
     /// Pins a model to Quick picks, or unpins it.
     private func pinButton(_ model: ModelInfo, provider: ProviderInfo) -> some View {
-        let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+        let pinned = appState.chatModelQuickPicks.isPinned(model: model.id, provider: provider)
         // Several providers serve one model, so VoiceOver names both.
         let name = "\(model.id), \(provider.title)"
         return Button {
@@ -829,7 +829,7 @@ struct ModelPickerView: View {
     private func togglePin(_ model: ModelInfo, provider: ProviderInfo) {
         Haptics.selection()
         withAnimation(ConduitMotion.response) {
-            appState.updateModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
+            appState.updateChatModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
         }
     }
 
@@ -1121,7 +1121,7 @@ struct ModelPickerView: View {
         .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .contextMenu {
-            let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+            let pinned = appState.chatModelQuickPicks.isPinned(model: model.id, provider: provider)
             Button {
                 togglePin(model, provider: provider)
             } label: {
@@ -1411,7 +1411,7 @@ struct ModelPickerView: View {
                 provider: catalog.providers.first { $0.matches(previous.provider) }?.name ?? previous.provider,
                 model: previous.model
             )
-            appState.updateModelQuickPicks {
+            appState.updateChatModelQuickPicks {
                 $0.recordSwitch(to: ModelQuickPick(provider: selection.provider, model: selection.model), from: left)
             }
             if deferred {
