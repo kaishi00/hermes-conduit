@@ -31,7 +31,11 @@ extension AppState {
     /// it), as its reply's events find it.
     func keptChat(answering sessionID: String) -> BackgroundChat? {
         guard let kept = keptChatIDs,
-              let index = backgroundChats.firstIndex(where: { $0.answers(to: sessionID) })
+              // This dashboard and profile's first: one id can name chats
+              // on two Hermes.
+              let index = backgroundChats.firstIndex(where: {
+                  $0.dashboardID == activeDashboardID && $0.profile == activeProfile && $0.answers(to: sessionID)
+              }) ?? backgroundChats.firstIndex(where: { $0.answers(to: sessionID) })
                 ?? followedChatIndex(reboundTo: sessionID) else { return nil }
         let chat = backgroundChats[index]
         guard chat.dashboardID == activeDashboardID, chat.profile == activeProfile,
