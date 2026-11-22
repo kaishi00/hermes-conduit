@@ -1227,7 +1227,15 @@ final class CarPlayVoiceCoordinator {
         return mode == .classic ? Self.openListedChat(in: appState)?.id : nil
     }
 
+    /// The picked far agent stops being one once its dashboard is the one
+    /// on screen (its profiles are the screen's now) or leaves the group.
+    private func forgetStaleFarAgent(_ appState: AppState) {
+        guard let id = farAgent?.dashboardID else { return }
+        if id == appState.activeDashboardID || !appState.isInCombinedGroup(id) { farAgent = nil }
+    }
+
     private func shownChatList(in appState: AppState) -> CarPlayChatList {
+        forgetStaleFarAgent(appState)
         if let far = farAgent, let id = far.dashboardID {
             return Self.farChatList(far.profile, in: id, appState: appState)
         }
@@ -1268,7 +1276,8 @@ final class CarPlayVoiceCoordinator {
     /// connected. The car can open the list before anything loaded them.
     private func loadChatsIfMissing(_ appState: AppState) {
         guard chatsTemplate != nil, !didRequestChatCatalog, chatCatalogLoad == nil,
-              appState.isConnected else { return }
+              appState.isConnected || farAgent?.dashboardID != nil else { return }
+        // A far agent's are read through its own kept connection.
         let chats = shownChatList(in: appState)
         guard chats.pinned.isEmpty, chats.recent.isEmpty else { return }
         didRequestChatCatalog = true
@@ -1414,6 +1423,7 @@ final class CarPlayVoiceCoordinator {
     func showVoiceOptions() {
         guard isConnected else { return }
         let appState = lastBoundAppState ?? appStateProvider()
+        forgetStaleFarAgent(appState)
         let agents = Self.agents(in: appState)
         listedAgents = agents.count > 1 ? agents : []
         push(CarPlayBrowseTemplateFactory.voiceTemplate(
@@ -1829,7 +1839,16 @@ final class CarPlayVoiceCoordinator {
             await previous?.value
             guard let self, self.isCurrent(generation), self.isConnected, self.farAgent == far else { return }
             let appState = self.lastBoundAppState ?? self.appStateProvider()
-            if await appState.onFarCallDashboard(dashboardID, profile: far.profile, { await body() }) != nil { return }
+            self.forgetStaleFarAgent(appState)
+            // On screen now: the start goes on as one on screen.
+            guard self.farAgent == far else {
+                await body()
+                return
+            }
+            // Still kept and set to a live mode there (a change to Classic
+            // on the phone meanwhile switches, as the pick would have).
+            if appState.canStartLiveCallOnFarDashboard(dashboardID, profile: far.profile),
+               await appState.onFarCallDashboard(dashboardID, profile: far.profile, { await body() }) != nil { return }
             self.farAgent = nil
             guard await self.switchToAgent(far.profile, on: dashboardID, appState: appState, generation: generation) else { return }
             await body()
