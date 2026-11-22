@@ -171,6 +171,14 @@ extension AppState {
     /// persona shown as placeholders (they are read when a call starts).
     /// Nil when no live mode is on, and for Local Live outside agent mode,
     /// which sends none (the speech server's model is Hermes).
+    /// What Local Live's speech server says when a call connects: the
+    /// greeting as written, a short fixed line for an empty one, nothing with
+    /// the greeting off.
+    nonisolated static func localLiveSpokenGreeting(_ greeting: String?) -> String? {
+        guard let greeting else { return nil }
+        return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
+    }
+
     func liveVoiceInstructionsPreview(profile: String? = nil) -> LiveVoiceInstructionsPreviewContent? {
         let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
@@ -232,10 +240,12 @@ extension AppState {
         }
         // Every live mode gets the greeting as the call's first turn: GPT-Live
         // no longer speaks first from its instructions (notifier #541).
+        // Local Live's speech server says the greeting itself, as written, as
+        // the readiness check's answer (desktop#340): no turn is sent.
         return LiveVoiceInstructionsPreviewContent(
             mode: mode,
             instructions: text,
-            openingTurn: style.openingPrompt
+            openingTurn: mode == "Local Live" ? Self.localLiveSpokenGreeting(style.greeting) : style.openingPrompt
         )
     }
 

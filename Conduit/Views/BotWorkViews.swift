@@ -801,6 +801,12 @@ private struct BotWorkQuestionCard: View {
                 }
                 .disabled(isActing || !appState.isConnected)
             }
+            if question.canDismiss {
+                BotQuestionDismissButton {
+                    Task { await appState.answerBotQuestion(question, profile: profile, with: .dismiss) }
+                }
+                .disabled(isActing || !appState.isConnected)
+            }
         }
         .padding(14)
         // A "Needs you" card's orange: it waits on the user as one does.
@@ -808,6 +814,29 @@ private struct BotWorkQuestionCard: View {
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.orange.opacity(0.32), lineWidth: 1))
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("botWork.question.\(question.id)")
+    }
+}
+
+/// Dismiss under a question's answers: takes it off the user's list with no
+/// answer, and the bot is told it was dismissed, never a pick (plugin
+/// 0.195.0+, issue 3105). Before it, the only way to clear a question was to
+/// answer it, which fed the bot a made-up answer.
+struct BotQuestionDismissButton: View {
+    let dismiss: () -> Void
+
+    var body: some View {
+        Button {
+            Haptics.light()
+            dismiss()
+        } label: {
+            Text(AppLocalization.string("Dismiss question", table: .bots))
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, minHeight: 36)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(Text(AppLocalization.string("Takes it off your list without answering", table: .bots)))
     }
 }
 

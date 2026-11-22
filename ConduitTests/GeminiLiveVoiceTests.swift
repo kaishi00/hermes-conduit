@@ -1354,6 +1354,15 @@ extension VoiceConversationControllerTests {
         // GPT-Live's greeting is Conduit's first turn too (notifier #541).
         appState.setLiveVoiceStyle(LiveVoiceStyle(greeting: "Hi Neal", answerLength: .detailed))
         XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.openingTurn, LiveVoiceGreeting.turn("Hi Neal"))
+        // Local Live's speech server says the greeting as written; no turn is sent (desktop#340).
+        appState.setLocalLiveEnabled(true)
+        appState.setLocalLiveAgent(true)
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.mode, "Local Live")
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.openingTurn, "Hi Neal")
+        appState.setLiveVoiceStyle(LiveVoiceStyle(greeting: "", answerLength: .detailed))
+        XCTAssertEqual(appState.liveVoiceInstructionsPreview()?.openingTurn, AppLocalization.string("Hi, I'm listening."))
+        XCTAssertNil(AppState.localLiveSpokenGreeting(nil), "the greeting off says nothing")
+        appState.setGPTLiveEnabled(true)
 
         appState.setLiveVoiceStyle(LiveVoiceStyle())
         XCTAssertNil(appState.activeProfileVoicePreferences.liveVoiceAnswerLength, "Default is stored as nothing")
