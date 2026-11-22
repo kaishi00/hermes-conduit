@@ -292,6 +292,15 @@ extension AppState {
 
     // Group Chat RPC routing: the injectable seam first (tests), then the
     // production client call.
+    /// Just what this Hermes's groups can do, when it isn't known yet, for
+    /// another combined dashboard's room tiles (none of the room reads an
+    /// open runs). A failed read leaves it unknown for the next tick.
+    func readGroupCapabilitiesIfUnknown() async {
+        guard groupCapabilities == nil, let client, isConnected,
+              let capabilities = try? await groupsCapabilities(client), groupCapabilities == nil else { return }
+        groupCapabilities = capabilities
+    }
+
     private func groupsCapabilities(_ client: HermesClient) async throws -> GroupCapabilities {
         if let operation = groupChatOperations.capabilities { return try await operation(client) }
         return try await client.groupsCapabilities()

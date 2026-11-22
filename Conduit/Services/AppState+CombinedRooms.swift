@@ -497,10 +497,14 @@ extension AppState {
     }
 
     /// Another dashboard's hosted room's group picture, as its own runtime
-    /// holds it, or as this phone kept it from its last visit.
+    /// holds it: what this phone kept from its last visit, adopted on its
+    /// first read, then what its plugin lists. Read straight from that
+    /// runtime, never an open room's that shares the id, and never the
+    /// kept copy once its plugin has answered (a removed picture stays gone).
     func combinedRoomPicture(_ tile: CombinedRoomTile) -> UIImage? {
-        guard case .hosted(let room) = tile.kind, let runtime = keptRuntime(of: tile) else { return nil }
-        return act(onRuntime: runtime) { groupRoomPicture(roomID: room.roomID) }
+        guard case .hosted(let room) = tile.kind, let runtime = keptRuntime(of: tile),
+              let data = runtime.groupRoomPictureData[room.roomID] else { return nil }
+        return GroupRoomPictureImages.image(from: data)
     }
 
     /// Whether another dashboard's hosted room can be disbanded from its
@@ -570,18 +574,26 @@ extension AppState {
             guard !Task.isCancelled, let kept = keptDashboardRuntimes[id], kept.runtime.isConnected else { continue }
             let runtime = kept.runtime
             if let at = runtime.talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { continue }
+            let firstRead = runtime.talkingRoomsReadAt == nil
             runtime.talkingRoomsReadAt = Date()
             await readKeptPluginStatusIfUnknown(id)
             guard keptDashboardRuntimes[id]?.runtime === runtime else { continue }
-            let talking = runtime.talkingRoomIDs, pictures = runtime.groupRoomPictureData
+            let talking = runtime.talkingRoomIDs, pictures = runtime.groupRoomPictureData, capabilities = runtime.groupCapabilities
             await actAcrossAwaits(onRuntime: runtime) {
                 await refreshTalkingRooms(among: rooms)
-                // What this phone kept from its last visit, then what changed.
-                if !groupRoomsListed { adoptKeptGroupRoomPictures() }
+                // What this phone kept from its last visit, once, then what
+                // changed: a picture its plugin no longer lists isn't adopted
+                // again on the next tick.
+                if firstRead, !groupRoomsListed { adoptKeptGroupRoomPictures() }
                 await refreshGroupRoomPictures(among: rooms)
+                // Whether its Hermes can disband them, for the tiles' menus:
+                // just the capabilities, not the room reads an open does.
+                await readGroupCapabilitiesIfUnknown()
             }
             // Its runtime isn't the screen's: say its tiles changed.
-            if runtime.talkingRoomIDs != talking || runtime.groupRoomPictureData != pictures { objectWillChange.send() }
+            if runtime.talkingRoomIDs != talking || runtime.groupRoomPictureData != pictures || runtime.groupCapabilities != capabilities {
+                objectWillChange.send()
+            }
         }
     }
 }

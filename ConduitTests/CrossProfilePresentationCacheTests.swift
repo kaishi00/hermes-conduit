@@ -2686,13 +2686,18 @@ extension CrossProfilePresentationCacheTests {
     /// talking, read on its own runtime through its kept connection; a drag
     /// moves one among its own dashboard's rooms, and nothing else's.
     func testAKeptDashboardsRoomTilesTalkAndMoveAmongTheirOwn() async throws {
-        final class Calls { var states: [String: [ObjectIdentifier]] = [:] }
+        final class Calls { var states: [String: [ObjectIdentifier]] = [:]; var capabilities: [ObjectIdentifier] = [] }
         let calls = Calls()
         func room(_ id: String) -> GroupRoom {
             GroupRoom(roomID: id, name: id.capitalized, members: [], authorityGatewayID: "gw", authorityEpoch: 1,
                       revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
         }
         let groups = GroupChatLifecycleOperations(
+            capabilities: { client in
+                calls.capabilities.append(ObjectIdentifier(client))
+                return GroupCapabilities(protocolVersion: 1, driverReady: true, authorityGatewayID: "gw", features: [],
+                                         methods: GroupWire.requiredMethods.union(["groups.disband"]), maxLogLimit: 500)
+            },
             state: { client, roomID in
                 calls.states[roomID, default: []].append(ObjectIdentifier(client))
                 let working = roomID == "trip"
@@ -2714,12 +2719,19 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(hosted(), ["trip", "plans"])
         let tiles = appState.otherCombinedDashboardsRoomTiles
         XCTAssertFalse(tiles.contains { appState.combinedRoomTalking($0) }, "nothing read yet")
+        // Kept quietly, none of its rooms opened: what its groups can do unknown.
+        appState.keptDashboardRuntimes[mac.id]?.runtime.groupCapabilities = nil
+        XCTAssertFalse(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes hasn't said it can yet")
+        let screensReads = calls.capabilities.count
 
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
         XCTAssertEqual(Set(calls.states["trip"] ?? []), [ObjectIdentifier(outgoing)], "read through the kept connection")
         XCTAssertEqual(tiles.filter { appState.combinedRoomTalking($0) }.map(\.roomID), ["trip"])
         XCTAssertTrue(appState.talkingRoomIDs.isEmpty, "the screen's rooms are its own")
         XCTAssertNil(appState.combinedRoomPicture(tiles[0]), "no picture kept or served")
+        XCTAssertEqual(Array(calls.capabilities.dropFirst(screensReads)), [ObjectIdentifier(outgoing)],
+                       "what its groups can do, read through the kept connection")
+        XCTAssertTrue(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes said it can")
         // Within the tick, not read again.
         await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
         XCTAssertEqual(calls.states["trip"]?.count, 1)
@@ -2732,7 +2744,8 @@ extension CrossProfilePresentationCacheTests {
         appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id)
         XCTAssertEqual(hosted(), ["plans", "trip"])
         XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
-        XCTAssertFalse(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes hasn't said it can")
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))
+        XCTAssertEqual(calls.capabilities.count, screensReads + 1, "known: not read again on a later tick")
     }
 
     /// Bots Home shows a kept combined dashboard's bots, read through its
