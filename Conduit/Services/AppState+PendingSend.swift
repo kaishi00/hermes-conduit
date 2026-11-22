@@ -406,15 +406,25 @@ extension AppState {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
         }
+        // A gone chat's words go to the composer on screen, unless that's
+        // another dashboard's far chat: then to its own dashboard's New
+        // Chat draft, never into another Hermes' chat.
+        let screenKey = durableComposerDraftKeyOnScreen
+        let goneKey = screenKey.dashboard == pending.dashboardID ? screenKey
+            : ComposerDraftKey(dashboard: pending.dashboardID, profile: pending.profile,
+                               sessionID: ComposerDraftKey.newConversationSessionID)
         composerRestoreRequests.append(
             restoreRequest(
                 for: pending,
-                key: onScreen || chatIsGone ? durableComposerDraftKeyOnScreen : nil,
+                key: onScreen ? screenKey : chatIsGone ? goneKey : nil,
                 redirects: chatIsGone,
                 focuses: false
             )
         )
-        if pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
+        // The composer on screen says why only when it's this dashboard's:
+        // a far chat's composer doesn't hold these words.
+        if pending.dashboardID == activeDashboardID, pending.profile == activeProfile,
+           composerDraftKeyOnScreen.dashboard == pending.dashboardID {
             composerNotice = saysWhy
                 ? pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
                 : nil

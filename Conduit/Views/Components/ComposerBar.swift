@@ -2016,12 +2016,7 @@ struct ComposerBar: View {
     private func applyComposerRestoreRequests() {
         guard let loadedDraftKey else { return }
         var restoredIntoField = false
-        // Its words are its chat's dashboard's: a far chat's, not the screen's.
-        // A far chat's refused words while another draft is loaded go to its
-        // stored draft, so they outlive the queue (it isn't saved). Words
-        // kept in a file of their own (a waiting message, a share, a
-        // dictation retry) wait for their dashboard: their file outlives a
-        // restart, the store doesn't.
+        // Which restores it takes: handlesRestoreRequest's rule.
         let draftDashboardID = loadedDraftKey.dashboard ?? appState.activeDashboardID
         for request in appState.composerRestoreRequests
         where Self.handlesRestoreRequest(request, draftDashboard: draftDashboardID, activeDashboard: appState.activeDashboardID) {
