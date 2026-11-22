@@ -1046,7 +1046,10 @@ extension AppState {
               chatResumeRestorationRequest == nil,
               chatPickedFromSavedList == nil,
               activeRoomSurface == nil,
-              explicitSessionOpenTask == nil else { return false }
+              explicitSessionOpenTask == nil,
+              // The chat on screen is the dashboard in scope's: one id can
+              // name chats on two Hermes, and another dashboard's open goes on.
+              chatOnScreenDashboardID == activeDashboardID else { return false }
         if activeSessionId == sessionId { return true }
         let rows = (sessions + cronSessions).filter { $0.nestingIDs.contains(sessionId) }
         guard rows.count == 1, let row = rows.first else { return false }

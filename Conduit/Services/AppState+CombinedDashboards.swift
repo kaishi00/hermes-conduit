@@ -517,6 +517,9 @@ extension AppState {
         // its send parked with its dashboard as a switch's is.
         if activeRoomSurface?.dashboardID == id, id != dashboardIDOnScreen { closeRoomSurface(clearingRoomError: false) }
         release(kept)
+        // A reply followed through its socket ends here, as its chats' do
+        // when the screen's socket closes.
+        settleKeptChatTurnsAfterDisconnect(of: id)
         keptDashboardChatsChangeReads.removeValue(forKey: id)?.cancel()
         // A surface showing it stops republishing a runtime that's gone.
         let gone = ObjectIdentifier(kept.runtime)
