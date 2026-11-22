@@ -240,27 +240,49 @@ enum KanbanFullTextFormatter {
     /// backticks go. The sheet renders the Markdown itself.
     static func plainPreview(_ markdown: String) -> String {
         // Each kept line split on backticks: even pieces are prose, odd ones
-        // the inside of a code span, left as written.
-        let lines: [[String]] = markdown
-            .components(separatedBy: .newlines)
-            .compactMap { raw -> [String]? in
-                var line = raw.trimmingCharacters(in: .whitespaces)
-                if line.hasPrefix("```") || line.isEmpty { return nil }
-                // A heading or quote marker counts only with its space, so
-                // "#hashtag" stays as written.
-                while let marker = line.firstIndex(where: { $0 != "#" && $0 != ">" }),
-                      marker > line.startIndex, line[marker] == " " {
-                    line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
-                }
-                return line.split(separator: "`", omittingEmptySubsequences: false).map(String.init)
+        // the inside of a code span, left as written. A fenced block's lines
+        // are kept as written, and emphasis pairs only within a paragraph
+        // (lines between blank lines or fences), as the sheet pairs it.
+        var lines: [(pieces: [String], paragraph: Int, literal: Bool)] = []
+        var paragraph = 0
+        var inFence = false
+        for raw in markdown.components(separatedBy: .newlines) {
+            var line = raw.trimmingCharacters(in: .whitespaces)
+            if line.hasPrefix("```") {
+                inFence.toggle()
+                paragraph += 1
+                continue
             }
-        let prose = lines.flatMap { pieces in pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element) }
-        let stripped = pairedEmphasisMarkers(in: prose)
+            if line.isEmpty {
+                paragraph += 1
+                continue
+            }
+            if inFence {
+                lines.append(([line], paragraph, true))
+                continue
+            }
+            // A heading or quote marker counts only with its space, so
+            // "#hashtag" stays as written.
+            while let marker = line.firstIndex(where: { $0 != "#" && $0 != ">" }),
+                  marker > line.startIndex, line[marker] == " " {
+                line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
+            }
+            lines.append((line.split(separator: "`", omittingEmptySubsequences: false).map(String.init), paragraph, false))
+        }
+        var stripped: [Int: [String]] = [:]
+        for block in Set(lines.filter { !$0.literal }.map { $0.paragraph }) {
+            let prose = lines
+                .filter { !$0.literal && $0.paragraph == block }
+                .flatMap { line in line.pieces.enumerated().filter { $0.offset.isMultiple(of: 2) }.map(\.element) }
+            stripped[block] = pairedEmphasisMarkers(in: prose)
+        }
         return lines
-            .map { pieces -> String in
-                pieces.enumerated().map { index, piece -> String in
+            .map { line -> String in
+                guard !line.literal else { return line.pieces.joined() }
+                let markers = stripped[line.paragraph] ?? []
+                return line.pieces.enumerated().map { index, piece -> String in
                     guard index.isMultiple(of: 2) else { return piece }
-                    return stripped.reduce(piece) { $0.replacingOccurrences(of: $1, with: "") }
+                    return markers.reduce(piece) { removingEmphasis($1, from: $0) }
                 }
                 .joined()
             }
@@ -268,15 +290,30 @@ enum KanbanFullTextFormatter {
             .joined(separator: "\n")
     }
 
-    /// The emphasis markers (`**`, `__`) that pair up across the whole text's
+    /// The emphasis markers (`**`, `__`) that pair up across a paragraph's
     /// prose, so bold that spans a code span or a line break still goes. An
     /// odd one out (`my__var`) leaves that marker's runs as written, as the
     /// sheet shows it.
     static func pairedEmphasisMarkers(in prose: [String]) -> [String] {
         ["**", "__"].filter { marker in
-            let count = prose.reduce(0) { $0 + $1.components(separatedBy: marker).count - 1 }
+            let count = prose.reduce(0) { total, text in
+                total + emphasisPattern(marker).numberOfMatches(in: text, range: NSRange(text.startIndex..., in: text))
+            }
             return count > 0 && count.isMultiple(of: 2)
         }
+    }
+
+    /// Where a marker can open or close emphasis. `__` between two letters
+    /// or digits (`my__var`, `snake__case__var`) never does, as in the sheet.
+    private static func emphasisPattern(_ marker: String) -> NSRegularExpression {
+        marker == "__" ? underscoreEmphasis : starEmphasis
+    }
+
+    private static let starEmphasis = try! NSRegularExpression(pattern: #"\*\*"#)
+    private static let underscoreEmphasis = try! NSRegularExpression(pattern: #"(?<![\p{L}\p{N}])__|__(?![\p{L}\p{N}])"#)
+
+    private static func removingEmphasis(_ marker: String, from text: String) -> String {
+        emphasisPattern(marker).stringByReplacingMatches(in: text, range: NSRange(text.startIndex..., in: text), withTemplate: "")
     }
 
     /// Whether the Result row opens the whole text: its preview runs past
