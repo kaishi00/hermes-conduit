@@ -2940,9 +2940,12 @@ struct DesktopGroupChatView: View {
 
     private func remove() {
         removing = true
+        let dashboard = appState.activeDashboardID
         Task {
             let failure = await appState.removeDesktopGroupChat(group)
             removing = false
+            // Switched meanwhile: the sheet was dismissed with this Hermes.
+            guard appState.activeDashboardID == dashboard else { return }
             if let failure {
                 Haptics.warning()
                 removalFailure = failure

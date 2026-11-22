@@ -217,8 +217,14 @@ enum HealthSyncLimits {
         let midnight = calendar.startOfDay(for: noonBefore)
         return midnight >= noonBefore ? midnight : calendar.date(byAdding: .day, value: 1, to: midnight) ?? noonBefore
     }
-    /// Raw readings per type per query page.
-    static let samplesPerQuery = 1_000
+    /// Raw readings per type per query page: one page is one batch, so
+    /// this fills `maxItemsPerBatch`, and a long history of detailed
+    /// readings takes half the uploads (notifier issue 975).
+    static let samplesPerQuery = 2_000
+    /// The first wait after the host says it has taken enough uploads for
+    /// now (429), doubling up to `longestBusyWait`: its window is a minute.
+    static let firstBusyWait: TimeInterval = 2
+    static let longestBusyWait: TimeInterval = 30
 }
 
 /// Where health data goes: one profile on one saved dashboard, fixed when

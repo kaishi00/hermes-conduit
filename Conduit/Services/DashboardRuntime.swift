@@ -317,6 +317,115 @@ final class DashboardRuntime: ObservableObject {
     /// cron rows from the catalog cache: a gateway listing fills none, so a
     /// later relist from the cache doesn't replace its rows (issue 2763).
     var sessionListListedCronFromCache: Bool = false
+    // MARK: Live status, Pulse, gateway and plugin slots, models, voice tags
+
+    /// The latest `session.active_list` snapshot and the profile it belongs
+    /// to (#454).
+    @Published var liveSessionStatusIndex: SessionLiveStatusIndex = SessionLiveStatusIndex()
+    /// The one `session.active_list` read that settles a turn whose chat
+    /// was just seen absent, whether or not the chat list (and its poll) is
+    /// on screen.
+    var liveTurnRegistryRecheck: Task<Void, Never>?
+    var liveSessionStatusProfile: String?
+    /// False once the gateway turned `session.active_list` down, so the chat
+    /// list hides the Working and Needs input chips instead of showing a 0 it
+    /// can't know. A successful poll turns it back on.
+    @Published var liveSessionStatusAvailable: Bool = true
+    /// What the user has and hasn't seen, per conversation (#454).
+    @Published var chatReadState: ChatReadState = ChatReadState()
+    /// The host the Desktop views below came from, when each profile was
+    /// last asked, and the newest settled time it reported.
+    var desktopViewsHost: String?
+    var desktopViewsFailureLogged: Bool = false
+    var desktopViewsFetchedAt: [String: Date] = [:]
+    var desktopViewsCursor: [String: TimeInterval] = [:]
+    /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
+    var keptBotChatCopies: [String: AppState.KeptBotChatCopy] = [:]
+    /// The last chats left after Load earlier brought in older rows, newest
+    /// last (`keepLeftBackfilledTranscript`).
+    var leftBackfilledTranscripts: [AppState.LeftBackfilledTranscript] = []
+    /// When a Pulse feed read last landed, and for which dashboard
+    /// (PulseFeed.swift).
+    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
+    /// The Pulse screen (PulseFeed.swift): its unseen cards for the
+    /// button's badge, the chats' messages that have a card (chat id, then
+    /// Hermes' message id, to card id), a request to show it, and Pulse's
+    /// own chat, which the screen stands in for.
+    @Published var pulseUnseen: Int = 0
+    @Published var pulseSources: [String: [Int: Int]] = [:]
+    @Published var pulseHomeChatID: String?
+    @Published var runtime: RuntimeState = RuntimeState()
+    @Published var gatewayDiagnostics: GatewayDiagnostics?
+    @Published var gatewayDiagnosticsLoading: Bool = false
+    /// Restart Gateway's progress and outcome, and the dashboard it belongs
+    /// to (AppState+GatewayRestart.swift).
+    @Published var gatewayRestart: GatewayRestartSlot = GatewayRestartSlot()
+    var gatewayRestartTask: Task<Void, Never>?
+    /// Update Hermes in Settings > Connection, and the dashboard it belongs
+    /// to (AppState+HermesUpdate.swift).
+    @Published var hermesUpdate: HermesUpdateState = .idle
+    var hermesUpdateDashboardID: UUID?
+    var hermesUpdateTask: Task<Void, Never>?
+    /// Why the last Restart now failed, kept here so a wait view opened
+    /// after it finished still shows it.
+    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
+    /// The Conduit plugin update's progress and outcome, and the dashboard
+    /// it belongs to (AppState+NotifierPluginUpdate.swift).
+    @Published var notifierPluginUpdate: NotifierPluginUpdateSlot = NotifierPluginUpdateSlot()
+    var notifierPluginUpdateTask: Task<Void, Never>?
+    var notifierPluginUpdateWatchdog: Task<Void, Never>?
+    /// Bumped per plugin status request; the accepted one is the newest
+    /// request whose answer landed, so an older answer never lands over a
+    /// newer one, but still lands when a newer request failed.
+    var notifierPluginStatusGeneration: Int = 0
+    var notifierPluginStatusAcceptedGeneration: Int = 0
+    @Published var modelVisibility: ModelVisibility = ModelVisibility()
+    /// The model sheet's pinned and recent models, for the active dashboard.
+    @Published var modelQuickPicks: ModelQuickPicks = ModelQuickPicks()
+    @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
+    /// Hermes' argument words for each command (`commands.catalog` `sub`),
+    /// by command name: `fast` → normal, fast, ultrafast, …
+    @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
+    var lastSlashCatalogPayload: AnyCodable?
+    /// Whether Hermes can generate pictures, as last asked
+    /// (`refreshPictureGeneration`).
+    @Published var canGeneratePictures: Bool = false
+    var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)?
+    /// A failed sign-in refresh or ticket kept quiet during those retries,
+    /// shown once they have failed, by the next ticket or by a readiness
+    /// probe the gateway doesn't answer (#1624).
+    var quietReconnectFailure: Error?
+    /// Renewals that have failed quietly since the last one worked. Counted
+    /// apart from the backoff's attempts, which a network change resets, so
+    /// a link that keeps changing still surfaces the failure.
+    var quietRenewalFailures: Int = 0
+    /// A Reconnect someone asked for (the button, Settings, a gateway
+    /// restart) shows its failure at once, as before #1624: it is an
+    /// answer they are waiting for, not a resume.
+    var surfacesRenewalFailureAtOnce: Bool = false
+    /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
+    var cachedRoomFilesResolver: GatewayMediaDataURLResolver?
+    /// "host|profile" whose Hermes answered 404 for the mutation snapshot
+    /// (older than the route): its writes skip the read until a write is
+    /// refused for missing identity, which clears the mark.
+    var hostsWithoutMutationSnapshot: Set<String> = []
+    /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
+    /// session id.
+    @Published var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    var voiceTagsFetchedAt: [String: Date] = [:]
+    var voiceTagRefreshTask: Task<Void, Never>?
+    /// Files sessions under Voice or Voice Jobs, here at once and on the
+    /// host for every device.
+    var voiceTagChain: Task<Void, Never>?
+    var voiceTagGeneration: Int = 0
+
+    // MARK: Group rooms, their in-flight flags
+
+    /// A drafts read asked for with the people that hasn't run yet.
+    var linkedRoomDraftsPeopleAsked: Bool = false
+    /// A looks share is on its way, and another change waits for it.
+    var roomLooksSharing: Bool = false
+    var roomLooksShareAgain: Bool = false
 
     /// `notifierPlugin`: what it starts from before its plugin answers (the
     /// saved Update notices choice).

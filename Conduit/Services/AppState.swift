@@ -120,6 +120,10 @@ final class AppState: ObservableObject {
     var botRosterValues: AnyPublisher<[BotProfile], Never> {
         $runtimeOnScreen.map { $0.$botRoster }.switchToLatest().eraseToAnyPublisher()
     }
+    /// Which chat is the dashboard on screen's Pulse home, as it changes.
+    var pulseHomeChatIDValues: AnyPublisher<String?, Never> {
+        $runtimeOnScreen.map { $0.$pulseHomeChatID }.switchToLatest().eraseToAnyPublisher()
+    }
     /// The dashboard on screen's Bots phase as it changes.
     var botModePhaseValues: AnyPublisher<BotModePhase, Never> {
         $runtimeOnScreen.map { $0.$botModePhase }.switchToLatest().eraseToAnyPublisher()
@@ -127,18 +131,27 @@ final class AppState: ObservableObject {
     /// A failed sign-in refresh or ticket kept quiet during those retries,
     /// shown once they have failed, by the next ticket or by a readiness
     /// probe the gateway doesn't answer (#1624).
-    var quietReconnectFailure: Error?
+    var quietReconnectFailure: Error? {
+        get { shownRuntime.quietReconnectFailure }
+        set { shownRuntime.quietReconnectFailure = newValue }
+    }
     /// Renewals that have failed quietly since the last one worked. Counted
     /// apart from the backoff's attempts, which a network change resets, so
     /// a link that keeps changing still surfaces the failure.
-    var quietRenewalFailures = 0
+    var quietRenewalFailures: Int {
+        get { shownRuntime.quietRenewalFailures }
+        set { shownRuntime.quietRenewalFailures = newValue }
+    }
     /// Moves on at a Sign Out of the dashboard location sharing is bound
     /// to, so a host pass read before it isn't saved after it (issue 2482).
     var locationHostPassGeneration = 0
     /// A Reconnect someone asked for (the button, Settings, a gateway
     /// restart) shows its failure at once, as before #1624: it is an
     /// answer they are waiting for, not a resume.
-    var surfacesRenewalFailureAtOnce = false
+    var surfacesRenewalFailureAtOnce: Bool {
+        get { shownRuntime.surfacesRenewalFailureAtOnce }
+        set { shownRuntime.surfacesRenewalFailureAtOnce = newValue }
+    }
     /// The device has a usable network path (the app's one path monitor).
     @Published var networkPathUsable = true
     var profiles: [String] {
@@ -168,7 +181,10 @@ final class AppState: ObservableObject {
 
     var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
     /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
-    var cachedRoomFilesResolver: GatewayMediaDataURLResolver?
+    var cachedRoomFilesResolver: GatewayMediaDataURLResolver? {
+        get { shownRuntime.cachedRoomFilesResolver }
+        set { shownRuntime.cachedRoomFilesResolver = newValue }
+    }
 
     /// The open chat's pictures, which a tapped one pages through in the
     /// viewer: the saved copy's while it stands in for the chat. One
@@ -528,7 +544,10 @@ final class AppState: ObservableObject {
     /// "host|profile" whose Hermes answered 404 for the mutation snapshot
     /// (older than the route): its writes skip the read until a write is
     /// refused for missing identity, which clears the mark.
-    var hostsWithoutMutationSnapshot: Set<String> = []
+    var hostsWithoutMutationSnapshot: Set<String> {
+        get { shownRuntime.hostsWithoutMutationSnapshot }
+        set { shownRuntime.hostsWithoutMutationSnapshot = newValue }
+    }
     /// Tests and the UI fixture: stands in for Hermes creating a chat, for
     /// a widget's New Chat and the app's own alike.
     var widgetSessionCreatorOverride: (@MainActor (HermesClient, String?) async throws -> (sessionId: String, storedSessionId: String?, profile: String?))?
@@ -624,10 +643,16 @@ final class AppState: ObservableObject {
     /// The refusal `showCallRefusal` left on the drawer shell's error line (V2 off).
     var callRefusalOnErrorLine: String?
     /// What the user has and hasn't seen, per conversation (#454).
-    @Published var chatReadState = ChatReadState()
+    var chatReadState: ChatReadState {
+        get { shownRuntime.chatReadState }
+        set { shownRuntime.chatReadState = newValue }
+    }
     /// The latest `session.active_list` snapshot and the profile it belongs
     /// to (#454).
-    @Published var liveSessionStatusIndex = SessionLiveStatusIndex()
+    var liveSessionStatusIndex: SessionLiveStatusIndex {
+        get { shownRuntime.liveSessionStatusIndex }
+        set { shownRuntime.liveSessionStatusIndex = newValue }
+    }
     /// Where active_list snapshots and a required sign-in reach the Lock
     /// Screen's turn activities (LiveTurnActivities); tests watch them. A
     /// snapshot answers true when a turn's chat was just seen absent and
@@ -638,14 +663,20 @@ final class AppState: ObservableObject {
     /// The one `session.active_list` read that settles a turn whose chat
     /// was just seen absent, whether or not the chat list (and its poll) is
     /// on screen.
-    var liveTurnRegistryRecheck: Task<Void, Never>?
+    var liveTurnRegistryRecheck: Task<Void, Never>? {
+        get { shownRuntime.liveTurnRegistryRecheck }
+        set { shownRuntime.liveTurnRegistryRecheck = newValue }
+    }
     /// Ends a dashboard's turn activities (Disconnect, Sign Out, a required
     /// sign-in), or with `true` only those the relay can't end by push.
     var liveTurnActivitiesEndDashboard: @MainActor (String?, Bool) -> Void = { dashboardID, keepingThoseOnRelay in
         LiveTurnActivities.shared?.endTurns(ofDashboard: dashboardID, keepingThoseOnRelay: keepingThoseOnRelay)
     }
 
-    var liveSessionStatusProfile: String?
+    var liveSessionStatusProfile: String? {
+        get { shownRuntime.liveSessionStatusProfile }
+        set { shownRuntime.liveSessionStatusProfile = newValue }
+    }
     /// The registries of the other profiles something on screen shows (All,
     /// a project's page, Bots Home), read by name beside the profile in
     /// use's.
@@ -663,16 +694,31 @@ final class AppState: ObservableObject {
     /// False once the gateway turned `session.active_list` down, so the chat
     /// list hides the Working and Needs input chips instead of showing a 0 it
     /// can't know. A successful poll turns it back on.
-    @Published var liveSessionStatusAvailable = true
+    var liveSessionStatusAvailable: Bool {
+        get { shownRuntime.liveSessionStatusAvailable }
+        set { shownRuntime.liveSessionStatusAvailable = newValue }
+    }
     /// The client whose failed poll was already logged, so a flaky
     /// connection leaves one line rather than one per tick.
     weak var activeListFailureLoggedClient: HermesClient?
     /// The host the Desktop views below came from, when each profile was
     /// last asked, and the newest settled time it reported.
-    var desktopViewsHost: String?
-    var desktopViewsFailureLogged = false
-    var desktopViewsFetchedAt: [String: Date] = [:]
-    var desktopViewsCursor: [String: TimeInterval] = [:]
+    var desktopViewsHost: String? {
+        get { shownRuntime.desktopViewsHost }
+        set { shownRuntime.desktopViewsHost = newValue }
+    }
+    var desktopViewsFailureLogged: Bool {
+        get { shownRuntime.desktopViewsFailureLogged }
+        set { shownRuntime.desktopViewsFailureLogged = newValue }
+    }
+    var desktopViewsFetchedAt: [String: Date] {
+        get { shownRuntime.desktopViewsFetchedAt }
+        set { shownRuntime.desktopViewsFetchedAt = newValue }
+    }
+    var desktopViewsCursor: [String: TimeInterval] {
+        get { shownRuntime.desktopViewsCursor }
+        set { shownRuntime.desktopViewsCursor = newValue }
+    }
     @Published var sessionMutationID: String?
     @Published var isRefreshingSessionCatalog = false
     /// Catalog reads on their way over a list Hermes may have changed since
@@ -910,14 +956,20 @@ final class AppState: ObservableObject {
     /// ahead of the automatic resume.
     var chatPickedFromSavedList: SavedChatListPick?
     /// The Bot Chats left this run, by dashboard and bot (`keepBotChatCopy`).
-    var keptBotChatCopies: [String: KeptBotChatCopy] = [:]
+    var keptBotChatCopies: [String: KeptBotChatCopy] {
+        get { shownRuntime.keptBotChatCopies }
+        set { shownRuntime.keptBotChatCopies = newValue }
+    }
     /// The dashboards whose Bot Chat copies on the phone were read into
     /// `keptBotChatCopies` this run (`readKeptBotChatCopies`).
     var botChatCopiesReadFromDisk: Set<UUID> = []
 
     /// The last chats left after Load earlier brought in older rows, newest
     /// last (`keepLeftBackfilledTranscript`).
-    var leftBackfilledTranscripts: [LeftBackfilledTranscript] = []
+    var leftBackfilledTranscripts: [LeftBackfilledTranscript] {
+        get { shownRuntime.leftBackfilledTranscripts }
+        set { shownRuntime.leftBackfilledTranscripts = newValue }
+    }
     /// The bot the chat on screen was open for, taken before a bot open
     /// notes its destination's ids (`noteBotChatOpen`): the destination can
     /// share the id the chat on screen is open as.
@@ -1253,9 +1305,15 @@ final class AppState: ObservableObject {
 
     /// When a Pulse feed read last landed, and for which dashboard
     /// (PulseFeed.swift).
-    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)?
+    var pulseFeedAppliedAt: (dashboard: UUID?, at: Date)? {
+        get { shownRuntime.pulseFeedAppliedAt }
+        set { shownRuntime.pulseFeedAppliedAt = newValue }
+    }
 
-    @Published var runtime = RuntimeState()
+    var runtime: RuntimeState {
+        get { shownRuntime.runtime }
+        set { shownRuntime.runtime = newValue }
+    }
     /// A file path tapped in a reply, for the open chat's Folder tab to
     /// show (AppState+Workspace.swift).
     @Published var workspaceReveal: WorkspaceReveal?
@@ -1268,17 +1326,38 @@ final class AppState: ObservableObject {
     /// Counts the tools Hermes finished that may have changed files, so an
     /// open Folder tab reads its folders again.
     @Published var workspaceChanges = 0
-    @Published var gatewayDiagnostics: GatewayDiagnostics?
-    @Published var gatewayDiagnosticsLoading = false
+    var gatewayDiagnostics: GatewayDiagnostics? {
+        get { shownRuntime.gatewayDiagnostics }
+        set { shownRuntime.gatewayDiagnostics = newValue }
+    }
+    var gatewayDiagnosticsLoading: Bool {
+        get { shownRuntime.gatewayDiagnosticsLoading }
+        set { shownRuntime.gatewayDiagnosticsLoading = newValue }
+    }
     /// Restart Gateway's progress and outcome, and the dashboard it belongs
     /// to (AppState+GatewayRestart.swift).
-    @Published var gatewayRestart = GatewayRestartSlot()
-    var gatewayRestartTask: Task<Void, Never>?
+    var gatewayRestart: GatewayRestartSlot {
+        get { shownRuntime.gatewayRestart }
+        set { shownRuntime.gatewayRestart = newValue }
+    }
+    var gatewayRestartTask: Task<Void, Never>? {
+        get { shownRuntime.gatewayRestartTask }
+        set { shownRuntime.gatewayRestartTask = newValue }
+    }
     /// Update Hermes in Settings > Connection, and the dashboard it belongs
     /// to (AppState+HermesUpdate.swift).
-    @Published var hermesUpdate: HermesUpdateState = .idle
-    var hermesUpdateDashboardID: UUID?
-    var hermesUpdateTask: Task<Void, Never>?
+    var hermesUpdate: HermesUpdateState {
+        get { shownRuntime.hermesUpdate }
+        set { shownRuntime.hermesUpdate = newValue }
+    }
+    var hermesUpdateDashboardID: UUID? {
+        get { shownRuntime.hermesUpdateDashboardID }
+        set { shownRuntime.hermesUpdateDashboardID = newValue }
+    }
+    var hermesUpdateTask: Task<Void, Never>? {
+        get { shownRuntime.hermesUpdateTask }
+        set { shownRuntime.hermesUpdateTask = newValue }
+    }
     /// Test seam: answers Update Hermes' dashboard requests.
     var hermesUpdateRequest: (@MainActor (String, String) async throws -> [String: Any])?
     /// The dashboards a Restart now is under way on (restartGatewayNow): one
@@ -1289,13 +1368,25 @@ final class AppState: ObservableObject {
     var gatewayRestartingNow: Bool { gatewayRestartingNowDashboards.contains(activeDashboardID) }
     /// Why the last Restart now failed, kept here so a wait view opened
     /// after it finished still shows it.
-    @Published var gatewayRestartNowFailure: GatewayRestartNow.Failure?
+    var gatewayRestartNowFailure: GatewayRestartNow.Failure? {
+        get { shownRuntime.gatewayRestartNowFailure }
+        set { shownRuntime.gatewayRestartNowFailure = newValue }
+    }
     /// The Conduit plugin update's progress and outcome, and the dashboard
     /// it belongs to (AppState+NotifierPluginUpdate.swift).
-    @Published var notifierPluginUpdate = NotifierPluginUpdateSlot()
-    var notifierPluginUpdateTask: Task<Void, Never>?
+    var notifierPluginUpdate: NotifierPluginUpdateSlot {
+        get { shownRuntime.notifierPluginUpdate }
+        set { shownRuntime.notifierPluginUpdate = newValue }
+    }
+    var notifierPluginUpdateTask: Task<Void, Never>? {
+        get { shownRuntime.notifierPluginUpdateTask }
+        set { shownRuntime.notifierPluginUpdateTask = newValue }
+    }
     /// Ends a run whose steps went quiet past their limit (NotifierPluginUpdater.stallLimit).
-    var notifierPluginUpdateWatchdog: Task<Void, Never>?
+    var notifierPluginUpdateWatchdog: Task<Void, Never>? {
+        get { shownRuntime.notifierPluginUpdateWatchdog }
+        set { shownRuntime.notifierPluginUpdateWatchdog = newValue }
+    }
     /// Dashboard and profile pairs Conduit already tried to pair on its own
     /// this launch, so a refused or failed pairing isn't retried on every
     /// connect.
@@ -1303,8 +1394,14 @@ final class AppState: ObservableObject {
     /// Bumped per plugin status request; the accepted one is the newest
     /// request whose answer landed, so an older answer never lands over a
     /// newer one, but still lands when a newer request failed.
-    var notifierPluginStatusGeneration = 0
-    var notifierPluginStatusAcceptedGeneration = 0
+    var notifierPluginStatusGeneration: Int {
+        get { shownRuntime.notifierPluginStatusGeneration }
+        set { shownRuntime.notifierPluginStatusGeneration = newValue }
+    }
+    var notifierPluginStatusAcceptedGeneration: Int {
+        get { shownRuntime.notifierPluginStatusAcceptedGeneration }
+        set { shownRuntime.notifierPluginStatusAcceptedGeneration = newValue }
+    }
     /// The list open's shared status read (refreshNotifierPluginStatusOnce),
     /// and the bridge it reads through.
     var notifierPluginStatusSharedRefresh: (bridge: ObjectIdentifier, task: Task<Void, Never>)?
@@ -1314,9 +1411,15 @@ final class AppState: ObservableObject {
     var relayPairingSweep: Task<Void, Never>?
     var relayPairingSweepAgain = false
     var relayPairingSweepSaved: Set<UUID> = []
-    @Published var modelVisibility = ModelVisibility()
+    var modelVisibility: ModelVisibility {
+        get { shownRuntime.modelVisibility }
+        set { shownRuntime.modelVisibility = newValue }
+    }
     /// The model sheet's pinned and recent models, for the active dashboard.
-    @Published var modelQuickPicks = ModelQuickPicks()
+    var modelQuickPicks: ModelQuickPicks {
+        get { shownRuntime.modelQuickPicks }
+        set { shownRuntime.modelQuickPicks = newValue }
+    }
 
     // MARK: - UI state (AppState+Pulse.swift, AppState+UIState.swift)
 
@@ -1521,10 +1624,19 @@ final class AppState: ObservableObject {
     /// button's badge, the chats' messages that have a card (chat id, then
     /// Hermes' message id, to card id), a request to show it, and Pulse's
     /// own chat, which the screen stands in for.
-    @Published var pulseUnseen = 0
-    @Published var pulseSources: [String: [Int: Int]] = [:]
+    var pulseUnseen: Int {
+        get { shownRuntime.pulseUnseen }
+        set { shownRuntime.pulseUnseen = newValue }
+    }
+    var pulseSources: [String: [Int: Int]] {
+        get { shownRuntime.pulseSources }
+        set { shownRuntime.pulseSources = newValue }
+    }
     @Published var pulseOpenRequest: PulseOpenRequest?
-    @Published var pulseHomeChatID: String?
+    var pulseHomeChatID: String? {
+        get { shownRuntime.pulseHomeChatID }
+        set { shownRuntime.pulseHomeChatID = newValue }
+    }
     /// Pulse's chat per dashboard as the last feed named it, kept across
     /// launches: until the feed is read again after a launch or a
     /// reconnect, the Pulse button and the hidden chat go by it. Views read
@@ -1650,10 +1762,16 @@ final class AppState: ObservableObject {
 
     // MARK: - Capabilities (AppState+HelperModels.swift, AppState+GeminiQwenLive.swift, AppState+GPTLive.swift, AppState+GrokLive.swift, AppState+LocalLive.swift, AppState+Voice.swift, AppState+VoiceConversation.swift)
 
-    @Published var slashCommands: [SlashCommand] = AppState.builtInSlashCommands
+    var slashCommands: [SlashCommand] {
+        get { shownRuntime.slashCommands }
+        set { shownRuntime.slashCommands = newValue }
+    }
     /// Hermes' argument words for each command (`commands.catalog` `sub`),
     /// by command name: `fast` → normal, fast, ultrafast, …
-    @Published var slashSubcommands: [String: [String]] = AppState.conduitSlashSubcommands
+    var slashSubcommands: [String: [String]] {
+        get { shownRuntime.slashSubcommands }
+        set { shownRuntime.slashSubcommands = newValue }
+    }
     /// The bot on screen's skills, toolsets, tools catalog and MCP servers,
     /// and whose they are (`BotState`).
     var skills: [CapabilitySkill] {
@@ -3363,13 +3481,22 @@ final class AppState: ObservableObject {
 
     /// Voice tags from the Hermes host, keyed by `voiceHistoryKey`, then by
     /// session id.
-    @Published var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] = [:]
+    var voiceSessionTagsByKey: [String: [String: VoiceSessionTag]] {
+        get { shownRuntime.voiceSessionTagsByKey }
+        set { shownRuntime.voiceSessionTagsByKey = newValue }
+    }
     /// Bumped whenever a call-chat link lands, so observers (the Sessions
     /// drawer's nests) can re-resolve parents the row list alone doesn't
     /// show changing.
     @Published var voiceCallChatLinksRevision = 0
-    var voiceTagsFetchedAt: [String: Date] = [:]
-    var voiceTagRefreshTask: Task<Void, Never>?
+    var voiceTagsFetchedAt: [String: Date] {
+        get { shownRuntime.voiceTagsFetchedAt }
+        set { shownRuntime.voiceTagsFetchedAt = newValue }
+    }
+    var voiceTagRefreshTask: Task<Void, Never>? {
+        get { shownRuntime.voiceTagRefreshTask }
+        set { shownRuntime.voiceTagRefreshTask = newValue }
+    }
 
     /// The call being saved: set when a live call starts, cleared when it
     /// closes. Nothing reaches the host until the call ends: a save while
@@ -3481,8 +3608,14 @@ final class AppState: ObservableObject {
 
     /// Files sessions under Voice or Voice Jobs, here at once and on the
     /// host for every device.
-    var voiceTagChain: Task<Void, Never>?
-    var voiceTagGeneration = 0
+    var voiceTagChain: Task<Void, Never>? {
+        get { shownRuntime.voiceTagChain }
+        set { shownRuntime.voiceTagChain = newValue }
+    }
+    var voiceTagGeneration: Int {
+        get { shownRuntime.voiceTagGeneration }
+        set { shownRuntime.voiceTagGeneration = newValue }
+    }
 
     @Published var waitingCall: WaitingCall?
 
@@ -3579,7 +3712,10 @@ final class AppState: ObservableObject {
     /// One read of each Linked Rooms list at a time (issue 2359).
     let linkedRoomDraftsReader = LinkedRoomListRead()
     /// A drafts read asked for with the people that hasn't run yet.
-    var linkedRoomDraftsPeopleAsked = false
+    var linkedRoomDraftsPeopleAsked: Bool {
+        get { shownRuntime.linkedRoomDraftsPeopleAsked }
+        set { shownRuntime.linkedRoomDraftsPeopleAsked = newValue }
+    }
     let linkedRoomInvitesReader = LinkedRoomListRead()
     let linkedRoomApprovalsReader = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to
@@ -3790,8 +3926,14 @@ final class AppState: ObservableObject {
         set { shownRuntime.sharedRoomLooks = newValue }
     }
     /// A looks share is on its way, and another change waits for it.
-    var roomLooksSharing = false
-    var roomLooksShareAgain = false
+    var roomLooksSharing: Bool {
+        get { shownRuntime.roomLooksSharing }
+        set { shownRuntime.roomLooksSharing = newValue }
+    }
+    var roomLooksShareAgain: Bool {
+        get { shownRuntime.roomLooksShareAgain }
+        set { shownRuntime.roomLooksShareAgain = newValue }
+    }
     /// Your room picture's changes so far: a read of the one Hermes keeps
     /// that started before the latest is dropped.
     var roomPersonPictureChanges = 0
@@ -3976,11 +4118,17 @@ final class AppState: ObservableObject {
 
     // MARK: - Bot management (create / edit / delete / avatars) (AppState+BotMode.swift)
 
-    var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)?
+    var keptBotRosterMemo: (key: String, roster: KeptBotRoster?)? {
+        get { shownRuntime.keptBotRosterMemo }
+        set { shownRuntime.keptBotRosterMemo = newValue }
+    }
 
     /// Whether Hermes can generate pictures, as last asked
     /// (`refreshPictureGeneration`).
-    @Published var canGeneratePictures = false
+    var canGeneratePictures: Bool {
+        get { shownRuntime.canGeneratePictures }
+        set { shownRuntime.canGeneratePictures = newValue }
+    }
 
     // MARK: - New Chat (AppState+Session.swift)
 
@@ -4134,7 +4282,10 @@ final class AppState: ObservableObject {
 
     // MARK: - Slash Commands (AppState+SlashCommands.swift)
 
-    var lastSlashCatalogPayload: AnyCodable?
+    var lastSlashCatalogPayload: AnyCodable? {
+        get { shownRuntime.lastSlashCatalogPayload }
+        set { shownRuntime.lastSlashCatalogPayload = newValue }
+    }
 
     // MARK: - Profiles and preferences (AppState+SessionCatalog.swift, AppState+TranscriptHistory.swift, AppState+Profiles.swift, AppState+Clarify.swift, AppState+Projects.swift)
 

@@ -1183,7 +1183,7 @@ final class CarPlayVoiceCoordinator {
             appState.$activeProfile.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher(),
             appState.botRosterValues.map { _ in () }.dropFirst().eraseToAnyPublisher(),
             // Which chat is Pulse's, left out (the feed names it).
-            appState.$pulseHomeChatID.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
+            appState.pulseHomeChatIDValues.removeDuplicates().map { _ in () }.dropFirst().eraseToAnyPublisher()
         )
         .sink { [weak self] _ in self?.scheduleChatsRefresh() }
         loadChatsIfMissing(appState)

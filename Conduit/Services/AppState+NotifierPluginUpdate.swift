@@ -122,33 +122,39 @@ extension AppState {
     /// the host where the update stands and says so. `profile` is the one
     /// the run asked the host under.
     private func watchNotifierPluginUpdate(run runID: UUID, heard: NotifierPluginUpdateHeartbeat, dashboardID: UUID?, profile: String) {
-        notifierPluginUpdateWatchdog?.cancel()
+        // The run's own dashboard's state, wherever the screen goes meanwhile.
+        let runtime = shownRuntime
+        runtime.notifierPluginUpdateWatchdog?.cancel()
         let runStarted = Date()
-        notifierPluginUpdateWatchdog = Task { [weak self] in
+        runtime.notifierPluginUpdateWatchdog = Task { [weak self, weak runtime] in
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(15))
-                guard let self, !Task.isCancelled, self.notifierPluginUpdate.isRun(runID),
-                      let limit = NotifierPluginUpdater.stallLimit(for: self.notifierPluginUpdate.state) else { return }
+                guard let self, let runtime, !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID),
+                      let limit = NotifierPluginUpdater.stallLimit(for: runtime.notifierPluginUpdate.state) else { return }
                 guard Date().timeIntervalSince(heard.at) > limit else { continue }
                 // The run stops here: whatever it waits on can't land on the slot any more.
-                self.notifierPluginUpdateTask?.cancel()
-                self.notifierPluginUpdateTask = nil
-                guard self.activeDashboardID == dashboardID else {
-                    self.notifierPluginUpdate.finish(.idle, run: runID, activeDashboardID: self.activeDashboardID)
+                runtime.notifierPluginUpdateTask?.cancel()
+                runtime.notifierPluginUpdateTask = nil
+                // Another dashboard on screen: its requests aren't this run's to ask.
+                let stillHere = { self.activeDashboardID == dashboardID && self.shownRuntime === runtime }
+                guard stillHere() else {
+                    runtime.notifierPluginUpdate.finish(.idle, run: runID, activeDashboardID: self.activeDashboardID)
                     return
                 }
                 await self.refreshNotifierPluginStatus()
                 let path = NotifierPluginUpdater.selfUpdateRequestPath(profile: profile, acceptScan: false)
-                let probe = try? await self.dashboardTicketBridge?.requestJSON(path: path)
-                guard !Task.isCancelled, self.notifierPluginUpdate.isRun(runID) else { return }
+                var probe: [String: Any]?
+                if stillHere() { probe = try? await self.dashboardTicketBridge?.requestJSON(path: path) }
+                guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
                 var outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
                                                                       plugin: self.notifierPlugin, runStarted: runStarted)
                 // Ready means the gateway serves too, as after a run that ended on its own.
-                if case .updated = outcome, !(await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)) {
+                if stillHere(), case .updated = outcome, !(await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)) {
                     outcome = .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
                 }
-                guard !Task.isCancelled, self.notifierPluginUpdate.isRun(runID), self.activeDashboardID == dashboardID else { return }
-                self.notifierPluginUpdate.finish(outcome, run: runID, activeDashboardID: self.activeDashboardID)
+                guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
+                // Left mid-check: the run ends without a verdict (finish clears it), never stuck on its step.
+                runtime.notifierPluginUpdate.finish(stillHere() ? outcome : .idle, run: runID, activeDashboardID: self.activeDashboardID)
                 return
             }
         }

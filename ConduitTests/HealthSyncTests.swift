@@ -386,6 +386,46 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNotNil(engine.lastError)
     }
 
+    /// A host that has taken its uploads for the minute (429) is waited out,
+    /// longer each time, and the same part goes again: a long history sync
+    /// carries on with no error (notifier issue 975).
+    func testABusyHostIsWaitedOutWithoutAnError() async {
+        let source = FakeHealthSource()
+        let host = FakeHealthHost()
+        host.busyIngests = 3
+        var waits: [TimeInterval] = []
+        let engine = makeHealthEngine(source: source, wait: { waits.append($0) })
+        let outcome = await engine.sync(preferences: healthPreferences(history: .days30), deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(outcome, .synced)
+        XCTAssertNil(engine.lastError)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertEqual(waits.count, 3)
+        XCTAssertEqual(host.busyIngests, 0)
+        XCTAssertEqual(engine.state.backfillCursor, engine.state.historyStart, "All 30 days are in")
+        for (wait, base) in zip(waits, [2.0, 4.0, 8.0]) {
+            XCTAssertEqual(wait, base, accuracy: base * 0.25 + 0.001)
+        }
+    }
+
+    /// A host still busy when the pass's time runs out leaves the pass
+    /// unfinished for the next one, never failed, and acknowledges nothing.
+    func testABusyHostPastTheDeadlineLeavesThePassUnfinished() async {
+        let source = FakeHealthSource()
+        let host = FakeHealthHost()
+        host.busyIngests = .max
+        let start = date("2026-10-13T12:00:00Z")
+        var waits = 0
+        let engine = makeHealthEngine(source: source, now: { start }, wait: { _ in waits += 1 })
+        let outcome = await engine.sync(preferences: healthPreferences(history: .days30),
+                                        deadline: start.addingTimeInterval(20), request: host.handle)
+        XCTAssertEqual(outcome, .unfinished)
+        XCTAssertNil(engine.lastError)
+        XCTAssertNil(engine.state.pause)
+        XCTAssertNil(engine.state.backfillCursor, "Nothing taken, nothing moves")
+        XCTAssertGreaterThan(waits, 0)
+        XCTAssertLessThan(waits, 5, "Stops before a wait would run past the deadline")
+    }
+
     /// Only a 409 that says the host lost the key clears it. The notifier's
     /// other 409s (too many devices, a store from a newer plugin) can't be
     /// fixed by a new key: they keep it. A newer plugin's store asks for a
@@ -486,13 +526,14 @@ extension HermesVoiceGatewayTimeoutTests {
 
     private func makeHealthEngine(source: FakeHealthSource, keys box: HealthKeyBox = HealthKeyBox(),
                                   calendar: Calendar? = nil, folder: URL? = nil,
-                                  now: @escaping () -> Date = { HermesVoiceGatewayTimeoutTests.healthDate("2026-10-13T12:00:00Z") })
+                                  now: @escaping () -> Date = { HermesVoiceGatewayTimeoutTests.healthDate("2026-10-13T12:00:00Z") },
+                                  wait: @escaping (TimeInterval) async throws -> Void = { _ in })
         -> HealthSyncEngine {
         let folder = folder ?? FileManager.default.temporaryDirectory.appendingPathComponent("health-sync-\(UUID().uuidString)", isDirectory: true)
         addTeardownBlock { try? FileManager.default.removeItem(at: folder) }
         let keys = HealthSyncKeyStore(load: { box.key }, save: { box.key = $0 }, clear: { box.key = nil })
         return HealthSyncEngine(source: source, store: HealthSyncStateStore(url: folder.appendingPathComponent("state.json")),
-                                keys: keys, calendar: calendar ?? Self.healthCalendar, now: now)
+                                keys: keys, calendar: calendar ?? Self.healthCalendar, now: now, wait: wait)
     }
 
     private func healthPreferences(history: HealthHistoryDepth) -> HealthSyncPreferences {
@@ -569,6 +610,8 @@ private final class FakeHealthHost {
     private(set) var batches: [[String: Any]] = []
     private(set) var wiped: [String] = []
     var ingestError: Error?
+    /// Uploads refused as over the host's per-minute limit before one is taken.
+    var busyIngests = 0
     /// health_store's count of windows it kept a newer computation of.
     var staleWindows = 0
 
@@ -598,6 +641,10 @@ private final class FakeHealthHost {
         }
         if path == "\(base)/ingest" {
             if let ingestError { throw ingestError }
+            if busyIngests > 0 {
+                busyIngests -= 1
+                throw DashboardTicketBridgeError.http(status: 429, detail: "Too many health uploads; try again shortly")
+            }
             let body = try XCTUnwrap(body)
             guard let session, let kid, body["kid"] as? String == kid else {
                 throw DashboardTicketBridgeError.http(status: 409, detail: "unknown_key")

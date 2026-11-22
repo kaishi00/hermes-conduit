@@ -183,9 +183,10 @@ struct BotRosterView: View {
                 let dashboard = appState.activeDashboardID
                 Task {
                     let failure = await appState.removeDesktopGroupChat(group)
-                    if failure == nil { Haptics.success() } else { Haptics.warning() }
                     // Switched meanwhile: this list never asked.
-                    if appState.activeDashboardID == dashboard { managementNotice = failure }
+                    guard appState.activeDashboardID == dashboard else { return }
+                    if failure == nil { Haptics.success() } else { Haptics.warning() }
+                    managementNotice = failure
                 }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDesktopRemoval = nil }
