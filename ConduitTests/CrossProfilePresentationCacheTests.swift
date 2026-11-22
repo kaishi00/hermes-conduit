@@ -2793,12 +2793,13 @@ extension CrossProfilePresentationCacheTests {
         )
 
         let open = Task { @MainActor in
-            await appState.openNotificationTarget(ConduitNotificationTarget(
+            await appState.openNotificationTargetOutcome(ConduitNotificationTarget(
                 profile: "default", sessionId: "session-a", dashboardID: mac.id, type: "response.ready"
             ))
         }
         await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-1" } }
-        open.cancel()
+        let outcome = await open.value
+        XCTAssertEqual(outcome, .opened, "the route waits on the far open")
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
