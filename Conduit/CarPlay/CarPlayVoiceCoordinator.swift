@@ -1319,7 +1319,9 @@ final class CarPlayVoiceCoordinator {
         let appState = lastBoundAppState ?? appStateProvider()
         // A load that came back empty may have failed with the connection;
         // the next connection asks once more.
-        if !appState.isConnected, chatCatalogLoad == nil { didRequestChatCatalog = false }
+        // A far agent's list reads through its own kept connection, once
+        // per open, whatever the screen's connection does.
+        if !appState.isConnected, chatCatalogLoad == nil, farAgent?.dashboardID == nil { didRequestChatCatalog = false }
         loadChatsIfMissing(appState)
         let chats = shownChatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)
@@ -1835,9 +1837,13 @@ final class CarPlayVoiceCoordinator {
             return
         }
         let previous = farStartTail
+        // End calls off a start still queued behind another; one asked
+        // after End goes ahead.
+        let request = voiceStartRequest
         let start = Task { @MainActor [weak self] in
             await previous?.value
-            guard let self, self.isCurrent(generation), self.isConnected, self.farAgent == far else { return }
+            guard let self, self.isCurrent(generation), self.isConnected, self.farAgent == far,
+                  self.voiceStartRequest == request else { return }
             let appState = self.lastBoundAppState ?? self.appStateProvider()
             self.forgetStaleFarAgent(appState)
             // On screen now: the start goes on as one on screen.
