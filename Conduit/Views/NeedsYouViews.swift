@@ -382,6 +382,12 @@ struct ChatAskedQuestionBar: View {
                     }
                     .disabled(acting || !appState.isConnected)
                 }
+                if question.canDismiss {
+                    BotQuestionDismissButton {
+                        Task { await appState.answerBotQuestion(question, profile: item.profile, with: .dismiss) }
+                    }
+                    .disabled(acting || !appState.isConnected)
+                }
                 if let refusal = botWork.refusal(item.profile, ref: question.id) {
                     Text(refusal)
                         .scaledFont(.caption)

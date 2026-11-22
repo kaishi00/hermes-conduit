@@ -1061,7 +1061,9 @@ final class StreamEventParserTests: XCTestCase {
         let event = parse(#"""
         {"type": "request.cancel", "session_id": "s1", "payload": {"id": "srq-0123456789ab", "method": "clarify", "reason": "resolved"}}
         """#)
-        XCTAssertNil(event, "An answered request must never read as timed out")
+        // Passed on as an answer, which the card reads as answered here or elsewhere, never timed out (issue 3105).
+        guard case .clarifyExpire(_, _, let reason) = event else { return XCTFail("Expected clarifyExpire") }
+        XCTAssertEqual(reason, "resolved")
     }
 
     func testRequestCancelForMaskedPromptExpiresIt() {

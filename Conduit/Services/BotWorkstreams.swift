@@ -257,9 +257,10 @@ struct BotWorkItem: Identifiable, Equatable {
 }
 
 /// How the user answers a question the bot asked them (work_propose): a
-/// yes or no, or one of its choices (plugin 0.189.0+).
+/// yes or no, or one of its choices (plugin 0.189.0+), or Dismiss, which
+/// takes it off their list with no answer (plugin 0.195.0+, issue 3105).
 enum BotQuestionAnswer: Equatable {
-    case approve, decline
+    case approve, decline, dismiss
     case choice(String)
 
     /// The plugin's action for it, and its body.
@@ -267,6 +268,7 @@ enum BotQuestionAnswer: Equatable {
         switch self {
         case .approve: return "approve"
         case .decline: return "decline"
+        case .dismiss: return "dismiss"
         case .choice: return "answer"
         }
     }
@@ -324,8 +326,9 @@ struct BotWorkCoordination: Equatable {
         let woke: Bool
         /// A send's state: "delivered", "waiting" or "not_arrived".
         let state: String
-        /// A proposal's: "open", "approved", "declined" or "answered" (one of
-        /// its choices, or the user's words), and that answer.
+        /// A proposal's: "open", "approved", "declined", "answered" (one of
+        /// its choices, or the user's words) or "dismissed" (no answer), and
+        /// that answer.
         private(set) var status: String
         private(set) var answer: String
         let why: [Line]
@@ -333,6 +336,9 @@ struct BotWorkCoordination: Equatable {
         /// 0.168.0+ takes Approve and Decline for it; 0.189.0+ one of its
         /// choices).
         private(set) var canAnswer: Bool
+        /// An open question the user can take off their list with no answer
+        /// (plugin 0.195.0+ lists "dismiss" among its actions, issue 3105).
+        private(set) var canDismiss: Bool
         /// A question's options, the one the bot recommends, and whether it
         /// goes ahead with that until the user answers (plugin 0.189.0+).
         /// No choices: a yes or no.
@@ -374,6 +380,7 @@ struct BotWorkCoordination: Equatable {
             canAnswer = kind == .proposal && status == "open" && (choices.isEmpty
                 ? actions.contains("approve") && actions.contains("decline")
                 : actions.contains("answer"))
+            canDismiss = kind == .proposal && status == "open" && actions.contains("dismiss")
             why = (row["why"] as? [[String: Any]] ?? []).enumerated().compactMap { index, line in
                 guard let text = line["text"] as? String, !text.isEmpty,
                       let at = (line["at"] as? NSNumber)?.doubleValue else { return nil }
@@ -388,11 +395,13 @@ struct BotWorkCoordination: Equatable {
             switch given {
             case .approve: copy.status = "approved"
             case .decline: copy.status = "declined"
+            case .dismiss: copy.status = "dismissed"
             case .choice(let choice):
                 copy.status = "answered"
                 copy.answer = choice
             }
             copy.canAnswer = false
+            copy.canDismiss = false
             return copy
         }
 
@@ -426,6 +435,7 @@ struct BotWorkCoordination: Equatable {
                 switch status {
                 case "approved": return AppLocalization.string("You approved", table: .bots)
                 case "declined": return AppLocalization.string("You declined")
+                case "dismissed": return AppLocalization.string("You dismissed it", table: .bots)
                 case "answered": return AppLocalization.string("You picked “\(answer)”", table: .bots)
                 default:
                     if goingAhead {
@@ -559,7 +569,10 @@ struct BotWorkSnapshot: Equatable {
     }
 
     func answering(_ id: String, with given: BotQuestionAnswer) -> BotWorkSnapshot {
-        guard let coordination, coordination.items.contains(where: { $0.id == id && $0.canAnswer }) else { return self }
+        // Dismiss also takes one answered in words, which has no buttons.
+        guard let coordination, coordination.items.contains(where: { item in
+            item.id == id && (given == .dismiss ? item.canDismiss : item.canAnswer)
+        }) else { return self }
         var copy = self
         copy.coordination = coordination.answering(id, with: given)
         if questionCount > 0 {

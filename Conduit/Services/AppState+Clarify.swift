@@ -813,6 +813,14 @@ extension AppState {
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired else { return }
+        // `resolved` is an answer, never an expiry: one this device sent
+        // (being sent, or every question answered here) keeps its card as it
+        // is; otherwise it was answered elsewhere (issue 3105).
+        if reason == "resolved",
+           activity.questions.contains(where: { $0.status == .submitting })
+            || activity.questions.allSatisfy({ $0.status == .answered }) {
+            return
+        }
         activity.isExpired = true
         for questionIndex in activity.questions.indices
         where activity.questions[questionIndex].status != .answered {
@@ -1164,7 +1172,13 @@ extension AppState {
     /// may claim Hermes timed out; an interrupt or closed session must not.
     private static func clarifyExpiredNotice(for questionCount: Int, reason: String?) -> String {
         guard let reason, reason != "timeout" else { return clarifyExpiredNotice(for: questionCount) }
-        if reason == "answered_elsewhere" {
+        if reason == "superseded" {
+            // The user wrote a message instead of answering (issue 3105).
+            return questionCount > 1
+                ? AppLocalization.string("You wrote a message instead, so Hermes stopped waiting for these questions.")
+                : AppLocalization.string("You wrote a message instead, so Hermes stopped waiting for this question.")
+        }
+        if reason == "answered_elsewhere" || reason == "resolved" {
             return questionCount > 1
                 ? AppLocalization.string("These questions were answered elsewhere.")
                 : AppLocalization.string("This question was answered elsewhere.")

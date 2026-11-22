@@ -184106,6 +184106,170 @@
         }
       }
     },
+    "You wrote a message instead, so Hermes stopped waiting for these questions." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast stattdessen eine Nachricht geschrieben, daher wartet Hermes nicht mehr auf diese Fragen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escribiste un mensaje en su lugar, así que Hermes dejó de esperar estas preguntas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez écrit un message à la place, Hermes n’attend donc plus de réponse à ces questions."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda menulis pesan sebagai gantinya, jadi Hermes berhenti menunggu pertanyaan-pertanyaan ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hai scritto un messaggio invece di rispondere, quindi Hermes non aspetta più queste domande."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりにメッセージを書いたため、Hermesはこれらの質問の回答を待つのをやめました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 메시지를 보내서 Hermes가 이 질문들의 답을 더 기다리지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamiast odpowiedzieć, napisano wiadomość, więc Hermes przestał czekać na odpowiedzi na te pytania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você escreveu uma mensagem em vez de responder, então o Hermes parou de esperar por estas perguntas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы написали сообщение вместо ответа, поэтому Hermes больше не ждёт ответов на эти вопросы."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıt yerine mesaj yazdınız, bu yüzden Hermes bu soruları beklemeyi bıraktı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你改为发送了消息，Hermes 不再等待这些问题的回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你改為傳送了訊息，Hermes 不再等待這些問題的回答。"
+          }
+        }
+      }
+    },
+    "You wrote a message instead, so Hermes stopped waiting for this question." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast stattdessen eine Nachricht geschrieben, daher wartet Hermes nicht mehr auf diese Frage."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escribiste un mensaje en su lugar, así que Hermes dejó de esperar esta pregunta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez écrit un message à la place, Hermes n’attend donc plus de réponse à cette question."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda menulis pesan sebagai gantinya, jadi Hermes berhenti menunggu pertanyaan ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hai scritto un messaggio invece di rispondere, quindi Hermes non aspetta più questa domanda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "代わりにメッセージを書いたため、Hermesはこの質問の回答を待つのをやめました。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "대신 메시지를 보내서 Hermes가 이 질문의 답을 더 기다리지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zamiast odpowiedzieć, napisano wiadomość, więc Hermes przestał czekać na odpowiedź na to pytanie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você escreveu uma mensagem em vez de responder, então o Hermes parou de esperar por esta pergunta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы написали сообщение вместо ответа, поэтому Hermes больше не ждёт ответа на этот вопрос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıt yerine mesaj yazdınız, bu yüzden Hermes bu soruyu beklemeyi bıraktı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你改为发送了消息，Hermes 不再等待这个问题的回答。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你改為傳送了訊息，Hermes 不再等待這個問題的回答。"
+          }
+        }
+      }
+    },
     "You'll need" : {
       "localizations" : {
         "de" : {
