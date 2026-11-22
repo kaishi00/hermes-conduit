@@ -542,11 +542,6 @@ extension AppState {
         if activeRoomSurface?.room.roomID != tile.roomID, groupSettingsOnOpen == request { groupSettingsOnOpen = nil }
     }
 
-    /// Another dashboard's room's tile dropped on `target`'s, of the same
-    /// dashboard (nil: past its last), whose place it takes in that
-    /// dashboard's room order, kept on this phone as its tiles read it. A
-    /// tile of another dashboard, or this one's, moves nothing: each
-    /// dashboard's rooms keep their place among the group's.
     /// The hosted tile beside another dashboard's room among its own
     /// dashboard's (-1 before, +1 after), for VoiceOver's Move Earlier and
     /// Move Later: dropping on it moves the room one place, as a drag does.
@@ -560,7 +555,12 @@ extension AppState {
         return own[index + step]
     }
 
-    /// Whether it moved.
+    /// Another dashboard's room's tile dropped on `target`'s, of the same
+    /// dashboard (nil: past its last), whose place it takes in that
+    /// dashboard's room order, kept on this phone as its tiles read it. A
+    /// tile of another dashboard, or this one's, moves nothing: each
+    /// dashboard's rooms keep their place among the group's. Whether it
+    /// moved.
     @discardableResult
     func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) -> Bool {
         let tiles = otherCombinedDashboardsRoomTiles.filter { $0.dashboardID == dashboardID }
@@ -612,7 +612,8 @@ extension AppState {
                 // again on the next tick.
                 if firstRead, !groupRoomsListed { adoptKeptGroupRoomPictures() }
                 await refreshGroupRoomPictures(among: rooms)
-                // Whether its Hermes can disband them, for the tiles' menus:
+                // Whether its Hermes can disband them and serves their
+                // settings, for the tiles' menus:
                 // just the capabilities, not the room reads an open does.
                 await readGroupCapabilitiesIfUnknown()
             }

@@ -110,14 +110,15 @@ struct BotRoomGrid<Content: View>: View {
     }
 }
 
-/// A room's portrait: its icon in a ring, its name under it, and "Talking
-/// now" while its bots talk. A room being started has a dashed ring.
 /// What a talking room's tile says under its name, for VoiceOver on a
-/// tile drawn outside Bots Home's own files (a copy's, RoomCopyViews.swift).
+/// tile drawn outside Bots Home's own files (a copy's, RoomCopyViews.swift;
+/// another dashboard's, CombinedRoomViews.swift).
 enum BotRoomTalkingText {
     static var now: String { AppLocalization.string("Talking now", table: .bots) }
 }
 
+/// A room's portrait: its icon in a ring, its name under it, and "Talking
+/// now" while its bots talk. A room being started has a dashed ring.
 struct BotRoomPortraitLabel<Icon: View>: View {
     let title: String
     var talking = false

@@ -165,7 +165,7 @@ enum CombinedRoomText {
         case .hosted(let room): linked = room.isLinked
         case .copy: linked = true
         }
-        return [talking && appState.combinedRoomTalking(tile) ? AppLocalization.string("Talking now", table: .bots) : nil,
+        return [talking && appState.combinedRoomTalking(tile) ? BotRoomTalkingText.now : nil,
                 linked ? AppLocalization.string("With linked people") : nil,
                 appState.combinedDashboardBadge(tile.dashboardID)?.name, line(tile)]
             .compactMap { $0 }
