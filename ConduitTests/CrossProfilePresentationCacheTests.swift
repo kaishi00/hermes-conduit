@@ -1025,6 +1025,15 @@ extension CrossProfilePresentationCacheTests {
             "its chat's link opens on Mac"
         )
         XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "\(appState.defaultProfileName) · Mac · Trip")
+        // The names are Mac's own, not the screen's: its main profile's
+        // rename, and a device name while its gateway keeps no bot looks.
+        appState.profileAppearanceStore.saveDefaultName("Atlas", dashboardID: mac.id)
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "Atlas · Mac · Trip")
+        XCTAssertNotEqual(appState.defaultProfileName, "Atlas", "VPS's main profile keeps its own name")
+        appState.profileAppearanceStore.saveDeviceName("Scout", for: "work", dashboardID: mac.id)
+        appState.liveCallProfile = "work"
+        XCTAssertEqual(appState.liveCallBarSubject(thread: "Trip"), "Scout · Mac · Trip")
+        appState.liveCallProfile = "default"
 
         // A switch inside the group goes on; one outside it asks first.
         XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
@@ -1063,7 +1072,17 @@ extension CrossProfilePresentationCacheTests {
         // Mac's socket drops: the call goes on, and switching back to Mac
         // still keeps it (the switch signs in again); away from it, nothing
         // would carry it.
+        var macPreferences = VoiceProfilePreferences()
+        macPreferences.outputMuted = true
+        let macRuntime = try XCTUnwrap(appState.runtime(for: mac.id))
+        appState.act(onRuntime: macRuntime) { appState.saveVoiceProfilePreferences(macPreferences, profile: "default") }
+        appState.notifierPlugin.state = .reported(version: "9.0.0", capabilities: ["voice-tools"])
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        // Meanwhile it reads Mac's settings by its address, and no plugin
+        // report: never VPS's.
+        XCTAssertEqual(appState.loadCallVoicePreferences(profile: "default"), macPreferences)
+        XCTAssertEqual(appState.onCallRuntime { appState.notifierPlugin.state }, .unknown)
+        XCTAssertNil(appState.callBridge)
         XCTAssertTrue(appState.callSurvivesDashboardSwitch(to: mac.id))
         XCTAssertFalse(appState.callSurvivesDashboardSwitch(to: extra.id))
 
