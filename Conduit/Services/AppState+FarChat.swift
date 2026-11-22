@@ -127,8 +127,12 @@ extension AppState {
     func isFarBotChat(_ session: SessionSummary, in dashboardID: UUID) -> Bool {
         let roster = (combinedDashboardBots[dashboardID]?.bots ?? [])
             + (keptDashboardRuntimes[dashboardID]?.runtime.botRoster ?? [])
+        // A Bot Chat compacted into a new row keeps its first id as its
+        // lineage root, which is the id the roster names.
+        let lineageRoot = session.lineageRootId.flatMap(ChatScrollIdentityNormalization.sessionID)
         return BotChatHygiene.isCanonicalBotChatRow(session, roster: roster)
             || BotChatHygiene.isReservedCanonicalTitleRow(session)
+            || (lineageRoot.map { root in roster.contains { $0.canonicalSessionID == root } } ?? false)
     }
 
     /// A kept dashboard's runtime on `profile`: as kept, or with its socket
@@ -155,6 +159,19 @@ extension AppState {
         )
         next.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         next.inheritSessionProfiles(from: kept.client)
+        // Its chat on screen, on the old profile, saves under that profile
+        // now: the open that follows flushes it again on the new one, and
+        // skips it there (`flushPendingPresentationCache`).
+        if farChat?.dashboardID == dashboardID { flushPendingPresentationCache() }
+        // The chats followed there on its old profile (the one open in
+        // place, ones left mid-reply) were never noted, being that client's
+        // own: the new one names their profile for them.
+        if let farChat, farChat.dashboardID == dashboardID {
+            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
+        }
+        for chat in backgroundChats where chat.dashboardID == dashboardID {
+            next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))
+        }
         // A live call held on this dashboard keeps its requests in flight
         // and its sessions on its own profile, as `keptClient(_:on:)` and a
         // profile switch carry it (`keep` below names the call's profile
