@@ -185,8 +185,11 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
                              provider: nil, hasAvatar: false, isPinned: true, isHiddenByMeta: false, appearanceColor: nil,
                              canonicalSession: BotCanonicalSession(id: "bot-chat", resolvedID: nil, lastActive: 9, preview: nil),
                              lastActive: nil, lastPreview: nil)
+        // A workstream's tip after a branch, found by its lineage root.
+        var branched = chat("tip", "coder")
+        branched.lineageRootId = "work"
         let sessions = [chat("a", "default", pinned: true), chat("b", "coder"), chat("bot-chat", "coder"),
-                        chat("cron", "default", source: .cron), chat("old", "default"), chat("work", "coder")]
+                        chat("cron", "default", source: .cron), chat("old", "default"), chat("work", "coder"), branched]
         let earlier = WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil, botLabel: nil,
                                                   sessionID: "old", isUnverified: false)
         let before = WidgetWorkspaceSnapshot(

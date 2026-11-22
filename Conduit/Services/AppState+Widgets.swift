@@ -126,7 +126,7 @@ extension AppState {
                 sessions: chats.sessions,
                 bots: combinedDashboardBots[dashboard.id]?.bots,
                 workstreamIDs: (combinedDashboardBotWork[dashboard.id] ?? [:]).values
-                    .reduce(into: Set<String>()) { $0.formUnion($1.knownSessionIDs) },
+                    .reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) },
                 botsProfile: rememberedActiveProfile(for: dashboard.id) ?? "default",
                 previous: previous
             )
@@ -167,8 +167,7 @@ extension AppState {
             var choices = sessions.compactMap { session -> WidgetConversationChoice? in
                 guard profilesMatch(session.profile ?? "", profile), !session.isArchived, session.source != .cron,
                       !BotChatHygiene.isCanonicalBotChatRow(session, roster: roster),
-                      Set([session.id, session.storedSessionId].compactMap { $0 } + session.alternateIds)
-                          .isDisjoint(with: workstreamIDs) else { return nil }
+                      workstreamIDs.isDisjoint(with: SessionContentSearch.identities(of: session)) else { return nil }
                 let durableID = session.storedSessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
                 let sessionID = (durableID?.isEmpty == false ? durableID : nil) ?? session.id
                 let reference = widgetReference(from: .dashboard(profile: profile, sessionID: sessionID, isUnverified: bots == nil))
