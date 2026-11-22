@@ -217,10 +217,12 @@ extension AppState {
         )
     }
 
-    /// Suggested replies for `anchor`, asked once per reply.
-    func requestPredictedReplies(for anchor: PredictiveStore.Anchor, again: Bool = false) {
+    /// Suggested replies for `anchor`, asked once per reply. Returns the ask,
+    /// which ends once its answer is shown or dropped (nil: nothing asked).
+    @discardableResult
+    func requestPredictedReplies(for anchor: PredictiveStore.Anchor, again: Bool = false) -> Task<Void, Never>? {
         guard Predictive.repliesEnabled(), !predictive.hiddenSessions.contains(anchor.sessionID),
-              again || shownChat.predictiveRepliesAsked != anchor else { return }
+              again || shownChat.predictiveRepliesAsked != anchor else { return nil }
         shownChat.predictiveRepliesAsked = anchor
         let count = Predictive.replyCount()
         let instructions = predictiveInstructions(.replies)
@@ -231,7 +233,7 @@ extension AppState {
         )
         let profile = activeProfile
         let generation = shownChat.predictiveGeneration
-        Task { [weak self] in
+        return Task { [weak self] in
             guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.repliesWait),
                   let self, self.shownChat.predictiveGeneration == generation, Predictive.repliesEnabled(),
                   self.predictiveAnchor == anchor, self.predictiveInstructions(.replies) == instructions else { return }
@@ -241,14 +243,15 @@ extension AppState {
         }
     }
 
-    /// The row's ⋯ > Refresh.
-    func refreshPredictions() {
-        guard let anchor = predictiveAnchor else { return }
+    /// The row's ⋯ > Refresh. Returns the ask (nil: nothing asked).
+    @discardableResult
+    func refreshPredictions() -> Task<Void, Never>? {
+        guard let anchor = predictiveAnchor else { return nil }
         if predictive.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            requestPredictedReplies(for: anchor, again: true)
+            return requestPredictedReplies(for: anchor, again: true)
         } else {
             shownChat.predictiveDraftAsked = nil
-            askAboutDraft(predictive.draft, sessionID: anchor.sessionID)
+            return askAboutDraft(predictive.draft, sessionID: anchor.sessionID)
         }
     }
 
@@ -302,12 +305,14 @@ extension AppState {
     }
 
     /// Asks about `draft` once. The answer counts while it comes within
-    /// the wait and the draft still starts with what was asked.
-    private func askAboutDraft(_ draft: String, sessionID: String) {
+    /// the wait and the draft still starts with what was asked. Returns the
+    /// ask (nil: nothing asked).
+    @discardableResult
+    private func askAboutDraft(_ draft: String, sessionID: String) -> Task<Void, Never>? {
         // Over the plugin's limit, Refresh included (issue 1670). Asked once
         // per draft in each chat.
         guard Predictive.fitsQuestion(draft),
-              shownChat.predictiveDraftAsked?.sessionID != sessionID || shownChat.predictiveDraftAsked?.draft != draft else { return }
+              shownChat.predictiveDraftAsked?.sessionID != sessionID || shownChat.predictiveDraftAsked?.draft != draft else { return nil }
         shownChat.predictiveDraftAsked = (sessionID, draft)
         let instructions = predictiveInstructions(.draft)
         let body = Predictive.body(
@@ -320,7 +325,7 @@ extension AppState {
         let generation = shownChat.predictiveGeneration
         // Not cancelled by more typing: an answer for the start of the draft
         // still offers the rest of a continuation the user is typing.
-        Task { [weak self] in
+        return Task { [weak self] in
             guard let answer = try? await self?.askPredictive(body, profile: profile, wait: Predictive.draftWait),
                   let self, self.shownChat.predictiveGeneration == generation, self.activeSessionId == sessionID,
                   self.predictiveInstructions(.draft) == instructions,

@@ -1044,6 +1044,10 @@ private final class PluginHost {
     var selfUpdateJobs: [[String: Any]] = []
     var selfUpdateStartError: Error?
     var selfUpdatePaths: [String] = []
+    /// The follow's job reads so far, and the ones (counted from 1) that fail
+    /// as while the dashboard restarts.
+    var selfUpdateReads = 0
+    var failingSelfUpdateReads: Set<Int> = []
     /// The dashboard restart signs everyone out, like a host without a
     /// fixed sign-in secret.
     var restartSignsOut = false
@@ -1084,6 +1088,12 @@ private final class PluginHost {
         if path.hasPrefix(NotifierPluginUpdater.selfUpdatePath) {
             selfUpdatePaths.append(path)
             if method == "POST", let selfUpdateStartError { throw selfUpdateStartError }
+            if method == "GET" {
+                selfUpdateReads += 1
+                if failingSelfUpdateReads.contains(selfUpdateReads) {
+                    throw DashboardTicketBridgeError.http(status: 0, detail: "")
+                }
+            }
             guard let first = selfUpdateJobs.first else { throw DashboardTicketBridgeError.http(status: 404, detail: "Not Found") }
             if selfUpdateJobs.count > 1 { selfUpdateJobs.removeFirst() }
             return ["ok": true, "job": first]
@@ -1248,6 +1258,68 @@ extension GatewayRestartTests {
         let run = slot.start(on: nil)
         XCTAssertTrue(slot.isRun(run))
         XCTAssertFalse(slot.isRun(UUID()))
+    }
+
+    func testAFollowedJobsReadsThatFailAreNoWordFromTheHost() async {
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "downloading"],
+            ["id": "j1", "step": "downloading"],
+            ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.failingSelfUpdateReads = [1, 2, 3, 4, 5]
+        host.capabilities = [Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new")]
+        var updater = host.updater()
+        updater.onHost = true
+        var followed: [String] = []
+        updater.followedJob = { followed.append($0) }
+        // The read each step came after: none after a read that failed, so the watchdog can end such a run.
+        var heardAfter: [Int] = []
+        let outcome = await updater.run { _ in heardAfter.append(host.selfUpdateReads) }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertEqual(followed, ["j1"])
+        XCTAssertTrue(heardAfter.allSatisfy { !(1...5).contains($0) }, "progress after a failed read: \(heardAfter)")
+        // The answer after the failures is progress again.
+        XCTAssertTrue(heardAfter.contains(6))
+    }
+
+    func testAQuietRunReadsTheJobItFollowedAndWaitsForTheGateway() async {
+        let runStarted = Date(timeIntervalSince1970: 1_000_000)
+        let old = NotifierPluginStatus(state: .reported(version: "0.10.0", capabilities: Set(NotifierPluginStatus.usedCapabilities)),
+                                       runtime: .init(loadedVersion: "0.10.0", restartNeeded: false, bootID: nil))
+        // The host's clock runs a minute behind: the job this run followed is still its own.
+        let skewed: [String: Any] = ["id": "j1", "step": "failed", "detail": "no route", "started_at": 999_940.0]
+        XCTAssertEqual(NotifierPluginUpdater.outcomeAfterStall(job: skewed, plugin: old, runStarted: runStarted, followedJobID: "j1"),
+                       .failed(detail: "no route"))
+        // Another job, however recent, isn't.
+        var other = skewed
+        other["id"] = "j0"
+        other["started_at"] = 1_000_010.0
+        XCTAssertNotEqual(NotifierPluginUpdater.outcomeAfterStall(job: other, plugin: old, runStarted: runStarted, followedJobID: "j1"),
+                          .failed(detail: "no route"))
+
+        // An update is ready only once the gateway is back.
+        let current = NotifierPluginStatus.recommendedVersion
+        let upToDate = NotifierPluginStatus(state: .reported(version: current, capabilities: Set(NotifierPluginStatus.usedCapabilities)),
+                                            runtime: .init(loadedVersion: current, restartNeeded: false, bootID: nil))
+        var asked = 0
+        let back = await NotifierPluginUpdater.settleStall(job: nil, plugin: upToDate, runStarted: runStarted, followedJobID: nil) {
+            asked += 1
+            return true
+        }
+        XCTAssertEqual(back, .updated(version: current))
+        let notBack = await NotifierPluginUpdater.settleStall(job: nil, plugin: upToDate, runStarted: runStarted, followedJobID: nil) {
+            asked += 1
+            return false
+        }
+        guard case .failed(let detail) = notBack else { return XCTFail("\(notBack)") }
+        XCTAssertTrue(detail?.contains("gateway didn't come back") == true)
+        // A run that didn't update doesn't wait on the gateway.
+        _ = await NotifierPluginUpdater.settleStall(job: skewed, plugin: old, runStarted: runStarted, followedJobID: "j1") {
+            asked += 1
+            return true
+        }
+        XCTAssertEqual(asked, 2)
     }
 
     func testAScanTheHostHeldIsShownAndUpdateAnywayRetriesWithForce() async throws {

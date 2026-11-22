@@ -35,6 +35,9 @@ struct ProviderModelContext {
     var usage: (ProviderEntry) -> [String]
     /// The order a provider's keys are used in on this profile.
     var keyOrder: KeyOrderAccess?
+    /// What Edit hid in the model pickers: a provider's page leaves those
+    /// models out too (Eric 2026-11-22).
+    var visibility = ModelVisibility()
 }
 
 // MARK: - On the Model page
@@ -110,7 +113,8 @@ struct ModelPageProviders: View {
                 kept: { appState.keptProfileSettings(keys: $0) },
                 load: { await appState.readProfileSettings(keys: $0) },
                 save: { await appState.setProfileSetting($0, value: $1) }
-            )
+            ),
+            visibility: appState.modelVisibility
         ))
         .onAppear { if catalog == nil { catalog = kept() } }
         .task {
@@ -694,7 +698,7 @@ struct ProviderDetailPage: View {
     @ViewBuilder
     private func modelsSection(_ entry: ProviderEntry) -> some View {
         let row = context.catalog.flatMap { entry.catalogRow(in: $0.providers) }
-        let models = row?.models ?? []
+        let models = row.map { Self.listedModels(row: $0, selection: context.catalog?.selection, visibility: context.visibility) } ?? []
         if let row, !models.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Models", table: .settings), symbol: "cpu", tint: .conduitAccent) {
                 if context.catalogFailed { catalogFailedRow }
@@ -738,6 +742,15 @@ struct ProviderDetailPage: View {
             ConduitSettingsSection(title: AppLocalization.string("Models", table: .settings), symbol: "cpu", tint: .conduitAccent) {
                 catalogFailedRow
             }
+        }
+    }
+
+    /// The provider's models less those hidden with Edit, as every model
+    /// list leaves them out (Eric 2026-11-22); the profile's default stays,
+    /// so the page still shows which one runs.
+    static func listedModels(row: ProviderInfo, selection: (provider: String, model: String)?, visibility: ModelVisibility) -> [ModelInfo] {
+        row.models.filter { model in
+            (selection?.provider == row.name && selection?.model == model.id) || !visibility.isHidden(model: model.id, provider: row)
         }
     }
 

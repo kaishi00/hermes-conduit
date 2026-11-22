@@ -907,9 +907,9 @@ extension ChatTypographyTests {
             UserDefaults.standard.set("New.", forKey: Predictive.instructionsKey(.replies))
             return guesses
         }
-        state.requestPredictedReplies(for: anchor)
-        try await waitUntil { asked == 1 }
-        try await Task.sleep(for: .milliseconds(100))
+        // The ask has run to its end (past the instructions check) before the assert.
+        await state.requestPredictedReplies(for: anchor)?.value
+        XCTAssertEqual(asked, 1)
         XCTAssertTrue(state.predictive.replies.isEmpty, "made under the old instructions")
         // Unchanged meanwhile, the same answer shows.
         state.predictiveSender = { _ in guesses }
@@ -926,9 +926,8 @@ extension ChatTypographyTests {
             return guesses
         }
         state.predictive.draftChanged("Can you check")
-        state.refreshPredictions()
-        try await waitUntil { asked == 1 }
-        try await Task.sleep(for: .milliseconds(100))
+        await state.refreshPredictions()?.value
+        XCTAssertEqual(asked, 1)
         XCTAssertNil(state.predictive.answeredDraft, "made under the old instructions")
 
         // A follow-up check: asked again with the new ones, not acted on.

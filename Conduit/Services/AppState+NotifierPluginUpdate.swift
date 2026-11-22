@@ -74,6 +74,8 @@ extension AppState {
            profile: activeProfile, report: { [weak self] json in
             guard let self, self.activeDashboardID == dashboardID else { return }
             self.applyNotifierPluginReport(json)
+        }, followedJob: { jobID in
+            heard.jobID = jobID
         })
         notifierPluginUpdateTask = Task { [weak self] in
             let outcome = await updater.run { state in
@@ -152,11 +154,13 @@ extension AppState {
                 var probe: [String: Any]?
                 if stillHere() { probe = try? await self.dashboardTicketBridge?.requestJSON(path: path) }
                 guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
-                var outcome = NotifierPluginUpdater.outcomeAfterStall(job: probe?["job"] as? [String: Any],
-                                                                      plugin: self.notifierPlugin, runStarted: runStarted)
                 // Ready means the gateway serves too, as after a run that ended on its own.
-                if stillHere(), case .updated = outcome, !(await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)) {
-                    outcome = .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
+                let outcome = await NotifierPluginUpdater.settleStall(
+                    job: probe?["job"] as? [String: Any], plugin: self.notifierPlugin, runStarted: runStarted,
+                    followedJobID: heard.jobID
+                ) {
+                    guard stillHere() else { return true }
+                    return await self.waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID)
                 }
                 guard !Task.isCancelled, runtime.notifierPluginUpdate.isRun(runID) else { return }
                 // Left mid-check: the run ends without a verdict (finish clears it), never stuck on its step.
@@ -516,4 +520,6 @@ extension NotifierPluginStatus {
 final class NotifierPluginUpdateHeartbeat {
     var at = Date()
     var stopped = false
+    /// The host's job the run follows, once it started one.
+    var jobID: String?
 }
