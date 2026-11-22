@@ -212,6 +212,10 @@ extension AppState {
             guard let sessionID = offlineChatPresentation?.composerSessionID else { return nil }
             return (ids, sessionID, false)
         case .live(let sessionID):
+            // A far chat's ids are its own dashboard's, read on its runtime.
+            if farChat != nil, case .far(let runtime) = chatRuntimeRoute {
+                return act(onRuntime: runtime) { (liveChatSessionIDs(), durableComposerSessionID(for: sessionID), false) }
+            }
             return (liveChatSessionIDs(), durableComposerSessionID(for: sessionID), false)
         }
     }
@@ -617,6 +621,10 @@ extension AppState {
     /// A current catalog claim wins over historical scroll aliases: a
     /// runtime id can be reassigned to a different durable conversation.
     func liveChatOwnsComposerDraftSessionID(_ sessionID: String) -> Bool {
+        // A far chat's: told from its own dashboard's rows, on its runtime.
+        if farChat != nil, case .far(let runtime) = chatRuntimeRoute {
+            return act(onRuntime: runtime) { liveChatOwnsComposerDraftSessionID(sessionID) }
+        }
         guard let activeSessionId else { return false }
         // The chat on screen's row: the one recorded as it opened, else the
         // row owning its id (own or stored id first, else a single
