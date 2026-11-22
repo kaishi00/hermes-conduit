@@ -103,7 +103,9 @@ final class AppState: ObservableObject {
             shownRuntime.isConnected = newValue
             guard actingOnRuntimeOnScreen else {
                 // A far chat's waiting message goes once its own dashboard
-                // connects, checked from the screen's scope as always.
+                // connects: this covers a flip written through here in its
+                // scope; a quiet sign-in's goes by resumeFarChatAfterReconnect's
+                // refresh. Checked from the screen's scope as always.
                 if oldValue != newValue, farChat?.dashboardID == activeDashboardID {
                     RuntimeScope.$runtime.withValue(nil) {
                         RuntimeScope.$dashboardID.withValue(nil) { schedulePendingComposerSendCheck() }

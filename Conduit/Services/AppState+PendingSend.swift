@@ -216,6 +216,11 @@ extension AppState {
             if farChat != nil, case .far(let runtime) = chatRuntimeRoute {
                 return act(onRuntime: runtime) { (liveChatSessionIDs(), durableComposerSessionID(for: sessionID), false) }
             }
+            // Its connection dropped: its own row as it opened, if any.
+            if farChat != nil, case .unreachable = chatRuntimeRoute {
+                let kept = farChatRowOnScreen(sessionID)
+                return (Set([sessionID]).union(kept?.nestingIDs ?? []), kept?.durableKey ?? sessionID, false)
+            }
             return (liveChatSessionIDs(), durableComposerSessionID(for: sessionID), false)
         }
     }
@@ -618,6 +623,14 @@ extension AppState {
         return ids
     }
 
+    /// The far chat's row as it opened, while `sessionID` is still how it's
+    /// open: recorded under its own dashboard and profile.
+    private func farChatRowOnScreen(_ sessionID: String) -> SessionSummary? {
+        guard let farChat, let kept = rowOfChatOnScreen, kept.dashboardID == farChat.dashboardID,
+              kept.profile == farChat.profile, kept.openIDs.contains(sessionID) else { return nil }
+        return kept.row
+    }
+
     /// A current catalog claim wins over historical scroll aliases: a
     /// runtime id can be reassigned to a different durable conversation.
     func liveChatOwnsComposerDraftSessionID(_ sessionID: String) -> Bool {
@@ -626,6 +639,12 @@ extension AppState {
             return act(onRuntime: runtime) { liveChatOwnsComposerDraftSessionID(sessionID) }
         }
         guard let activeSessionId else { return false }
+        // Its connection dropped: never the dashboard on screen's rows,
+        // only the far chat's own row as it opened, else its open id.
+        if farChat != nil, case .unreachable = chatRuntimeRoute {
+            guard let kept = farChatRowOnScreen(activeSessionId) else { return sessionID == activeSessionId }
+            return kept.nestingIDs.contains(sessionID) || kept.durableKey == sessionID
+        }
         // The chat on screen's row: the one recorded as it opened, else the
         // row owning its id (own or stored id first, else a single
         // borrower), so two rows carrying a moved alias never decide by
