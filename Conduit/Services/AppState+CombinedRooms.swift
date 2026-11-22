@@ -547,6 +547,19 @@ extension AppState {
     /// dashboard's room order, kept on this phone as its tiles read it. A
     /// tile of another dashboard, or this one's, moves nothing: each
     /// dashboard's rooms keep their place among the group's.
+    /// The hosted tile beside another dashboard's room among its own
+    /// dashboard's (-1 before, +1 after), for VoiceOver's Move Earlier and
+    /// Move Later: dropping on it moves the room one place, as a drag does.
+    func combinedRoomNeighbor(_ tile: CombinedRoomTile, by step: Int) -> CombinedRoomTile? {
+        guard case .hosted = tile.kind else { return nil }
+        let own = otherCombinedDashboardsRoomTiles.filter { other in
+            guard other.dashboardID == tile.dashboardID, case .hosted = other.kind else { return false }
+            return true
+        }
+        guard let index = own.firstIndex(where: { $0.id == tile.id }), own.indices.contains(index + step) else { return nil }
+        return own[index + step]
+    }
+
     /// Whether it moved.
     @discardableResult
     func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) -> Bool {

@@ -54,6 +54,20 @@ struct CombinedRoomPortrait: View {
         .accessibilityLabel(Text(verbatim: tile.name))
         .accessibilityValue(Text(verbatim: CombinedRoomText.value(tile, appState: appState)))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        // The drag's moves, for VoiceOver: one place among its own
+        // dashboard's rooms.
+        .accessibilityActions {
+            if let earlier = appState.combinedRoomNeighbor(tile, by: -1) {
+                Button(AppLocalization.string("Move Earlier")) {
+                    appState.dropCombinedRoom(tile.id, onto: earlier.id, dashboardID: tile.dashboardID)
+                }
+            }
+            if let later = appState.combinedRoomNeighbor(tile, by: 1) {
+                Button(AppLocalization.string("Move Later")) {
+                    appState.dropCombinedRoom(tile.id, onto: later.id, dashboardID: tile.dashboardID)
+                }
+            }
+        }
         .accessibilityIdentifier("bots.combinedRoom.\(tile.id)")
     }
 
@@ -132,10 +146,12 @@ enum CombinedRoomText {
         }
     }
 
-    /// VoiceOver's value: its dashboard's name, then the line.
+    /// VoiceOver's value: whether it's talking, as this dashboard's rooms
+    /// say, its dashboard's name, then the line.
     @MainActor
     static func value(_ tile: CombinedRoomTile, appState: AppState) -> String {
-        [appState.combinedDashboardBadge(tile.dashboardID)?.name, line(tile)]
+        [appState.combinedRoomTalking(tile) ? AppLocalization.string("Talking now", table: .bots) : nil,
+         appState.combinedDashboardBadge(tile.dashboardID)?.name, line(tile)]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")

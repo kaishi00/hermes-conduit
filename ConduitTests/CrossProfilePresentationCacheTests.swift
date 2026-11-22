@@ -2738,6 +2738,8 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(calls.states["trip"]?.count, 1)
 
         // A drag takes the place of a room of its own dashboard, kept for it.
+        XCTAssertNil(appState.combinedRoomNeighbor(tiles[0], by: -1), "the first: nothing earlier")
+        XCTAssertEqual(appState.combinedRoomNeighbor(tiles[0], by: 1)?.id, tiles[1].id, "VoiceOver's Move Later drops on it")
         XCTAssertTrue(appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id))
         XCTAssertEqual(hosted(), ["plans", "trip"])
         // This dashboard's room, or one named for another dashboard, moves nothing.
