@@ -1666,6 +1666,15 @@ extension CrossProfilePresentationCacheTests {
         await appState.switchDashboard(to: mac.id)
         XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
         XCTAssertTrue(waiting.isCancelled)
+
+        // Kept again and let go, nothing waits on it either.
+        await appState.switchDashboard(to: vps.id)
+        let keptAgain = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        keptAgain.client.onEvent?(.sessionsChanged)
+        let dropped = try XCTUnwrap(appState.keptDashboardChatsChangeReads[mac.id])
+        appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
+        XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
+        XCTAssertTrue(dropped.isCancelled)
     }
 
     func testTheChatsListShowsAKeptDashboardsChatsAndOpensThroughIt() async throws {
