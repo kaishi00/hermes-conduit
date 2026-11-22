@@ -183,6 +183,13 @@ extension AppState {
     /// nothing for 20 s, or an idle chat, is checked against the registry;
     /// a snapshot the list read in the last 5 s is reused.
     func openChatSyncTick() async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place is checked against its own Hermes' registry,
+        // never the dashboard on screen's (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.openChatSyncTick() }) != nil {
+            if case .unreachable = chatRuntimeRoute { setActiveChatRepliesElsewhere(false) }
+            return
+        }
         guard isSceneActive, isConnected, let client,
               client !== activeListUnsupportedClient,
               let local = openChatLocalTurn() else {
@@ -239,6 +246,9 @@ extension AppState {
     }
 
     private func observeOpenChat(in snapshot: (rows: [LiveSessionStatus], at: Date), chatVisible: Bool) {
+        // Another combined dashboard's chat on screen is checked by its own
+        // runtime's tick: this snapshot is another Hermes' registry.
+        guard chatOnScreenIsInScope else { return }
         // A read or a reconciliation already under way owns the transcript.
         guard let local = openChatLocalTurn() else {
             setActiveChatRepliesElsewhere(false)

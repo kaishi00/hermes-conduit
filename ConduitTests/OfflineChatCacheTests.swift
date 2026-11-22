@@ -3760,12 +3760,8 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(pending.draftSessionID, "far-durable")
         XCTAssertEqual(pending.chatSessionIDs, ["far-durable", "stored-b"])
         XCTAssertTrue(appState.isOnScreen(pending))
-        // Its open id still names it while the row is recorded: a message
-        // kept under the bare id before the row came stays on screen.
+        // Its open id still names it while the row is recorded.
         XCTAssertTrue(appState.liveChatOwnsComposerDraftSessionID("stored-b"))
-        var keptBeforeTheRow = pending
-        keptBeforeTheRow.draftSessionID = "stored-b"
-        XCTAssertTrue(appState.isOnScreen(keptBeforeTheRow))
 
         // With no row of its own recorded, only its open id says.
         appState.pendingComposerSend = nil
@@ -3777,6 +3773,11 @@ final class OfflineChatCacheTests: XCTestCase {
         let bare = try XCTUnwrap(appState.pendingComposerSend)
         XCTAssertEqual(bare.draftSessionID, "stored-b")
         XCTAssertEqual(bare.chatSessionIDs, ["stored-b"])
+        // The row recorded after it, the message kept under the bare id
+        // stays on screen.
+        appState.rowOfChatOnScreen = (row: session("far-durable", profile: "work"), openIDs: ["stored-b"],
+                                      dashboardID: far.dashboardID, profile: "work")
+        XCTAssertTrue(appState.isOnScreen(bare))
     }
 
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {

@@ -471,6 +471,9 @@ extension AppState {
     /// `confirmedLaterTurns`: the user agreed to lose the messages after it;
     /// without that, Hermes' history having any (another device's) stops it.
     func editAndResend(_ message: ChatMessage, confirmedLaterTurns: Bool) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.editAndResend(message, confirmedLaterTurns: confirmedLaterTurns) }) != nil { return }
         let context = composerSubmissionContext()
         guard message.role == .user, isCurrentComposerSubmission(context),
               let client, let sessionID = activeSessionId else { return }

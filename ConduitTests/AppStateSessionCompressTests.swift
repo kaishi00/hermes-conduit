@@ -2886,6 +2886,87 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(killed.first?.1, "proc_1")
     }
 
+    func testAProcessListReadForAChatThatMovedToAnotherDashboardIsDropped() async throws {
+        weak var opened: AppState?
+        let harness = controlHarness { operations in
+            operations.listBackgroundProcesses = { _, _ in
+                // Meanwhile another combined dashboard's chat opens in place
+                // under the same id.
+                opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+                return [BackgroundProcess(id: "proc_1", command: "npm run dev", pid: 4242, uptimeSeconds: 90, output: "")]
+            }
+        }
+        opened = harness.appState
+        let keyBefore = harness.appState.backgroundProcessChatKey
+
+        let processes = await harness.appState.loadBackgroundProcesses()
+
+        XCTAssertNil(processes, "The list was read for the chat that was on screen, not this one")
+        // The sheet's list starts over for the chat now on screen, though
+        // its id is the same.
+        XCTAssertEqual(harness.appState.backgroundProcessSessionID, "composer-origin")
+        XCTAssertNotEqual(harness.appState.backgroundProcessChatKey, keyBefore)
+    }
+
+    func testAnUnreachableFarChatsActionsNeverReachTheDashboardOnScreen() async throws {
+        var listed = 0
+        var killed = 0
+        var branched = 0
+        var controlled = 0
+        let harness = controlHarness { operations in
+            operations.listBackgroundProcesses = { _, _ in
+                listed += 1
+                return []
+            }
+            operations.killBackgroundProcess = { _, _, _ in killed += 1 }
+            operations.readSessionControl = { _, _ in Self.goalSnapshot }
+            operations.runSessionControl = { _, _, _ in
+                controlled += 1
+                return (nil, nil)
+            }
+            operations.branchSession = { _, _, _, _, _ in
+                branched += 1
+                throw URLError(.cancelled)
+            }
+        }
+        let appState = harness.appState
+        appState.isConnected = true
+        // The goal dock shows the chat's goal, read before its connection dropped.
+        await appState.refreshSessionControl(for: "composer-origin")
+        appState.messages = [
+            ChatMessage(id: "u1", role: .user, content: "Hi", timestamp: "1", rowId: 1),
+            ChatMessage(id: "a1", role: .assistant, content: "Hello", timestamp: "2", rowId: 2)
+        ]
+        // Another combined dashboard's chat, opened in place under the same
+        // id, whose kept connection has dropped.
+        appState.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+        guard case .unreachable = appState.chatRuntimeRoute else { return XCTFail("Its runtime isn't kept here") }
+        XCTAssertNotNil(appState.client, "The dashboard on screen is connected")
+        XCTAssertFalse(appState.reactionsAvailable, "Its own client is gone")
+
+        var reacted = 0
+        appState.messageReactionSender = { _, _, _ in
+            reacted += 1
+            return MessageReactionResult(rowId: 2, reactions: [])
+        }
+        await appState.react(to: "a1", with: "❤️")
+        await appState.branchFromAssistantMessage("a1")
+        await appState.runSessionControl(.goalPause)
+        let processes = await appState.loadBackgroundProcesses()
+        let failure = await appState.killBackgroundProcess(
+            BackgroundProcess(id: "proc_1", command: "npm run dev", pid: 4242, uptimeSeconds: 90, output: "")
+        )
+
+        XCTAssertEqual(reacted, 0)
+        XCTAssertEqual(appState.messages[1].reactions, [])
+        XCTAssertEqual(branched, 0)
+        XCTAssertEqual(controlled, 0, "The goal dock's Pause never reaches the dashboard on screen")
+        XCTAssertNil(processes)
+        XCTAssertEqual(failure, AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat))
+        XCTAssertEqual(listed, 0)
+        XCTAssertEqual(killed, 0)
+    }
+
     func testWorkHereMovesTheOpenChatsStoredSessionToTheFolder() async throws {
         var moves: [(String, String)] = []
         let harness = controlHarness { operations in

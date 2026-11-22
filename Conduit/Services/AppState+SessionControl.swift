@@ -56,6 +56,9 @@ extension AppState {
     /// Hermes' answer replaces what the dock shows; a refusal says why
     /// under it.
     func runSessionControl(_ action: SessionControlAction) async {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if await onChatRuntime(unreachable: (), { await self.runSessionControl(action) }) != nil { return }
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
         // Hermes counts criteria by place: one picked from a list that
@@ -107,10 +110,20 @@ extension AppState {
         return open
     }
 
+    /// The chat the process list is for: its dashboard and its id, since
+    /// one id can name chats on two combined dashboards.
+    var backgroundProcessChatKey: String? {
+        guard let open = backgroundProcessSessionID else { return nil }
+        return "\(chatOnScreenDashboardID?.uuidString ?? "")|\(open)"
+    }
+
     /// The background processes Hermes runs for the open chat
     /// (`process.list`). Nil when Hermes can't say (an older Hermes, or a
     /// chat with no live session); the sheet then leaves them out.
     func loadBackgroundProcesses() async -> [BackgroundProcess]? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        if let routed = await onChatRuntime(unreachable: [BackgroundProcess]?.none, { await self.loadBackgroundProcesses() }) { return routed }
         guard let client, let sessionID = backgroundProcessSessionID else { return nil }
         let processes: [BackgroundProcess]
         do {
@@ -122,13 +135,22 @@ extension AppState {
         } catch {
             return nil
         }
-        guard self.client === client, activeSessionId == sessionID else { return nil }
+        // Still this dashboard's chat on screen: one id can name chats on
+        // two combined dashboards.
+        guard self.client === client, activeSessionId == sessionID, chatOnScreenIsInScope else { return nil }
         return processes
     }
 
     /// Ends one background process (`process.kill`). Nil when it went, else
     /// why it couldn't.
     func killBackgroundProcess(_ process: BackgroundProcess) async -> String? {
+        // On the chat's own runtime: another combined dashboard's chat
+        // opened in place acts there (AppState+FarChat.swift).
+        switch chatRuntimeRoute {
+        case .inScope: break
+        case .far(let runtime): return await actAcrossAwaits(onRuntime: runtime) { await killBackgroundProcess(process) }
+        case .unreachable: return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
+        }
         guard let client, let sessionID = backgroundProcessSessionID else {
             return AppLocalization.string("Reconnect to Hermes to stop this process.", table: .chat)
         }
