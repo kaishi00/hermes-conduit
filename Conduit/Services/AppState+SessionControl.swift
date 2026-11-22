@@ -37,7 +37,7 @@ extension AppState {
     /// empty on a chat just opened, since opening one clears it (issue
     /// 2372), so it never offers the last visit's controls.
     func refreshSessionControl(for sessionID: String) async {
-        guard let client, !sessionID.isEmpty else { return }
+        guard let client, !sessionID.isEmpty, chatOnScreenIsInScope else { return }
         let revision = sessionControl.revision
         let snapshot: SessionControlSnapshot
         do {
@@ -94,7 +94,7 @@ extension AppState {
             }
             // What Hermes said about it ("Removed criterion 2"), under the dock.
             if let note = answer.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty,
-               sessionControl.isCurrent(token), sessionControlIsOpenChat(sessionID) {
+               sessionControl.isCurrent(token), sessionControlIsOpenChat(sessionID), chatOnScreenIsInScope {
                 sessionControl.notice = note
             }
         } catch {

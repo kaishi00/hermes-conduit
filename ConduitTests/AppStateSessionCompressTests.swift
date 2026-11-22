@@ -2914,6 +2914,30 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertNotNil(harness.appState.sessionControl.snapshot.goal)
     }
 
+    func testADockNoteForAChatThatMovedToAnotherDashboardIsDropped() async throws {
+        weak var opened: AppState?
+        var reads = 0
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                reads += 1
+                return Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, _, _ in
+                opened?.farChat = FarChatOwner(dashboardID: UUID(), profile: "work")
+                // No snapshot: the dock would read it again, then show the note.
+                return (nil, "Paused.")
+            }
+        }
+        opened = harness.appState
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertEqual(reads, 1)
+
+        await harness.appState.runSessionControl(.goalPause)
+
+        XCTAssertNil(harness.appState.sessionControl.notice)
+        XCTAssertEqual(reads, 1, "Nor is the moved chat's dock read from this dashboard's Hermes")
+    }
+
     func testAProcessListReadForAChatThatMovedToAnotherDashboardIsDropped() async throws {
         weak var opened: AppState?
         let harness = controlHarness { operations in
