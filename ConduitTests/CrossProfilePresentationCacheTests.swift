@@ -2756,9 +2756,11 @@ extension CrossProfilePresentationCacheTests {
     }
 
     /// A notification from a combined dashboard kept beside the one on
-    /// screen opens through its kept connection: no ticket, no new socket.
-    func testANotificationFromAKeptDashboardOpensThroughItsKeptConnection() async throws {
-        final class Counts { var connects = 0; var mints = 0 }
+    /// screen opens its chat in place, on that dashboard's runtime through
+    /// its kept connection (no-switch stage 2): no switch, no ticket, no new
+    /// socket.
+    func testANotificationFromAKeptDashboardOpensInPlaceThroughItsKeptConnection() async throws {
+        final class Counts { var connects = 0; var mints = 0; var opened: [(ObjectIdentifier, String)] = [] }
         let counts = Counts()
         var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
         operations.connectClient = { _ in counts.connects += 1 }
@@ -2766,21 +2768,37 @@ extension CrossProfilePresentationCacheTests {
             counts.mints += 1
             return "fresh-ticket"
         }
+        operations.openSession = { client, sessionID, _ in
+            counts.opened.append((ObjectIdentifier(client), sessionID))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-1", role: .assistant, content: "From the Mac", timestamp: "ts-f1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
         let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
         await appState.switchDashboard(to: vps.id)
-        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertTrue(kept.client === outgoing)
+        var row = SessionSummary(id: "session-a", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
 
         let open = Task { @MainActor in
             await appState.openNotificationTarget(ConduitNotificationTarget(
-                profile: "default", sessionId: "session-a", dashboardID: mac.id, type: nil, isChatLink: true
+                profile: "default", sessionId: "session-a", dashboardID: mac.id, type: "response.ready"
             ))
         }
-        await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
-        // What the open does after the switch isn't this test's.
+        await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-1" } }
         open.cancel()
 
-        XCTAssertEqual(appState.activeDashboardID, mac.id)
-        XCTAssertTrue(appState.client === outgoing, "the kept client is taken up")
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(counts.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing, "still kept")
         XCTAssertEqual(counts.connects, 0, "no socket is opened")
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
     }

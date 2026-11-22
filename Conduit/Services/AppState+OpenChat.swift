@@ -1433,6 +1433,16 @@ extension AppState {
                 return .retry
             }
         case .switchFirst(let dashboardID):
+            // Another combined dashboard's chat opens in place, on its own
+            // runtime through its kept connection: this same route, run in
+            // that runtime's scope, where the push is its dashboard's own.
+            // No switch, so a call goes on.
+            if let runtime = farNotificationRuntime(target, in: dashboardID) {
+                traceStage = "dashboard check (another combined dashboard, in place)"
+                return await actAcrossAwaits(onRuntime: runtime) {
+                    await openNotificationTargetOutcomeRouted(target)
+                }
+            }
             traceStage = "dashboard check (switching to another saved dashboard)"
             // A notification tapped during a call, or a chat link routed
             // before one started, stops here when switching dashboards would
