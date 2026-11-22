@@ -1875,7 +1875,7 @@ during a call) · the plugin's turn line (a typed message whose reply is read
 aloud is heard) · Hermes changing Conduit's settings · Sync across devices ·
 the Voice settings caption · the voice it speaks with (Assistant speech, which Classic voice shares; picked under Speaking voice in Settings > Voice > Read Aloud and under Advanced > Assistant speech) · docs/VOICE_SETTINGS.md · the notifier README and changelog
 
-**Desktop app:** has it: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23), and Settings > Voice's Read Aloud voice picks Hermes' speech, This computer's voice or Your speech server (read back over the plugin's speak socket, a reply it can't read going to the computer's voice), kept per profile on the computer (`desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, `desktop/src/renderer/src/state/speechServerSpeech.ts`, desktop#167, desktop#172).
+**Desktop app:** has it: Read Aloud in chats (`desktop/src/renderer/src/state/readAloud.ts`, desktop#23), and Settings > Voice's Read Aloud voice picks Hermes' speech, This computer's voice or Your speech server (read back over the plugin's speak socket, a reply it can't read going to the computer's voice), kept per profile on the computer (`desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, `desktop/src/renderer/src/state/speechServerSpeech.ts`, desktop#167, desktop#172). This computer's voice has a Voice picker with a Preview (automatic or an installed voice for the app's language, kept per language on the computer), and Hermes' speech shows the profile's Assistant speech provider, its model, voice and language and a missing key, as the phone's Speaking voice and Assistant speech do; Classic voice's Speech to text provider is set there too (`desktop/src/renderer/src/components/HermesSpeechSettings.tsx`, `desktop/src/renderer/src/state/hermesSpeech.ts`, desktop#366).
 
 **Code**
 - Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection, readAloudVoice, assistantSpeechSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
@@ -6280,7 +6280,7 @@ fallback (see Speech stream failures) · Settings' speaking test · Assistant
 speech's captions · docs/VOICE_SETTINGS.md. Not the Apple Watch: it has no
 Classic voice, and its calls speak with their live voices.
 
-**Desktop app:** not applicable: the iPhone's own voice; desktop speaks through Hermes.
+**Desktop app:** partly: its counterpart is this computer's own voices, picked in Settings > Voice > Read Aloud (automatic, the system's default for the app's language, or an installed voice, kept per language on the computer, with a Preview; `desktop/src/renderer/src/components/ReadAloudVoiceSetting.tsx`, `desktop/src/renderer/src/state/speechOutput.ts`, desktop#366). It speaks a whole reply as one utterance in the app's language, not sentence by sentence in the reply's.
 
 **Code**
 - Picking the voice: `Conduit/Voice/IPhoneVoices.swift` (best, pick, installed, the pick per language)
