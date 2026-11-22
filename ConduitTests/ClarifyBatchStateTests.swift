@@ -1893,6 +1893,38 @@ final class ClarifyBatchStateTests: XCTestCase {
         XCTAssertEqual(form.questions[1].status, .pending)
     }
 
+    /// Any card's question can be skipped with its Skip button, and Skip
+    /// all skips every one still open: each goes empty, as a form's blank
+    /// field does, so Hermes goes on without it.
+    func testAnyQuestionCanBeSkippedAndSkipAllSkipsTheRest() async throws {
+        let (appState, _) = makeAppState()
+        var choicesOnly = makeRelayBatchCard()
+        choicesOnly.questions.removeLast()
+        choicesOnly.questions.append(ClarifyQuestion(id: "region", question: "Which region?", choices: [ClarifyChoice(label: "east", value: "east"), ClarifyChoice(label: "west", value: "west")]))
+        XCTAssertFalse(choicesOnly.isForm)
+        appState.messages = [
+            ChatMessage(id: "clarify-relay", role: .clarify, content: "relay", timestamp: "1", clarify: choicesOnly)
+        ]
+        var sent: [String] = []
+        appState.relayQuestionResponder = { _, questionID, answer in
+            sent.append("\(questionID)=\(answer)")
+            return .locked(remaining: nil)
+        }
+
+        await appState.respondToClarify(requestId: "conduit-push-batch1", questionId: "environment", answer: nil, skipping: true)
+
+        XCTAssertEqual(sent, ["environment="])
+        var card = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertTrue(card.questions[0].isSkipped, "Shown as Skipped")
+        XCTAssertTrue(card.questions.dropFirst().allSatisfy { $0.status == .pending })
+
+        await appState.skipRemainingClarify(requestId: "conduit-push-batch1")
+
+        XCTAssertEqual(sent, ["environment="] + card.questions.dropFirst().map { "\($0.id)=" }, "Only the questions still open, in order")
+        card = try XCTUnwrap(clarifyCard(in: appState, requestId: "conduit-push-batch1"))
+        XCTAssertTrue(card.questions.allSatisfy(\.isSkipped))
+    }
+
     // MARK: - Model helpers
 
     func testMultiSelectAnswerSerializationRoundTrips() throws {

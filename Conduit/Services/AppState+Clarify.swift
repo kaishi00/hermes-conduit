@@ -22,17 +22,19 @@ extension AppState {
     /// list); a `nil` questionId targets the card's single question — the
     /// shape every push-relay card and legacy gateway produces. A nil
     /// `answer` leaves one of a form's questions blank (`isForm`), which
-    /// Hermes reads as skipped.
-    func respondToClarify(requestId: String, questionId: String? = nil, answer: String?) async {
+    /// Hermes reads as skipped; `skipping` does the same for any card's
+    /// question (its Skip button), so the user can decline instead of
+    /// answering and the agent goes on without it.
+    func respondToClarify(requestId: String, questionId: String? = nil, answer: String?, skipping: Bool = false) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
-        if await onChatRuntime(unreachable: (), { await self.respondToClarify(requestId: requestId, questionId: questionId, answer: answer) }) != nil { return }
-        let trimmedAnswer = answer?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if await onChatRuntime(unreachable: (), { await self.respondToClarify(requestId: requestId, questionId: questionId, answer: answer, skipping: skipping) }) != nil { return }
+        let trimmedAnswer = skipping ? nil : answer?.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmedAnswer?.isEmpty != true,
               let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
               !activity.isExpired,
-              trimmedAnswer != nil || activity.isForm else { return }
+              trimmedAnswer != nil || activity.isForm || skipping else { return }
 
         let questionIndex: Int?
         if let questionId {
@@ -78,12 +80,23 @@ extension AppState {
     /// question still open, with its answer in `answers` by qid, or left
     /// blank when it has none there, which Hermes reads as skipped.
     func respondToClarifyForm(requestId: String, answers: [String: String]) async {
+        await sendClarifyFields(requestId: requestId, answers: answers, skippingAll: false)
+    }
+
+    /// Skips every question of the card still open (its Skip all button):
+    /// each goes blank, which Hermes reads as skipped, so the user can
+    /// dismiss the questions and the agent goes on without them.
+    func skipRemainingClarify(requestId: String) async {
+        await sendClarifyFields(requestId: requestId, answers: [:], skippingAll: true)
+    }
+
+    private func sendClarifyFields(requestId: String, answers: [String: String], skippingAll: Bool) async {
         // On the chat's own runtime: another combined dashboard's chat
         // opened in place acts there (AppState+FarChat.swift).
-        if await onChatRuntime(unreachable: (), { await self.respondToClarifyForm(requestId: requestId, answers: answers) }) != nil { return }
+        if await onChatRuntime(unreachable: (), { await self.sendClarifyFields(requestId: requestId, answers: answers, skippingAll: skippingAll) }) != nil { return }
         guard let index = messages.firstIndex(where: { $0.clarify?.requestId == requestId }),
               var activity = messages[index].clarify,
-              !activity.isExpired, activity.isForm else { return }
+              !activity.isExpired, activity.isForm || skippingAll else { return }
         var sending: [(question: ClarifyQuestion, answer: String)] = []
         for questionIndex in activity.questions.indices where activity.questions[questionIndex].isAnswerable {
             activity.questions[questionIndex].status = .submitting

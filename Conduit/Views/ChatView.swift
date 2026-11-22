@@ -4160,6 +4160,7 @@ struct ClarifyCard: View {
                         typesOwnAnswer: bindingForOwnAnswer(question),
                         onSend: { answer in send(answer, for: question, in: clarify) },
                         onConfirmMultiSelect: { confirmMultiSelect(for: question, in: clarify) },
+                        onSkip: { skip(question, in: clarify) },
                         onAnswerInMessage: rowState.canQuoteIntoComposer
                             ? { answer in appState.answerInComposer(expiredQuestion: question.question, answer: answer) }
                             : nil
@@ -4185,6 +4186,26 @@ struct ClarifyCard: View {
                     .disabled(!canSend)
                     .opacity(canSend ? 1 : 0.45)
                     .accessibilityHint("Fill in what you know, and leave the rest blank.")
+                }
+
+                if !clarify.isForm, clarify.questions.filter(\.isAnswerable).count > 1 {
+                    // Dismisses the questions still open in one tap.
+                    Button {
+                        Task { await appState.skipRemainingClarify(requestId: clarify.requestId) }
+                    } label: {
+                        HStack {
+                            Text(AppLocalization.string("Skip all", table: .chat))
+                                .scaledFont(.subheadline.weight(.semibold))
+                            Spacer()
+                            Image(systemName: "forward.end")
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                        .background(Color.primary.opacity(0.06), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                        .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityHint(AppLocalization.string("Hermes goes on without answers to these questions.", table: .chat))
                 }
 
                 if layout.rowsShowTitles, rowState.canQuoteIntoComposer,
@@ -4237,6 +4258,11 @@ struct ClarifyCard: View {
         guard !trimmed.isEmpty, question.isAnswerable else { return }
         // Keep the typed answer available if submission fails.
         Task { await appState.respondToClarify(requestId: clarify.requestId, questionId: question.id, answer: trimmed) }
+    }
+
+    private func skip(_ question: ClarifyQuestion, in clarify: ClarifyActivity) {
+        guard question.isAnswerable else { return }
+        Task { await appState.respondToClarify(requestId: clarify.requestId, questionId: question.id, answer: nil, skipping: true) }
     }
 
     /// What each open field of a form holds, by qid; empty when left blank.
@@ -4317,6 +4343,10 @@ struct ClarifyQuestionRow: View {
     var typesOwnAnswer: Binding<Bool> = .constant(false)
     let onSend: (String) -> Void
     let onConfirmMultiSelect: () -> Void
+    /// Skips this question: Hermes reads it as skipped and goes on without
+    /// it. Nil where the row has no Skip button (a form's field, which
+    /// skips by being left blank).
+    var onSkip: (() -> Void)? = nil
     /// A question Hermes stopped waiting for: a choice tapped (nil for an
     /// open question) goes to the composer under the quoted question, to
     /// send as an ordinary message (issue 2850). Nil where the composer
@@ -4356,6 +4386,18 @@ struct ClarifyQuestionRow: View {
                 }
             case .pending, .error:
                 controls
+                if let onSkip, !isFormField {
+                    Button {
+                        onSkip()
+                    } label: {
+                        Label(AppLocalization.string("Skip"), systemImage: "forward")
+                            .scaledFont(.subheadline)
+                    }
+                    .buttonStyle(.borderless)
+                    .foregroundStyle(.secondary)
+                    .disabled(!isAnswerable)
+                    .accessibilityHint(AppLocalization.string("Hermes goes on without an answer to this question.", table: .chat))
+                }
                 if let error = question.error, !error.isEmpty {
                     Label(error, systemImage: "exclamationmark.circle")
                         .scaledFont(.caption)
