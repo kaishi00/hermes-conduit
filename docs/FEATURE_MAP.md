@@ -10394,32 +10394,35 @@ Everything a Kanban task carries can be read whole on the phone. The task
 screen keeps its rows short so it stays scannable, and each row that cuts
 text opens it whole in a sheet, selectable, with Copy and Share.
 
-**Siblings:** the task screen's Runs rows (summary, error and metadata) ·
-its Activity rows (each event's payload) · its Comments · its Attachments
+**Siblings:** the task screen's Result (the task's own `result`) · its Runs
+rows (summary, error and metadata) · its Activity rows (each event's
+payload, every event a tap away) · its Comments · its Attachments · its
+Dependencies' Blocks rows (each child's result, from `child_results`)
 (iPhone, iPad and Mac share one view) · the Worker Log (already whole, see
 Kanban workers' transcripts) · the blocked question's callout (already
 whole and selectable, see A blocked Kanban task) · Hermes' own board drawer
 (upstream; `GET /tasks/{id}` sends the full latest summary, cards on the
 board a 200-character preview)
 
-**Desktop app:** unchecked: whether the desktop's Kanban board opens a task's runs, activity, comments and attachments whole wasn't checked.
+**Desktop app:** has it: the task panel (`desktop/src/renderer/src/components/KanbanBoard.tsx`, desktop#341) shows the latest summary, the result, comments, each child's result, every run (error, summary, metadata) and every activity event's payload whole, and saves each attachment from the board's `/attachments/{id}`.
 
 **Code**
 - The sheet and the text it shows: `Conduit/Views/Kanban/KanbanFullTextSheet.swift` (KanbanFullText, KanbanFullTextSheet, KanbanFullTextFormatter: runText, eventText)
-- The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (runsSection, runRow, activityRow, commentsSection, attachmentsSection, openAttachment, previewLineLimit)
+- The rows: `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (resultSection, runsSection, runRow, activityRow, showsAllEvents, commentsSection, attachmentsSection, openAttachment, childResultPreview, previewLineLimit); the child preview: `KanbanFullTextFormatter.childResultPreview`
 - Attachments: `Conduit/Services/KanbanService.swift` (DashboardFileDownloading, downloadAttachment), `Conduit/Services/KanbanStore.swift` (downloadAttachment), opened with `Conduit/Views/Components/MediaPreviewPresenter.swift`
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 
 **Rulings**
-- A run's summary or error and a comment show four lines on the task screen as plain words (Markdown markers and blank lines left out), an activity row's detail two; each opens whole from a chevron when it likely wraps past those lines, counted with wide characters (CJK, emoji) as two columns; a short comment or crash message shown whole doesn't open. An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #3076, Michel couldn't review a "review requested" run's summary on his phone).
-- Run summaries and comments render as Markdown in the sheet, a run's error alone as written; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #3076).
+- A run's summary or error, a comment and the task's result show four lines on the task screen as plain words (Markdown markers and blank lines left out, a code span's inside kept as written), an activity row's detail two; each opens whole from a chevron when it likely wraps past those lines, counted with wide characters (CJK, emoji, ✅-style symbols) as two columns and at the row's text style and text size (`lineWidth(for:at:)`, so accessibility sizes open sooner); a short comment or crash message shown whole doesn't open. An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #3076, Michel couldn't review a "review requested" run's summary on his phone).
+- Run summaries, comments and the result render as Markdown in the sheet, a run's error alone as written; beside a summary or metadata the error sits in a code block under its heading, so it still reads as written; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #3076).
 - An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files. A download still running when the screen moves to another task or closes is cancelled, and its file never opens over what's there (2026-11-22, #3076).
 
-**Open gaps**
-- A parent task's child results (each child's latest summary) come with the task but aren't shown; Dependencies links each child, whose own screen has its runs.
-- Only the 60 newest activity events are listed.
+- A parent's Blocks rows preview each child's result (its `result`, else its latest summary) in two lines; the row opens the child, whose screen has it whole. Activity lists the 60 newest events, then "Show N earlier events" lists the rest (2026-11-22, #3083).
 
-**Checked:** 2026-11-22, #3076 (seeded).
+**Open gaps**
+- None on the phone.
+
+**Checked:** 2026-11-22, #3083.
 
 ## Feature map rules
 
