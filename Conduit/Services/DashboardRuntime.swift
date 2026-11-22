@@ -427,9 +427,63 @@ final class DashboardRuntime: ObservableObject {
     var roomLooksSharing: Bool = false
     var roomLooksShareAgain: Bool = false
 
+    // MARK: Kept through a switch away
+
+    /// The profile its kept lists were read on (`init(keepingListsOf:profile:)`).
+    var keptListsProfile: String?
+
     /// `notifierPlugin`: what it starts from before its plugin answers (the
     /// saved Update notices choice).
     init(notifierPlugin: NotifierPluginStatus = NotifierPluginStatus()) {
         self.notifierPlugin = notifierPlugin
+    }
+
+    /// What a combined dashboard switched away from keeps of the runtime on
+    /// screen, read before the switch clears it: its bots, chat list, group
+    /// rooms, live status, Pulse marks, plugin status and commands. A switch
+    /// back shows them at once, while its sync reads them again
+    /// (`AppState.showKeptLists(of:)`).
+    convenience init(keepingListsOf shown: DashboardRuntime, profile: String) {
+        self.init(notifierPlugin: shown.notifierPlugin)
+        copyKeptLists(from: shown)
+        botModePhase = shown.botModePhase
+        botRoster = shown.botRoster
+        sessions = shown.sessions
+        keptListsProfile = profile
+    }
+
+    /// The kept lists that AppState's forwarders take no action on, so
+    /// they copy straight across. `botModePhase`, `botRoster`, `sessions`
+    /// and `notifierPlugin` are kept too, but a switch back sets those
+    /// through the forwarders, which act on a change.
+    func copyKeptLists(from other: DashboardRuntime) {
+        profiles = other.profiles
+        botRosterSupportsProtocol = other.botRosterSupportsProtocol
+        botChatSessionProfiles = other.botChatSessionProfiles
+        botChatSessionLabels = other.botChatSessionLabels
+        botAvatarImages = other.botAvatarImages
+        groupChatPhase = other.groupChatPhase
+        groupCapabilities = other.groupCapabilities
+        groupRooms = other.groupRooms
+        groupRoomsListed = other.groupRoomsListed
+        groupRoomsComplete = other.groupRoomsComplete
+        desktopGroupChats = other.desktopGroupChats
+        groupRoomPictureData = other.groupRoomPictureData
+        groupRoomPictureRevisions = other.groupRoomPictureRevisions
+        linkedRoomCopies = other.linkedRoomCopies
+        linkedRoomDrafts = other.linkedRoomDrafts
+        linkedRoomInvites = other.linkedRoomInvites
+        linkedRoomApprovals = other.linkedRoomApprovals
+        talkingRoomIDs = other.talkingRoomIDs
+        liveSessionStatusIndex = other.liveSessionStatusIndex
+        liveSessionStatusProfile = other.liveSessionStatusProfile
+        liveSessionStatusAvailable = other.liveSessionStatusAvailable
+        pulseUnseen = other.pulseUnseen
+        pulseSources = other.pulseSources
+        pulseHomeChatID = other.pulseHomeChatID
+        slashCommands = other.slashCommands
+        slashSubcommands = other.slashSubcommands
+        lastSlashCatalogPayload = other.lastSlashCatalogPayload
+        canGeneratePictures = other.canGeneratePictures
     }
 }

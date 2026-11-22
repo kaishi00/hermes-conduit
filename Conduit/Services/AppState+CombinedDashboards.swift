@@ -5,8 +5,8 @@
 //  The combined group (multi-instance stage 3): dashboards switched on under
 //  Settings > Saved Dashboards > Combine Dashboards. A combined dashboard
 //  left while connected keeps its socket and bridge, so a switch back takes
-//  them up again: no new ticket, no new socket, only the usual sync.
-//  Lists stay per dashboard until stage 4.
+//  them up again: no new ticket, no new socket, and what it showed shows
+//  again at once while the usual sync reads it anew.
 //
 
 import Foundation
@@ -20,6 +20,11 @@ struct KeptDashboardRuntime {
     let bridge: DashboardTicketBridge
     let connection: HermesConnection
     let keptAt: Date
+    /// What it showed when it was switched away from (its bots, chat list,
+    /// group rooms, live status, Pulse marks, plugin status): a switch back
+    /// shows them at once, before its sync reads them again. Nil for one
+    /// signed in quietly, which never showed.
+    var lists: DashboardRuntime? = nil
 }
 
 /// Why a combined dashboard beside the one on screen isn't connected.
@@ -139,7 +144,7 @@ extension AppState {
         _ outgoingID: UUID?, switchingTo targetID: UUID, roster: [BotProfile],
         profiles: [String] = [], chats: [SessionSummary] = [], cronIDs: Set<String> = [],
         work: [String: BotWorkSnapshot] = [:], pluginCapabilities: Set<String>? = nil,
-        glows: [String: ProfileGlowRGB]? = nil
+        glows: [String: ProfileGlowRGB]? = nil, lists: DashboardRuntime? = nil
     ) {
         guard let outgoingID, outgoingID != targetID,
               isInCombinedGroup(outgoingID),
@@ -154,7 +159,8 @@ extension AppState {
             client: client,
             bridge: bridge,
             connection: connection,
-            keptAt: Date()
+            keptAt: Date(),
+            lists: lists
         ), for: outgoingID)
         // Its bots stay on Bots Home from the switch on, read off the
         // roster it had, so the grid never loses them waiting for a read.
@@ -258,6 +264,22 @@ extension AppState {
             return nil
         }
         return kept
+    }
+
+    /// A kept dashboard taken up again shows what it showed when it was
+    /// left (its bots, chat list, group rooms, live status, Pulse marks,
+    /// plugin status), so the switch back opens on them at once rather than
+    /// on empty lists filling in; its sync then reads each anew. Lists read
+    /// on another profile than the one it resumes stay unused.
+    func showKeptLists(of kept: DashboardRuntime) {
+        guard kept.keptListsProfile == activeProfile else { return }
+        shownRuntime.copyKeptLists(from: kept)
+        // Through the forwarders, which act on these changing on screen.
+        botModePhase = kept.botModePhase
+        botRoster = kept.botRoster
+        sessions = kept.sessions
+        notifierPlugin = kept.notifierPlugin
+        noteConnectionStep("Kept lists shown")
     }
 
     /// The client a kept connection is taken up with on `profile`: its own,
