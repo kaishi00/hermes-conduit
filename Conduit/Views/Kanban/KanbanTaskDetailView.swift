@@ -949,6 +949,8 @@ struct KanbanTaskDetailView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Open linked task \(linkedTaskTitle(for: linkedID))")
+                // The child's result reads with the row, not only after opening it.
+                .accessibilityValue(childResultPreview(for: linkedID) ?? "")
             }
         }
     }

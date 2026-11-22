@@ -880,8 +880,10 @@ final class KanbanV2Tests: XCTestCase {
 
     func testSymbolEmojiCountWide() {
         // 25 check marks fill 50 columns: two lines each, eight in all.
-        let line = String(repeating: "✅", count: 25)
-        XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead([line, line, line, line].joined(separator: "\n")))
+        for symbol in ["✅", "⭐"] {
+            let line = String(repeating: symbol, count: 25)
+            XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead([line, line, line, line].joined(separator: "\n")), symbol)
+        }
     }
 
     func testChildResultPreviewTakesResultThenSummary() throws {
