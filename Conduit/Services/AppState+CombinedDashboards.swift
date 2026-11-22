@@ -290,12 +290,13 @@ extension AppState {
                 }
             // Marked as read long ago, so the next pass reads them anew;
             // a read started before now can't overwrite them.
+            // A seed with cron ids alone keeps the profiles it had (#2800 review).
+            let seededProfiles = !profiles.isEmpty ? profiles
+                : chats.isEmpty ? (combinedDashboardChats[outgoingID]?.profiles ?? [])
+                : Array(Set(chats.compactMap(\.profile))).sorted()
             combinedDashboardChats[outgoingID] = CombinedDashboardChats(
                 bridge: ObjectIdentifier(bridge),
-                // A seed with cron ids alone keeps the profiles it had (#2800 review).
-                profiles: !profiles.isEmpty ? profiles
-                    : chats.isEmpty ? (combinedDashboardChats[outgoingID]?.profiles ?? [])
-                    : Array(Set(chats.compactMap(\.profile))).sorted(),
+                profiles: seededProfiles,
                 sessions: rows,
                 at: .distantPast,
                 seededAt: Date(),
@@ -303,7 +304,13 @@ extension AppState {
                 // on screen (issue 2761). Only its profile on screen's, so
                 // the next read still reads every profile's (#2800 review).
                 cronIDs: cronIDs.isEmpty ? (combinedDashboardChats[outgoingID]?.cronIDs ?? []) : cronIDs,
-                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : nil
+                cronAt: cronIDs.isEmpty ? combinedDashboardChats[outgoingID]?.cronAt : nil,
+                // A profile the seed holds no rows for wasn't read as empty
+                // (with All off the list on screen shows one profile's): a
+                // failed read keeps what the widgets stored for it (#3117 review).
+                unreadProfiles: Set(seededProfiles.filter { profile in
+                    !rows.contains { Self.profilesMatch($0.profile ?? "default", profile) }
+                })
             )
         }
         self.client = nil

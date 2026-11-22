@@ -490,8 +490,18 @@ extension AppState {
             // window and stay there (#3048). Only a list read without it
             // shows it gone; one that couldn't be read opens from the list
             // on hand, or is tried again, as a hosted room's is.
-            let listed = linkedRoomCopyRows.first { $0.id == copy.id }
-            let read = await readLinkedRoomCopies()
+            // A delete, Block or leave that lands while it's read makes the
+            // list on hand stale too: it's read once more rather than open a
+            // row the change took away, as an invite's open does.
+            var listed = linkedRoomCopyRows.first { $0.id == copy.id }
+            var roster = linkedRosterGeneration
+            var read = await readLinkedRoomCopies()
+            if read == nil, linkedRosterGeneration != roster, !Task.isCancelled {
+                listed = nil
+                roster = linkedRosterGeneration
+                read = await readLinkedRoomCopies()
+            }
+            if linkedRosterGeneration != roster { listed = nil }
             let unread = read == nil
             let found = unread ? listed : read?.first { $0.id == copy.id }
             guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }

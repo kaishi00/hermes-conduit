@@ -113,8 +113,10 @@ extension AppState {
                     let kept = combinedDashboardChats[id]?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
                     sessions = V2FilterSelection.mergedByRecency(sessions, kept)
                     // Never read on this connection: not known to be empty.
+                    // A profile newly listed counts as never read too.
                     if kept.isEmpty, combinedDashboardChats[id]?.unreadProfiles.contains(profile) ?? true
-                        || combinedDashboardChats[id]?.bridge != bridge {
+                        || combinedDashboardChats[id]?.bridge != bridge
+                        || !(combinedDashboardChats[id]?.profiles.contains(profile) ?? false) {
                         unread.insert(profile)
                     }
                     continue
@@ -126,6 +128,13 @@ extension AppState {
                     return row
                 }
                 sessions = V2FilterSelection.mergedByRecency(sessions, rows)
+            }
+            // No chat read answered, but its Hermes listed its profiles: the
+            // kept list drops the ones it no longer lists, so a later publish
+            // doesn't bring them back into the widgets, and reads the new
+            // ones on the next pass.
+            if !stale, !answered, let listed, let last = combinedDashboardChats[id], last.profiles != listed {
+                combinedDashboardChats[id] = Self.combinedChats(last, keepingProfiles: listed, unread: unread)
             }
             guard !stale, answered else { continue }
             // Its cron runs' ids, so it counts them as the dashboard on
@@ -443,5 +452,26 @@ extension AppState {
             forgetActiveProfile(for: dashboardID)
         }
         return false
+    }
+}
+
+extension AppState {
+    /// A dashboard's kept chats narrowed to the profiles its Hermes lists
+    /// now: the rows and unread marks of the rest go, `unread` joins the
+    /// marks, and it's read anew on the next pass (issue 3034, #3117
+    /// review). Pure, for tests.
+    static func combinedChats(_ last: CombinedDashboardChats, keepingProfiles listed: [String],
+                              unread: Set<String>) -> CombinedDashboardChats {
+        var kept = CombinedDashboardChats(
+            bridge: last.bridge,
+            profiles: listed,
+            sessions: last.sessions.filter { row in listed.contains { profilesMatch(row.profile ?? "default", $0) } },
+            at: .distantPast,
+            seededAt: last.seededAt,
+            cronIDs: last.cronIDs,
+            cronAt: last.cronAt
+        )
+        kept.unreadProfiles = last.unreadProfiles.union(unread).filter { profile in listed.contains(profile) }
+        return kept
     }
 }
