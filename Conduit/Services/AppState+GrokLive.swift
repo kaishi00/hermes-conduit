@@ -77,15 +77,15 @@ extension AppState {
     /// Grok Live's host routes for `profile` (see makeLiveTokenClient).
     func makeGrokLiveClient(profile: @escaping @MainActor () -> String) -> GrokLiveClient {
         GrokLiveClient(profile: profile, profileParameter: { [weak self] in
-            self?.notifierPlugin.dashboardProfileParameter ?? "profile"
+            self?.onCallRuntime { self?.notifierPlugin.dashboardProfileParameter } ?? "profile"
         }, request: { [weak self] path, method, body, timeout in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         }, mintTicket: { [weak self] in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.mintTicket()
         }, socketRequest: { [weak self] path, queryItems in
-            guard let bridge = self?.dashboardTicketBridge, let connection = self?.connection else {
+            guard let bridge = self?.callBridge, let connection = self?.callConnection else {
                 throw DashboardTicketBridgeError.notReady
             }
             let url = try ConnectionURLPolicy.webSocketURL(baseURL: connection.baseUrl, path: path, queryItems: queryItems)

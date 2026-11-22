@@ -363,7 +363,7 @@ extension AppState {
             closeFarRoomIfLetGo(runtime, tile.dashboardID)
             return
         }
-        guard !refusesCombinedSwitchDuringCall() else { return }
+        guard !refusesCombinedSwitchDuringCall(to: tile.dashboardID) else { return }
         // Opens once the dashboard is connected if it still lists the room
         // as it was left (its kept lists show at once on the switch back),
         // rather than after the switch's sync. The mark is made once the

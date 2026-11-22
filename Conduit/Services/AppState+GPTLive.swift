@@ -82,7 +82,7 @@ extension AppState {
     /// without having said so.
     var gptLiveCallBilling: GPTLiveBilling {
         // The call's own profile's, a call that went on across a switch included.
-        let preferences = loadVoiceProfilePreferences(profile: voiceCallProfile)
+        let preferences = loadCallVoicePreferences(profile: voiceCallProfile)
         guard preferences.resolvedGPTLiveBilling == .api else { return .subscription }
         let hermesPlacedCall = liveHermesCall != nil || pendingHermesCall != nil
         if hermesPlacedCall, preferences.gptLiveAPIHermesCalls != true { return .subscription }
@@ -204,7 +204,8 @@ extension AppState {
             // Never the API key without an AppState to say the user chose it.
             self?.gptLiveCallBilling ?? .subscription
         }, request: { [weak self] path, method, body, timeout in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            // The call's own dashboard's, which may not be the one on screen.
+            guard let bridge = self?.callBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
         })
     }

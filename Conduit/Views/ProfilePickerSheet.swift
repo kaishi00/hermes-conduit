@@ -201,7 +201,7 @@ extension ProfilePickerSheet {
     private func switchDashboard(to row: SavedDashboardRowModel) {
         guard !row.isActive, switchingToDashboard == nil else { return }
         Haptics.medium()
-        appState.switchEndingCall(to: row.dashboard.label, pending: &pendingCallEndingSwitch) {
+        appState.switchEndingCall(to: row.dashboard.label, dashboard: row.dashboard.id, pending: &pendingCallEndingSwitch) {
             startDashboardSwitch(to: row)
         }
     }

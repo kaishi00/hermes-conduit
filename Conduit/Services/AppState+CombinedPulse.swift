@@ -87,7 +87,7 @@ extension AppState {
     /// Shows another combined dashboard's Pulse: the switch to it, through
     /// its kept connection, then its Pulse page.
     func openCombinedPulse(_ dashboardID: UUID) {
-        guard dashboardID != activeDashboardID, !refusesCombinedSwitchDuringCall() else { return }
+        guard dashboardID != activeDashboardID, !refusesCombinedSwitchDuringCall(to: dashboardID) else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
             // Open as soon as its sync settles, as its bots do.

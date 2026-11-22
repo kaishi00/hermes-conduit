@@ -1087,7 +1087,7 @@ struct BotEditorSheet: View {
             // stays on the sheet, so a retry there sends it as well.
             if let target {
                 if target != appState.activeDashboardID {
-                    guard !appState.refusesCombinedSwitchDuringCall() else { isSaving = false; return }
+                    guard !appState.refusesCombinedSwitchDuringCall(to: target) else { isSaving = false; return }
                     await appState.switchToCombinedDashboardUntilSettled(target)
                     guard appState.activeDashboardID == target, appState.isConnected else {
                         isSaving = false
