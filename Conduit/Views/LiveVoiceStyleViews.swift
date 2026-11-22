@@ -11,7 +11,8 @@
 import SwiftUI
 
 /// What "What Conduit sends" shows: the text added to the live model's
-/// instructions, and the greeting turn sent when a call connects.
+/// instructions, and the opening: the greeting turn sent when a call
+/// connects, or for Local Live the greeting its speech server says.
 struct LiveVoiceInstructionsPreviewContent: Equatable {
     var mode: String
     var instructions: String
