@@ -592,6 +592,10 @@ extension AppState {
             act(onRuntime: standIn) { cacheMessagePresentation(for: sessionIDs) }
         } else {
             onChatRuntimeNow {
+                // A far chat whose runtime has moved to another profile
+                // (its kept socket handed on for the next chat) saved its
+                // copies before the hand-off: never under the new profile.
+                if let farChat, farChat.dashboardID == activeDashboardID, farChat.profile != activeProfile { return }
                 cacheMessagePresentation(for: sessionIDs)
                 recordOfflineChatCopy()
                 keepBotChatCopy()

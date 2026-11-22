@@ -159,6 +159,10 @@ extension AppState {
         )
         next.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         next.inheritSessionProfiles(from: kept.client)
+        // Its chat on screen, on the old profile, saves under that profile
+        // now: the open that follows flushes it again on the new one, and
+        // skips it there (`flushPendingPresentationCache`).
+        if farChat?.dashboardID == dashboardID { flushPendingPresentationCache() }
         // The chats followed there on its old profile (the one open in
         // place, ones left mid-reply) were never noted, being that client's
         // own: the new one names their profile for them.

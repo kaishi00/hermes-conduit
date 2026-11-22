@@ -690,10 +690,13 @@ extension AppState {
 
     func followedChatIndex(reboundTo id: String) -> Int? {
         let index = conversationIdentityIndex
-        return backgroundChats.firstIndex { chat in
+        let matches: (BackgroundChat) -> Bool = { chat in
             guard let durableID = index.durableID(forRuntime: id, profile: chat.profile) else { return false }
-            return followedChat(chat, isConversation: durableID)
+            return self.followedChat(chat, isConversation: durableID)
         }
+        // The dashboard in scope's first: one id can name chats on two Hermes.
+        return backgroundChats.firstIndex { $0.dashboardID == activeDashboardID && matches($0) }
+            ?? backgroundChats.firstIndex(where: matches)
     }
 
     /// A finished reply's rows become the chat's saved copy, so it shows
