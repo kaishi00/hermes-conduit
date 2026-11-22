@@ -379,7 +379,7 @@ struct ConnectionFailurePresentation: Equatable {
     /// says why, and the line that keeps them.
     static var signInEndsOnRestart: ConnectionFailurePresentation {
         ConnectionFailurePresentation(
-            title: AppLocalization.string("Your dashboard signed you out when it restarted", table: .connection),
+            title: AppLocalization.string("Your dashboard sign-in expired", table: .connection),
             message: AppLocalization.string("Hermes ends every password sign-in when its dashboard restarts, such as after an update, because no sign-in secret is set. To stay signed in, set dashboard.basic_auth.secret in Hermes' config.yaml to the output of openssl rand -base64 32, then restart Hermes. Sign in again to reconnect now.", table: .connection),
             helpDestination: ConnectionFailure.loginRequired.helpDestination,
             offersRecoveryActions: true,

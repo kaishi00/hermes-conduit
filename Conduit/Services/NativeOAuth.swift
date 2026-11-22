@@ -519,21 +519,24 @@ final class NativeOAuthSession {
                     detail: DashboardTicketBridgeError.signInRefreshedDetail
                 )
             }
+            // The grant the replay carries: another request may renew it
+            // while this one is out, and a refusal clears only this one.
+            let replayed = tokens
             do {
                 let response = try await client.requestJSON(
                     path: path,
                     method: method,
                     body: body,
                     encodedBody: encodedBody,
-                    accessToken: tokens.accessToken,
-                    asSessionToken: tokens.isSessionToken,
+                    accessToken: replayed.accessToken,
+                    asSessionToken: replayed.isSessionToken,
                     timeoutMilliseconds: timeoutMilliseconds,
                     maxResponseBytes: maxResponseBytes
                 )
                 guard !isInvalidated else { throw CancellationError() }
                 return response
             } catch DashboardTicketBridgeError.signInRequired {
-                if !isInvalidated { forgetStoredGrant(tokens) }
+                if !isInvalidated { forgetStoredGrant(replayed) }
                 throw DashboardTicketBridgeError.signInRequired
             } catch let error as URLError where error.code == .cancelled && isInvalidated {
                 throw CancellationError()
@@ -582,10 +585,12 @@ final class NativeOAuthSession {
     }
 
     /// Forgets a grant the server rejected again right after a refresh, as
-    /// `requestJSON`'s replay does.
-    /// A session token is kept, as `refresh` keeps it (issue 2481).
-    func discardRejectedGrant() {
-        guard !isInvalidated else { return }
+    /// `requestJSON`'s replay does: the one `rejected` carried, and only
+    /// while it is still this session's (another request may have renewed
+    /// it while the retry was out). A session token is kept, as `refresh`
+    /// keeps it (issue 2481).
+    func discardRejectedGrant(sentIn rejected: URLRequest) {
+        guard !isInvalidated, tokens.sentAccessToken(in: rejected) == tokens.accessToken else { return }
         forgetStoredGrant(tokens)
     }
 

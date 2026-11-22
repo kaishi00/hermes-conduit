@@ -685,7 +685,9 @@ final class NativeOAuthTests: XCTestCase {
         }
         XCTAssertEqual(calls, 1)
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), token)
-        session.discardRejectedGrant()
+        var rejected = URLRequest(url: try XCTUnwrap(URL(string: "https://hermes.example/api/fs/download")))
+        token.authorize(&rejected)
+        session.discardRejectedGrant(sentIn: rejected)
         XCTAssertEqual(KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), token)
         session.invalidate()
 
