@@ -565,6 +565,13 @@ struct ClarifyActivity: Codable, Equatable {
         isForm || !question.isSyntheticID
     }
 
+    /// Whether the card offers Skip all: two or more open questions that may
+    /// go blank, or on a form one or more, since a form's field has no Skip
+    /// of its own and Send can't send a field left blank alone.
+    var offersSkipAll: Bool {
+        questions.filter { $0.isAnswerable && mayLeaveBlank($0) }.count > (isForm ? 0 : 1)
+    }
+
     /// Visible question text for the transcript row: the joined question
     /// texts, identical to the legacy scalar text for one-question batches.
     var displayQuestion: String {
