@@ -158,6 +158,69 @@ final class WidgetSnapshotPublisherTests: XCTestCase {
         XCTAssertEqual(AppLanguage.system.rawValue, "system")
     }
 
+    func testAnotherCombinedDashboardsWorkspacesKeepTheCurrentOne() throws {
+        let onScreen = workspace(dashboard: dashboardA, profile: "work", title: "A")
+        try publisher.publish(onScreen, current: onScreen.id, language: "en")
+        let other = workspace(dashboard: dashboardB, profile: "home", title: "B")
+        try publisher.publish(others: [other], language: "en")
+
+        let saved = try XCTUnwrap(store.read())
+        XCTAssertEqual(saved.currentWorkspaceID, onScreen.id)
+        XCTAssertEqual(Set(saved.workspaces.map(\.id)), [onScreen.id, other.id])
+        try publisher.publish(others: [other], language: "en")
+        XCTAssertEqual(writeCount, 2, "the same workspaces again write nothing")
+    }
+
+    /// No-switch plan stage 2: another combined dashboard's chats reach
+    /// Siri, Spotlight and the widgets from its kept reads, a workspace per
+    /// profile, its Bot Chats in the profile a switch there resumes on.
+    func testAnotherCombinedDashboardsReadsBecomeAWorkspacePerProfile() {
+        func chat(_ id: String, _ profile: String, source: SessionSource = .chat, pinned: Bool? = nil) -> SessionSummary {
+            var row = SessionSummary(id: id, alternateIds: [], title: "Title \(id)", model: "model", updatedLabel: "",
+                                     lastActivityAt: 5, profile: profile, source: source, isActive: false, isArchived: false)
+            row.isPinned = pinned
+            return row
+        }
+        let bot = BotProfile(name: "coder", botTitle: nil, displayName: "Coder", profileDescription: "", model: nil,
+                             provider: nil, hasAvatar: false, isPinned: true, isHiddenByMeta: false, appearanceColor: nil,
+                             canonicalSession: BotCanonicalSession(id: "bot-chat", resolvedID: nil, lastActive: 9, preview: nil),
+                             lastActive: nil, lastPreview: nil)
+        let sessions = [chat("a", "default", pinned: true), chat("b", "coder"), chat("bot-chat", "coder"),
+                        chat("cron", "default", source: .cron), chat("old", "default")]
+        let earlier = WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil, botLabel: nil,
+                                                  sessionID: "old", isUnverified: false)
+        let before = WidgetWorkspaceSnapshot(
+            id: WidgetWorkspaceID(dashboardID: dashboardB, profile: "default"), dashboardLabel: "Old name", profileLabel: "Eric",
+            lastConversation: earlier, choices: [WidgetConversationChoice(reference: earlier, title: "Old", isPinned: true, recency: 1)],
+            recency: 1
+        )
+
+        let built = AppState.combinedWidgetWorkspaces(
+            dashboardID: dashboardB, dashboardLabel: "Studio", profiles: ["default", "coder"], sessions: sessions,
+            bots: [bot], botsProfile: "default", previous: [before.id: before]
+        )
+
+        XCTAssertEqual(built.map(\.id.profile), ["default", "coder"])
+        let main = built[0]
+        XCTAssertEqual(main.dashboardLabel, "Studio")
+        XCTAssertEqual(main.profileLabel, "Eric", "the label a visit there gave")
+        XCTAssertEqual(main.lastConversation, earlier)
+        XCTAssertEqual(Set(main.choices.map(\.reference.sessionID)), ["a", "old", "bot-chat"], "no cron run")
+        XCTAssertEqual(main.choices.first { $0.reference.sessionID == "a" }?.isPinned, true, "Hermes' pin")
+        XCTAssertEqual(main.choices.first { $0.reference.sessionID == "old" }?.isPinned, true, "the pin it showed")
+        XCTAssertEqual(main.choices.first { $0.reference.kind == .bot }?.reference.botName, "coder")
+        XCTAssertFalse(main.choices.contains { $0.reference.isUnverified }, "its roster was read")
+        let coder = built[1]
+        XCTAssertEqual(coder.profileLabel, "Coder")
+        XCTAssertEqual(coder.choices.map(\.reference.sessionID), ["b"], "its Bot Chat isn't a chat of its own")
+
+        let unread = AppState.combinedWidgetWorkspaces(
+            dashboardID: dashboardB, dashboardLabel: "Studio", profiles: ["default"], sessions: sessions,
+            bots: nil, botsProfile: "default", previous: [:]
+        )
+        XCTAssertTrue(unread[0].choices.allSatisfy { $0.reference.isUnverified && $0.reference.kind == .dashboard })
+    }
+
     private let dashboardA = UUID(uuidString: "00000000-0000-0000-0000-000000000001")!
     private let dashboardB = UUID(uuidString: "00000000-0000-0000-0000-000000000002")!
 

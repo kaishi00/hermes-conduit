@@ -105,6 +105,102 @@ extension AppState {
         }
     }
 
+    /// The other combined dashboards' chats and Bot Chats in the widgets'
+    /// snapshot, a workspace per profile, from the reads through their kept
+    /// connections: Siri, Spotlight, Send to Hermes and the launcher
+    /// widget's picker know them as they know the dashboard on screen's,
+    /// rather than as they were on its last visit (no-switch plan stage 2).
+    /// The current workspace stays the one on screen.
+    func publishCombinedWidgetWorkspaces() {
+        guard widgetSnapshotPublicationSuppressionDepth == 0, let store = widgetStore,
+              isInCombinedGroup(activeDashboardID) else { return }
+        let previous = Dictionary((store.read()?.workspaces ?? []).map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        var workspaces: [WidgetWorkspaceSnapshot] = []
+        for dashboard in savedDashboardRegistry.dashboards where dashboard.id != activeDashboardID {
+            guard isInCombinedGroup(dashboard.id), let chats = combinedDashboardChats[dashboard.id] else { continue }
+            workspaces += Self.combinedWidgetWorkspaces(
+                dashboardID: dashboard.id,
+                dashboardLabel: dashboard.label,
+                profiles: chats.profiles,
+                sessions: chats.sessions,
+                bots: combinedDashboardBots[dashboard.id]?.bots,
+                botsProfile: rememberedActiveProfile(for: dashboard.id) ?? "default",
+                previous: previous
+            )
+        }
+        guard !workspaces.isEmpty else { return }
+        let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)
+        do { try publisher.publish(others: workspaces, language: AppLanguageStore.shared.selection.rawValue) }
+        catch { /* Widget data is a best-effort cache; the last valid one stays. */ }
+    }
+
+    /// Another combined dashboard's workspaces, one per profile it was read
+    /// for: each profile's chats (no cron runs or Bot Chats, as on screen),
+    /// and its Bot Chats in `botsProfile`'s, the profile a switch there
+    /// resumes on, as the dashboard on screen lists its bots in the profile
+    /// in use. Until its roster is read, its chats are unverified, as on
+    /// screen before the roster's evidence. A chat's pin is Hermes' flag,
+    /// else what the snapshot last said; the label and last chat are the
+    /// snapshot's, since only a visit there knows them.
+    static func combinedWidgetWorkspaces(
+        dashboardID: UUID,
+        dashboardLabel: String,
+        profiles: [String],
+        sessions: [SessionSummary],
+        bots: [BotProfile]?,
+        botsProfile: String,
+        previous: [WidgetWorkspaceID: WidgetWorkspaceSnapshot]
+    ) -> [WidgetWorkspaceSnapshot] {
+        let roster = bots ?? []
+        var botsHome = profiles.first { profilesMatch($0, botsProfile) } ?? profiles.first
+        if roster.isEmpty { botsHome = nil }
+        return profiles.compactMap { profile -> WidgetWorkspaceSnapshot? in
+            let id = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+            guard id.isValid else { return nil }
+            let before = previous[id]
+            let pinnedBefore = Set((before?.choices ?? []).filter(\.isPinned).map(\.reference.sessionID))
+            var choices = sessions.compactMap { session -> WidgetConversationChoice? in
+                guard profilesMatch(session.profile ?? "", profile), !session.isArchived, session.source != .cron,
+                      !BotChatHygiene.isCanonicalBotChatRow(session, roster: roster) else { return nil }
+                let durableID = session.storedSessionId?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let sessionID = (durableID?.isEmpty == false ? durableID : nil) ?? session.id
+                let reference = widgetReference(from: .dashboard(profile: profile, sessionID: sessionID, isUnverified: bots == nil))
+                guard isWidgetSafe(reference) else { return nil }
+                return WidgetConversationChoice(
+                    reference: reference,
+                    title: session.title,
+                    isPinned: session.isPinned ?? pinnedBefore.contains(sessionID),
+                    recency: session.lastActivityAt ?? 0
+                )
+            }
+            if profile == botsHome {
+                for bot in roster where !bot.isHiddenByMeta {
+                    guard let canonical = bot.canonicalSession, !canonical.id.isEmpty else { continue }
+                    let reference = widgetReference(from: .bot(botName: bot.name, label: bot.displayLabel, sessionID: canonical.id))
+                    guard isWidgetSafe(reference) else { continue }
+                    choices.append(WidgetConversationChoice(
+                        reference: reference,
+                        title: bot.displayLabel,
+                        isPinned: bot.isPinned,
+                        recency: canonical.lastActive ?? 0
+                    ))
+                }
+            }
+            let named = roster.first { profilesMatch($0.name, profile) }?.displayLabel
+            let profileLabel = before?.profileLabel ?? named
+                ?? (BotManagement.isDefaultProfile(profile) ? ProfileAppearanceStore.defaultName
+                    : String(profile.prefix(1)).uppercased() + String(profile.dropFirst()))
+            return WidgetWorkspaceSnapshot(
+                id: id,
+                dashboardLabel: dashboardLabel,
+                profileLabel: profileLabel,
+                lastConversation: before?.lastConversation,
+                choices: choices,
+                recency: choices.map(\.recency).max() ?? 0
+            )
+        }
+    }
+
     func publishWidgetLanguage() {
         guard let store = widgetStore else { return }
         let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)

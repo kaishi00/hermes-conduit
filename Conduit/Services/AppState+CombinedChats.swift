@@ -142,6 +142,8 @@ extension AppState {
                 cronIDs: cronIDs,
                 cronAt: cronAt
             )
+            // Siri, Spotlight and the widgets know them too.
+            publishCombinedWidgetWorkspaces()
         }
     }
 
