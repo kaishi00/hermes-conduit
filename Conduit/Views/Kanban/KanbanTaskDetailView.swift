@@ -89,6 +89,9 @@ struct KanbanTaskDetailView: View {
     @State private var fullText: KanbanFullText?
     @State private var openingAttachmentID: String?
     @State private var attachmentError: String?
+    /// The attachment download in flight, cancelled when the screen moves
+    /// to another task or goes away, so its file never opens over them.
+    @State private var attachmentDownload: Task<Void, Never>?
 
     init(task: KanbanTask) {
         initialTask = task
@@ -355,6 +358,11 @@ struct KanbanTaskDetailView: View {
                 remoteChangeNotice = nil
                 errorMessage = nil
                 refreshErrorMessage = nil
+                attachmentDownload?.cancel()
+                attachmentDownload = nil
+                openingAttachmentID = nil
+                attachmentError = nil
+                fullText = nil
                 modelOverrideDraft = TaskModelOverride()
                 // The open editor session belonged to the departed identity;
                 // its dismissal must never commit against the new one.
@@ -438,7 +446,10 @@ struct KanbanTaskDetailView: View {
             // This sheet is the one on screen until it goes; a two-step action
             // that outlives it reports on the board instead (see reportsOnBoard).
             .onAppear { store.taskSheetAppeared(sheetPresentation) }
-            .onDisappear { store.taskSheetDisappeared(sheetPresentation) }
+            .onDisappear {
+                attachmentDownload?.cancel()
+                store.taskSheetDisappeared(sheetPresentation)
+            }
         }
     }
 
@@ -931,33 +942,23 @@ struct KanbanTaskDetailView: View {
         ConduitSettingsSection(title: AppLocalization.string("Comments", table: .tasks), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
             if let comments = detail?.comments, !comments.isEmpty {
                 ForEach(comments) { value in
-                    Button {
-                        fullText = KanbanFullText(
-                            title: AppLocalization.string("Comment from \(value.author)", table: .tasks),
-                            subtitle: relativeDate(value.createdAt),
-                            body: value.body
-                        )
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(value.author).scaledFont(.caption.weight(.semibold))
-                                Spacer()
-                                Text(relativeDate(value.createdAt))
-                                    .scaledFont(.caption2)
-                                    .foregroundStyle(.conduitTertiary)
-                                fullTextChevron
-                            }
-                            Text(KanbanFullTextFormatter.plainPreview(value.body))
-                                .scaledFont(.footnote)
-                                .lineLimit(Self.previewLineLimit)
-                                .multilineTextAlignment(.leading)
+                    if KanbanFullTextFormatter.textHasMoreToRead(value.body) {
+                        Button {
+                            fullText = KanbanFullText(
+                                title: AppLocalization.string("Comment from \(value.author)", table: .tasks),
+                                subtitle: relativeDate(value.createdAt),
+                                body: value.body
+                            )
+                        } label: {
+                            commentRow(value, opensFullText: true)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
+                        .accessibilityHint("Shows the full text")
+                        .padding(.vertical, 3)
+                    } else {
+                        commentRow(value, opensFullText: false)
+                            .padding(.vertical, 3)
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityHint("Shows the full text")
-                    .padding(.vertical, 3)
                 }
             } else {
                 Text("No comments yet.")
@@ -984,6 +985,25 @@ struct KanbanTaskDetailView: View {
                 VStack(spacing: 8) { commentButtons(oneLine: false) }
             }
         }
+    }
+
+    private func commentRow(_ value: KanbanComment, opensFullText: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(value.author).scaledFont(.caption.weight(.semibold))
+                Spacer()
+                Text(relativeDate(value.createdAt))
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.conduitTertiary)
+                if opensFullText { fullTextChevron }
+            }
+            Text(KanbanFullTextFormatter.plainPreview(value.body))
+                .scaledFont(.footnote)
+                .lineLimit(Self.previewLineLimit)
+                .multilineTextAlignment(.leading)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     @ViewBuilder
@@ -1062,9 +1082,11 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private func activityRow(_ event: KanbanEvent) -> some View {
         let row = KanbanActivityFormatter.row(for: event)
-        if KanbanFullTextFormatter.eventHasMoreToRead(event, detail: row.detail),
-           let payloadText = KanbanFullTextFormatter.eventText(event) {
+        if KanbanFullTextFormatter.eventHasMoreToRead(event, detail: row.detail) {
             Button {
+                // Built on tap, not with the row: nested payloads mean a
+                // JSON encode nobody needs until the sheet opens.
+                guard let payloadText = KanbanFullTextFormatter.eventText(event) else { return }
                 fullText = KanbanFullText(
                     title: row.label,
                     subtitle: relativeDate(event.createdAt),
@@ -1126,7 +1148,9 @@ struct KanbanTaskDetailView: View {
             ConduitSettingsSection(title: AppLocalization.string("Attachments (\(attachments.count))", table: .tasks), symbol: "paperclip", tint: .conduitAccent) {
                 ForEach(attachments) { attachment in
                     Button {
-                        Task { await openAttachment(attachment) }
+                        guard attachmentDownload == nil else { return }
+                        let taskID = displayedTaskID
+                        attachmentDownload = Task { await openAttachment(attachment, forTask: taskID) }
                     } label: {
                         HStack(spacing: 10) {
                             Image(systemName: "doc.text")
@@ -1168,27 +1192,39 @@ struct KanbanTaskDetailView: View {
             parts.append(ByteCountFormatter.string(fromByteCount: Int64(size), countStyle: .file))
         }
         if let by = attachment.uploadedBy, !by.isEmpty { parts.append(by) }
-        parts.append(relativeDate(attachment.createdAt))
+        if attachment.createdAt != nil { parts.append(relativeDate(attachment.createdAt)) }
         return parts.joined(separator: " · ")
     }
 
     /// Downloads the attachment and opens it in Quick Look (Markdown and
     /// text read there whole, selectable, with Save and Share); a type Quick
-    /// Look must not render goes to the share sheet.
-    private func openAttachment(_ attachment: KanbanAttachment) async {
-        guard openingAttachmentID == nil else { return }
+    /// Look must not render goes to the share sheet. A download the screen
+    /// moved on from (another task, or closed) is dropped with its file,
+    /// never shown over what's there now.
+    private func openAttachment(_ attachment: KanbanAttachment, forTask taskID: String) async {
         openingAttachmentID = attachment.id
         attachmentError = nil
-        defer { openingAttachmentID = nil }
+        let stillCurrent = { !Task.isCancelled && displayedTaskID == taskID }
+        defer {
+            if displayedTaskID == taskID {
+                openingAttachmentID = nil
+                attachmentDownload = nil
+            }
+        }
         do {
             let file = try await store.downloadAttachment(attachment)
+            guard stillCurrent() else {
+                MediaPreviewPresenter.removeDirectory(file.directory)
+                return
+            }
             if !MediaPreviewPresenter.shared.present(downloaded: file) {
                 attachmentError = AppLocalization.string("Couldn't open this attachment.", table: .tasks)
             }
         } catch is CancellationError {
             return
         } catch {
-            attachmentError = AppLocalization.string("Couldn't open this attachment.", table: .tasks)
+            guard stillCurrent() else { return }
+            attachmentError = UserFacingError.message(for: error)
         }
     }
 
@@ -1199,12 +1235,14 @@ struct KanbanTaskDetailView: View {
         if let runs = detail?.runs, !runs.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))", table: .tasks), symbol: "terminal", tint: .orange) {
                 ForEach(runs) { run in
-                    if KanbanFullTextFormatter.runHasMoreToRead(run), let text = KanbanFullTextFormatter.runText(run) {
+                    if KanbanFullTextFormatter.runHasMoreToRead(run) {
                         Button {
+                            guard let text = KanbanFullTextFormatter.runText(run) else { return }
                             fullText = KanbanFullText(
                                 title: KanbanRunPresentation.outcomeLabel(run),
                                 subtitle: runSubtitle(run),
-                                body: text
+                                body: text,
+                                rendersMarkdown: KanbanFullTextFormatter.runTextIsMarkdown(run)
                             )
                         } label: {
                             runRow(run, opensFullText: true)
@@ -1225,7 +1263,7 @@ struct KanbanTaskDetailView: View {
         if let profile = run.profile, !profile.isEmpty { parts.append(profile) }
         if let stepKey = run.stepKey, !stepKey.isEmpty { parts.append(stepKey) }
         if let duration = KanbanRunPresentation.durationText(start: run.startedAt, end: run.endedAt) { parts.append(duration) }
-        parts.append(relativeDate(run.endedAt ?? run.startedAt))
+        if let at = run.endedAt ?? run.startedAt { parts.append(relativeDate(at)) }
         return parts.joined(separator: " · ")
     }
 

@@ -105,11 +105,46 @@ enum KanbanFullTextFormatter {
         guard let shown = error ?? summary else { return false }
         if error != nil, summary != nil { return true }
         if let metadata = run.metadata, !isEmptyContainer(metadata) { return true }
-        return shown.count > rowPreviewCharacters || shown.components(separatedBy: .newlines).count > 4
+        return textHasMoreToRead(error != nil ? shown : plainPreview(shown))
     }
 
-    /// Roughly what four caption lines hold on an iPhone.
-    static let rowPreviewCharacters = 160
+    /// Whether `text` likely wraps past the four lines a row shows on an
+    /// iPhone. An estimate, not a measurement: each line counts the lines it
+    /// wraps to at `rowLineWidth` columns, with wide characters (CJK, Hangul,
+    /// emoji) taking two columns, so a short line of Chinese still opens. It
+    /// leans toward opening: a chevron on text that fit costs a tap, a
+    /// missing one hides text.
+    static func textHasMoreToRead(_ text: String) -> Bool {
+        var lines = 0
+        for line in text.components(separatedBy: .newlines) {
+            let columns = line.unicodeScalars.reduce(0) { $0 + (isWide($1) ? 2 : 1) }
+            lines += max(1, (columns + rowLineWidth - 1) / rowLineWidth)
+            if lines > previewLines { return true }
+        }
+        return false
+    }
+
+    /// Lines a run summary, error or comment shows on the task screen.
+    static let previewLines = 4
+    /// Columns of caption text a row line holds on the narrowest iPhone,
+    /// rounded down.
+    static let rowLineWidth = 40
+
+    private static func isWide(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.value {
+        case 0x1100...0x115F, 0x2E80...0xA4CF, 0xAC00...0xD7A3, 0xF900...0xFAFF,
+             0xFE30...0xFE4F, 0xFF00...0xFF60, 0xFFE0...0xFFE6, 0x1F300...0x1FAFF, 0x20000...0x3FFFD:
+            return true
+        default:
+            return false
+        }
+    }
+
+    /// A run's sheet renders Markdown when it holds a worker's summary; an
+    /// error alone is shown as written, so `*` or `<...>` in it stay put.
+    static func runTextIsMarkdown(_ run: KanbanRun) -> Bool {
+        !(run.summary ?? "").isEmpty
+    }
 
     /// Every payload entry of an activity event, whole: short values first
     /// as `key: value` (who, what, how big), then long text such as a
@@ -172,8 +207,11 @@ enum KanbanFullTextFormatter {
             .compactMap { raw -> String? in
                 var line = raw.trimmingCharacters(in: .whitespaces)
                 if line.hasPrefix("```") || line.isEmpty { return nil }
-                while line.hasPrefix("#") || line.hasPrefix(">") {
-                    line = String(line.dropFirst()).trimmingCharacters(in: .whitespaces)
+                // A heading or quote marker counts only with its space, so
+                // "#hashtag" stays as written.
+                while let marker = line.firstIndex(where: { $0 != "#" && $0 != ">" }),
+                      marker > line.startIndex, line[marker] == " " {
+                    line = String(line[marker...]).trimmingCharacters(in: .whitespaces)
                 }
                 for marker in ["**", "__", "`"] {
                     line = line.replacingOccurrences(of: marker, with: "")

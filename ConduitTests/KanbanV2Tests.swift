@@ -781,30 +781,30 @@ final class KanbanV2Tests: XCTestCase {
 
     // MARK: - Full text behind a row
 
-    func testRunFullTextKeepsTheWholeSummary() {
+    func testRunFullTextKeepsTheWholeSummary() throws {
         let long = String(repeating: "All five children complete and live-verified. ", count: 40)
-        let run = makeRun(fields: ["summary": long])
+        let run = try makeRun(fields: ["summary": long])
         XCTAssertEqual(KanbanFullTextFormatter.runText(run), long)
     }
 
-    func testRunFullTextShowsErrorAndSummaryUnderHeadingsThenMetadata() {
-        let run = makeRun(fields: ["error": "boom", "summary": "partial", "metadata": ["pr": 3100]])
+    func testRunFullTextShowsErrorAndSummaryUnderHeadingsThenMetadata() throws {
+        let run = try makeRun(fields: ["error": "boom", "summary": "partial", "metadata": ["pr": 3100]])
         let text = KanbanFullTextFormatter.runText(run) ?? ""
         XCTAssertTrue(text.contains("### Error\n\nboom"), text)
         XCTAssertTrue(text.contains("### Summary\n\npartial"), text)
         XCTAssertTrue(text.contains("\"pr\" : 3100"), text)
     }
 
-    func testOnlyRunsWithMoreToReadOpen() {
-        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["error": "worker crashed: exit 137"])))
-        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["summary": String(repeating: "verified ", count: 30)])))
-        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["error": "boom", "summary": "partial"])))
-        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: ["summary": "ok", "metadata": ["pr": 1]])))
-        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(makeRun(fields: [:])))
+    func testOnlyRunsWithMoreToReadOpen() throws {
+        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: ["error": "worker crashed: exit 137"])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: ["summary": String(repeating: "verified ", count: 30)])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: ["error": "boom", "summary": "partial"])))
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: ["summary": "ok", "metadata": ["pr": 1]])))
+        XCTAssertFalse(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: [:])))
     }
 
-    func testRunWithNothingToReadHasNoFullText() {
-        XCTAssertNil(KanbanFullTextFormatter.runText(makeRun(fields: ["metadata": ["a": 1]])))
+    func testRunWithNothingToReadHasNoFullText() throws {
+        XCTAssertNil(KanbanFullTextFormatter.runText(try makeRun(fields: ["metadata": ["a": 1]])))
     }
 
     func testEventFullTextListsEveryPayloadEntryWhole() {
@@ -837,6 +837,27 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertFalse(KanbanFullTextFormatter.eventHasMoreToRead(KanbanEvent(id: "4", kind: "heartbeat"), detail: nil))
     }
 
+    func testWrappedWideTextStillOpens() throws {
+        // Four logical lines, but sixty CJK characters wrap the first one.
+        let error = String(repeating: "错", count: 60) + "\nx\nx\nx"
+        XCTAssertTrue(KanbanFullTextFormatter.runHasMoreToRead(try makeRun(fields: ["error": error])))
+        XCTAssertFalse(KanbanFullTextFormatter.textHasMoreToRead("short\nlines\nonly"))
+    }
+
+    func testShortCommentsDoNotOpen() {
+        XCTAssertFalse(KanbanFullTextFormatter.textHasMoreToRead("LGTM"))
+        XCTAssertTrue(KanbanFullTextFormatter.textHasMoreToRead(String(repeating: "Looks good overall. ", count: 12)))
+    }
+
+    func testErrorOnlyRunSheetIsPlainText() throws {
+        XCTAssertFalse(KanbanFullTextFormatter.runTextIsMarkdown(try makeRun(fields: ["error": "bad *glob* <tag>"])))
+        XCTAssertTrue(KanbanFullTextFormatter.runTextIsMarkdown(try makeRun(fields: ["error": "e", "summary": "s"])))
+    }
+
+    func testRowPreviewKeepsHashtags() {
+        XCTAssertEqual(KanbanFullTextFormatter.plainPreview("#hashtag pending\n## Heading"), "#hashtag pending\nHeading")
+    }
+
     func testRowPreviewDropsMarkdownMarkersAndBlankLines() {
         let source = "## Passation\n\nSix **signed** PRs on `malaiwah/farm-infra`:\n\n> all green\n```\ncode\n```"
         XCTAssertEqual(
@@ -850,11 +871,11 @@ final class KanbanV2Tests: XCTestCase {
         XCTAssertNil(KanbanFullTextFormatter.eventText(KanbanEvent(id: "1", kind: "heartbeat", payload: .object([:]))))
     }
 
-    private func makeRun(fields: [String: Any]) -> KanbanRun {
+    private func makeRun(fields: [String: Any]) throws -> KanbanRun {
         var object: [String: Any] = ["id": "r1", "status": "completed"]
         for (key, value) in fields { object[key] = value }
-        let data = try! JSONSerialization.data(withJSONObject: object)
-        return try! JSONDecoder().decode(KanbanRun.self, from: data)
+        let data = try JSONSerialization.data(withJSONObject: object)
+        return try JSONDecoder().decode(KanbanRun.self, from: data)
     }
 
     private func makeRun(outcome: String?, status: String = "completed") -> KanbanRun {
