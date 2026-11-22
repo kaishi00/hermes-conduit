@@ -506,7 +506,7 @@ finding chats, web lookups) and the consent each needs.
 (Hermes' own tools) · Watch calls · CarPlay · the phone features set · the
 consent screens · the tool text each model reads, in Conduit and the notifier
 
-**Desktop app:** has it: each live mode's tools, the consent sheet before a company's first call (`desktop/src/renderer/src/components/ProviderConsent.tsx`, desktop#35); the phone features set is not applicable on a computer.
+**Desktop app:** has it: each live mode's tools, the consent sheet before a company's first call (`desktop/src/renderer/src/components/ProviderConsent.tsx`, desktop#35); Ask before sending to Hermes in Live call style and the call screen's switch, a held request read with the phone's answer reader in every live mode (`desktop/src/renderer/src/state/askFirst.ts`, `desktop/src/renderer/src/state/heldAnswer.ts`, `desktop/src/renderer/src/components/AskFirstButton.tsx`, desktop#335). The phone features set is not applicable on a computer.
 
 **Code**
 - Phone tools: `Conduit/Phone/PhoneVoiceTools.swift`, `Conduit/Phone/PhoneChangeConfirmation.swift`
@@ -592,7 +592,7 @@ instructions isn't offered, agent settings take only switches and choices) ·
 the notifier (not needed: Local Live's plugin passes the phone's
 instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
-**Desktop app:** has it: Settings > Voice's personality and instructions for live calls (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32).
+**Desktop app:** has it: each live mode's "Use Hermes personality" (`desktop/src/renderer/src/components/VoiceModeSettings.tsx`, desktop#32) and Settings > Voice's Live call style, kept on the computer: tone, answer length, backchannels and Your instructions, sent in the phone's words in every live mode (`desktop/src/renderer/src/state/liveStyle.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#335); gap: no What Conduit sends preview.
 
 **Code**
 - The user's instructions: `Conduit/Voice/LiveVoiceStyle.swift` (extraInstructions, cleanedExtraInstructions, instructions), stored in `Conduit/Voice/VoiceTypes.swift` (liveVoiceExtraInstructions), saved by `Conduit/Services/AppState+Voice.swift` (setLiveVoiceStyle)
@@ -805,7 +805,7 @@ entry: Calls from Hermes) · the notifier's GPT-Live session route
 start · the call trace · text that describes it: Live call style's "What
 Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
-**Desktop app:** has it: each live mode opens in the open chat (`desktop/src/renderer/src/state/liveCall.ts`, desktop#32 to desktop#37).
+**Desktop app:** has it: Settings > Voice's "Greet me when a call connects", kept on the computer, opens every live mode with the greeting turn once per call: GPT-Live asks again after 4 s, Local Live's server reads it as the readiness check's answer (`desktop/src/renderer/src/state/liveGreeting.ts`, `desktop/src/renderer/src/components/LiveCallStyleSettings.tsx`, desktop#331); a call answered from a ring opens with the greeting, not why Hermes called (see Calls from Hermes' gaps).
 
 **Code**
 - The greeting turn: `Shared/WatchVoice/LiveVoiceGreeting.swift`, `Conduit/Voice/LiveVoiceStyle.swift` (openingPrompt)
