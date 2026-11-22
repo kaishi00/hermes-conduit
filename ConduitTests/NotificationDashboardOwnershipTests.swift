@@ -26,14 +26,14 @@ final class NotificationDashboardOwnershipTests: XCTestCase {
         let listed = [SessionSummary(id: "chat", alternateIds: [], title: "Chat", model: "m", updatedLabel: "",
                                      lastActivityAt: 1, profile: "default", source: .chat, isActive: false, isArchived: false)]
         func opens(_ target: ConduitNotificationTarget) -> Bool {
-            AppState.farNotificationOpensInPlace(target, listed: listed, botChats: ["bot-chat"], pulseHome: "pulse")
+            AppState.farNotificationChat(target, listed: listed, botChats: ["bot-chat"], pulseHome: "pulse")?.id == "chat"
         }
         func target(_ id: String, type: String? = "response.ready", decision: PendingDecisionPayload? = nil,
                     call: HermesCallRequest? = nil, room: String? = nil) -> ConduitNotificationTarget {
             ConduitNotificationTarget(profile: "default", sessionId: id, type: type, decision: decision, call: call, roomID: room)
         }
         XCTAssertTrue(opens(target("chat")), "a reply")
-        XCTAssertTrue(opens(target("newer")), "a chat newer than its last read")
+        XCTAssertFalse(opens(target("newer")), "a chat newer than its last read switches")
         XCTAssertTrue(opens(target("chat", type: "approval.needed",
                                    decision: .approval(sessionKey: "chat", description: "rm", choices: ["once"]))),
                       "an approval in a chat it lists")

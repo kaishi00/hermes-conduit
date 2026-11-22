@@ -2169,10 +2169,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(target.dashboardID, mac.id)
         XCTAssertEqual(target.profile, "default")
         XCTAssertEqual(target.sessionId, "mac-1")
-        let open = Task { @MainActor in await appState.openNotificationTarget(target) }
+        // Its push opens in place now (testANotificationFromAKeptDashboardOpensInPlaceThroughItsKeptConnection);
+        // a switch there takes up its kept connection.
+        await appState.switchDashboard(to: mac.id)
         await waitUntil { appState.activeDashboardID == mac.id && appState.client === outgoing }
-        open.cancel()
-        XCTAssertTrue(appState.client === outgoing, "opened through the kept connection")
+        XCTAssertTrue(appState.client === outgoing, "switched to through the kept connection")
         XCTAssertEqual(counts.mints, 0, "no sign-in")
         XCTAssertTrue(appState.otherCombinedDashboardsChats(excluding: []).isEmpty, "on screen, its chats are this list's own")
 
