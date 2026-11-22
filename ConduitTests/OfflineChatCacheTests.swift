@@ -3686,7 +3686,7 @@ final class OfflineChatCacheTests: XCTestCase {
         appState.farChat = nil
         appState.activeSessionId = "stored-b"
         let screenKey = appState.durableComposerDraftKeyOnScreen
-        XCTAssertEqual(screenKey.dashboard, dashboard)
+        XCTAssertEqual(screenKey, ComposerDraftKey(dashboard: dashboard, profile: "default", sessionID: "stored-b"))
         appState.restorePendingSendsLeftBehind(dashboardID: dashboard)
         XCTAssertEqual(appState.composerRestoreRequests.map(\.key), [screenKey])
         XCTAssertEqual(appState.composerNotice,
