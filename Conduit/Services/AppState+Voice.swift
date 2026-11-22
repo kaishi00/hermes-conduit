@@ -166,11 +166,6 @@ extension AppState {
         saveVoiceProfilePreferences(preferences, profile: profile)
     }
 
-    /// What Conduit tells the live voice mode in use, for Voice settings:
-    /// the text as the next call would send it, with the host's memory and
-    /// persona shown as placeholders (they are read when a call starts).
-    /// Nil when no live mode is on, and for Local Live outside agent mode,
-    /// which sends none (the speech server's model is Hermes).
     /// What Local Live's speech server says when a call connects: the
     /// greeting as written, a short fixed line for an empty one, nothing with
     /// the greeting off.
@@ -179,6 +174,11 @@ extension AppState {
         return greeting.isEmpty ? AppLocalization.string("Hi, I'm listening.") : greeting
     }
 
+    /// What Conduit tells the live voice mode in use, for Voice settings:
+    /// the text as the next call would send it, with the host's memory and
+    /// persona shown as placeholders (they are read when a call starts).
+    /// Nil when no live mode is on, and for Local Live outside agent mode,
+    /// which sends none (the speech server's model is Hermes).
     func liveVoiceInstructionsPreview(profile: String? = nil) -> LiveVoiceInstructionsPreviewContent? {
         let placeholderMemory = GeminiLiveMemoryContext(text: AppLocalization.string("(What your Hermes agent remembers about you, read when the call starts.)"), canRecall: false)
         let placeholderPersona = AppLocalization.string("(This profile's SOUL.md, read when the call starts.)")
