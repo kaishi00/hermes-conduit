@@ -239,6 +239,22 @@ extension AppState {
            openLiveCallOnFarDashboard(dashboardID, profile: profile) {
             return true
         }
+        // A screenshot asked for during a call that the switch would end
+        // stays on the dashboard on screen and the call goes on, as one
+        // naming another profile here does (A switch during a call). Only a
+        // Siri start replaces the call.
+        if intent.source == .screenQuestion, isCallEndingDashboardSwitch(to: dashboardID) {
+            showCallRefusal(AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone))
+            var onScreen = intent
+            onScreen.dashboardID = nil
+            onScreen.profile = nil
+            // Hermes here gone: kept for when it's back, as the route keeps one.
+            if !(await openScreenQuestion(onScreen)), let request = intent.screenQuestion {
+                parkScreenQuestion(request, profile: nil)
+                if !isConnected { errorMessage = PendingVoiceLaunchPolicy.screenQuestionFailureMessage }
+            }
+            return true
+        }
         let store = PendingVoiceIntentStore.shared
         let revision = store.revision
         Task { @MainActor [weak self] in
@@ -262,7 +278,7 @@ extension AppState {
             var switched = false
             if self.savedDashboardRegistry.dashboard(with: dashboardID) != nil {
                 switched = await self.switchForCombinedProfile(
-                    in: dashboardID, profile: profile, endingTheCall: true,
+                    in: dashboardID, profile: profile, endingTheCall: intent.source == .siri,
                     stillWanted: { store.revision == revision }
                 )
             }

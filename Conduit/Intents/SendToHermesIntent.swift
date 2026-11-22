@@ -35,6 +35,11 @@ struct ShortcutSendRequest: Equatable {
     /// The title a new chat gets in place of "Shortcut: …" (a Pulse
     /// widget's Do it names its card).
     var newChatTitle: String? = nil
+    /// The dashboard a Profile naming one of a combined group's dashboards
+    /// was checked on: the run stops with `chatOnAnotherDashboard` if
+    /// another opens while it waits, rather than sending under a profile
+    /// of the same name there.
+    var onlyOnDashboard: UUID? = nil
 }
 
 /// A chat the action was given, as the widget snapshot names it.
@@ -539,10 +544,11 @@ struct SendToHermesIntent: AppIntent {
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
         let picked = chat.map { ShortcutPickedChat(dashboardID: $0.workspace.dashboardID, reference: $0.reference, title: $0.title) }
         // A picked chat wins over Profile, so Profile isn't checked then.
-        var onScreenProfile: String?
-        if picked == nil { onScreenProfile = try await Self.profileOnScreen(profile?.id) }
-        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: onScreenProfile,
+        var onScreen: (profile: String?, dashboardID: UUID?) = (nil, nil)
+        if picked == nil { onScreen = try await Self.profileOnScreen(profile?.id) }
+        var request = ShortcutSendRequest(text: message, chatName: chatName, profile: onScreen.profile,
                                           waitsForAnswer: waitForAnswer, chat: picked)
+        request.onlyOnDashboard = onScreen.dashboardID
         let deadline = Date().addingTimeInterval(Self.runTime)
         let text = try await Self.run(request, deadline: deadline).text
         return .result(value: text, dialog: "\(Self.spoken(text))")
@@ -552,14 +558,14 @@ struct SendToHermesIntent: AppIntent {
     /// dashboard's (Siri's list holds them too) is refused as a chat there
     /// is, since a send goes out on the dashboard in use.
     @MainActor
-    static func profileOnScreen(_ id: String?) throws -> String? {
-        guard let id else { return nil }
+    static func profileOnScreen(_ id: String?) throws -> (profile: String?, dashboardID: UUID?) {
+        guard let id else { return (nil, nil) }
         let parts = ConduitProfileEntity.parts(of: id)
-        guard let dashboardID = parts.dashboardID else { return id }
+        guard let dashboardID = parts.dashboardID else { return (id, nil) }
         guard AppStateRuntimeRegistry.shared.appState.activeDashboardID == dashboardID else {
             throw ShortcutSendError.profileOnAnotherDashboard
         }
-        return parts.profile
+        return (parts.profile, dashboardID)
     }
 
     /// What Siri says: a long answer is cut, the shortcut still gets it whole.
