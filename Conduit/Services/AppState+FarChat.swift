@@ -118,7 +118,8 @@ extension AppState {
     func startFarChatOpen(
         _ session: SessionSummary,
         in dashboardID: UUID,
-        prepare: () -> Void = {}
+        prepare: () -> Void = {},
+        onFailure: (@MainActor (_ sessionWasNotFound: Bool) -> Void)? = nil
     ) -> Task<Bool, Never>? {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
               !isFarBotChat(session, in: dashboardID),
@@ -129,7 +130,7 @@ extension AppState {
         widgetLaunchCoordinator.supersede()
         return act(onRuntime: runtime) {
             prepare()
-            return requestOpenSession(session.id)
+            return requestOpenSession(session.id, onFailure: onFailure)
         }
     }
 

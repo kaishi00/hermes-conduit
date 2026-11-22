@@ -659,6 +659,8 @@ struct BotsTalkingRoomsReader: ViewModifier {
             guard shown else { return }
             while !Task.isCancelled {
                 await appState.refreshTalkingRoomsIfDue(every: Self.every)
+                // The other combined dashboards' rooms, on their own runtimes.
+                await appState.refreshCombinedRoomTilesIfDue(every: Self.every)
                 try? await Task.sleep(for: Self.every)
             }
         }

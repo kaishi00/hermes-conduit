@@ -2717,6 +2717,72 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertNil(appState.farRoomRuntime)
     }
 
+    /// Another combined dashboard's room tiles on Bots Home: which are
+    /// talking, read on its own runtime through its kept connection; a drag
+    /// moves one among its own dashboard's rooms, and nothing else's.
+    func testAKeptDashboardsRoomTilesTalkAndMoveAmongTheirOwn() async throws {
+        final class Calls { var states: [String: [ObjectIdentifier]] = [:]; var capabilities: [ObjectIdentifier] = [] }
+        let calls = Calls()
+        func room(_ id: String) -> GroupRoom {
+            GroupRoom(roomID: id, name: id.capitalized, members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                      revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        }
+        let groups = GroupChatLifecycleOperations(
+            capabilities: { client in
+                calls.capabilities.append(ObjectIdentifier(client))
+                return GroupCapabilities(protocolVersion: 1, driverReady: true, authorityGatewayID: "gw", features: [],
+                                         methods: GroupWire.requiredMethods.union(["groups.disband"]), maxLogLimit: 500)
+            },
+            state: { client, roomID in
+                calls.states[roomID, default: []].append(ObjectIdentifier(client))
+                let working = roomID == "trip"
+                return (room(roomID), GroupDriverStatus(running: working, working: working, blocked: false,
+                                                        counts: [:], pendingActions: []))
+            }
+        )
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.mintTicket = { _ in "fresh-ticket" }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations, groups: groups)
+        await appState.switchDashboard(to: vps.id)
+        appState.keptDashboardRoomsReader = { _ in [room("trip"), room("plans")] }
+        appState.keptDashboardJSONReader = { _, path in
+            if path == NotifierPluginStatus.path { return ["ok": true, "capabilities": [String]()] }
+            throw URLError(.badURL)
+        }
+        await appState.readOtherCombinedDashboardsRooms()
+        func hosted() -> [String] { appState.otherCombinedDashboardsRoomTiles.map(\.roomID) }
+        XCTAssertEqual(hosted(), ["trip", "plans"])
+        let tiles = appState.otherCombinedDashboardsRoomTiles
+        XCTAssertFalse(tiles.contains { appState.combinedRoomTalking($0) }, "nothing read yet")
+        // Kept quietly, none of its rooms opened: what its groups can do unknown.
+        appState.keptDashboardRuntimes[mac.id]?.runtime.groupCapabilities = nil
+        XCTAssertFalse(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes hasn't said it can yet")
+        let screensReads = calls.capabilities.count
+
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
+        XCTAssertEqual(Set(calls.states["trip"] ?? []), [ObjectIdentifier(outgoing)], "read through the kept connection")
+        XCTAssertEqual(tiles.filter { appState.combinedRoomTalking($0) }.map(\.roomID), ["trip"])
+        XCTAssertTrue(appState.talkingRoomIDs.isEmpty, "the screen's rooms are its own")
+        XCTAssertNil(appState.combinedRoomPicture(tiles[0]), "no picture kept or served")
+        XCTAssertEqual(Array(calls.capabilities.dropFirst(screensReads)), [ObjectIdentifier(outgoing)],
+                       "what its groups can do, read through the kept connection")
+        XCTAssertTrue(appState.canDisbandCombinedRoom(tiles[0]), "its Hermes said it can")
+        // Within the tick, not read again.
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(12))
+        XCTAssertEqual(calls.states["trip"]?.count, 1)
+
+        // A drag takes the place of a room of its own dashboard, kept for it.
+        appState.dropCombinedRoom(tiles[1].id, onto: tiles[0].id, dashboardID: mac.id)
+        XCTAssertEqual(hosted(), ["plans", "trip"])
+        // This dashboard's room, or one named for another dashboard, moves nothing.
+        appState.dropCombinedRoom("plans", onto: tiles[1].id, dashboardID: mac.id)
+        appState.dropCombinedRoom(tiles[0].id, onto: tiles[1].id, dashboardID: vps.id)
+        XCTAssertEqual(hosted(), ["plans", "trip"])
+        XCTAssertTrue(appState.groupRoomOrder.isEmpty, "the screen's order untouched")
+        await appState.refreshCombinedRoomTilesIfDue(every: .seconds(1))
+        XCTAssertEqual(calls.capabilities.count, screensReads + 1, "known: not read again on a later tick")
+    }
+
     /// Bots Home shows a kept combined dashboard's bots, read through its
     /// kept client, in the same grid as Bots Home's own, mixed in the
     /// group's order; a tap opens through that dashboard (all-live stage 4c).
@@ -3062,5 +3128,57 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing, "still kept")
         XCTAssertEqual(counts.connects, 0, "no socket is opened")
         XCTAssertEqual(counts.mints, 0, "no ticket is minted")
+    }
+
+    func testAWidgetOrSiriChatOfAKeptDashboardOpensInPlaceThroughItsKeptConnection() async throws {
+        final class Counts { var connects = 0; var opened: [(ObjectIdentifier, String)] = [] }
+        let counts = Counts()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.connectClient = { _ in counts.connects += 1 }
+        operations.openSession = { client, sessionID, _ in
+            counts.opened.append((ObjectIdentifier(client), sessionID))
+            return SessionResumeResult(
+                sessionId: sessionID,
+                messages: [ChatMessage(id: "far-w1", role: .assistant, content: "From the Mac", timestamp: "ts-w1")],
+                snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+            )
+        }
+        let (appState, mac, vps, outgoing, _) = try await combinedDashboards(operations: operations)
+        await appState.switchDashboard(to: vps.id)
+        let kept = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        var row = SessionSummary(id: "session-a", alternateIds: [], title: "Release prep", model: "Hermes", updatedLabel: "now",
+                                 profile: "default", source: .chat, isActive: false, isArchived: false, lineageRootId: nil)
+        row.combinedDashboardID = mac.id
+        appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
+            bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
+        )
+        func link(_ sessionID: String) throws -> WidgetLaunchLink {
+            try XCTUnwrap(WidgetLaunchLink(
+                action: .resume,
+                workspace: WidgetWorkspaceID(dashboardID: mac.id, profile: "default"),
+                reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil,
+                                                       botLabel: nil, sessionID: sessionID, isUnverified: false)
+            ))
+        }
+
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "its bots unread, it switches")
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(outgoing), bots: [], avatars: [:], at: Date()
+        )
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-unlisted")), "a chat its list doesn't hold switches")
+        appState.pulseRememberedHomes[mac.id.uuidString] = "session-a"
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "its Pulse chat switches")
+        appState.pulseRememberedHomes[mac.id.uuidString] = nil
+        appState.showVoiceSheet = true
+        XCTAssertTrue(appState.isVoiceCallInProgress)
+        XCTAssertFalse(appState.openWidgetChatInPlace(try link("session-a")), "during a call it refuses, as the switch's launch does")
+        appState.showVoiceSheet = false
+        XCTAssertTrue(appState.routeWidgetLaunchURL(try link("session-a").url))
+        await waitUntil { appState.activeSessionId == "session-a" && appState.messages.contains { $0.id == "far-w1" } }
+
+        XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
+        XCTAssertEqual(appState.farChatDashboardID, mac.id, "the chat is the Mac's")
+        XCTAssertEqual(counts.opened.last?.0, ObjectIdentifier(outgoing), "read through the kept connection")
+        XCTAssertEqual(counts.connects, 0, "no socket is opened")
     }
 }
