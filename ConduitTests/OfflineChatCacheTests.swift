@@ -5020,6 +5020,31 @@ final class OfflineChatCacheTests: XCTestCase {
         aliased.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-a2", durableID: "a", profile: aliased.activeProfile, source: .resume)
         XCTAssertNotNil(aliased.followedChatIndex(reboundTo: "rt-a2"), "a binding to the chat's own id still reaches it")
 
+        // The same ids on two combined dashboards: the dashboard in scope's
+        // chat, though the other's comes first.
+        let (twoHermes, _, _) = makeAppState()
+        let elsewhere = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://127.0.0.1:1", combined: true)
+        let here = SavedDashboard(id: UUID(), label: "VPS", normalizedURL: "https://127.0.0.2:1", combined: true)
+        twoHermes.savedDashboardRegistry = SavedDashboardRegistry(activeDashboardID: here.id, dashboards: [elsewhere, here])
+        func sharedChat(on dashboard: SavedDashboard) -> BackgroundChat {
+            BackgroundChat(sessionIDs: ["shared"], durableSessionID: nil, title: "Shared", dashboardID: dashboard.id,
+                           profile: twoHermes.activeProfile, isBotChat: false, rows: [], streamingText: "Half")
+        }
+        twoHermes.backgroundChats = [sharedChat(on: elsewhere), sharedChat(on: here)]
+        twoHermes.conversationIdentityIndex.recordAuthoritative(runtimeID: "rt-shared", durableID: "shared",
+                                                                profile: twoHermes.activeProfile, source: .resume)
+        XCTAssertEqual(twoHermes.followedChatIndex(reboundTo: "rt-shared"), 1, "the dashboard in scope's")
+        // The pane's chat is found by the rebound id, though another
+        // dashboard's chat answers that id as its own.
+        let raw = BackgroundChat(sessionIDs: ["rt-shared"], durableSessionID: nil, title: "Shared", dashboardID: elsewhere.id,
+                                 profile: twoHermes.activeProfile, isBotChat: false, rows: [], streamingText: "Half")
+        twoHermes.backgroundChats = [raw, sharedChat(on: here)]
+        twoHermes.besideChatIDs = ["shared"]
+        XCTAssertEqual(twoHermes.keptChat(answering: "rt-shared")?.dashboardID, here.id,
+                       "this dashboard's, never lost to the other's raw id")
+        twoHermes.besideChatIDs = nil
+        twoHermes.backgroundChats = []
+
         // An alias no row owned yet, made a chat of its own later.
         let (later, _, _) = makeAppState()
         var own = session("a")

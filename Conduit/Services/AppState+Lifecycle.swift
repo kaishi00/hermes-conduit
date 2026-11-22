@@ -529,7 +529,9 @@ extension AppState {
         // Capture the profile identity this deferred write belongs to. The
         // task only keeps the session ID immutable; everything else it reads
         // (messages, reconciliation IDs, restoration guards) is live state.
-        let scheduledProfile = activeProfile
+        // A chat opened in place on another combined dashboard writes under
+        // its own profile, whichever runtime scheduled it.
+        let scheduledProfile = farChat?.profile ?? activeProfile
         let scheduledEpoch = presentationCacheProfileEpoch
         let suspendForDebounce = presentationCacheDebounceSuspension
         let now = Date()
@@ -555,7 +557,22 @@ extension AppState {
             // Read on the chat on screen's own runtime, as it was scheduled:
             // another combined dashboard's for a chat opened in place there.
             self.presentationCacheFlushTask = nil
+            // Its connection dropped while parked: the rows still save under
+            // its own profile, as flushPendingPresentationCache's do.
+            if case .unreachable = self.chatRuntimeRoute, let farChat = self.farChat {
+                guard farChat.profile == scheduledProfile,
+                      self.presentationCacheProfileEpoch == scheduledEpoch else { return }
+                let standIn = DashboardRuntime()
+                standIn.activeProfile = farChat.profile
+                self.act(onRuntime: standIn) { self.cacheMessagePresentation(for: [sessionId]) }
+                self.lastPresentationCacheFlushDate = Date()
+                return
+            }
             self.onChatRuntimeNow {
+                // Its runtime moved to another profile (the kept socket
+                // handed on, as in flushPendingPresentationCache): skip.
+                if let farChat = self.farChat, farChat.dashboardID == self.activeDashboardID,
+                   farChat.profile != self.activeProfile { return }
                 guard self.activeProfile == scheduledProfile,
                       self.presentationCacheProfileEpoch == scheduledEpoch else { return }
                 self.cacheMessagePresentation(for: [sessionId])
