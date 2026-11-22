@@ -443,7 +443,8 @@ final class AppState: ObservableObject {
     /// The kept connection whose plugin the Needs you pass last asked for
     /// its Hermes' name, by dashboard: asked once per connection, so an old
     /// plugin without the route isn't asked on every poll (Dashboard names).
-    var combinedDashboardNameReads: [UUID: ObjectIdentifier] = [:]
+    /// One that didn't answer is asked again from `retryAt` (issue 2948).
+    var combinedDashboardNameReads: [UUID: (bridge: ObjectIdentifier, retryAt: Date?)] = [:]
     /// Bots Home's one order for a combined group's bots, mixed across the
     /// dashboards as the user arranged them (Eric, 2026-11-16), kept on
     /// this phone (CombinedBotsHomeOrder).

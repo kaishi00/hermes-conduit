@@ -116,8 +116,13 @@ extension AppState {
             let last = combinedDashboardRooms[id]
             if !force, let last, last.client == client,
                now.timeIntervalSince(last.at) < Self.combinedDashboardRoomsMaxAge { continue }
+            // Kept anew (opened and left again) while the read was out: the
+            // lists that visit showed are newer than this read. The client
+            // alone can't tell, since a switch back takes up the same one.
+            let keptAt = runtime.keptAt
             var stillKept: Bool {
-                keptDashboardRuntimes[id]?.client === runtime.client && activeDashboardID != id && isInCombinedGroup(id)
+                keptDashboardRuntimes[id]?.client === runtime.client && keptDashboardRuntimes[id]?.keptAt == keptAt
+                    && activeDashboardID != id && isInCombinedGroup(id)
             }
             var rooms = last?.rooms
             var answered = false
@@ -166,10 +171,17 @@ extension AppState {
     /// a next page further on, up to `combinedDashboardRoomsMaxPages` (an
     /// empty page with a next one still goes on: a partial page).
     static func everyGroupRoom(_ client: HermesClient) async throws -> [GroupRoom] {
+        try await everyGroupRoom { offset in try await client.groupsList(offset: offset) }
+    }
+
+    /// The same, from `read`, which answers the page at an offset.
+    static func everyGroupRoom(
+        page read: (Int?) async throws -> (rooms: [GroupRoom], nextOffset: Int?)
+    ) async throws -> [GroupRoom] {
         var rooms: [GroupRoom] = []
         var offset: Int?
         for _ in 0..<combinedDashboardRoomsMaxPages {
-            let page = try await client.groupsList(offset: offset)
+            let page = try await read(offset)
             rooms += page.rooms
             guard let next = page.nextOffset, next > (offset ?? 0) else { break }
             offset = next
@@ -199,20 +211,37 @@ extension AppState {
         }
     }
 
-    /// The dashboard of the group you talk in a room from: the one whose
-    /// Hermes hosts it, else the first in Saved Dashboards order with a
-    /// copy of it. Nil outside the group.
-    private func combinedRoomHome(roomID: String, memberIDs: [String],
-                                  in lists: [(id: UUID, rooms: [GroupRoom], copies: [RoomCopy])]) -> UUID? {
-        // The one on screen first among hosts: one Hermes saved at two
-        // addresses hosts the room on both, and shows it as this one's.
-        let hosts = lists.filter { list in
-            list.rooms.contains { $0.roomID == roomID && Self.sameRoomMembers($0.members.compactMap(\.memberID), memberIDs) }
+    /// The dashboard of the group you talk in each room from: the one
+    /// whose Hermes hosts it, else the first in Saved Dashboards order with
+    /// a copy of it. Nil outside the group. Indexed by room id once per
+    /// pass, so finding a room's home doesn't scan every dashboard's rooms
+    /// for every room (issue 2990).
+    struct CombinedRoomHomes {
+        private typealias Entry = (id: UUID, members: [String])
+        private var hosts: [String: [Entry]] = [:]
+        private var copies: [String: [Entry]] = [:]
+        private let active: UUID?
+
+        init(_ lists: [(id: UUID, rooms: [GroupRoom], copies: [RoomCopy])], active: UUID?) {
+            self.active = active
+            // In Saved Dashboards order, as the lists come.
+            for list in lists {
+                for room in list.rooms {
+                    hosts[room.roomID, default: []].append((list.id, room.members.compactMap(\.memberID)))
+                }
+                for copy in list.copies {
+                    copies[copy.roomID, default: []].append((list.id, copy.members.compactMap(\.memberID)))
+                }
+            }
         }
-        if let host = hosts.first(where: { $0.id == activeDashboardID }) ?? hosts.first { return host.id }
-        return lists.first { list in
-            list.copies.contains { $0.roomID == roomID && Self.sameRoomMembers($0.members.compactMap(\.memberID), memberIDs) }
-        }?.id
+
+        func home(roomID: String, memberIDs: [String]) -> UUID? {
+            // The one on screen first among hosts: one Hermes saved at two
+            // addresses hosts the room on both, and shows it as this one's.
+            let hosting = (hosts[roomID] ?? []).filter { AppState.sameRoomMembers($0.members, memberIDs) }
+            if let host = hosting.first(where: { $0.id == active }) ?? hosting.first { return host.id }
+            return (copies[roomID] ?? []).first { AppState.sameRoomMembers($0.members, memberIDs) }?.id
+        }
     }
 
     /// This dashboard's copies Bots Home shows: all of them outside a
@@ -223,9 +252,9 @@ extension AppState {
     var shownLinkedRoomCopyRows: [RoomCopy] {
         let copies = linkedRoomCopyRows
         guard isInCombinedGroup(activeDashboardID), !combinedDashboardRooms.isEmpty else { return copies }
-        let lists = combinedGroupRoomLists
+        let homes = CombinedRoomHomes(combinedGroupRoomLists, active: activeDashboardID)
         return copies.filter { copy in
-            combinedRoomHome(roomID: copy.roomID, memberIDs: copy.members.compactMap(\.memberID), in: lists)
+            homes.home(roomID: copy.roomID, memberIDs: copy.members.compactMap(\.memberID))
                 .map { $0 == activeDashboardID } ?? true
         }
     }
@@ -249,6 +278,7 @@ extension AppState {
     var combinedRoomTilesAroundThisDashboard: (before: [CombinedRoomTile], after: [CombinedRoomTile]) {
         guard isInCombinedGroup(activeDashboardID), !combinedDashboardRooms.isEmpty else { return ([], []) }
         let lists = combinedGroupRoomLists
+        let homes = CombinedRoomHomes(lists, active: activeDashboardID)
         var before: [CombinedRoomTile] = []
         var after: [CombinedRoomTile] = []
         var passed = !lists.contains { $0.id == activeDashboardID }
@@ -263,12 +293,12 @@ extension AppState {
             var own: [CombinedRoomTile] = []
             for room in order.arrange(list.rooms, name: \.roomID) {
                 let members = room.members.compactMap(\.memberID)
-                guard combinedRoomHome(roomID: room.roomID, memberIDs: members, in: lists) == list.id else { continue }
+                guard homes.home(roomID: room.roomID, memberIDs: members) == list.id else { continue }
                 own.append(CombinedRoomTile(dashboardID: list.id, kind: .hosted(room)))
             }
             for copy in list.copies {
                 let members = copy.members.compactMap(\.memberID)
-                guard combinedRoomHome(roomID: copy.roomID, memberIDs: members, in: lists) == list.id else { continue }
+                guard homes.home(roomID: copy.roomID, memberIDs: members) == list.id else { continue }
                 own.append(CombinedRoomTile(dashboardID: list.id, kind: .copy(copy)))
             }
             if passed { after += own } else { before += own }
@@ -453,15 +483,17 @@ extension AppState {
                 await refreshNotifierPluginStatusOnce()
                 guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             }
-            var found = linkedRoomCopyRows.first { $0.id == copy.id }
-            // Only a list read without it shows it gone; one that couldn't
-            // be read is tried again, as a hosted room's is.
-            var unread = false
-            if found == nil {
-                let read = await readLinkedRoomCopies()
-                found = read?.first { $0.id == copy.id }
-                unread = read == nil
-            }
+            // Read afresh before it opens: the list on hand can be what the
+            // dashboard showed when it was left (its kept lists), and the
+            // copy opens at its tail and polls by what its row says, so one
+            // its host reopened or moved on since would open on the old
+            // window and stay there (#3048). Only a list read without it
+            // shows it gone; one that couldn't be read opens from the list
+            // on hand, or is tried again, as a hosted room's is.
+            let listed = linkedRoomCopyRows.first { $0.id == copy.id }
+            let read = await readLinkedRoomCopies()
+            let unread = read == nil
+            let found = unread ? listed : read?.first { $0.id == copy.id }
             guard !Task.isCancelled, activeDashboardID == tile.dashboardID, !superseded else { return }
             guard let found else {
                 errorMessage = unread

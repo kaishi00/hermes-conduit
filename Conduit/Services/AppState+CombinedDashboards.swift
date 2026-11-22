@@ -213,6 +213,8 @@ extension AppState {
         }
         // Lists that stood through a drop go with the group too.
         for id in Set(combinedDashboardChats.keys).union(combinedDashboardBots.keys).union(combinedDashboardPulse.keys)
+            .union(combinedDashboardRooms.keys).union(combinedDashboardNameReads.keys)
+            .union(combinedDashboardPluginCapabilities.keys)
         where !group.contains(id) {
             forgetCombinedDashboardLists(id)
         }

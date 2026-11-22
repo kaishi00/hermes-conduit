@@ -130,6 +130,7 @@ extension AppState {
                 workstreamIDs: (combinedDashboardBotWork[dashboard.id] ?? [:]).values
                     .reduce(into: Set<String>()) { $0.formUnion($1.sessionIDs) },
                 botsProfile: rememberedActiveProfile(for: dashboard.id) ?? "default",
+                unreadProfiles: chats.unreadProfiles,
                 previous: previous
             )
         }
@@ -156,6 +157,7 @@ extension AppState {
         bots: [BotProfile]?,
         workstreamIDs: Set<String> = [],
         botsProfile: String,
+        unreadProfiles: Set<String> = [],
         previous: [WidgetWorkspaceID: WidgetWorkspaceSnapshot]
     ) -> [WidgetWorkspaceSnapshot] {
         let roster = bots ?? []
@@ -165,6 +167,9 @@ extension AppState {
             let id = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
             guard id.isValid else { return nil }
             let before = previous[id]
+            // Its chats couldn't be read and none were before: what the
+            // widgets stored stands, rather than an empty list over it.
+            if unreadProfiles.contains(profile), let before { return before }
             let pinnedBefore = Set((before?.choices ?? []).filter(\.isPinned).map(\.reference.sessionID))
             var choices = sessions.compactMap { session -> WidgetConversationChoice? in
                 guard profilesMatch(session.profile ?? "", profile), !session.isArchived, session.source != .cron,

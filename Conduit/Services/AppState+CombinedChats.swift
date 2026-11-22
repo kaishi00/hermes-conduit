@@ -31,6 +31,10 @@ struct CombinedDashboardChats: Equatable {
     /// cron run's id never changes.
     var cronIDs: Set<String> = []
     var cronAt: Date? = nil
+    /// Profiles whose read failed with nothing read before to keep: the
+    /// widgets keep what they last stored for them rather than an empty
+    /// list (issue 3034).
+    var unreadProfiles: Set<String> = []
 }
 
 extension AppState {
@@ -77,9 +81,16 @@ extension AppState {
                 ?? combinedDashboardChats[id].flatMap { $0.profiles.isEmpty ? nil : $0.profiles }
                 ?? [rememberedActiveProfile(for: id) ?? "default"]
             guard keptDashboardRuntimes[id]?.bridge === runtime.bridge else { continue }
+            // A profile its Hermes no longer lists leaves Siri, Spotlight and
+            // the widgets once the list says so, whether or not its chats
+            // are read on this pass (issue 3034).
+            if let listed, listed != combinedDashboardChats[id]?.profiles {
+                retainWidgetProfiles(Set(listed), dashboardID: id)
+            }
             if !force, let last = combinedDashboardChats[id], last.bridge == bridge, last.profiles == profiles,
                now.timeIntervalSince(last.at) < Self.combinedDashboardChatsMaxAge { continue }
             var sessions: [SessionSummary] = []
+            var unread: Set<String> = []
             var answered = false
             var stale = false
             for profile in profiles {
@@ -101,6 +112,11 @@ extension AppState {
                 guard let batch = response?["sessions"] as? [Any] else {
                     let kept = combinedDashboardChats[id]?.sessions.filter { profilesMatch($0.profile ?? "", profile) } ?? []
                     sessions = V2FilterSelection.mergedByRecency(sessions, kept)
+                    // Never read on this connection: not known to be empty.
+                    if kept.isEmpty, combinedDashboardChats[id]?.unreadProfiles.contains(profile) ?? true
+                        || combinedDashboardChats[id]?.bridge != bridge {
+                        unread.insert(profile)
+                    }
                     continue
                 }
                 answered = true
@@ -149,11 +165,9 @@ extension AppState {
                 sessions: sessions,
                 at: now,
                 cronIDs: cronIDs,
-                cronAt: cronAt
+                cronAt: cronAt,
+                unreadProfiles: unread
             )
-            // A profile its Hermes no longer lists leaves Siri, Spotlight
-            // and the widgets too, as it leaves the strip and All.
-            if let listed { retainWidgetProfiles(Set(listed), dashboardID: id) }
             wroteAny = true
         }
     }
@@ -405,15 +419,19 @@ extension AppState {
         }
         if let chats = combinedDashboardChats[dashboardID] {
             // Seeded now, so a pass that read the old list before this
-            // can't bring the chip back.
+            // can't bring the chip back. Every profile the list no longer
+            // has goes, not just the tapped one, so a later publish can't
+            // rebuild another deleted profile's workspace (issue 3034).
+            func stillListed(_ name: String) -> Bool { listed.contains { profilesMatch($0, name) } }
             combinedDashboardChats[dashboardID] = CombinedDashboardChats(
                 bridge: chats.bridge,
-                profiles: chats.profiles.filter { !profilesMatch($0, profile) },
-                sessions: chats.sessions.filter { !profilesMatch($0.profile ?? "", profile) },
+                profiles: chats.profiles.filter(stillListed),
+                sessions: chats.sessions.filter { stillListed($0.profile ?? "") },
                 at: chats.at,
                 seededAt: Date(),
                 cronIDs: chats.cronIDs,
-                cronAt: chats.cronAt
+                cronAt: chats.cronAt,
+                unreadProfiles: chats.unreadProfiles.filter(stillListed)
             )
         }
         needsYou.forgetOther(dashboardID, profilesOtherThan: Set(listed))

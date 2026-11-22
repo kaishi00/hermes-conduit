@@ -358,7 +358,8 @@ final class GroupChatModelsTests: XCTestCase {
         let selected = DesktopGroupChat(key: "id:r9", name: "Council", members: [], messages: [], omitted: 0)
         let followed = try XCTUnwrap(DesktopGroupChatDecoder.removing(key: selected.key, roomID: selected.roomIdentity, from: any(renamed)))
         XCTAssertEqual((followed["deleted"] as? [String: Any])?["id:r9"] as? Double, 4)
-        XCTAssertNil((followed["rooms"] as? [String: Any])?["name:Council"], "the followed room left the rooms")
+        let followedRooms = try XCTUnwrap(followed["rooms"] as? [String: Any], "the envelope keeps its rooms")
+        XCTAssertNil(followedRooms["name:Council"], "the followed room left the rooms")
         XCTAssertTrue(DesktopGroupChatDecoder.decode(snapshot: any(followed)).isEmpty)
         // Already gone: nothing to write.
         XCTAssertNil(DesktopGroupChatDecoder.removing(key: "id:missing", from: any(v3)))
@@ -1830,5 +1831,57 @@ final class GroupChatModelsTests: XCTestCase {
         let log = [userMessage(seq: 1, text: "hi"), deferred]
         XCTAssertEqual(GroupRoomTurns.pendingResponder(events: log, members: members)?.memberID, "furina")
         XCTAssertFalse(GroupRoomTurns.isVisible(deferred))
+    }
+
+    /// Another combined dashboard's hosted rooms are read through
+    /// `groups.list` page by page (#2944, issue 2945): an empty page that
+    /// names a next one further on is a partial page and the read goes on;
+    /// it stops when the next offset doesn't move forward or after
+    /// `combinedDashboardRoomsMaxPages`; a room listed twice shows once, and
+    /// a later page's error fails the read.
+    @MainActor
+    func testEveryGroupRoomFollowsPagesWhileTheOffsetMovesOn() async throws {
+        func room(_ id: String) -> GroupRoom {
+            GroupRoom(roomID: id, name: id, members: [], authorityGatewayID: "gw", authorityEpoch: 1, revision: 1,
+                      createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
+        }
+        final class Asked { var offsets: [Int?] = [] }
+
+        let paged = Asked()
+        let rooms = try await AppState.everyGroupRoom { offset in
+            paged.offsets.append(offset)
+            switch offset {
+            case nil: return ([room("a"), room("b")], 2)
+            case 2: return ([], 4)
+            default: return ([room("b"), room("c")], nil)
+            }
+        }
+        XCTAssertEqual(rooms.map(\.roomID), ["a", "b", "c"], "a room listed twice shows once")
+        XCTAssertEqual(paged.offsets, [nil, 2, 4], "an empty page with a next one further on goes on")
+
+        let stuck = Asked()
+        let first = try await AppState.everyGroupRoom { offset in
+            stuck.offsets.append(offset)
+            return ([room("a")], 0)
+        }
+        XCTAssertEqual(first.map(\.roomID), ["a"])
+        XCTAssertEqual(stuck.offsets, [nil], "a next offset that doesn't move forward ends the read")
+
+        let endless = Asked()
+        _ = try await AppState.everyGroupRoom { offset in
+            endless.offsets.append(offset)
+            return ([room("r\(offset ?? 0)")], (offset ?? 0) + 1)
+        }
+        XCTAssertEqual(endless.offsets.count, AppState.combinedDashboardRoomsMaxPages, "at most the cap's pages")
+
+        do {
+            _ = try await AppState.everyGroupRoom { offset in
+                guard offset == nil else { throw URLError(.timedOut) }
+                return ([room("a")], 1)
+            }
+            XCTFail("a later page's error fails the read")
+        } catch {
+            XCTAssertEqual((error as? URLError)?.code, .timedOut)
+        }
     }
 }

@@ -1665,6 +1665,30 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(counts.reads.filter { $0 == "/api/profiles" }.count, 1)
         XCTAssertEqual(counts.reads.filter { $0 == NotifierPluginStatus.path }.count, 1,
                        "its capabilities are asked once per kept connection")
+        // One whose plugin didn't answer is asked again after a while, not
+        // only when its kept connection is replaced (issue 2948).
+        let named = try XCTUnwrap(appState.keptDashboardJSONReader)
+        appState.combinedDashboardNameReads[mac.id] = nil
+        appState.combinedDashboardPluginCapabilities[mac.id] = nil
+        appState.keptDashboardJSONReader = { bridge, path in
+            guard path == NotifierPluginStatus.path else { return try await named(bridge, path) }
+            counts.reads.append(path)
+            throw URLError(.timedOut)
+        }
+        func capabilityAsks() -> Int { counts.reads.filter { $0 == NotifierPluginStatus.path }.count }
+        let asksBefore = capabilityAsks()
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(capabilityAsks(), asksBefore + 1)
+        await appState.readOtherCombinedDashboardsNeedsYou()
+        XCTAssertEqual(capabilityAsks(), asksBefore + 1, "not asked again on the next poll")
+        appState.keptDashboardJSONReader = named
+        let retry = AppState.combinedDashboardNameRetryInterval
+        await appState.readOtherCombinedDashboardsNeedsYou(now: Date().addingTimeInterval(retry + 1))
+        XCTAssertEqual(capabilityAsks(), asksBefore + 2, "asked again once the wait passed")
+        XCTAssertNotNil(appState.combinedDashboardNameReads[mac.id])
+        XCTAssertNil(appState.combinedDashboardNameReads[mac.id]?.retryAt, "answered: asked no more on this connection")
+        await appState.readOtherCombinedDashboardsNeedsYou(now: Date().addingTimeInterval(3 * retry))
+        XCTAssertEqual(capabilityAsks(), asksBefore + 2)
         // Every few minutes they're read again: a profile deleted there
         // takes its rows with it.
         let read = try XCTUnwrap(appState.keptDashboardProfiles[mac.id])
@@ -1941,6 +1965,68 @@ extension CrossProfilePresentationCacheTests {
         appState.dropKeptDashboardRuntime(mac.id, keepingLists: true)
         XCTAssertNil(appState.keptDashboardChatsChangeReads[mac.id])
         XCTAssertTrue(dropped.isCancelled)
+    }
+
+    /// The other dashboards' kept chat reads reach the widgets' snapshot
+    /// (#3027, issue 3034): a far profile's workspace appears after a read,
+    /// leaves once its Hermes no longer lists the profile, and stays while
+    /// the profile list can't be read; a profile whose chats couldn't be
+    /// read, with none read before, keeps what the widgets stored.
+    func testKeptChatReadsPublishAndPruneAFarProfilesWidgetWorkspace() async throws {
+        final class Hermes { var profiles: [String]? = ["default", "atlas"]; var atlasFails = false }
+        let hermes = Hermes()
+        let (appState, mac, vps, _, _) = try await combinedDashboards(operations: switchLifecycleOperations(workCatalog: []) { _ in [] })
+        await appState.switchDashboard(to: vps.id)
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("KeptWidgets.\(UUID().uuidString)", isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: root) }
+        let store = WidgetSnapshotStore(directory: root)
+        appState.widgetSnapshotStoreOverride = store
+        appState.widgetSnapshotReloadOverride = {}
+        appState.keptDashboardJSONReader = { _, path in
+            if path == "/api/profiles" {
+                guard let profiles = hermes.profiles else { throw URLError(.timedOut) }
+                return ["profiles": profiles]
+            }
+            guard path.contains("/api/profiles/sessions"), !path.contains("source=cron") else { return ["sessions": []] }
+            let profile = path.contains("profile=atlas") ? "atlas" : "default"
+            if profile == "atlas", hermes.atlasFails { throw URLError(.timedOut) }
+            return ["sessions": [
+                ["id": "\(profile)-1", "title": "Chat", "message_count": 1, "profile": profile, "last_active": 2_000],
+            ]]
+        }
+        func farWorkspaces() -> [String: WidgetWorkspaceSnapshot] {
+            Dictionary((store.read()?.workspaces ?? []).filter { $0.id.dashboardID == mac.id }.map { ($0.id.profile, $0) },
+                       uniquingKeysWith: { first, _ in first })
+        }
+
+        await appState.readOtherCombinedDashboardsChats()
+        XCTAssertEqual(Set(farWorkspaces().keys), ["default", "atlas"], "both profiles' chats reach the widgets")
+        let atlas = try XCTUnwrap(farWorkspaces()["atlas"])
+        XCTAssertEqual(atlas.choices.map(\.reference.sessionID), ["atlas-1"])
+
+        // The profile list can't be read: the last one stands, nothing goes.
+        hermes.profiles = nil
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(Set(farWorkspaces().keys), ["default", "atlas"], "a failed profile list prunes nothing")
+
+        // Atlas deleted there: its workspace leaves with it.
+        hermes.profiles = ["default"]
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(Set(farWorkspaces().keys), ["default"], "a profile its Hermes no longer lists leaves")
+
+        // Back again, but its chats can't be read and none were read on
+        // this list: what the widgets stored for it stands.
+        let stored = try XCTUnwrap(store.read())
+        try WidgetSnapshotPublisher(store: store, reload: {}).publish(others: [atlas], over: stored, language: stored.appLanguage)
+        hermes.profiles = ["default", "atlas"]
+        hermes.atlasFails = true
+        appState.combinedDashboardChats[mac.id] = nil
+        appState.keptDashboardProfiles[mac.id]?.at = .distantPast
+        await appState.readOtherCombinedDashboardsChats(force: true)
+        XCTAssertEqual(farWorkspaces()["atlas"], atlas, "an unread profile keeps what was stored, not an empty list")
+        XCTAssertEqual(appState.combinedDashboardChats[mac.id]?.unreadProfiles, ["atlas"])
     }
 
     /// Another combined dashboard's Chats row opens in place (no-switch
@@ -2696,6 +2782,21 @@ extension CrossProfilePresentationCacheTests {
         appState.keptDashboardRoomsReader = { _ in throw URLError(.timedOut) }
         await appState.readOtherCombinedDashboardsRooms(force: true)
         XCTAssertEqual(appState.combinedDashboardRooms[mac.id]?.rooms.map(\.roomID), ["trip", "plans"])
+        // A read out while Mac is opened and left again (kept anew, on the
+        // same client) doesn't replace the lists that visit showed (#3049).
+        appState.keptDashboardRoomsReader = { _ in
+            if let kept = appState.keptDashboardRuntimes[mac.id] {
+                appState.keptDashboardRuntimes[mac.id] = KeptDashboardRuntime(
+                    client: kept.client, bridge: kept.bridge, connection: kept.connection,
+                    keptAt: kept.keptAt.addingTimeInterval(1), runtime: kept.runtime)
+            }
+            return [room("stale", ["raiden"])]
+        }
+        await appState.readOtherCombinedDashboardsRooms(force: true)
+        XCTAssertEqual(appState.combinedDashboardRooms[mac.id]?.rooms.map(\.roomID), ["trip", "plans"],
+                       "a read started before the dashboard was kept again is dropped")
+        XCTAssertTrue(appState.keptDashboardRuntimes[mac.id]?.client === outgoing, "still kept on the same client")
+        appState.keptDashboardRoomsReader = { _ in throw URLError(.timedOut) }
 
         appState.notifierPlugin = NotifierPluginStatus(state: .reported(
             version: NotifierPluginStatus.recommendedVersion, capabilities: [RoomCopiesClient.capability]))
@@ -2762,6 +2863,9 @@ extension CrossProfilePresentationCacheTests {
     func testAKeptDashboardsGroupChatOpensInPlaceOnItsRuntime() async throws {
         final class Calls { var clients: [String: [ObjectIdentifier]] = [:]; var sent: [String] = [] }
         let calls = Calls()
+        // What Bot Mode's open mark says while the room is read (issue 2995).
+        final class Marks { var probe: (() -> Void)?; var seen: [String?] = [] }
+        let marks = Marks()
         let trip = GroupRoom(roomID: "trip", name: "Trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
                              revision: 1, createdAt: 0, updatedAt: 1, disbandedAt: nil, latestSeq: nil)
         func note(_ name: String, _ client: HermesClient) {
@@ -2779,6 +2883,7 @@ extension CrossProfilePresentationCacheTests {
             },
             state: { client, _ in
                 note("state", client)
+                marks.probe?()
                 return (trip, nil)
             },
             log: { client, _, sinceSeq, _ in
@@ -2802,8 +2907,11 @@ extension CrossProfilePresentationCacheTests {
         await appState.switchDashboard(to: vps.id)
         let kept = try XCTUnwrap(appState.runtime(for: mac.id))
         XCTAssertFalse(kept === appState.runtimeOnScreen)
+        marks.probe = { marks.seen.append(appState.botChatOpening) }
 
         await appState.openCombinedRoom(CombinedRoomTile(dashboardID: mac.id, kind: .hosted(trip)))
+        XCTAssertFalse(marks.seen.isEmpty, "the room was read")
+        XCTAssertTrue(marks.seen.allSatisfy { $0 == nil }, "opened from Chats: no Bots mark")
 
         XCTAssertEqual(appState.activeDashboardID, vps.id, "no switch")
         XCTAssertEqual(appState.activeRoomSurface?.dashboardID, mac.id)
@@ -2857,6 +2965,16 @@ extension CrossProfilePresentationCacheTests {
         appState.dropKeptDashboardRuntime(mac.id)
         XCTAssertNil(appState.activeRoomSurface)
         XCTAssertNil(appState.farRoomRuntime)
+
+        // Not kept connected, it switches there first, and a tap on Bots
+        // Home marks the open as Bots' only once the switch has settled,
+        // since the switch clears Bot Mode's state (#2993, issue 2995).
+        marks.seen = []
+        await appState.openCombinedRoom(CombinedRoomTile(dashboardID: mac.id, kind: .hosted(trip)), inBots: true)
+        XCTAssertEqual(appState.activeDashboardID, mac.id, "switched there")
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "trip")
+        XCTAssertTrue(marks.seen.contains(BotZoomArm.roomKey("trip")), "marked as Bots' while the room opened after the switch")
+        XCTAssertNil(appState.botChatOpening, "cleared once the open ended")
     }
 
     /// Another combined dashboard's room tiles on Bots Home: which are

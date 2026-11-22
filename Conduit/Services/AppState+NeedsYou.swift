@@ -56,11 +56,15 @@ extension AppState {
         servesNeedsYou || !needsYou.otherDashboards.isEmpty
     }
 
+    /// How long before another combined dashboard's plugin that didn't
+    /// answer the Needs you pass's capabilities ask is asked again.
+    static let combinedDashboardNameRetryInterval: TimeInterval = 300
+
     /// The other combined dashboards' waits, each read through its kept
     /// connection for every one of its profiles (all-live stage 4a). Quiet
     /// on failure, as this dashboard's: a profile that can't be read keeps
     /// what it showed, and a dashboard let go says nothing more.
-    func readOtherCombinedDashboardsNeedsYou() async {
+    func readOtherCombinedDashboardsNeedsYou(now: Date = Date()) async {
         let kept = keptDashboardRuntimes.filter { isInCombinedGroup($0.key) && $0.key != activeDashboardID }
         needsYou.forgetOtherDashboards(otherThan: Set(kept.keys))
         keptDashboardProfiles = keptDashboardProfiles.filter { id, read in
@@ -72,10 +76,16 @@ extension AppState {
             // Its plugin's capabilities, asked once per kept connection, so a
             // dashboard on an IP address takes its Hermes' name with no bots
             // shown, and a plugin without the route isn't asked every poll
-            // (Dashboard names).
-            if combinedDashboardNameReads[id] != ObjectIdentifier(runtime.bridge) {
-                combinedDashboardNameReads[id] = ObjectIdentifier(runtime.bridge)
-                _ = await combinedDashboardCapabilities(id, runtime)
+            // (Dashboard names). One that didn't answer (a timeout, a 5xx, or
+            // no route) is asked again after a while, not only when the
+            // connection is replaced (issue 2948).
+            let bridgeID = ObjectIdentifier(runtime.bridge)
+            let asked = combinedDashboardNameReads[id]
+            if asked?.bridge != bridgeID || asked?.retryAt.map({ $0 <= now }) == true {
+                combinedDashboardNameReads[id] = (bridgeID, now.addingTimeInterval(Self.combinedDashboardNameRetryInterval))
+                if await combinedDashboardCapabilities(id, runtime) != nil, combinedDashboardNameReads[id]?.bridge == bridgeID {
+                    combinedDashboardNameReads[id] = (bridgeID, nil)
+                }
             }
             // A room's id is its host's own: another Hermes' room can share
             // the open room's id, so a room wait counts as open only from a
