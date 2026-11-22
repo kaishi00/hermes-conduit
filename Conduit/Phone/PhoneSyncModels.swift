@@ -110,6 +110,15 @@ struct PhoneSyncPreferences: Codable, Equatable {
     /// Battery, Low Power Mode, CarPlay and Focus go with each message sent
     /// from Conduit (issue 888). Read `turnStatus`.
     var turnStatusChoice: Bool?
+    /// "Share with this host's other profiles": the host's other profiles
+    /// paired with this iPhone read what's shared (`sharing.other_profiles`,
+    /// plugin 0.194.0). Read `otherProfiles`.
+    var otherProfilesChoice: Bool?
+
+    var otherProfiles: Bool {
+        get { otherProfilesChoice ?? false }
+        set { otherProfilesChoice = newValue ? true : nil }
+    }
 
     /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
     /// They ring through Silent and Focus, so it's its own choice.
@@ -243,6 +252,7 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "contacts_edit": contactsEdit,
             "photos": photos,
             "turn_status": turnStatus,
+            "other_profiles": otherProfiles,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]

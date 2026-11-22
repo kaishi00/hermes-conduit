@@ -340,6 +340,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, false)
         choices.focus = true
         XCTAssertTrue(choices.turnStatus, "The choice is kept while neither is shared")
+
+        // Share with this host's other profiles: off until chosen, and in
+        // every upload's sharing, so the host's other profiles read it only then.
+        XCTAssertEqual(choices.sharingJSON["other_profiles"] as? Bool, false)
+        choices.otherProfiles = true
+        XCTAssertEqual(choices.sharingJSON["other_profiles"] as? Bool, true)
     }
 
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {

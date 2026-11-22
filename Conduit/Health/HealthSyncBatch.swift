@@ -86,6 +86,9 @@ struct HealthBatch {
     var timeZone: TimeZone
     var categories: [HealthCategory]
     var detailed: [HealthCategory]
+    /// "Share with this host's other profiles". Not in `windowPrints`: the
+    /// windows the host holds don't change with it.
+    var otherProfiles = false
     var windows: [HealthWindow] = []
     var events: [HealthEvent] = []
     var deleted: [String] = []
@@ -101,6 +104,7 @@ struct HealthBatch {
             "device": ["name": deviceName, "time_zone": timeZone.identifier],
             "categories": categories.map(\.rawValue).sorted(),
             "detailed": detailed.map(\.rawValue).sorted(),
+            "other_profiles": otherProfiles,
             "windows": windows.map { Self.json($0, format: format) },
             "events": events.map { event -> [String: Any] in
                 var entry: [String: Any] = [
@@ -185,7 +189,7 @@ struct HealthBatch {
 
     private func emptyCopy() -> HealthBatch {
         HealthBatch(computedAt: computedAt, deviceName: deviceName, timeZone: timeZone,
-                    categories: categories, detailed: detailed)
+                    categories: categories, detailed: detailed, otherProfiles: otherProfiles)
     }
 }
 

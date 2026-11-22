@@ -228,6 +228,16 @@ extension AppState {
         saveHealthSyncPreferences(preferences)
     }
 
+    /// "Share with this host's other profiles": the next upload tells the
+    /// host, so a pass goes now.
+    func setHealthOtherProfiles(_ allowed: Bool) {
+        var preferences = healthSyncPreferences
+        guard preferences.isOn, preferences.otherProfiles != allowed else { return }
+        preferences.otherProfiles = allowed
+        saveHealthSyncPreferences(preferences)
+        Task { await runHealthSync(reason: .manual) }
+    }
+
     private func saveHealthSyncPreferences(_ preferences: HealthSyncPreferences) {
         preferences.save()
         healthSyncPreferences = preferences

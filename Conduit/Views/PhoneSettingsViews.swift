@@ -58,6 +58,11 @@ struct PhoneSettingsPage: View {
     private var showsPhotos: Bool {
         appState.notifierPlugin.reports(AppState.phonePhotosCapability) || choices.photos
     }
+    /// The host lets its other profiles paired with this iPhone read what's
+    /// shared (plugin 0.194.0). Left on, it stays so it can be turned off.
+    private var showsOtherProfiles: Bool {
+        appState.notifierPlugin.reports(AppState.phoneHealthProfilesCapability) || choices.otherProfiles
+    }
     @State private var showsAddShortcut = false
     @State private var newShortcutName = ""
     @State private var newShortcutNote = ""
@@ -88,6 +93,7 @@ struct PhoneSettingsPage: View {
                 if showsShortcuts { shortcutsSection }
                 if showsPhotos { photosSection }
                 if preferences.isOn { voiceSection }
+                if preferences.isOn, showsOtherProfiles { profilesSection }
                 actionSection
             }
         }
@@ -533,6 +539,18 @@ struct PhoneSettingsPage: View {
     private func syncPeople() {
         guard preferences.isOn, preferences.contacts else { return }
         Task { await appState.runPhoneSync(reason: .manual) }
+    }
+
+    // MARK: Other profiles
+
+    private var profilesSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Other profiles", table: .phone), symbol: "person.2", tint: .conduitAccent) {
+            Toggle("Share with this host's other profiles", isOn: binding(\.otherProfiles))
+                .accessibilityIdentifier("settings.phone.other-profiles")
+            Text(AppLocalization.string("When this is on, other Hermes profiles on \(preferences.destination?.host ?? hostLabel) that are paired with this iPhone can read your calendar, reminders and phone status, and ask for the same changes.", table: .phone))
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
     }
 
     // MARK: Voice

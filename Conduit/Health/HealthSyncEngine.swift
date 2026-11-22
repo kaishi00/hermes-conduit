@@ -49,6 +49,10 @@ struct HealthSyncState: Codable, Equatable {
     /// moves its `last_seen`, so a pass with nothing to send still posts
     /// one every so often (ContextUploadPolicy.healthKeepalive).
     var lastIngest: Date?
+    /// "Share with this host's other profiles" as the host last took it
+    /// (every upload carries it); a change sends an upload even when
+    /// nothing else is new. Nil: never sent, which the host reads as off.
+    var sentOtherProfiles: Bool?
     var lastSync: Date?
     var lastAttempt: Date?
     var pause: HealthSyncPause?
@@ -318,8 +322,9 @@ final class HealthSyncEngine: ObservableObject {
             try await session.sendEvents()
             // Low Data Mode: older history waits for another network.
             if !options.lowData { try await session.sendHistory() }
-            if state.lastIngest == postedBefore,
-               ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now()) {
+            if (state.sentOtherProfiles ?? false) != preferences.otherProfiles
+                || (state.lastIngest == postedBefore
+                    && ContextUploadPolicy.healthNeedsKeepalive(lastPosted: state.lastIngest, now: now())) {
                 try await session.sendKeepalive()
             }
             state.lastSync = now()
@@ -412,6 +417,8 @@ final class HealthSyncEngine: ObservableObject {
         state.backfilledCategories = nil
         state.historyStart = nil
         state.history = nil
+        // A new key starts the host's copy over, its other profiles choice too.
+        state.sentOtherProfiles = nil
     }
 
     /// Fixes how far back sharing reaches. Another choice starts the
@@ -440,8 +447,9 @@ final class HealthSyncEngine: ObservableObject {
         store.save(state)
     }
 
-    fileprivate func notePosted() {
+    fileprivate func notePosted(otherProfiles: Bool) {
         state.lastIngest = now()
+        state.sentOtherProfiles = otherProfiles
     }
 
     fileprivate var currentNow: Date { now() }
@@ -487,7 +495,8 @@ private struct Session {
     func newBatch() -> HealthBatch {
         HealthBatch(computedAt: engine.currentNow, deviceName: engine.currentDeviceName, timeZone: calendar.timeZone,
                     categories: HealthCategory.allCases.filter(categories.contains),
-                    detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) })
+                    detailed: HealthCategory.allCases.filter { preferences.detailed.contains($0) && categories.contains($0) },
+                    otherProfiles: preferences.otherProfiles)
     }
 
     /// Sends `batch` in parts. Returns the windows (HealthBatch.windowPrints
@@ -514,7 +523,7 @@ private struct Session {
         while true {
             do {
                 let answer = try await request("\(HealthSyncEngine.base)/ingest", "POST", body)
-                engine.notePosted()
+                engine.notePosted(otherProfiles: part.otherProfiles)
                 return answer
             } catch DashboardTicketBridgeError.http(let status, _) where status == 429 {
                 // The host takes so many uploads a minute (120 per profile):
