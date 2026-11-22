@@ -30,6 +30,8 @@ struct PulseDashboardChip: Identifiable, Equatable {
     let unseen: Int
     /// The page shows its Pulse.
     let isShown: Bool
+    /// Its kept connection dropped: a tap switches there and signs in.
+    var switches = false
     var id: UUID { dashboardID }
 }
 
@@ -86,11 +88,15 @@ extension AppState {
             // another is shown, whichever read is newer: the page's last one
             // there (its cards just seen) or the background read since.
             var unseen = pulse.unseen
-            if let runtime = runtime(for: dashboard.id), let applied = runtime.pulseFeedAppliedAt,
+            let kept = runtime(for: dashboard.id)
+            if let runtime = kept, let applied = runtime.pulseFeedAppliedAt,
                shown == dashboard.id || applied.at > pulse.at {
                 unseen = runtime.pulseUnseen
             }
-            return PulseDashboardChip(dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id)
+            return PulseDashboardChip(
+                dashboardID: dashboard.id, badge: mark, unseen: unseen, isShown: shown == dashboard.id,
+                switches: kept == nil
+            )
         }
         return chips.count > 1 ? chips : []
     }
@@ -129,8 +135,9 @@ extension AppState {
 
     /// Shows another combined dashboard's Pulse in place: the page reads
     /// and acts on its feed through its kept connection, with no switch, so
-    /// no call ends either. Its own chip, or one not connected here, goes
-    /// back to the one on screen's (one let go shows the screen's anyway).
+    /// no call ends either. Its own chip goes back to the one on screen's;
+    /// one whose kept connection dropped switches there, signs in and opens
+    /// its Pulse (refused during a call).
     func openCombinedPulse(_ dashboardID: UUID) {
         let other = dashboardID != dashboardIDOnScreen
         // A chip whose kept connection dropped (its list stays, below) signs
@@ -162,7 +169,8 @@ extension AppState {
     func switchForFarPulseStep(for dashboard: UUID?) async -> Bool {
         guard let id = dashboard else { return false }
         guard id != dashboardIDOnScreen else { return pulseDashboardID == id }
-        guard runtime(for: id) != nil else { return false }
+        // A chip picked since the tap: no switch for a step the page left.
+        guard pulseDashboardID == id, runtime(for: id) != nil else { return false }
         guard !refusesCombinedSwitchDuringCall(to: id) else { return false }
         await switchToCombinedDashboardUntilSettled(id)
         guard !Task.isCancelled, activeDashboardID == id else { return false }
