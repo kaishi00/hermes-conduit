@@ -521,7 +521,7 @@ consent screens · the tool text each model reads, in Conduit and the notifier
 
 **Rulings**
 - Live calls do phone actions on the device rather than handing them to Hermes (2026-10-20, #991).
-- Live modes read health, location and calendar through the host's /voice-tools, with consent for each voice mode that names its provider, off by default (2026-10-14, #585, notifier #104).
+- Live modes read health, location and calendar through the host's /voice-tools, with consent for each voice mode that names its provider, off by default (2026-10-14, #585, notifier #3076).
 - A live provider hears nothing until the user agrees, once per provider on the device; Local Live never asks (2026-10-20, #1052). Qwen asks for Alibaba Cloud on its own, and a Watch token minted while the user took consent back is dropped, not sent (2026-10-25, #1182).
 - Conduit's tools come first: models use them before handing work to Hermes or older routes such as gog (2026-10-16, #634, notifier #121).
 - With asking first on, a held request goes to Hermes only on the user's own yes, read the same way in every live mode: Gemini, Grok and Local Live's send_request and GPT-Live's next delegation. A no drops it, other words change it or keep it waiting (2026-10-24, #1223).
@@ -9743,7 +9743,7 @@ have no refresh of their own), the notifier (it serves no part of the
 catalog) · text: the shared "Updating…" key, already in every shipped
 language; no Settings caption or doc describes it
 
-**Desktop app:** has it (desktop#104, desktop#159): rows listed before the connection dropped say Updating… in a floating capsule (after 0.4 s, no clicks) while the read after the reconnect runs, and the list's own refreshes say nothing (`desktop/src/renderer/src/state/useChatList.ts`, `desktop/src/renderer/src/components/UpdatingCapsule.tsx`). Each read keeps the newest 200 rows on this computer for that dashboard, so a launch shows them at once, even while connecting, and the first read says Updating… until its first page lands; they move with Connection Setup's address change and go when the dashboard is signed out (`desktop/src/renderer/src/state/savedChatList.ts`, desktop#159).
+**Desktop app:** has it (desktop#3076, desktop#159): rows listed before the connection dropped say Updating… in a floating capsule (after 0.4 s, no clicks) while the read after the reconnect runs, and the list's own refreshes say nothing (`desktop/src/renderer/src/state/useChatList.ts`, `desktop/src/renderer/src/components/UpdatingCapsule.tsx`). Each read keeps the newest 200 rows on this computer for that dashboard, so a launch shows them at once, even while connecting, and the first read says Updating… until its first page lands; they move with Connection Setup's address change and go when the dashboard is signed out (`desktop/src/renderer/src/state/savedChatList.ts`, desktop#159).
 
 **Code**
 - When: `Conduit/Services/AppState+Session.swift` (chatListShownIsStale, isReadingStaleChatList, showsChatListUpdating(overProjects:hidesPulseHomeChat:), noteStaleChatListRead; loadSessions counts a read over a stale list in and out, by the scope it reads), `Conduit/Services/AppState+ChatList.swift` (savedChatListReplacedByLiveList clears chatListPredatesBackground: every live commit, a list read's in `Conduit/Services/AppState+Session.swift` and a chat sync's in `Conduit/Services/AppState+Reconciliation.swift`), `Conduit/Services/AppState.swift` (staleChatListReads by SessionCatalogOwner, chatListPredatesBackground), `Conduit/Services/AppState+ConnectionTimeline.swift` (handleScenePhase's background sets chatListPredatesBackground)
@@ -10408,15 +10408,15 @@ board a 200-character preview)
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 
 **Rulings**
-- A run's summary or error and a comment show four lines on the task screen as plain words (Markdown markers and blank lines left out), an activity row's detail two; each opens whole from a chevron when there's more than the row shows (a short crash message shown whole doesn't open). An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #104, Michel couldn't review a "review requested" run's summary on his phone).
-- Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #104).
-- An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #104).
+- A run's summary or error and a comment show four lines on the task screen as plain words (Markdown markers and blank lines left out), an activity row's detail two; each opens whole from a chevron when there's more than the row shows (a short crash message shown whole doesn't open). An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #3076, Michel couldn't review a "review requested" run's summary on his phone).
+- Run summaries and comments render as Markdown in the sheet; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #3076).
+- An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files (2026-11-22, #3076).
 
 **Open gaps**
 - A parent task's child results (each child's latest summary) come with the task but aren't shown; Dependencies links each child, whose own screen has its runs.
 - Only the 60 newest activity events are listed.
 
-**Checked:** 2026-11-22, #104 (seeded).
+**Checked:** 2026-11-22, #3076 (seeded).
 
 ## Feature map rules
 
