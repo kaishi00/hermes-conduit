@@ -2786,6 +2786,10 @@ extension CrossProfilePresentationCacheTests {
         appState.combinedDashboardChats[mac.id] = CombinedDashboardChats(
             bridge: ObjectIdentifier(kept.bridge), profiles: ["default"], sessions: [row], at: Date()
         )
+        // Its bots are read (none), so a Bot Chat's push could be told apart.
+        appState.combinedDashboardBots[mac.id] = CombinedDashboardBots(
+            client: ObjectIdentifier(kept.client), bots: [], avatars: [:], at: Date()
+        )
 
         let open = Task { @MainActor in
             await appState.openNotificationTarget(ConduitNotificationTarget(

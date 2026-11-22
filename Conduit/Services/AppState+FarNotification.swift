@@ -21,16 +21,22 @@ extension AppState {
     /// its socket can't be handed to that profile), or the push opens a
     /// room, its Pulse, a call or a Bot Chat, or an approval for a chat its
     /// list doesn't hold (a room's hidden chat, whose card is the room's).
+    /// Also nil while its bots aren't read yet, since a Bot Chat's push
+    /// can't be told from a chat's then: the switch reads them and opens it
+    /// in Bots, as before. A push that names no profile opens on the one
+    /// that dashboard is on, as a switch resumes it.
     func farNotificationRuntime(_ target: ConduitNotificationTarget, in dashboardID: UUID) -> DashboardRuntime? {
         guard dashboardID != dashboardIDOnScreen, isInCombinedGroup(dashboardID),
-              keptDashboardRuntimes[dashboardID] != nil,
+              let kept = keptDashboardRuntimes[dashboardID],
+              combinedDashboardBots[dashboardID] != nil || !kept.runtime.botRoster.isEmpty,
               Self.farNotificationOpensInPlace(
                   target,
                   listed: combinedDashboardChats[dashboardID]?.sessions ?? [],
                   botChats: farBotChatIDs(in: dashboardID),
                   pulseHome: farPulseHome(in: dashboardID)
               ) else { return nil }
-        return keptRuntime(dashboardID, on: target.profile ?? "default")
+        let profile = target.profile.flatMap { $0.isEmpty ? nil : $0 } ?? kept.runtime.activeProfile
+        return keptRuntime(dashboardID, on: profile)
     }
 
     /// Whether a push for another combined dashboard is one its chat opens
@@ -61,9 +67,11 @@ extension AppState {
         return Set(roster.compactMap(\.canonicalSessionID))
     }
 
-    /// Another combined dashboard's Pulse chat, as its feed named it or as
-    /// it last named it here.
+    /// Another combined dashboard's Pulse chat, as its kept runtime, its
+    /// feed or its last visit here named it.
     func farPulseHome(in dashboardID: UUID) -> String? {
-        combinedDashboardPulse[dashboardID]?.homeChatID ?? pulseRememberedHomes[dashboardID.uuidString]
+        keptDashboardRuntimes[dashboardID]?.runtime.pulseHomeChatID
+            ?? combinedDashboardPulse[dashboardID]?.homeChatID
+            ?? pulseRememberedHomes[dashboardID.uuidString]
     }
 }
