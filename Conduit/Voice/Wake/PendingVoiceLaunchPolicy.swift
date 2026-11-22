@@ -38,6 +38,10 @@ struct VoiceLaunchConnectionSnapshot: Equatable {
     /// screen may yet be replaced and its turn state isn't known. Only a
     /// screenshot waits this out (see `readiness`).
     var isSettling = false
+    /// The dashboard on screen. A launch naming another combined dashboard
+    /// doesn't wait on this one's connection: it starts on its own
+    /// dashboard's kept connection, or switches there (see `readiness`).
+    var activeDashboardID: UUID? = nil
 
     var phase: Phase {
         if isConnected { return .connected }
@@ -67,7 +71,8 @@ extension AppState {
             hasStableFailureEvidence: lastConnectionFailure != nil
                 || fallbackFailure != nil,
             classifiedFailure: lastConnectionFailure ?? fallbackFailure,
-            isSettling: isSettlingConnection
+            isSettling: isSettlingConnection,
+            activeDashboardID: activeDashboardID
         )
     }
 }
@@ -207,6 +212,8 @@ enum PendingVoiceLaunchPolicy {
     /// - Connecting / inconclusive → wait (Siri window still open).
     /// - Stable failure (positive evidence, not connecting) → terminal fail
     ///   for Siri; do not wait out the deadline.
+    /// - Another combined dashboard's launch → ready: the dashboard on
+    ///   screen's connection has no say in it.
     /// - Deadline metadata (`now >= deadline`) → terminal fail even if still
     ///   inconclusive. The runtime waiter is authoritative in production;
     ///   this Date check covers deterministic tests and the boundary case.
@@ -222,6 +229,10 @@ enum PendingVoiceLaunchPolicy {
             case .siri, .composer, .newCall, .hermesCall: return .failed(message: expiredFailureMessage)
             }
         }
+        // Another combined dashboard's launch goes ahead whatever the
+        // dashboard on screen's connection: it starts on its own dashboard's
+        // kept connection, or the switch there brings that one up.
+        if let target = intent.dashboardID, target != connection.activeDashboardID { return .ready }
         switch connection.phase {
         case .connected:
             if intent.source == .screenQuestion, connection.isSettling { return .waiting }

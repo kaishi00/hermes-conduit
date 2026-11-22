@@ -162,6 +162,35 @@ final class ScreenQuestionTests: XCTestCase {
         )
     }
 
+    /// Another combined dashboard's launch doesn't wait on, or fail from,
+    /// the dashboard on screen's connection; one naming the dashboard on
+    /// screen does, and the deadline still ends either.
+    func testAnotherDashboardsLaunchIgnoresTheScreensConnection() {
+        let now = Date()
+        let onScreen = UUID()
+        let far = UUID()
+        for phase in [VoiceLaunchConnectionSnapshot.Phase.connecting, .inconclusive, .stableFailure] {
+            var snapshot = connection(phase)
+            snapshot.activeDashboardID = onScreen
+            let siri = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "work", dashboardID: far, now: now)
+            XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: siri, connection: snapshot, now: now), .ready, "\(phase)")
+            let shot = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request(), profile: "work", dashboardID: far, now: now)
+            XCTAssertEqual(PendingVoiceLaunchPolicy.readiness(for: shot, connection: snapshot, now: now), .ready, "\(phase)")
+            let here = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "work", dashboardID: onScreen, now: now)
+            XCTAssertNotEqual(PendingVoiceLaunchPolicy.readiness(for: here, connection: snapshot, now: now), .ready, "\(phase)")
+        }
+        var snapshot = connection(.connecting)
+        snapshot.activeDashboardID = onScreen
+        let late = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "work", dashboardID: far, now: now)
+        XCTAssertEqual(
+            PendingVoiceLaunchPolicy.readiness(
+                for: late, connection: snapshot,
+                now: now.addingTimeInterval(PendingVoiceLaunchPolicy.externalLaunchBudget)
+            ),
+            .failed(message: PendingVoiceLaunchPolicy.expiredFailureMessage)
+        )
+    }
+
     func testExpiredLaunchKeepsTheScreenshot() {
         let now = Date()
         let intent = PendingVoiceLaunchPolicy.makeScreenQuestionPendingIntent(request(), profile: nil, now: now)

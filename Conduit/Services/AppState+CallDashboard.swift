@@ -261,7 +261,10 @@ extension AppState {
             guard !superseded() else { return }
             var switched = false
             if self.savedDashboardRegistry.dashboard(with: dashboardID) != nil {
-                switched = await self.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
+                switched = await self.switchForCombinedProfile(
+                    in: dashboardID, profile: profile, endingTheCall: true,
+                    stillWanted: { store.revision == revision }
+                )
             }
             guard !superseded() else { return }
             guard switched, self.activeDashboardID == dashboardID else {

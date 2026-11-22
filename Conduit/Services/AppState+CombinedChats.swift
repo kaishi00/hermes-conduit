@@ -362,10 +362,18 @@ extension AppState {
     /// `endingTheCall`: the caller already ended its own conversation for
     /// the switch (CarPlay's agent list, whose idle voice screen counts as
     /// a call), so nothing is refused over it.
-    func switchForCombinedProfile(in dashboardID: UUID, profile: String? = nil, endingTheCall: Bool = false) async -> Bool {
+    func switchForCombinedProfile(
+        in dashboardID: UUID,
+        profile: String? = nil,
+        endingTheCall: Bool = false,
+        stillWanted: () -> Bool = { true }
+    ) async -> Bool {
         guard endingTheCall || !refusesCombinedSwitchDuringCall(to: dashboardID) else { return false }
         if let profile {
             guard await combinedProfileStillListed(profile, in: dashboardID) else { return false }
+            // A launch a newer one replaced while the list was read
+            // neither switches nor ends a call.
+            guard stillWanted() else { return false }
             // The switch resumes on the picked profile, not first on the
             // one it last used there (Eric, 2026-11-16).
             rememberActiveProfile(profile, for: dashboardID)
