@@ -251,6 +251,14 @@ final class CarPlayVoiceCoordinator {
     /// The agents the open Voice list offered, in row order: the dashboard
     /// on screen's profiles and every other combined dashboard's.
     private var listedAgents: [CarPlayAgent] = []
+    /// Another combined dashboard's agent picked in the Voice list: the
+    /// car's calls start on that dashboard's runtime, with no switch
+    /// (no-switch stage 2, `onFarCallDashboard`). Nil for the dashboard
+    /// on screen's.
+    private(set) var farAgent: CarPlayAgent?
+    /// The far start running now: one far start on a dashboard at a time
+    /// (`onFarCallDashboard`), so each waits for the one before.
+    private var farStartTail: Task<Void, Never>?
     /// An agent picked while a profile switch was running, switched to
     /// once it ends.
     private(set) var queuedAgent = V2QueuedProfilePick()
@@ -338,6 +346,7 @@ final class CarPlayVoiceCoordinator {
         queuedAgentObservation = nil
         queuedAgent = V2QueuedProfilePick()
         chosenChat = nil
+        farAgent = nil
         isBrowsing = false
         self.interfacing = interfacing
         CarPlayBrowseTemplateFactory.carStyle = interfacing.carUserInterfaceStyle
@@ -419,6 +428,7 @@ final class CarPlayVoiceCoordinator {
         queuedAgentObservation = nil
         queuedAgent = V2QueuedProfilePick()
         chosenChat = nil
+        farAgent = nil
         isBrowsing = false
         lastActivatedState = nil
         isTemplatePresented = false
@@ -679,9 +689,9 @@ final class CarPlayVoiceCoordinator {
         return CarPlayVoiceActionHandlers(
             startListening: fenced { $0.startListeningTurn() },
             startNewChat: fenced { $0.startNewChat() },
-            toggleMicrophone: fenced { $0.toggleMicrophone() },
-            endConversation: fenced { $0.endTapped() },
-            stopReply: fenced { $0.stopReply() }
+            toggleMicrophone: fenced { coordinator in coordinator.onCallDashboard { coordinator.toggleMicrophone() } },
+            endConversation: fenced { coordinator in coordinator.onCallDashboard { coordinator.endTapped() } },
+            stopReply: fenced { coordinator in coordinator.onCallDashboard { coordinator.stopReply() } }
         )
     }
 
@@ -1156,7 +1166,7 @@ final class CarPlayVoiceCoordinator {
         // A fresh list starts from clean state, whatever the last one left.
         stopKeepingChatsCurrent()
         let appState = lastBoundAppState ?? appStateProvider()
-        let chats = Self.chatList(in: appState)
+        let chats = shownChatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)
         let attached = attachedChatID(in: appState)
         let handlers = makeBrowseHandlers()
@@ -1200,6 +1210,26 @@ final class CarPlayVoiceCoordinator {
         return mode == .classic ? Self.openListedChat(in: appState)?.id : nil
     }
 
+    private func shownChatList(in appState: AppState) -> CarPlayChatList {
+        if let far = farAgent, let id = far.dashboardID {
+            return Self.farChatList(far.profile, in: id, appState: appState)
+        }
+        return Self.chatList(in: appState)
+    }
+
+    /// Another combined dashboard's agent's chats, as its kept read lists
+    /// them: its Pulse chat and Bot Chats left out, as the list on screen
+    /// leaves out its own; pins are this dashboard's, so none are pinned.
+    static func farChatList(_ profile: String, in dashboardID: UUID, appState: AppState) -> CarPlayChatList {
+        let pulse = appState.farPulseHomes(in: dashboardID)
+        let rows = (appState.combinedDashboardChats[dashboardID]?.sessions ?? []).filter { row in
+            appState.profilesMatch(row.profile ?? "default", profile)
+                && Set(SessionContentSearch.identities(of: row)).isDisjoint(with: pulse)
+                && !appState.isFarBotChat(row, in: dashboardID)
+        }
+        return CarPlayBrowse.chatList(from: rows, isPinned: { _ in false })
+    }
+
     private static func chatList(in appState: AppState) -> CarPlayChatList {
         // Pulse's chat stays behind the Pulse screen, as in Chats.
         CarPlayBrowse.chatList(
@@ -1222,7 +1252,7 @@ final class CarPlayVoiceCoordinator {
     private func loadChatsIfMissing(_ appState: AppState) {
         guard chatsTemplate != nil, !didRequestChatCatalog, chatCatalogLoad == nil,
               appState.isConnected else { return }
-        let chats = Self.chatList(in: appState)
+        let chats = shownChatList(in: appState)
         guard chats.pinned.isEmpty, chats.recent.isEmpty else { return }
         didRequestChatCatalog = true
         let load = UUID()
@@ -1256,7 +1286,7 @@ final class CarPlayVoiceCoordinator {
         // the next connection asks once more.
         if !appState.isConnected, chatCatalogLoad == nil { didRequestChatCatalog = false }
         loadChatsIfMissing(appState)
-        let chats = Self.chatList(in: appState)
+        let chats = shownChatList(in: appState)
         let placeholder = chatsPlaceholder(for: chats, in: appState)
         let attached = attachedChatID(in: appState)
         guard chats != shownChats || placeholder != shownChatsPlaceholder
@@ -1365,6 +1395,7 @@ final class CarPlayVoiceCoordinator {
             agents: CarPlayBrowse.agentRows(
                 agents: agents,
                 active: appState.activeProfile,
+                picked: farAgent,
                 displayName: { Self.agentTitle($0, in: appState) }
             ),
             handlers: makeBrowseHandlers()
@@ -1378,7 +1409,9 @@ final class CarPlayVoiceCoordinator {
         driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            await self?.performOpenChat(row, generation: generation)
+            await self?.onAgentDashboard(generation: generation) { [weak self] in
+                await self?.performOpenChat(row, generation: generation)
+            }
         }
     }
 
@@ -1406,7 +1439,12 @@ final class CarPlayVoiceCoordinator {
             forward(.processing)
             // The phone shows the chat the call is attached to, as when the
             // call starts from that chat there, unless it's slow to (#1362).
-            let opened = await openChatOnPhone(row.sessionID, in: appState, within: liveChatOpenWait)
+            // Another dashboard's chat isn't opened on the phone: the screen
+            // stays on its own dashboard, and the call attaches to the chat.
+            var opened: AppState.SessionOpenOutcome? = .opened
+            if farAgent == nil {
+                opened = await openChatOnPhone(row.sessionID, in: appState, within: liveChatOpenWait)
+            }
             guard isWanted() else { return }
             if opened != .opened {
                 // The phone not showing it doesn't change which chat the
@@ -1576,8 +1614,27 @@ final class CarPlayVoiceCoordinator {
         if let dashboardID = agent.dashboardID {
             queuedAgentObservation = nil
             queuedAgent = V2QueuedProfilePick()
-            switchAgent(to: agent.profile, on: dashboardID, appState: appState)
+            guard agent != farAgent else { return }
+            // Kept connected and set to a live mode there: the car calls it
+            // in place, with no switch. Otherwise (Classic voice talks
+            // through the chat on screen) the phone switches there.
+            guard appState.canStartLiveCallOnFarDashboard(dashboardID, profile: agent.profile) else {
+                farAgent = nil
+                switchAgent(to: agent.profile, on: dashboardID, appState: appState)
+                return
+            }
+            // A call to another agent ends first, as a switch would end it.
+            endConversation()
+            farAgent = agent
+            // The picked chat belongs to the agent left behind.
+            chosenChat = nil
             return
+        }
+        // Back to an agent of the dashboard on screen.
+        if farAgent != nil {
+            endConversation()
+            farAgent = nil
+            chosenChat = nil
         }
         let profile = agent.profile
         // A switch already under way would refuse this one, so the pick
@@ -1652,25 +1709,68 @@ final class CarPlayVoiceCoordinator {
     private func switchAgent(to profile: String, on dashboardID: UUID, appState: AppState) {
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            guard let self, self.isCurrent(generation), self.isConnected else { return }
-            self.endConversation()
-            let switched = await appState.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
-            guard self.isCurrent(generation), self.isConnected else { return }
-            // Picked by the name its own list gives, as the strip's chip does.
-            if switched, !appState.profilesMatch(appState.activeProfile, profile),
-               let listed = appState.profiles.first(where: { appState.profilesMatch($0, profile) }) {
-                await appState.switchProfile(to: listed)
-                guard self.isCurrent(generation), self.isConnected else { return }
-            }
-            guard switched, appState.activeDashboardID == dashboardID,
-                  appState.profilesMatch(appState.activeProfile, profile) else {
-                self.handleControllerState(.failed(""))
-                return
-            }
+            guard let self else { return }
             // The picked chat belongs to the agent left behind.
-            self.chosenChat = nil
-            self.observeCurrentVoiceMode(appState)
+            if await self.switchToAgent(profile, on: dashboardID, appState: appState, generation: generation) {
+                self.chosenChat = nil
+            }
         }
+    }
+
+    /// The switch to another dashboard's agent; true once the phone is on
+    /// that dashboard and profile, Error shown when the switch failed.
+    private func switchToAgent(_ profile: String, on dashboardID: UUID, appState: AppState, generation: UInt64) async -> Bool {
+        guard isCurrent(generation), isConnected else { return false }
+        endConversation()
+        let switched = await appState.switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true)
+        guard isCurrent(generation), isConnected else { return false }
+        // Picked by the name its own list gives, as the strip's chip does.
+        if switched, !appState.profilesMatch(appState.activeProfile, profile),
+           let listed = appState.profiles.first(where: { appState.profilesMatch($0, profile) }) {
+            await appState.switchProfile(to: listed)
+            guard isCurrent(generation), isConnected else { return false }
+        }
+        guard switched, appState.activeDashboardID == dashboardID,
+              appState.profilesMatch(appState.activeProfile, profile) else {
+            handleControllerState(.failed(""))
+            return false
+        }
+        observeCurrentVoiceMode(appState)
+        return true
+    }
+
+    /// Runs a control's tap (Mute, End, Stop) reading the call's own
+    /// dashboard, as the call itself does, while the car calls another
+    /// dashboard's agent: its voice mode is that dashboard's.
+    func onCallDashboard(_ body: () -> Void) {
+        guard farAgent != nil else { return body() }
+        (lastBoundAppState ?? appStateProvider()).onCallRuntime(body)
+    }
+
+    /// Runs a tap's start on the picked agent's dashboard: in place on
+    /// another combined dashboard's runtime when the car calls one there
+    /// (`onFarCallDashboard`, so the start reads that dashboard's voice
+    /// mode, settings and connection, and the call holds that dashboard),
+    /// else as it is. One far start at a time, each after the one before.
+    /// A dashboard that can no longer carry the call (let go, signed out,
+    /// on screen now) falls back to the switch, then the tap goes on.
+    func onAgentDashboard(generation: UInt64, _ body: @escaping @MainActor () async -> Void) async {
+        guard let far = farAgent, let dashboardID = far.dashboardID else {
+            await body()
+            return
+        }
+        let previous = farStartTail
+        let start = Task { @MainActor [weak self] in
+            await previous?.value
+            guard let self, self.isCurrent(generation), self.isConnected, self.farAgent == far else { return }
+            let appState = self.lastBoundAppState ?? self.appStateProvider()
+            if await appState.onFarCallDashboard(dashboardID, profile: far.profile, { await body() }) != nil { return }
+            self.farAgent = nil
+            guard await self.switchToAgent(far.profile, on: dashboardID, appState: appState, generation: generation) else { return }
+            await body()
+        }
+        farStartTail = start
+        await start.value
     }
 
     // MARK: - Controls
@@ -1682,7 +1782,9 @@ final class CarPlayVoiceCoordinator {
         driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            await self?.performStartListeningTurn(generation: generation)
+            await self?.onAgentDashboard(generation: generation) { [weak self] in
+                await self?.performStartListeningTurn(generation: generation)
+            }
         }
     }
 
@@ -1790,7 +1892,9 @@ final class CarPlayVoiceCoordinator {
         driverStartRequest &+= 1
         let generation = connectionGeneration
         Task { @MainActor [weak self] in
-            await self?.performStartNewChat(generation: generation)
+            await self?.onAgentDashboard(generation: generation) { [weak self] in
+                await self?.performStartNewChat(generation: generation)
+            }
         }
     }
 

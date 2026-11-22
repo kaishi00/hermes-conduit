@@ -2187,6 +2187,11 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(agents.filter { $0.dashboardID == mac.id }.map(\.profile), ["atlas", "default"])
         XCTAssertFalse(agents.contains { $0.dashboardID == vps.id }, "the dashboard on screen's carry none")
         XCTAssertTrue(CarPlayVoiceCoordinator.agentTitle(CarPlayAgent(dashboardID: mac.id, profile: "atlas"), in: appState).hasPrefix("atlas"))
+        // Its chats in the car are that agent's, from the kept read; with
+        // no live mode set there, the car switches rather than calling it
+        // in place (Classic voice talks through the chat on screen).
+        XCTAssertEqual(CarPlayVoiceCoordinator.farChatList("atlas", in: mac.id, appState: appState).recent.map(\.sessionID), ["atlas-1"])
+        XCTAssertFalse(appState.canStartLiveCallOnFarDashboard(mac.id, profile: "atlas"))
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).

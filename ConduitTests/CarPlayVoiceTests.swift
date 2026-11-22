@@ -437,6 +437,9 @@ extension CarPlayVoiceTemplateFactoryTests {
             CarPlayOptionRow(title: "default · Mac", isSelected: false),
             CarPlayOptionRow(title: "atlas · Mac", isSelected: false),
         ], "another dashboard's default isn't the one in use")
+        // Another dashboard's agent the car calls in place is the one marked.
+        let picked = CarPlayBrowse.agentRows(agents: agents, active: "default", picked: agents[2]) { $0.profile }
+        XCTAssertEqual(picked.map(\.isSelected), [false, false, true])
     }
 
     func testModeRowsMarkTheCurrentMode() {

@@ -181,11 +181,20 @@ enum CarPlayBrowse {
     /// Agents (Hermes profiles) to switch between, across a combined group
     /// (no-switch stage 2): the dashboard on screen's profiles and every
     /// other combined dashboard's, in the group's one order. Only one of the
-    /// dashboard on screen is selected; empty when there is only one, so
-    /// the picker shows no choice that does nothing.
-    static func agentRows(agents: [CarPlayAgent], active: String, displayName: (CarPlayAgent) -> String) -> [CarPlayOptionRow] {
+    /// dashboard on screen is selected, or `picked`, another dashboard's the
+    /// car calls with no switch; empty when there is only one, so the
+    /// picker shows no choice that does nothing.
+    static func agentRows(
+        agents: [CarPlayAgent],
+        active: String,
+        picked: CarPlayAgent? = nil,
+        displayName: (CarPlayAgent) -> String
+    ) -> [CarPlayOptionRow] {
         guard agents.count > 1 else { return [] }
-        return agents.map { CarPlayOptionRow(title: displayName($0), isSelected: $0.dashboardID == nil && $0.profile == active) }
+        return agents.map { agent in
+            let selected = picked.map { $0 == agent } ?? (agent.dashboardID == nil && agent.profile == active)
+            return CarPlayOptionRow(title: displayName(agent), isSelected: selected)
+        }
     }
 
     /// Grid icons, given out in order so shortcuts are told apart at a glance.
