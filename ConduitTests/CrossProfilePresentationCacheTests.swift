@@ -679,7 +679,18 @@ extension CrossProfilePresentationCacheTests {
     /// Pulse badge, before its sync reads them anew. Lists read on another
     /// profile than the one it resumes stay unused.
     func testAKeptDashboardsListsShowAtOnceOnTheSwitchBack() async throws {
-        let operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        // What the switch back's sync finds on screen when it reads the list.
+        final class AtSync { weak var appState: AppState?; var roster: [String]?; var rooms: [String]?; var pulse: Int? }
+        let atSync = AtSync()
+        var operations = switchLifecycleOperations(workCatalog: []) { _ in [] }
+        operations.loadCatalog = { _, _ in
+            if let appState = atSync.appState, atSync.roster == nil {
+                atSync.roster = appState.botRoster.map(\.name)
+                atSync.rooms = appState.groupRooms.map(\.roomID)
+                atSync.pulse = appState.pulseUnseen
+            }
+            return []
+        }
         let (appState, mac, vps, _, _) = try await combinedDashboards(operations: operations)
         let raiden = BotProfile(name: "raiden", botTitle: nil, displayName: "Raiden", profileDescription: "", model: nil,
                                 provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: false,
@@ -709,9 +720,13 @@ extension CrossProfilePresentationCacheTests {
         // stored server identity crosses no boundary, so nothing clears it).
         appState.botRoster = []
 
-        // The switch back takes the connection up and shows them; its
-        // sync's reads, refused here, leave them standing.
+        // The switch back takes the connection up and shows them before its
+        // sync reads anew; its reads, refused here, leave the roster standing.
+        atSync.appState = appState
         await appState.switchDashboard(to: mac.id)
+        XCTAssertEqual(atSync.roster, ["raiden"], "shown before the sync reads")
+        XCTAssertEqual(atSync.rooms, ["trip"])
+        XCTAssertEqual(atSync.pulse, 3)
         XCTAssertEqual(appState.activeDashboardID, mac.id)
         XCTAssertEqual(appState.botRoster.map(\.name), ["raiden"], "shown on the switch back")
 
