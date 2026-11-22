@@ -10422,7 +10422,7 @@ board a 200-character preview)
 - Tests: `ConduitTests/KanbanV2Tests.swift` (the Full text behind a row tests)
 
 **Rulings**
-- A run's summary or error, a comment and the task's result show four lines on the task screen as plain words (Markdown markers and blank lines left out, a code span's inside kept as written; `**` and `__` go where they pair up across the whole text, even around a code span or over a line break, and an odd one out such as `my__var` stays), an activity row's detail two; each opens whole from a chevron when it likely wraps past those lines, counted with wide characters (CJK, emoji, ✅-style symbols) as two columns and at the row's text style and text size (`lineWidth(for:at:)`, so accessibility sizes open sooner); a short comment or crash message shown whole doesn't open. An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #3076, Michel couldn't review a "review requested" run's summary on his phone).
+- A run's summary or error, a comment and the task's result show four lines on the task screen as plain words (Markdown markers and blank lines left out, a code span's inside kept as written; `**` and `__` go where they pair up within a paragraph, even around a code span or over a line break, an odd one out stays, `__` between letters or digits (`my__var`) is never emphasis, and a fenced block's lines (``` or ~~~, closed only by the same fence at least as long) are kept as written, indentation included), an activity row's detail two; each opens whole from a chevron when it likely wraps past those lines, counted with wide characters (CJK, emoji, ✅-style symbols) as two columns and at the row's text style and text size (`lineWidth(for:at:)`, so accessibility sizes open sooner); a short comment or crash message shown whole doesn't open. An activity row opens only when its payload holds long text or a nested value, so "Claimed by worker" with `source_status: todo` doesn't. Hermes already sends the whole text (`GET /tasks/{id}`), so nothing is fetched again (2026-11-22, #3076, Michel couldn't review a "review requested" run's summary on his phone).
 - Run summaries, comments and the result render as Markdown in the sheet, a run's error alone as written; beside a summary or metadata the error sits in a code block under its heading, so it still reads as written; an event's payload is `key: value` lines as plain text, so key names like `root_assignee` aren't read as emphasis: short values first, then long text such as `summary`, then nested values as indented JSON (2026-11-22, #3076).
 - An attachment downloads from the board's `GET /attachments/{id}` and opens in Quick Look, where Markdown and text read whole with Save and Share; a type Quick Look must not render opens the share sheet, as for chat files. A download still running when the screen moves to another task or closes is cancelled, and its file never opens over what's there (2026-11-22, #3076).
 - A parent's Blocks rows preview each child's result (its `result`, else its latest summary) in two lines; the row opens the child, whose screen has it whole. Activity lists the 60 newest events, then "Show N earlier events" lists the rest (2026-11-22, #3083).
@@ -10430,7 +10430,7 @@ board a 200-character preview)
 **Open gaps**
 - None on the phone.
 
-**Checked:** 2026-11-22, #3087.
+**Checked:** 2026-11-22, #3090.
 
 ## Feature map rules
 
