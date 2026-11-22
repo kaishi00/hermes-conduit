@@ -159,6 +159,15 @@ extension AppState {
         )
         next.setKeepaliveBackgrounded(!isSceneActive && hasEnteredBackgroundScenePhase)
         next.inheritSessionProfiles(from: kept.client)
+        // The chats followed there on its old profile (the one open in
+        // place, ones left mid-reply) were never noted, being that client's
+        // own: the new one names their profile for them.
+        if let farChat, farChat.dashboardID == dashboardID {
+            next.noteSessionProfile(farChat.profile, for: (offlineChatIdentities() ?? []).map(Optional.some) + [activeSessionId])
+        }
+        for chat in backgroundChats where chat.dashboardID == dashboardID {
+            next.noteSessionProfile(chat.profile, for: chat.sessionIDs.map(Optional.some))
+        }
         // A live call held on this dashboard keeps its requests in flight
         // and its sessions on its own profile, as `keptClient(_:on:)` and a
         // profile switch carry it (`keep` below names the call's profile

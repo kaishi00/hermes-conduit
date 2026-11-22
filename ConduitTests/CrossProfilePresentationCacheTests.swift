@@ -1990,8 +1990,15 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertTrue(kept.client === outgoing)
         let screenClient = appState.client
 
+        // A chat left mid-reply there on its old profile keeps naming it.
+        appState.backgroundChats = [BackgroundChat(
+            sessionIDs: ["left-1"], durableSessionID: nil, title: "Left", dashboardID: mac.id,
+            profile: "default", isBotChat: false, rows: [], streamingText: "Half"
+        )]
         let runtime = try XCTUnwrap(appState.keptRuntime(mac.id, on: "work"))
         let handed = try XCTUnwrap(appState.keptDashboardRuntimes[mac.id])
+        XCTAssertEqual(handed.client.sessionProfile(for: "left-1"), "default", "its chats on the old profile keep it")
+        appState.backgroundChats = []
         XCTAssertTrue(runtime === kept.runtime, "the same runtime")
         XCTAssertFalse(handed.client === outgoing)
         XCTAssertEqual(handed.client.profile, "work")
