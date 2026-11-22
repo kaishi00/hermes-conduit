@@ -382,6 +382,8 @@ extension AppState {
                 at: now,
                 glows: combinedDashboardGlows(id, bots: bots, avatars: avatars)
             )
+            // Its Bot Chats in Siri, Spotlight and the widgets.
+            publishCombinedWidgetWorkspaces()
         }
     }
 

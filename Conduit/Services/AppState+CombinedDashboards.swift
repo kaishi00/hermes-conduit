@@ -9,6 +9,7 @@
 //  again at once while the usual sync reads it anew.
 //
 
+import Combine
 import Foundation
 
 /// A combined dashboard's live connection, kept while another dashboard is
@@ -39,6 +40,7 @@ struct KeptDashboardRuntime {
         runtime.dashboardTicketBridge = bridge
         runtime.isConnected = true
         runtime.isConnecting = false
+        runtime.activeProfile = client.profile ?? "default"
         self.runtime = runtime
     }
 
@@ -100,20 +102,66 @@ extension AppState {
     /// (no-switch stage 2). Nil for one that isn't connected here, or none.
     func runtime(for dashboardID: UUID?) -> DashboardRuntime? {
         guard let dashboardID else { return nil }
-        guard dashboardID != activeDashboardID else { return runtimeOnScreen }
+        guard dashboardID != dashboardIDOnScreen else { return runtimeOnScreen }
         return keptDashboardRuntimes[dashboardID]?.runtime
     }
 
+    /// The dashboard a runtime is: the one on screen's, or a kept one's.
+    func dashboardID(of runtime: DashboardRuntime) -> UUID? {
+        if runtime === runtimeOnScreen { return dashboardIDOnScreen }
+        return keptDashboardRuntimes.first { $0.value.runtime === runtime }?.key
+    }
+
     /// Runs `body` on another dashboard's runtime: AppState's forwarders
-    /// read and write `runtime` meanwhile, and what reacts on screen (their
-    /// side effects) stays off unless it's the one on screen. Synchronous
-    /// only: an await inside would let other work run on that runtime, so
-    /// an async read scopes each step after its awaits again.
+    /// read and write `runtime` meanwhile, `activeDashboardID` is its
+    /// dashboard, and what reacts on screen (their side effects) stays off
+    /// unless it's the one on screen. This one is synchronous;
+    /// `actAcrossAwaits(onRuntime:_:)` holds the scope across awaits. A Task
+    /// made inside carries the scope on (the reducer's deferred publishes).
     func act<T>(onRuntime runtime: DashboardRuntime, _ body: () throws -> T) rethrows -> T {
-        let previous = runtimeInScope
+        let previous = (runtimeInScope, dashboardIDInScope)
+        let id = dashboardID(of: runtime)
         runtimeInScope = runtime
-        defer { runtimeInScope = previous }
-        return try body()
+        dashboardIDInScope = id
+        defer { (runtimeInScope, dashboardIDInScope) = previous }
+        let scoped: DashboardRuntime? = runtime === runtimeOnScreen ? nil : runtime
+        return try RuntimeScope.$runtime.withValue(scoped) {
+            try RuntimeScope.$dashboardID.withValue(scoped == nil ? nil : id) { try body() }
+        }
+    }
+
+    /// Runs async `body` on another dashboard's runtime, as the synchronous
+    /// one does, across its awaits: the scope is the task's
+    /// (`RuntimeScope`), so the main actor's other work meanwhile keeps
+    /// acting on the screen's, and a Task made inside (a room's polls)
+    /// carries it on. The runtime on screen runs `body` unscoped.
+    /// (A name of its own: an async context would pick an async overload
+    /// for a synchronous scope too.)
+    func actAcrossAwaits<T>(onRuntime runtime: DashboardRuntime, _ body: () async throws -> T) async rethrows -> T {
+        // A synchronous scope can't be open across an await, so none is.
+        guard runtime !== runtimeOnScreen else {
+            return try await RuntimeScope.$runtime.withValue(nil) {
+                try await RuntimeScope.$dashboardID.withValue(nil) { try await body() }
+            }
+        }
+        let id = dashboardID(of: runtime)
+        return try await RuntimeScope.$runtime.withValue(runtime) {
+            try await RuntimeScope.$dashboardID.withValue(id) { try await body() }
+        }
+    }
+
+    /// Publishes another dashboard's runtime's changes as AppState's while
+    /// a surface shows it (a far group chat's screen reads it), since only
+    /// the one on screen's publish otherwise. Nil, or the one on screen's,
+    /// stops it for that surface.
+    func republishRuntime(_ runtime: DashboardRuntime?, for surface: String) {
+        guard let runtime, runtime !== runtimeOnScreen else {
+            surfaceRuntimeChanges[surface] = nil
+            return
+        }
+        guard surfaceRuntimeChanges[surface]?.runtime != ObjectIdentifier(runtime) else { return }
+        let changes = runtime.objectWillChange.sink { [weak self] _ in self?.objectWillChange.send() }
+        surfaceRuntimeChanges[surface] = (ObjectIdentifier(runtime), changes)
     }
 
     /// Whether this dashboard is in the combined group.

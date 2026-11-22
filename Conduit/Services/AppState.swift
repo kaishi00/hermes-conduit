@@ -36,14 +36,21 @@ final class AppState: ObservableObject {
     /// (`runtimeOnScreenChanges`).
     @Published private(set) var runtimeOnScreen = DashboardRuntime()
     /// The runtime the app acts on: the one on screen, except while another
-    /// dashboard's answer or event applies to its own (`act(onRuntime:)`).
-    var shownRuntime: DashboardRuntime { runtimeInScope ?? runtimeOnScreen }
-    /// Another dashboard's runtime while its answer or event applies.
+    /// dashboard's answer or event applies to its own (`act(onRuntime:)`,
+    /// or `actAcrossAwaits(onRuntime:)`).
+    var shownRuntime: DashboardRuntime { runtimeInScope ?? RuntimeScope.runtime ?? runtimeOnScreen }
+    /// Another dashboard's runtime while its answer or event applies
+    /// synchronously; `RuntimeScope.runtime` holds one across awaits.
     var runtimeInScope: DashboardRuntime?
+    /// The dashboard of `runtimeInScope`.
+    var dashboardIDInScope: UUID?
     /// Whether the app acts on the dashboard on screen: what reacts on
     /// screen (the forwarders' side effects) runs only then.
-    var actingOnRuntimeOnScreen: Bool { runtimeInScope == nil || runtimeInScope === runtimeOnScreen }
+    var actingOnRuntimeOnScreen: Bool { shownRuntime === runtimeOnScreen }
     var runtimeOnScreenChanges: AnyCancellable?
+    /// Other dashboards' runtimes a surface shows (a far group chat), whose
+    /// changes publish as AppState's while it does, keyed by the surface.
+    var surfaceRuntimeChanges: [String: (runtime: ObjectIdentifier, changes: AnyCancellable)] = [:]
 
     var connection: HermesConnection? {
         get { shownRuntime.connection }
@@ -111,6 +118,10 @@ final class AppState: ObservableObject {
     /// The dashboard on screen's `isConnecting` as it changes.
     var isConnectingValues: AnyPublisher<Bool, Never> {
         $runtimeOnScreen.map { $0.$isConnecting }.switchToLatest().eraseToAnyPublisher()
+    }
+    /// The profile on screen as it changes (as `$activeProfile` did).
+    var activeProfileValues: AnyPublisher<String, Never> {
+        $runtimeOnScreen.map { $0.$activeProfile }.switchToLatest().eraseToAnyPublisher()
     }
     /// The dashboard on screen's Chats list rows as they change.
     var sessionsValues: AnyPublisher<[SessionSummary], Never> {
@@ -200,8 +211,16 @@ final class AppState: ObservableObject {
     /// (its Artifacts in All).
     var keptGatewayMediaResolvers: [String: GatewayMediaDataURLResolver] = [:]
 
-    @Published var activeProfile: String = "default" {
-        didSet {
+    /// The profile the dashboard acted on is on: the one on screen's, or,
+    /// while another dashboard's work runs in its scope (`act(onRuntime:)`),
+    /// that dashboard's own (`DashboardRuntime.activeProfile`). What reacts
+    /// to a change on screen runs only for the one on screen.
+    var activeProfile: String {
+        get { shownRuntime.activeProfile }
+        set {
+            let oldValue = shownRuntime.activeProfile
+            shownRuntime.activeProfile = newValue
+            guard actingOnRuntimeOnScreen else { return }
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeProfile {
                 // Its own saved voice jobs, if no boundary already took them.
@@ -619,6 +638,16 @@ final class AppState: ObservableObject {
     var chatDoneMarksWrites: [String: Int] = [:]
     var chatDoneMarksWriteTail: [String: Task<Void, Never>] = [:]
     var chatDoneMarksReadFailureLogged: Set<String> = []
+    /// Muted chats, per profile, as the plugin keeps them (ChatMutes), and
+    /// their reads and writes' bookkeeping (AppState+ChatMute, keyed by
+    /// chatDoneMarksKey). Each write moves `chatMutesWrites`, so a read from
+    /// before it is dropped.
+    @Published var chatMutes = ChatMutes()
+    var chatMutesReadAt: [String: Date] = [:]
+    var chatMutesReads: Set<String> = []
+    var chatMutesPendingWrites: [String: Int] = [:]
+    var chatMutesWrites: [String: Int] = [:]
+    var chatMutesWriteTail: [String: Task<Void, Never>] = [:]
     /// The Pinned section's order, per profile (issue 1354).
     @Published var pinnedChatOrder = PinnedChatOrder()
     /// The bots' order on Bots Home and every bot list (AppState+BotOrder).
@@ -3377,9 +3406,10 @@ final class AppState: ObservableObject {
         if let savedFilterOrder = defaults.stringArray(forKey: sessionFilterOrderKey) {
             sessionFilterOrder = Self.normalizedSessionFilterOrder(savedFilterOrder)
         }
-        activeProfile = defaults.string(forKey: activeProfileKey)?
+        // Straight into the runtime: at launch nothing on screen reacts yet.
+        let launchProfile = defaults.string(forKey: activeProfileKey)?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? "default"
-        if activeProfile.isEmpty { activeProfile = "default" }
+        runtimeOnScreen.activeProfile = launchProfile.isEmpty ? "default" : launchProfile
         displayPreferences = storedDisplayPreferences(dashboardID: initialDashboardID, profile: activeProfile)
             ?? ProfileDisplayPreferences()
         // The global key is what cold launch opens (the resume state and
