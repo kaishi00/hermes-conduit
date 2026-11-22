@@ -137,7 +137,7 @@ extension AppState {
     /// Whether `pending`'s chat is the one on screen. The chat a New Chat
     /// created is that New Chat's while it's the one open.
     func isOnScreen(_ pending: PendingComposerSend) -> Bool {
-        guard pending.dashboardID == activeDashboardID, pending.profile == activeProfile else { return false }
+        guard pending.dashboardID == composerOwnerDashboardID, pending.profile == composerOwnerProfile else { return false }
         switch composerChatOnScreen {
         case .none:
             return false
@@ -163,7 +163,7 @@ extension AppState {
     func sendWhenConnected(_ text: String, replyReference: ComposerReplyReference?) -> Bool {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard composerWaitsForChat, !trimmed.isEmpty, Self.parseSlashCommand(trimmed) == nil,
-              let dashboardID = activeDashboardID else { return false }
+              let dashboardID = composerOwnerDashboardID else { return false }
         let pending: PendingComposerSend
         if let waiting = pendingComposerSendOnScreen {
             pending = waiting.appending(trimmed, replyReference: replyReference)
@@ -173,7 +173,7 @@ extension AppState {
                 draftText: trimmed,
                 replyReference: replyReference,
                 dashboardID: dashboardID,
-                profile: activeProfile,
+                profile: composerOwnerProfile,
                 sessionIDs: chat.sessionIDs,
                 draftSessionID: chat.draftSessionID,
                 isNewChat: chat.isNewChat,
@@ -298,8 +298,8 @@ extension AppState {
     func settlePendingComposerSend() {
         guard let pending = pendingComposerSend else { return }
         // Another dashboard's: its file stays, and the next visit there
-        // puts it back as a draft.
-        guard pending.dashboardID == activeDashboardID else {
+        // (or its chat opened in place again) puts it back as a draft.
+        guard pending.dashboardID == activeDashboardID || pending.dashboardID == farChat?.dashboardID else {
             pendingComposerSend = nil
             cancelPendingComposerSendRecheck()
             return
@@ -316,7 +316,8 @@ extension AppState {
             returnPendingComposerSendToDraft(pending, saysWhy: false)
             return
         }
-        guard composerIsEnabled, isConnected, client != nil else { return }
+        // A far chat's waits for its own dashboard's connection.
+        guard composerIsEnabled, chatIsConnected, chatClient != nil else { return }
         // A sync or reconnect still running could replace the chat.
         guard !isSettlingConnection else {
             recheckPendingComposerSendSoon()
@@ -436,8 +437,15 @@ extension AppState {
     /// when it's that dashboard's and profile's: a far chat's composer
     /// doesn't hold them.
     private func composerOnScreenSaysWhy(for pending: PendingComposerSend) -> Bool {
-        pending.dashboardID == activeDashboardID && pending.profile == activeProfile
+        pending.dashboardID == composerOwnerDashboardID && pending.profile == composerOwnerProfile
             && composerDraftKeyOnScreen.dashboard == pending.dashboardID
+    }
+
+    /// Whether this phone follows `pending`'s dashboard and profile's chats
+    /// now: the dashboard on screen's, or a far chat's.
+    private func tracksChats(of pending: PendingComposerSend) -> Bool {
+        (pending.dashboardID == activeDashboardID && pending.profile == activeProfile)
+            || (pending.dashboardID == farChat?.dashboardID && pending.profile == farChat?.profile)
     }
 
     /// The waiting message's chat is one Hermes said it no longer has: the
@@ -446,8 +454,7 @@ extension AppState {
     /// its own dashboard's New Chat draft).
     private func pendingComposerSendChatIsGone(_ pending: PendingComposerSend) -> Bool {
         guard !pending.isNewChat,
-              pending.dashboardID == activeDashboardID,
-              pending.profile == activeProfile else { return false }
+              tracksChats(of: pending) else { return false }
         // By its durable id only: a runtime alias says nothing about
         // whether the conversation itself is gone.
         return conversationIsGone(
@@ -467,9 +474,10 @@ extension AppState {
     }
 
     /// Messages an earlier run, or an earlier visit to this dashboard, left
-    /// waiting come back as drafts. None is sent on its own.
+    /// waiting come back as drafts. None is sent on its own. Also another
+    /// combined dashboard's, as its chat opens in place.
     func restorePendingSendsLeftBehind(dashboardID: UUID) {
-        guard dashboardID == activeDashboardID else { return }
+        guard dashboardID == activeDashboardID || dashboardID == farChat?.dashboardID else { return }
         let leftBehind = pendingComposerSendFiles(dashboardID: dashboardID).filter { file in
             file.id != pendingComposerSend?.id
                 && !shownChat.deliveringPendingComposerSendIDs.contains(file.id)
@@ -484,7 +492,7 @@ extension AppState {
             let gone = isGone(file)
             return restoreRequest(for: file, key: gone ? goneChatDraftKey(for: file) : nil, redirects: gone, focuses: false)
         })
-        if let newest = leftBehind.last(where: { $0.profile == activeProfile }), composerOnScreenSaysWhy(for: newest) {
+        if let newest = leftBehind.last(where: { $0.profile == composerOwnerProfile }), composerOnScreenSaysWhy(for: newest) {
             composerNotice = pendingComposerSendNotice(for: newest, onScreen: isOnScreen(newest), chatIsGone: isGone(newest))
         }
     }

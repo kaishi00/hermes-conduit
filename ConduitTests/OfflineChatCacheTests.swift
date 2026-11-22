@@ -3695,6 +3695,40 @@ final class OfflineChatCacheTests: XCTestCase {
                        appState.pendingComposerSendNotice(for: pending, onScreen: false, chatIsGone: true))
     }
 
+    /// A message that waits in another combined dashboard's chat, open in
+    /// place, is that dashboard's: filed under it and its profile, sent only
+    /// once its own connection is up, and, when the chat is left, back as a
+    /// draft the next time that dashboard's chat opens in place.
+    func testAFarChatsWaitingMessageIsItsOwnDashboards() throws {
+        let (appState, store, dashboard) = makeAppState()
+        seedCopy(store, dashboard: dashboard)
+        appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
+        appState.isConnecting = true
+        let far = FarChatOwner(dashboardID: UUID(), profile: "work")
+        appState.farChat = far
+
+        XCTAssertTrue(appState.sendWhenConnected("For the far chat", replyReference: nil))
+        let pending = try XCTUnwrap(appState.pendingComposerSend)
+        XCTAssertEqual(pending.dashboardID, far.dashboardID)
+        XCTAssertEqual(pending.profile, "work")
+        XCTAssertEqual(store.loadPendingSends(dashboardID: far.dashboardID).map(\.id), [pending.id])
+        XCTAssertTrue(store.loadPendingSends(dashboardID: dashboard).isEmpty)
+        XCTAssertTrue(appState.isOnScreen(pending))
+        XCTAssertFalse(appState.chatIsConnected, "Its dashboard's connection isn't up here")
+
+        // Left: it leaves memory, its file stays.
+        appState.farChat = nil
+        appState.settlePendingComposerSend()
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        XCTAssertEqual(store.loadPendingSends(dashboardID: far.dashboardID).map(\.id), [pending.id])
+
+        // Its dashboard's chat opens in place again: back as a draft there.
+        appState.farChat = far
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.pending?.id), [pending.id])
+        XCTAssertEqual(appState.composerRestoreRequests.map(\.dashboardID), [far.dashboardID])
+    }
+
     func testDeletingSavedChatsKeepsWaitingFilesFromOtherDashboards() throws {
         let (appState, store, dashboard) = makeAppState()
         let otherDashboard = UUID()
