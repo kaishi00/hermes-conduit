@@ -318,8 +318,9 @@ struct DelegateAgentsSheet: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await appState.refreshDelegateAgents() }
-        // Another chat's processes never stay on the list.
-        .task(id: appState.backgroundProcessSessionID) {
+        // Another chat's processes never stay on the list, another
+        // combined dashboard's chat under the same id included.
+        .task(id: appState.backgroundProcessChatKey) {
             processes = []
             await loadProcesses()
         }

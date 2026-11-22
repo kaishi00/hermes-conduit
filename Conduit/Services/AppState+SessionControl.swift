@@ -107,6 +107,13 @@ extension AppState {
         return open
     }
 
+    /// The chat the process list is for: its dashboard and its id, since
+    /// one id can name chats on two combined dashboards.
+    var backgroundProcessChatKey: String? {
+        guard let open = backgroundProcessSessionID else { return nil }
+        return "\(chatOnScreenDashboardID?.uuidString ?? "")|\(open)"
+    }
+
     /// The background processes Hermes runs for the open chat
     /// (`process.list`). Nil when Hermes can't say (an older Hermes, or a
     /// chat with no live session); the sheet then leaves them out.

@@ -2897,10 +2897,15 @@ final class AppStateSessionCompressTests: XCTestCase {
             }
         }
         opened = harness.appState
+        let keyBefore = harness.appState.backgroundProcessChatKey
 
         let processes = await harness.appState.loadBackgroundProcesses()
 
         XCTAssertNil(processes, "The list was read for the chat that was on screen, not this one")
+        // The sheet's list starts over for the chat now on screen, though
+        // its id is the same.
+        XCTAssertEqual(harness.appState.backgroundProcessSessionID, "composer-origin")
+        XCTAssertNotEqual(harness.appState.backgroundProcessChatKey, keyBefore)
     }
 
     func testAnUnreachableFarChatsActionsNeverReachTheDashboardOnScreen() async throws {
