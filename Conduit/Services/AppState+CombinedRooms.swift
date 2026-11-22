@@ -193,7 +193,7 @@ extension AppState {
     /// Whether two lists of a room's members are one room's: a room's id is
     /// only unique on the Hermes that hosts it, so a copy is that room's
     /// when they share a member too (or either names none).
-    static func sameRoomMembers(_ a: [String], _ b: [String]) -> Bool {
+    nonisolated static func sameRoomMembers(_ a: [String], _ b: [String]) -> Bool {
         a.isEmpty || b.isEmpty || !Set(a).isDisjoint(with: b)
     }
 
