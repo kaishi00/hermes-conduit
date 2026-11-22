@@ -514,6 +514,14 @@ extension AppState {
         return runtime.groupCapabilities?.supports("groups.disband") == true
     }
 
+    /// Whether another dashboard's hosted room's Group Settings can be
+    /// edited from its tile: its Hermes serves them, as read on its own
+    /// runtime (this dashboard's tiles ask the same of theirs).
+    func canEditCombinedRoomSettings(_ tile: CombinedRoomTile) -> Bool {
+        guard case .hosted = tile.kind, let runtime = keptRuntime(of: tile) else { return false }
+        return runtime.groupCapabilities?.supports("groups.context") == true
+    }
+
     /// Disbands another dashboard's hosted room on its own runtime, then
     /// reads that dashboard's rooms again. The failure, if any, for Bots
     /// Home's notice.
@@ -534,30 +542,48 @@ extension AppState {
         if activeRoomSurface?.room.roomID != tile.roomID, groupSettingsOnOpen == request { groupSettingsOnOpen = nil }
     }
 
+    /// The hosted tile beside another dashboard's room among its own
+    /// dashboard's (-1 before, +1 after), for VoiceOver's Move Earlier and
+    /// Move Later: dropping on it moves the room one place, as a drag does.
+    func combinedRoomNeighbor(_ tile: CombinedRoomTile, by step: Int) -> CombinedRoomTile? {
+        guard case .hosted = tile.kind else { return nil }
+        let own = otherCombinedDashboardsRoomTiles.filter { other in
+            guard other.dashboardID == tile.dashboardID, case .hosted = other.kind else { return false }
+            return true
+        }
+        guard let index = own.firstIndex(where: { $0.id == tile.id }), own.indices.contains(index + step) else { return nil }
+        return own[index + step]
+    }
+
     /// Another dashboard's room's tile dropped on `target`'s, of the same
     /// dashboard (nil: past its last), whose place it takes in that
     /// dashboard's room order, kept on this phone as its tiles read it. A
     /// tile of another dashboard, or this one's, moves nothing: each
-    /// dashboard's rooms keep their place among the group's.
-    func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) {
+    /// dashboard's rooms keep their place among the group's. Whether it
+    /// moved.
+    @discardableResult
+    func dropCombinedRoom(_ moved: String, onto target: String?, dashboardID: UUID) -> Bool {
         let tiles = otherCombinedDashboardsRoomTiles.filter { $0.dashboardID == dashboardID }
         let hosted = tiles.compactMap { tile -> String? in
             if case .hosted(let room) = tile.kind { return room.roomID }
             return nil
         }
-        guard let movedTile = tiles.first(where: { $0.id == moved }), case .hosted(let room) = movedTile.kind else { return }
+        guard let movedTile = tiles.first(where: { $0.id == moved }), case .hosted(let room) = movedTile.kind else { return false }
         var onto: String?
         if let target {
-            guard let targetTile = tiles.first(where: { $0.id == target }) else { return }
+            guard let targetTile = tiles.first(where: { $0.id == target }) else { return false }
             // A copy follows the rooms: dropped on one, it goes past the last.
             if case .hosted(let targetRoom) = targetTile.kind { onto = targetRoom.roomID }
         }
         let key = BotOrder.roomStorageKey(scope: Self.dashboardPreferenceBucket(dashboardID))
         let order = BotOrder(defaults: defaults, key: key, kind: .rooms)
         let dropped = order.dropping(room.roomID, onto: onto, shown: hosted)
-        guard dropped != order else { return }
+        // What shows already: the last dropped past the end, say, with no
+        // order saved yet moves nothing and saves nothing.
+        guard dropped.arrange(hosted, name: { $0 }) != hosted else { return false }
         objectWillChange.send()
         dropped.save(to: defaults, key: key)
+        return true
     }
 
     /// The other combined dashboards' hosted rooms on Bots Home, read on
@@ -586,7 +612,8 @@ extension AppState {
                 // again on the next tick.
                 if firstRead, !groupRoomsListed { adoptKeptGroupRoomPictures() }
                 await refreshGroupRoomPictures(among: rooms)
-                // Whether its Hermes can disband them, for the tiles' menus:
+                // Whether its Hermes can disband them and serves their
+                // settings, for the tiles' menus:
                 // just the capabilities, not the room reads an open does.
                 await readGroupCapabilitiesIfUnknown()
             }

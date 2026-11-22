@@ -21,6 +21,7 @@ struct CombinedRoomPortrait: View {
     /// Another room's tile is over this one.
     @State private var dropTarget = false
     @EnvironmentObject private var appState: AppState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     private var isHosted: Bool {
         if case .hosted = tile.kind { return true }
@@ -48,13 +49,35 @@ struct CombinedRoomPortrait: View {
                 .environmentObject(appState)
         })
         .onDrop(of: [UTType.text], delegate: RoomTileDrop(target: tile.id, targeted: $dropTarget) { dragged in
-            Haptics.selection()
-            appState.dropCombinedRoom(dragged, onto: tile.id, dashboardID: tile.dashboardID)
+            move(dragged, onto: tile.id)
         })
         .accessibilityLabel(Text(verbatim: tile.name))
-        .accessibilityValue(Text(verbatim: CombinedRoomText.value(tile, appState: appState)))
+        .accessibilityValue(Text(verbatim: CombinedRoomText.value(tile, appState: appState, talking: true)))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        // The drag's moves, for VoiceOver: one place among its own
+        // dashboard's rooms.
+        .accessibilityActions {
+            if let earlier = appState.combinedRoomNeighbor(tile, by: -1) {
+                Button(AppLocalization.string("Move Earlier")) {
+                    move(tile.id, onto: earlier.id)
+                }
+            }
+            if let later = appState.combinedRoomNeighbor(tile, by: 1) {
+                Button(AppLocalization.string("Move Later")) {
+                    move(tile.id, onto: later.id)
+                }
+            }
+        }
         .accessibilityIdentifier("bots.combinedRoom.\(tile.id)")
+    }
+
+    /// A drag's or VoiceOver's move among its own dashboard's rooms, eased
+    /// as this dashboard's rooms move; only a move that took buzzes.
+    private func move(_ dragged: String, onto target: String) {
+        let moved = withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
+            appState.dropCombinedRoom(dragged, onto: target, dashboardID: tile.dashboardID)
+        }
+        if moved { Haptics.selection() }
     }
 
     /// Its menu, as this dashboard's rooms' less what needs this
@@ -63,10 +86,12 @@ struct CombinedRoomPortrait: View {
     @ViewBuilder
     private var menu: some View {
         if isHosted {
-            Button {
-                Task { await appState.openCombinedRoomSettings(tile, inBots: true) }
-            } label: {
-                Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+            if appState.canEditCombinedRoomSettings(tile) {
+                Button {
+                    Task { await appState.openCombinedRoomSettings(tile, inBots: true) }
+                } label: {
+                    Label(AppLocalization.string("Group Settings"), systemImage: "gearshape")
+                }
             }
             if let onDisband, appState.canDisbandCombinedRoom(tile) {
                 Divider()
@@ -130,10 +155,19 @@ enum CombinedRoomText {
         }
     }
 
-    /// VoiceOver's value: its dashboard's name, then the line.
+    /// VoiceOver's value, as this dashboard's rooms say it: on a tile,
+    /// which draws its talking ring, whether it's talking (a row draws
+    /// none); with linked people; its dashboard's name, then the line.
     @MainActor
-    static func value(_ tile: CombinedRoomTile, appState: AppState) -> String {
-        [appState.combinedDashboardBadge(tile.dashboardID)?.name, line(tile)]
+    static func value(_ tile: CombinedRoomTile, appState: AppState, talking: Bool = false) -> String {
+        let linked: Bool
+        switch tile.kind {
+        case .hosted(let room): linked = room.isLinked
+        case .copy: linked = true
+        }
+        return [talking && appState.combinedRoomTalking(tile) ? BotRoomTalkingText.now : nil,
+                linked ? AppLocalization.string("With linked people") : nil,
+                appState.combinedDashboardBadge(tile.dashboardID)?.name, line(tile)]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")

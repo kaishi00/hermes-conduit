@@ -68,13 +68,14 @@ struct RoomCopyPortrait: View {
     private var selection: V2RowSelection { .room(copy.roomID, beside: openBeside) }
 
     private var zoomKey: String { BotZoomArm.roomKey(copy.roomID) }
+    private var talking: Bool { copy.state.working && !copy.isOver && appState.isConnected }
 
     var body: some View {
         let line = RoomCopyText.line(for: copy)
         Button {
             open()
         } label: {
-            BotRoomPortraitLabel(title: copy.name, talking: copy.state.working && !copy.isOver && appState.isConnected,
+            BotRoomPortraitLabel(title: copy.name, talking: talking,
                                  highlighted: selection == .open, zoomSource: zoomKey) { size in
                 RoomCopyIcon(copy: copy, size: size)
             }
@@ -93,7 +94,10 @@ struct RoomCopyPortrait: View {
         }
         .modifier(RoomCopyDelete(copy: copy, confirming: $confirmingDelete))
         .accessibilityLabel(Text(verbatim: copy.name))
-        .accessibilityValue(Text(verbatim: [AppLocalization.string("With linked people"), line].joined(separator: ", ")))
+        // Talking first, as its ring shows and a hosted room's tile says.
+        .accessibilityValue(Text(verbatim: ([talking ? BotRoomTalkingText.now : nil,
+                                             AppLocalization.string("With linked people"), line] as [String?])
+            .compactMap { $0 }.joined(separator: ", ")))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .accessibilityIdentifier("bots.roomCopy.\(copy.roomID)")
         .v2SelectedTrait(selection)
