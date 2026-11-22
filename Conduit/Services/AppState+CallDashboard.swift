@@ -218,6 +218,33 @@ extension AppState {
         return VoiceModeChoice(engine: engine, localAgent: preferences.localLiveAgent)
     }
 
+    /// A Siri launch or screen question naming another combined
+    /// dashboard's profile (`PendingVoiceIntent.dashboardID`). Siri's call
+    /// starts there in place, on that dashboard's runtime in its mode there
+    /// (`openLiveCallOnFarDashboard`), with no switch; anything else, or a
+    /// call that can't start there (not kept connected, Classic voice
+    /// there, CarPlay or the Watch on the line), switches there first as
+    /// Chats' strip does, and the launch then goes on as one on screen.
+    /// A call running ends with that switch, as a Siri start on another
+    /// profile replaces it. True when this handled the launch: its call
+    /// started there, or the switch couldn't be made, which says so. False
+    /// when the launch goes on as usual, now on screen.
+    func handledVoiceLaunchOnFarDashboard(_ intent: PendingVoiceIntent) async -> Bool {
+        guard let dashboardID = intent.dashboardID, dashboardID != activeDashboardID else { return false }
+        let profile = Self.farCallProfile(intent.profile ?? "")
+        if intent.source == .siri, intent.startsFreshConversation,
+           openLiveCallOnFarDashboard(dashboardID, profile: profile) {
+            return true
+        }
+        guard savedDashboardRegistry.dashboard(with: dashboardID) != nil,
+              await switchForCombinedProfile(in: dashboardID, profile: profile, endingTheCall: true),
+              activeDashboardID == dashboardID else {
+            errorMessage = AppLocalization.string("Conduit could not open the requested voice profile.")
+            return true
+        }
+        return false
+    }
+
     /// The kept runtime a call on another combined dashboard starts on.
     private func farCallRuntime(_ dashboardID: UUID, profile: String) -> DashboardRuntime? {
         guard farCallGateway(dashboardID) != nil else { return nil }

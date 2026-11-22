@@ -624,6 +624,12 @@ struct PendingVoiceIntent: Equatable {
     /// Screen launch; nil for every other source.
     var screenQuestion: ScreenQuestionRequest? = nil
 
+    /// Another combined dashboard `profile` is on, when Siri or the screen
+    /// question named one of its profiles; nil for the dashboard in use.
+    /// Siri's call starts there in place when it can, else Conduit switches
+    /// there first (`handledVoiceLaunchOnFarDashboard`).
+    var dashboardID: UUID? = nil
+
     /// `newCall`: the sidebar's New voice call, never attached to a chat.
     /// `screenQuestion`: the Ask Hermes About Screen action.
     /// `hermesCall`: Talk on a "Hermes wants to talk" notification (#449),

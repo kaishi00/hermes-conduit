@@ -59,7 +59,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch, with a ringtone you pick for every bot or for each one
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives
-- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; New Chat, in Shortcuts, Control Center, the Lock Screen and for the Action Button, opens Conduit on a fresh chat with the keyboard up; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
+- Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; New Chat, in Shortcuts, Control Center, the Lock Screen and for the Action Button, opens Conduit on a fresh chat with the keyboard up; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open, and with Combine Dashboards Siri's calls reach every combined dashboard's profiles without switching
 - Your chats in Spotlight and Siri: search a chat or Bot Chat by title from the Home Screen, say "Open Trip planning in Conduit" or "Ask Furina in Conduit", and pick a chat in the Send to Hermes action (only titles of the pinned and recent chats the widget offers are indexed, on the phone)
 
 **Tasks, bots and groups**

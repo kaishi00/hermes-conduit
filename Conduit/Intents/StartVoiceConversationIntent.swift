@@ -17,17 +17,56 @@ struct ConduitProfileEntity: AppEntity, Identifiable {
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(displayName)")
     }
+
+    /// Another combined dashboard's profile has an id of its own, the
+    /// profile and that dashboard's id ("atlas@<uuid>"), so "Start Atlas
+    /// voice" reaches it from the dashboard on screen. A bare id is the
+    /// dashboard in use's profile, as every saved shortcut's is.
+    static func farID(profile: String, dashboardID: UUID) -> String {
+        "\(profile)@\(dashboardID.uuidString)"
+    }
+
+    /// The profile an id names, and the other combined dashboard it's on
+    /// (nil: the dashboard in use). A profile name holding an "@" not
+    /// followed by a dashboard id is bare.
+    static func parts(of id: String) -> (profile: String, dashboardID: UUID?) {
+        guard let at = id.lastIndex(of: "@"),
+              let dashboardID = UUID(uuidString: String(id[id.index(after: at)...])) else { return (id, nil) }
+        let profile = String(id[..<at])
+        return profile.isEmpty ? (id, nil) : (profile, dashboardID)
+    }
+
+    /// The list AppState keeps of the other combined dashboards' profiles,
+    /// each `[farIDKey: id, farNameKey: name]`.
+    static let combinedProfilesKey = "conduit.combinedProfiles.v1"
+    static let farIDKey = "id"
+    static let farNameKey = "name"
 }
 
 @available(iOS 16.0, *)
 struct ConduitProfileEntityQuery: EntityQuery {
     func entities(for identifiers: [String]) async throws -> [ConduitProfileEntity] {
-        profiles().filter { identifiers.contains($0.id) }
+        (Self.localProfiles() + Self.combinedProfiles()).filter { identifiers.contains($0.id) }
     }
 
-    func suggestedEntities() async throws -> [ConduitProfileEntity] { profiles() }
+    /// The dashboard in use's profiles, then the other combined
+    /// dashboards' ("Atlas · Studio"), so Siri's profile phrases reach
+    /// every one (no-switch plan stage 2).
+    func suggestedEntities() async throws -> [ConduitProfileEntity] { Self.localProfiles() + Self.combinedProfiles() }
 
-    private func profiles() -> [ConduitProfileEntity] {
+    /// The other combined dashboards' profiles, as AppState last listed
+    /// them; none outside a group.
+    static func combinedProfiles(_ defaults: UserDefaults = .standard) -> [ConduitProfileEntity] {
+        let rows = defaults.array(forKey: ConduitProfileEntity.combinedProfilesKey) as? [[String: String]] ?? []
+        return rows.compactMap { row in
+            guard let id = row[ConduitProfileEntity.farIDKey],
+                  ConduitProfileEntity.parts(of: id).dashboardID != nil else { return nil }
+            return ConduitProfileEntity(id: id, displayName: row[ConduitProfileEntity.farNameKey] ?? ConduitProfileEntity.parts(of: id).profile)
+        }
+    }
+
+    /// The dashboard in use's profiles, named as in Conduit.
+    static func localProfiles() -> [ConduitProfileEntity] {
         let values = UserDefaults.standard.stringArray(forKey: "conduit.knownProfiles.v1") ?? ["default"]
         let unique = values.reduce(into: [String]()) { result, value in
             let normalized = value.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -39,6 +78,13 @@ struct ConduitProfileEntityQuery: EntityQuery {
             ConduitProfileEntity(id: $0, displayName: names[$0] ?? ($0 == "default" ? AppLocalization.string("Default") : $0))
         }
     }
+}
+
+/// The dashboard in use's profiles only: Send to Hermes sends on the
+/// dashboard in use, so another combined dashboard's isn't offered there.
+@available(iOS 16.0, *)
+struct ConduitLocalProfileOptions: DynamicOptionsProvider {
+    func results() async throws -> [ConduitProfileEntity] { ConduitProfileEntityQuery.localProfiles() }
 }
 
 /// Siri deliberately launches Conduit before a microphone is opened. The root
@@ -79,7 +125,10 @@ struct StartVoiceConversationIntent: AppIntent {
     init(profile: ConduitProfileEntity?) { self.profile = profile }
 
     func perform() async throws -> some IntentResult {
-        let pending = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: profile?.id)
+        // Another combined dashboard's profile carries its dashboard: its
+        // call starts there in place, or switches there.
+        let parts = profile.map { ConduitProfileEntity.parts(of: $0.id) }
+        let pending = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: parts?.profile, dashboardID: parts?.dashboardID)
         await MainActor.run {
             PendingVoiceIntentStore.shared.enqueue(pending)
         }

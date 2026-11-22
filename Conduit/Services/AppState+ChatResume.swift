@@ -757,6 +757,9 @@ extension AppState {
         defaults.removeObject(forKey: reviewSummaryCacheKey)
         defaults.removeObject(forKey: knownProfilesKey)
         defaults.removeObject(forKey: knownProfileNamesKey)
+        // The other combined dashboards' profiles as seen from this one:
+        // the dashboard now on screen's own leave the list.
+        persistSiriCombinedProfiles()
         // Names are kept per dashboard: the selected one's come back, and
         // the outgoing server's never show here.
         profileHermesNames = profileAppearanceStore.loadHermesNames(dashboardID: activeDashboardID)

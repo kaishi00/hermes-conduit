@@ -106,6 +106,7 @@ enum PendingVoiceLaunchPolicy {
     /// monotonic `ContinuousClock.Instant`.
     static func makeSiriPendingIntent(
         profile: String?,
+        dashboardID: UUID? = nil,
         now: Date = Date(),
         budget: TimeInterval = externalLaunchBudget,
         clock: ContinuousClock = ContinuousClock()
@@ -115,7 +116,8 @@ enum PendingVoiceLaunchPolicy {
             startsFreshConversation: true,
             source: .siri,
             externalLaunchDeadline: now.addingTimeInterval(budget),
-            externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget))
+            externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget)),
+            dashboardID: dashboardID
         )
     }
 
@@ -157,6 +159,7 @@ enum PendingVoiceLaunchPolicy {
     static func makeScreenQuestionPendingIntent(
         _ request: ScreenQuestionRequest,
         profile: String?,
+        dashboardID: UUID? = nil,
         now: Date = Date(),
         budget: TimeInterval = externalLaunchBudget,
         clock: ContinuousClock = ContinuousClock()
@@ -171,7 +174,8 @@ enum PendingVoiceLaunchPolicy {
             source: .screenQuestion,
             externalLaunchDeadline: now.addingTimeInterval(budget),
             externalLaunchElapsedDeadline: clock.now.advanced(by: .seconds(budget)),
-            screenQuestion: request
+            screenQuestion: request,
+            dashboardID: dashboardID
         )
     }
 

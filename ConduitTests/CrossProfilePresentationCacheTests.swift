@@ -2249,6 +2249,31 @@ extension CrossProfilePresentationCacheTests {
         XCTAssertEqual(CarPlayVoiceCoordinator.farChatList("atlas", in: mac.id, appState: appState).recent.map(\.sessionID), ["atlas-1"])
         XCTAssertFalse(appState.canStartLiveCallOnFarDashboard(mac.id, profile: "atlas"))
         XCTAssertNil(appState.voiceModeOnFarDashboard(mac.id, profile: "atlas"), "no mode to mark where it can't start")
+        // Siri's profile phrases and the Shortcuts pickers: the other
+        // dashboard's profiles, each id carrying its dashboard, named with
+        // it; the one on screen's stay bare (no-switch stage 2).
+        appState.persistSiriCombinedProfiles()
+        let siri = ConduitProfileEntityQuery.combinedProfiles(appState.defaults)
+        XCTAssertEqual(Set(siri.map(\.id)), [
+            ConduitProfileEntity.farID(profile: "default", dashboardID: mac.id),
+            ConduitProfileEntity.farID(profile: "atlas", dashboardID: mac.id),
+        ])
+        let atlas = try XCTUnwrap(siri.first { ConduitProfileEntity.parts(of: $0.id).profile == "atlas" })
+        XCTAssertEqual(ConduitProfileEntity.parts(of: atlas.id).dashboardID, mac.id)
+        XCTAssertTrue(atlas.displayName.hasPrefix("atlas"), atlas.displayName)
+        XCTAssertEqual(ConduitProfileEntity.parts(of: "default").profile, "default")
+        XCTAssertNil(ConduitProfileEntity.parts(of: "default").dashboardID, "a bare id is the dashboard in use's")
+        XCTAssertNil(ConduitProfileEntity.parts(of: "me@example").dashboardID, "an @ not followed by a dashboard id is the name's")
+        XCTAssertNil(ConduitProfileEntity.parts(of: "@\(mac.id.uuidString)").dashboardID)
+        // A launch naming the dashboard on screen goes on as usual; one
+        // naming a dashboard that can't take the call in place (not kept
+        // live here) is left to the switch.
+        let onScreen = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default", dashboardID: vps.id)
+        let handled = await appState.handledVoiceLaunchOnFarDashboard(onScreen)
+        XCTAssertFalse(handled)
+        let unnamed = PendingVoiceLaunchPolicy.makeSiriPendingIntent(profile: "default")
+        let handledUnnamed = await appState.handledVoiceLaunchOnFarDashboard(unnamed)
+        XCTAssertFalse(handledUnnamed)
         // One Hermes saved twice (a bot of each has the same Bot Chat): its
         // profile shows once, as this dashboard's, at the place its copy
         // was saved at, with no Bots Home drawn (issue 2640).

@@ -112,6 +112,8 @@ extension AppState {
     /// rather than as they were on its last visit (no-switch plan stage 2).
     /// The current workspace stays the one on screen.
     func publishCombinedWidgetWorkspaces() {
+        // Siri's profile phrases know their profiles from the same reads.
+        persistSiriCombinedProfiles()
         guard widgetSnapshotPublicationSuppressionDepth == 0, let store = widgetStore,
               isInCombinedGroup(activeDashboardID) else { return }
         let stored = store.read()
